@@ -1,0 +1,8 @@
+id: test.hplc-assay
+name: { ru: Количественное определение (ВЭЖХ), en: Assay (HPLC) }
+attr: assay
+inst: inst.hplc
+prep: 150
+run: 480
+unattended: true
+sd: 0.4

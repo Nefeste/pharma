@@ -1,6 +1,6 @@
 // Склад: фура, разгрузка, приёмка, размещение (docs/specs/2026-10-engine.md, 1а; геймдизайн, §4.3–4.5). Каждая паллета
-// проходит путь «фура → зона приёмки → проверка кладовщика → зона карантина или холод». Задачи раздаёт раздатчик
-// (tasks.ts); здесь — что они делают, когда кончаются.
+// проходит путь «фура → зона приёмки → проверка кладовщика → зона карантина или холод»; дальше её ведёт лаборатория
+// (lab.ts). Задачи раздаёт раздатчик (tasks.ts); здесь — что они делают, когда кончаются.
 import type { ContentDb } from '../content/types';
 import { MIN } from './core/calendar';
 import { createLot, putUnit } from './stock';
@@ -77,6 +77,7 @@ export function wmsDone(db: ContentDb, s: PlantState, t: Task, _notices: Notice[
       return;
     }
     case 'putaway':
+    case 'move':
       putUnit(s, u!, t.to!);
       return;
   }

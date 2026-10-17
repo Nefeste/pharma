@@ -1,0 +1,3 @@
+id: spec.mat.pk.alu
+tests:
+  - { test: test.visual }

@@ -5,5 +5,7 @@ lead: [45, 75]
 prepay: 50
 payDays: 30
 approved: true
+# доля партий с браком, %: их ловит входной контроль (гипотеза)
+defects: 4
 items:
   mat.api.paracetamol: { price: 520, moq: 500 }

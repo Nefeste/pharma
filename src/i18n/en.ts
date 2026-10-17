@@ -27,6 +27,8 @@ export const en: Strings = {
     morning: (day: number) => `08:00 meeting: day ${day} has begun`,
     ordered: 'Purchase order placed',
     truck: 'A truck is at the receiving dock',
+    lotReleased: 'Lot released: all tests within specification',
+    lotRejected: 'Lot rejected: out-of-specification result',
     refused: 'The command was refused',
   },
   debug: {

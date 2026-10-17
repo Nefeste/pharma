@@ -89,6 +89,15 @@ export interface UnitType {
 
 export type MaterialKind = 'api' | 'excipient' | 'packaging';
 
+/**
+ * Свойство качества (геймдизайн, §6.1). Значение — доли 1/10 000: у количественного — доля от целого (содержание 99,8 %
+ * — 9 980); у качественного — 10 000 «соответствует» или 0 «нет».
+ */
+export type Attr = 'identity' | 'assay' | 'moisture' | 'appearance';
+
+/** Качественные свойства: в спецификации у них нет пределов. */
+export const QUALITATIVE: readonly Attr[] = ['identity', 'appearance'];
+
 /** Материал (геймдизайн, §4.1). Единица учёта — масса (мг) или штуки. */
 export interface Material {
   id: Id;
@@ -104,6 +113,14 @@ export interface Material {
   shelf: number;
   /** навеска пересчитывается на фактическое содержание (АФС) */
   potency?: boolean;
+  /** спецификация входного контроля */
+  spec: Id;
+  /** истинные свойства партии: среднее и разброс (СКО) между партиями, доли 1/10 000 — только количественные */
+  props: Partial<Record<Attr, [number, number]>>;
+  /** брак у поставщика: свойство и сдвиг, доли 1/10 000; у качественного свойства — «не соответствует» */
+  bad?: { attr: Attr; shift?: number };
+  /** проба с одной тары: мг или шт. */
+  sample: number;
   source?: string[];
   review?: Review;
 }
@@ -141,6 +158,8 @@ export interface Supplier {
   payDays: number;
   /** одобрен ли поставщик (входной контроль по плану отбора — геймдизайн, §6.3) */
   approved: boolean;
+  /** доля партий с браком, доли 1/10 000 */
+  defects: number;
   items: Record<Id, SupplierItem>;
 }
 
@@ -181,7 +200,7 @@ export interface Shift {
   to: number;
 }
 
-export type ZoneKind = 'receiving' | 'quarantine' | 'cold' | 'rejected' | 'fgQuarantine' | 'shipping' | 'staging';
+export type ZoneKind = 'receiving' | 'quarantine' | 'cold' | 'rejected' | 'fgQuarantine' | 'shipping' | 'staging' | 'sampling';
 
 /** План завода прототипа (docs/specs/2026-10-engine.md, «План завода прототипа»). Координаты — сантиметры участка. */
 export interface Plant {
@@ -192,8 +211,48 @@ export interface Plant {
   /** ряды стеллажей: начало ряда, секций, ярусов */
   racks: { id: string; x: number; z: number; bays: number; levels: number }[];
   rooms: { id: string; type: string; rect: [number, number, number, number]; grade: 'D' | 'cnc' }[];
+  /** приборы лаборатории: вид и помещение */
+  instruments: { id: string; type: Id; room: string }[];
   /** точки: стоянка техники, вход персонала */
   points: { park: [number, number]; entrance: [number, number] };
+}
+
+/** Вид прибора лаборатории (геймдизайн, §6.2); экземпляры — в плане завода. */
+export interface InstrumentType {
+  id: Id;
+  name: Text;
+}
+
+/** Методика испытания (геймдизайн, §6.2). */
+export interface TestMethod {
+  id: Id;
+  name: Text;
+  attr: Attr;
+  /** вид прибора; нет — испытание без прибора */
+  inst?: Id;
+  /** работа аналитика (подготовка) и работа прибора, с */
+  prep: number;
+  run: number;
+  /** прибор работает без человека — и ночью; иначе аналитик стоит у прибора всё время */
+  unattended: boolean;
+  /** погрешность — СКО, доли 1/10 000 */
+  sd: number;
+  source?: string[];
+  review?: Review;
+}
+
+/** Строка спецификации: методика и пределы, доли 1/10 000; у качественного свойства пределов нет. */
+export interface SpecLine {
+  test: Id;
+  min?: number;
+  max?: number;
+}
+
+export interface Spec {
+  id: Id;
+  tests: SpecLine[];
+  source?: string[];
+  review?: Review;
 }
 
 export interface ContentDb {
@@ -209,4 +268,7 @@ export interface ContentDb {
   vehicles: Record<Id, VehicleType>;
   shifts: Record<Id, Shift>;
   plants: Record<Id, Plant>;
+  instruments: Record<Id, InstrumentType>;
+  tests: Record<Id, TestMethod>;
+  specs: Record<Id, Spec>;
 }

@@ -7,6 +7,7 @@
 import type { ContentDb, Id } from '../content/types';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR } from './core/calendar';
+import { labDone, runDone, startSampling } from './lab';
 import { planOf } from './plant';
 import { createLot, findSlot } from './stock';
 import { placePo } from './supply';
@@ -50,8 +51,12 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     vehicles: {},
     tasks: {},
     open: [],
+    instruments: {},
+    samples: {},
+    tests: {},
+    deviations: {},
   };
-  // люди — у входа, техника — на стоянке
+  // люди — у входа, техника — на стоянке, приборы — в лаборатории по плану
   for (const row of sc.staff) {
     for (let i = 0; i < row.n; i++) {
       const id = `E${(s.next.E = (s.next.E ?? 0) + 1)}`;
@@ -64,6 +69,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
       s.vehicles[id] = { id, type: row.type, x: plan.park.x, z: plan.park.z };
     }
   }
+  for (const i of plan.plant.instruments) s.instruments[i.id] = { id: i.id, type: i.type, room: i.room };
   // запас на старте — разрешённые партии на стеллажах, ближе к шлюзу для материалов и ниже
   const near = plan.slot[plan.byKind.staging[0].id];
   for (const st of sc.stock) {
@@ -140,8 +146,9 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       schedule(s.agenda, s.t + DAY, { kind: 'morning' });
       return;
     case 'hour':
-      // смены начинаются и кончаются в целые часы: раздать то, что ждало людей
+      // смены начинаются и кончаются в целые часы: раздать то, что ждало людей; партии, готовые к отбору проб, — в план
       schedule(s.agenda, s.t + HOUR, { kind: 'hour' });
+      startSampling(db, s);
       dispatch(db, s);
       return;
     case 'truck':
@@ -152,9 +159,14 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       const t = s.tasks[ev.id];
       if (!t || t.v !== ev.v || t.state !== 'busy') return;
       release(db, s, t);
-      wmsDone(db, s, t, notices);
+      if (!labDone(db, s, t, notices)) wmsDone(db, s, t, notices);
+      if (t.kind === 'putaway') startSampling(db, s);
       dispatch(db, s);
       return;
     }
+    case 'run':
+      runDone(db, s, ev.test, ev.v);
+      dispatch(db, s);
+      return;
   }
 }

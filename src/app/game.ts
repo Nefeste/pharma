@@ -110,6 +110,8 @@ export class Game {
       n.kind === 'morning' ? T.notices.morning(n.day)
       : n.kind === 'ordered' ? T.notices.ordered
       : n.kind === 'truck' ? T.notices.truck
+      : n.kind === 'lotReleased' ? T.notices.lotReleased
+      : n.kind === 'lotRejected' ? T.notices.lotRejected
       : T.notices.refused;
     this.notices.unshift({ t: this.t, text });
     if (this.notices.length > 30) this.notices.length = 30;

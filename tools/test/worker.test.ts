@@ -7,6 +7,7 @@ import { db } from '../../src/content';
 import { DAY } from '../../src/engine/core/calendar';
 import { fingerprint } from '../../src/engine/core/hash';
 import { apply, newPlant } from '../../src/engine/engine';
+import { fromSave } from '../../src/engine/save';
 import { H } from '../../src/sim/pack';
 import type { FromSim, ToSim } from '../../src/sim/protocol';
 
@@ -42,9 +43,10 @@ describe('поток расчёта', () => {
       expect(lag).toBe(0);
       expect(mornings).toBe(3);
       const saved = await call(w, { kind: 'save' });
-      if (saved.kind !== 'state') throw new Error(saved.kind);
-      expect(saved.state.t).toBe(s.t);
-      expect(fingerprint(saved.state)).toBe(fingerprint(s));
+      if (saved.kind !== 'saved') throw new Error(saved.kind);
+      const back = fromSave(db, saved.json);
+      expect(back.t).toBe(s.t);
+      expect(fingerprint(back)).toBe(fingerprint(s));
     } finally {
       await w.terminate();
     }

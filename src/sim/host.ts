@@ -4,6 +4,7 @@
 // детерминированный: тот же порядок сообщений даёт то же состояние, что и в основном потоке.
 import type { ContentDb } from '../content/types';
 import { apply, catchUp, newPlant } from '../engine/engine';
+import { fromSave, toSave } from '../engine/save';
 import type { Command, Notice, PlantState } from '../engine/types';
 import { packSlice } from './pack';
 import type { FromSim, ToSim } from './protocol';
@@ -49,7 +50,7 @@ export function createSim(db: ContentDb): SimHost {
             owed = 0;
             return slice([]);
           case 'load':
-            s = msg.state;
+            s = fromSave(db, msg.json);
             owed = 0;
             return slice([]);
           case 'command':
@@ -73,7 +74,7 @@ export function createSim(db: ContentDb): SimHost {
             // сохранение — всё прожитое: недожитое время сначала доживается
             if (s.until !== undefined) catchUp(db, s);
             if (owed > 0) settle();
-            return { kind: 'state', state: s };
+            return { kind: 'saved', json: toSave(s) };
         }
       } catch (e) {
         return { kind: 'error', message: e instanceof Error ? e.message : String(e) };

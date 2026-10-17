@@ -1,13 +1,13 @@
 // Состояние завода и обмен с движком (docs/02-architecture.md, §1, §3, §7; docs/specs/2026-10-engine.md). Состояние —
 // обычный сериализуемый объект: сохранение — его снимок со схемой и миграциями (ADR студии 0004). Сущности — словари с
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
-import type { Id, ZoneKind } from '../content/types';
+import type { Attr, Id, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 2;
+export const SCHEMA = 3;
 
 // ---------------------------------------------------------------- склад
 
@@ -34,6 +34,15 @@ export interface Lot {
   used: number;
   sampled: number;
   written: number;
+  /**
+   * истинные свойства, доли 1/10 000 (src/content/types.ts, `Attr`). Их знает только движок: в окно они не уходят
+   * (docs/02-architecture.md, §9) — окно видит паспорт и результаты лаборатории
+   */
+  truth: Partial<Record<Attr, number>>;
+  /** свойства по паспорту изготовителя */
+  coa: Partial<Record<Attr, number>>;
+  /** пробы входного контроля */
+  sample?: string;
 }
 
 export interface Container {
@@ -66,6 +75,69 @@ export interface Unit {
 export interface SlotUse {
   unit?: string;
   held?: string;
+}
+
+// ---------------------------------------------------------------- лаборатория
+
+/** Пробы партии по плану отбора (docs/specs/2026-10-engine.md, 1б). */
+export interface Sample {
+  id: string;
+  lot: string;
+  /** тара из плана отбора */
+  plan: string[];
+  /** паллеты, с тары которых пробы ещё не отобраны */
+  left: string[];
+  /** отобрано всего, мг или шт.: списано с тары */
+  qty: number;
+  /** когда отобрана последняя проба */
+  taken?: number;
+  /** испытания по спецификации — заводятся, когда пробы приняты в лаборатории */
+  tests: string[];
+}
+
+/**
+ * Испытание пробы по методике. `queued` — ждёт аналитика и прибор; `prep` — аналитик готовит (а у методики без
+ * самостоятельной работы прибора — и ведёт её); `run` — прибор работает сам; `review` — результат ждёт проверки вторым
+ * лицом; `done` — результат готов.
+ */
+export interface LabTest {
+  id: string;
+  sample: string;
+  /** методика (`content/tests/`) */
+  method: Id;
+  state: 'queued' | 'prep' | 'run' | 'review' | 'done';
+  /** пределы спецификации на день испытания, доли 1/10 000; нет обоих — качественное свойство */
+  min?: number;
+  max?: number;
+  /** прибор, аналитик и тот, кто проверил */
+  inst?: string;
+  by?: string;
+  checker?: string;
+  /** измерено, доли 1/10 000; окно видит его, когда испытание `done` */
+  result?: number;
+  /** в пределах спецификации — после проверки */
+  pass?: boolean;
+  /** версия: событие конца работы прибора с другой версией ничего не делает */
+  v: number;
+}
+
+/** Прибор лаборатории из плана завода; занят испытанием с начала подготовки до конца своей работы. */
+export interface Instrument {
+  id: string;
+  type: Id;
+  room: string;
+  test?: string;
+}
+
+/** Отклонение (docs/04-data-model.md, §6): в 1б — результат вне спецификации при входном контроле. */
+export interface Deviation {
+  id: string;
+  opened: number;
+  kind: 'oos';
+  lot: string;
+  /** испытания вне пределов */
+  tests: string[];
+  status: 'open';
 }
 
 // ---------------------------------------------------------------- закупки
@@ -121,7 +193,23 @@ export interface Vehicle {
   task?: string;
 }
 
-export type TaskKind = 'unload' | 'receive' | 'putaway';
+/**
+ * Виды задач. Склад: разгрузка, приёмка, размещение (в карантин или на стеллаж), перемещение (в зону отклонённого).
+ * Лаборатория: паллета в пробоотборную и обратно, отбор проб, передача проб в лабораторию, испытание, проверка
+ * результата, решение по партии.
+ */
+export type TaskKind =
+  | 'unload'
+  | 'receive'
+  | 'putaway'
+  | 'move'
+  | 'toSampling'
+  | 'sample'
+  | 'fromSampling'
+  | 'handover'
+  | 'prep'
+  | 'review'
+  | 'decide';
 
 /** Место задачи: место паллеты, рампа с фурой или точка. */
 export type Place = { kind: 'slot'; id: string } | { kind: 'truck'; id: string } | { kind: 'point'; x: number; z: number };
@@ -141,6 +229,17 @@ export interface Task {
   toKind?: ZoneKind | 'storage';
   /** выбранное место назначения */
   to?: string;
+  /** место назначения выбирать ближе к этой точке; нет — ближе к началу задачи */
+  near?: { x: number; z: number };
+  /** нужен свободный прибор одного из видов: он занят испытанием `test` с начала задачи */
+  inst?: Id[];
+  /** выбранный прибор */
+  instrument?: string;
+  /** кому задачу не давать: проверяет не тот, кто делал */
+  not?: string[];
+  /** о какой партии или каком испытании задача */
+  lot?: string;
+  test?: string;
   /** работа на месте, с */
   work: number;
   /** больше — раньше */
@@ -168,7 +267,9 @@ export type PlantEvent =
   /** фура заказа встаёт к рампе */
   | { kind: 'truck'; po: string }
   /** конец задачи */
-  | { kind: 'task'; id: string; v: number };
+  | { kind: 'task'; id: string; v: number }
+  /** прибор кончил работать сам: результат испытания */
+  | { kind: 'run'; test: string; v: number };
 
 export interface PlantState {
   schema: number;
@@ -203,6 +304,11 @@ export interface PlantState {
   tasks: Record<string, Task>;
   /** открытые задачи по порядку раздачи: приоритет, время создания, номер */
   open: string[];
+  /** приборы лаборатории по имени из плана */
+  instruments: Record<string, Instrument>;
+  samples: Record<string, Sample>;
+  tests: Record<string, LabTest>;
+  deviations: Record<string, Deviation>;
 }
 
 /** Команда — единственный способ изменить состояние (docs/02-architecture.md, §7). */
@@ -223,5 +329,9 @@ export type Notice =
   | { kind: 'ordered'; po: string; eta: number }
   /** фура встала к рампе */
   | { kind: 'truck'; po: string; truck: string }
+  /** партия разрешена: все испытания в пределах */
+  | { kind: 'lotReleased'; lot: string }
+  /** партия отклонена: испытания вне пределов, открыто отклонение */
+  | { kind: 'lotRejected'; lot: string; deviation: string }
   /** команда не выполнена */
   | { kind: 'refused'; cmd: Command['kind']; why: Refusal; detail?: string };

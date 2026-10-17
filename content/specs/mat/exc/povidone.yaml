@@ -1,0 +1,4 @@
+id: spec.mat.exc.povidone
+tests:
+  - { test: test.ir }
+  - { test: test.lod, max: 5 }

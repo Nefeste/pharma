@@ -5,3 +5,7 @@ unit: kg
 container: cnt.roll.pvc
 storage: room
 shelf: 60
+spec: spec.mat.pk.pvc
+bad: { attr: appearance }
+# проба с тары: граммы или штуки
+sample: 1

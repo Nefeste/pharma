@@ -18,8 +18,10 @@ test('scn.proto, 90 суток: отпечаток и итоги', () => {
   const lots = Object.values(s.lots);
   expect({
     lots: lots.length,
-    quarantine: lots.filter(l => l.status === 'quarantine').length,
+    released: lots.filter(l => l.status === 'released').length,
+    rejected: lots.filter(l => l.status === 'rejected').length,
     units: Object.keys(s.units).length,
+    tests: Object.keys(s.tests).length,
     trucks: Object.keys(s.trucks).length,
     tasks: Object.keys(s.tasks).length,
   }).toEqual(GOLDEN.totals);
@@ -27,10 +29,11 @@ test('scn.proto, 90 суток: отпечаток и итоги', () => {
 });
 
 /**
- * Часть 1а (0.0.2): 11 партий запаса + 5 принятых (крахмал, МКЦ, пачки №20, инструкции, парацетамол) — все пять в
- * карантине, потому что лаборатории ещё нет; фур и задач в конце нет.
+ * Часть 1б (0.0.3): 11 партий запаса + 5 принятых (крахмал, МКЦ, пачки №20, инструкции, парацетамол). Все пять прошли
+ * отбор проб и 9 испытаний и разрешены; все 22 паллеты — на стеллажах; фур и задач в конце нет. В 1а (0.0.2, отпечаток
+ * `479c4101`) все пять стояли в карантине: лаборатории не было.
  */
 const GOLDEN = {
-  totals: { lots: 16, quarantine: 5, units: 22, trucks: 0, tasks: 0 },
-  print: '479c4101',
+  totals: { lots: 16, released: 16, rejected: 0, units: 22, tests: 9, trucks: 0, tasks: 0 },
+  print: '60acaa6d',
 };

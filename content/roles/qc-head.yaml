@@ -1,0 +1,4 @@
+id: role.qc-head
+name: { ru: Начальник ОКК, en: Head of QC }
+dept: qc
+salary: 120000

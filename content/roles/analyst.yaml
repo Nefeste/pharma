@@ -1,0 +1,4 @@
+id: role.analyst
+name: { ru: Химик-аналитик, en: Analytical chemist }
+dept: qc
+salary: 70000

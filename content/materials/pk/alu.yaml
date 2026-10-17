@@ -1,0 +1,7 @@
+id: mat.pk.alu
+kind: packaging
+name: { ru: Фольга алюминиевая, en: Aluminium foil }
+unit: kg
+container: cnt.roll.alu
+storage: room
+shelf: 60

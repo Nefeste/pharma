@@ -1,0 +1,6 @@
+id: cnt.bundle.cases
+name: { ru: "Пачка гофроящиков, 50 шт.", en: Bundle of 50 cartons }
+kind: bundle
+capacity: { pcs: 50 }
+perPallet: 40
+load: cases

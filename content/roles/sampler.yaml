@@ -1,0 +1,4 @@
+id: role.sampler
+name: { ru: Пробоотборщик, en: Sampler }
+dept: qc
+salary: 58000

@@ -1,0 +1,7 @@
+id: mat.exc.mgst
+kind: excipient
+name: { ru: Магния стеарат, en: Magnesium stearate }
+unit: kg
+container: cnt.bag.20
+storage: room
+shelf: 36

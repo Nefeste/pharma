@@ -106,7 +106,11 @@ export class Game {
   }
 
   private notice(n: Notice) {
-    const text = T.notices.morning(n.day);
+    const text =
+      n.kind === 'morning' ? T.notices.morning(n.day)
+      : n.kind === 'ordered' ? T.notices.ordered
+      : n.kind === 'truck' ? T.notices.truck
+      : T.notices.refused;
     this.notices.unshift({ t: this.t, text });
     if (this.notices.length > 30) this.notices.length = 30;
   }

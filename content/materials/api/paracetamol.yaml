@@ -1,0 +1,10 @@
+# АФС прототипа. Хранение и срок повторных испытаний — выбор геймдизайна для прототипа; настоящие — по паспорту
+# изготовителя и НД, сверить с консультантом.
+id: mat.api.paracetamol
+kind: api
+name: { ru: Парацетамол, en: Paracetamol }
+unit: kg
+container: cnt.drum.fibre50
+storage: room
+shelf: 36
+potency: true

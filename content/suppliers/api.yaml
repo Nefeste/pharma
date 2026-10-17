@@ -1,0 +1,9 @@
+# Поставщики прототипа — вымышленные (ADR 0004). Цены, сроки и условия — гипотезы геймдизайна, рубли без НДС.
+id: sup.api
+name: { ru: Поставщик АФС, en: API supplier }
+lead: [45, 75]
+prepay: 50
+payDays: 30
+approved: true
+items:
+  mat.api.paracetamol: { price: 520, moq: 500 }

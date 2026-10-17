@@ -1,0 +1,4 @@
+id: role.master
+name: { ru: Мастер смены, en: Shift supervisor }
+dept: mes
+salary: 90000

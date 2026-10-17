@@ -1,8 +1,58 @@
-# Завод прототипа (docs/specs/2026-10-prototype.md, «Что в прототипе»). Пока — только участок и часы; цеха, склад и
-# линия приходят с частью 1.
+# Завод прототипа (docs/specs/2026-10-prototype.md, «Что в прототипе»; docs/specs/2026-10-engine.md). Штат, техника,
+# запас и первые заказы — гипотезы геймдизайна. Касса — рубли.
 id: scn.proto
 name: { ru: Прототип, en: Prototype }
 profile: prf.eaeu
+plant: plant.proto
 start: { date: 2027-09-01, hour: 7 }
 seed: 20271001
 site: { w: 60, h: 40 }
+cash: 30000000
+staff:
+  - { role: role.storekeeper, shift: shift.day, skill: 3, n: 2 }
+  - { role: role.driver, shift: shift.day, skill: 3, n: 2 }
+  - { role: role.sampler, shift: shift.day, skill: 3, n: 1 }
+  - { role: role.analyst, shift: shift.day, skill: 3, n: 3 }
+  - { role: role.qc-head, shift: shift.day, skill: 4, n: 1 }
+  - { role: role.qa, shift: shift.day, skill: 3, n: 1 }
+  - { role: role.qp, shift: shift.day, skill: 4, n: 1 }
+  - { role: role.operator, shift: shift.a, skill: 3, n: 3 }
+  - { role: role.operator, shift: shift.b, skill: 3, n: 3 }
+  - { role: role.master, shift: shift.a, skill: 4, n: 1 }
+  - { role: role.master, shift: shift.b, skill: 3, n: 1 }
+  - { role: role.line-operator, shift: shift.a, skill: 3, n: 2 }
+  - { role: role.line-operator, shift: shift.b, skill: 3, n: 2 }
+  - { role: role.packer, shift: shift.a, skill: 3, n: 2 }
+  - { role: role.packer, shift: shift.b, skill: 3, n: 2 }
+  - { role: role.mechanic, shift: shift.a, skill: 3, n: 1 }
+  - { role: role.mechanic, shift: shift.b, skill: 3, n: 1 }
+  - { role: role.setter, shift: shift.day, skill: 3, n: 1 }
+vehicles:
+  - { type: veh.jack, n: 2 }
+  - { type: veh.reach, n: 1 }
+# заказы поставщикам в первую секунду партии: упаковка и вспомогательные приходят в первый месяц, АФС — позже
+orders:
+  - supplier: sup.exc
+    lines:
+      - { material: mat.exc.starch, qty: 500 }
+      - { material: mat.exc.mcc, qty: 200 }
+  - supplier: sup.pack
+    lines:
+      - { material: mat.pk.carton-n20, qty: 40000 }
+      - { material: mat.pk.leaflet, qty: 100000 }
+  - supplier: sup.api
+    lines:
+      - { material: mat.api.paracetamol, qty: 1000 }
+# запас на старте — разрешённые партии на стеллажах: хватает на первые серии
+stock:
+  - { material: mat.api.paracetamol, qty: 600 }
+  - { material: mat.exc.starch, qty: 250 }
+  - { material: mat.exc.povidone, qty: 75 }
+  - { material: mat.exc.mcc, qty: 100 }
+  - { material: mat.exc.mgst, qty: 20 }
+  - { material: mat.pk.pvc, qty: 250 }
+  - { material: mat.pk.alu, qty: 200 }
+  - { material: mat.pk.carton-n10, qty: 20000 }
+  - { material: mat.pk.carton-n20, qty: 20000 }
+  - { material: mat.pk.leaflet, qty: 50000 }
+  - { material: mat.pk.case, qty: 500 }

@@ -26,6 +26,9 @@ export const ru = {
   },
   notices: {
     morning: (day: number) => `Планёрка в 08:00: начались сутки ${day}`,
+    ordered: 'Заказ поставщику принят',
+    truck: 'Фура у рампы приёмки',
+    refused: 'Команда не выполнена',
   },
   debug: {
     title: 'Отладка',

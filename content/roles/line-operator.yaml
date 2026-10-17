@@ -1,0 +1,4 @@
+id: role.line-operator
+name: { ru: Оператор упаковочной линии, en: Packaging line operator }
+dept: line
+salary: 62000

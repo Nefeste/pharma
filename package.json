@@ -1,7 +1,7 @@
 {
   "name": "pharma",
   "productName": "Farmzavod",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "«Фармзавод» — симулятор фармацевтического завода для ПК студии «Горница»: движок завода, оболочка Electron и 3D-вид на Three.js",
   "author": "Горница",
@@ -15,7 +15,8 @@
     "serve": "node tools/app/serve.mjs",
     "e2e": "node tools/app/e2e.mjs",
     "dist:linux": "npm run build && electron-builder --linux --publish never",
-    "dist:win": "npm run build && electron-builder --win --publish never"
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "bench": "bun tools/bench/bench.ts"
   },
   "devDependencies": {
     "@types/react": "19.3.0",

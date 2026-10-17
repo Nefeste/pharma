@@ -1,0 +1,6 @@
+id: cnt.box.cartons
+name: { ru: "Коробка пачек, 1000 шт.", en: Box of 1000 cartons }
+kind: box
+capacity: { pcs: 1000 }
+perPallet: 40
+load: cases

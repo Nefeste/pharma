@@ -1,0 +1,33 @@
+# План завода прототипа (docs/specs/2026-10-engine.md, «План завода прототипа»): участок 60 × 40 м, метры. Слева —
+# склад, справа сверху — производство таблеток в классе D, справа снизу — упаковка, у экспедиции — лаборатория. В
+# прототипе стройки нет: план — данные; окно рисует его же (часть 2).
+id: plant.proto
+docks:
+  - { id: in, kind: in, x: 0, z: 6 }
+  - { id: out, kind: out, x: 0, z: 34 }
+zones:
+  - { id: recv, kind: receiving, rect: [1, 2, 6, 8], grid: [2, 3] }
+  - { id: quar, kind: quarantine, rect: [8, 2, 12, 8], grid: [5, 3] }
+  - { id: cold, kind: cold, rect: [1, 12, 6, 6], grid: [2, 2] }
+  - { id: rej, kind: rejected, rect: [1, 19, 6, 4], grid: [2, 1] }
+  - { id: fgq, kind: fgQuarantine, rect: [1, 24, 6, 6], grid: [2, 2] }
+  - { id: ship, kind: shipping, rect: [1, 31, 6, 7], grid: [2, 2] }
+  - { id: stage, kind: staging, rect: [30, 2, 5, 5], grid: [2, 1] }
+racks:
+  - { id: A, x: 8, z: 12, bays: 6, levels: 4 }
+  - { id: B, x: 8, z: 16, bays: 6, levels: 4 }
+  - { id: C, x: 8, z: 20, bays: 6, levels: 4 }
+  - { id: D, x: 8, z: 24, bays: 6, levels: 4 }
+rooms:
+  - { id: sampling, type: sampling, rect: [21, 2, 5, 5], grade: D }
+  - { id: dispensing, type: dispensing, rect: [36, 2, 6, 6], grade: D }
+  - { id: granulation, type: granulation, rect: [43, 2, 8, 8], grade: D }
+  - { id: blending, type: blending, rect: [52, 2, 7, 8], grade: D }
+  - { id: compression, type: compression, rect: [43, 11, 8, 8], grade: D }
+  - { id: washing, type: washing, rect: [52, 11, 7, 6], grade: D }
+  - { id: bulk, type: bulk, rect: [36, 9, 6, 9], grade: D }
+  - { id: packaging, type: packaging, rect: [31, 24, 28, 12], grade: D }
+  - { id: lab, type: lab, rect: [16, 30, 12, 9], grade: cnc }
+points:
+  park: [12, 37]
+  entrance: [28, 38]

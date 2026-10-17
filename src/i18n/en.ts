@@ -25,6 +25,9 @@ export const en: Strings = {
   },
   notices: {
     morning: (day: number) => `08:00 meeting: day ${day} has begun`,
+    ordered: 'Purchase order placed',
+    truck: 'A truck is at the receiving dock',
+    refused: 'The command was refused',
   },
   debug: {
     title: 'Debug',

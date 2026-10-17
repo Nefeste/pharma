@@ -1,0 +1,7 @@
+id: mat.pk.leaflet
+kind: packaging
+name: { ru: Инструкция «Парацетамол 500 мг», en: Leaflet «Paracetamol 500 mg» }
+unit: pcs
+container: cnt.box.leaflets
+storage: room
+shelf: 60

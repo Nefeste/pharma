@@ -1,0 +1,13 @@
+id: sup.pack
+name: { ru: Поставщик упаковки, en: Packaging supplier }
+lead: [14, 28]
+prepay: 30
+payDays: 30
+approved: true
+items:
+  mat.pk.pvc: { price: 330, moq: 250 }
+  mat.pk.alu: { price: 950, moq: 200 }
+  mat.pk.carton-n10: { price: 2.1, moq: 20000 }
+  mat.pk.carton-n20: { price: 2.4, moq: 20000 }
+  mat.pk.leaflet: { price: 0.45, moq: 50000 }
+  mat.pk.case: { price: 38, moq: 500 }

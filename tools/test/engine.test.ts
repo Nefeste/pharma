@@ -25,13 +25,13 @@ describe('часы и планёрка', () => {
     expect(s.schema).toBe(SCHEMA);
     expect(s.content).toBe(db.hash);
     const out = apply(db, s, { kind: 'advance', seconds: MORNING - s.t });
-    expect(out).toEqual([{ kind: 'morning', day: 1 }]);
+    expect(out.filter(n => n.kind === 'morning')).toEqual([{ kind: 'morning', day: 1 }]);
     expect(s.day).toBe(1);
   });
 
   test('десять суток — десять планёрок, по одной в 08:00', () => {
     const { s, notices } = run(3600, 10 * DAY + MORNING);
-    expect(notices.map(n => n.day)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(notices.flatMap(n => (n.kind === 'morning' ? [n.day] : []))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     expect(s.day).toBe(11);
   });
 
@@ -56,24 +56,25 @@ describe('часы и планёрка', () => {
 describe('сохранение', () => {
   test('снимок через JSON продолжается так же, как оригинал', () => {
     const { s } = run(3600, 2 * DAY);
-    const copy = fromSave(toSave(s));
+    const copy = fromSave(db, toSave(s));
     apply(db, s, { kind: 'advance', seconds: 3 * DAY });
     apply(db, copy, { kind: 'advance', seconds: 3 * DAY });
     expect(fingerprint(copy)).toBe(fingerprint(s));
   });
 
-  test('образец схемы 1 читается (tools/test/fixtures/save-v1.json)', async () => {
-    const json = await Bun.file(new URL('./fixtures/save-v1.json', import.meta.url)).text();
-    const s = fromSave(json);
+  test.each([1, 2])('образец схемы %d читается и живёт дальше (tools/test/fixtures/)', async v => {
+    const json = await Bun.file(new URL(`./fixtures/save-v${v}.json`, import.meta.url)).text();
+    const s = fromSave(db, json);
     expect(s.schema).toBe(SCHEMA);
+    expect(Object.keys(s.people).length).toBeGreaterThan(0);
     const before = s.day;
     apply(db, s, { kind: 'advance', seconds: DAY });
     expect(s.day).toBe(before + 1);
   });
 
   test('сохранение новее игры не открывается молча', () => {
-    expect(() => fromSave(JSON.stringify({ schema: SCHEMA + 1 }))).toThrow();
-    expect(() => fromSave(JSON.stringify({}))).toThrow();
+    expect(() => fromSave(db, JSON.stringify({ schema: SCHEMA + 1 }))).toThrow();
+    expect(() => fromSave(db, JSON.stringify({}))).toThrow();
   });
 });
 

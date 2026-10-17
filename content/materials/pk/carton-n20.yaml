@@ -1,0 +1,7 @@
+id: mat.pk.carton-n20
+kind: packaging
+name: { ru: Пачка «Парацетамол 500 мг №20», en: Carton «Paracetamol 500 mg No. 20» }
+unit: pcs
+container: cnt.box.cartons
+storage: room
+shelf: 60

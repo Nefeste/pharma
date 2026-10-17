@@ -1,0 +1,77 @@
+{
+  "name": "pharma",
+  "productName": "Farmzavod",
+  "version": "0.0.1",
+  "private": true,
+  "description": "«Фармзавод» — симулятор фармацевтического завода для ПК студии «Горница»: движок завода, оболочка Electron и 3D-вид на Three.js",
+  "author": "Горница",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "content": "bun tools/content/build.ts",
+    "typecheck": "bun tools/content/build.ts && tsc --noEmit",
+    "test": "bun tools/content/build.ts && bun test tools/test",
+    "build": "bun tools/content/build.ts && node tools/app/build.mjs",
+    "electron": "npm run build && electron .",
+    "serve": "node tools/app/serve.mjs",
+    "e2e": "node tools/app/e2e.mjs",
+    "dist:linux": "npm run build && electron-builder --linux --publish never",
+    "dist:win": "npm run build && electron-builder --win --publish never"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/three": "0.186.0",
+    "bun-types": "1.4.2",
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2",
+    "playwright-core": "1.56.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "three": "0.186.1",
+    "typescript": "6.0.3",
+    "yaml": "2.9.1",
+    "zod": "4.6.5"
+  },
+  "build": {
+    "appId": "games.gornitsa.pharma",
+    "productName": "Farmzavod",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "asar": true,
+    "electronLanguages": [
+      "ru",
+      "en-US"
+    ],
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Game"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "publish": null
+  }
+}

@@ -1,0 +1,8 @@
+# Завод прототипа (docs/specs/2026-10-prototype.md, «Что в прототипе»). Пока — только участок и часы; цеха, склад и
+# линия приходят с частью 1.
+id: scn.proto
+name: { ru: Прототип, en: Prototype }
+profile: prf.eaeu
+start: { date: 2027-09-01, hour: 7 }
+seed: 20271001
+site: { w: 60, h: 40 }

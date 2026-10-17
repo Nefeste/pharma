@@ -1,0 +1,12 @@
+# Регуляторный профиль ЕАЭС/РФ (ADR 0004). Факты и источники — docs/10-domain.md, §3.
+id: prf.eaeu
+name: { ru: ЕАЭС / РФ, en: EAEU / Russia }
+currency: RUB
+vat:
+  medicines: 10   # подп. 4 п. 2 ст. 164 НК РФ
+  general: 22     # с 01.01.2026, ФЗ № 425-ФЗ
+marking:
+  packs: true            # ПП РФ № 1556: код на каждой пачке
+  aggregation: optional  # агрегирование не обязательно
+source: [gmp-eaeu, mdlp, rzn-mdlp, nk-164]
+review: draft

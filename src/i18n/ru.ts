@@ -1,0 +1,40 @@
+// Строки игры по-русски (устав, docs/05-rules.md: все строки для игрока — здесь). Английский — en.ts, того же вида.
+import { pluralRu } from './plural';
+
+export const ru = {
+  app: {
+    title: 'Фармзавод',
+    loading: 'Загрузка…',
+    error: 'Ошибка',
+    stage: 'Прототип, часть 0: часы, поток расчёта и вид',
+  },
+  date: {
+    /** родительный падеж: «1 сентября 2027» */
+    months: ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'],
+    weekdays: ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'],
+    full: (d: number, month: string, y: number) => `${d} ${month} ${y}`,
+  },
+  top: {
+    day: (n: number) => `Сутки ${n}`,
+    pause: 'Пауза',
+    speed: (k: number) => `×${k}`,
+    speedHint: (what: string) => `Скорость: ${what} за секунду`,
+    perSecond: ['1 минута', '5 минут', '20 минут', '2 часа'],
+    morning: 'До утра',
+    morningHint: 'Промотать до планёрки в 08:00',
+    lag: (min: number) => `расчёт отстаёт на ${min} ${pluralRu(min, 'минуту', 'минуты', 'минут')}`,
+  },
+  notices: {
+    morning: (day: number) => `Планёрка в 08:00: начались сутки ${day}`,
+  },
+  debug: {
+    title: 'Отладка',
+    fps: (n: number) => `${n} к/с`,
+    cpu: (ms: string) => `процессор ${ms} мс`,
+    gpu: (ms: string) => `видеокарта ${ms} мс`,
+    quality: 'Качество',
+    qualities: { low: 'низкое', medium: 'среднее', high: 'высокое' },
+  },
+};
+
+export type Strings = typeof ru;

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:">
+  <link rel="icon" href="data:,">
+  <title>Farmzavod</title>
+  <!-- из bolnitsa: app/index.html @ e0a3491 — изменено: только полоса сверху, отладка и состояние (часть 0) -->
+  <style>
+    :root {
+      --panel: rgba(22, 30, 34, 0.86);
+      --panel-2: rgba(36, 48, 54, 0.92);
+      --line: rgba(255, 255, 255, 0.14);
+      --text: #e9eef0;
+      --muted: #9fb0b6;
+      --accent: #2fb5c9;
+      --red: #d8392b;
+      --yellow: #e7b416;
+      --green: #4caf6e;
+    }
+    html, body { margin: 0; height: 100%; background: #2a3236; color: var(--text); font: 13px/1.35 system-ui, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+    #view { position: absolute; inset: 0; touch-action: none; }
+    #ui { position: absolute; inset: 0; pointer-events: none; }
+    #ui > * { pointer-events: auto; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+    button { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 3px 9px; cursor: pointer; }
+    button:hover:not(:disabled) { border-color: var(--accent); }
+    button.on { background: var(--accent); color: #0b1a1e; border-color: var(--accent); }
+    button:disabled { opacity: .45; cursor: default; }
+    .top { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 10px; }
+    .top .clock { font-size: 16px; font-weight: 600; min-width: 52px; }
+    .top .date { color: var(--muted); min-width: 150px; }
+    .top .group, .debug .group { display: inline-flex; gap: 4px; align-items: center; }
+    .top .stat b { color: #fff; }
+    .top .warn { color: var(--yellow); }
+    .top .notice { flex: 1 1 0; min-width: 90px; text-align: right; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .label { color: var(--muted); margin: 0 2px 0 8px; }
+    .muted { color: var(--muted); }
+    .debug { position: absolute; right: 8px; bottom: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; max-width: 420px; }
+    .status { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); padding: 12px 18px; font-size: 15px; max-width: 70%; text-align: center; }
+  </style>
+</head>
+<body>
+  <div id="view"></div>
+  <div id="ui"></div>
+  <script src="./app.js"></script>
+</body>
+</html>

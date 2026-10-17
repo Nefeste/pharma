@@ -1,7 +1,7 @@
 // Закупки (docs/specs/2026-10-engine.md, 1а, «Заказ поставщику и приёмка»; геймдизайн, §11). Заказ — команда `po`:
 // количество — вверх до целой тары, не меньше минимальной партии. Срок прихода — из ветви поставщика; фура приходит в
 // рабочий день с 09:00 до 15:00.
-import type { ContentDb } from '../content/types';
+import type { ContentDb, Id } from '../content/types';
 import { schedule } from './core/agenda';
 import { DAY, HOUR, MIN, momentOf } from './core/calendar';
 import { part, post, vatRate } from './cash';
@@ -37,10 +37,7 @@ export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { ki
     const cap = db.containers[db.materials[l.material].container].capacity;
     lines.push({ material: l.material, qty: containersFor(db, l.material, l.qty) * cap });
   }
-  const eta = roll(s, `supply/${sup.id}`, r => {
-    const days = r.range(sup.lead[0], sup.lead[1]);
-    return arrival(s, s.t + days * DAY, r.int(ARRIVE_SPREAD / MIN) * MIN);
-  });
+  const eta = etaOf(s, sup.id, sup.lead);
   // сумма с НДС: АФС — по ставке лекарственных средств, остальное — по общей; предоплата — сейчас, остаток — после прихода
   let net = 0;
   let vat = 0;
@@ -56,6 +53,14 @@ export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { ki
   schedule(s.agenda, eta, { kind: 'truck', po: po.id });
   notices.push({ kind: 'ordered', po: po.id, eta });
   return po;
+}
+
+/** Срок прихода заказа поставщику из его ветви: через `lead` дней, рабочим днём в окне прихода. */
+export function etaOf(s: PlantState, supplier: Id, lead: [number, number]): number {
+  return roll(s, `supply/${supplier}`, r => {
+    const days = r.range(lead[0], lead[1]);
+    return arrival(s, s.t + days * DAY, r.int(ARRIVE_SPREAD / MIN) * MIN);
+  });
 }
 
 /** Ближайший рабочий день не раньше `t` — в 09:00 плюс `extra` секунд. */

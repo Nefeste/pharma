@@ -5,6 +5,7 @@ import { type Agenda, schedule } from './core/agenda';
 import { HOUR } from './core/calendar';
 import { newCash } from './cash';
 import { newLines } from './line';
+import { newParts } from './maint';
 import { newCustomers } from './market';
 import { planOf } from './plant';
 import { nominal } from './quality';
@@ -97,6 +98,22 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     }
     const t = raw.t as number;
     return { ...raw, cash: newCash(raw.cash as number, t), customers: newCustomers(sc, t), orders: {}, shipments: {} };
+  },
+  // 6 → 7 (часть 1е): узлы машин — с износом сценария и новым запасом до отказа; ЗИП — начальный уровень; заказов
+  // запчастей и записей журнала нет. Помещения плана, которых не было (мастерская), — чистые. Аварий нет: у времени
+  // машин — строка «авария», 0. Стадия, идущая при сохранении, наработку узлам не добавит.
+  6: (raw, db) => {
+    const plant = db.plants[raw.plant as string];
+    if (!plant) throw new Error(`save: no plant ${String(raw.plant)}`);
+    const rooms = raw.rooms as Record<string, Raw>;
+    for (const r of plant.rooms) rooms[r.id] ??= { id: r.id, type: r.type, status: 'clean', since: raw.t };
+    for (const l of Object.values(raw.lines as Record<string, { machines: { times: Raw }[] }>)) for (const m of l.machines) m.times.fail ??= 0;
+    for (const b of Object.values(raw.batches as Record<string, Raw>)) {
+      for (const o of ((b.pack as Raw | undefined)?.oee as { times: Raw }[] | undefined) ?? []) o.times.fail ??= 0;
+    }
+    const out = { ...raw, parts: {}, spares: {}, spareOrders: {}, maintLog: [] };
+    newParts(db, out as unknown as PlantState);
+    return out;
   },
 };
 

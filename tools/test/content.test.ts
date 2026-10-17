@@ -17,6 +17,16 @@ describe('база игры', () => {
     expect(db.profiles['prf.eaeu']?.vat.medicines).toBe(1000);
   });
 
+  test('узлы: таблица отказов — в долях износа и 10⁻¹² отказа на единицу; времена — секунды; запчасти — копейки', () => {
+    const punches = db.equipment['eq.press'].parts.find(p => p.id === 'punches')!;
+    expect(punches.hazard[0]).toEqual([0, 5000]);
+    expect(punches.hazard.at(-1)).toEqual([12000, 1_200_000]);
+    expect(punches.repair[0]).toBe(150 * 60);
+    expect(db.machines['mach.blister'].parts[0].micro).toBe(20000);
+    expect(db.spares['spare.punches'].price).toBe(90_000_000);
+    expect(db.scenarios['scn.proto'].wear['press-1/punches']).toBe(9400);
+  });
+
   test('ключи источников читаются из docs/10-domain.md', () => {
     const keys = sourceKeys();
     expect(keys.has('gmp-eaeu')).toBe(true);
@@ -31,6 +41,9 @@ describe('база игры', () => {
       ...Object.values(db.products),
       ...Object.values(db.machines),
       ...Object.values(db.customers),
+      ...Object.values(db.equipment),
+      ...Object.values(db.causes),
+      ...Object.values(db.spares),
     ];
     const facts = all.filter(r => r.source);
     expect(facts.length).toBeGreaterThan(5);

@@ -94,6 +94,10 @@ export interface Scenario {
   stock: StartStock[];
   /** задания на серию: карта, день «не раньше» от начала партии и товарная позиция, в которую упаковать балк */
   batches: { recipe: Id; day: number; sku?: Id }[];
+  /** износ узлов на старте: `<машина>/<узел>` → доли 1/10 000 */
+  wear: Record<string, number>;
+  /** техслужба: `<машина>/<узел>` → износ (доли 1/10 000), на котором узел меняют по наработке; нет — по отказу */
+  maint: Record<string, number>;
 }
 
 /** Грузовая единица: паллета или транспортный короб (docs/04-data-model.md, §3). */
@@ -333,13 +337,40 @@ export interface Product {
   review?: Review;
 }
 
-/** Вид оборудования производства: уборка малая и большая, с (геймдизайн, §5.5). */
+/**
+ * Узел машины (геймдизайн, §7.1; docs/specs/2026-10-engine.md, 1е). Наработка — единицы работы машины: таблетки у
+ * оборудования, блистеры или пачки у машины линии; износ — наработка / `life`.
+ */
+export interface PartType {
+  id: string;
+  name: Text;
+  /** средний ресурс, единиц наработки */
+  life: number;
+  /**
+   * ступени интенсивности отказов: от износа (доли 1/10 000) — столько 10⁻¹² отказа на единицу наработки (то есть
+   * отказов на миллион единиц × 10⁶); износ — по возрастанию с нуля, интенсивность не убывает
+   */
+  hazard: [number, number][];
+  spare: Id;
+  /** замена по плану, с; ремонт после отказа — от и до, с */
+  replace: number;
+  repair: [number, number];
+  /** разброс МОК по ходу стадии при износе 100 %, единиц движка свойства */
+  scatter?: Partial<Record<Attr, number>>;
+  /** частота микроостановок машины при износе 100 %, доли 1/10 000 частоты нового узла */
+  micro?: number;
+}
+
+/** Вид оборудования производства: уборка малая и большая, с (геймдизайн, §5.5); мощность; узлы с износом. */
 export interface EquipmentType {
   id: Id;
   name: Text;
   cleaning: { minor: number; major: number };
   /** мощность, пока идёт стадия, Вт */
   kw: number;
+  parts: PartType[];
+  source?: string[];
+  review?: Review;
 }
 
 /** Единица режима в движке: об/мин — целыми, минуты — секундами, °C — десятыми, кН — сотыми, кг — граммами. */
@@ -394,8 +425,11 @@ export interface Recipe {
   review?: Review;
 }
 
-/** Откуда вклад причины: отход режима от цели; содержание АФС против измеренного; свойство отвешенных партий; показатель. */
-export type CauseDriver = { param: string } | { potency: true } | { lots: 'api' | 'excipient'; attr: Attr } | { attr: Attr };
+/**
+ * Откуда вклад причины: отход режима от цели; содержание АФС против измеренного; свойство отвешенных партий; показатель;
+ * средний износ узла оборудования за стадию (доли 1/10 000).
+ */
+export type CauseDriver = { param: string } | { potency: true } | { lots: 'api' | 'excipient'; attr: Attr } | { attr: Attr } | { wear: string };
 
 /** Причина: вклад в показатели серии — единиц движка показателя на единицу движка отхода. */
 export interface Cause {
@@ -423,6 +457,9 @@ export interface Machine {
   changeover: number;
   /** мощность на ходу, Вт */
   kw: number;
+  parts: PartType[];
+  /** заминка — микроостановка, которая портит `cartons` пачек с вложениями; доля 1/10 000 испорченного не записывается */
+  jam?: { cartons: number; uncounted: number };
   source?: string[];
   review?: Review;
 }
@@ -441,7 +478,8 @@ export interface Sku {
   carton: { material: Id; qty: number }[];
   case: { material: Id; per: number };
   pallet: { cases: number };
-  waste: { blisters: number; cartons: number };
+  /** на наладку: блистеров и пачек; пачек в запас на заминки картонажной */
+  waste: { blisters: number; cartons: number; jams: number };
   /** цена завода за пачку и зарегистрированная предельная цена, копейки без НДС */
   price: number;
   regPrice?: number;
@@ -457,6 +495,19 @@ export interface Customer {
   minShelf: number;
   /** позиция → пачек в сутки */
   demand: Record<Id, number>;
+  source?: string[];
+  review?: Review;
+}
+
+/** Запасная часть (docs/specs/2026-10-engine.md, 1е): цена — копейки без НДС; срок поставки — дни; уровни ЗИП — штуки. */
+export interface Spare {
+  id: Id;
+  name: Text;
+  supplier: Id;
+  price: number;
+  lead: [number, number];
+  /** неснижаемый уровень и начальный: «на складе − в резерве + в заказе» дошло до `min` — заказ до `max` */
+  stock: { min: number; max: number };
   source?: string[];
   review?: Review;
 }
@@ -484,4 +535,5 @@ export interface ContentDb {
   machines: Record<Id, Machine>;
   skus: Record<Id, Sku>;
   customers: Record<Id, Customer>;
+  spares: Record<Id, Spare>;
 }

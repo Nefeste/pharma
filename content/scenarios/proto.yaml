@@ -61,6 +61,10 @@ batches:
   - { recipe: rcp.paracetamol500.wet.v1, day: 36, sku: sku.paracetamol500.n20 }
   - { recipe: rcp.paracetamol500.wet.v1, day: 43, sku: sku.paracetamol500.n10 }
   - { recipe: rcp.paracetamol500.wet.v1, day: 50, sku: sku.paracetamol500.n20 }
+# завод не новый: износ узлов на старте, %. Техслужба меняет пуансоны по наработке — при износе 100 %, как только пресс
+# свободен; плиту запайки — по отказу (docs/specs/2026-10-engine.md, 1е). Гипотезы
+wear: { press-1/punches: 94, blister-1/sealplate: 85 }
+maint: { press-1/punches: 100 }
 # запас на старте — разрешённые партии на стеллажах: хватает на первые серии
 stock:
   - { material: mat.api.paracetamol, qty: 600 }

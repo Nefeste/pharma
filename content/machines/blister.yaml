@@ -9,5 +9,18 @@ crew: { role: role.line-operator, n: 1 }
 micro: { every: 20, duration: 2 }
 reject: 0.5
 kw: 25
-source: [pilchik-2000, blister-vendors]
+# узел с износом — плита запайки (docs/specs/2026-10-engine.md, 1е): наработка — блистеры. Плиту время от времени снимают и
+# переанодируют: нарост краски искажает рельеф, шов слабеет (sepha-seal); ресурса в циклах источники не дают. Ресурс,
+# таблица отказов (отказов на миллион блистеров от износа, %), рост микроостановок и времена — гипотезы
+parts:
+  - id: sealplate
+    name: { ru: Плита запайки, en: Sealing plate }
+    life: 1500000
+    hazard: [[0, 0.02], [60, 0.1], [90, 0.5], [110, 2]]
+    # при износе 100 % микроостановки вдвое чаще: допущение геймдизайна, числа в источниках нет (docs/10-domain.md, §8)
+    micro: 2
+    spare: spare.sealplate
+    replace: 90
+    repair: [120, 240]
+source: [pilchik-2000, blister-vendors, sepha-seal]
 review: draft

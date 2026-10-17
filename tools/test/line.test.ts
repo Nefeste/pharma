@@ -98,8 +98,9 @@ describe('серия от разрешённого балка до выпуск�
     }
     expect(job.kitUnit).toBeUndefined();
     expect(Object.values(s.containers).some(c => (c.reserved ?? 0) > 0)).toBe(false);
+    // сходится с точностью до испорченного при заминках, но не записанного (1е)
     for (const r of job.recon!) {
-      expect(r.issued).toBe(r.used + r.spoiled + r.returned);
+      expect(r.issued).toBe(r.used + r.spoiled + r.returned + (job.lost ?? 0));
       expect(r.returned).toBeGreaterThanOrEqual(0);
     }
     expect(Object.values(s.deviations)).toEqual([]);

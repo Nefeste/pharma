@@ -25,6 +25,7 @@ import {
   type Material,
   PARAM_SCALE,
   type ParamUnit,
+  type PartType,
   type Plant,
   type Product,
   type Profile,
@@ -35,6 +36,7 @@ import {
   type Scenario,
   type Shift,
   type Sku,
+  type Spare,
   type Spec,
   type SpecLine,
   type Supplier,
@@ -231,10 +233,52 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   }
   const products: Record<string, Product> = { ...raw.products };
   for (const pr of Object.values(raw.products)) if (pr.jnvlp) need(pr.source, `продукт ${pr.id}: «в перечне ЖНВЛП» — факт, нужен источник`);
+  // узлы: ресурс, ступени отказов (износ % → доли, отказов на миллион → 10⁻¹² отказа на единицу), запчасть, времена
+  type RawPart = z.infer<(typeof KINDS)['equipment']['schema']>['parts'][number];
+  const partsOf = (list: RawPart[], where: string, line: { micro: boolean } | undefined): PartType[] => {
+    need(new Set(list.map(p => p.id)).size === list.length, `${where}: узлы повторяются`);
+    return list.map(p => {
+      const at = `${where}, узел ${p.id}`;
+      need(raw.spares[p.spare], `${at}: нет запчасти ${p.spare}`);
+      need(p.hazard[0][0] === 0, `${at}: таблица отказов начинается с износа 0 %`);
+      p.hazard.forEach(([w, hz], i) => {
+        if (i === 0) return;
+        need(w > p.hazard[i - 1][0], `${at}: износ в таблице отказов — по возрастанию`);
+        need(hz >= p.hazard[i - 1][1], `${at}: интенсивность отказов с износом не убывает (ветвь износовых отказов)`);
+      });
+      if (line) {
+        need(!p.scatter, `${at}: разброс МОК — у оборудования стадии, не у машины линии`);
+        need(!p.micro || line.micro, `${at}: у машины нет микроостановок — им нечего учащаться`);
+      } else need(!p.micro, `${at}: микроостановки — у машины линии, не у оборудования стадии`);
+      const scatter: PartType['scatter'] = {};
+      for (const [a, v] of Object.entries(p.scatter ?? {}) as [Attr, number][]) {
+        need(!qual(a), `${at}: ${a} — качественное свойство`);
+        scatter[a] = attrVal(a, v);
+      }
+      return {
+        id: p.id,
+        name: p.name,
+        life: p.life,
+        hazard: p.hazard.map(([w, hz]) => [share(w), Math.round(hz * 1_000_000)] as [number, number]),
+        spare: p.spare,
+        replace: sec(p.replace),
+        repair: [sec(p.repair[0]), sec(p.repair[1])] as [number, number],
+        ...(p.scatter ? { scatter } : {}),
+        ...(p.micro !== undefined ? { micro: share(p.micro * 100) } : {}),
+      };
+    });
+  };
   const equipment: Record<string, EquipmentType> = {};
   for (const e of Object.values(raw.equipment)) {
     need(e.cleaning.minor <= e.cleaning.major, `оборудование ${e.id}: малая уборка дольше большой`);
-    equipment[e.id] = { ...e, cleaning: { minor: sec(e.cleaning.minor), major: sec(e.cleaning.major) }, kw: watt(e.kw) };
+    equipment[e.id] = {
+      id: e.id,
+      name: e.name,
+      cleaning: { minor: sec(e.cleaning.minor), major: sec(e.cleaning.major) },
+      kw: watt(e.kw),
+      parts: partsOf(e.parts, `оборудование ${e.id}`, undefined),
+      ...(e.source ? { source: e.source, review: e.review } : {}),
+    };
   }
   // единица каждого режима — одна во всех картах: на неё считаются коэффициенты причин
   const paramUnits: Record<string, ParamUnit> = {};
@@ -329,7 +373,10 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       need(paramUnits[d.param], `${where}: режима ${d.param} нет ни в одной карте`);
       per = PARAM_SCALE[paramUnits[d.param] ?? 'rpm'];
     } else if ('potency' in d) per = 100;
-    else per = scaleOf(d.attr);
+    else if ('wear' in d) {
+      need(Object.values(raw.equipment).some(e => e.parts.some(p => p.id === d.wear)), `${where}: узла ${d.wear} нет ни у одного оборудования`);
+      per = 100;
+    } else per = scaleOf(d.attr);
     for (const e of c.effects) need(!qual(e.attr), `${where}: ${e.attr} — качественное свойство`);
     causes[c.id] = { ...c, effects: c.effects.map(e => ({ attr: e.attr, coef: (e.coef * scaleOf(e.attr)) / per })) };
   }
@@ -348,8 +395,11 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       reject: share(m.reject),
       changeover: sec(m.changeover),
       kw: watt(m.kw),
+      parts: partsOf(m.parts, `машина ${m.id}`, { micro: m.micro !== undefined }),
+      ...(m.jam ? { jam: { cartons: m.jam.cartons, uncounted: share(m.jam.uncounted) } } : {}),
       ...(m.source ? { source: m.source, review: m.review } : {}),
     };
+    if (m.jam) need(m.micro && m.item === 'carton', `машина ${m.id}: заминка — микроостановка машины, которая работает с пачками`);
   }
   // товарные позиции: готовая продукция, материалы на блистер (г → мг) и на пачку, ящик и паллета
   const skus: Record<string, Sku> = {};
@@ -430,6 +480,9 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     for (const k of ['receiving', 'quarantine', 'rejected', 'staging', 'sampling'] as const) need(p.zones.some(z => z.kind === k), `план ${p.id}: нет зоны «${k}»`);
     need(p.docks.some(d => d.kind === 'in'), `план ${p.id}: нет рампы приёмки`);
     need(p.rooms.some(r => r.type === 'lab'), `план ${p.id}: нет лаборатории`);
+    // узлы с износом чинит слесарь: запчасти — в мастерской, она вне чистой зоны (GMP ЕАЭС, ч. I, п. 3.32)
+    const worn = p.equipment.some(e => raw.equipment[e.type]?.parts.length) || p.lines.some(l => l.machines.some(m => raw.machines[m.type]?.parts.length));
+    if (worn) need(p.rooms.some(r => r.type === 'workshop' && r.grade === 'cnc'), `план ${p.id}: у машин есть узлы — нужна мастерская вне чистой зоны (тип workshop, класс cnc)`);
     for (const i of p.instruments) {
       need(raw.instruments[i.type], `план ${p.id}: прибор ${i.id} — нет вида ${i.type}`);
       need(p.rooms.some(r => r.id === i.room), `план ${p.id}: прибор ${i.id} — нет помещения ${i.room}`);
@@ -475,6 +528,11 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       need(sup, `${where}: нет поставщика ${o.supplier}`);
       for (const l of o.lines) need(sup?.items[l.material], `${where}: ${o.supplier} не продаёт ${l.material}`);
     }
+    // износ и политика техслужбы — по узлам машин плана: `<машина>/<узел>`
+    const parts = new Set<string>();
+    for (const e of pl?.equipment ?? []) for (const pt of raw.equipment[e.type]?.parts ?? []) parts.add(`${e.id}/${pt.id}`);
+    for (const l of pl?.lines ?? []) for (const mc of l.machines) for (const pt of raw.machines[mc.type]?.parts ?? []) parts.add(`${mc.id}/${pt.id}`);
+    for (const k of [...Object.keys(s.wear), ...Object.keys(s.maint)]) need(parts.has(k), `${where}: в плане нет узла ${k}`);
     const [y, m, d] = s.start.date.split('-').map(Number);
     scenarios[s.id] = {
       ...s,
@@ -484,6 +542,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       energy: { price: kop(s.energy.price) },
       orders: s.orders.map(o => ({ supplier: o.supplier, lines: o.lines.map(l => ({ material: l.material, qty: amount(l.material, l.qty, where) })) })),
       stock: s.stock.map(x => ({ material: x.material, qty: amount(x.material, x.qty, where) })),
+      wear: Object.fromEntries(Object.entries(s.wear).map(([k, v]) => [k, share(v)])),
+      maint: Object.fromEntries(Object.entries(s.maint).map(([k, v]) => [k, share(v)])),
     };
   }
   const profiles: Record<string, Profile> = {};
@@ -500,6 +560,12 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       energy: { advances: p.energy.advances.map(([d, pct]) => [d, share(pct)] as [number, number]), final: p.energy.final },
       key: share(p.key),
     };
+  }
+  // запчасти: поставщик из базы, цена — копейки
+  const spares: Record<string, Spare> = {};
+  for (const sp of Object.values(raw.spares)) {
+    need(suppliers[sp.supplier], `запчасть ${sp.id}: нет поставщика ${sp.supplier}`);
+    spares[sp.id] = { ...sp, price: kop(sp.price) };
   }
   // покупатели: дни недели — с нуля (0 — понедельник), спрос — только по позициям из базы
   const customers: Record<string, Customer> = {};
@@ -528,5 +594,6 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     machines,
     skus,
     customers,
+    spares,
   };
 }

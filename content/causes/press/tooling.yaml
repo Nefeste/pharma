@@ -1,0 +1,11 @@
+# Износ пуансонов и матриц (docs/specs/2026-10-engine.md, 1е). Стёртая фаска пуансона (J-hook) и кольцо износа в матрице
+# ведут к кэппингу и расслаиванию (natoli-wl, higgins-2015): таблетки слабее и истираются сильнее. Источник — средний
+# износ комплекта за стадию, %; величины — гипотезы: на 1 % износа.
+id: cause.press.tooling
+name: { ru: Износ пуансонов и матриц, en: Worn punches and dies }
+driver: { wear: punches }
+effects:
+  - { attr: hardness, coef: -0.08 }
+  - { attr: friability, coef: 0.002 }
+source: [natoli-wl, higgins-2015]
+review: draft

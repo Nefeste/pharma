@@ -68,6 +68,13 @@ export const scenario = z.strictObject({
   /** задания на серию: карта, день «не раньше» от начала партии и товарная позиция, в которую упаковать балк */
   batches: z.array(z.strictObject({ recipe: id, day: z.number().int().min(0).max(3650), sku: id.optional() })).default([]),
   stock: z.array(z.strictObject({ material: id, qty })).default([]),
+  /** износ узлов на старте, %: `<машина>/<узел>` → износ; завод не новый */
+  wear: z.record(z.string(), z.number().min(0).max(300)).default({}),
+  /**
+   * политика техслужбы: `<машина>/<узел>` → износ, %, на котором узел меняют по наработке, как только машина свободна;
+   * узла нет — меняют по отказу
+   */
+  maint: z.record(z.string(), z.number().min(1).max(300)).default({}),
 });
 
 /**
@@ -259,15 +266,40 @@ export const product = z.strictObject({
 }).refine(paired, pairedMsg);
 
 const minutes = z.number().min(0);
+const days = z.tuple([z.number().int().min(1), z.number().int().min(1)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' });
 
-/** Вид оборудования (геймдизайн, §5.2, §5.5): уборка малая и большая, минуты. */
-export const equipment = z.strictObject({
-  id: z.string(),
+/**
+ * Узел машины (геймдизайн, §7.1; docs/specs/2026-10-engine.md, 1е): средний ресурс — единиц наработки (у оборудования
+ * — таблеток, у машины линии — её штук: блистеров или пачек); таблица отказов — ступени «от такого износа, %, — столько
+ * отказов на миллион единиц наработки»; запчасть; замена по плану и ремонт после отказа — минуты. Числа — гипотезы.
+ */
+const part = z.strictObject({
+  id: z.string().regex(/^[a-z][a-zA-Z0-9]*$/),
   name: text,
-  cleaning: z.strictObject({ minor: minutes, major: minutes }),
-  /** мощность, пока идёт стадия, кВт */
-  kw: z.number().min(0).default(0),
+  life: z.number().int().positive(),
+  hazard: z.array(z.tuple([z.number().min(0), z.number().min(0)])).min(1),
+  spare: id,
+  replace: minutes,
+  repair: z.tuple([minutes, minutes]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }),
+  /** разброс МОК по ходу стадии при износе 100 %, в единицах свойства (у оборудования стадии) */
+  scatter: z.partialRecord(attr, z.number().min(0)).optional(),
+  /** во сколько раз чаще микроостановки машины при износе 100 % (у машины линии) */
+  micro: z.number().min(1).optional(),
 });
+
+/** Вид оборудования (геймдизайн, §5.2, §5.5, §7.1): уборка малая и большая, минуты; мощность; узлы с износом. */
+export const equipment = z
+  .strictObject({
+    id: z.string(),
+    name: text,
+    cleaning: z.strictObject({ minor: minutes, major: minutes }),
+    /** мощность, пока идёт стадия, кВт */
+    kw: z.number().min(0).default(0),
+    parts: z.array(part).default([]),
+    source: sources.optional(),
+    review: review.optional(),
+  })
+  .refine(paired, pairedMsg);
 
 /**
  * Технологическая карта (docs/04-data-model.md, §4–5): состав на серию, стадии, показатели балка, выход. Количества,
@@ -342,12 +374,17 @@ export const cause = z
   .strictObject({
     id: z.string(),
     name: text,
-    /** отход режима стадии от цели; содержание АФС против измеренного; свойство отвешенных партий; другой показатель */
+    /**
+     * отход режима стадии от цели; содержание АФС против измеренного; свойство отвешенных партий; другой показатель;
+     * износ узла
+     */
     driver: z.union([
       z.strictObject({ param: z.string() }),
       z.strictObject({ potency: z.literal(true) }),
       z.strictObject({ lots: z.enum(['api', 'excipient']), attr }),
       z.strictObject({ attr }),
+      /** средний износ узла оборудования за стадию, % */
+      z.strictObject({ wear: z.string().regex(/^[a-z][a-zA-Z0-9]*$/) }),
     ]),
     /** вклад: показатель серии и коэффициент — единиц показателя на единицу отхода */
     effects: z.array(z.strictObject({ attr, coef: z.number() })).min(1),
@@ -377,6 +414,9 @@ export const machine = z
     changeover: minutes.default(0),
     /** мощность на ходу, кВт */
     kw: z.number().min(0).default(0),
+    parts: z.array(part).default([]),
+    /** заминка — микроостановка, которая портит столько пачек с вложениями; столько % испорченного не записывают */
+    jam: z.strictObject({ cartons: z.number().int().min(1), uncounted: percent }).optional(),
     source: sources.optional(),
     review: review.optional(),
   })
@@ -403,8 +443,8 @@ export const sku = z.strictObject({
   /** гофроящик и сколько пачек в нём */
   case: z.strictObject({ material: id, per: z.number().int().positive() }),
   pallet: z.strictObject({ cases: z.number().int().positive() }),
-  /** на наладку в начале серии: блистеров и пачек — в брак */
-  waste: z.strictObject({ blisters: z.number().int().min(0), cartons: z.number().int().min(0) }),
+  /** на наладку в начале серии: блистеров и пачек — в брак; пачек в запас на заминки картонажной */
+  waste: z.strictObject({ blisters: z.number().int().min(0), cartons: z.number().int().min(0), jams: z.number().int().min(0).default(0) }),
   /** цена завода за пачку и зарегистрированная предельная цена (у ЖНВЛП), ₽ без НДС */
   price: z.number().positive(),
   regPrice: z.number().positive().optional(),
@@ -436,6 +476,23 @@ export const customer = z
   })
   .refine(paired, pairedMsg);
 
+/**
+ * Запасная часть на складе ЗИП (геймдизайн, §7.2; docs/specs/2026-10-engine.md, 1е): поставщик, цена, ₽ без НДС, срок
+ * поставки, дни; неснижаемый и начальный уровни — пополнение «по уровню неснижаемого запаса». Числа — гипотезы.
+ */
+export const spare = z
+  .strictObject({
+    id: z.string(),
+    name: text,
+    supplier: id,
+    price: z.number().positive(),
+    lead: days,
+    stock: z.strictObject({ min: z.number().int().min(0), max: z.number().int().min(1) }).refine(x => x.min < x.max, { message: 'неснижаемый уровень ниже начального' }),
+    source: sources.optional(),
+    review: review.optional(),
+  })
+  .refine(paired, pairedMsg);
+
 /** Папка в content/ → приставка идентификатора и схема. */
 export const KINDS = {
   profiles: { prefix: 'prf', schema: profile },
@@ -458,6 +515,7 @@ export const KINDS = {
   machines: { prefix: 'mach', schema: machine },
   skus: { prefix: 'sku', schema: sku },
   customers: { prefix: 'cus', schema: customer },
+  spares: { prefix: 'spare', schema: spare },
 } as const;
 
 export type Kind = keyof typeof KINDS;

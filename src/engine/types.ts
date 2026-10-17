@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 6;
+export const SCHEMA = 7;
 
 // ---------------------------------------------------------------- склад
 
@@ -204,7 +204,7 @@ export interface KitLine {
   assay?: number;
 }
 
-/** Досье стадии: когда, кто, на чём, режимы, масса, МОК. */
+/** Досье стадии: когда, кто, на чём, режимы, масса, МОК; у стадии с узлами — средний износ и простои после отказов. */
 export interface StageRecord {
   stage: string;
   room: string;
@@ -219,6 +219,27 @@ export interface StageRecord {
   out: number;
   loss: number;
   ipc: { test: Id; t: number; result: number; pass: boolean }[];
+  /** средний износ узла за стадию по таблеткам, доли 1/10 000: `<машина>/<узел>` → износ */
+  wear?: Record<string, number>;
+  /** простои: отказ узла — и когда аппаратчик снова начал работу */
+  stops?: { part: string; from: number; to: number }[];
+}
+
+/**
+ * Стадия с узлами под износом, пока идёт (docs/specs/2026-10-engine.md, 1е): начало, таблеток на стадию и осталось,
+ * сумма «таблеток × (износ в начале + износ в конце отрезка)» по узлам — для среднего износа, простои, кто работал.
+ * Отрезок — от начала работы аппаратчика до отказа или конца: прессуют с `from` по конец задачи. После отказа — остаток
+ * работы, с.
+ */
+export interface StageRun {
+  start: number;
+  units: number;
+  left: number;
+  wear: Record<string, number>;
+  stops: { part: string; from: number; to?: number }[];
+  people: string[];
+  from?: number;
+  rest?: number;
 }
 
 /** Вклад причины в показатель серии: на сколько единиц движка сдвинут показатель и на какой стадии. */
@@ -237,8 +258,11 @@ export interface CauseHit {
  */
 export type BatchStatus = 'waiting' | 'reserved' | 'kitting' | 'process' | 'bulk' | 'packing' | 'fg' | 'released' | 'rejected';
 
-/** Состояние машины линии на отрезке (для OEE): на номинале, медленнее, микроостановка, ждёт соседа, наладка, вне смены, без задания. */
-export type MachineState = 'run' | 'slow' | 'micro' | 'wait' | 'setup' | 'off' | 'idle';
+/**
+ * Состояние машины линии на отрезке (для OEE): на номинале, медленнее, микроостановка, авария (отказ узла — до конца
+ * ремонта), ждёт соседа, наладка, вне смены, без задания.
+ */
+export type MachineState = 'run' | 'slow' | 'micro' | 'fail' | 'wait' | 'setup' | 'off' | 'idle';
 
 /**
  * Время машины за задание по состояниям, с, и проход — шестидесятые доли таблетки (docs/specs/2026-10-engine.md, 1г).
@@ -248,6 +272,7 @@ export interface MachineTimes {
   run: number;
   slow: number;
   micro: number;
+  fail: number;
   wait: number;
   setup: number;
   off: number;
@@ -265,6 +290,9 @@ export interface LineMachine {
   /** микроостановка — до этого момента; следующая — на этой позиции */
   down?: number;
   next: number;
+  /** отказ узла — на этой позиции (знает только движок); авария — отказал и ждёт ремонта */
+  fail?: number;
+  broken?: boolean;
   times: MachineTimes;
 }
 
@@ -332,6 +360,13 @@ export interface PackJob {
   cases?: number;
   scrap?: number;
   remainder?: number;
+  /**
+   * заминки картонажной: сколько, сколько пачек испорчено и сколько из них не записано — расхождение сверки; последнее
+   * знает только движок
+   */
+  jams?: number;
+  jammed?: number;
+  lost?: number;
   recon?: Recon[];
   /** OEE машин за задание: номинал (долей в секунду) и время по состояниям */
   oee?: { machine: string; nominal: number; times: MachineTimes }[];
@@ -374,6 +409,8 @@ export interface Batch {
   /** в какую позицию упаковать балк; задание на упаковку */
   sku?: Id;
   pack?: PackJob;
+  /** стадия с узлами под износом, пока идёт */
+  run?: StageRun;
   /** проверка ООК кончилась; решение игрока для уполномоченного лица; держит ли УЛ серию; когда выпущена */
   checked?: number;
   decision?: 'release' | 'reject' | 'hold';
@@ -446,7 +483,7 @@ export interface Vehicle {
  * результата, решение по партии. Производство: паллета с комплектом серии к шлюзу, перекладка в шлюзе, возврат
  * остатков, стадия серии, уборка помещения. Линия: смена у линии, переналадка, очистка линии и её проверка, балк к
  * линии. Качество: проверка ГП и досье, решение уполномоченного лица. Отгрузка: паллета в экспедицию, отбор ящиков на
- * паллету заказа, погрузка в фуру покупателя.
+ * паллету заказа, погрузка в фуру покупателя. Техслужба: ремонт после отказа или замена узла по плану.
  */
 export type TaskKind =
   | 'unload'
@@ -474,7 +511,8 @@ export type TaskKind =
   | 'qpDecide'
   | 'ship'
   | 'casePick'
-  | 'load';
+  | 'load'
+  | 'repair';
 
 /** Место задачи: место паллеты, рампа с фурой или точка. */
 export type Place = { kind: 'slot'; id: string } | { kind: 'truck'; id: string } | { kind: 'point'; x: number; z: number };
@@ -513,6 +551,11 @@ export interface Task {
   cases?: string[];
   dest?: string;
   truck?: string;
+  /** узел, который чинят или меняют; замена по плану, а не после отказа */
+  part?: string;
+  planned?: boolean;
+  /** когда люди дошли и начали работу — событие `begin` (стадия с узлами под износом) */
+  begin?: boolean;
   /** работа на месте, с */
   work: number;
   /** больше — раньше */
@@ -548,7 +591,13 @@ export type PlantEvent =
   /** граница потока линии: накопитель, микроостановка, балк, места паллет, отметка раз в 10 минут; v = −1 — пересчитать всегда */
   | { kind: 'line'; id: string; v: number }
   /** Росздравнадзор опубликовал сведения о серии: готовая продукция в обороте */
-  | { kind: 'rzn'; lot: string };
+  | { kind: 'rzn'; lot: string }
+  /** люди задачи дошли и начали работу */
+  | { kind: 'begin'; task: string; v: number }
+  /** отказ узла оборудования стадии на `n`-й таблетке отрезка */
+  | { kind: 'fail'; part: string; v: number; n: number }
+  /** запчасть пришла на склад ЗИП */
+  | { kind: 'spare'; order: string };
 
 // ---------------------------------------------------------------- рынок и касса
 
@@ -602,6 +651,67 @@ export interface Shipment {
 }
 
 export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes';
+
+// ---------------------------------------------------------------- техслужба
+
+/**
+ * Узел машины (docs/specs/2026-10-engine.md, 1е): наработка с установки — таблетки у оборудования, штуки машины у
+ * линии; запас до отказа — 10⁻¹² отказа, из ветви `maint/<узел>`, его знает только движок.
+ */
+export interface Part {
+  /** `<машина>/<узел>` */
+  id: string;
+  /** оборудование или машина линии; вид машины; узел в записи вида; у машины линии — линия */
+  machine: string;
+  of: Id;
+  type: string;
+  line?: string;
+  done: number;
+  budget: number;
+  state: 'ok' | 'failed';
+  installed: number;
+  failed?: number;
+  /** заменить вне отказа — как только машина свободна: решил игрок или политика техслужбы */
+  plan?: 'player' | 'policy';
+  /** задача ремонта или замены */
+  task?: string;
+  /** у машины линии: позиция задания, до которой наработка учтена */
+  mark: number;
+  /** версия событий отказа */
+  v: number;
+}
+
+/** Запчасть на складе ЗИП: штук и сколько из них в резерве под ремонт. */
+export interface SpareStock {
+  qty: number;
+  reserved: number;
+}
+
+/** Заказ запчасти: сумма с НДС и НДС в ней, предоплата — копейки. */
+export interface SpareOrder {
+  id: string;
+  spare: Id;
+  qty: number;
+  ordered: number;
+  eta: number;
+  sum: number;
+  vat: number;
+  prepaid: number;
+  status: 'ordered' | 'arrived';
+  by: string;
+}
+
+/** Запись журнала оборудования (GMP ЕАЭС, ч. I, п. 4.31): отказ, ремонт после отказа, замена по плану. */
+export interface MaintEntry {
+  t: number;
+  machine: string;
+  part: string;
+  what: 'failure' | 'repair' | 'replace';
+  /** износ, доли 1/10 000 */
+  wear: number;
+  batch?: string;
+  people?: string[];
+}
 
 /** Проводка: когда, сколько (копейки; приход — плюс), статья, ссылка. */
 export interface Entry {
@@ -687,6 +797,11 @@ export interface PlantState {
   customers: Record<Id, { last: number }>;
   orders: Record<string, Order>;
   shipments: Record<string, Shipment>;
+  /** узлы машин; склад ЗИП; заказы запчастей; журнал оборудования */
+  parts: Record<string, Part>;
+  spares: Record<Id, SpareStock>;
+  spareOrders: Record<string, SpareOrder>;
+  maintLog: MaintEntry[];
 }
 
 /** Команда — единственный способ изменить состояние (docs/02-architecture.md, §7). */
@@ -703,10 +818,12 @@ export type Command =
    * решение игрока вместо уполномоченного лица по упакованной серии. «Выпустить» при открытых отклонениях — законный
    * риск: отклонения оценены «без влияния на качество» (продукт, «Чего нет сознательно»)
    */
-  | { kind: 'release'; batch: string; decision: 'release' | 'reject' | 'hold' };
+  | { kind: 'release'; batch: string; decision: 'release' | 'reject' | 'hold' }
+  /** заменить узел машины вне отказа — как только машина свободна */
+  | { kind: 'maintain'; machine: string; part: string };
 
 /** Почему команда не выполнена — для окна. */
-export type Refusal = 'noSupplier' | 'notSold' | 'belowMoq' | 'empty' | 'noRecipe' | 'noBatch' | 'notBulk' | 'noSku' | 'notReady';
+export type Refusal = 'noSupplier' | 'notSold' | 'belowMoq' | 'empty' | 'noRecipe' | 'noBatch' | 'notBulk' | 'noSku' | 'notReady' | 'noPart' | 'busy' | 'noSpare';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
@@ -736,5 +853,8 @@ export type Notice =
   | { kind: 'lateOrder'; order: string; missing: number }
   /** касса ниже предела кредитной линии */
   | { kind: 'cashLow'; balance: number }
+  /** отказ узла машины; узел починили или заменили по плану */
+  | { kind: 'failure'; machine: string; part: string }
+  | { kind: 'repaired'; machine: string; part: string; planned: boolean }
   /** команда не выполнена */
   | { kind: 'refused'; cmd: Command['kind']; why: Refusal; detail?: string };

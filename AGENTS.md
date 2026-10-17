@@ -37,7 +37,7 @@ The project documents itself in [`docs/`](docs/README.md), in Russian. Start the
   runs, content, tests.
 - `docs/04-data-model.md` — content records, engine entities, statuses, traceability.
 - `docs/specs/2026-10-prototype.md` — what the prototype must answer.
-- `docs/07-roadmap.md` — stages and owner questions.
+- `docs/07-roadmap.md` — stages and the owner's decisions.
 - `docs/adr/` — decisions that are expensive to reverse; read the relevant one *before*
   proposing the opposite.
 
@@ -72,6 +72,10 @@ Studio-wide rules are in the charter's `docs/05-rules.md`. In addition here:
 - **No network.** The game works fully offline and sends nothing anywhere (charter ADR 0008, 0014).
 - **Generators for graphics only, by studio ADR 0020**: every generated file goes into the project's
   generation log or it does not ship; equipment is preferably modelled in code from data.
+- **Open questions and forks live only in Issues** (owner's decision of 17.10.2026): a question only the owner can
+  answer — label `владелец`, in the charter template (`docs/04-process.md`, «Вопрос владельцу»); a fork the work
+  itself will settle — label `развилка`. Documents link to the Issue and keep no lists of open questions; an answered
+  question goes into `docs/07-roadmap.md`, «Решения владельца», and the Issue is closed.
 - Never press «Merge»; merging follows charter ADR 0018.
 
 ## Commands

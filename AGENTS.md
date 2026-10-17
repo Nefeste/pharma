@@ -31,6 +31,9 @@ The project documents itself in [`docs/`](docs/README.md), in Russian. Start the
   vocabulary (UI and code terms must match it).
 - `docs/08-game-design.md` — the game as it should ship in 1.0; **game-design numbers live there or in the
   content records it points to — each number in one place**.
+- `docs/13-art.md` — picture, sound and interface: art direction, camera and light, people and machines, the
+  feedback language (what the player sees and hears, and what the window cannot know), accessibility, sources of
+  graphics and sound, what the art director checks before a merge. Numbers stay in `08-game-design.md`.
 - `docs/10-domain.md` — facts about real pharmaceutical manufacturing that mechanics rely on,
   each with a source key; regulations change — check the date before relying on a fact.
 - `docs/02-architecture.md` — engine modules, time and flow, determinism, window and 3D, plan

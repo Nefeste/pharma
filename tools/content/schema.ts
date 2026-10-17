@@ -42,8 +42,8 @@ export const scenario = z.strictObject({
   staff: z.array(z.strictObject({ role: id, shift: id, skill: z.number().int().min(1).max(5), n: z.number().int().min(1).max(50) })).min(1),
   vehicles: z.array(z.strictObject({ type: id, n: z.number().int().min(1).max(20) })),
   orders: z.array(z.strictObject({ supplier: id, lines: z.array(z.strictObject({ material: id, qty })).min(1) })).default([]),
-  /** задания на серию: карта и день «не раньше» от начала партии */
-  batches: z.array(z.strictObject({ recipe: id, day: z.number().int().min(0).max(3650) })).default([]),
+  /** задания на серию: карта, день «не раньше» от начала партии и товарная позиция, в которую упаковать балк */
+  batches: z.array(z.strictObject({ recipe: id, day: z.number().int().min(0).max(3650), sku: id.optional() })).default([]),
   stock: z.array(z.strictObject({ material: id, qty })).default([]),
 });
 
@@ -69,8 +69,8 @@ export const unit = z
 export const material = z
   .strictObject({
     id: z.string(),
-    /** `bulk` — свой полупродукт: таблетки после производства, до упаковки */
-    kind: z.enum(['api', 'excipient', 'packaging', 'bulk']),
+    /** `bulk` — свой полупродукт: таблетки после производства, до упаковки; `fg` — готовая продукция, пачки в ящиках */
+    kind: z.enum(['api', 'excipient', 'packaging', 'bulk', 'fg']),
     name: text,
     unit: z.enum(['kg', 'pcs']),
     container: id,
@@ -84,7 +84,7 @@ export const material = z
     props: z.partialRecord(attr, z.tuple([z.number(), z.number().min(0)])).default({}),
     /** брак у поставщика: свойство и сдвиг, %; у качественного свойства сдвига нет — «не соответствует» */
     bad: z.strictObject({ attr, shift: z.number().optional() }).optional(),
-    /** проба с одной тары: граммы или штуки */
+    /** проба с одной тары: граммы или штуки; у готовой продукции — архивные образцы серии, пачек */
     sample: z.number().positive(),
     source: sources.optional(),
     review: review.optional(),
@@ -94,7 +94,7 @@ export const material = z
 export const container = z.strictObject({
   id: z.string(),
   name: text,
-  kind: z.enum(['drum', 'bag', 'roll', 'box', 'bundle', 'bin']),
+  kind: z.enum(['drum', 'bag', 'roll', 'box', 'bundle', 'bin', 'case']),
   /** ровно одно: кг или штуки */
   capacity: z.union([z.strictObject({ kg: z.number().positive() }), z.strictObject({ pcs: z.number().int().positive() })]),
   perPallet: z.number().int().min(1).max(100),
@@ -192,7 +192,7 @@ export const plant = z.strictObject({
   zones: z.array(
     z.strictObject({
       id: z.string(),
-      kind: z.enum(['receiving', 'quarantine', 'cold', 'rejected', 'fgQuarantine', 'shipping', 'staging', 'sampling']),
+      kind: z.enum(['receiving', 'quarantine', 'cold', 'rejected', 'fgQuarantine', 'shipping', 'staging', 'sampling', 'palletizing']),
       rect,
       grid: z.tuple([z.number().int().min(1), z.number().int().min(1)]),
     }),
@@ -203,6 +203,20 @@ export const plant = z.strictObject({
   instruments: z.array(z.strictObject({ id: z.string(), type: id, room: z.string() })).default([]),
   /** оборудование производства: вид и помещение */
   equipment: z.array(z.strictObject({ id: z.string(), type: id, room: z.string() })).default([]),
+  /**
+   * упаковочные линии: помещение, зона паллетирования на выходе и машины по порядку; после каждой машины, кроме
+   * последней, — накопитель: сколько её штук (блистеров, пачек) он держит
+   */
+  lines: z
+    .array(
+      z.strictObject({
+        id: z.string(),
+        room: z.string(),
+        out: z.string(),
+        machines: z.array(z.strictObject({ id: z.string(), type: id, buffer: z.number().int().positive().optional() })).min(2),
+      }),
+    )
+    .default([]),
   points: z.strictObject({ park: point, entrance: point }),
 });
 
@@ -311,6 +325,55 @@ export const cause = z
   })
   .refine(paired, pairedMsg);
 
+/**
+ * Машина упаковочной линии (геймдизайн, §5.6; docs/specs/2026-10-engine.md, 1г): в чём считается её скорость, номинал,
+ * люди, микроостановки, брак камеры, переналадка на другой формат. Числа — гипотезы старой линии кампании; что делает
+ * машина — с источником.
+ */
+export const machine = z
+  .strictObject({
+    id: z.string(),
+    name: text,
+    /** скорость — блистеров или пачек в минуту */
+    item: z.enum(['blister', 'carton']),
+    nominal: z.number().int().positive(),
+    crew: z.strictObject({ role: id, n: z.number().int().min(1).max(5) }),
+    /** микроостановки: в среднем раз в столько минут работы на номинале и столько минут длятся */
+    micro: z.strictObject({ every: z.number().positive(), duration: z.number().positive() }).optional(),
+    /** брак камеры, % выхода */
+    reject: percent.default(0),
+    /** переналадка на другой формат, минуты */
+    changeover: minutes.default(0),
+    source: sources.optional(),
+    review: review.optional(),
+  })
+  .refine(paired, pairedMsg);
+
+/**
+ * Товарная позиция (docs/04-data-model.md, §4): готовая продукция, формат линии, таблеток в блистере и блистеров в
+ * пачке, упаковочные материалы на блистер, пачку и ящик, ящиков на паллете, брак на наладку. Числа — гипотезы.
+ */
+export const sku = z.strictObject({
+  id: z.string(),
+  name: text,
+  product: id,
+  /** готовая продукция — материал вида fg */
+  fg: id,
+  /** формат линии: у следующей позиции другой — переналадка */
+  format: z.string().regex(/^[a-z0-9-]+$/),
+  perBlister: z.number().int().min(1).max(100),
+  blisters: z.number().int().min(1).max(10),
+  /** на блистер — граммы */
+  blister: z.array(z.strictObject({ material: id, g: z.number().positive() })).min(1),
+  /** на пачку — штуки */
+  carton: z.array(z.strictObject({ material: id, n: z.number().int().positive() })).min(1),
+  /** гофроящик и сколько пачек в нём */
+  case: z.strictObject({ material: id, per: z.number().int().positive() }),
+  pallet: z.strictObject({ cases: z.number().int().positive() }),
+  /** на наладку в начале серии: блистеров и пачек — в брак */
+  waste: z.strictObject({ blisters: z.number().int().min(0), cartons: z.number().int().min(0) }),
+});
+
 /** Папка в content/ → приставка идентификатора и схема. */
 export const KINDS = {
   profiles: { prefix: 'prf', schema: profile },
@@ -330,6 +393,8 @@ export const KINDS = {
   equipment: { prefix: 'eq', schema: equipment },
   recipes: { prefix: 'rcp', schema: recipe },
   causes: { prefix: 'cause', schema: cause },
+  machines: { prefix: 'mach', schema: machine },
+  skus: { prefix: 'sku', schema: sku },
 } as const;
 
 export type Kind = keyof typeof KINDS;

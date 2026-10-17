@@ -1,13 +1,18 @@
-// Инварианты завода (docs/02-architecture.md, §15; docs/specs/2026-10-engine.md, «Инварианты 1а», 1б). Чистая проверка
-// состояния: список нарушений, пустой — всё в порядке. Её зовут тесты и «виртуальный директор» на каждом шаге проверки.
+// Инварианты завода (docs/02-architecture.md, §15; docs/specs/2026-10-engine.md, «Инварианты 1а», 1б–1г). Чистая
+// проверка состояния: список нарушений, пустой — всё в порядке. Её зовут тесты и «виртуальный директор» на каждом шаге
+// проверки.
 import type { Attr, ContentDb } from '../content/types';
+import { geo, good, SIXTY } from './line';
 import { clampAttr } from './mes';
 import { planOf } from './plant';
-import { LOT_FLOW, TAG } from './stock';
+import { containersByLot, LOT_FLOW, TAG } from './stock';
 import type { LotStatus, PlantState } from './types';
 
-/** Где может стоять паллета партии до решения: дальше карантина и пробоотборной — только после «разрешено». */
-const BEFORE_DECISION = new Set(['receiving', 'quarantine', 'cold', 'sampling']);
+/**
+ * Где может стоять паллета партии до решения: дальше карантина и пробоотборной — только после «разрешено»; готовая
+ * продукция — на месте паллетирования или в карантине ГП.
+ */
+const BEFORE_DECISION = new Set(['receiving', 'quarantine', 'cold', 'sampling', 'palletizing', 'fgQuarantine']);
 const UNDECIDED: ReadonlySet<LotStatus> = new Set(['quarantine', 'sampled', 'testing']);
 
 export function check(db: ContentDb, s: PlantState): string[] {
@@ -54,7 +59,7 @@ export function check(db: ContentDb, s: PlantState): string[] {
   }
   // паллета — одной партии; ярлык — по её статусу; до решения — не дальше карантина; на стеллаже хранения — только
   // разрешённое (или заблокированное после разрешения)
-  const kits = new Set(Object.values(s.batches).flatMap(b => (b.kitUnit ? [b.kitUnit] : [])));
+  const kits = new Set(Object.values(s.batches).flatMap(b => [b.kitUnit, b.pack?.kitUnit].filter((u): u is string => u !== undefined)));
   for (const u of Object.values(s.units)) {
     const lots = new Set(u.items.map(c => s.containers[c]?.lot));
     // комплект серии в помещении — тара разных партий, все разрешены
@@ -133,6 +138,7 @@ export function check(db: ContentDb, s: PlantState): string[] {
     if (t.instrument && s.instruments[t.instrument]?.test !== t.test) bad.push(`задача ${t.id}: прибор ${t.instrument} занят не её испытанием`);
   }
   production(db, s, bad);
+  packing(db, s, bad);
   return bad;
 }
 
@@ -152,6 +158,14 @@ function production(db: ContentDb, s: PlantState, bad: string[]) {
     for (const x of b.dispensed) {
       dispensed += x.qty;
       used[x.lot] = (used[x.lot] ?? 0) + x.qty;
+    }
+    // упаковка: материалы — по факту, балк — весь, когда серия упакована
+    const job = b.pack;
+    if (job) {
+      for (const k of job.kit) reserved[k.container] = (reserved[k.container] ?? 0) + k.qty;
+      for (const x of job.used) used[x.lot] = (used[x.lot] ?? 0) + x.qty;
+      if (job.state === 'done') used[b.bulk!] = (used[b.bulk!] ?? 0) + job.tablets;
+      if (job.kit.length > 0 && !['reserved', 'kitting', 'ready', 'running'].includes(job.state)) bad.push(`серия ${b.id}: упаковка ${job.state}, а комплект ещё в резерве`);
     }
     // масса: отвешено = полупродукт + потери по стадиям; у каждой стадии вход = выход + потери
     const loss = b.records.reduce((n, rec) => n + rec.loss, 0);
@@ -185,3 +199,71 @@ function production(db: ContentDb, s: PlantState, bad: string[]) {
     if (!room || room.batch !== b.id || room.status !== 'busy') bad.push(`задача ${t.id}: стадия серии ${t.batch} не в её помещении`);
   }
 }
+
+/**
+ * Инварианты линии и упаковки (docs/specs/2026-10-engine.md, 1г): позиции машин — по порядку потока, накопители в
+ * пределах; проход машины = номинал × время на номинале + проход «медленнее», время состояний = время задания; каждый
+ * код — ровно в одном ящике, в браке или в архиве; таблетки = пачки × таблеток в пачке + брак + остаток; сверка сходится.
+ */
+function packing(db: ContentDb, s: PlantState, bad: string[]) {
+  const byLot = containersByLot(s);
+  const containersOf = (lotId: string) => byLot.get(lotId) ?? [];
+  for (const line of Object.values(s.lines)) {
+    const b = line.batch ? s.batches[line.batch] : undefined;
+    const crew = Object.values(s.tasks).filter(t => t.kind === 'crew' && t.line === line.id);
+    if (crew.length > 0 && b?.pack?.state !== 'running') bad.push(`линия ${line.id}: смена у линии без упаковки`);
+    if (line.t > s.t) bad.push(`линия ${line.id}: поток посчитан вперёд часов`);
+    if (!b) continue;
+    const job = b.pack;
+    if (!job || b.status !== 'packing' || job.taken === undefined) {
+      bad.push(`линия ${line.id}: серия ${b.id} не на упаковке`);
+      continue;
+    }
+    const g = geo(db, s, line, job.sku);
+    const m = line.machines;
+    m.forEach((mc, i) => {
+      const t = mc.times;
+      const spent = t.run + t.slow + t.micro + t.wait + t.setup + t.off;
+      if (spent !== line.t - job.taken!) bad.push(`линия ${line.id}, ${mc.id}: время состояний ${spent}, а задание идёт ${line.t - job.taken!}`);
+      if (t.out !== mc.pos) bad.push(`линия ${line.id}, ${mc.id}: проход ${t.out}, а позиция ${mc.pos}`);
+      if (t.out !== g.nominal[i] * t.run + t.slowOut) bad.push(`линия ${line.id}, ${mc.id}: проход ${t.out} ≠ номинал × ${t.run} + ${t.slowOut}`);
+      if (i > 0 && mc.pos > m[i - 1].pos) bad.push(`линия ${line.id}, ${mc.id}: обогнала машину перед собой`);
+      if (i < m.length - 1 && mc.pos - m[i + 1].pos > g.cap[i]) bad.push(`линия ${line.id}, ${mc.id}: накопитель переполнен`);
+    });
+    if (m[0].pos > job.tablets * SIXTY) bad.push(`линия ${line.id}: таблеток больше, чем в балке`);
+    // коды до текущей позиции: брак камеры — по счёту, в ящиках — не больше годных
+    const rejects = job.checked - good(job.checked, g.rej[1]);
+    if (job.rejected.length !== rejects) bad.push(`серия ${b.id}: кодов брака ${job.rejected.length}, а по счёту ${rejects}`);
+    const inCases = job.fg ? containersOf(job.fg).reduce((n, c) => n + c.qty, 0) : 0;
+    if (inCases > good(job.checked, g.rej[1])) bad.push(`серия ${b.id}: в ящиках ${inCases} пачек, а годных сделано меньше`);
+  }
+  for (const b of Object.values(s.batches)) {
+    const job = b.pack;
+    if (!job || job.state !== 'done') continue;
+    const sku = db.skus[job.sku];
+    // таблетки = блистеров в годных пачках × таблеток в блистере + брак + остаток
+    const goodCartons = job.cartons! - job.cartonRejects!;
+    const tablets = goodCartons * sku.blisters * sku.perBlister + job.scrap! + job.remainder!;
+    if (tablets !== job.tablets) bad.push(`серия ${b.id}: таблеток ${job.tablets}, а в пачках, браке и остатке ${tablets}`);
+    // каждый код 1…пачек — ровно один раз: в ящике, в браке или в архиве. Отрезки по порядку должны сложиться встык
+    const parts: [number, number][] = [];
+    for (const c of containersOf(job.fg!)) {
+      let n = 0;
+      for (const r of c.codes ?? []) {
+        parts.push(r);
+        n += r[1];
+      }
+      if (n !== c.qty) bad.push(`ящик ${c.id}: пачек ${c.qty}, а кодов ${n}`);
+    }
+    for (const code of [...job.rejected, ...job.retained]) parts.push([code, 1]);
+    parts.sort((x, y) => x[0] - y[0]);
+    let at = 1;
+    for (const [first, count] of parts) {
+      if (first !== at) break;
+      at += count;
+    }
+    if (at !== job.cartons! + 1) bad.push(`серия ${b.id}: коды пачек — не каждый ровно в одном месте`);
+    for (const r of job.recon ?? []) if (r.issued !== r.used + r.spoiled + r.returned) bad.push(`серия ${b.id}: сверка ${r.material} не сходится`);
+  }
+}
+

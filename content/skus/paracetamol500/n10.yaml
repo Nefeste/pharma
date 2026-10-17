@@ -1,0 +1,18 @@
+# Товарная позиция: 10 таблеток — один блистер в пачке с инструкцией; пачка меньше, поэтому в тот же ящик их входит 240.
+# Числа — гипотезы.
+id: sku.paracetamol500.n10
+name: { ru: "Парацетамол, таблетки 500 мг, №10", en: "Paracetamol 500 mg tablets, 10" }
+product: prd.paracetamol500
+fg: mat.fg.paracetamol500-n10
+format: n10
+perBlister: 10
+blisters: 1
+blister:
+  - { material: mat.pk.pvc, g: 0.9 }
+  - { material: mat.pk.alu, g: 0.4 }
+carton:
+  - { material: mat.pk.carton-n10, n: 1 }
+  - { material: mat.pk.leaflet, n: 1 }
+case: { material: mat.pk.case, per: 240 }
+pallet: { cases: 40 }
+waste: { blisters: 50, cartons: 20 }

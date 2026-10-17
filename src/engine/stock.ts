@@ -24,6 +24,19 @@ export const LOT_FLOW: Record<LotStatus, LotStatus[]> = {
   rejected: [],
 };
 
+/**
+ * Переходы статуса готовой продукции: её не испытывают в лаборатории (показатели серии испытаны на балке), а проверяет
+ * ООК; решение уполномоченного лица — прямо из карантина (docs/specs/2026-10-engine.md, 1г).
+ */
+export const FG_FLOW: Record<LotStatus, LotStatus[]> = {
+  quarantine: ['released', 'rejected'],
+  sampled: [],
+  testing: [],
+  released: ['blocked'],
+  blocked: ['released', 'rejected'],
+  rejected: [],
+};
+
 /** Ярлык на паллете по статусу партии. */
 export const TAG: Record<LotStatus, Tag> = {
   quarantine: 'quarantine',
@@ -34,8 +47,8 @@ export const TAG: Record<LotStatus, Tag> = {
   blocked: 'blocked',
 };
 
-export function setLotStatus(s: PlantState, lot: Lot, to: LotStatus) {
-  if (!LOT_FLOW[lot.status].includes(to)) throw new Error(`lot ${lot.id}: ${lot.status} → ${to}`);
+export function setLotStatus(s: PlantState, lot: Lot, to: LotStatus, flow: Record<LotStatus, LotStatus[]> = LOT_FLOW) {
+  if (!flow[lot.status].includes(to)) throw new Error(`lot ${lot.id}: ${lot.status} → ${to}`);
   lot.status = to;
   // ярлыки на паллетах партии — по статусу
   for (const u of unitsOfLot(s, lot.id)) u.tag = TAG[to];
@@ -124,6 +137,31 @@ export function createLot(db: ContentDb, s: PlantState, o: NewLot): { lot: Lot; 
     units.push(u);
   }
   return { lot, units };
+}
+
+/** Партия своей продукции без тары — тару (гофроящики) добавляет линия, и количество растёт вместе с ней. */
+export function emptyLot(s: PlantState, o: { material: Id; vendorLot: string; batch: string; expiry: number; truth: Props }): Lot {
+  const at = momentOf(s.start, s.t);
+  const code = { y: at.date.y % 100, m: at.date.m, n: (s.next.lotCode = (s.next.lotCode ?? 0) + 1) };
+  const lot: Lot = {
+    id: nextId(s, 'L'),
+    material: o.material,
+    supplier: 'plant',
+    vendorLot: o.vendorLot,
+    code,
+    qty: 0,
+    expiry: o.expiry,
+    status: 'quarantine',
+    received: s.t,
+    used: 0,
+    sampled: 0,
+    written: 0,
+    truth: o.truth,
+    coa: {},
+    batch: o.batch,
+  };
+  s.lots[lot.id] = lot;
+  return lot;
 }
 
 /** Поставить паллету на место (место должно быть свободно или зарезервировано этой задачей). */

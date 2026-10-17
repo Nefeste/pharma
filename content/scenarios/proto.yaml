@@ -39,20 +39,23 @@ orders:
   - supplier: sup.pack
     lines:
       - { material: mat.pk.carton-n20, qty: 40000 }
+      - { material: mat.pk.carton-n10, qty: 20000 }
       - { material: mat.pk.leaflet, qty: 100000 }
+      - { material: mat.pk.case, qty: 500 }
   - supplier: sup.api
     lines:
       - { material: mat.api.paracetamol, qty: 1000 }
-# задания на серию: раз в неделю, день — от начала партии. АФС на складе хватит на пять серий, дальше — из заказа
+# задания на серию: раз в неделю, день — от начала партии, и позиция, в которую упаковать балк. АФС на складе хватит на
+# пять серий, дальше — из заказа; №10 и №20 чередуются, чтобы линия переналаживалась
 batches:
-  - { recipe: rcp.paracetamol500.wet.v1, day: 1 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 8 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 15 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 22 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 29 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 36 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 43 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 50 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 1, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 8, sku: sku.paracetamol500.n10 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 15, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 22, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 29, sku: sku.paracetamol500.n10 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 36, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 43, sku: sku.paracetamol500.n10 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 50, sku: sku.paracetamol500.n20 }
 # запас на старте — разрешённые партии на стеллажах: хватает на первые серии
 stock:
   - { material: mat.api.paracetamol, qty: 600 }
@@ -62,7 +65,7 @@ stock:
   - { material: mat.exc.mgst, qty: 20 }
   - { material: mat.pk.pvc, qty: 250 }
   - { material: mat.pk.alu, qty: 200 }
-  - { material: mat.pk.carton-n10, qty: 20000 }
+  - { material: mat.pk.carton-n10, qty: 40000 }
   - { material: mat.pk.carton-n20, qty: 20000 }
   - { material: mat.pk.leaflet, qty: 50000 }
   - { material: mat.pk.case, qty: 500 }

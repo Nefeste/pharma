@@ -1,7 +1,7 @@
-// Производство (docs/specs/2026-10-engine.md, 1в; геймдизайн, §5.3–5.5): задание на серию, резерв по FEFO, комплект к
+// Производство (docs/specs/2026-10-engine.md, 1в, 1г; геймдизайн, §5.3–5.5): задание на серию, резерв по FEFO, комплект к
 // шлюзу, стадии по технологической карте — помещение, оборудование, люди; чистота и уборка; режимы; истинные показатели
-// и причины; МОК; балк в карантине. Задачи раздаёт раздатчик (tasks.ts); здесь — когда их заводить и что они делают,
-// когда кончаются.
+// и причины; МОК; балк в карантине; задание на упаковку и комплект упаковочных материалов к линии (саму линию ведёт
+// line.ts). Задачи раздаёт раздатчик (tasks.ts); здесь — когда их заводить и что они делают, когда кончаются.
 import { ATTRS, type Attr, type CauseDriver, type ContentDb, type Id, type RecipeStage } from '../content/types';
 import { schedule } from './core/agenda';
 import { HOUR, MIN, momentOf } from './core/calendar';
@@ -11,7 +11,7 @@ import { measure, within } from './quality';
 import { normal, roll, spread } from './random';
 import { containersByLot, createLot, free, knownAssay, nextId, putUnit, stockChanged } from './stock';
 import { addTask } from './tasks';
-import type { Batch, Command, Deviation, KitLine, Notice, Place, PlantState, Room, StageRecord, Task, Unit } from './types';
+import type { Batch, Command, Container, Deviation, KitLine, Lot, Notice, PackJob, Place, PlantState, Room, StageRecord, Task, Unit } from './types';
 import { PRIO, WMS } from './wms';
 
 /** Роли производства. */
@@ -50,6 +50,7 @@ export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, {
     ordered: s.t,
     by: cmd.by ?? 'player',
     status: 'waiting',
+    ...(cmd.sku ? { sku: cmd.sku } : {}),
     kit: [],
     stage: 0,
     mass: 0,
@@ -69,6 +70,17 @@ export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, {
  * начатая тара. АФС — с пересчётом на содержание, известное заводу; строка «до массы» добирает массу серии. Не хватает
  * хоть одной строки — резерва нет совсем, а в задании — чего не хватает.
  */
+/** Партии материала по FEFO: разрешённые, срок не вышел, раньше срок — раньше; в партии — тара на складе, начатая первой. */
+function fefo(s: PlantState, material: Id, today: number, byLot: Map<string, Container[]>): { lot: Lot; cs: Container[] }[] {
+  return Object.values(s.lots)
+    .filter(l => l.material === material && l.status === 'released' && l.expiry > today)
+    .sort((a, c) => a.expiry - c.expiry || a.received - c.received || idNum(a.id) - idNum(c.id))
+    .map(lot => ({
+      lot,
+      cs: (byLot.get(lot.id) ?? []).filter(c => s.units[c.unit].where.kind === 'slot').sort((a, c) => Number(c.opened) - Number(a.opened) || idNum(a.id) - idNum(c.id)),
+    }));
+}
+
 function reserve(db: ContentDb, s: PlantState, b: Batch): boolean {
   const r = db.recipes[b.recipe];
   const today = momentOf(s.start, s.t).day;
@@ -80,17 +92,11 @@ function reserve(db: ContentDb, s: PlantState, b: Batch): boolean {
   // сколько навеска с пересчётом тяжелее нормы — на столько меньше строки «до массы»
   let extra = 0;
   for (const line of lines) {
-    const lots = Object.values(s.lots)
-      .filter(l => l.material === line.material && l.status === 'released' && l.expiry > today)
-      .sort((a, c) => a.expiry - c.expiry || a.received - c.received || idNum(a.id) - idNum(c.id));
     let left = line.qs ? Math.max(0, line.qty - extra) : line.qty;
     let gross = 0;
-    for (const lot of lots) {
+    for (const { lot, cs } of fefo(s, line.material, today, byLot)) {
       if (left <= 0) break;
       const assay = line.potency ? knownAssay(db, s, lot) : P_ONE;
-      const cs = (byLot.get(lot.id) ?? [])
-        .filter(c => s.units[c.unit].where.kind === 'slot')
-        .sort((a, c) => Number(c.opened) - Number(a.opened) || idNum(a.id) - idNum(c.id));
       for (const c of cs) {
         if (left <= 0) break;
         const avail = free(c) - (taken.get(c.id) ?? 0);
@@ -126,11 +132,11 @@ function reserve(db: ContentDb, s: PlantState, b: Batch): boolean {
 
 /**
  * Шаг производства: ждущим — резерв, если склад изменился с их прошлой попытки; зарезервированным в свой день —
- * комплектация (одна серия за раз); едущим к шлюзу — новые задачи; в работе — следующая стадия. Зовётся после каждого
- * события.
+ * комплектация (одна за раз — серии или упаковки); едущим к шлюзу — новые задачи; в работе — следующая стадия; балку —
+ * задание на упаковку, когда его разрешат. Зовётся после каждого события.
  */
 export function mesStep(db: ContentDb, s: PlantState) {
-  let kitting = Object.values(s.batches).some(b => b.status === 'kitting');
+  let kitting = Object.values(s.batches).some(b => b.status === 'kitting' || b.pack?.state === 'kitting');
   for (const b of Object.values(s.batches)) {
     switch (b.status) {
       case 'waiting':
@@ -148,8 +154,118 @@ export function mesStep(db: ContentDb, s: PlantState) {
       case 'process':
         tryStart(db, s, b);
         break;
+      case 'bulk': {
+        // отклонённый балк не упаковывают; разрешённый — в позицию серии, если она задана
+        const lot = s.lots[b.bulk!];
+        if (lot.status === 'rejected') b.status = 'rejected';
+        else if (lot.status === 'released' && b.sku) startPacking(db, s, b);
+        break;
+      }
+      case 'packing': {
+        const job = b.pack!;
+        if (job.state === 'waiting' && job.tried !== (s.next.stock ?? 0)) reservePack(db, s, b);
+        else if (job.state === 'reserved' && !kitting) {
+          startPackKitting(db, s, b);
+          kitting = true;
+        } else if (job.state === 'kitting') kitStep(db, s, b);
+        break;
+      }
     }
   }
+}
+
+/** Команда «упаковать»: позиция того же продукта; задание заведётся, когда балк разрешат. */
+export function packOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'pack' }>, notices: Notice[]) {
+  const b = s.batches[cmd.batch];
+  const sku = db.skus[cmd.sku];
+  if (!b) return notices.push({ kind: 'refused', cmd: 'pack', why: 'noBatch', detail: cmd.batch });
+  if (!sku || sku.product !== b.product) return notices.push({ kind: 'refused', cmd: 'pack', why: 'noSku', detail: cmd.sku });
+  if (b.pack || ['packing', 'fg', 'released', 'rejected'].includes(b.status)) return notices.push({ kind: 'refused', cmd: 'pack', why: 'notBulk', detail: cmd.batch });
+  b.sku = sku.id;
+  mesStep(db, s);
+}
+
+/**
+ * Задание на упаковку разрешённого балка: на первую линию плана, все таблетки балка; материалы — резервом по FEFO с
+ * запасом на брак (docs/specs/2026-10-engine.md, 1г).
+ */
+function startPacking(db: ContentDb, s: PlantState, b: Batch) {
+  const line = planOf(db, s.plant).plant.lines[0];
+  if (!line) return;
+  const tablets = (containersByLot(s).get(b.bulk!) ?? []).reduce((n, c) => n + c.qty, 0);
+  const job: PackJob = { sku: b.sku!, line: line.id, state: 'waiting', created: s.t, kit: [], used: [], tablets, checked: 0, rejected: [], retained: [] };
+  b.pack = job;
+  b.status = 'packing';
+  reservePack(db, s, b);
+}
+
+/**
+ * Сколько материала может понадобиться на упаковку: на блистер — блистеров не больше таблеток / в блистере, плюс брак на
+ * наладку; на пачку — пачек не больше блистеров / в пачке (плюс наладка — у самой пачки и инструкции); ящиков — вверх
+ * до целого. Это верхняя граница: брак камер только уменьшает расход, поэтому материала на линии всегда хватает.
+ */
+export function packNeeds(db: ContentDb, job: PackJob): { material: Id; qty: number }[] {
+  const sku = db.skus[job.sku];
+  const blisters = Math.floor(job.tablets / sku.perBlister);
+  const cartons = Math.floor(blisters / sku.blisters);
+  return [
+    ...sku.blister.map(l => ({ material: l.material, qty: (blisters + sku.waste.blisters) * l.qty })),
+    ...sku.carton.map(l => ({ material: l.material, qty: (cartons + sku.waste.cartons) * l.qty })),
+    { material: sku.case.material, qty: Math.ceil(cartons / sku.case.per) },
+  ];
+}
+
+/** Резерв упаковочных материалов по FEFO, всё или ничего — как у серии. */
+function reservePack(db: ContentDb, s: PlantState, b: Batch) {
+  const job = b.pack!;
+  const today = momentOf(s.start, s.t).day;
+  const byLot = containersByLot(s);
+  const kit: KitLine[] = [];
+  const short: { material: Id; qty: number }[] = [];
+  for (const need of packNeeds(db, job)) {
+    let left = need.qty;
+    for (const { lot, cs } of fefo(s, need.material, today, byLot)) {
+      for (const c of cs) {
+        if (left <= 0) break;
+        const q = Math.min(free(c), left);
+        if (q <= 0) continue;
+        kit.push({ container: c.id, lot: lot.id, material: need.material, qty: q });
+        left -= q;
+      }
+      if (left <= 0) break;
+    }
+    if (left > 0) short.push({ material: need.material, qty: left });
+  }
+  if (short.length > 0) {
+    job.state = 'waiting';
+    job.short = short;
+    job.tried = s.next.stock ?? 0;
+    return;
+  }
+  for (const k of kit) {
+    const c = s.containers[k.container];
+    c.reserved = (c.reserved ?? 0) + k.qty;
+  }
+  job.kit = kit;
+  delete job.short;
+  delete job.tried;
+  job.state = 'reserved';
+}
+
+/** Комплект упаковочных материалов — к шлюзу и на пластиковую паллету в помещении линии. */
+function startPackKitting(db: ContentDb, s: PlantState, b: Batch) {
+  const job = b.pack!;
+  const room = planOf(db, s.plant).plant.lines.find(l => l.id === job.line)!.room;
+  const u: Unit = { id: nextId(s, 'U'), type: 'unit.pallet.plastic', where: { kind: 'room', id: room }, items: [], tag: 'released' };
+  s.units[u.id] = u;
+  job.kitUnit = u.id;
+  job.state = 'kitting';
+  kitStep(db, s, b);
+}
+
+/** Чей комплект едет: серии — на производство, задания на упаковку — к линии. */
+function holderOf(b: Batch): { kit: KitLine[]; kitUnit?: string } {
+  return b.status === 'packing' ? b.pack! : b;
 }
 
 /** Каждый час: грязное дольше суток — к большой уборке; грязное без уборки — убрать. */
@@ -179,14 +295,18 @@ function startKitting(db: ContentDb, s: PlantState, b: Batch) {
   kitStep(db, s, b);
 }
 
-/** Паллеты с тарой комплекта — к шлюзу, если их никто не везёт; весь комплект на пластиковой паллете — стадии. */
+/**
+ * Паллеты с тарой комплекта — к шлюзу, если их никто не везёт; весь комплект на пластиковой паллете — стадии (или линии
+ * — для комплекта упаковки).
+ */
 function kitStep(db: ContentDb, s: PlantState, b: Batch) {
   const plan = planOf(db, s.plant);
+  const h = holderOf(b);
   let pending = false;
   const seen = new Set<string>();
-  for (const k of b.kit) {
+  for (const k of h.kit) {
     const c = s.containers[k.container];
-    if (c.unit === b.kitUnit) continue;
+    if (c.unit === h.kitUnit) continue;
     pending = true;
     const u = s.units[c.unit];
     if (seen.has(u.id) || u.where.kind !== 'slot' || busyUnit(s, u.id)) continue;
@@ -196,7 +316,9 @@ function kitStep(db: ContentDb, s: PlantState, b: Batch) {
     if (plan.slot[u.where.id].kind === 'staging') addTask(s, { kind: 'transfer', roles: [...WMS.keepers], unit: u.id, from, work: TRANSFER_WORK, prio: MES_PRIO.transfer, batch: b.id });
     else addTask(s, { kind: 'pick', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from, toKind: 'staging', work: 0, prio: MES_PRIO.pick, batch: b.id });
   }
-  if (!pending) {
+  if (pending) return;
+  if (b.status === 'packing') b.pack!.state = 'ready';
+  else {
     b.status = 'process';
     tryStart(db, s, b);
   }
@@ -265,7 +387,7 @@ function cleanTime(db: ContentDb, s: PlantState, room: Room): number {
   return Math.max(sec, 10 * MIN);
 }
 
-function deviate(s: PlantState, notices: Notice[], d: Omit<Deviation, 'id' | 'opened' | 'status'>) {
+export function deviate(s: PlantState, notices: Notice[], d: Omit<Deviation, 'id' | 'opened' | 'status'>) {
   const dev: Deviation = { id: nextId(s, 'D'), opened: s.t, status: 'open', ...d };
   s.deviations[dev.id] = dev;
   notices.push({ kind: 'deviation', id: dev.id });
@@ -284,9 +406,10 @@ export function mesDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
     case 'transfer': {
       // тара комплекта — на пластиковую паллету; деревянная — обратно на стеллаж или, пустая, из учёта
       const b = s.batches[t.batch!];
+      const h = holderOf(b);
       const u = s.units[t.unit!];
-      const kit = s.units[b.kitUnit!];
-      const mine = new Set(b.kit.map(k => k.container));
+      const kit = s.units[h.kitUnit!];
+      const mine = new Set(h.kit.map(k => k.container));
       for (const cid of u.items.filter(c => mine.has(c))) {
         s.containers[cid].unit = kit.id;
         kit.items.push(cid);
@@ -310,8 +433,11 @@ export function mesDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       stockChanged(s);
       if (kit.items.length > 0) returnTask(db, s, kit, t.batch!);
       else {
+        // чей это комплект — серии или упаковки — видно по паллете
+        const b = s.batches[t.batch!];
         delete s.units[kit.id];
-        delete s.batches[t.batch!].kitUnit;
+        if (b.kitUnit === kit.id) delete b.kitUnit;
+        else if (b.pack?.kitUnit === kit.id) delete b.pack.kitUnit;
       }
       return true;
     }
@@ -345,7 +471,7 @@ function afterUnload(db: ContentDb, s: PlantState, u: Unit) {
   addTask(s, { kind: 'putaway', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from: { kind: 'slot', id: u.where.id }, toKind: 'storage', near: { x: gate.x, z: gate.z }, work: 0, prio: PRIO.putaway });
 }
 
-function returnTask(db: ContentDb, s: PlantState, kit: Unit, batch: string) {
+export function returnTask(db: ContentDb, s: PlantState, kit: Unit, batch: string) {
   const plan = planOf(db, s.plant);
   const room = (kit.where as { id: string }).id;
   addTask(s, { kind: 'return', roles: [...WMS.keepers], unit: kit.id, from: roomPlace(plan, room), toKind: 'staging', work: TRANSFER_WORK, prio: MES_PRIO.return, batch });
@@ -539,6 +665,7 @@ function finish(db: ContentDb, s: PlantState, plan: PlantPlan, b: Batch, rec: St
     unitType: 'unit.pallet.plastic',
     vendorLot: code,
   });
+  lot.batch = b.id;
   b.bulk = lot.id;
   b.status = 'bulk';
   delete b.room;

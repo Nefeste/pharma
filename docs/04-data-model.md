@@ -169,22 +169,25 @@ review: draft
 
 ### Товарная позиция
 
+Так запись выглядит в прототипе (`content/skus/paracetamol500/n20.yaml`, часть 1г); срок годности, архивные образцы и
+спецификация — у материала готовой продукции (`content/materials/fg/`), рынок — с частью 1д.
+
 ```yaml
 id: sku.paracetamol500.n20
-product: prd.paracetamol500.tab
-pack: { blisters: 2, perBlister: 10 }
-line: { format: blister.10.std, carton: carton.s }
-bom:
-  - { material: mat.pk.pvc250, qty: 0.9g }           # на блистер
-  - { material: mat.pk.alu20, qty: 0.4g }
-  - { material: mat.pk.carton.paracetamol500n20.v1, qty: 1 }   # печатная, своя
-  - { material: mat.pk.leaflet.paracetamol500.v3, qty: 1 }
-  - { material: mat.pk.case.400x300x250, per: 120 }  # 120 пачек в ящике
-pallet: { unit: unit.euro, cases: 40, pattern: pat.400x300.8x5 }
-shelf: 36mo
-market: { group: mkt.analgesics, jnvlp: true }
-spec: spec.fp.paracetamol500
-review: draft
+product: prd.paracetamol500
+fg: mat.fg.paracetamol500-n20        # готовая продукция: тара — гофроящик, срок, архивные образцы, спецификация
+format: n20                          # другой формат на линии — переналадка
+perBlister: 10
+blisters: 2
+blister:                             # на блистер, граммы
+  - { material: mat.pk.pvc, g: 0.9 }
+  - { material: mat.pk.alu, g: 0.4 }
+carton:                              # на пачку, штуки — печатные: их сверяют после серии
+  - { material: mat.pk.carton-n20, n: 1 }
+  - { material: mat.pk.leaflet, n: 1 }
+case: { material: mat.pk.case, per: 120 }
+pallet: { cases: 40 }
+waste: { blisters: 50, cartons: 20 } # на наладку в начале серии
 ```
 
 ### Причина
@@ -232,7 +235,7 @@ review: draft
 | `Op` — операция серии | стадия, помещение, оборудование, люди, начало и конец, режимы, МОК, выход |
 | `Machine` — оборудование | модель, место, состояние, чистота и её срок, узлы с износом, квалификация, калибровки |
 | `Line` — линия | машины по порядку, накопители, формат, серия, счётчики, коды |
-| `Case` — гофроящик ГП | серия, SSCC, диапазоны кодов пачек и выбракованные, паллета |
+| `Case` — гофроящик ГП | в прототипе — тара партии ГП: пачки, диапазоны кодов, паллета, когда уложен; SSCC окно строит из номера тары; выбракованные коды — у задания на упаковку серии |
 | `Person` — человек | роль, навык, черты, допуски, график, усталость, настроение, задача сейчас |
 | `Task` — задача | вид, кто, техника, откуда, куда, начало и конец, приоритет |
 | `Sample`, `Test` | что, откуда, методика, прибор, аналитик, результат, проверка |

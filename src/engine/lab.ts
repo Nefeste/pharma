@@ -58,7 +58,8 @@ const labPlace = (plan: PlantPlan): Place => ({ kind: 'point', x: plan.lab.x, z:
  * Зовётся после размещения и каждый час.
  */
 export function startSampling(db: ContentDb, s: PlantState) {
-  const todo = Object.values(s.lots).filter(l => l.status === 'quarantine' && !l.sample);
+  // готовую продукцию не испытывают в лаборатории — её проверяет ООК (qa.ts)
+  const todo = Object.values(s.lots).filter(l => l.status === 'quarantine' && !l.sample && db.materials[l.material].kind !== 'fg');
   if (todo.length === 0) return;
   const plan = planOf(db, s.plant);
   const byLot = containersByLot(s);

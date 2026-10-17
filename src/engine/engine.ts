@@ -8,8 +8,10 @@ import type { ContentDb, Id } from '../content/types';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR } from './core/calendar';
 import { labDone, runDone, startSampling } from './lab';
-import { BATCH_HOUR, mesDone, mesHour, mesStep, placeOrder } from './mes';
+import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from './line';
+import { BATCH_HOUR, mesDone, mesHour, mesStep, packOrder, placeOrder } from './mes';
 import { planOf } from './plant';
+import { qaDone, qaStep, releaseCommand } from './qa';
 import { createLot, findSlot } from './stock';
 import { placePo } from './supply';
 import { dispatch, release } from './tasks';
@@ -59,6 +61,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     rooms: {},
     equipment: {},
     batches: {},
+    lines: {},
   };
   // люди — у входа, техника — на стоянке, приборы — в лаборатории по плану
   for (const row of sc.staff) {
@@ -77,6 +80,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   // помещения — чистые с начала партии; оборудование — по плану
   for (const r of plan.plant.rooms) s.rooms[r.id] = { id: r.id, type: r.type, status: 'clean', since: s.t };
   for (const e of plan.plant.equipment) s.equipment[e.id] = { id: e.id, type: e.type, room: e.room };
+  s.lines = newLines(db, sc.plant, s.t);
   // запас на старте — разрешённые партии на стеллажах, ближе к шлюзу для материалов и ниже
   const near = plan.slot[plan.byKind.staging[0].id];
   for (const st of sc.stock) {
@@ -100,7 +104,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   const out: Notice[] = [];
   for (const o of sc.orders) placePo(db, s, { kind: 'po', supplier: o.supplier, lines: o.lines, by: 'scenario' }, out);
   // задания на серию сценария: день от начала партии, с начала смены аппаратчиков
-  for (const b of sc.batches) placeOrder(db, s, { kind: 'order', recipe: b.recipe, notBefore: today + b.day * DAY + BATCH_HOUR, by: 'scenario' }, out);
+  for (const b of sc.batches) placeOrder(db, s, { kind: 'order', recipe: b.recipe, notBefore: today + b.day * DAY + BATCH_HOUR, by: 'scenario', ...(b.sku ? { sku: b.sku } : {}) }, out);
   dispatch(db, s);
   return s;
 }
@@ -129,7 +133,27 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: () => boolea
       dispatch(db, s);
       return notices;
     }
+    case 'pack': {
+      const notices: Notice[] = [];
+      packOrder(db, s, cmd, notices);
+      steps(db, s, notices);
+      return notices;
+    }
+    case 'release': {
+      const notices: Notice[] = [];
+      releaseCommand(db, s, cmd, notices);
+      steps(db, s, notices);
+      return notices;
+    }
   }
+}
+
+/** После события: производство, линии, качество, раздача задач. */
+function steps(db: ContentDb, s: PlantState, notices: Notice[]) {
+  mesStep(db, s);
+  lineStep(db, s, notices);
+  qaStep(db, s);
+  dispatch(db, s);
 }
 
 /**
@@ -165,6 +189,9 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       schedule(s.agenda, s.t + HOUR, { kind: 'hour' });
       startSampling(db, s);
       mesHour(db, s);
+      lineHour(db, s, notices);
+      lineStep(db, s, notices);
+      qaStep(db, s);
       dispatch(db, s);
       return;
     case 'truck':
@@ -175,10 +202,11 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       const t = s.tasks[ev.id];
       if (!t || t.v !== ev.v || t.state !== 'busy') return;
       release(db, s, t);
-      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices)) wmsDone(db, s, t, notices);
+      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices)) wmsDone(db, s, t, notices);
+      // паллета ГП уехала с места паллетирования — у линии освободилось место
+      if (t.kind === 'putaway' && t.line) lineUpdate(db, s, s.lines[t.line], notices);
       if (t.kind === 'putaway' || t.kind === 'stage') startSampling(db, s);
-      mesStep(db, s);
-      dispatch(db, s);
+      steps(db, s, notices);
       return;
     }
     case 'run':
@@ -188,6 +216,10 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
     case 'batch':
       mesStep(db, s);
       dispatch(db, s);
+      return;
+    case 'line':
+      lineEvent(db, s, ev.id, ev.v, notices);
+      steps(db, s, notices);
       return;
   }
 }

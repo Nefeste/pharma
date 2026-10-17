@@ -12,14 +12,23 @@ import { join, relative } from 'node:path';
 import { parse } from 'yaml';
 import type { z } from 'zod';
 import {
+  ATTR_SCALE,
+  ATTRS,
   type Attr,
+  type Cause,
   type ContainerType,
   type ContentDb,
+  type EquipmentType,
   type InstrumentType,
   type Material,
+  PARAM_SCALE,
+  type ParamUnit,
   type Plant,
+  type Product,
   type Profile,
   QUALITATIVE,
+  type Recipe,
+  type RecipeStage,
   type Role,
   type Scenario,
   type Shift,
@@ -43,6 +52,9 @@ const mg = (kg: number) => Math.round(kg * 1_000_000);
 const cm = (m: number) => Math.round(m * 100);
 const sec = (min: number) => Math.round(min * 60);
 const qual = (a: Attr) => QUALITATIVE.includes(a);
+/** Значение свойства в единицах движка (src/content/types.ts, `ATTRS`). */
+const scaleOf = (a: Attr) => ATTR_SCALE[ATTRS[a].unit];
+const attrVal = (a: Attr, v: number) => Math.round(v * scaleOf(a));
 
 function files(dir: string): string[] {
   return readdirSync(dir)
@@ -134,7 +146,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     if (t.inst) need(raw.instruments[t.inst], `методика ${t.id}: нет прибора ${t.inst}`);
     need(!t.unattended || t.inst, `методика ${t.id}: без прибора сама не работает`);
     need(!qual(t.attr) || t.sd === 0, `методика ${t.id}: ${t.attr} — качественное свойство, погрешности у него нет`);
-    tests[t.id] = { ...t, prep: sec(t.prep), run: sec(t.run), sd: share(t.sd) };
+    tests[t.id] = { ...t, prep: sec(t.prep), run: sec(t.run), sd: attrVal(t.attr, t.sd) };
   }
   const specs: Record<string, Spec> = {};
   for (const sp of Object.values(raw.specs)) {
@@ -146,7 +158,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       const limited = l.min !== undefined || l.max !== undefined;
       need(qual(t.attr) !== limited, `спецификация ${sp.id}: ${l.test} — ${qual(t.attr) ? 'у качественного свойства пределов нет' : 'нужен предел'}`);
       if (l.min !== undefined && l.max !== undefined) need(l.min <= l.max, `спецификация ${sp.id}: у ${l.test} нижний предел выше верхнего`);
-      lines.push({ test: l.test, ...(l.min !== undefined ? { min: share(l.min) } : {}), ...(l.max !== undefined ? { max: share(l.max) } : {}) });
+      lines.push({ test: l.test, ...(l.min !== undefined ? { min: attrVal(t.attr, l.min) } : {}), ...(l.max !== undefined ? { max: attrVal(t.attr, l.max) } : {}) });
     }
     need(new Set(sp.tests.map(l => l.test)).size === sp.tests.length, `спецификация ${sp.id}: методика повторяется`);
     specs[sp.id] = { ...sp, tests: lines };
@@ -160,11 +172,11 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     if (c) need(('kg' in c.capacity) === (m.unit === 'kg'), `материал ${m.id}: тара ${c.id} в других единицах`);
     const sp = raw.specs[m.spec];
     need(sp, `материал ${m.id}: нет спецификации ${m.spec}`);
-    // у каждого количественного свойства спецификации — истинное среднее и разброс
+    // у каждого количественного свойства спецификации — истинное среднее и разброс; у балка они — от серии (карта)
     for (const l of sp?.tests ?? []) {
       needed.add(l.test);
       const a = raw.tests[l.test]?.attr;
-      if (a && !qual(a)) need(m.props[a], `материал ${m.id}: спецификация испытывает ${a}, а свойства нет`);
+      if (a && !qual(a) && m.kind !== 'bulk') need(m.props[a], `материал ${m.id}: спецификация испытывает ${a}, а свойства нет`);
     }
     for (const a of Object.keys(m.props) as Attr[]) need(!qual(a), `материал ${m.id}: ${a} — качественное свойство, среднего у него нет`);
     if (m.bad) {
@@ -177,12 +189,12 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     if (m.unit === 'pcs') need(Number.isInteger(m.sample), `материал ${m.id}: проба — целые штуки`);
     if (c) need(sample <= ('kg' in c.capacity ? mg(c.capacity.kg) : c.capacity.pcs), `материал ${m.id}: проба больше тары`);
     const props: Material['props'] = {};
-    for (const [a, v] of Object.entries(m.props) as [Attr, [number, number]][]) props[a] = [share(v[0]), share(v[1])];
+    for (const [a, v] of Object.entries(m.props) as [Attr, [number, number]][]) props[a] = [attrVal(a, v[0]), attrVal(a, v[1])];
     materials[m.id] = {
       ...m,
       unit: m.unit === 'kg' ? 'mass' : 'pcs',
       props,
-      ...(m.bad ? { bad: { attr: m.bad.attr, ...(m.bad.shift !== undefined ? { shift: share(m.bad.shift) } : {}) } } : {}),
+      ...(m.bad ? { bad: { attr: m.bad.attr, ...(m.bad.shift !== undefined ? { shift: attrVal(m.bad.attr, m.bad.shift) } : {}) } } : {}),
       sample,
     };
   }
@@ -213,6 +225,109 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     need(sh.from < sh.to, `график ${sh.id}: смена кончается раньше, чем начинается`);
     shifts[sh.id] = { ...sh, days: [...new Set(sh.days)].sort().map(d => d - 1) };
   }
+  const products: Record<string, Product> = { ...raw.products };
+  const equipment: Record<string, EquipmentType> = {};
+  for (const e of Object.values(raw.equipment)) {
+    need(e.cleaning.minor <= e.cleaning.major, `оборудование ${e.id}: малая уборка дольше большой`);
+    equipment[e.id] = { ...e, cleaning: { minor: sec(e.cleaning.minor), major: sec(e.cleaning.major) } };
+  }
+  // единица каждого режима — одна во всех картах: на неё считаются коэффициенты причин
+  const paramUnits: Record<string, ParamUnit> = {};
+  const recipes: Record<string, Recipe> = {};
+  for (const r of Object.values(raw.recipes)) {
+    const where = `карта ${r.id}`;
+    need(raw.products[r.product], `${where}: нет продукта ${r.product}`);
+    const bulk = raw.materials[r.bulk];
+    need(bulk?.kind === 'bulk', `${where}: балк ${r.bulk} — не материал вида bulk`);
+    for (const l of r.bom) {
+      const m = raw.materials[l.material];
+      need(m && (m.kind === 'api' || m.kind === 'excipient'), `${where}: в составе ${l.material} — не АФС и не вспомогательное вещество`);
+      if (l.potency) need(m?.kind === 'api', `${where}: пересчёт на содержание — только у АФС`);
+    }
+    need(r.bom.filter(l => l.qs).length <= 1, `${where}: «до массы» — не больше одной строки`);
+    need(Math.abs(r.bom.reduce((n, l) => n + l.kg, 0) - r.batch.kg) < 0.0005, `${where}: состав не сходится с массой серии`);
+    need(new Set(r.stages.map(st => st.id)).size === r.stages.length, `${where}: стадии повторяются`);
+    const stages: RecipeStage[] = r.stages.map(st => {
+      const at = `${where}, стадия ${st.id}`;
+      for (const e of st.equipment) need(raw.equipment[e], `${at}: нет оборудования ${e}`);
+      need(raw.roles[st.staff.role], `${at}: нет роли ${st.staff.role}`);
+      const t = st.time;
+      need(t.loads === undefined || t.perLoad !== undefined, `${at}: загрузки без времени на загрузку`);
+      need(!(t.kgPerHour && t.unitsPerHour), `${at}: скорость — либо кг, либо штуки в час`);
+      for (const p of st.params) {
+        need(p.range[0] <= p.target && p.target <= p.range[1], `${at}: цель режима ${p.id} вне диапазона`);
+        need(!paramUnits[p.id] || paramUnits[p.id] === p.unit, `${at}: режим ${p.id} в других единицах, чем в другой карте`);
+        paramUnits[p.id] = p.unit;
+      }
+      need(new Set(st.params.map(p => p.id)).size === st.params.length, `${at}: режимы повторяются`);
+      const ipc = st.ipc.map(c => {
+        const m = raw.tests[c.test];
+        need(m, `${at}: нет методики ${c.test}`);
+        need(m && !qual(m.attr) && (c.min !== undefined || c.max !== undefined), `${at}: МОК ${c.test} — нужен предел`);
+        const a = m?.attr ?? 'assay';
+        return {
+          test: c.test,
+          ...(c.every !== undefined ? { every: sec(c.every) } : {}),
+          ...(c.min !== undefined ? { min: attrVal(a, c.min) } : {}),
+          ...(c.max !== undefined ? { max: attrVal(a, c.max) } : {}),
+        };
+      });
+      const sc = (u: ParamUnit, v: number) => Math.round(v * PARAM_SCALE[u]);
+      return {
+        id: st.id,
+        room: st.room,
+        equipment: st.equipment,
+        staff: st.staff,
+        time: {
+          setup: sec(t.setup),
+          ...(t.perLoad !== undefined ? { perLoad: sec(t.perLoad), loads: t.loads ?? 1 } : {}),
+          ...(t.perComponent !== undefined ? { perComponent: sec(t.perComponent) } : {}),
+          ...(t.kgPerHour !== undefined ? { mgPerHour: mg(t.kgPerHour) } : {}),
+          ...(t.unitsPerHour !== undefined ? { unitsPerHour: Math.round(t.unitsPerHour) } : {}),
+          spread: share(t.spread),
+        },
+        params: st.params.map(p => ({ id: p.id, unit: p.unit, target: sc(p.unit, p.target), range: [sc(p.unit, p.range[0]), sc(p.unit, p.range[1])] as [number, number], sd: sc(p.unit, p.sd) })),
+        ipc,
+        loss: [share(st.loss[0]), share(st.loss[1])] as [number, number],
+      };
+    });
+    // показатели балка: всё, что испытывает его спецификация, — с номиналом
+    const quality: Recipe['quality'] = {};
+    for (const [a, v] of Object.entries(r.quality) as [Attr, [number, number]][]) {
+      need(!qual(a), `${where}: ${a} — качественное свойство, номинала у него нет`);
+      quality[a] = [attrVal(a, v[0]), attrVal(a, v[1])];
+    }
+    for (const l of (bulk && raw.specs[bulk.spec]?.tests) ?? []) {
+      const a = raw.tests[l.test]?.attr;
+      if (a && !qual(a)) need(r.quality[a], `${where}: спецификация балка испытывает ${a}, а номинала нет`);
+    }
+    recipes[r.id] = {
+      id: r.id,
+      name: r.name,
+      product: r.product,
+      batch: { mass: mg(r.batch.kg), units: r.batch.units },
+      bom: r.bom.map(l => ({ material: l.material, qty: mg(l.kg), ...(l.potency ? { potency: true } : {}), ...(l.qs ? { qs: true } : {}) })),
+      stages,
+      bulk: r.bulk,
+      quality,
+      yield: { expected: share(r.yield.expected), alarm: share(r.yield.alarm) },
+      ...(r.source ? { source: r.source, review: r.review } : {}),
+    };
+  }
+  // причины: коэффициент — из «единиц показателя на единицу отхода» записи в единицы движка
+  const causes: Record<string, Cause> = {};
+  for (const c of Object.values(raw.causes)) {
+    const where = `причина ${c.id}`;
+    const d = c.driver;
+    let per = 1;
+    if ('param' in d) {
+      need(paramUnits[d.param], `${where}: режима ${d.param} нет ни в одной карте`);
+      per = PARAM_SCALE[paramUnits[d.param] ?? 'rpm'];
+    } else if ('potency' in d) per = 100;
+    else per = scaleOf(d.attr);
+    for (const e of c.effects) need(!qual(e.attr), `${where}: ${e.attr} — качественное свойство`);
+    causes[c.id] = { ...c, effects: c.effects.map(e => ({ attr: e.attr, coef: (e.coef * scaleOf(e.attr)) / per })) };
+  }
   const plants: Record<string, Plant> = {};
   for (const p of Object.values(raw.plants)) {
     const r4 = (r: [number, number, number, number]): [number, number, number, number] => [cm(r[0]), cm(r[1]), cm(r[2]), cm(r[3])];
@@ -223,10 +338,16 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       racks: p.racks.map(r => ({ ...r, x: cm(r.x), z: cm(r.z) })),
       rooms: p.rooms.map(r => ({ ...r, rect: r4(r.rect) })),
       instruments: p.instruments,
+      equipment: p.equipment,
       points: { park: [cm(p.points.park[0]), cm(p.points.park[1])], entrance: [cm(p.points.entrance[0]), cm(p.points.entrance[1])] },
     };
-    const ids = [...p.docks.map(d => d.id), ...p.zones.map(z => z.id), ...p.racks.map(r => r.id), ...p.rooms.map(r => r.id), ...p.instruments.map(i => i.id)];
-    need(new Set(ids).size === ids.length, `план ${p.id}: имена рамп, зон, стеллажей, помещений и приборов повторяются`);
+    const ids = [...p.docks.map(d => d.id), ...p.zones.map(z => z.id), ...p.racks.map(r => r.id), ...p.rooms.map(r => r.id), ...p.instruments.map(i => i.id), ...p.equipment.map(e => e.id)];
+    need(new Set(ids).size === ids.length, `план ${p.id}: имена рамп, зон, стеллажей, помещений, приборов и оборудования повторяются`);
+    need(new Set(p.rooms.map(r => r.type)).size === p.rooms.length, `план ${p.id}: тип помещения повторяется — стадия не знает, куда идти`);
+    for (const e of p.equipment) {
+      need(raw.equipment[e.type], `план ${p.id}: оборудование ${e.id} — нет вида ${e.type}`);
+      need(p.rooms.some(r => r.id === e.room), `план ${p.id}: оборудование ${e.id} — нет помещения ${e.room}`);
+    }
     for (const k of ['receiving', 'quarantine', 'rejected', 'staging', 'sampling'] as const) need(p.zones.some(z => z.kind === k), `план ${p.id}: нет зоны «${k}»`);
     need(p.docks.some(d => d.kind === 'in'), `план ${p.id}: нет рампы приёмки`);
     need(p.rooms.some(r => r.type === 'lab'), `план ${p.id}: нет лаборатории`);
@@ -250,6 +371,17 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       need(shifts[r.shift], `${where}: нет графика ${r.shift}`);
     }
     for (const v of s.vehicles) need(vehicles[v.type], `${where}: нет техники ${v.type}`);
+    // задания на серию: у каждой стадии карты в плане — помещение этого типа и оборудование в нём
+    const pl = raw.plants[s.plant];
+    for (const b of s.batches) {
+      const r = raw.recipes[b.recipe];
+      need(r, `${where}: нет карты ${b.recipe}`);
+      for (const st of r?.stages ?? []) {
+        const room = pl?.rooms.find(x => x.type === st.room);
+        need(room, `${where}: для стадии ${st.id} нет помещения «${st.room}»`);
+        for (const e of st.equipment) need(room && pl.equipment.some(x => x.room === room.id && x.type === e), `${where}: в помещении «${st.room}» нет ${e}`);
+      }
+    }
     for (const o of s.orders) {
       const sup = suppliers[o.supplier];
       need(sup, `${where}: нет поставщика ${o.supplier}`);
@@ -280,5 +412,9 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     instruments,
     tests,
     specs,
+    products,
+    equipment,
+    recipes,
+    causes,
   };
 }

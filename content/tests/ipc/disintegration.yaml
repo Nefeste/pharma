@@ -1,0 +1,8 @@
+id: test.ipc.disintegration
+name: { ru: Распадаемость (МОК), en: Disintegration (IPC) }
+attr: disintegration
+inst: inst.disintegration
+prep: 10
+run: 15
+unattended: false
+sd: 0.5

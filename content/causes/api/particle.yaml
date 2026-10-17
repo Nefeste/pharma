@@ -1,0 +1,9 @@
+# Размер частиц АФС (d50): крупнее частицы — медленнее растворение. У хорошо растворимого парацетамола влияние мало:
+# коэффициент маленький (гипотеза).
+id: cause.api.particle
+name: { ru: Крупная фракция АФС, en: Coarse API particles }
+driver: { lots: api, attr: particle }
+effects:
+  - { attr: dissolution, coef: -0.05 }
+source: [ich-q6a, gao-2021, kalantzi-2006]
+review: draft

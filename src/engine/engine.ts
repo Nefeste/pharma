@@ -8,6 +8,7 @@ import type { ContentDb, Id } from '../content/types';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR } from './core/calendar';
 import { labDone, runDone, startSampling } from './lab';
+import { BATCH_HOUR, mesDone, mesHour, mesStep, placeOrder } from './mes';
 import { planOf } from './plant';
 import { createLot, findSlot } from './stock';
 import { placePo } from './supply';
@@ -55,6 +56,9 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     samples: {},
     tests: {},
     deviations: {},
+    rooms: {},
+    equipment: {},
+    batches: {},
   };
   // люди — у входа, техника — на стоянке, приборы — в лаборатории по плану
   for (const row of sc.staff) {
@@ -70,6 +74,9 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     }
   }
   for (const i of plan.plant.instruments) s.instruments[i.id] = { id: i.id, type: i.type, room: i.room };
+  // помещения — чистые с начала партии; оборудование — по плану
+  for (const r of plan.plant.rooms) s.rooms[r.id] = { id: r.id, type: r.type, status: 'clean', since: s.t };
+  for (const e of plan.plant.equipment) s.equipment[e.id] = { id: e.id, type: e.type, room: e.room };
   // запас на старте — разрешённые партии на стеллажах, ближе к шлюзу для материалов и ниже
   const near = plan.slot[plan.byKind.staging[0].id];
   for (const st of sc.stock) {
@@ -92,6 +99,8 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   // заказы сценария — в первую секунду партии
   const out: Notice[] = [];
   for (const o of sc.orders) placePo(db, s, { kind: 'po', supplier: o.supplier, lines: o.lines, by: 'scenario' }, out);
+  // задания на серию сценария: день от начала партии, с начала смены аппаратчиков
+  for (const b of sc.batches) placeOrder(db, s, { kind: 'order', recipe: b.recipe, notBefore: today + b.day * DAY + BATCH_HOUR, by: 'scenario' }, out);
   dispatch(db, s);
   return s;
 }
@@ -112,6 +121,12 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: () => boolea
     case 'po': {
       const notices: Notice[] = [];
       placePo(db, s, cmd, notices);
+      return notices;
+    }
+    case 'order': {
+      const notices: Notice[] = [];
+      placeOrder(db, s, cmd, notices);
+      dispatch(db, s);
       return notices;
     }
   }
@@ -149,6 +164,7 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       // смены начинаются и кончаются в целые часы: раздать то, что ждало людей; партии, готовые к отбору проб, — в план
       schedule(s.agenda, s.t + HOUR, { kind: 'hour' });
       startSampling(db, s);
+      mesHour(db, s);
       dispatch(db, s);
       return;
     case 'truck':
@@ -159,13 +175,18 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       const t = s.tasks[ev.id];
       if (!t || t.v !== ev.v || t.state !== 'busy') return;
       release(db, s, t);
-      if (!labDone(db, s, t, notices)) wmsDone(db, s, t, notices);
-      if (t.kind === 'putaway') startSampling(db, s);
+      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices)) wmsDone(db, s, t, notices);
+      if (t.kind === 'putaway' || t.kind === 'stage') startSampling(db, s);
+      mesStep(db, s);
       dispatch(db, s);
       return;
     }
     case 'run':
       runDone(db, s, ev.test, ev.v);
+      dispatch(db, s);
+      return;
+    case 'batch':
+      mesStep(db, s);
       dispatch(db, s);
       return;
   }

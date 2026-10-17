@@ -29,6 +29,8 @@ export interface NewTask {
   not?: string[];
   lot?: string;
   test?: string;
+  batch?: string;
+  room?: string;
 }
 
 export function addTask(s: PlantState, n: NewTask): Task {
@@ -124,7 +126,14 @@ function assign(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task): boolean
     people.push(p);
     skip.add(p.id);
   }
-  start(db, s, plan, t, people, undefined, undefined, inst);
+  // пешком, но с местом назначения на полу (возврат остатков в шлюз): место — ближе к началу задачи
+  let to: string | undefined;
+  if (t.toKind) {
+    const sl = findSlot(s, plan, t.toKind, t.near ?? from, 0);
+    if (!sl) return false;
+    to = sl.id;
+  }
+  start(db, s, plan, t, people, undefined, to, inst);
   return true;
 }
 
@@ -144,8 +153,10 @@ function start(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, people: P
     v.task = t.id;
     t.vehicle = v.id;
   } else {
+    // пешком: дойти, взять, донести до места назначения (если оно есть) и там работать
     const walk = Math.max(...people.map(p => travel(p, from, WALK)));
-    times = [t0, t0 + walk, t0 + walk, t0 + walk, t0 + walk + t.work];
+    const carry = to ? travel(from, plan.slot[to], WALK) : 0;
+    times = [t0, t0 + walk, t0 + walk, t0 + walk + carry, t0 + walk + carry + t.work];
   }
   if (to) {
     t.to = to;

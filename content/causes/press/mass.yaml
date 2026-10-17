@@ -1,0 +1,8 @@
+# Масса таблетки: при однородной массе содержание в таблетке пропорционально её массе — на каждый 1 % массы 1 %.
+id: cause.press.mass
+name: { ru: Масса таблетки не по цели, en: Tablet mass off target }
+driver: { attr: mass }
+effects:
+  - { attr: assay, coef: 1 }
+source: [fda-osd-1994]
+review: draft

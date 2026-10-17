@@ -1,0 +1,9 @@
+# Испытания балка в лаборатории. Времена и погрешности — гипотезы; настоящие — по НД и валидации методик.
+id: test.dissolution
+name: { ru: Растворение, en: Dissolution }
+attr: dissolution
+inst: inst.dissolution
+prep: 60
+run: 45
+unattended: false
+sd: 2

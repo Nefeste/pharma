@@ -107,8 +107,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   the integer normal draw), `save.ts` (snapshot and migrations), `plant.ts` (slots, docks, rooms, the lab and
   distances from the plant record), `stock.ts` (lots, containers, pallets, slots, the lot status table), `supply.ts`
   (purchase orders), `wms.ts` (truck, unloading, receiving, putaway), `quality.ts` (true lot properties, the lab
-  result, spec limits), `lab.ts` (sampling, lab tests, the lot decision), `tasks.ts` (tasks and the dispatcher:
-  people, vehicles, instruments), `staff.ts` (shifts), `invariants.ts`.
+  result, spec limits), `lab.ts` (sampling, lab tests, the lot decision), `mes.ts` (batch orders, FEFO reservation
+  with potency, kitting through the airlock, stages in rooms with equipment and people, cleaning, process parameters,
+  true batch quality with causes, IPC, the bulk lot), `tasks.ts` (tasks and the dispatcher: people, vehicles,
+  instruments), `staff.ts` (shifts), `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker (`worker.ts`)

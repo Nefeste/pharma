@@ -20,6 +20,8 @@ import type { Lot, Notice, PlantState } from '../../src/engine/types';
 const SC = 'scn.proto';
 const plan = planOf(db, db.scenarios[SC].plant);
 const API = 'mat.api.paracetamol';
+/** Тот же завод без заданий на серию: путь партии через лабораторию — без балка в очереди и без расхода в серии. */
+const labOnly: ContentDb = { ...db, scenarios: { ...db.scenarios, [SC]: { ...db.scenarios[SC], batches: [] } } };
 
 /** Точное распределение суммы 12 равномерных целых [0, 10 000) — того, из чего `normal` делает нормальную величину. */
 function sumPmf(): Float64Array {
@@ -66,20 +68,20 @@ function judge(s: PlantState, lines: SpecLine[], truth: Props): boolean {
 }
 
 /** Прожить `days` суток кусками по `step` (час): инварианты — после каждого куска, `look` — перед каждым событием. */
-function live(s: PlantState, days: number, look?: () => void, step = HOUR): Notice[] {
+function live(s: PlantState, days: number, look?: () => void, step = HOUR, base: ContentDb = db): Notice[] {
   const out: Notice[] = [];
   const end = s.t + days * DAY;
   const more = look ? () => (look(), true) : undefined;
   while (s.t < end) {
-    out.push(...apply(db, s, { kind: 'advance', seconds: Math.min(step, end - s.t) }, more));
+    out.push(...apply(base, s, { kind: 'advance', seconds: Math.min(step, end - s.t) }, more));
     look?.();
-    const bad = check(db, s);
+    const bad = check(base, s);
     if (bad.length) throw new Error(`${s.t}: ${bad.slice(0, 5).join('; ')}`);
   }
   return out;
 }
 
-const fresh = (s: PlantState, material: string) => Object.values(s.lots).find(l => l.material === material && l.supplier !== 'start');
+const fresh = (s: PlantState, material: string) => Object.values(s.lots).find(l => l.material === material && l.po);
 
 describe('план отбора', () => {
   const lot = (material: string, supplier: string) => ({ material, supplier }) as Lot;
@@ -138,7 +140,7 @@ describe('ложное отклонение', () => {
 
 describe('путь партии', () => {
   test('АФС: все бочки в пробах, ВЭЖХ — ночью сама, результат проверяет второе лицо, решение — начальник ОКК', () => {
-    const s = newPlant(db, { scenario: SC });
+    const s = newPlant(labOnly, { scenario: SC });
     // смены испытаний: когда какое состояние началось
     const seen: Record<string, { state: string; t: number }[]> = {};
     const busy: Record<string, string[]> = {};
@@ -148,7 +150,7 @@ describe('путь партии', () => {
         if (h.at(-1)?.state !== q.state) h.push({ state: q.state, t: s.t });
       }
       for (const i of Object.values(s.instruments)) if (i.test && !(busy[i.id] ??= []).includes(i.test)) busy[i.id].push(i.test);
-    });
+    }, HOUR, labOnly);
     const lot = fresh(s, API)!;
     expect(lot.status).toBe('released');
     // проба — с каждой бочки по 20 г: бочки вскрыты, масса списана
@@ -191,19 +193,19 @@ describe('путь партии', () => {
   });
 
   test('брак ловится: партия отклонена, открыто отклонение, паллеты — в зоне отклонённого с красным ярлыком', () => {
-    const s = newPlant(db, { scenario: SC, seed: 2 });
+    const s = newPlant(labOnly, { scenario: SC, seed: 2 });
     // ждём партию АФС в карантине и портим её истинное содержание: так брак выглядит изнутри движка
-    while (!fresh(s, API)) apply(db, s, { kind: 'advance', seconds: HOUR });
+    while (!fresh(s, API)) apply(labOnly, s, { kind: 'advance', seconds: HOUR });
     const lot = fresh(s, API)!;
     lot.truth.assay = 9600;
-    const out = live(s, 10);
+    const out = live(s, 10, undefined, HOUR, labOnly);
     expect(lot.status).toBe('rejected');
     const n = out.find(x => x.kind === 'lotRejected');
     if (n?.kind !== 'lotRejected') throw new Error('no rejection');
     expect(n.lot).toBe(lot.id);
     const d = s.deviations[n.deviation];
     expect(d).toMatchObject({ kind: 'oos', lot: lot.id, status: 'open' });
-    expect(d.tests.map(id => s.tests[id].method)).toEqual(['test.hplc-assay']);
+    expect(d.tests!.map(id => s.tests[id].method)).toEqual(['test.hplc-assay']);
     // паспорт — без брака: изготовитель его не заметил
     expect(lot.coa.assay).not.toBe(9600);
     for (const u of Object.values(s.units).filter(u => s.containers[u.items[0]].lot === lot.id)) {
@@ -223,22 +225,27 @@ describe('ни одна партия не уходит дальше карант
       const s = newPlant(db, { scenario: SC, seed });
       const out = live(s, 90, () => {
         for (const u of Object.values(s.units)) {
-          const lot = s.lots[s.containers[u.items[0]].lot];
-          if (lot.status === 'released' || lot.status === 'rejected') continue;
+          // пластиковые паллеты в помещениях — комплект серии и балк: там до решения стоит только балк
+          const lot = u.items.length > 0 ? s.lots[s.containers[u.items[0]].lot] : undefined;
+          if (!lot || lot.status === 'released' || lot.status === 'rejected') continue;
+          if (u.where.kind === 'room') {
+            expect(db.materials[lot.material].kind).toBe('bulk');
+            continue;
+          }
           const kind = u.where.kind === 'slot' ? plan.slot[u.where.id].kind : 'truck';
           if (!['truck', 'receiving', 'quarantine', 'sampling'].includes(kind)) throw new Error(`seed ${seed}: ${lot.id} (${lot.status}) в «${kind}»`);
         }
       }, 6 * HOUR);
       for (const n of out) {
         if (n.kind !== 'lotReleased' && n.kind !== 'lotRejected') continue;
-        decided++;
         const lot = s.lots[n.lot];
+        if (lot.po) decided++;
         const tests = s.samples[lot.sample!].tests.map(id => s.tests[id]);
         const failed = tests.filter(q => !q.pass).map(q => q.id);
         if (n.kind === 'lotReleased') expect(failed).toEqual([]);
         else expect(s.deviations[n.deviation].tests).toEqual(failed);
-        // брак: паспорт не сходится с истиной — сдвиг далеко за пределами, его ловят всегда
-        if (JSON.stringify(lot.truth) !== JSON.stringify(lot.coa)) {
+        // брак: паспорт не сходится с истиной — сдвиг далеко за пределами, его ловят всегда; у балка паспорта нет
+        if (lot.po && JSON.stringify(lot.truth) !== JSON.stringify(lot.coa)) {
           bad++;
           expect(n.kind).toBe('lotRejected');
         }
@@ -247,7 +254,8 @@ describe('ни одна партия не уходит дальше карант
     }
     expect(decided).toBe(30 * db.scenarios[SC].orders.reduce((k, o) => k + o.lines.length, 0));
     expect(bad).toBeGreaterThan(0);
-  });
+    // 30 прогонов с производством — около двух секунд; запас на медленную машину CI
+  }, 20_000);
 });
 
 describe('сохранение посреди испытания', () => {

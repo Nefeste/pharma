@@ -29,6 +29,8 @@ export const en: Strings = {
     truck: 'A truck is at the receiving dock',
     lotReleased: 'Lot released: all tests within specification',
     lotRejected: 'Lot rejected: out-of-specification result',
+    batchBulk: 'Batch made: bulk in quarantine',
+    deviation: 'Production deviation',
     refused: 'The command was refused',
   },
   debug: {

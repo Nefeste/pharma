@@ -69,6 +69,8 @@ export interface Scenario {
   vehicles: { type: Id; n: number }[];
   orders: StartOrder[];
   stock: StartStock[];
+  /** задания на серию: карта и день «не раньше» от начала партии */
+  batches: { recipe: Id; day: number }[];
 }
 
 /** Грузовая единица: паллета или транспортный короб (docs/04-data-model.md, §3). */
@@ -87,13 +89,45 @@ export interface UnitType {
   review?: Review;
 }
 
-export type MaterialKind = 'api' | 'excipient' | 'packaging';
+/** Вид материала; `bulk` — свой полупродукт: таблетки после производства, до упаковки. */
+export type MaterialKind = 'api' | 'excipient' | 'packaging' | 'bulk';
 
 /**
- * Свойство качества (геймдизайн, §6.1). Значение — доли 1/10 000: у количественного — доля от целого (содержание 99,8 %
- * — 9 980); у качественного — 10 000 «соответствует» или 0 «нет».
+ * Свойство качества (геймдизайн, §6.1): подлинность, содержание, влажность, внешний вид, размер частиц АФС, средняя
+ * масса таблетки (доля от цели), прочность, истираемость, распадаемость, растворение.
  */
-export type Attr = 'identity' | 'assay' | 'moisture' | 'appearance';
+export type Attr =
+  | 'identity'
+  | 'assay'
+  | 'moisture'
+  | 'appearance'
+  | 'particle'
+  | 'mass'
+  | 'hardness'
+  | 'friability'
+  | 'disintegration'
+  | 'dissolution';
+
+/**
+ * Единицы свойства в записях и в движке. Проценты — в долях 1/10 000 (99,8 % — 9 980); ньютоны — в сотых; минуты — в
+ * секундах; микрометры — целыми; качественное — 10 000 «соответствует» или 0 «нет». `whole` — доля от целого: истинное
+ * значение не выходит за 0–100 %.
+ */
+export const ATTRS: Record<Attr, { unit: 'qual' | 'pct' | 'N' | 'min' | 'um'; whole?: true }> = {
+  identity: { unit: 'qual' },
+  appearance: { unit: 'qual' },
+  assay: { unit: 'pct', whole: true },
+  moisture: { unit: 'pct', whole: true },
+  friability: { unit: 'pct', whole: true },
+  dissolution: { unit: 'pct', whole: true },
+  mass: { unit: 'pct' },
+  hardness: { unit: 'N' },
+  disintegration: { unit: 'min' },
+  particle: { unit: 'um' },
+};
+
+/** Во сколько раз значение в движке больше записанного: % → доли 1/10 000, Н → сотые, мин → с, мкм → мкм. */
+export const ATTR_SCALE = { qual: 1, pct: 100, N: 100, min: 60, um: 1 } as const;
 
 /** Качественные свойства: в спецификации у них нет пределов. */
 export const QUALITATIVE: readonly Attr[] = ['identity', 'appearance'];
@@ -115,9 +149,9 @@ export interface Material {
   potency?: boolean;
   /** спецификация входного контроля */
   spec: Id;
-  /** истинные свойства партии: среднее и разброс (СКО) между партиями, доли 1/10 000 — только количественные */
+  /** истинные свойства партии: среднее и разброс (СКО) между партиями, в единицах движка — только количественные */
   props: Partial<Record<Attr, [number, number]>>;
-  /** брак у поставщика: свойство и сдвиг, доли 1/10 000; у качественного свойства — «не соответствует» */
+  /** брак у поставщика: свойство и сдвиг в единицах движка; у качественного свойства — «не соответствует» */
   bad?: { attr: Attr; shift?: number };
   /** проба с одной тары: мг или шт. */
   sample: number;
@@ -132,7 +166,7 @@ export type LoadKind = 'cases' | 'drums' | 'bags' | 'rolls';
 export interface ContainerType {
   id: Id;
   name: Text;
-  kind: 'drum' | 'bag' | 'roll' | 'box' | 'bundle';
+  kind: 'drum' | 'bag' | 'roll' | 'box' | 'bundle' | 'bin';
   /** сколько материала в таре: мг или штуки — по единице материала */
   capacity: number;
   /** сколько тары на паллете */
@@ -213,6 +247,8 @@ export interface Plant {
   rooms: { id: string; type: string; rect: [number, number, number, number]; grade: 'D' | 'cnc' }[];
   /** приборы лаборатории: вид и помещение */
   instruments: { id: string; type: Id; room: string }[];
+  /** оборудование производства: вид и помещение */
+  equipment: { id: string; type: Id; room: string }[];
   /** точки: стоянка техники, вход персонала */
   points: { park: [number, number]; entrance: [number, number] };
 }
@@ -235,13 +271,13 @@ export interface TestMethod {
   run: number;
   /** прибор работает без человека — и ночью; иначе аналитик стоит у прибора всё время */
   unattended: boolean;
-  /** погрешность — СКО, доли 1/10 000 */
+  /** погрешность — СКО в единицах движка */
   sd: number;
   source?: string[];
   review?: Review;
 }
 
-/** Строка спецификации: методика и пределы, доли 1/10 000; у качественного свойства пределов нет. */
+/** Строка спецификации: методика и пределы в единицах движка; у качественного свойства пределов нет. */
 export interface SpecLine {
   test: Id;
   min?: number;
@@ -251,6 +287,86 @@ export interface SpecLine {
 export interface Spec {
   id: Id;
   tests: SpecLine[];
+  source?: string[];
+  review?: Review;
+}
+
+/** Продукт: лекарство по МНН и форма. */
+export interface Product {
+  id: Id;
+  name: Text;
+  inn: string;
+  form: 'tablet';
+}
+
+/** Вид оборудования производства: уборка малая и большая, с (геймдизайн, §5.5). */
+export interface EquipmentType {
+  id: Id;
+  name: Text;
+  cleaning: { minor: number; major: number };
+}
+
+/** Единица режима в движке: об/мин — целыми, минуты — секундами, °C — десятыми, кН — сотыми, кг — граммами. */
+export type ParamUnit = 'rpm' | 'min' | 'C' | 'kN' | 'kg';
+export const PARAM_SCALE: Record<ParamUnit, number> = { rpm: 1, min: 60, C: 10, kN: 100, kg: 1000 };
+
+export interface StageParam {
+  id: string;
+  unit: ParamUnit;
+  /** цель, допустимый диапазон, разброс от серии к серии — в единицах движка */
+  target: number;
+  range: [number, number];
+  sd: number;
+}
+
+/** Межоперационный контроль стадии: методика, как часто (с; нет — раз в конце), пределы в единицах движка. */
+export interface StageIpc {
+  test: Id;
+  every?: number;
+  min?: number;
+  max?: number;
+}
+
+export interface RecipeStage {
+  id: string;
+  /** тип помещения */
+  room: string;
+  equipment: Id[];
+  staff: { role: Id; n: number };
+  /** с: подготовка, на загрузку, на компонент; скорость — мг или штук в час; разброс длительности, доли 1/10 000 */
+  time: { setup: number; perLoad?: number; loads?: number; perComponent?: number; mgPerHour?: number; unitsPerHour?: number; spread: number };
+  params: StageParam[];
+  ipc: StageIpc[];
+  /** потери стадии: среднее и разброс, доли 1/10 000 от массы на входе */
+  loss: [number, number];
+}
+
+/** Технологическая карта (docs/04-data-model.md, §4–5). Массы — мг, доли — 1/10 000. */
+export interface Recipe {
+  id: Id;
+  name: Text;
+  product: Id;
+  batch: { mass: number; units: number };
+  /** состав на серию, мг: `potency` — с пересчётом на содержание партии; `qs` — добирает массу серии */
+  bom: { material: Id; qty: number; potency?: boolean; qs?: boolean }[];
+  stages: RecipeStage[];
+  bulk: Id;
+  /** показатели балка: номинал и разброс серии в единицах движка */
+  quality: Partial<Record<Attr, [number, number]>>;
+  yield: { expected: number; alarm: number };
+  source?: string[];
+  review?: Review;
+}
+
+/** Откуда вклад причины: отход режима от цели; содержание АФС против измеренного; свойство отвешенных партий; показатель. */
+export type CauseDriver = { param: string } | { potency: true } | { lots: 'api' | 'excipient'; attr: Attr } | { attr: Attr };
+
+/** Причина: вклад в показатели серии — единиц движка показателя на единицу движка отхода. */
+export interface Cause {
+  id: Id;
+  name: Text;
+  driver: CauseDriver;
+  effects: { attr: Attr; coef: number }[];
   source?: string[];
   review?: Review;
 }
@@ -271,4 +387,8 @@ export interface ContentDb {
   instruments: Record<Id, InstrumentType>;
   tests: Record<Id, TestMethod>;
   specs: Record<Id, Spec>;
+  products: Record<Id, Product>;
+  equipment: Record<Id, EquipmentType>;
+  recipes: Record<Id, Recipe>;
+  causes: Record<Id, Cause>;
 }

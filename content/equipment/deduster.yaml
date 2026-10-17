@@ -1,0 +1,3 @@
+id: eq.deduster
+name: { ru: Обеспыливатель с металлодетектором, en: Deduster with metal detector }
+cleaning: { minor: 15, major: 45 }

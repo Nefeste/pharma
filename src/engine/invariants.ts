@@ -1,6 +1,7 @@
 // Инварианты завода (docs/02-architecture.md, §15; docs/specs/2026-10-engine.md, «Инварианты 1а», 1б). Чистая проверка
 // состояния: список нарушений, пустой — всё в порядке. Её зовут тесты и «виртуальный директор» на каждом шаге проверки.
-import type { ContentDb } from '../content/types';
+import type { Attr, ContentDb } from '../content/types';
+import { clampAttr } from './mes';
 import { planOf } from './plant';
 import { LOT_FLOW, TAG } from './stock';
 import type { LotStatus, PlantState } from './types';
@@ -33,6 +34,8 @@ export function check(db: ContentDb, s: PlantState): string[] {
     if (u.where.kind === 'slot') {
       if (!plan.slot[u.where.id]) bad.push(`паллета ${u.id}: нет места ${u.where.id}`);
       if (s.slots[u.where.id]?.unit !== u.id) bad.push(`паллета ${u.id}: место ${u.where.id} занято другим`);
+    } else if (u.where.kind === 'room') {
+      if (!plan.room[u.where.id]) bad.push(`паллета ${u.id}: нет помещения ${u.where.id}`);
     } else {
       const tr = s.trucks[u.where.id];
       if (!tr || !tr.units.includes(u.id)) bad.push(`паллета ${u.id}: фура ${u.where.id} её не везёт`);
@@ -51,8 +54,15 @@ export function check(db: ContentDb, s: PlantState): string[] {
   }
   // паллета — одной партии; ярлык — по её статусу; до решения — не дальше карантина; на стеллаже хранения — только
   // разрешённое (или заблокированное после разрешения)
+  const kits = new Set(Object.values(s.batches).flatMap(b => (b.kitUnit ? [b.kitUnit] : [])));
   for (const u of Object.values(s.units)) {
     const lots = new Set(u.items.map(c => s.containers[c]?.lot));
+    // комплект серии в помещении — тара разных партий, все разрешены
+    if (kits.has(u.id)) {
+      if (u.where.kind !== 'room') bad.push(`паллета ${u.id}: комплект серии не в помещении`);
+      for (const id of lots) if (s.lots[id!]?.status !== 'released') bad.push(`паллета ${u.id}: в комплекте партия ${id} не разрешена`);
+      continue;
+    }
     if (lots.size !== 1) {
       bad.push(`паллета ${u.id}: партий на ней ${lots.size}`);
       continue;
@@ -94,7 +104,8 @@ export function check(db: ContentDb, s: PlantState): string[] {
   for (const sm of Object.values(s.samples)) {
     const lot = s.lots[sm.lot];
     if (!lot || lot.sample !== sm.id) bad.push(`пробы ${sm.id}: партия ${sm.lot} их не знает`);
-    for (const cid of sm.plan) if (s.containers[cid]?.lot !== sm.lot) bad.push(`пробы ${sm.id}: тара ${cid} не этой партии`);
+    // тара плана — этой партии; израсходованную до дна тару учёт уже забыл, а план отбора — история
+    for (const cid of sm.plan) if (s.containers[cid] && s.containers[cid].lot !== sm.lot) bad.push(`пробы ${sm.id}: тара ${cid} не этой партии`);
     for (const uid of sm.left) if (!s.units[uid]?.items.some(c => sm.plan.includes(c))) bad.push(`пробы ${sm.id}: на паллете ${uid} нет тары из плана`);
     if (lot && sm.qty !== lot.sampled) bad.push(`пробы ${sm.id}: отобрано ${sm.qty}, а у партии ${lot.sampled}`);
     if (lot && lot.status !== 'quarantine' && (sm.left.length > 0 || sm.taken === undefined)) bad.push(`пробы ${sm.id}: партия ${lot.status}, а отбор не кончен`);
@@ -121,5 +132,56 @@ export function check(db: ContentDb, s: PlantState): string[] {
   for (const t of Object.values(s.tasks)) {
     if (t.instrument && s.instruments[t.instrument]?.test !== t.test) bad.push(`задача ${t.id}: прибор ${t.instrument} занят не её испытанием`);
   }
+  production(db, s, bad);
   return bad;
+}
+
+/**
+ * Инварианты производства (docs/specs/2026-10-engine.md, 1в): резерв сходится с комплектами; стадия идёт только в
+ * помещении, занятом этой серией, на её оборудовании; масса сходится по стадиям; израсходованное у партий — это
+ * отвешенное в серии; истинный показатель — номинал + разброс + записанные вклады причин.
+ */
+function production(db: ContentDb, s: PlantState, bad: string[]) {
+  const reserved: Record<string, number> = {};
+  const used: Record<string, number> = {};
+  for (const b of Object.values(s.batches)) {
+    const r = db.recipes[b.recipe];
+    for (const k of b.kit) reserved[k.container] = (reserved[k.container] ?? 0) + k.qty;
+    if (b.kit.length > 0 && b.status !== 'reserved' && b.status !== 'kitting' && b.status !== 'process') bad.push(`серия ${b.id}: ${b.status}, а комплект ещё в резерве`);
+    let dispensed = 0;
+    for (const x of b.dispensed) {
+      dispensed += x.qty;
+      used[x.lot] = (used[x.lot] ?? 0) + x.qty;
+    }
+    // масса: отвешено = полупродукт + потери по стадиям; у каждой стадии вход = выход + потери
+    const loss = b.records.reduce((n, rec) => n + rec.loss, 0);
+    if (dispensed !== b.mass + loss) bad.push(`серия ${b.id}: отвешено ${dispensed}, а в работе и потерях ${b.mass + loss}`);
+    for (const rec of b.records.slice(1)) if (rec.in !== rec.out + rec.loss) bad.push(`серия ${b.id}, ${rec.stage}: вход ${rec.in} ≠ выход ${rec.out} + потери ${rec.loss}`);
+    // причины: показатель — это номинал, разброс и вклады, без остатка
+    for (const [a, v] of Object.entries(b.truth) as [Attr, number][]) {
+      const sum = (r.quality[a]?.[0] ?? 0) + (b.noise[a] ?? 0) + b.causes.filter(c => c.attr === a).reduce((n, c) => n + c.delta, 0);
+      if (clampAttr(a, sum) !== v) bad.push(`серия ${b.id}: ${a} = ${v}, а номинал, разброс и причины дают ${sum}`);
+    }
+    if (b.room && b.status === 'process' && s.rooms[b.room]?.batch !== b.id && Object.values(s.tasks).some(t => t.kind === 'stage' && t.batch === b.id)) bad.push(`серия ${b.id}: стадия идёт, а помещение ${b.room} не её`);
+    if (b.bulk && !s.lots[b.bulk]) bad.push(`серия ${b.id}: нет партии балка ${b.bulk}`);
+  }
+  for (const c of Object.values(s.containers)) {
+    if ((c.reserved ?? 0) !== (reserved[c.id] ?? 0)) bad.push(`тара ${c.id}: резерв ${c.reserved ?? 0}, а в комплектах ${reserved[c.id] ?? 0}`);
+    if ((c.reserved ?? 0) > c.qty) bad.push(`тара ${c.id}: резерв ${c.reserved} больше остатка ${c.qty}`);
+  }
+  for (const lot of Object.values(s.lots)) if (lot.used !== (used[lot.id] ?? 0)) bad.push(`партия ${lot.id}: израсходовано ${lot.used}, а отвешено в серии ${used[lot.id] ?? 0}`);
+  // помещение занято серией — только «занято»; оборудование занято — только серией, которая в этом помещении
+  for (const room of Object.values(s.rooms)) {
+    if ((room.status === 'busy') !== (room.batch !== undefined)) bad.push(`помещение ${room.id}: ${room.status}, серия ${room.batch ?? '—'}`);
+    if (room.batch && s.batches[room.batch]?.room !== room.id) bad.push(`помещение ${room.id}: серия ${room.batch} числится не здесь`);
+  }
+  for (const e of Object.values(s.equipment)) {
+    if (e.batch && s.batches[e.batch]?.room !== e.room) bad.push(`оборудование ${e.id}: занято серией ${e.batch}, а она не в этом помещении`);
+  }
+  for (const t of Object.values(s.tasks)) {
+    if (t.kind !== 'stage') continue;
+    const b = s.batches[t.batch!];
+    const room = b?.room ? s.rooms[b.room] : undefined;
+    if (!room || room.batch !== b.id || room.status !== 'busy') bad.push(`задача ${t.id}: стадия серии ${t.batch} не в её помещении`);
+  }
 }

@@ -1,0 +1,7 @@
+# Контейнер для таблеток в балке: 50 000 таблеток по 600 мг — 30 кг; на пластиковой паллете — 4 (гипотезы).
+id: cnt.bin.tablets
+name: { ru: "Контейнер таблеток, 50 000 шт.", en: Tablet bin of 50 000 }
+kind: bin
+capacity: { pcs: 50000 }
+perPallet: 4
+load: drums

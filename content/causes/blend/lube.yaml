@@ -1,0 +1,11 @@
+# Пересмазывание: на каждую минуту перемешивания с магния стеаратом сверх цели — мягче таблетки, дольше распадаемость,
+# медленнее растворение. Короче цели — наоборот; налипание и кэппинг от недостатка смазки здесь не считаются.
+id: cause.blend.lube
+name: { ru: Время опудривания не по цели, en: Lubrication time off target }
+driver: { param: lubeTime }
+effects:
+  - { attr: hardness, coef: -2 }
+  - { attr: disintegration, coef: 0.5 }
+  - { attr: dissolution, coef: -1.5 }
+source: [li-wu-2014, fda-osd-1994]
+review: draft

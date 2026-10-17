@@ -1,0 +1,8 @@
+# Гранулирующая жидкость: на каждый килограмм воды сверх цели при той же сушке гранулят влажнее.
+id: cause.gran.water
+name: { ru: Количество гранулирующей жидкости не по цели, en: Granulation liquid off target }
+driver: { param: water }
+effects:
+  - { attr: moisture, coef: 0.05 }
+source: [portier-2021]
+review: draft

@@ -1,0 +1,12 @@
+# Балк — таблетки после производства, до упаковки: в учёте это партия своего полупродукта с номером серии. Её свойства
+# — от серии (технологическая карта), а не от поставщика. Срок хранения балка до упаковки — гипотеза.
+id: mat.bulk.paracetamol500
+kind: bulk
+name: { ru: Таблетки парацетамола 500 мг в балке, en: Paracetamol 500 mg tablets in bulk }
+unit: pcs
+container: cnt.bin.tablets
+storage: room
+shelf: 6
+spec: spec.bulk.paracetamol500
+# проба с контейнера, таблеток
+sample: 25

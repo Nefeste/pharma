@@ -1,0 +1,10 @@
+# Истираемость и прочность ГФ XV относит к испытаниям на стадии производства (docs/10-domain.md, §7): здесь — МОК при
+# таблетировании. Погрешность — гипотеза.
+id: test.ipc.friability
+name: { ru: Истираемость (МОК), en: Friability (IPC) }
+attr: friability
+inst: inst.friabilator
+prep: 10
+run: 4
+unattended: false
+sd: 0.05

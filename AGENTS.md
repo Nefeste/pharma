@@ -119,7 +119,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   true batch quality with causes, IPC, the bulk lot; the packing job and its packaging kit), `line.ts` (the packaging
   line as flow between events: machines, buffers, micro-stops, camera rejects by count, codes in cases, FG pallets,
   changeover and line clearance, the crew, the end of a batch with reconciliation, machine times for OEE), `qa.ts` (QA
-  check of finished goods with retention samples, the qualified person's decision, FG shelf life), `tasks.ts` (tasks
+  check of finished goods with retention samples, the qualified person's decision, FG shelf life), `market.ts` (customers
+  and their orders, FG into circulation after the regulator publishes the batch, FEFO allocation with the residual shelf
+  life, whole pallets and case picking, the customer's truck at 15:00, shipments with codes), `cash.ts` (kopecks and
+  ledger entries, dues by date, suppliers, wages twice a month, contributions, energy, VAT by quarter, the credit line),
+  `tasks.ts` (tasks
   and the dispatcher: people, vehicles, instruments), `staff.ts` (shifts), `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.

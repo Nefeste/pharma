@@ -18,6 +18,7 @@ import {
   type Cause,
   type ContainerType,
   type ContentDb,
+  type Customer,
   type EquipmentType,
   type InstrumentType,
   type Machine,
@@ -53,6 +54,7 @@ const kop = (rub: number) => Math.round(rub * 100);
 const mg = (kg: number) => Math.round(kg * 1_000_000);
 const cm = (m: number) => Math.round(m * 100);
 const sec = (min: number) => Math.round(min * 60);
+const watt = (kw: number) => Math.round(kw * 1000);
 const qual = (a: Attr) => QUALITATIVE.includes(a);
 /** Значение свойства в единицах движка (src/content/types.ts, `ATTRS`). */
 const scaleOf = (a: Attr) => ATTR_SCALE[ATTRS[a].unit];
@@ -228,10 +230,11 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     shifts[sh.id] = { ...sh, days: [...new Set(sh.days)].sort().map(d => d - 1) };
   }
   const products: Record<string, Product> = { ...raw.products };
+  for (const pr of Object.values(raw.products)) if (pr.jnvlp) need(pr.source, `продукт ${pr.id}: «в перечне ЖНВЛП» — факт, нужен источник`);
   const equipment: Record<string, EquipmentType> = {};
   for (const e of Object.values(raw.equipment)) {
     need(e.cleaning.minor <= e.cleaning.major, `оборудование ${e.id}: малая уборка дольше большой`);
-    equipment[e.id] = { ...e, cleaning: { minor: sec(e.cleaning.minor), major: sec(e.cleaning.major) } };
+    equipment[e.id] = { ...e, cleaning: { minor: sec(e.cleaning.minor), major: sec(e.cleaning.major) }, kw: watt(e.kw) };
   }
   // единица каждого режима — одна во всех картах: на неё считаются коэффициенты причин
   const paramUnits: Record<string, ParamUnit> = {};
@@ -344,6 +347,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       ...(m.micro ? { micro: { every: sec(m.micro.every), duration: sec(m.micro.duration) } } : {}),
       reject: share(m.reject),
       changeover: sec(m.changeover),
+      kw: watt(m.kw),
       ...(m.source ? { source: m.source, review: m.review } : {}),
     };
   }
@@ -368,10 +372,15 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       need('pcs' in ct.capacity && ct.capacity.pcs >= k.case.per, `${where}: в ящик ${ct.id} не входит ${k.case.per} пачек`);
       need(k.pallet.cases <= ct.perPallet, `${where}: на паллету ${ct.id} не входит ${k.pallet.cases} ящиков`);
     }
+    // цена ЖНВЛП — не выше зарегистрированной предельной (61-ФЗ, ст. 61, ч. 8)
+    if (raw.products[k.product]?.jnvlp) need(k.regPrice !== undefined, `${where}: продукт в перечне ЖНВЛП — нужна зарегистрированная цена`);
+    if (k.regPrice !== undefined) need(k.price <= k.regPrice, `${where}: цена ${k.price} ₽ выше зарегистрированной ${k.regPrice} ₽`);
     skus[k.id] = {
       ...k,
       blister: k.blister.map(l => ({ material: l.material, qty: Math.round(l.g * 1000) })),
       carton: k.carton.map(l => ({ material: l.material, qty: l.n })),
+      price: kop(k.price),
+      ...(k.regPrice !== undefined ? { regPrice: kop(k.regPrice) } : {}),
     };
   }
   const plants: Record<string, Plant> = {};
@@ -387,7 +396,9 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       equipment: p.equipment,
       lines: p.lines,
       points: { park: [cm(p.points.park[0]), cm(p.points.park[1])], entrance: [cm(p.points.entrance[0]), cm(p.points.entrance[1])] },
+      energy: { hvac: p.energy.hvac, base: watt(p.energy.base) },
     };
+    need(p.docks.some(d => d.kind === 'out') === p.zones.some(z => z.kind === 'shipping'), `план ${p.id}: рампа отгрузки и зона экспедиции бывают только вместе`);
     const ids = [
       ...p.docks.map(d => d.id),
       ...p.zones.map(z => z.id),
@@ -439,6 +450,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       need(shifts[r.shift], `${where}: нет графика ${r.shift}`);
     }
     for (const v of s.vehicles) need(vehicles[v.type], `${where}: нет техники ${v.type}`);
+    for (const c of s.customers) need(raw.customers[c], `${where}: нет покупателя ${c}`);
+    if (s.customers.length > 0) need(raw.plants[s.plant]?.docks.some(d => d.kind === 'out'), `${where}: покупатели есть, а рампы отгрузки в плане нет`);
     // задания на серию: у каждой стадии карты в плане — помещение этого типа и оборудование в нём
     const pl = raw.plants[s.plant];
     for (const b of s.batches) {
@@ -467,12 +480,33 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       ...s,
       start: { date: { y, m, d }, hour: s.start.hour },
       cash: kop(s.cash),
+      credit: { limit: kop(s.credit.limit), spread: share(s.credit.spread) },
+      energy: { price: kop(s.energy.price) },
       orders: s.orders.map(o => ({ supplier: o.supplier, lines: o.lines.map(l => ({ material: l.material, qty: amount(l.material, l.qty, where) })) })),
       stock: s.stock.map(x => ({ material: x.material, qty: amount(x.material, x.qty, where) })),
     };
   }
   const profiles: Record<string, Profile> = {};
-  for (const p of Object.values(raw.profiles)) profiles[p.id] = { ...p, vat: { medicines: share(p.vat.medicines), general: share(p.vat.general) } };
+  for (const p of Object.values(raw.profiles)) {
+    need(p.payroll.night.from !== p.payroll.night.to, `профиль ${p.id}: у ночных часов нет длины`);
+    profiles[p.id] = {
+      ...p,
+      vat: { medicines: share(p.vat.medicines), general: share(p.vat.general) },
+      marking: { ...p.marking, fee: kop(p.marking.fee), free: kop(p.marking.free) },
+      payroll: {
+        night: { ...p.payroll.night, extra: share(p.payroll.night.extra) },
+        contrib: { ...p.payroll.contrib, rate: share(p.payroll.contrib.rate), base: kop(p.payroll.contrib.base), above: share(p.payroll.contrib.above), injury: share(p.payroll.contrib.injury) },
+      },
+      energy: { advances: p.energy.advances.map(([d, pct]) => [d, share(pct)] as [number, number]), final: p.energy.final },
+      key: share(p.key),
+    };
+  }
+  // покупатели: дни недели — с нуля (0 — понедельник), спрос — только по позициям из базы
+  const customers: Record<string, Customer> = {};
+  for (const c of Object.values(raw.customers)) {
+    for (const sku of Object.keys(c.demand)) need(skus[sku], `покупатель ${c.id}: нет позиции ${sku}`);
+    customers[c.id] = { ...c, order: { ...c.order, days: [...new Set(c.order.days)].sort().map(d => d - 1) }, minShelf: share(c.minShelf) };
+  }
   return {
     profiles,
     scenarios,
@@ -493,5 +527,6 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     causes,
     machines,
     skus,
+    customers,
   };
 }

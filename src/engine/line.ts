@@ -7,6 +7,7 @@
 // таблеток в минуту, то есть долей в секунду. Накопитель после машины — разность позиций соседей. Блистеры, пачки и
 // ящики — формулы от позиций; брак — счётом: из первых n штук годных n − ⌊n × доля⌋.
 import type { ContentDb, Id, Sku } from '../content/types';
+import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
 import { civilFromDays, daysFromCivil, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
@@ -190,6 +191,8 @@ function advance(db: ContentDb, s: PlantState, line: Line, to: number) {
   }
   const g = geo(db, s, line, job.sku);
   const plan = planOf(db, s.plant);
+  // энергия: машины на номинале и медленнее
+  addEnergy(s, m.reduce((w, mc) => w + (mc.state === 'run' || mc.state === 'slow' ? db.machines[mc.type].kw : 0), 0), dt);
   const n = m.length;
   const last = m[n - 1];
   const from = last.pos;

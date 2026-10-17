@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 5;
+export const SCHEMA = 6;
 
 // ---------------------------------------------------------------- склад
 
@@ -45,6 +45,10 @@ export interface Lot {
   sample?: string;
   /** своя продукция — балк или готовая: серия, из которой она */
   batch?: string;
+  /** отгружено покупателям, шт. — для баланса */
+  shipped?: number;
+  /** готовая продукция: в обороте с этого момента — Росздравнадзор опубликовал сведения о серии */
+  circulation?: number;
 }
 
 export interface Container {
@@ -79,6 +83,8 @@ export interface Unit {
   /** тара на паллете */
   items: string[];
   tag: Tag;
+  /** паллета заказа в экспедиции: ящики разных серий и позиций одного заказа */
+  order?: string;
 }
 
 /** Занятость места: паллета и задача, которая держит место за собой. */
@@ -393,12 +399,18 @@ export interface Po {
   status: 'ordered' | 'arrived';
   /** кто заказал: игрок или руководитель */
   by: string;
+  /** сумма с НДС и НДС в ней; предоплата, копейки */
+  sum?: number;
+  vat?: number;
+  prepaid?: number;
 }
 
 export interface Truck {
   id: string;
   dock: string;
-  po: string;
+  /** фура поставщика по заказу или фура покупателя за отгрузкой */
+  po?: string;
+  customer?: Id;
   /** паллеты на фуре — ещё не снятые */
   units: string[];
   arrived: number;
@@ -433,7 +445,8 @@ export interface Vehicle {
  * Лаборатория: паллета в пробоотборную и обратно, отбор проб, передача проб в лабораторию, испытание, проверка
  * результата, решение по партии. Производство: паллета с комплектом серии к шлюзу, перекладка в шлюзе, возврат
  * остатков, стадия серии, уборка помещения. Линия: смена у линии, переналадка, очистка линии и её проверка, балк к
- * линии. Качество: проверка ГП и досье, решение уполномоченного лица.
+ * линии. Качество: проверка ГП и досье, решение уполномоченного лица. Отгрузка: паллета в экспедицию, отбор ящиков на
+ * паллету заказа, погрузка в фуру покупателя.
  */
 export type TaskKind =
   | 'unload'
@@ -458,7 +471,10 @@ export type TaskKind =
   | 'clearCheck'
   | 'feed'
   | 'fgCheck'
-  | 'qpDecide';
+  | 'qpDecide'
+  | 'ship'
+  | 'casePick'
+  | 'load';
 
 /** Место задачи: место паллеты, рампа с фурой или точка. */
 export type Place = { kind: 'slot'; id: string } | { kind: 'truck'; id: string } | { kind: 'point'; x: number; z: number };
@@ -492,6 +508,11 @@ export interface Task {
   batch?: string;
   room?: string;
   line?: string;
+  /** заказ покупателя; ящики к отбору; паллета заказа, на которую их кладут; фура, в которую грузят */
+  order?: string;
+  cases?: string[];
+  dest?: string;
+  truck?: string;
   /** работа на месте, с */
   work: number;
   /** больше — раньше */
@@ -525,7 +546,99 @@ export type PlantEvent =
   /** подошла дата «не раньше» задания на серию */
   | { kind: 'batch'; id: string }
   /** граница потока линии: накопитель, микроостановка, балк, места паллет, отметка раз в 10 минут; v = −1 — пересчитать всегда */
-  | { kind: 'line'; id: string; v: number };
+  | { kind: 'line'; id: string; v: number }
+  /** Росздравнадзор опубликовал сведения о серии: готовая продукция в обороте */
+  | { kind: 'rzn'; lot: string };
+
+// ---------------------------------------------------------------- рынок и касса
+
+/** Строка заказа покупателя: ящиков заказано, зарезервировано на складе, отгружено. */
+export interface OrderLine {
+  sku: Id;
+  cases: number;
+  reserved: number;
+  shipped: number;
+}
+
+/** Заказ покупателя: `open` — ждёт своего дня; `shipped` — отгружен в срок полностью; `short` — недопоставка; `late` — отгружен позже срока. */
+export interface Order {
+  id: string;
+  customer: Id;
+  lines: OrderLine[];
+  placed: number;
+  /** когда отгрузить — 15:00 желаемого дня */
+  due: number;
+  /** наименьший остаточный срок годности, доли 1/10 000 полного */
+  minShelf: number;
+  status: 'open' | 'shipped' | 'short' | 'late';
+  /** зарезервированные ящики, ещё не отгруженные; паллеты заказа в экспедиции; фура; версия склада при распределении */
+  cases: string[];
+  units: string[];
+  truck?: string;
+  checked?: number;
+  shipment?: string;
+}
+
+/** Отгруженный ящик: тара партии ГП с отрезками кодов — прослеживаемость до покупателя. */
+export interface ShippedCase {
+  id: string;
+  lot: string;
+  qty: number;
+  codes: [number, number][];
+}
+
+/** Отгрузка: фура покупателя ушла. Сведения в систему мониторинга — в тот же день; подтверждение покупателя — на следующий рабочий. */
+export interface Shipment {
+  id: string;
+  customer: Id;
+  orders: string[];
+  t: number;
+  cases: ShippedCase[];
+  reported: number;
+  accepted: number;
+  /** сумма без НДС и НДС, копейки */
+  sum: number;
+  vat: number;
+}
+
+export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes';
+
+/** Проводка: когда, сколько (копейки; приход — плюс), статья, ссылка. */
+export interface Entry {
+  t: number;
+  sum: number;
+  item: CashItem;
+  ref?: string;
+}
+
+/** Счёт к получению (плюс) или к оплате (минус) со сроком. */
+export interface Due {
+  id: string;
+  item: CashItem;
+  sum: number;
+  due: number;
+  ref?: string;
+}
+
+/** Касса (docs/specs/2026-10-engine.md, 1д): копейки, проводки, счета, НДС квартала, энергия месяца, выплаты людям. */
+export interface Cash {
+  balance: number;
+  start: number;
+  ledger: Entry[];
+  /** по сроку, затем по номеру */
+  dues: Due[];
+  /** НДС квартала: начислено, к вычету, переходящий вычет прошлых кварталов */
+  vat: { out: number; in: number; carry: number };
+  /** энергия: Вт·ч с начала месяца и до какого момента посчитана база; стоимость прошлого месяца с НДС; авансы этого месяца */
+  energy: { wh: number; at: number; last: number; advanced: number };
+  /** выплаты человеку с начала года — для предельной базы взносов; начислено за этот месяц */
+  ytd: Record<string, number>;
+  gross: Record<string, number>;
+  /** проценты по кредитной линии с начала месяца */
+  interest: number;
+  /** день последнего извещения «касса ниже предела» */
+  low?: number;
+}
 
 export interface PlantState {
   schema: number;
@@ -545,8 +658,7 @@ export interface PlantState {
   until?: number;
   /** сутки партии: сколько планёрок прошло */
   day: number;
-  /** касса, копейки */
-  cash: number;
+  cash: Cash;
   /** счётчики номеров по видам: `L` — партии, `U` — паллеты… */
   next: Record<string, number>;
   lots: Record<string, Lot>;
@@ -571,6 +683,10 @@ export interface PlantState {
   batches: Record<string, Batch>;
   /** упаковочные линии по именам из плана */
   lines: Record<string, Line>;
+  /** покупатели сценария: когда заказывали в последний раз */
+  customers: Record<Id, { last: number }>;
+  orders: Record<string, Order>;
+  shipments: Record<string, Shipment>;
 }
 
 /** Команда — единственный способ изменить состояние (docs/02-architecture.md, §7). */
@@ -614,5 +730,11 @@ export type Notice =
   | { kind: 'batchReleased'; batch: string; lot: string }
   | { kind: 'batchRejected'; batch: string; lot: string }
   | { kind: 'batchHeld'; batch: string }
+  /** фура покупателя ушла с отгрузкой */
+  | { kind: 'shipped'; shipment: string; customer: Id; cases: number }
+  /** заказ закрыт недопоставкой или отгружен позже срока */
+  | { kind: 'lateOrder'; order: string; missing: number }
+  /** касса ниже предела кредитной линии */
+  | { kind: 'cashLow'; balance: number }
   /** команда не выполнена */
   | { kind: 'refused'; cmd: Command['kind']; why: Refusal; detail?: string };

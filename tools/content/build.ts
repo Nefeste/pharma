@@ -19,5 +19,5 @@ console.log(
   `База ${db.hash}: профилей ${n(db.profiles)}, сценариев ${n(db.scenarios)}, планов ${n(db.plants)}, материалов ${n(db.materials)}, тары ${n(db.containers)}, ` +
     `поставщиков ${n(db.suppliers)}, ролей ${n(db.roles)}, техники ${n(db.vehicles)}, графиков ${n(db.shifts)}, грузовых единиц ${n(db.units)}, ` +
     `приборов ${n(db.instruments)}, методик ${n(db.tests)}, спецификаций ${n(db.specs)}, продуктов ${n(db.products)}, ` +
-    `оборудования ${n(db.equipment)}, карт ${n(db.recipes)}, причин ${n(db.causes)}, машин ${n(db.machines)}, позиций ${n(db.skus)}; файлов ${files}.`,
+    `оборудования ${n(db.equipment)}, карт ${n(db.recipes)}, причин ${n(db.causes)}, машин ${n(db.machines)}, позиций ${n(db.skus)}, покупателей ${n(db.customers)}; файлов ${files}.`,
 );

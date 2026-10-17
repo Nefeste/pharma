@@ -3,6 +3,7 @@
 // и причины; МОК; балк в карантине; задание на упаковку и комплект упаковочных материалов к линии (саму линию ведёт
 // line.ts). Задачи раздаёт раздатчик (tasks.ts); здесь — когда их заводить и что они делают, когда кончаются.
 import { ATTRS, type Attr, type CauseDriver, type ContentDb, type Id, type RecipeStage } from '../content/types';
+import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
 import { HOUR, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
@@ -484,6 +485,7 @@ function stageDone(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, notic
   const st = r.stages[b.stage];
   const roomId = b.room!;
   const eqs = Object.values(s.equipment).filter(e => e.batch === b.id && e.room === roomId && st.equipment.includes(e.type));
+  addEnergy(s, eqs.reduce((w, e) => w + db.equipment[e.type].kw, 0), s.t - t.times![1]);
   const rec: StageRecord = { stage: st.id, room: roomId, start: t.times![1], end: s.t, people: [...t.people], equipment: eqs.map(e => e.id), params: {}, in: b.mass, out: b.mass, loss: 0, ipc: [] };
   // режимы: цель + разброс от серии к серии; у опытного аппаратчика разброс меньше (навык 3 — как в карте)
   const skill = s.people[t.people[0]].skill;

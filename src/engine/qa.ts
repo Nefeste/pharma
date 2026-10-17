@@ -2,8 +2,10 @@
 // досье — специалистом ООК с архивными образцами, затем решение уполномоченного лица: выпустить, держать, отклонить.
 // Выпущенное — на стеллажи, отклонённое — в зону отклонённого. Команда `release` — решение игрока вместо УЛ.
 import type { ContentDb } from '../content/types';
+import { part, post } from './cash';
 import { MIN, momentOf } from './core/calendar';
 import { fgExpiry, prodDay } from './line';
+import { toRzn } from './market';
 import { planOf } from './plant';
 import { addTask } from './tasks';
 import { containersByLot, FG_FLOW, setLotStatus, stockChanged, unitsOfLot } from './stock';
@@ -123,6 +125,8 @@ function decide(db: ContentDb, s: PlantState, b: Batch, notices: Notice[]) {
     lot.expiry = fgExpiry(prodDay(s, b), momentOf(s.start, s.t).day, db.materials[lot.material].shelf);
     b.status = 'released';
     b.released = s.t;
+    toRzn(s, lot.id);
+    codesFee(db, s, b);
     stockChanged(s);
     notices.push({ kind: 'batchReleased', batch: b.id, lot: lot.id });
   } else {
@@ -131,6 +135,20 @@ function decide(db: ContentDb, s: PlantState, b: Batch, notices: Notice[]) {
     notices.push({ kind: 'batchRejected', batch: b.id, lot: lot.id });
   }
   for (const u of unitsOfLot(s, lot.id)) settle(db, s, lot, u);
+}
+
+/**
+ * Плата за коды маркировки серии (`pp-577`): за каждый напечатанный код, кроме позиций ЖНВЛП с зарегистрированной ценой не
+ * выше порога профиля; платим в день выпуска — не позже ввода в оборот (`mdlp`, п. 9.1). НДС — по общей ставке.
+ */
+function codesFee(db: ContentDb, s: PlantState, b: Batch) {
+  const sku = db.skus[b.pack!.sku];
+  const pr = db.profiles[db.scenarios[s.scenario].profile];
+  if (db.products[sku.product].jnvlp && sku.regPrice !== undefined && sku.regPrice <= pr.marking.free) return;
+  const net = (b.pack!.cartons ?? 0) * pr.marking.fee;
+  const tax = part(net, pr.vat.general);
+  s.cash.vat.in += tax;
+  post(s, -(net + tax), 'codes', b.id);
 }
 
 /** Паллета решённой ГП: выпущенная — на стеллаж ближе к экспедиции, отклонённая — в зону отклонённого. */

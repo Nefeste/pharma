@@ -6,7 +6,7 @@ export const en: Strings = {
     title: 'Farmzavod',
     loading: 'Loading…',
     error: 'Error',
-    stage: 'Prototype, part 0: clock, calculation thread and view',
+    stage: 'Prototype: plant engine — part 1, view — the part 0 demo warehouse',
   },
   date: {
     months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
@@ -35,6 +35,9 @@ export const en: Strings = {
     batchRejected: 'The qualified person rejected the batch',
     batchHeld: 'The qualified person holds the batch: deviations are open',
     deviation: 'Production deviation',
+    shipped: "The customer's truck has left with a shipment",
+    lateOrder: 'Customer order: short or late',
+    cashLow: 'Cash is below the credit line limit',
     refused: 'The command was refused',
   },
   debug: {

@@ -5,3 +5,4 @@ name: { ru: Укладка в гофроящики, en: Case packing }
 item: carton
 nominal: 100
 crew: { role: role.packer, n: 2 }
+kw: 3

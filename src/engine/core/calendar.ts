@@ -57,3 +57,40 @@ export function momentOf(start: Ymd, t: number): Moment {
   const day = daysFromCivil(start) + Math.floor(t / DAY);
   return { day, date: civilFromDays(day), weekday: weekday(day), sec: ((t % DAY) + DAY) % DAY };
 }
+
+// Рабочие дни: понедельник — пятница; праздников в календаре пока нет (docs/specs/2026-10-engine.md, 1д).
+
+export function isWorkday(z: number): boolean {
+  return weekday(z) < 5;
+}
+
+/** Первый рабочий день не раньше `z`. */
+export function workdayOnOrAfter(z: number): number {
+  while (!isWorkday(z)) z++;
+  return z;
+}
+
+/** Последний рабочий день не позже `z`. */
+export function workdayOnOrBefore(z: number): number {
+  while (!isWorkday(z)) z--;
+  return z;
+}
+
+/** Через `n` рабочих дней после `z` (n ≥ 1). */
+export function addWorkdays(z: number, n: number): number {
+  let d = z;
+  for (let i = 0; i < n; i++) d = workdayOnOrAfter(d + 1);
+  return d;
+}
+
+/** Номер последнего дня месяца. */
+export function lastOfMonth(y: number, m: number): number {
+  return daysFromCivil(m === 12 ? { y: y + 1, m: 1, d: 1 } : { y, m: m + 1, d: 1 }) - 1;
+}
+
+/** Рабочих дней в месяце. */
+export function workdaysIn(y: number, m: number): number {
+  let n = 0;
+  for (let z = daysFromCivil({ y, m, d: 1 }), end = lastOfMonth(y, m); z <= end; z++) if (isWorkday(z)) n++;
+  return n;
+}

@@ -8,5 +8,6 @@ nominal: 120
 crew: { role: role.line-operator, n: 1 }
 micro: { every: 20, duration: 2 }
 reject: 0.5
+kw: 25
 source: [pilchik-2000, blister-vendors]
 review: draft

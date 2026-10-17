@@ -3,3 +3,7 @@ id: prd.paracetamol500
 name: { ru: "Парацетамол, таблетки 500 мг", en: "Paracetamol 500 mg tablets" }
 inn: paracetamol
 form: tablet
+# в перечне ЖНВЛП: твёрдые формы для приёма внутрь с обычным высвобождением (распоряжение № 3867-р)
+jnvlp: true
+source: [jnvlp-3867]
+review: draft

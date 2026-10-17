@@ -2,6 +2,7 @@
 // проходит путь «фура → зона приёмки → проверка кладовщика → зона карантина или холод»; дальше её ведёт лаборатория
 // (lab.ts). Задачи раздаёт раздатчик (tasks.ts); здесь — что они делают, когда кончаются.
 import type { ContentDb } from '../content/types';
+import { dueIn, owe } from './cash';
 import { MIN } from './core/calendar';
 import { createLot, putUnit } from './stock';
 import { addTask } from './tasks';
@@ -26,6 +27,10 @@ export function truckArrives(db: ContentDb, s: PlantState, poId: string, notices
   const po = s.pos[poId];
   if (!po || po.status !== 'ordered') return;
   po.status = 'arrived';
+  if (po.sum !== undefined) {
+    s.cash.vat.in += po.vat!;
+    owe(s, 'supplier', -(po.sum - po.prepaid!), dueIn(s, db.suppliers[po.supplier].payDays), po.id);
+  }
   const dock = db.plants[s.plant].docks.find(d => d.kind === 'in')!.id;
   const truck: Truck = { id: `K${po.id.slice(1)}`, dock, po: po.id, units: [], arrived: s.t, docked: false };
   s.trucks[truck.id] = truck;

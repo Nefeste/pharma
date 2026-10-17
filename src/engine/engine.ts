@@ -5,10 +5,12 @@
 // ставит `until`, а `catchUp` проживает события по порядку, пока бюджет кадра `more()` позволяет. Недожитое
 // доживается в следующих кадрах; любая следующая команда сначала доживает всё.
 import type { ContentDb, Id } from '../content/types';
+import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR } from './core/calendar';
 import { labDone, runDone, startSampling } from './lab';
 import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from './line';
+import { marketDone, marketHour, marketStep, newCustomers, rznPublished } from './market';
 import { BATCH_HOUR, mesDone, mesHour, mesStep, packOrder, placeOrder } from './mes';
 import { planOf } from './plant';
 import { qaDone, qaStep, releaseCommand } from './qa';
@@ -42,7 +44,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     t: sc.start.hour * HOUR,
     agenda: agenda<PlantEvent>(),
     day: 0,
-    cash: sc.cash,
+    cash: newCash(sc.cash, sc.start.hour * HOUR),
     next: {},
     lots: {},
     containers: {},
@@ -62,6 +64,9 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     equipment: {},
     batches: {},
     lines: {},
+    customers: newCustomers(sc, sc.start.hour * HOUR),
+    orders: {},
+    shipments: {},
   };
   // люди — у входа, техника — на стоянке, приборы — в лаборатории по плану
   for (const row of sc.staff) {
@@ -148,11 +153,12 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: () => boolea
   }
 }
 
-/** После события: производство, линии, качество, раздача задач. */
+/** После события: производство, линии, качество, отгрузка, раздача задач. */
 function steps(db: ContentDb, s: PlantState, notices: Notice[]) {
   mesStep(db, s);
   lineStep(db, s, notices);
   qaStep(db, s);
+  marketStep(db, s, notices);
   dispatch(db, s);
 }
 
@@ -188,10 +194,13 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       // смены начинаются и кончаются в целые часы: раздать то, что ждало людей; партии, готовые к отбору проб, — в план
       schedule(s.agenda, s.t + HOUR, { kind: 'hour' });
       startSampling(db, s);
+      cashHour(db, s, notices);
       mesHour(db, s);
       lineHour(db, s, notices);
+      marketHour(db, s, notices);
       lineStep(db, s, notices);
       qaStep(db, s);
+      marketStep(db, s, notices);
       dispatch(db, s);
       return;
     case 'truck':
@@ -202,7 +211,7 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       const t = s.tasks[ev.id];
       if (!t || t.v !== ev.v || t.state !== 'busy') return;
       release(db, s, t);
-      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices)) wmsDone(db, s, t, notices);
+      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices)) wmsDone(db, s, t, notices);
       // паллета ГП уехала с места паллетирования — у линии освободилось место
       if (t.kind === 'putaway' && t.line) lineUpdate(db, s, s.lines[t.line], notices);
       if (t.kind === 'putaway' || t.kind === 'stage') startSampling(db, s);
@@ -219,6 +228,10 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       return;
     case 'line':
       lineEvent(db, s, ev.id, ev.v, notices);
+      steps(db, s, notices);
+      return;
+    case 'rzn':
+      rznPublished(s, ev.lot);
       steps(db, s, notices);
       return;
   }

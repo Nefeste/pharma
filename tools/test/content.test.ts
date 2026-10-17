@@ -1,5 +1,7 @@
 // База игры (tools/content/load.ts): собирается без ошибок; идентификаторы совпадают с путями; у записей с фактами —
-// источник из docs/10-domain.md и review; агент `checked` не ставит (устав, ADR 0012).
+// источник из docs/10-domain.md и отметка проверки. `checked` ставит только человек (устав, ADR 0012) — владелец, он же
+// консультант (решение 17.10.2026, #10); агент пишет `draft`. Кто поставил отметку, по содержимому не проверить, поэтому
+// тест требует только, чтобы отметка была.
 import { describe, expect, test } from 'bun:test';
 import { buildDb, sourceKeys } from '../content/load';
 
@@ -21,8 +23,17 @@ describe('база игры', () => {
     expect(keys.has('pallet-epal')).toBe(true);
   });
 
-  test('записи с фактами — черновики, пока их не проверил человек', () => {
-    const facts = [...Object.values(db.profiles), ...Object.values(db.units).filter(u => u.source)];
-    for (const r of facts) expect(r.review).toBe('draft');
+  test('у записей с фактами — отметка проверки: черновик или проверено человеком', () => {
+    const all: { source?: string[]; review?: string }[] = [
+      ...Object.values(db.profiles),
+      ...Object.values(db.units),
+      ...Object.values(db.materials),
+      ...Object.values(db.products),
+      ...Object.values(db.machines),
+      ...Object.values(db.customers),
+    ];
+    const facts = all.filter(r => r.source);
+    expect(facts.length).toBeGreaterThan(5);
+    for (const r of facts) expect(['draft', 'checked']).toContain(r.review!);
   });
 });

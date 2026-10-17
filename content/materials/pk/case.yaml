@@ -5,3 +5,7 @@ unit: pcs
 container: cnt.bundle.cases
 storage: room
 shelf: 60
+spec: spec.mat.pk.case
+bad: { attr: appearance }
+# проба с тары: граммы или штуки
+sample: 2

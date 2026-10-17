@@ -1,5 +1,6 @@
 // Часть 1а: склад и приёмка (docs/specs/2026-10-engine.md, 1а). План завода, запас на старте, заказ поставщику, фура,
-// разгрузка, приёмка, размещение; смены и допуски; инварианты на каждом часе; ход срезами — то же, что куском.
+// разгрузка, приёмка, размещение; смены и допуски; инварианты на каждом часе; ход срезами — то же, что куском. Что
+// бывает с партией после карантина, — tools/test/lab.test.ts.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { DAY, HOUR, momentOf } from '../../src/engine/core/calendar';
@@ -8,23 +9,11 @@ import { apply, newPlant } from '../../src/engine/engine';
 import { check } from '../../src/engine/invariants';
 import { planOf } from '../../src/engine/plant';
 import { dispatch } from '../../src/engine/tasks';
-import type { Notice, PlantState } from '../../src/engine/types';
+import type { Notice } from '../../src/engine/types';
 import { truckArrives } from '../../src/engine/wms';
 
 const SC = 'scn.proto';
 const plan = planOf(db, db.scenarios[SC].plant);
-
-/** Прожить `days` суток часами, проверяя инварианты на каждом часе. */
-function live(s: PlantState, days: number): Notice[] {
-  const out: Notice[] = [];
-  const end = s.t + days * DAY;
-  while (s.t < end) {
-    out.push(...apply(db, s, { kind: 'advance', seconds: Math.min(HOUR, end - s.t) }));
-    const bad = check(db, s);
-    if (bad.length) throw new Error(`${s.t}: ${bad.slice(0, 5).join('; ')}`);
-  }
-  return out;
-}
 
 describe('план завода', () => {
   test('места зон и стеллажей: число, уникальные адреса, ярусы', () => {
@@ -88,9 +77,25 @@ describe('заказ поставщику', () => {
 });
 
 describe('фура → приёмка → карантин', () => {
-  test('заказы сценария за 80 суток: все фуры разгружены, паллеты приняты и в карантине; инварианты — каждый час', () => {
+  test('заказы сценария за 80 суток: все фуры разгружены, каждая паллета прошла приёмку и карантин; инварианты — каждый час', () => {
     const s = newPlant(db, { scenario: SC, seed: 3 });
-    const notices = live(s, 80);
+    // где побывала каждая паллета: виды мест по порядку — смотрим перед каждым событием (`more` у `apply`)
+    const path: Record<string, string[]> = {};
+    const look = () => {
+      for (const u of Object.values(s.units)) {
+        const kind = u.where.kind === 'slot' ? plan.slot[u.where.id].kind : 'truck';
+        const p = (path[u.id] ??= []);
+        if (p[p.length - 1] !== kind) p.push(kind);
+      }
+      return true;
+    };
+    const end = s.t + 80 * DAY;
+    const notices: Notice[] = [];
+    while (s.t < end) {
+      notices.push(...apply(db, s, { kind: 'advance', seconds: HOUR }, look));
+      look();
+      expect(check(db, s)).toEqual([]);
+    }
     const trucks = notices.filter(n => n.kind === 'truck');
     expect(trucks.length).toBe(db.scenarios[SC].orders.length);
     expect(Object.keys(s.trucks)).toEqual([]);
@@ -98,11 +103,13 @@ describe('фура → приёмка → карантин', () => {
     // крахмал, МКЦ, пачки №20, инструкции, парацетамол
     expect(fresh.map(l => l.material).sort()).toEqual(['mat.api.paracetamol', 'mat.exc.mcc', 'mat.exc.starch', 'mat.pk.carton-n20', 'mat.pk.leaflet']);
     for (const lot of fresh) {
-      expect(lot.status).toBe('quarantine');
-      for (const c of Object.values(s.containers).filter(c => c.lot === lot.id)) {
-        const u = s.units[c.unit];
-        expect(u.where.kind === 'slot' && plan.slot[u.where.id].kind).toBe('quarantine');
-        expect(u.tag).toBe('quarantine');
+      expect(lot.status).toBe('released');
+      const sampled = s.samples[lot.sample!].plan;
+      for (const u of Object.values(s.units).filter(u => s.containers[u.items[0]].lot === lot.id)) {
+        // фура → приёмка → карантин → (пробоотборная и обратно — у паллет с тарой из плана отбора) → стеллаж
+        const visit = u.items.some(c => sampled.includes(c)) ? ['sampling', 'quarantine'] : [];
+        expect(path[u.id]).toEqual(['truck', 'receiving', 'quarantine', ...visit, 'storage']);
+        expect(u.tag).toBe('released');
       }
     }
     expect(Object.keys(s.tasks)).toEqual([]);

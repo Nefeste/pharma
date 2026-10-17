@@ -1,0 +1,3 @@
+id: spec.mat.pk.pvc
+tests:
+  - { test: test.visual }

@@ -34,6 +34,8 @@ export interface PlantPlan {
   dock: Record<string, Point & { kind: 'in' | 'out' }>;
   /** центры помещений */
   room: Record<string, Point & { type: string }>;
+  /** центр лаборатории: там работают аналитики и начальник ОКК */
+  lab: Point;
   park: Point;
   entrance: Point;
 }
@@ -90,6 +92,8 @@ export function planOf(db: ContentDb, plantId: string): PlantPlan {
   for (const d of plant.docks) dock[d.id] = { x: d.x, z: d.z, kind: d.kind };
   const room: PlantPlan['room'] = {};
   for (const r of plant.rooms) room[r.id] = { x: r.rect[0] + Math.floor(r.rect[2] / 2), z: r.rect[1] + Math.floor(r.rect[3] / 2), type: r.type };
+  const lab = Object.values(room).find(r => r.type === 'lab');
+  if (!lab) throw new Error(`plant ${plantId}: no lab`);
   const plan: PlantPlan = {
     plant,
     slots,
@@ -97,6 +101,7 @@ export function planOf(db: ContentDb, plantId: string): PlantPlan {
     byKind,
     dock,
     room,
+    lab: { x: lab.x, z: lab.z },
     park: { x: plant.points.park[0], z: plant.points.park[1] },
     entrance: { x: plant.points.entrance[0], z: plant.points.entrance[1] },
   };

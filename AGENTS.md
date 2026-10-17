@@ -103,14 +103,17 @@ first, or copy the working code of Bolnitsa on the same versions.
 
 - `src/engine/` — the engine (pure TypeScript; see «Hard rules»): `core/` (seeded branches, hashes, own `log2` — copies;
   the event agenda as a heap in plain arrays and the calendar without `Date` — ours), `types.ts` (state, commands,
-  notices, `SCHEMA`), `engine.ts` (`newPlant`, `apply`, `catchUp`, events), `random.ts` (named branches in the state),
-  `save.ts` (snapshot and migrations), `plant.ts` (slots, docks, rooms and distances from the plant record),
-  `stock.ts` (lots, containers, pallets, slots, the lot status table), `supply.ts` (purchase orders), `wms.ts` (truck,
-  unloading, receiving, putaway), `tasks.ts` (tasks and the dispatcher), `staff.ts` (shifts), `invariants.ts`.
+  notices, `SCHEMA`), `engine.ts` (`newPlant`, `apply`, `catchUp`, events), `random.ts` (named branches in the state,
+  the integer normal draw), `save.ts` (snapshot and migrations), `plant.ts` (slots, docks, rooms, the lab and
+  distances from the plant record), `stock.ts` (lots, containers, pallets, slots, the lot status table), `supply.ts`
+  (purchase orders), `wms.ts` (truck, unloading, receiving, putaway), `quality.ts` (true lot properties, the lab
+  result, spec limits), `lab.ts` (sampling, lab tests, the lot decision), `tasks.ts` (tasks and the dispatcher:
+  people, vehicles, instruments), `staff.ts` (shifts), `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker (`worker.ts`)
-  and its client in the window (`client.ts`). The window never runs the engine.
+  and its client in the window (`client.ts`). The window never runs the engine. Saves cross the thread boundary as a
+  string: the window never parses the state with the true lot properties.
 - `src/app/` — the game in the window: content, stage, clock and speeds, input, panels (`game.ts`, `main.tsx`).
 - `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa), the floor,
   racks and pallet loads by instancing (`stage.ts`, `loads.ts`), the demo warehouse of part 0 (`demo.ts`).

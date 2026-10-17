@@ -1,0 +1,3 @@
+id: spec.mat.pk.leaflet
+tests:
+  - { test: test.visual }

@@ -17,5 +17,6 @@ writeFileSync(join(OUT, 'bundle.json'), JSON.stringify(db));
 const n = (r: object) => Object.keys(r).length;
 console.log(
   `База ${db.hash}: профилей ${n(db.profiles)}, сценариев ${n(db.scenarios)}, планов ${n(db.plants)}, материалов ${n(db.materials)}, тары ${n(db.containers)}, ` +
-    `поставщиков ${n(db.suppliers)}, ролей ${n(db.roles)}, техники ${n(db.vehicles)}, графиков ${n(db.shifts)}, грузовых единиц ${n(db.units)}; файлов ${files}.`,
+    `поставщиков ${n(db.suppliers)}, ролей ${n(db.roles)}, техники ${n(db.vehicles)}, графиков ${n(db.shifts)}, грузовых единиц ${n(db.units)}, ` +
+    `приборов ${n(db.instruments)}, методик ${n(db.tests)}, спецификаций ${n(db.specs)}; файлов ${files}.`,
 );

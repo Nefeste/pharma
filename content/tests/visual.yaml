@@ -1,0 +1,7 @@
+id: test.visual
+name: { ru: "Внешний вид, размеры, текст", en: "Appearance, dimensions, text" }
+attr: appearance
+prep: 30
+run: 0
+unattended: false
+sd: 0

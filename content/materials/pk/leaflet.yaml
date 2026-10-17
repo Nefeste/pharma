@@ -5,3 +5,7 @@ unit: pcs
 container: cnt.box.leaflets
 storage: room
 shelf: 60
+spec: spec.mat.pk.leaflet
+bad: { attr: appearance }
+# проба с тары: граммы или штуки
+sample: 10

@@ -4,24 +4,31 @@
 // - запись проходит строгую схему (schema.ts);
 // - ссылки между записями разрешаются;
 // - ключи источников есть в таблице docs/10-domain.md, §9;
-// - числа переводятся в единицы движка (docs/04-data-model.md, §2): кг → мг, ₽ → копейки, м → см, % → доли 1/10 000.
+// - числа переводятся в единицы движка (docs/04-data-model.md, §2): кг → мг, г → мг, ₽ → копейки, м → см, % → доли
+//   1/10 000, минуты → секунды.
 // Ошибка любой записи останавливает сборку: база с битой ссылкой в игру не попадает.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { parse } from 'yaml';
 import type { z } from 'zod';
-import type {
-  ContainerType,
-  ContentDb,
-  Material,
-  Plant,
-  Profile,
-  Role,
-  Scenario,
-  Shift,
-  Supplier,
-  UnitType,
-  VehicleType,
+import {
+  type Attr,
+  type ContainerType,
+  type ContentDb,
+  type InstrumentType,
+  type Material,
+  type Plant,
+  type Profile,
+  QUALITATIVE,
+  type Role,
+  type Scenario,
+  type Shift,
+  type Spec,
+  type SpecLine,
+  type Supplier,
+  type TestMethod,
+  type UnitType,
+  type VehicleType,
 } from '../../src/content/types';
 import { fnv1a, stableJson } from '../../src/engine/core/hash';
 import { KINDS, type Kind } from './schema';
@@ -34,6 +41,8 @@ const share = (pct: number) => Math.round(pct * 100);
 const kop = (rub: number) => Math.round(rub * 100);
 const mg = (kg: number) => Math.round(kg * 1_000_000);
 const cm = (m: number) => Math.round(m * 100);
+const sec = (min: number) => Math.round(min * 60);
+const qual = (a: Attr) => QUALITATIVE.includes(a);
 
 function files(dir: string): string[] {
   return readdirSync(dir)
@@ -119,12 +128,63 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   const need = (ok: unknown, msg: string) => {
     if (!ok) errors.push(msg);
   };
+  const instruments: Record<string, InstrumentType> = { ...raw.instruments };
+  const tests: Record<string, TestMethod> = {};
+  for (const t of Object.values(raw.tests)) {
+    if (t.inst) need(raw.instruments[t.inst], `методика ${t.id}: нет прибора ${t.inst}`);
+    need(!t.unattended || t.inst, `методика ${t.id}: без прибора сама не работает`);
+    need(!qual(t.attr) || t.sd === 0, `методика ${t.id}: ${t.attr} — качественное свойство, погрешности у него нет`);
+    tests[t.id] = { ...t, prep: sec(t.prep), run: sec(t.run), sd: share(t.sd) };
+  }
+  const specs: Record<string, Spec> = {};
+  for (const sp of Object.values(raw.specs)) {
+    const lines: SpecLine[] = [];
+    for (const l of sp.tests) {
+      const t = raw.tests[l.test];
+      need(t, `спецификация ${sp.id}: нет методики ${l.test}`);
+      if (!t) continue;
+      const limited = l.min !== undefined || l.max !== undefined;
+      need(qual(t.attr) !== limited, `спецификация ${sp.id}: ${l.test} — ${qual(t.attr) ? 'у качественного свойства пределов нет' : 'нужен предел'}`);
+      if (l.min !== undefined && l.max !== undefined) need(l.min <= l.max, `спецификация ${sp.id}: у ${l.test} нижний предел выше верхнего`);
+      lines.push({ test: l.test, ...(l.min !== undefined ? { min: share(l.min) } : {}), ...(l.max !== undefined ? { max: share(l.max) } : {}) });
+    }
+    need(new Set(sp.tests.map(l => l.test)).size === sp.tests.length, `спецификация ${sp.id}: методика повторяется`);
+    specs[sp.id] = { ...sp, tests: lines };
+  }
   const materials: Record<string, Material> = {};
+  /** методики, которые нужны входному контролю: под них в плане завода должны быть приборы */
+  const needed = new Set<string>();
   for (const m of Object.values(raw.materials)) {
     const c = raw.containers[m.container];
     need(c, `материал ${m.id}: нет тары ${m.container}`);
     if (c) need(('kg' in c.capacity) === (m.unit === 'kg'), `материал ${m.id}: тара ${c.id} в других единицах`);
-    materials[m.id] = { ...m, unit: m.unit === 'kg' ? 'mass' : 'pcs' };
+    const sp = raw.specs[m.spec];
+    need(sp, `материал ${m.id}: нет спецификации ${m.spec}`);
+    // у каждого количественного свойства спецификации — истинное среднее и разброс
+    for (const l of sp?.tests ?? []) {
+      needed.add(l.test);
+      const a = raw.tests[l.test]?.attr;
+      if (a && !qual(a)) need(m.props[a], `материал ${m.id}: спецификация испытывает ${a}, а свойства нет`);
+    }
+    for (const a of Object.keys(m.props) as Attr[]) need(!qual(a), `материал ${m.id}: ${a} — качественное свойство, среднего у него нет`);
+    if (m.bad) {
+      const q = qual(m.bad.attr);
+      need(q === (m.bad.shift === undefined), `материал ${m.id}: брак по ${m.bad.attr} — ${q ? 'без сдвига' : 'нужен сдвиг'}`);
+      if (!q) need(m.props[m.bad.attr], `материал ${m.id}: брак по ${m.bad.attr}, а свойства нет`);
+    }
+    // проба: граммы → мг; штуки — целые
+    const sample = m.unit === 'kg' ? Math.round(m.sample * 1000) : m.sample;
+    if (m.unit === 'pcs') need(Number.isInteger(m.sample), `материал ${m.id}: проба — целые штуки`);
+    if (c) need(sample <= ('kg' in c.capacity ? mg(c.capacity.kg) : c.capacity.pcs), `материал ${m.id}: проба больше тары`);
+    const props: Material['props'] = {};
+    for (const [a, v] of Object.entries(m.props) as [Attr, [number, number]][]) props[a] = [share(v[0]), share(v[1])];
+    materials[m.id] = {
+      ...m,
+      unit: m.unit === 'kg' ? 'mass' : 'pcs',
+      props,
+      ...(m.bad ? { bad: { attr: m.bad.attr, ...(m.bad.shift !== undefined ? { shift: share(m.bad.shift) } : {}) } } : {}),
+      sample,
+    };
   }
   /** Количество материала в единицах движка: мг или штуки. */
   const amount = (material: string, q: number, where: string) => {
@@ -142,7 +202,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   for (const s of Object.values(raw.suppliers)) {
     const items: Supplier['items'] = {};
     for (const [mid, it] of Object.entries(s.items)) items[mid] = { price: kop(it.price), moq: amount(mid, it.moq, `поставщик ${s.id}`) };
-    suppliers[s.id] = { ...s, prepay: share(s.prepay), items };
+    suppliers[s.id] = { ...s, prepay: share(s.prepay), defects: share(s.defects), items };
   }
   const roles: Record<string, Role> = {};
   for (const r of Object.values(raw.roles)) roles[r.id] = { ...r, salary: kop(r.salary) };
@@ -162,12 +222,23 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       zones: p.zones.map(zn => ({ ...zn, rect: r4(zn.rect) })),
       racks: p.racks.map(r => ({ ...r, x: cm(r.x), z: cm(r.z) })),
       rooms: p.rooms.map(r => ({ ...r, rect: r4(r.rect) })),
+      instruments: p.instruments,
       points: { park: [cm(p.points.park[0]), cm(p.points.park[1])], entrance: [cm(p.points.entrance[0]), cm(p.points.entrance[1])] },
     };
-    const ids = [...p.docks.map(d => d.id), ...p.zones.map(z => z.id), ...p.racks.map(r => r.id), ...p.rooms.map(r => r.id)];
-    need(new Set(ids).size === ids.length, `план ${p.id}: имена рамп, зон, стеллажей и помещений повторяются`);
-    for (const k of ['receiving', 'quarantine', 'rejected', 'staging'] as const) need(p.zones.some(z => z.kind === k), `план ${p.id}: нет зоны «${k}»`);
+    const ids = [...p.docks.map(d => d.id), ...p.zones.map(z => z.id), ...p.racks.map(r => r.id), ...p.rooms.map(r => r.id), ...p.instruments.map(i => i.id)];
+    need(new Set(ids).size === ids.length, `план ${p.id}: имена рамп, зон, стеллажей, помещений и приборов повторяются`);
+    for (const k of ['receiving', 'quarantine', 'rejected', 'staging', 'sampling'] as const) need(p.zones.some(z => z.kind === k), `план ${p.id}: нет зоны «${k}»`);
     need(p.docks.some(d => d.kind === 'in'), `план ${p.id}: нет рампы приёмки`);
+    need(p.rooms.some(r => r.type === 'lab'), `план ${p.id}: нет лаборатории`);
+    for (const i of p.instruments) {
+      need(raw.instruments[i.type], `план ${p.id}: прибор ${i.id} — нет вида ${i.type}`);
+      need(p.rooms.some(r => r.id === i.room), `план ${p.id}: прибор ${i.id} — нет помещения ${i.room}`);
+    }
+    // входной контроль: под каждую нужную методику с прибором — прибор этого вида
+    for (const tid of needed) {
+      const inst = raw.tests[tid]?.inst;
+      if (inst) need(p.instruments.some(i => i.type === inst), `план ${p.id}: нет прибора ${inst} для ${tid}`);
+    }
   }
   const scenarios: Record<string, Scenario> = {};
   for (const s of Object.values(raw.scenarios)) {
@@ -206,5 +277,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     vehicles,
     shifts,
     plants,
+    instruments,
+    tests,
+    specs,
   };
 }

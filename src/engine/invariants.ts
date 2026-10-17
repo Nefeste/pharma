@@ -1,9 +1,13 @@
-// Инварианты завода (docs/02-architecture.md, §15; docs/specs/2026-10-engine.md, «Инварианты 1а»). Чистая проверка
+// Инварианты завода (docs/02-architecture.md, §15; docs/specs/2026-10-engine.md, «Инварианты 1а», 1б). Чистая проверка
 // состояния: список нарушений, пустой — всё в порядке. Её зовут тесты и «виртуальный директор» на каждом шаге проверки.
 import type { ContentDb } from '../content/types';
 import { planOf } from './plant';
-import { LOT_FLOW } from './stock';
-import type { PlantState } from './types';
+import { LOT_FLOW, TAG } from './stock';
+import type { LotStatus, PlantState } from './types';
+
+/** Где может стоять паллета партии до решения: дальше карантина и пробоотборной — только после «разрешено». */
+const BEFORE_DECISION = new Set(['receiving', 'quarantine', 'cold', 'sampling']);
+const UNDECIDED: ReadonlySet<LotStatus> = new Set(['quarantine', 'sampled', 'testing']);
 
 export function check(db: ContentDb, s: PlantState): string[] {
   const bad: string[] = [];
@@ -45,6 +49,23 @@ export function check(db: ContentDb, s: PlantState): string[] {
       if (use.unit) bad.push(`место ${id}: занято и одновременно держится задачей`);
     }
   }
+  // паллета — одной партии; ярлык — по её статусу; до решения — не дальше карантина; на стеллаже хранения — только
+  // разрешённое (или заблокированное после разрешения)
+  for (const u of Object.values(s.units)) {
+    const lots = new Set(u.items.map(c => s.containers[c]?.lot));
+    if (lots.size !== 1) {
+      bad.push(`паллета ${u.id}: партий на ней ${lots.size}`);
+      continue;
+    }
+    const lot = s.lots[[...lots][0]!];
+    if (!lot) continue;
+    if (u.tag !== TAG[lot.status]) bad.push(`паллета ${u.id}: ярлык ${u.tag}, а партия ${lot.id} — ${lot.status}`);
+    if (u.where.kind !== 'slot') continue;
+    const kind = plan.slot[u.where.id]?.kind;
+    if (!kind) continue;
+    if (UNDECIDED.has(lot.status) && !BEFORE_DECISION.has(kind)) bad.push(`паллета ${u.id}: партия ${lot.id} (${lot.status}) уже в «${kind}»`);
+    if (kind === 'storage' && lot.status !== 'released' && lot.status !== 'blocked') bad.push(`паллета ${u.id}: партия ${lot.id} (${lot.status}) на стеллаже хранения`);
+  }
   for (const tr of Object.values(s.trucks)) {
     for (const uid of tr.units) {
       const u = s.units[uid];
@@ -69,5 +90,36 @@ export function check(db: ContentDb, s: PlantState): string[] {
     }
   }
   for (const id of s.open) if (!s.tasks[id]) bad.push(`очередь задач: нет задачи ${id}`);
+  // пробы: партия их знает, тара из плана — этой партии, отобранное сходится с партией
+  for (const sm of Object.values(s.samples)) {
+    const lot = s.lots[sm.lot];
+    if (!lot || lot.sample !== sm.id) bad.push(`пробы ${sm.id}: партия ${sm.lot} их не знает`);
+    for (const cid of sm.plan) if (s.containers[cid]?.lot !== sm.lot) bad.push(`пробы ${sm.id}: тара ${cid} не этой партии`);
+    for (const uid of sm.left) if (!s.units[uid]?.items.some(c => sm.plan.includes(c))) bad.push(`пробы ${sm.id}: на паллете ${uid} нет тары из плана`);
+    if (lot && sm.qty !== lot.sampled) bad.push(`пробы ${sm.id}: отобрано ${sm.qty}, а у партии ${lot.sampled}`);
+    if (lot && lot.status !== 'quarantine' && (sm.left.length > 0 || sm.taken === undefined)) bad.push(`пробы ${sm.id}: партия ${lot.status}, а отбор не кончен`);
+    for (const qid of sm.tests) if (s.tests[qid]?.sample !== sm.id) bad.push(`пробы ${sm.id}: испытание ${qid} не их`);
+  }
+  for (const lot of Object.values(s.lots)) {
+    if (lot.sample && !s.samples[lot.sample]) bad.push(`партия ${lot.id}: нет проб ${lot.sample}`);
+    if ((lot.status === 'sampled' || lot.status === 'testing') && !lot.sample) bad.push(`партия ${lot.id}: ${lot.status} без проб`);
+    if (lot.status === 'testing' && s.samples[lot.sample!]?.tests.length === 0) bad.push(`партия ${lot.id}: на испытаниях без испытаний`);
+  }
+  // приборы и испытания знают друг друга; результат проверен не тем, кто его получил
+  for (const i of Object.values(s.instruments)) {
+    if (!i.test) continue;
+    const q = s.tests[i.test];
+    if (!q || q.inst !== i.id || (q.state !== 'prep' && q.state !== 'run')) bad.push(`прибор ${i.id}: занят испытанием ${i.test}, которое на нём не идёт`);
+  }
+  for (const q of Object.values(s.tests)) {
+    if (!s.samples[q.sample]?.tests.includes(q.id)) bad.push(`испытание ${q.id}: пробы ${q.sample} его не знают`);
+    if (q.inst && (q.state === 'prep' || q.state === 'run') && s.instruments[q.inst]?.test !== q.id) bad.push(`испытание ${q.id}: прибор ${q.inst} занят другим`);
+    if (q.state === 'run' && !q.inst) bad.push(`испытание ${q.id}: прибор работает, а прибора нет`);
+    if ((q.state === 'review' || q.state === 'done') && q.result === undefined) bad.push(`испытание ${q.id}: ${q.state} без результата`);
+    if (q.state === 'done' && (q.pass === undefined || !q.checker || q.checker === q.by)) bad.push(`испытание ${q.id}: результат без проверки вторым лицом`);
+  }
+  for (const t of Object.values(s.tasks)) {
+    if (t.instrument && s.instruments[t.instrument]?.test !== t.test) bad.push(`задача ${t.id}: прибор ${t.instrument} занят не её испытанием`);
+  }
   return bad;
 }

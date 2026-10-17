@@ -14,3 +14,18 @@ export function roll<T>(s: PlantState, name: string, f: (r: Rng) => T): T {
   s.rng[name] = r.state();
   return out;
 }
+
+/**
+ * Нормальная величина в долях 1/10 000 (СКО ≈ 10 000): сумма 12 равномерных целых [0, 10 000) минус их среднее 59 994 —
+ * только целые, без `Math` (docs/specs/2026-10-engine.md, 1б). Хвосты обрезаны на ±6 СКО.
+ */
+export function normal(r: Rng): number {
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += r.int(10000);
+  return sum - 59994;
+}
+
+/** `sd` × нормальная величина `z` (доли 1/10 000) — до целого, половина вверх. */
+export function spread(sd: number, z: number): number {
+  return Math.floor((sd * z + 5000) / 10000);
+}

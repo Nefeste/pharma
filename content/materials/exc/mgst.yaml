@@ -5,3 +5,9 @@ unit: kg
 container: cnt.bag.20
 storage: room
 shelf: 36
+spec: spec.mat.exc.mgst
+# истинные свойства партии: среднее и разброс, %; партия брака — сдвиг (гипотезы)
+props: { moisture: [4, 0.5] }
+bad: { attr: moisture, shift: 3 }
+# проба с тары: граммы или штуки
+sample: 20

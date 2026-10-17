@@ -1,10 +1,11 @@
 // Движок завода части 0 (docs/02-architecture.md, §3–4): часы, планёрка в 08:00, ход времени срезами — то же, что одним
-// куском; сохранение — снимок со схемой; ветви зерна не зависят друг от друга.
+// куском; сохранение — снимок со схемой и миграциями (образцы всех схем); ветви зерна не зависят друг от друга.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { DAY, HOUR } from '../../src/engine/core/calendar';
 import { fingerprint } from '../../src/engine/core/hash';
 import { apply, MORNING, newPlant } from '../../src/engine/engine';
+import { check } from '../../src/engine/invariants';
 import { roll } from '../../src/engine/random';
 import { fromSave, toSave } from '../../src/engine/save';
 import { type Notice, SCHEMA } from '../../src/engine/types';
@@ -62,7 +63,7 @@ describe('сохранение', () => {
     expect(fingerprint(copy)).toBe(fingerprint(s));
   });
 
-  test.each([1, 2])('образец схемы %d читается и живёт дальше (tools/test/fixtures/)', async v => {
+  test.each([1, 2, 3])('образец схемы %d читается и живёт дальше (tools/test/fixtures/)', async v => {
     const json = await Bun.file(new URL(`./fixtures/save-v${v}.json`, import.meta.url)).text();
     const s = fromSave(db, json);
     expect(s.schema).toBe(SCHEMA);
@@ -70,6 +71,20 @@ describe('сохранение', () => {
     const before = s.day;
     apply(db, s, { kind: 'advance', seconds: DAY });
     expect(s.day).toBe(before + 1);
+  });
+
+  test('образец схемы 2: у партий — свойства, приборы — по плану; 90 суток лаборатория работает, инварианты — каждый час', async () => {
+    const json = await Bun.file(new URL('./fixtures/save-v2.json', import.meta.url)).text();
+    const s = fromSave(db, json);
+    for (const lot of Object.values(s.lots)) expect([lot.truth, lot.coa].every(p => Object.keys(p).length > 0)).toBe(true);
+    expect(Object.keys(s.instruments)).toEqual(db.plants[s.plant].instruments.map(i => i.id));
+    expect(check(db, s)).toEqual([]);
+    const end = s.t + 90 * DAY;
+    while (s.t < end) {
+      apply(db, s, { kind: 'advance', seconds: HOUR });
+      expect(check(db, s)).toEqual([]);
+    }
+    for (const lot of Object.values(s.lots)) expect(['released', 'rejected']).toContain(lot.status);
   });
 
   test('сохранение новее игры не открывается молча', () => {

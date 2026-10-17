@@ -1,0 +1,8 @@
+id: test.lod
+name: { ru: Потеря в массе при высушивании, en: Loss on drying }
+attr: moisture
+inst: inst.lod
+prep: 20
+run: 30
+unattended: false
+sd: 0.1

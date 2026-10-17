@@ -80,8 +80,12 @@ try {
   if (morning.t % 86400 !== 8 * 3600) fail(`«До утра» остановилось в ${(morning.t % 86400) / 3600} ч`);
   else if (morning.speed !== 0) fail(`после «До утра» скорость ${morning.speed}, а не пауза`);
   else ok('«До утра»: планёрка в 08:00, пауза');
+  // панели обновляются 10 раз в секунду: извещение может прийти на кадр позже паузы
+  const shown = await page
+    .waitForFunction(() => /Планёрка/.test(document.querySelector('.top .notice')?.textContent ?? ''), null, { timeout: 2000 })
+    .then(() => true, () => false);
   const notice = await page.textContent('.top .notice');
-  if (!/Планёрка/.test(notice ?? '')) fail(`извещение: ${notice}`);
+  if (!shown) fail(`извещение: ${notice}`);
   else ok(`извещение: ${notice}`);
 
   // снимок: общий план склада

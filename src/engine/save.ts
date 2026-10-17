@@ -4,6 +4,7 @@ import type { ContentDb } from '../content/types';
 import { type Agenda, schedule } from './core/agenda';
 import { HOUR } from './core/calendar';
 import { planOf } from './plant';
+import { nominal } from './quality';
 import { type PlantEvent, type PlantState, SCHEMA } from './types';
 
 type Raw = Record<string, unknown>;
@@ -49,6 +50,20 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
       tasks: {},
       open: [],
     };
+  },
+  // 2 → 3 (часть 1б): лаборатория. Приборы — по плану завода. У партий — истинные свойства и паспорт, номинальные:
+  // средние, качественные — «соответствует». Партии в карантине уходят на отбор проб в ближайший час.
+  2: (raw, db) => {
+    const plant = db.plants[raw.plant as string];
+    if (!plant) throw new Error(`save: no plant ${String(raw.plant)}`);
+    const instruments: Raw = {};
+    for (const i of plant.instruments) instruments[i.id] = { id: i.id, type: i.type, room: i.room };
+    for (const lot of Object.values(raw.lots as Record<string, Raw>)) {
+      const props = nominal(db, lot.material as string);
+      lot.truth = props;
+      lot.coa = { ...props };
+    }
+    return { ...raw, instruments, samples: {}, tests: {}, deviations: {} };
   },
 };
 

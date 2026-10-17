@@ -9,6 +9,8 @@ const review = z.enum(['draft', 'checked']);
 const sources = z.array(z.string().regex(/^[a-z0-9-]+$/, 'ключ источника — латиница, цифры и дефис')).min(1);
 const percent = z.number().min(0).max(100);
 const id = z.string().regex(/^[a-z][a-zA-Z0-9.-]*$/, 'идентификатор — латиница, цифры, точка и дефис');
+/** Свойство качества (src/content/types.ts, `Attr`). */
+const attr = z.enum(['identity', 'assay', 'moisture', 'appearance']);
 /** Источник и review пишутся вместе: запись с фактом — с источником; выбор геймдизайна — без. */
 const paired = <T extends { source?: unknown; review?: unknown }>(o: T) => (o.source === undefined) === (o.review === undefined);
 const pairedMsg = { message: 'источник и review пишутся вместе' };
@@ -73,6 +75,14 @@ export const material = z
     /** месяцев */
     shelf: z.number().int().min(1).max(120),
     potency: z.boolean().optional(),
+    /** спецификация входного контроля */
+    spec: id,
+    /** истинные свойства партии: среднее и разброс между партиями, % — только количественные */
+    props: z.partialRecord(attr, z.tuple([z.number(), z.number().min(0)])).default({}),
+    /** брак у поставщика: свойство и сдвиг, %; у качественного свойства сдвига нет — «не соответствует» */
+    bad: z.strictObject({ attr, shift: z.number().optional() }).optional(),
+    /** проба с одной тары: граммы или штуки */
+    sample: z.number().positive(),
     source: sources.optional(),
     review: review.optional(),
   })
@@ -96,6 +106,8 @@ export const supplier = z.strictObject({
   prepay: percent,
   payDays: z.number().int().min(0).max(365),
   approved: z.boolean(),
+  /** доля партий с браком, % */
+  defects: percent,
   /** ₽ за кг или за штуку; минимальная партия — кг или штуки */
   items: z.record(id, z.strictObject({ price: z.number().positive(), moq: qty })),
 });
@@ -131,6 +143,42 @@ export const shift = z.strictObject({
   to: z.number().int().min(1).max(24),
 });
 
+/** Прибор лаборатории: вид; экземпляры с местом — в плане завода. */
+export const instrument = z.strictObject({
+  id: z.string(),
+  name: text,
+});
+
+/** Методика испытания (геймдизайн, §6.2). */
+export const test = z
+  .strictObject({
+    id: z.string(),
+    name: text,
+    attr,
+    /** вид прибора; нет — без прибора */
+    inst: id.optional(),
+    /** минуты: работа аналитика (подготовка) и работа прибора */
+    prep: z.number().int().min(0),
+    run: z.number().int().min(0),
+    /** прибор работает без человека, и ночью тоже */
+    unattended: z.boolean(),
+    /** погрешность — СКО, % */
+    sd: z.number().min(0),
+    source: sources.optional(),
+    review: review.optional(),
+  })
+  .refine(paired, pairedMsg);
+
+/** Спецификация: испытания и пределы, %. У качественного свойства пределов нет: «соответствует» или нет. */
+export const spec = z
+  .strictObject({
+    id: z.string(),
+    tests: z.array(z.strictObject({ test: id, min: z.number().optional(), max: z.number().optional() })).min(1),
+    source: sources.optional(),
+    review: review.optional(),
+  })
+  .refine(paired, pairedMsg);
+
 const rect = z.tuple([z.number(), z.number(), z.number().positive(), z.number().positive()]);
 const point = z.tuple([z.number(), z.number()]);
 
@@ -141,13 +189,15 @@ export const plant = z.strictObject({
   zones: z.array(
     z.strictObject({
       id: z.string(),
-      kind: z.enum(['receiving', 'quarantine', 'cold', 'rejected', 'fgQuarantine', 'shipping', 'staging']),
+      kind: z.enum(['receiving', 'quarantine', 'cold', 'rejected', 'fgQuarantine', 'shipping', 'staging', 'sampling']),
       rect,
       grid: z.tuple([z.number().int().min(1), z.number().int().min(1)]),
     }),
   ),
   racks: z.array(z.strictObject({ id: z.string().regex(/^[A-Z]$/), x: z.number(), z: z.number(), bays: z.number().int().min(1).max(30), levels: z.number().int().min(1).max(6) })),
   rooms: z.array(z.strictObject({ id: z.string(), type: z.string(), rect, grade: z.enum(['D', 'cnc']) })),
+  /** приборы лаборатории: вид и помещение */
+  instruments: z.array(z.strictObject({ id: z.string(), type: id, room: z.string() })).default([]),
   points: z.strictObject({ park: point, entrance: point }),
 });
 
@@ -163,6 +213,9 @@ export const KINDS = {
   vehicles: { prefix: 'veh', schema: vehicle },
   shifts: { prefix: 'shift', schema: shift },
   plants: { prefix: 'plant', schema: plant },
+  instruments: { prefix: 'inst', schema: instrument },
+  tests: { prefix: 'test', schema: test },
+  specs: { prefix: 'spec', schema: spec },
 } as const;
 
 export type Kind = keyof typeof KINDS;

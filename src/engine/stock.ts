@@ -3,6 +3,7 @@
 import type { ContentDb, Id } from '../content/types';
 import { momentOf } from './core/calendar';
 import { dist, type PlantPlan, type Point, type Slot } from './plant';
+import { lotProps } from './quality';
 import type { Container, Lot, LotStatus, PlantState, Tag, Unit, Where } from './types';
 
 /** Новый номер вида: `L1`, `L2`… */
@@ -22,7 +23,8 @@ export const LOT_FLOW: Record<LotStatus, LotStatus[]> = {
   rejected: [],
 };
 
-const TAG: Record<LotStatus, Tag> = {
+/** Ярлык на паллете по статусу партии. */
+export const TAG: Record<LotStatus, Tag> = {
   quarantine: 'quarantine',
   sampled: 'sampled',
   testing: 'sampled',
@@ -78,6 +80,7 @@ export function createLot(db: ContentDb, s: PlantState, o: NewLot): { lot: Lot; 
   const n = containersFor(db, o.material, o.qty);
   const at = momentOf(s.start, s.t);
   const code = { y: at.date.y % 100, m: at.date.m, n: (s.next.lotCode = (s.next.lotCode ?? 0) + 1) };
+  const { truth, coa } = lotProps(db, s, o.material, o.supplier);
   const lot: Lot = {
     id: nextId(s, 'L'),
     material: o.material,
@@ -93,6 +96,8 @@ export function createLot(db: ContentDb, s: PlantState, o: NewLot): { lot: Lot; 
     used: 0,
     sampled: 0,
     written: 0,
+    truth,
+    coa,
   };
   s.lots[lot.id] = lot;
   const units: Unit[] = [];
@@ -134,7 +139,6 @@ export function slotFree(s: PlantState, slotId: string): boolean {
 export function daysLeft(s: PlantState, lot: Lot): number {
   return lot.expiry - momentOf(s.start, s.t).day;
 }
-
 
 /**
  * Ближайшее свободное место вида `kind` к точке `near`, не выше яруса `maxLevel`. Порядок — ярус (ниже — раньше),

@@ -1,0 +1,3 @@
+id: spec.mat.pk.case
+tests:
+  - { test: test.visual }

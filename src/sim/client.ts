@@ -1,7 +1,7 @@
 // из bolnitsa: src/sim/client.ts @ e0a3491 — изменено: завод вместо смены; без режима врача и мира больницы.
 // Сторона потока отрисовки: Web Worker с движком, ход часов кадрами, последний срез. В пути — не больше одного `tick`:
 // пока ответ не пришёл, игровые секунды копятся, и поток не захлёбывается кадрами, если не успевает.
-import type { Command, Notice, PlantState } from '../engine/types';
+import type { Command, Notice } from '../engine/types';
 import type { FromSim, ToSim } from './protocol';
 
 export interface Slice {
@@ -15,7 +15,7 @@ export class SimClient {
   private ticking = false;
   /** игровые секунды, которые часы игры прошли, а в поток ещё не отправлены (с дробью) */
   private owed = 0;
-  private saves: ((s: PlantState) => void)[] = [];
+  private saves: ((json: string) => void)[] = [];
   /** время на поток: от отправки `tick` до ответа, мс — для бенча */
   readonly roundTrips: number[] = [];
   private sentAt = 0;
@@ -34,8 +34,8 @@ export class SimClient {
 
   private receive(msg: FromSim) {
     if (msg.kind === 'error') return this.onError(msg.message);
-    if (msg.kind === 'state') {
-      this.saves.shift()?.(msg.state);
+    if (msg.kind === 'saved') {
+      this.saves.shift()?.(msg.json);
       return;
     }
     if (this.ticking) {
@@ -71,7 +71,8 @@ export class SimClient {
     this.post({ kind: 'tick', seconds, budgetMs });
   }
 
-  save(): Promise<PlantState> {
+  /** Снимок состояния строкой: окно его не разбирает, а отдаёт главному процессу на запись. */
+  save(): Promise<string> {
     return new Promise(resolve => {
       this.saves.push(resolve);
       this.post({ kind: 'save' });

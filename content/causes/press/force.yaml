@@ -1,0 +1,14 @@
+# Каталог причин (docs/04-data-model.md, §4; docs/specs/2026-10-engine.md, 1в). Направление вклада — факт с источником
+# (docs/10-domain.md, §7); величина коэффициента — гипотеза геймдизайна: единиц показателя на единицу отхода от цели.
+id: cause.press.force
+name: { ru: Сила прессования не по цели, en: Compression force off target }
+driver: { param: force }
+# на каждый кН сверх цели: прочнее, меньше истираемость, дольше распадаемость; растворение — чуть медленнее (парацетамол
+# растворим хорошо, влияние мало)
+effects:
+  - { attr: hardness, coef: 6 }
+  - { attr: friability, coef: -0.03 }
+  - { attr: disintegration, coef: 0.6 }
+  - { attr: dissolution, coef: -1 }
+source: [adeleye-2019, fda-qbd-ir]
+review: draft

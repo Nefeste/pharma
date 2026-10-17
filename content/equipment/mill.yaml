@@ -1,0 +1,3 @@
+id: eq.mill
+name: { ru: Калибратор, en: Mill }
+cleaning: { minor: 20, major: 90 }

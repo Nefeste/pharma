@@ -9,8 +9,8 @@ const review = z.enum(['draft', 'checked']);
 const sources = z.array(z.string().regex(/^[a-z0-9-]+$/, 'ключ источника — латиница, цифры и дефис')).min(1);
 const percent = z.number().min(0).max(100);
 const id = z.string().regex(/^[a-z][a-zA-Z0-9.-]*$/, 'идентификатор — латиница, цифры, точка и дефис');
-/** Свойство качества (src/content/types.ts, `Attr`). */
-const attr = z.enum(['identity', 'assay', 'moisture', 'appearance']);
+/** Свойство качества (src/content/types.ts, `Attr` и `ATTRS` — единицы). */
+const attr = z.enum(['identity', 'assay', 'moisture', 'appearance', 'particle', 'mass', 'hardness', 'friability', 'disintegration', 'dissolution']);
 /** Источник и review пишутся вместе: запись с фактом — с источником; выбор геймдизайна — без. */
 const paired = <T extends { source?: unknown; review?: unknown }>(o: T) => (o.source === undefined) === (o.review === undefined);
 const pairedMsg = { message: 'источник и review пишутся вместе' };
@@ -42,6 +42,8 @@ export const scenario = z.strictObject({
   staff: z.array(z.strictObject({ role: id, shift: id, skill: z.number().int().min(1).max(5), n: z.number().int().min(1).max(50) })).min(1),
   vehicles: z.array(z.strictObject({ type: id, n: z.number().int().min(1).max(20) })),
   orders: z.array(z.strictObject({ supplier: id, lines: z.array(z.strictObject({ material: id, qty })).min(1) })).default([]),
+  /** задания на серию: карта и день «не раньше» от начала партии */
+  batches: z.array(z.strictObject({ recipe: id, day: z.number().int().min(0).max(3650) })).default([]),
   stock: z.array(z.strictObject({ material: id, qty })).default([]),
 });
 
@@ -67,7 +69,8 @@ export const unit = z
 export const material = z
   .strictObject({
     id: z.string(),
-    kind: z.enum(['api', 'excipient', 'packaging']),
+    /** `bulk` — свой полупродукт: таблетки после производства, до упаковки */
+    kind: z.enum(['api', 'excipient', 'packaging', 'bulk']),
     name: text,
     unit: z.enum(['kg', 'pcs']),
     container: id,
@@ -77,7 +80,7 @@ export const material = z
     potency: z.boolean().optional(),
     /** спецификация входного контроля */
     spec: id,
-    /** истинные свойства партии: среднее и разброс между партиями, % — только количественные */
+    /** истинные свойства партии: среднее и разброс между партиями, в единицах свойства — только количественные */
     props: z.partialRecord(attr, z.tuple([z.number(), z.number().min(0)])).default({}),
     /** брак у поставщика: свойство и сдвиг, %; у качественного свойства сдвига нет — «не соответствует» */
     bad: z.strictObject({ attr, shift: z.number().optional() }).optional(),
@@ -91,7 +94,7 @@ export const material = z
 export const container = z.strictObject({
   id: z.string(),
   name: text,
-  kind: z.enum(['drum', 'bag', 'roll', 'box', 'bundle']),
+  kind: z.enum(['drum', 'bag', 'roll', 'box', 'bundle', 'bin']),
   /** ровно одно: кг или штуки */
   capacity: z.union([z.strictObject({ kg: z.number().positive() }), z.strictObject({ pcs: z.number().int().positive() })]),
   perPallet: z.number().int().min(1).max(100),
@@ -162,14 +165,14 @@ export const test = z
     run: z.number().int().min(0),
     /** прибор работает без человека, и ночью тоже */
     unattended: z.boolean(),
-    /** погрешность — СКО, % */
+    /** погрешность — СКО, в единицах свойства */
     sd: z.number().min(0),
     source: sources.optional(),
     review: review.optional(),
   })
   .refine(paired, pairedMsg);
 
-/** Спецификация: испытания и пределы, %. У качественного свойства пределов нет: «соответствует» или нет. */
+/** Спецификация: испытания и пределы в единицах свойства. У качественного свойства пределов нет: «соответствует» или нет. */
 export const spec = z
   .strictObject({
     id: z.string(),
@@ -198,8 +201,115 @@ export const plant = z.strictObject({
   rooms: z.array(z.strictObject({ id: z.string(), type: z.string(), rect, grade: z.enum(['D', 'cnc']) })),
   /** приборы лаборатории: вид и помещение */
   instruments: z.array(z.strictObject({ id: z.string(), type: id, room: z.string() })).default([]),
+  /** оборудование производства: вид и помещение */
+  equipment: z.array(z.strictObject({ id: z.string(), type: id, room: z.string() })).default([]),
   points: z.strictObject({ park: point, entrance: point }),
 });
+
+/** Продукт: лекарство по МНН и форма; дозировка — в имени. */
+export const product = z.strictObject({
+  id: z.string(),
+  name: text,
+  /** МНН латиницей */
+  inn: z.string().regex(/^[a-z][a-z-]*$/),
+  form: z.enum(['tablet']),
+});
+
+const minutes = z.number().min(0);
+
+/** Вид оборудования (геймдизайн, §5.2, §5.5): уборка малая и большая, минуты. */
+export const equipment = z.strictObject({
+  id: z.string(),
+  name: text,
+  cleaning: z.strictObject({ minor: minutes, major: minutes }),
+});
+
+/**
+ * Технологическая карта (docs/04-data-model.md, §4–5): состав на серию, стадии, показатели балка, выход. Количества,
+ * времена, режимы и разбросы — гипотезы геймдизайна; устройство стадий — с источником.
+ */
+export const recipe = z
+  .strictObject({
+    id: z.string(),
+    name: text,
+    product: id,
+    /** размер серии: кг и штук */
+    batch: z.strictObject({ kg: z.number().positive(), units: z.number().int().positive() }),
+    /**
+     * состав на серию, кг; `potency` — навеска пересчитывается на содержание партии; `qs` — «до массы»: этой строкой
+     * добирают массу серии, если навеска с пересчётом больше нормы
+     */
+    bom: z.array(z.strictObject({ material: id, kg: z.number().positive(), potency: z.boolean().optional(), qs: z.boolean().optional() })).min(1),
+    stages: z
+      .array(
+        z.strictObject({
+          id: z.string().regex(/^[a-z][a-zA-Z0-9-]*$/),
+          /** тип помещения */
+          room: z.string(),
+          /** виды оборудования стадии: всё — в одном помещении */
+          equipment: z.array(id).min(1),
+          staff: z.strictObject({ role: id, n: z.number().int().min(1).max(5) }),
+          /** минуты: подготовка, на загрузку, на компонент; скорость — кг или штук в час; разброс длительности, % */
+          time: z.strictObject({
+            setup: minutes,
+            perLoad: minutes.optional(),
+            loads: z.number().int().min(1).max(10).optional(),
+            perComponent: minutes.optional(),
+            kgPerHour: z.number().positive().optional(),
+            unitsPerHour: z.number().positive().optional(),
+            spread: percent.default(0),
+          }),
+          /** режимы: цель, допустимый диапазон и разброс от серии к серии, в единицах режима */
+          params: z
+            .array(
+              z.strictObject({
+                id: z.string().regex(/^[a-z][a-zA-Z0-9]*$/),
+                unit: z.enum(['rpm', 'min', 'C', 'kN', 'kg']),
+                target: z.number(),
+                range: z.tuple([z.number(), z.number()]),
+                sd: z.number().min(0),
+              }),
+            )
+            .default([]),
+          /** межоперационный контроль: методика, как часто (минуты; нет — раз в конце стадии), пределы */
+          ipc: z.array(z.strictObject({ test: id, every: minutes.optional(), min: z.number().optional(), max: z.number().optional() })).default([]),
+          /** потери стадии: среднее и разброс, % от массы на входе */
+          loss: z.tuple([percent, percent]).default([0, 0]),
+        }),
+      )
+      .min(1),
+    /** балк — материал полупродукта */
+    bulk: id,
+    /** показатели балка: номинал и разброс серии, в единицах свойства */
+    quality: z.partialRecord(attr, z.tuple([z.number(), z.number().min(0)])),
+    /** выход, %: ожидаемый и тревожный — ниже тревожного отклонение */
+    yield: z.strictObject({ expected: percent, alarm: percent }),
+    source: sources.optional(),
+    review: review.optional(),
+  })
+  .refine(paired, pairedMsg);
+
+/**
+ * Причина (docs/04-data-model.md, §4): откуда вклад и в какие показатели серии. Направление вклада — факт с источником;
+ * величина коэффициента — гипотеза геймдизайна.
+ */
+export const cause = z
+  .strictObject({
+    id: z.string(),
+    name: text,
+    /** отход режима стадии от цели; содержание АФС против измеренного; свойство отвешенных партий; другой показатель */
+    driver: z.union([
+      z.strictObject({ param: z.string() }),
+      z.strictObject({ potency: z.literal(true) }),
+      z.strictObject({ lots: z.enum(['api', 'excipient']), attr }),
+      z.strictObject({ attr }),
+    ]),
+    /** вклад: показатель серии и коэффициент — единиц показателя на единицу отхода */
+    effects: z.array(z.strictObject({ attr, coef: z.number() })).min(1),
+    source: sources.optional(),
+    review: review.optional(),
+  })
+  .refine(paired, pairedMsg);
 
 /** Папка в content/ → приставка идентификатора и схема. */
 export const KINDS = {
@@ -216,6 +326,10 @@ export const KINDS = {
   instruments: { prefix: 'inst', schema: instrument },
   tests: { prefix: 'test', schema: test },
   specs: { prefix: 'spec', schema: spec },
+  products: { prefix: 'prd', schema: product },
+  equipment: { prefix: 'eq', schema: equipment },
+  recipes: { prefix: 'rcp', schema: recipe },
+  causes: { prefix: 'cause', schema: cause },
 } as const;
 
 export type Kind = keyof typeof KINDS;

@@ -1,0 +1,9 @@
+# Навеску АФС считают по содержанию, которое завод знает (результат своей лаборатории или паспорт); настоящее
+# содержание другое — и содержание в серии сдвигается на столько же: на каждый 1 % — 1 %.
+id: cause.api.potency
+name: { ru: "Содержание АФС в партии не такое, как измерено", en: API assay differs from the measured value }
+driver: { potency: true }
+effects:
+  - { attr: assay, coef: 1 }
+source: [ema-fdf]
+review: draft

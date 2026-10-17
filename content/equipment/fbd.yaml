@@ -1,0 +1,3 @@
+id: eq.fbd
+name: { ru: Сушилка с псевдоожиженным слоем, en: Fluid-bed dryer }
+cleaning: { minor: 45, major: 180 }

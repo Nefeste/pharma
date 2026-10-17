@@ -1,0 +1,86 @@
+# Технологическая карта прототипа (docs/specs/2026-10-engine.md, 1в; docs/04-data-model.md, §4–5): таблетки парацетамола
+# 500 мг влажной грануляцией. Стадии и классы оборудования — по единичным операциям, отвешивание с проверкой вторым
+# лицом, пересчёт АФС с добором массы — факты с источниками (docs/10-domain.md). Состав, времена, режимы, разбросы,
+# потери и показатели балка — гипотезы геймдизайна, не чей-то настоящий регламент. Вода очищенная для грануляции —
+# инженерная среда: её количество — режим стадии, в учёте склада она не ведётся.
+id: rcp.paracetamol500.wet.v1
+name: { ru: "Парацетамол 500 мг, влажная грануляция, ред. 1", en: "Paracetamol 500 mg, wet granulation, rev. 1" }
+product: prd.paracetamol500
+batch: { kg: 120, units: 200000 }
+bom:
+  - { material: mat.api.paracetamol, kg: 100, potency: true }
+  - { material: mat.exc.starch, kg: 12 }
+  - { material: mat.exc.povidone, kg: 3 }
+  - { material: mat.exc.mcc, kg: 4.2, qs: true }
+  - { material: mat.exc.mgst, kg: 0.8 }
+stages:
+  # отвешивание: взвешивает один, проверяет второй
+  - id: dispense
+    room: dispensing
+    equipment: [eq.scale]
+    staff: { role: role.operator, n: 2 }
+    time: { setup: 20, perComponent: 15, spread: 10 }
+  - id: granulate
+    room: granulation
+    equipment: [eq.hsm]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 15, perLoad: 35, loads: 2, spread: 5 }
+    params:
+      - { id: impeller, unit: rpm, target: 150, range: [120, 180], sd: 8 }
+      - { id: wetMassing, unit: min, target: 4, range: [3, 6], sd: 0.4 }
+      # вода очищенная на серию: больше воды при той же сушке — влажнее гранулят
+      - { id: water, unit: kg, target: 30, range: [27, 33], sd: 0.6 }
+    loss: [0.5, 0.2]
+  - id: dry
+    room: granulation
+    equipment: [eq.fbd]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 10, perLoad: 90, loads: 2, spread: 5 }
+    params:
+      - { id: inletTemp, unit: C, target: 60, range: [55, 65], sd: 1.5 }
+    ipc:
+      - { test: test.lod, max: 2.0 }
+    loss: [0.5, 0.2]
+  - id: mill
+    room: blending
+    equipment: [eq.mill]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 15, kgPerHour: 300, spread: 5 }
+    loss: [0.3, 0.1]
+  # опудривание: магния стеарат в контейнерном смесителе
+  - id: blend
+    room: blending
+    equipment: [eq.blender]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 10, perLoad: 15, loads: 1, spread: 5 }
+    params:
+      - { id: lubeTime, unit: min, target: 5, range: [3, 7], sd: 0.5 }
+    loss: [0.1, 0.05]
+  # таблетирование; обеспыливатель и металлодетектор стоят в линию с прессом
+  - id: compress
+    room: compression
+    equipment: [eq.press, eq.deduster]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 30, unitsPerHour: 90000, spread: 5 }
+    params:
+      - { id: force, unit: kN, target: 12, range: [10, 14], sd: 0.5 }
+    ipc:
+      - { test: test.ipc.mass, every: 30, min: 97, max: 103 }
+      - { test: test.ipc.hardness, every: 30, min: 60, max: 110 }
+      - { test: test.ipc.friability, every: 60, max: 1 }
+      - { test: test.ipc.disintegration, every: 120, max: 15 }
+    loss: [1.0, 0.3]
+bulk: mat.bulk.paracetamol500
+# показатели балка без причин: номинал и разброс от серии к серии; масса — доля от цели 600 мг; растворение — за 45 мин.
+# Порядок важен: показатель, от которого зависит другой (масса таблетки → содержание), считается раньше
+quality:
+  moisture: [1.5, 0.15]
+  mass: [100, 0.4]
+  assay: [100, 0.6]
+  hardness: [85, 4]
+  friability: [0.3, 0.05]
+  disintegration: [6, 0.8]
+  dissolution: [92, 1.5]
+yield: { expected: 98, alarm: 95 }
+source: [fda-supac-me, gmp-eaeu, ema-fdf]
+review: draft

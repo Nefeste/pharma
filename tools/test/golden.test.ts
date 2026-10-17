@@ -22,6 +22,9 @@ test('scn.proto, 90 суток: отпечаток и итоги', () => {
     rejected: lots.filter(l => l.status === 'rejected').length,
     units: Object.keys(s.units).length,
     tests: Object.keys(s.tests).length,
+    batches: Object.values(s.batches).filter(b => b.status === 'bulk').length,
+    tablets: Object.values(s.batches).reduce((n, b) => n + (b.units ?? 0), 0),
+    deviations: Object.keys(s.deviations).length,
     trucks: Object.keys(s.trucks).length,
     tasks: Object.keys(s.tasks).length,
   }).toEqual(GOLDEN.totals);
@@ -29,11 +32,12 @@ test('scn.proto, 90 суток: отпечаток и итоги', () => {
 });
 
 /**
- * Часть 1б (0.0.3): 11 партий запаса + 5 принятых (крахмал, МКЦ, пачки №20, инструкции, парацетамол). Все пять прошли
- * отбор проб и 9 испытаний и разрешены; все 22 паллеты — на стеллажах; фур и задач в конце нет. В 1а (0.0.2, отпечаток
- * `479c4101`) все пять стояли в карантине: лаборатории не было.
+ * Часть 1в (0.0.4): 11 партий запаса, 5 принятых и 8 партий балка — все разрешены. Восемь серий по карте: пять — из
+ * запаса АФС, три — из партии АФС по заказу, когда её разрешила лаборатория; испытаний — 9 входных и по 3 на балк.
+ * Таблеток — 1 563 659, около 195 тысяч на серию. Отклонений нет; фур и задач в конце нет. В 1б (0.0.3, отпечаток
+ * `60acaa6d`) серий не было.
  */
 const GOLDEN = {
-  totals: { lots: 16, released: 16, rejected: 0, units: 22, tests: 9, trucks: 0, tasks: 0 },
-  print: '60acaa6d',
+  totals: { lots: 24, released: 24, rejected: 0, units: 30, tests: 33, batches: 8, tablets: 1563659, deviations: 0, trucks: 0, tasks: 0 },
+  print: 'd48326a5',
 };

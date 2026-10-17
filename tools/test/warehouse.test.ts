@@ -99,19 +99,26 @@ describe('фура → приёмка → карантин', () => {
     const trucks = notices.filter(n => n.kind === 'truck');
     expect(trucks.length).toBe(db.scenarios[SC].orders.length);
     expect(Object.keys(s.trucks)).toEqual([]);
-    const fresh = Object.values(s.lots).filter(l => l.supplier !== 'start');
+    const fresh = Object.values(s.lots).filter(l => l.po);
     // крахмал, МКЦ, пачки №20, инструкции, парацетамол
     expect(fresh.map(l => l.material).sort()).toEqual(['mat.api.paracetamol', 'mat.exc.mcc', 'mat.exc.starch', 'mat.pk.carton-n20', 'mat.pk.leaflet']);
+    let checked = 0;
     for (const lot of fresh) {
       expect(lot.status).toBe('released');
       const sampled = s.samples[lot.sample!].plan;
-      for (const u of Object.values(s.units).filter(u => s.containers[u.items[0]].lot === lot.id)) {
-        // фура → приёмка → карантин → (пробоотборная и обратно — у паллет с тарой из плана отбора) → стеллаж
+      for (const u of Object.values(s.units).filter(u => u.where.kind === 'slot' && s.containers[u.items[0]]?.lot === lot.id)) {
+        // остаток после отвешивания возвращается из шлюза новой паллетой — у неё свой путь
+        if (path[u.id][0] !== 'truck') continue;
+        checked++;
+        // фура → приёмка → карантин → (пробоотборная и обратно — у паллет с тарой из плана отбора) → стеллаж; дальше
+        // паллету может взять комплектация серии
         const visit = u.items.some(c => sampled.includes(c)) ? ['sampling', 'quarantine'] : [];
-        expect(path[u.id]).toEqual(['truck', 'receiving', 'quarantine', ...visit, 'storage']);
+        const head = ['truck', 'receiving', 'quarantine', ...visit, 'storage'];
+        expect(path[u.id].slice(0, head.length)).toEqual(head);
         expect(u.tag).toBe('released');
       }
     }
+    expect(checked).toBeGreaterThan(0);
     expect(Object.keys(s.tasks)).toEqual([]);
     expect(s.open).toEqual([]);
   });

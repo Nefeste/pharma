@@ -65,6 +65,17 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     }
     return { ...raw, instruments, samples: {}, tests: {}, deviations: {} };
   },
+  // 3 → 4 (часть 1в): производство. Помещения — чистые с момента сохранения, оборудование — по плану; серий нет:
+  // задания сценария в старое сохранение не добавляются, их даёт игрок.
+  3: (raw, db) => {
+    const plant = db.plants[raw.plant as string];
+    if (!plant) throw new Error(`save: no plant ${String(raw.plant)}`);
+    const rooms: Raw = {};
+    for (const r of plant.rooms) rooms[r.id] = { id: r.id, type: r.type, status: 'clean', since: raw.t };
+    const equipment: Raw = {};
+    for (const e of plant.equipment) equipment[e.id] = { id: e.id, type: e.type, room: e.room };
+    return { ...raw, rooms, equipment, batches: {} };
+  },
 };
 
 export function toSave(s: PlantState): string {

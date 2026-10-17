@@ -43,6 +43,16 @@ orders:
   - supplier: sup.api
     lines:
       - { material: mat.api.paracetamol, qty: 1000 }
+# задания на серию: раз в неделю, день — от начала партии. АФС на складе хватит на пять серий, дальше — из заказа
+batches:
+  - { recipe: rcp.paracetamol500.wet.v1, day: 1 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 8 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 15 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 22 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 29 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 36 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 43 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 50 }
 # запас на старте — разрешённые партии на стеллажах: хватает на первые серии
 stock:
   - { material: mat.api.paracetamol, qty: 600 }

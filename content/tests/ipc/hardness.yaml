@@ -1,0 +1,8 @@
+id: test.ipc.hardness
+name: { ru: Прочность на раздавливание (МОК), en: Crushing strength (IPC) }
+attr: hardness
+inst: inst.hardness
+prep: 5
+run: 5
+unattended: false
+sd: 3

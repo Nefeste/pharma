@@ -13,7 +13,7 @@ zones:
   - { id: rej, kind: rejected, rect: [1, 19, 6, 4], grid: [3, 2] }
   - { id: fgq, kind: fgQuarantine, rect: [1, 24, 6, 6], grid: [2, 2] }
   - { id: ship, kind: shipping, rect: [1, 31, 6, 7], grid: [2, 2] }
-  - { id: stage, kind: staging, rect: [30, 2, 5, 5], grid: [2, 1] }
+  - { id: stage, kind: staging, rect: [30, 2, 5, 5], grid: [2, 2] }
   - { id: samp, kind: sampling, rect: [21, 2, 5, 5], grid: [2, 1] }
 racks:
   - { id: A, x: 8, z: 12, bays: 6, levels: 4 }
@@ -34,6 +34,16 @@ instruments:
   - { id: hplc-1, type: inst.hplc, room: lab }
   - { id: ir-1, type: inst.ir, room: lab }
   - { id: lod-1, type: inst.lod, room: lab }
+  - { id: diss-1, type: inst.dissolution, room: lab }
+# оборудование производства по помещениям; приборы МОК — у оборудования, в учёте не ведутся
+equipment:
+  - { id: scale-1, type: eq.scale, room: dispensing }
+  - { id: hsm-1, type: eq.hsm, room: granulation }
+  - { id: fbd-1, type: eq.fbd, room: granulation }
+  - { id: mill-1, type: eq.mill, room: blending }
+  - { id: blender-1, type: eq.blender, room: blending }
+  - { id: press-1, type: eq.press, room: compression }
+  - { id: deduster-1, type: eq.deduster, room: compression }
 points:
   park: [12, 37]
   entrance: [28, 38]

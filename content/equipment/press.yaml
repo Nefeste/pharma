@@ -1,0 +1,3 @@
+id: eq.press
+name: { ru: Роторный таблеточный пресс, en: Rotary tablet press }
+cleaning: { minor: 60, major: 360 }

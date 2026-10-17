@@ -1,0 +1,8 @@
+# Температура воздуха на входе сушилки: на каждый градус выше цели гранулят суше.
+id: cause.dry.temp
+name: { ru: Температура сушки не по цели, en: Drying temperature off target }
+driver: { param: inletTemp }
+effects:
+  - { attr: moisture, coef: -0.05 }
+source: [ryckaert-2021, hlinak-2000]
+review: draft

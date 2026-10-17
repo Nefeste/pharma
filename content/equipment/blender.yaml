@@ -1,0 +1,3 @@
+id: eq.blender
+name: { ru: Контейнерный смеситель, en: Bin blender }
+cleaning: { minor: 20, major: 90 }

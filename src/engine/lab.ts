@@ -9,7 +9,7 @@ import { schedule } from './core/agenda';
 import { MIN } from './core/calendar';
 import { type PlantPlan, planOf } from './plant';
 import { measure, within } from './quality';
-import { nextId, putUnit, setLotStatus, unitsOfLot } from './stock';
+import { containersByLot, nextId, putUnit, setLotStatus, stockChanged, unitsOfLot } from './stock';
 import { addTask } from './tasks';
 import type { Deviation, LabTest, Lot, Notice, Place, PlantState, Sample, Task, Unit } from './types';
 import { PRIO, WMS } from './wms';
@@ -58,13 +58,16 @@ const labPlace = (plan: PlantPlan): Place => ({ kind: 'point', x: plan.lab.x, z:
  * Зовётся после размещения и каждый час.
  */
 export function startSampling(db: ContentDb, s: PlantState) {
-  let plan: PlantPlan | undefined;
-  for (const lot of Object.values(s.lots)) {
-    if (lot.status !== 'quarantine' || lot.sample) continue;
-    plan ??= planOf(db, s.plant);
-    const cs = Object.values(s.containers).filter(c => c.lot === lot.id);
+  const todo = Object.values(s.lots).filter(l => l.status === 'quarantine' && !l.sample);
+  if (todo.length === 0) return;
+  const plan = planOf(db, s.plant);
+  const byLot = containersByLot(s);
+  for (const lot of todo) {
+    const cs = byLot.get(lot.id) ?? [];
     const units = [...new Set(cs.map(c => c.unit))].map(id => s.units[id]);
-    if (!units.every(u => u.where.kind === 'slot' && QUARANTINE.has(plan!.slot[u.where.id].kind))) continue;
+    // балк отбирают на месте, в помещении промежуточного склада; сырьё — когда все паллеты встали в карантин
+    const inPlace = db.materials[lot.material].kind === 'bulk';
+    if (inPlace ? !units.every(u => u.where.kind === 'room') : !units.every(u => u.where.kind === 'slot' && QUARANTINE.has(plan.slot[u.where.id].kind))) continue;
     // тара из плана — поровну по всей партии
     const k = sampleCount(db, lot, cs.length);
     const picked = Array.from({ length: k }, (_, i) => cs[Math.floor((i * cs.length) / k)]);
@@ -72,8 +75,15 @@ export function startSampling(db: ContentDb, s: PlantState) {
     s.samples[sm.id] = sm;
     lot.sample = sm.id;
     for (const uid of sm.left) {
-      const from = s.units[uid].where as { kind: 'slot'; id: string };
-      addTask(s, { kind: 'toSampling', roles: [...WMS.movers], veh: [...WMS.floor], unit: uid, from, toKind: 'sampling', work: 0, prio: LAB_PRIO.toSampling, lot: lot.id });
+      const u = s.units[uid];
+      if (u.where.kind === 'room') {
+        const at = plan.room[u.where.id];
+        const n = u.items.filter(c => sm.plan.includes(c)).length;
+        addTask(s, { kind: 'sample', roles: [...QC.samplers], unit: uid, from: { kind: 'point', x: at.x, z: at.z }, work: n * SAMPLE_WORK, prio: LAB_PRIO.sample, lot: lot.id });
+      } else {
+        const from = u.where as { kind: 'slot'; id: string };
+        addTask(s, { kind: 'toSampling', roles: [...WMS.movers], veh: [...WMS.floor], unit: uid, from, toKind: 'sampling', work: 0, prio: LAB_PRIO.toSampling, lot: lot.id });
+      }
     }
   }
 }
@@ -105,7 +115,8 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
         sm.qty += q;
       }
       sm.left = sm.left.filter(id => id !== u.id);
-      addTask(s, { kind: 'fromSampling', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from: t.from, toKind: m.storage === 'cold' ? 'cold' : 'quarantine', work: 0, prio: LAB_PRIO.fromSampling, lot: lot.id });
+      // из пробоотборной — обратно в карантин; балк, отобранный на месте, остаётся где стоит
+      if (u.where.kind === 'slot') addTask(s, { kind: 'fromSampling', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from: t.from, toKind: m.storage === 'cold' ? 'cold' : 'quarantine', work: 0, prio: LAB_PRIO.fromSampling, lot: lot.id });
       if (sm.left.length === 0) {
         sm.taken = s.t;
         setLotStatus(s, lot, 'sampled');
@@ -162,6 +173,7 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       const out = sampleOf(s, lot.id).tests.filter(id => !s.tests[id].pass);
       if (out.length === 0) {
         setLotStatus(s, lot, 'released');
+        stockChanged(s);
         notices.push({ kind: 'lotReleased', lot: lot.id });
       } else {
         setLotStatus(s, lot, 'rejected');

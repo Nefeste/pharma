@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 3;
+export const SCHEMA = 4;
 
 // ---------------------------------------------------------------- склад
 
@@ -54,10 +54,15 @@ export interface Container {
   /** на какой паллете */
   unit: string;
   opened: boolean;
+  /** зарезервировано под серии, мг или шт.: свободно — остаток минус резерв */
+  reserved?: number;
 }
 
-/** Где стоит паллета. Пока её везут, она числится там, откуда взяли; место назначения зарезервировано задачей. */
-export type Where = { kind: 'slot'; id: string } | { kind: 'truck'; id: string };
+/**
+ * Где стоит паллета. Пока её везут, она числится там, откуда взяли; место назначения зарезервировано задачей. В
+ * помещении производства — пластиковая паллета с комплектом серии или балк: мест там нет.
+ */
+export type Where = { kind: 'slot'; id: string } | { kind: 'truck'; id: string } | { kind: 'room'; id: string };
 
 /** Ярлык статуса на паллете (src/render/loads.ts, Tag). */
 export type Tag = 'quarantine' | 'sampled' | 'released' | 'rejected' | 'blocked';
@@ -129,15 +134,128 @@ export interface Instrument {
   test?: string;
 }
 
-/** Отклонение (docs/04-data-model.md, §6): в 1б — результат вне спецификации при входном контроле. */
+/**
+ * Отклонение (docs/04-data-model.md, §6): результат вне спецификации (`oos`), МОК вне пределов (`ipc`), режим вне
+ * диапазона (`param`), выход ниже тревожного (`yield`).
+ */
 export interface Deviation {
   id: string;
   opened: number;
-  kind: 'oos';
-  lot: string;
-  /** испытания вне пределов */
-  tests: string[];
+  kind: 'oos' | 'ipc' | 'param' | 'yield';
+  lot?: string;
+  batch?: string;
+  /** стадия серии */
+  stage?: string;
+  /** испытания вне пределов; методика МОК; режим */
+  tests?: string[];
+  test?: Id;
+  param?: string;
   status: 'open';
+}
+
+// ---------------------------------------------------------------- производство
+
+/**
+ * Помещение: чисто, занято серией или грязно (геймдизайн, §5.5). Чистота — у помещения целиком: уборка убирает и
+ * оборудование в нём.
+ */
+export interface Room {
+  id: string;
+  type: string;
+  status: 'clean' | 'busy' | 'dirty';
+  batch?: string;
+  /** с какого момента чисто или грязно */
+  since: number;
+  /** продукт последней серии */
+  product?: Id;
+  /** после малой уборки — чисто только для этого продукта; после большой — для любого */
+  cleanFor?: Id;
+  /** нужна большая уборка: другой продукт, грязно дольше суток или чистота просрочена */
+  major?: boolean;
+}
+
+/** Оборудование из плана: занято серией, пока идёт её стадия. */
+export interface Equipment {
+  id: string;
+  type: Id;
+  room: string;
+  batch?: string;
+}
+
+/** Строка комплекта серии: тара и сколько из неё отвесить, мг; у АФС — содержание, по которому считали навеску. */
+export interface KitLine {
+  container: string;
+  lot: string;
+  material: Id;
+  qty: number;
+  assay?: number;
+}
+
+/** Досье стадии: когда, кто, на чём, режимы, масса, МОК. */
+export interface StageRecord {
+  stage: string;
+  room: string;
+  start: number;
+  end: number;
+  people: string[];
+  equipment: string[];
+  /** фактические режимы в единицах движка */
+  params: Record<string, number>;
+  /** масса полупродукта на входе и на выходе и потери, мг */
+  in: number;
+  out: number;
+  loss: number;
+  ipc: { test: Id; t: number; result: number; pass: boolean }[];
+}
+
+/** Вклад причины в показатель серии: на сколько единиц движка сдвинут показатель и на какой стадии. */
+export interface CauseHit {
+  cause: Id;
+  attr: Attr;
+  delta: number;
+  stage: string;
+}
+
+/**
+ * Серия: `waiting` — не хватает материалов; `reserved` — материалы зарезервированы, ждёт даты и комплектации;
+ * `kitting` — комплект едет к шлюзу; `process` — стадии по карте; `bulk` — балк сделан (его статус — у партии балка).
+ */
+export type BatchStatus = 'waiting' | 'reserved' | 'kitting' | 'process' | 'bulk';
+
+export interface Batch {
+  id: string;
+  /** номер серии: год, месяц, порядковый — окно пишет «270901» */
+  code: { y: number; m: number; n: number };
+  recipe: Id;
+  product: Id;
+  /** не раньше, игровые секунды */
+  notBefore: number;
+  ordered: number;
+  by: string;
+  status: BatchStatus;
+  /** чего не хватает, мг или шт., и при каком состоянии склада это посчитано (`next.stock`) */
+  short?: { material: Id; qty: number }[];
+  tried?: number;
+  kit: KitLine[];
+  /** пластиковая паллета комплекта */
+  kitUnit?: string;
+  /** номер следующей стадии карты */
+  stage: number;
+  /** где серия сейчас */
+  room?: string;
+  /** масса полупродукта, мг */
+  mass: number;
+  /** отвешено по строкам: партия, тара, сколько, у АФС — содержание, по которому считали */
+  dispensed: KitLine[];
+  records: StageRecord[];
+  /** истинные показатели и причины — знает только движок (docs/02-architecture.md, §9) */
+  truth: Partial<Record<Attr, number>>;
+  /** разброс серии без причин */
+  noise: Partial<Record<Attr, number>>;
+  causes: CauseHit[];
+  /** балк: партия полупродукта и сколько таблеток */
+  bulk?: string;
+  units?: number;
 }
 
 // ---------------------------------------------------------------- закупки
@@ -196,7 +314,8 @@ export interface Vehicle {
 /**
  * Виды задач. Склад: разгрузка, приёмка, размещение (в карантин или на стеллаж), перемещение (в зону отклонённого).
  * Лаборатория: паллета в пробоотборную и обратно, отбор проб, передача проб в лабораторию, испытание, проверка
- * результата, решение по партии.
+ * результата, решение по партии. Производство: паллета с комплектом серии к шлюзу, перекладка в шлюзе, возврат
+ * остатков, стадия серии, уборка помещения.
  */
 export type TaskKind =
   | 'unload'
@@ -209,7 +328,12 @@ export type TaskKind =
   | 'handover'
   | 'prep'
   | 'review'
-  | 'decide';
+  | 'decide'
+  | 'pick'
+  | 'transfer'
+  | 'return'
+  | 'stage'
+  | 'clean';
 
 /** Место задачи: место паллеты, рампа с фурой или точка. */
 export type Place = { kind: 'slot'; id: string } | { kind: 'truck'; id: string } | { kind: 'point'; x: number; z: number };
@@ -237,9 +361,11 @@ export interface Task {
   instrument?: string;
   /** кому задачу не давать: проверяет не тот, кто делал */
   not?: string[];
-  /** о какой партии или каком испытании задача */
+  /** о какой партии, каком испытании, какой серии или каком помещении задача */
   lot?: string;
   test?: string;
+  batch?: string;
+  room?: string;
   /** работа на месте, с */
   work: number;
   /** больше — раньше */
@@ -269,7 +395,9 @@ export type PlantEvent =
   /** конец задачи */
   | { kind: 'task'; id: string; v: number }
   /** прибор кончил работать сам: результат испытания */
-  | { kind: 'run'; test: string; v: number };
+  | { kind: 'run'; test: string; v: number }
+  /** подошла дата «не раньше» задания на серию */
+  | { kind: 'batch'; id: string };
 
 export interface PlantState {
   schema: number;
@@ -309,6 +437,10 @@ export interface PlantState {
   samples: Record<string, Sample>;
   tests: Record<string, LabTest>;
   deviations: Record<string, Deviation>;
+  /** помещения и оборудование по именам из плана */
+  rooms: Record<string, Room>;
+  equipment: Record<string, Equipment>;
+  batches: Record<string, Batch>;
 }
 
 /** Команда — единственный способ изменить состояние (docs/02-architecture.md, §7). */
@@ -316,10 +448,12 @@ export type Command =
   /** течение времени */
   | { kind: 'advance'; seconds: number }
   /** заказ поставщику: количество — мг или шт., округляется вверх до целой тары */
-  | { kind: 'po'; supplier: Id; lines: PoLine[]; by?: string };
+  | { kind: 'po'; supplier: Id; lines: PoLine[]; by?: string }
+  /** задание на серию по карте: не раньше — игровые секунды; нет — сейчас */
+  | { kind: 'order'; recipe: Id; notBefore?: number; by?: string };
 
 /** Почему команда не выполнена — для окна. */
-export type Refusal = 'noSupplier' | 'notSold' | 'belowMoq' | 'empty';
+export type Refusal = 'noSupplier' | 'notSold' | 'belowMoq' | 'empty' | 'noRecipe';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
@@ -333,5 +467,9 @@ export type Notice =
   | { kind: 'lotReleased'; lot: string }
   /** партия отклонена: испытания вне пределов, открыто отклонение */
   | { kind: 'lotRejected'; lot: string; deviation: string }
+  /** серия сделана: балк в карантине */
+  | { kind: 'batchBulk'; batch: string; lot: string }
+  /** открыто отклонение производства: МОК, режим, выход */
+  | { kind: 'deviation'; id: string }
   /** команда не выполнена */
   | { kind: 'refused'; cmd: Command['kind']; why: Refusal; detail?: string };

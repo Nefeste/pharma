@@ -1,0 +1,7 @@
+id: mat.exc.povidone
+kind: excipient
+name: { ru: Повидон, en: Povidone }
+unit: kg
+container: cnt.bag.25
+storage: room
+shelf: 36

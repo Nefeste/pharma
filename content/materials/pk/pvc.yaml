@@ -1,0 +1,7 @@
+id: mat.pk.pvc
+kind: packaging
+name: { ru: Плёнка ПВХ для блистеров, en: PVC blister film }
+unit: kg
+container: cnt.roll.pvc
+storage: room
+shelf: 60

@@ -1,0 +1,6 @@
+id: cnt.roll.pvc
+name: { ru: Рулон плёнки 25 кг, en: Film roll 25 kg }
+kind: roll
+capacity: { kg: 25 }
+perPallet: 24
+load: rolls

@@ -1,0 +1,5 @@
+id: role.driver
+name: { ru: Водитель погрузчика, en: Forklift driver }
+dept: wms
+salary: 60000
+permits: [forklift]

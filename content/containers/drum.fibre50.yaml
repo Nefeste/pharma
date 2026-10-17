@@ -1,0 +1,7 @@
+# Тара и укладка на паллету — выбор геймдизайна (вид груза — src/render/loads.ts).
+id: cnt.drum.fibre50
+name: { ru: Фибровая бочка 50 кг, en: Fibre drum 50 kg }
+kind: drum
+capacity: { kg: 50 }
+perPallet: 4
+load: drums

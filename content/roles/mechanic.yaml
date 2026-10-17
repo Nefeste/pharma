@@ -1,0 +1,4 @@
+id: role.mechanic
+name: { ru: Слесарь-ремонтник, en: Maintenance fitter }
+dept: maint
+salary: 75000

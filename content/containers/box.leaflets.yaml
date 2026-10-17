@@ -1,0 +1,6 @@
+id: cnt.box.leaflets
+name: { ru: "Коробка инструкций, 5000 шт.", en: Box of 5000 leaflets }
+kind: box
+capacity: { pcs: 5000 }
+perPallet: 40
+load: cases

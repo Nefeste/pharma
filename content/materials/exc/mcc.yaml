@@ -1,0 +1,7 @@
+id: mat.exc.mcc
+kind: excipient
+name: { ru: Целлюлоза микрокристаллическая, en: Microcrystalline cellulose }
+unit: kg
+container: cnt.bag.20
+storage: room
+shelf: 36

@@ -1,0 +1,6 @@
+id: cnt.roll.alu
+name: { ru: Рулон фольги 20 кг, en: Foil roll 20 kg }
+kind: roll
+capacity: { kg: 20 }
+perPallet: 24
+load: rolls

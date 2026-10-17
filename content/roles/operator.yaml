@@ -1,0 +1,4 @@
+id: role.operator
+name: { ru: Аппаратчик, en: Process operator }
+dept: mes
+salary: 65000

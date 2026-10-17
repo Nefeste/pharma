@@ -1,0 +1,8 @@
+# Техника склада (геймдизайн, §4.4): скорости и подъём — гипотезы.
+id: veh.jack
+name: { ru: Рохля, en: Hand pallet truck }
+speedEmpty: 1.1
+speedLoaded: 0.8
+levels: 0
+liftBase: 6
+liftPerLevel: 0

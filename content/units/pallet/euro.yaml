@@ -1,0 +1,9 @@
+# Европаллета — склад и двор; в чистую зону не проходит (геймдизайн, §3.4).
+id: unit.pallet.euro
+name: { ru: Европаллета, en: Euro pallet }
+kind: pallet
+size: [120, 80, 14.4]
+maxLoad: 1500
+wood: true
+source: [pallet-epal]
+review: draft

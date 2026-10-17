@@ -1,0 +1,5 @@
+id: shift.a
+name: { ru: Первая смена 5/2, en: First shift 5/2 }
+days: [1, 2, 3, 4, 5]
+from: 7
+to: 15

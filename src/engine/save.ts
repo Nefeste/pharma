@@ -2,13 +2,15 @@
 // миграция стирает игру человека, поэтому каждый шаг закреплён образцом в tools/test/fixtures/.
 import type { ContentDb } from '../content/types';
 import { type Agenda, schedule } from './core/agenda';
-import { HOUR } from './core/calendar';
+import { HOUR, momentOf } from './core/calendar';
 import { newCash } from './cash';
+import { leanStep, newLoss } from './lean';
 import { newLines } from './line';
 import { newParts } from './maint';
 import { newCustomers } from './market';
 import { planOf } from './plant';
 import { nominal } from './quality';
+import type { Ymd } from './core/calendar';
 import { type PlantEvent, type PlantState, SCHEMA } from './types';
 
 type Raw = Record<string, unknown>;
@@ -113,6 +115,24 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     }
     const out = { ...raw, parts: {}, spares: {}, spareOrders: {}, maintLog: [] };
     newParts(db, out as unknown as PlantState);
+    return out;
+  },
+  // 7 → 8 (часть 1ж): потери — с суток миграции; у серий время до миграции — «до миграции», дальше — по состояниям;
+  // сменных заданий нет; счётчики пачек линий — с нуля; задание, которое линия уже взяла, сменного задания не получит.
+  7: (raw, db) => {
+    const t = raw.t as number;
+    for (const b of Object.values(raw.batches as Record<string, Raw>)) {
+      const until = (b.released as number | undefined) ?? t;
+      b.spent = until > (b.ordered as number) ? { before: until - (b.ordered as number) } : {};
+      b.phaseAt = t;
+    }
+    for (const l of Object.values(raw.lines as Record<string, Raw>)) {
+      l.packs = 0;
+      l.made = 0;
+    }
+    const out = { ...raw, losses: [newLoss(momentOf(raw.start as Ymd, t).day)], shiftTasks: [] };
+    // чем занята каждая серия — с момента миграции
+    leanStep(db, out as unknown as PlantState);
     return out;
   },
 };

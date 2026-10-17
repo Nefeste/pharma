@@ -2,13 +2,14 @@
 // роли, иногда с техникой или прибором: перевезти паллету, принять, отобрать пробы, провести испытание. Раздатчик берёт
 // открытые задачи по порядку (приоритет, время создания, номер) и даёт каждой ближайших свободных людей в смене,
 // ближайшую свободную технику и свободный прибор. Длина задачи считается сразу: дорога, подъём, работа. Конец — событие
-// с версией задачи.
+// с версией задачи. Задача не досталась никому — раздатчик называет причину, а путь назначенной — потери (lean.ts).
 import type { ContentDb, Id, ZoneKind } from '../content/types';
 import { schedule } from './core/agenda';
+import { moved, waitEnd, waitNote } from './lean';
 import { dist, type PlantPlan, planOf, type Point, travel } from './plant';
-import { canTake, hasPermit, shiftEnd } from './staff';
+import { canTake, hasPermit, LAST_CALL, shiftEnd } from './staff';
 import { findSlot, nextId } from './stock';
-import type { Instrument, Person, Place, PlantState, Task, TaskKind, Vehicle } from './types';
+import type { Instrument, Person, Place, PlantState, Task, TaskKind, Vehicle, WaitCause } from './types';
 
 /** Человек пешком, см/с. */
 export const WALK = 120;
@@ -98,30 +99,40 @@ function nearestPerson(db: ContentDb, s: PlantState, t: Task, at: Point, permit:
   return best;
 }
 
-/** Раздать открытые задачи — в их порядке, пока хватает людей, техники и приборов. */
+/** Раздать открытые задачи — в их порядке, пока хватает людей, техники и приборов; не досталась — запомнить почему. */
 export function dispatch(db: ContentDb, s: PlantState) {
   if (s.open.length === 0) return;
   const plan = planOf(db, s.plant);
   for (const id of [...s.open]) {
     const t = s.tasks[id];
-    if (assign(db, s, plan, t)) s.open.splice(s.open.indexOf(id), 1);
+    const why = assign(db, s, plan, t);
+    if (why === undefined) s.open.splice(s.open.indexOf(id), 1);
+    else waitNote(s, t, why);
   }
 }
 
-function assign(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task): boolean {
+/** Люди ролей задачи в смене есть, но заняты, — или их нет в смене (или смена вот-вот кончится). */
+function crewWait(db: ContentDb, s: PlantState, t: Task): WaitCause {
+  return Object.values(s.people).some(p => t.roles.includes(p.role) && (shiftEnd(db, s, p) ?? s.t) - s.t >= LAST_CALL) ? 'people' : 'shift';
+}
+
+/** Назначить задачу; не вышло — причина: прибор, техника, место назначения, люди. */
+function assign(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task): WaitCause | undefined {
   const from = pointOf(plan, s, t.from);
   const fromLevel = levelOf(plan, t.from);
   // прибор — первый свободный нужного вида в порядке плана
   let inst: Instrument | undefined;
   if (t.inst) {
     inst = Object.values(s.instruments).find(i => !i.test && t.inst!.includes(i.type));
-    if (!inst) return false;
+    if (!inst) return 'instrument';
   }
   if (t.veh) {
     // техника, ближайшая к грузу, с водителем; место назначения — по силам этой технике
     const free = Object.values(s.vehicles)
       .filter(v => !v.task && t.veh!.includes(v.type) && db.vehicles[v.type].levels >= fromLevel)
       .sort((a, b) => dist(a, from) - dist(b, from) || idNum(a.id) - idNum(b.id));
+    if (free.length === 0) return 'vehicle';
+    let place = false;
     for (const v of free) {
       const vt = db.vehicles[v.type];
       const driver = nearestPerson(db, s, t, v, vt.permit, new Set());
@@ -129,19 +140,22 @@ function assign(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task): boolean
       let to: string | undefined;
       if (t.toKind) {
         const sl = findSlot(s, plan, t.toKind, t.near ?? from, vt.levels);
-        if (!sl) continue;
+        if (!sl) {
+          place = true;
+          continue;
+        }
         to = sl.id;
       }
       start(db, s, plan, t, [driver], v, to, inst);
-      return true;
+      return undefined;
     }
-    return false;
+    return place ? 'place' : crewWait(db, s, t);
   }
   const people: Person[] = [];
   const skip = new Set<string>();
   for (let i = 0; i < t.count; i++) {
     const p = nearestPerson(db, s, t, from, undefined, skip);
-    if (!p) return false;
+    if (!p) return crewWait(db, s, t);
     people.push(p);
     skip.add(p.id);
   }
@@ -149,33 +163,40 @@ function assign(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task): boolean
   let to: string | undefined;
   if (t.toKind) {
     const sl = findSlot(s, plan, t.toKind, t.near ?? from, 0);
-    if (!sl) return false;
+    if (!sl) return 'place';
     to = sl.id;
   }
   start(db, s, plan, t, people, undefined, to, inst);
-  return true;
+  return undefined;
 }
 
 function start(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, people: Person[], v: Vehicle | undefined, to: string | undefined, inst: Instrument | undefined) {
   const from = pointOf(plan, s, t.from);
   const t0 = s.t;
   let times: [number, number, number, number, number];
+  waitEnd(s, t);
   if (v) {
     const vt = db.vehicles[v.type];
     const walk = travel(people[0], v, WALK);
-    const atLoad = t0 + walk + travel(v, from, vt.speedEmpty);
+    const empty = travel(v, from, vt.speedEmpty);
+    const atLoad = t0 + walk + empty;
     const off = atLoad + vt.liftBase + levelOf(plan, t.from) * vt.liftPerLevel;
     const dest = to ? plan.slot[to] : (destOf(plan, s, t) ?? from);
-    const atDrop = off + travel(from, dest, vt.speedLoaded);
+    const loaded = travel(from, dest, vt.speedLoaded);
+    const atDrop = off + loaded;
     const end = atDrop + (to ? vt.liftBase + plan.slot[to].level * vt.liftPerLevel : 0) + t.work;
     times = [t0, atLoad, off, atDrop, end];
     v.task = t.id;
     t.vehicle = v.id;
+    // водитель идёт к технике — перемещение; техника едет порожняком и с грузом — транспортировка
+    moved(s, t.kind, dist(people[0], v), walk, dist(v, from), dist(from, dest), empty + loaded);
   } else {
     // пешком: дойти, взять, донести до места назначения (если оно есть) и там работать
     const walk = Math.max(...people.map(p => travel(p, from, WALK)));
     const dest = to ? plan.slot[to] : destOf(plan, s, t);
     const carry = dest ? travel(from, dest, WALK) : 0;
+    // каждый идёт к месту — перемещение; груз на руках — транспортировка
+    moved(s, t.kind, people.reduce((n, p) => n + dist(p, from), 0), people.reduce((n, p) => n + travel(p, from, WALK), 0), 0, dest ? dist(from, dest) : 0, carry);
     // смена у линии — до конца смены того, у кого она кончается раньше; линия узнаёт о приходе людей событием
     if (t.kind === 'crew') {
       t.work = Math.max(1, Math.min(...people.map(p => shiftEnd(db, s, p)!)) - (t0 + walk));
@@ -211,9 +232,13 @@ function start(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, people: P
   schedule(s.agenda, times[4], { kind: 'task', id: t.id, v: t.v });
 }
 
-/** Снять задачу: открытую — из очереди, занятую — освободив людей и технику. Событие её конца устареет само. */
+/**
+ * Снять задачу: открытую — из очереди (её ожидание — в потери), занятую — освободив людей и технику. Событие её конца
+ * устареет само.
+ */
 export function dropTask(db: ContentDb, s: PlantState, t: Task) {
   if (t.state === 'busy') return release(db, s, t);
+  waitEnd(s, t);
   s.open.splice(s.open.indexOf(t.id), 1);
   delete s.tasks[t.id];
 }

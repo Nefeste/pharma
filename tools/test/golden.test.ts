@@ -34,11 +34,21 @@ test('scn.proto, 90 суток: отпечаток и итоги', () => {
     short: Object.values(s.orders).filter(o => o.status === 'short').length,
     shipped: Object.values(s.shipments).reduce((n, h) => n + h.cases.length, 0),
     cash: s.cash.balance,
+    waits: s.losses.reduce((n, d) => n + Object.values(d.wait).reduce((m, w) => m + Object.values(w!).reduce((k, x) => k + x!, 0), 0), 0),
+    moved: s.losses.reduce((n, d) => n + Object.values(d.move).reduce((m, x) => m + x!.loaded + x!.empty, 0), 0),
+    walked: s.losses.reduce((n, d) => n + Object.values(d.walk).reduce((m, x) => m + x!.cm, 0), 0),
+    shifts: s.shiftTasks.length,
   }).toEqual(GOLDEN.totals);
   expect(fingerprint(s)).toBe(GOLDEN.print);
 });
 
 /**
+ * Часть 1ж (0.0.8): жизнь завода та же, что в 1е, — появился учёт потерь. За 90 суток задачи ждали 965 часов: больше
+ * всего — лаборатория и склад, пока люди не в смене (503 и 212 ч); склад 70 ч ждал свободного места. Техника проехала
+ * 19,2 км (11,2 — с грузом), люди прошли 5,6 км. Сменных заданий — 128, с заданием — 6: упаковка обычно начинается и
+ * кончается внутри смены, а мастер даёт смене только то, что лежит в очереди линии в её начале. В 1е (0.0.7) —
+ * отпечаток `21d7b345`.
+ *
  * Часть 1е (0.0.7): завод не новый — пуансоны изношены на 94 %, плита запайки на 85 %. Микроостановки блистерной из-за
  * плиты чаще, упаковка идёт дольше: первая серия выпущена на 15 часов позже, и её №20 не успели к заказу O2. Пуансоны
  * дошли до 100,9 % после седьмой серии — техслужба заменила комплект за 2 часа, запасной заказан (придёт 04.01.2028,
@@ -55,7 +65,7 @@ test('scn.proto, 90 суток: отпечаток и итоги', () => {
 const GOLDEN = {
   totals: {
     lots: 34, released: 34, rejected: 0, units: 36, tests: 35, batches: 8, tablets: 1563659, packs: 106484, cases: 650, deviations: 0, trucks: 0, tasks: 0,
-    orders: 63, onTime: 27, short: 34, shipped: 481, cash: 2109912912,
+    orders: 63, onTime: 27, short: 34, shipped: 481, cash: 2109912912, waits: 3474073, moved: 1915168, walked: 563024, shifts: 128,
   },
-  print: '21d7b345',
+  print: '8046a4de',
 };

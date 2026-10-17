@@ -152,7 +152,36 @@ export function check(db: ContentDb, s: PlantState): string[] {
   packing(db, s, bad);
   market(db, s, bad);
   maint(db, s, bad);
+  lean(s, bad);
   return bad;
+}
+
+/**
+ * Инварианты потерь и ритма (docs/specs/2026-10-engine.md, 1ж): время серии с задания разложено по состояниям без
+ * остатка; ждёт только открытая задача, и не дольше, чем есть; сутки потерь — по порядку; у сменного задания выпуск не
+ * меньше нуля, открытое — одно на линию и смену.
+ */
+function lean(s: PlantState, bad: string[]) {
+  for (const b of Object.values(s.batches)) {
+    if (b.status === 'released' || b.status === 'rejected') {
+      if (b.phase) bad.push(`серия ${b.id}: ${b.status}, а время ещё идёт (${b.phase})`);
+      continue;
+    }
+    const sum = Object.values(b.spent).reduce((n, x) => n + x, 0) + (b.phase ? s.t - b.phaseAt : 0);
+    if (sum !== s.t - b.ordered) bad.push(`серия ${b.id}: по состояниям ${sum} с, а с задания ${s.t - b.ordered}`);
+  }
+  for (const t of Object.values(s.tasks)) {
+    if (t.why && (t.state !== 'open' || t.since === undefined || t.since > s.t)) bad.push(`задача ${t.id}: ждёт (${t.why}), а она ${t.state}`);
+  }
+  for (let i = 1; i < s.losses.length; i++) if (s.losses[i].day <= s.losses[i - 1].day) bad.push(`потери: сутки ${s.losses[i].day} не по порядку`);
+  const open = new Set<string>();
+  for (const st of s.shiftTasks) {
+    if (st.plan < 0 || (st.fact !== undefined && st.fact < 0)) bad.push(`сменное задание ${st.line}, ${st.shift}, ${st.from}: задание ${st.plan}, выпуск ${st.fact}`);
+    if (st.to !== undefined) continue;
+    const key = `${st.line}/${st.shift}`;
+    if (open.has(key)) bad.push(`сменное задание ${key}: открыто два`);
+    open.add(key);
+  }
 }
 
 /**

@@ -7,6 +7,7 @@
 import type { ContentDb } from '../content/types';
 import { schedule } from './core/agenda';
 import { MIN } from './core/calendar';
+import { defect } from './lean';
 import { type PlantPlan, planOf } from './plant';
 import { measure, within } from './quality';
 import { containersByLot, nextId, putUnit, setLotStatus, stockChanged, unitsOfLot } from './stock';
@@ -180,6 +181,8 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
         setLotStatus(s, lot, 'rejected');
         const d: Deviation = { id: nextId(s, 'D'), opened: s.t, kind: 'oos', lot: lot.id, tests: out, status: 'open' };
         s.deviations[d.id] = d;
+        defect(s, 'deviations');
+        defect(s, lot.batch ? 'batches' : 'lots');
         notices.push({ kind: 'lotRejected', lot: lot.id, deviation: d.id });
       }
       for (const u of unitsOfLot(s, lot.id)) settle(db, s, lot, u);

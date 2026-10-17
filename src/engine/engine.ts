@@ -7,8 +7,9 @@
 import type { ContentDb, Id } from '../content/types';
 import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
-import { DAY, HOUR } from './core/calendar';
+import { DAY, HOUR, momentOf } from './core/calendar';
 import { labDone, runDone, startSampling } from './lab';
+import { leanHour, leanStep, newLoss } from './lean';
 import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from './line';
 import { maintainCommand, maintDone, maintStep, newParts, spareArrives } from './maint';
 import { marketDone, marketHour, marketStep, newCustomers, rznPublished } from './market';
@@ -72,7 +73,10 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     spares: {},
     spareOrders: {},
     maintLog: [],
+    losses: [],
+    shiftTasks: [],
   };
+  s.losses.push(newLoss(momentOf(s.start, s.t).day));
   // люди — у входа, техника — на стоянке, приборы — в лаборатории по плану
   for (const row of sc.staff) {
     for (let i = 0; i < row.n; i++) {
@@ -116,7 +120,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   for (const o of sc.orders) placePo(db, s, { kind: 'po', supplier: o.supplier, lines: o.lines, by: 'scenario' }, out);
   // задания на серию сценария: день от начала партии, с начала смены аппаратчиков
   for (const b of sc.batches) placeOrder(db, s, { kind: 'order', recipe: b.recipe, notBefore: today + b.day * DAY + BATCH_HOUR, by: 'scenario', ...(b.sku ? { sku: b.sku } : {}) }, out);
-  dispatch(db, s);
+  settle(db, s);
   return s;
 }
 
@@ -141,7 +145,7 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: () => boolea
     case 'order': {
       const notices: Notice[] = [];
       placeOrder(db, s, cmd, notices);
-      dispatch(db, s);
+      settle(db, s);
       return notices;
     }
     case 'pack': {
@@ -165,6 +169,12 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: () => boolea
   }
 }
 
+/** Раздать задачи; затем у серий — чем занято их время (1ж): ждут они людей или уже работают, видно после раздачи. */
+function settle(db: ContentDb, s: PlantState) {
+  dispatch(db, s);
+  leanStep(db, s);
+}
+
 /**
  * После события: техслужба (раньше производства: свободную машину, которой пора в замену узла, не займёт серия),
  * производство, линии, качество, отгрузка, раздача задач.
@@ -175,7 +185,7 @@ function steps(db: ContentDb, s: PlantState, notices: Notice[]) {
   lineStep(db, s, notices);
   qaStep(db, s);
   marketStep(db, s, notices);
-  dispatch(db, s);
+  settle(db, s);
 }
 
 /**
@@ -214,15 +224,16 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       maintStep(db, s);
       mesHour(db, s);
       lineHour(db, s, notices);
+      leanHour(db, s);
       marketHour(db, s, notices);
       lineStep(db, s, notices);
       qaStep(db, s);
       marketStep(db, s, notices);
-      dispatch(db, s);
+      settle(db, s);
       return;
     case 'truck':
       truckArrives(db, s, ev.po, notices);
-      dispatch(db, s);
+      settle(db, s);
       return;
     case 'task': {
       const t = s.tasks[ev.id];
@@ -237,11 +248,11 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
     }
     case 'run':
       runDone(db, s, ev.test, ev.v);
-      dispatch(db, s);
+      settle(db, s);
       return;
     case 'batch':
       mesStep(db, s);
-      dispatch(db, s);
+      settle(db, s);
       return;
     case 'line':
       lineEvent(db, s, ev.id, ev.v, notices);

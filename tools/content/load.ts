@@ -544,6 +544,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       stock: s.stock.map(x => ({ material: x.material, qty: amount(x.material, x.qty, where) })),
       wear: Object.fromEntries(Object.entries(s.wear).map(([k, v]) => [k, share(v)])),
       maint: Object.fromEntries(Object.entries(s.maint).map(([k, v]) => [k, share(v)])),
+      norm: share(s.norm),
     };
   }
   const profiles: Record<string, Profile> = {};

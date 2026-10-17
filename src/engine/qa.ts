@@ -4,6 +4,7 @@
 import type { ContentDb } from '../content/types';
 import { part, post } from './cash';
 import { MIN, momentOf } from './core/calendar';
+import { defect } from './lean';
 import { fgExpiry, prodDay } from './line';
 import { toRzn } from './market';
 import { planOf } from './plant';
@@ -132,6 +133,7 @@ function decide(db: ContentDb, s: PlantState, b: Batch, notices: Notice[]) {
   } else {
     setLotStatus(s, lot, 'rejected', FG_FLOW);
     b.status = 'rejected';
+    defect(s, 'batches');
     notices.push({ kind: 'batchRejected', batch: b.id, lot: lot.id });
   }
   for (const u of unitsOfLot(s, lot.id)) settle(db, s, lot, u);

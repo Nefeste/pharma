@@ -8,6 +8,8 @@ const review = z.enum(['draft', 'checked']);
 /** Ключи источников — из таблицы docs/10-domain.md, §9 (проверяет load.ts). */
 const sources = z.array(z.string().regex(/^[a-z0-9-]+$/, 'ключ источника — латиница, цифры и дефис')).min(1);
 const percent = z.number().min(0).max(100);
+/** число месяца */
+const day = z.number().int().min(1).max(28);
 const id = z.string().regex(/^[a-z][a-zA-Z0-9.-]*$/, 'идентификатор — латиница, цифры, точка и дефис');
 /** Свойство качества (src/content/types.ts, `Attr` и `ATTRS` — единицы). */
 const attr = z.enum(['identity', 'assay', 'moisture', 'appearance', 'particle', 'mass', 'hardness', 'friability', 'disintegration', 'dissolution']);
@@ -20,7 +22,22 @@ export const profile = z.strictObject({
   name: text,
   currency: z.string().regex(/^[A-Z]{3}$/, 'код валюты ISO 4217, три заглавные буквы'),
   vat: z.strictObject({ medicines: percent, general: percent }),
-  marking: z.strictObject({ packs: z.boolean(), aggregation: z.enum(['optional', 'required']) }),
+  /** НДС за квартал — равными долями до этого числа каждого из трёх следующих месяцев */
+  vatDue: day,
+  /** маркировка; плата за код, ₽ без НДС; коды бесплатны, если зарегистрированная цена позиции не выше `free`, ₽ */
+  marking: z.strictObject({ packs: z.boolean(), aggregation: z.enum(['optional', 'required']), fee: z.number().min(0), free: z.number().min(0) }),
+  /**
+   * труд: ночные часы и доплата за них, % часовой ставки; страховые взносы, % — до предельной базы (₽ с начала года) и
+   * сверх неё, «на травматизм» — и до какого числа следующего месяца
+   */
+  payroll: z.strictObject({
+    night: z.strictObject({ from: z.number().int().min(0).max(23), to: z.number().int().min(0).max(23), extra: percent }),
+    contrib: z.strictObject({ rate: percent, base: z.number().int().positive(), above: percent, injury: percent, due: day }),
+  }),
+  /** электроэнергия: авансы — число месяца и доля стоимости прошлого месяца, %; окончательный расчёт — число следующего */
+  energy: z.strictObject({ advances: z.array(z.tuple([day, percent])), final: day }),
+  /** ключевая ставка Банка России, % */
+  key: percent,
   source: sources,
   review,
 });
@@ -39,6 +56,12 @@ export const scenario = z.strictObject({
   site: z.strictObject({ w: z.number().int().min(20).max(300), h: z.number().int().min(20).max(300) }),
   /** ₽ */
   cash: z.number().int(),
+  /** кредитная линия: предел минуса кассы, ₽, и надбавка к ключевой ставке, п. п. */
+  credit: z.strictObject({ limit: z.number().int().min(0), spread: z.number().min(0).max(50) }),
+  /** цена электроэнергии, ₽ за кВт·ч без НДС */
+  energy: z.strictObject({ price: z.number().positive() }),
+  /** покупатели сценария */
+  customers: z.array(id).default([]),
   staff: z.array(z.strictObject({ role: id, shift: id, skill: z.number().int().min(1).max(5), n: z.number().int().min(1).max(50) })).min(1),
   vehicles: z.array(z.strictObject({ type: id, n: z.number().int().min(1).max(20) })),
   orders: z.array(z.strictObject({ supplier: id, lines: z.array(z.strictObject({ material: id, qty })).min(1) })).default([]),
@@ -218,6 +241,8 @@ export const plant = z.strictObject({
     )
     .default([]),
   points: z.strictObject({ park: point, entrance: point }),
+  /** вентиляция круглые сутки — Вт на м² помещения по классу; постоянная база (свет, офис, склад) — кВт */
+  energy: z.strictObject({ hvac: z.strictObject({ D: z.number().min(0), cnc: z.number().min(0) }), base: z.number().min(0) }),
 });
 
 /** Продукт: лекарство по МНН и форма; дозировка — в имени. */
@@ -227,7 +252,11 @@ export const product = z.strictObject({
   /** МНН латиницей */
   inn: z.string().regex(/^[a-z][a-z-]*$/),
   form: z.enum(['tablet']),
-});
+  /** в перечне ЖНВЛП: цена позиции — не выше зарегистрированной */
+  jnvlp: z.boolean().default(false),
+  source: sources.optional(),
+  review: review.optional(),
+}).refine(paired, pairedMsg);
 
 const minutes = z.number().min(0);
 
@@ -236,6 +265,8 @@ export const equipment = z.strictObject({
   id: z.string(),
   name: text,
   cleaning: z.strictObject({ minor: minutes, major: minutes }),
+  /** мощность, пока идёт стадия, кВт */
+  kw: z.number().min(0).default(0),
 });
 
 /**
@@ -344,6 +375,8 @@ export const machine = z
     reject: percent.default(0),
     /** переналадка на другой формат, минуты */
     changeover: minutes.default(0),
+    /** мощность на ходу, кВт */
+    kw: z.number().min(0).default(0),
     source: sources.optional(),
     review: review.optional(),
   })
@@ -372,7 +405,36 @@ export const sku = z.strictObject({
   pallet: z.strictObject({ cases: z.number().int().positive() }),
   /** на наладку в начале серии: блистеров и пачек — в брак */
   waste: z.strictObject({ blisters: z.number().int().min(0), cartons: z.number().int().min(0) }),
+  /** цена завода за пачку и зарегистрированная предельная цена (у ЖНВЛП), ₽ без НДС */
+  price: z.number().positive(),
+  regPrice: z.number().positive().optional(),
 });
+
+/**
+ * Покупатель (геймдизайн, §10.2; docs/specs/2026-10-engine.md, 1д): отсрочка, дни и час заказа, через сколько дней
+ * желаемая дата, наименьший остаточный срок годности и спрос по позициям — пачек в сутки. Числа — гипотезы; что
+ * остаточный срок — условие договора, — с источником.
+ */
+export const customer = z
+  .strictObject({
+    id: z.string(),
+    name: text,
+    /** оплата через столько дней после отгрузки */
+    payDays: z.number().int().min(0).max(365),
+    /** дни недели (1 — понедельник), час заказа и через сколько дней «от — до» желаемая дата */
+    order: z.strictObject({
+      days: z.array(z.number().int().min(1).max(7)).min(1),
+      hour: z.number().int().min(0).max(23),
+      lead: z.tuple([z.number().int().min(1), z.number().int().min(1)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }),
+    }),
+    /** наименьший остаточный срок годности, % полного */
+    minShelf: percent,
+    /** спрос: позиция → пачек в сутки */
+    demand: z.record(id, z.number().min(0)),
+    source: sources.optional(),
+    review: review.optional(),
+  })
+  .refine(paired, pairedMsg);
 
 /** Папка в content/ → приставка идентификатора и схема. */
 export const KINDS = {
@@ -395,6 +457,7 @@ export const KINDS = {
   causes: { prefix: 'cause', schema: cause },
   machines: { prefix: 'mach', schema: machine },
   skus: { prefix: 'sku', schema: sku },
+  customers: { prefix: 'cus', schema: customer },
 } as const;
 
 export type Kind = keyof typeof KINDS;

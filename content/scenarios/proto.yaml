@@ -8,6 +8,11 @@ start: { date: 2027-09-01, hour: 7 }
 seed: 20271001
 site: { w: 60, h: 40 }
 cash: 30000000
+# кредитная линия: предел минуса, ₽, и надбавка к ключевой ставке, п. п. (около средней ставки банков, cbr-rates);
+# цена электроэнергии, ₽ за кВт·ч без НДС, — в пределах цен 2026 года (tosk-2026). Гипотезы
+credit: { limit: 20000000, spread: 4 }
+energy: { price: 9.5 }
+customers: [cus.national, cus.regional]
 staff:
   - { role: role.storekeeper, shift: shift.day, skill: 3, n: 2 }
   - { role: role.driver, shift: shift.day, skill: 3, n: 2 }

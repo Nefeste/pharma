@@ -29,17 +29,26 @@ test('scn.proto, 90 суток: отпечаток и итоги', () => {
     deviations: Object.keys(s.deviations).length,
     trucks: Object.keys(s.trucks).length,
     tasks: Object.keys(s.tasks).length,
+    orders: Object.keys(s.orders).length,
+    onTime: Object.values(s.orders).filter(o => o.status === 'shipped').length,
+    short: Object.values(s.orders).filter(o => o.status === 'short').length,
+    shipped: Object.values(s.shipments).reduce((n, h) => n + h.cases.length, 0),
+    cash: s.cash.balance,
   }).toEqual(GOLDEN.totals);
   expect(fingerprint(s)).toBe(GOLDEN.print);
 });
 
 /**
- * Часть 1г (0.0.5): восемь серий упакованы и выпущены — пять №20 и три №10, 106 484 годные пачки в 650 ящиках; брак
- * камеры картонажной — 0,3 % пачек, остаток — до 17 таблеток на серию. Партий — 34: к 24 прежним добавились заказанные
- * пачки №10 и гофроящики и восемь партий ГП; все разрешены или выпущены. Отклонений нет; фур и задач в конце нет. В 1в
- * (0.0.4, отпечаток `d48326a5`) балк ждал упаковки.
+ * Часть 1д (0.0.6): два дистрибьютора сделали 63 заказа; 26 отгружены в срок полностью, 35 закрыты недопоставкой (первые
+ * три недели ГП ещё нет; с 18.10 по 15.11 серии №20 ждали выпуска), 2 ждут своего дня. 481 отгруженный ящик; партии ГП
+ * уходят в оборот через 1–3 рабочих дня после выпуска. Касса: из 30 млн ₽ осталось 21,68 млн — зарплата дважды в месяц,
+ * взносы, энергия (вентиляция — круглые сутки), предоплата поставщикам и остаток после прихода, коды маркировки №20;
+ * поступления от покупателей — через 45–60 дней. В 1г (0.0.5, отпечаток `b88d003e`) ГП оставалась на складе.
  */
 const GOLDEN = {
-  totals: { lots: 34, released: 34, rejected: 0, units: 52, tests: 35, batches: 8, tablets: 1563659, packs: 106484, cases: 650, deviations: 0, trucks: 0, tasks: 0 },
-  print: 'b88d003e',
+  totals: {
+    lots: 34, released: 34, rejected: 0, units: 36, tests: 35, batches: 8, tablets: 1563659, packs: 106484, cases: 650, deviations: 0, trucks: 0, tasks: 0,
+    orders: 63, onTime: 26, short: 35, shipped: 481, cash: 2168008625,
+  },
+  print: '963f0e58',
 };

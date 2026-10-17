@@ -1,0 +1,11 @@
+# Региональный дистрибьютор — вымышленный: меньше объём, мягче требования (геймдизайн, §10.2). Числа — гипотезы.
+id: cus.regional
+name: { ru: Региональный дистрибьютор, en: Regional distributor }
+payDays: 45
+order: { days: [2, 4], hour: 11, lead: [3, 5] }
+minShelf: 60
+demand:
+  sku.paracetamol500.n20: 300
+  sku.paracetamol500.n10: 200
+source: [gdp-eaeu, gk-rf]
+review: draft

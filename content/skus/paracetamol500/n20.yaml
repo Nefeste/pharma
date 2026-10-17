@@ -16,3 +16,6 @@ carton:
 case: { material: mat.pk.case, per: 120 }
 pallet: { cases: 40 }
 waste: { blisters: 50, cartons: 20 }
+# цена завода за пачку и зарегистрированная предельная цена, ₽ без НДС (гипотезы; цена — не выше предельной)
+price: 34
+regPrice: 36

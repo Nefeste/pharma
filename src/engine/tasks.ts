@@ -32,6 +32,10 @@ export interface NewTask {
   batch?: string;
   room?: string;
   line?: string;
+  order?: string;
+  cases?: string[];
+  dest?: string;
+  truck?: string;
 }
 
 export function addTask(s: PlantState, n: NewTask): Task {
@@ -57,6 +61,13 @@ export function pointOf(plan: PlantPlan, s: PlantState, p: Place): Point {
   if (p.kind === 'slot') return plan.slot[p.id];
   if (p.kind === 'truck') return plan.dock[s.trucks[p.id].dock];
   return p;
+}
+
+/** Куда везут груз задачи без своего места: в фуру у рампы или на паллету заказа в экспедиции. */
+function destOf(plan: PlantPlan, s: PlantState, t: Task): Point | undefined {
+  if (t.truck && s.trucks[t.truck]) return pointOf(plan, s, { kind: 'truck', id: t.truck });
+  const u = t.dest ? s.units[t.dest] : undefined;
+  return u?.where.kind === 'slot' ? plan.slot[u.where.id] : undefined;
 }
 
 function levelOf(plan: PlantPlan, p: Place | string | undefined): number {
@@ -147,7 +158,7 @@ function start(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, people: P
     const walk = travel(people[0], v, WALK);
     const atLoad = t0 + walk + travel(v, from, vt.speedEmpty);
     const off = atLoad + vt.liftBase + levelOf(plan, t.from) * vt.liftPerLevel;
-    const dest = to ? plan.slot[to] : from;
+    const dest = to ? plan.slot[to] : (destOf(plan, s, t) ?? from);
     const atDrop = off + travel(from, dest, vt.speedLoaded);
     const end = atDrop + (to ? vt.liftBase + plan.slot[to].level * vt.liftPerLevel : 0) + t.work;
     times = [t0, atLoad, off, atDrop, end];
@@ -199,7 +210,7 @@ export function dropTask(db: ContentDb, s: PlantState, t: Task) {
 /** Освободить людей и технику задачи и поставить их туда, где задача кончилась. Задача уходит из состояния; прибор — нет. */
 export function release(db: ContentDb, s: PlantState, t: Task) {
   const plan = planOf(db, s.plant);
-  const endAt = t.to ? plan.slot[t.to] : pointOf(plan, s, t.from);
+  const endAt = t.to ? plan.slot[t.to] : (destOf(plan, s, t) ?? pointOf(plan, s, t.from));
   for (const id of t.people) {
     const p = s.people[id];
     delete p.task;

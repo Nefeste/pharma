@@ -3,7 +3,9 @@
 import type { ContentDb } from '../content/types';
 import { type Agenda, schedule } from './core/agenda';
 import { HOUR } from './core/calendar';
+import { newCash } from './cash';
 import { newLines } from './line';
+import { newCustomers } from './market';
 import { planOf } from './plant';
 import { nominal } from './quality';
 import { type PlantEvent, type PlantState, SCHEMA } from './types';
@@ -82,6 +84,19 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   4: (raw, db) => {
     if (!db.plants[raw.plant as string]) throw new Error(`save: no plant ${String(raw.plant)}`);
     return { ...raw, lines: newLines(db, raw.plant as string, raw.t as number) };
+  },
+  // 5 → 6 (часть 1д): касса — проводки и счета от остатка на момент сохранения (он уже в копейках); выпущенная раньше ГП —
+  // в обороте с момента выпуска; покупатели сценария копят спрос с момента миграции; заказов и отгрузок нет.
+  5: (raw, db) => {
+    const sc = db.scenarios[raw.scenario as string];
+    if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
+    const lots = raw.lots as Record<string, Raw>;
+    for (const b of Object.values(raw.batches as Record<string, Raw>)) {
+      const fg = (b.pack as Raw | undefined)?.fg as string | undefined;
+      if (b.status === 'released' && fg && lots[fg]) lots[fg].circulation = b.released;
+    }
+    const t = raw.t as number;
+    return { ...raw, cash: newCash(raw.cash as number, t), customers: newCustomers(sc, t), orders: {}, shipments: {} };
   },
 };
 

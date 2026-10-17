@@ -3,3 +3,4 @@
 id: eq.scale
 name: { ru: Весы с ламинарным боксом, en: Scales with a laminar-flow booth }
 cleaning: { minor: 20, major: 60 }
+kw: 0.5

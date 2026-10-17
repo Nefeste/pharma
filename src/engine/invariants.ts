@@ -3,6 +3,7 @@
 // проверки.
 import type { Attr, ContentDb } from '../content/types';
 import { geo, good, SIXTY } from './line';
+import { orderReserved } from './market';
 import { clampAttr } from './mes';
 import { planOf } from './plant';
 import { containersByLot, LOT_FLOW, TAG } from './stock';
@@ -29,8 +30,8 @@ export function check(db: ContentDb, s: PlantState): string[] {
     if (!s.lots[c.lot]) bad.push(`тара ${c.id}: нет партии ${c.lot}`);
   }
   for (const lot of Object.values(s.lots)) {
-    const sum = (left[lot.id] ?? 0) + lot.used + lot.sampled + lot.written;
-    if (sum !== lot.qty) bad.push(`партия ${lot.id}: принято ${lot.qty}, а в таре и расходе ${sum}`);
+    const sum = (left[lot.id] ?? 0) + lot.used + lot.sampled + lot.written + (lot.shipped ?? 0);
+    if (sum !== lot.qty) bad.push(`партия ${lot.id}: принято ${lot.qty}, а в таре, расходе и отгрузках ${sum}`);
     if (!(lot.status in LOT_FLOW)) bad.push(`партия ${lot.id}: статус ${lot.status}`);
   }
   // паллета — ровно в одном месте; место — не больше одной паллеты
@@ -66,6 +67,15 @@ export function check(db: ContentDb, s: PlantState): string[] {
     if (kits.has(u.id)) {
       if (u.where.kind !== 'room') bad.push(`паллета ${u.id}: комплект серии не в помещении`);
       for (const id of lots) if (s.lots[id!]?.status !== 'released') bad.push(`паллета ${u.id}: в комплекте партия ${id} не разрешена`);
+      continue;
+    }
+    // паллета заказа — серии в обороте; в экспедиции или в фуре покупателя заказа
+    if (u.order) {
+      const o = s.orders[u.order];
+      if (!o || o.status !== 'open' || !o.units.includes(u.id)) bad.push(`паллета ${u.id}: заказ ${u.order} её не знает`);
+      for (const id of lots) if (s.lots[id!]?.status !== 'released' || s.lots[id!]?.circulation === undefined) bad.push(`паллета ${u.id}: в заказе партия ${id} не в обороте`);
+      const where = u.where.kind === 'slot' ? plan.slot[u.where.id]?.kind : u.where.kind === 'truck' ? 'truck' : u.where.kind;
+      if (where !== 'shipping' && !(where === 'truck' && s.trucks[u.where.id]?.customer === o?.customer)) bad.push(`паллета ${u.id}: паллета заказа не в экспедиции и не в его фуре`);
       continue;
     }
     if (lots.size !== 1) {
@@ -139,7 +149,35 @@ export function check(db: ContentDb, s: PlantState): string[] {
   }
   production(db, s, bad);
   packing(db, s, bad);
+  market(db, s, bad);
   return bad;
+}
+
+/**
+ * Инварианты рынка и кассы (docs/specs/2026-10-engine.md, 1д): касса = начальная + проводки; счета — по сроку;
+ * отгружено и зарезервировано — не больше заказанного; резерв открытого заказа — его ящики; отгрузка — по цене позиций.
+ */
+function market(db: ContentDb, s: PlantState, bad: string[]) {
+  const c = s.cash;
+  const sum = c.ledger.reduce((n, e) => n + e.sum, c.start);
+  if (sum !== c.balance) bad.push(`касса: ${c.balance}, а начальная и проводки дают ${sum}`);
+  for (let i = 1; i < c.dues.length; i++) if (c.dues[i - 1].due > c.dues[i].due) bad.push(`касса: счёт ${c.dues[i].id} не по сроку`);
+  for (const o of Object.values(s.orders)) {
+    for (const l of o.lines) if (l.reserved > l.cases || l.shipped > l.cases) bad.push(`заказ ${o.id}: по ${l.sku} заказано ${l.cases}, резерв ${l.reserved}, отгружено ${l.shipped}`);
+    if (o.status !== 'open' && (o.cases.length > 0 || o.units.length > 0)) bad.push(`заказ ${o.id}: закрыт, а ящики или паллеты ещё за ним`);
+    for (const cid of o.cases) {
+      const ct = s.containers[cid];
+      if (!ct || ct.reserved !== ct.qty) bad.push(`заказ ${o.id}: ящик ${cid} не в резерве`);
+    }
+    for (const uid of o.units) if (s.units[uid]?.order !== o.id) bad.push(`заказ ${o.id}: паллета ${uid} не его`);
+  }
+  const fgSku = new Map(Object.values(db.skus).map(k => [k.fg, k]));
+  for (const sh of Object.values(s.shipments)) {
+    const money = sh.cases.reduce((n, x) => n + x.qty * fgSku.get(s.lots[x.lot].material)!.price, 0);
+    if (money !== sh.sum) bad.push(`отгрузка ${sh.id}: сумма ${sh.sum}, а по ящикам ${money}`);
+    const lines = sh.orders.reduce((n, id) => n + s.orders[id].lines.reduce((k, l) => k + l.shipped, 0), 0);
+    if (lines !== sh.cases.length) bad.push(`отгрузка ${sh.id}: ящиков ${sh.cases.length}, а в заказах отгружено ${lines}`);
+  }
 }
 
 /**
@@ -179,8 +217,9 @@ function production(db: ContentDb, s: PlantState, bad: string[]) {
     if (b.room && b.status === 'process' && s.rooms[b.room]?.batch !== b.id && Object.values(s.tasks).some(t => t.kind === 'stage' && t.batch === b.id)) bad.push(`серия ${b.id}: стадия идёт, а помещение ${b.room} не её`);
     if (b.bulk && !s.lots[b.bulk]) bad.push(`серия ${b.id}: нет партии балка ${b.bulk}`);
   }
+  for (const [cid, qty] of orderReserved(s)) reserved[cid] = (reserved[cid] ?? 0) + qty;
   for (const c of Object.values(s.containers)) {
-    if ((c.reserved ?? 0) !== (reserved[c.id] ?? 0)) bad.push(`тара ${c.id}: резерв ${c.reserved ?? 0}, а в комплектах ${reserved[c.id] ?? 0}`);
+    if ((c.reserved ?? 0) !== (reserved[c.id] ?? 0)) bad.push(`тара ${c.id}: резерв ${c.reserved ?? 0}, а в комплектах и заказах ${reserved[c.id] ?? 0}`);
     if ((c.reserved ?? 0) > c.qty) bad.push(`тара ${c.id}: резерв ${c.reserved} больше остатка ${c.qty}`);
   }
   for (const lot of Object.values(s.lots)) if (lot.used !== (used[lot.id] ?? 0)) bad.push(`партия ${lot.id}: израсходовано ${lot.used}, а отвешено в серии ${used[lot.id] ?? 0}`);
@@ -207,6 +246,9 @@ function production(db: ContentDb, s: PlantState, bad: string[]) {
  */
 function packing(db: ContentDb, s: PlantState, bad: string[]) {
   const byLot = containersByLot(s);
+  // отгруженные ящики — коды ушли к покупателю, но остаются кодами серии
+  const shippedCodes = new Map<string, [number, number][]>();
+  for (const sh of Object.values(s.shipments)) for (const x of sh.cases) shippedCodes.set(x.lot, [...(shippedCodes.get(x.lot) ?? []), ...x.codes]);
   const containersOf = (lotId: string) => byLot.get(lotId) ?? [];
   for (const line of Object.values(s.lines)) {
     const b = line.batch ? s.batches[line.batch] : undefined;
@@ -246,7 +288,7 @@ function packing(db: ContentDb, s: PlantState, bad: string[]) {
     const tablets = goodCartons * sku.blisters * sku.perBlister + job.scrap! + job.remainder!;
     if (tablets !== job.tablets) bad.push(`серия ${b.id}: таблеток ${job.tablets}, а в пачках, браке и остатке ${tablets}`);
     // каждый код 1…пачек — ровно один раз: в ящике, в браке или в архиве. Отрезки по порядку должны сложиться встык
-    const parts: [number, number][] = [];
+    const parts: [number, number][] = [...(shippedCodes.get(job.fg!) ?? [])];
     for (const c of containersOf(job.fg!)) {
       let n = 0;
       for (const r of c.codes ?? []) {

@@ -118,6 +118,9 @@ export class Game {
       : n.kind === 'batchRejected' ? T.notices.batchRejected
       : n.kind === 'batchHeld' ? T.notices.batchHeld
       : n.kind === 'deviation' ? T.notices.deviation
+      : n.kind === 'shipped' ? T.notices.shipped
+      : n.kind === 'lateOrder' ? T.notices.lateOrder
+      : n.kind === 'cashLow' ? T.notices.cashLow
       : T.notices.refused;
     this.notices.unshift({ t: this.t, text });
     if (this.notices.length > 30) this.notices.length = 30;

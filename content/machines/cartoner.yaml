@@ -9,5 +9,6 @@ crew: { role: role.line-operator, n: 1 }
 micro: { every: 25, duration: 1.5 }
 reject: 0.3
 changeover: 180
+kw: 6
 source: [mdlp]
 review: draft

@@ -21,8 +21,25 @@ export interface Profile {
   currency: string;
   /** ставки НДС, доли 1/10 000: на лекарства и общая */
   vat: { medicines: number; general: number };
-  /** маркировка пачек кодами и агрегирование в короба и паллеты */
-  marking: { packs: boolean; aggregation: 'optional' | 'required' };
+  /** НДС за квартал — равными долями до этого числа каждого из трёх следующих месяцев */
+  vatDue: number;
+  /**
+   * маркировка пачек кодами и агрегирование в короба и паллеты; плата за код, копейки без НДС; коды бесплатны, если
+   * зарегистрированная цена позиции не выше `free`, копейки
+   */
+  marking: { packs: boolean; aggregation: 'optional' | 'required'; fee: number; free: number };
+  /**
+   * труд: ночные часы [с, до) и доплата за них, доли 1/10 000 часовой ставки; взносы, доли 1/10 000 — до предельной базы
+   * (копейки с начала года), сверх неё и «на травматизм» — и до какого числа следующего месяца
+   */
+  payroll: {
+    night: { from: number; to: number; extra: number };
+    contrib: { rate: number; base: number; above: number; injury: number; due: number };
+  };
+  /** электроэнергия: авансы — число месяца и доля стоимости прошлого месяца, 1/10 000; окончательный расчёт — число */
+  energy: { advances: [number, number][]; final: number };
+  /** ключевая ставка, доли 1/10 000 */
+  key: number;
   /** ключи источников из docs/10-domain.md, §9 */
   source: string[];
   review: Review;
@@ -65,6 +82,12 @@ export interface Scenario {
   site: { w: number; h: number };
   /** касса на старте, копейки */
   cash: number;
+  /** кредитная линия: предел минуса кассы, копейки; надбавка к ключевой ставке, доли 1/10 000 */
+  credit: { limit: number; spread: number };
+  /** цена электроэнергии, копейки за кВт·ч без НДС */
+  energy: { price: number };
+  /** покупатели сценария */
+  customers: Id[];
   staff: StaffRow[];
   vehicles: { type: Id; n: number }[];
   orders: StartOrder[];
@@ -256,6 +279,8 @@ export interface Plant {
   lines: { id: string; room: string; out: string; machines: { id: string; type: Id; buffer?: number }[] }[];
   /** точки: стоянка техники, вход персонала */
   points: { park: [number, number]; entrance: [number, number] };
+  /** вентиляция — Вт на м² помещения по классу, круглые сутки; постоянная база — Вт */
+  energy: { hvac: { D: number; cnc: number }; base: number };
 }
 
 /** Вид прибора лаборатории (геймдизайн, §6.2); экземпляры — в плане завода. */
@@ -302,6 +327,10 @@ export interface Product {
   name: Text;
   inn: string;
   form: 'tablet';
+  /** в перечне ЖНВЛП: цена позиции — не выше зарегистрированной */
+  jnvlp: boolean;
+  source?: string[];
+  review?: Review;
 }
 
 /** Вид оборудования производства: уборка малая и большая, с (геймдизайн, §5.5). */
@@ -309,6 +338,8 @@ export interface EquipmentType {
   id: Id;
   name: Text;
   cleaning: { minor: number; major: number };
+  /** мощность, пока идёт стадия, Вт */
+  kw: number;
 }
 
 /** Единица режима в движке: об/мин — целыми, минуты — секундами, °C — десятыми, кН — сотыми, кг — граммами. */
@@ -390,6 +421,8 @@ export interface Machine {
   micro?: { every: number; duration: number };
   reject: number;
   changeover: number;
+  /** мощность на ходу, Вт */
+  kw: number;
   source?: string[];
   review?: Review;
 }
@@ -409,6 +442,23 @@ export interface Sku {
   case: { material: Id; per: number };
   pallet: { cases: number };
   waste: { blisters: number; cartons: number };
+  /** цена завода за пачку и зарегистрированная предельная цена, копейки без НДС */
+  price: number;
+  regPrice?: number;
+}
+
+/** Покупатель (docs/specs/2026-10-engine.md, 1д). Дни недели — 0 — понедельник. */
+export interface Customer {
+  id: Id;
+  name: Text;
+  payDays: number;
+  order: { days: number[]; hour: number; lead: [number, number] };
+  /** наименьший остаточный срок годности, доли 1/10 000 полного */
+  minShelf: number;
+  /** позиция → пачек в сутки */
+  demand: Record<Id, number>;
+  source?: string[];
+  review?: Review;
 }
 
 export interface ContentDb {
@@ -433,4 +483,5 @@ export interface ContentDb {
   causes: Record<Id, Cause>;
   machines: Record<Id, Machine>;
   skus: Record<Id, Sku>;
+  customers: Record<Id, Customer>;
 }

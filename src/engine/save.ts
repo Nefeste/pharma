@@ -3,6 +3,7 @@
 import type { ContentDb } from '../content/types';
 import { type Agenda, schedule } from './core/agenda';
 import { HOUR } from './core/calendar';
+import { newLines } from './line';
 import { planOf } from './plant';
 import { nominal } from './quality';
 import { type PlantEvent, type PlantState, SCHEMA } from './types';
@@ -75,6 +76,12 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     const equipment: Raw = {};
     for (const e of plant.equipment) equipment[e.id] = { id: e.id, type: e.type, room: e.room };
     return { ...raw, rooms, equipment, batches: {} };
+  },
+  // 4 → 5 (часть 1г): упаковочные линии — по плану, свободны, не налажены. Балк старых серий ждёт команды «упаковать»:
+  // позиции у них нет.
+  4: (raw, db) => {
+    if (!db.plants[raw.plant as string]) throw new Error(`save: no plant ${String(raw.plant)}`);
+    return { ...raw, lines: newLines(db, raw.plant as string, raw.t as number) };
   },
 };
 

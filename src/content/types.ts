@@ -69,8 +69,8 @@ export interface Scenario {
   vehicles: { type: Id; n: number }[];
   orders: StartOrder[];
   stock: StartStock[];
-  /** задания на серию: карта и день «не раньше» от начала партии */
-  batches: { recipe: Id; day: number }[];
+  /** задания на серию: карта, день «не раньше» от начала партии и товарная позиция, в которую упаковать балк */
+  batches: { recipe: Id; day: number; sku?: Id }[];
 }
 
 /** Грузовая единица: паллета или транспортный короб (docs/04-data-model.md, §3). */
@@ -89,8 +89,8 @@ export interface UnitType {
   review?: Review;
 }
 
-/** Вид материала; `bulk` — свой полупродукт: таблетки после производства, до упаковки. */
-export type MaterialKind = 'api' | 'excipient' | 'packaging' | 'bulk';
+/** Вид материала; `bulk` — свой полупродукт: таблетки после производства, до упаковки; `fg` — готовая продукция. */
+export type MaterialKind = 'api' | 'excipient' | 'packaging' | 'bulk' | 'fg';
 
 /**
  * Свойство качества (геймдизайн, §6.1): подлинность, содержание, влажность, внешний вид, размер частиц АФС, средняя
@@ -153,7 +153,7 @@ export interface Material {
   props: Partial<Record<Attr, [number, number]>>;
   /** брак у поставщика: свойство и сдвиг в единицах движка; у качественного свойства — «не соответствует» */
   bad?: { attr: Attr; shift?: number };
-  /** проба с одной тары: мг или шт. */
+  /** проба с одной тары: мг или шт.; у готовой продукции — архивные образцы серии, пачек */
   sample: number;
   source?: string[];
   review?: Review;
@@ -162,11 +162,11 @@ export interface Material {
 /** Вид груза для отрисовки (src/render/loads.ts). */
 export type LoadKind = 'cases' | 'drums' | 'bags' | 'rolls';
 
-/** Тара материала: бочка, мешок, рулон, коробка, пачка гофроящиков. */
+/** Тара материала: бочка, мешок, рулон, коробка, пачка гофроящиков, контейнер таблеток, гофроящик с пачками. */
 export interface ContainerType {
   id: Id;
   name: Text;
-  kind: 'drum' | 'bag' | 'roll' | 'box' | 'bundle' | 'bin';
+  kind: 'drum' | 'bag' | 'roll' | 'box' | 'bundle' | 'bin' | 'case';
   /** сколько материала в таре: мг или штуки — по единице материала */
   capacity: number;
   /** сколько тары на паллете */
@@ -234,7 +234,7 @@ export interface Shift {
   to: number;
 }
 
-export type ZoneKind = 'receiving' | 'quarantine' | 'cold' | 'rejected' | 'fgQuarantine' | 'shipping' | 'staging' | 'sampling';
+export type ZoneKind = 'receiving' | 'quarantine' | 'cold' | 'rejected' | 'fgQuarantine' | 'shipping' | 'staging' | 'sampling' | 'palletizing';
 
 /** План завода прототипа (docs/specs/2026-10-engine.md, «План завода прототипа»). Координаты — сантиметры участка. */
 export interface Plant {
@@ -249,6 +249,11 @@ export interface Plant {
   instruments: { id: string; type: Id; room: string }[];
   /** оборудование производства: вид и помещение */
   equipment: { id: string; type: Id; room: string }[];
+  /**
+   * упаковочные линии: помещение, зона паллетирования на выходе, машины по порядку; после машины — накопитель на
+   * `buffer` её штук (у последней — нет)
+   */
+  lines: { id: string; room: string; out: string; machines: { id: string; type: Id; buffer?: number }[] }[];
   /** точки: стоянка техники, вход персонала */
   points: { park: [number, number]; entrance: [number, number] };
 }
@@ -371,6 +376,41 @@ export interface Cause {
   review?: Review;
 }
 
+/**
+ * Машина упаковочной линии (геймдизайн, §5.6): номинал — блистеров или пачек в минуту; микроостановки — в среднем раз в
+ * `every` секунд работы на номинале, длятся в среднем `duration` секунд; брак камеры — доли 1/10 000 выхода; переналадка
+ * на другой формат, с.
+ */
+export interface Machine {
+  id: Id;
+  name: Text;
+  item: 'blister' | 'carton';
+  nominal: number;
+  crew: { role: Id; n: number };
+  micro?: { every: number; duration: number };
+  reject: number;
+  changeover: number;
+  source?: string[];
+  review?: Review;
+}
+
+/** Товарная позиция (docs/04-data-model.md, §4). Материалы на блистер — мг, на пачку — штуки. */
+export interface Sku {
+  id: Id;
+  name: Text;
+  product: Id;
+  /** готовая продукция — материал вида `fg` */
+  fg: Id;
+  format: string;
+  perBlister: number;
+  blisters: number;
+  blister: { material: Id; qty: number }[];
+  carton: { material: Id; qty: number }[];
+  case: { material: Id; per: number };
+  pallet: { cases: number };
+  waste: { blisters: number; cartons: number };
+}
+
 export interface ContentDb {
   /** отпечаток базы: сохранение помнит, с какой базой оно сделано */
   hash: string;
@@ -391,4 +431,6 @@ export interface ContentDb {
   equipment: Record<Id, EquipmentType>;
   recipes: Record<Id, Recipe>;
   causes: Record<Id, Cause>;
+  machines: Record<Id, Machine>;
+  skus: Record<Id, Sku>;
 }

@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 4;
+export const SCHEMA = 5;
 
 // ---------------------------------------------------------------- склад
 
@@ -43,6 +43,8 @@ export interface Lot {
   coa: Partial<Record<Attr, number>>;
   /** пробы входного контроля */
   sample?: string;
+  /** своя продукция — балк или готовая: серия, из которой она */
+  batch?: string;
 }
 
 export interface Container {
@@ -56,6 +58,9 @@ export interface Container {
   opened: boolean;
   /** зарезервировано под серии, мг или шт.: свободно — остаток минус резерв */
   reserved?: number;
+  /** гофроящик ГП: коды пачек отрезками [первый, сколько] и когда ящик уложен */
+  codes?: [number, number][];
+  made?: number;
 }
 
 /**
@@ -136,21 +141,23 @@ export interface Instrument {
 
 /**
  * Отклонение (docs/04-data-model.md, §6): результат вне спецификации (`oos`), МОК вне пределов (`ipc`), режим вне
- * диапазона (`param`), выход ниже тревожного (`yield`).
+ * диапазона (`param`), выход ниже тревожного (`yield`), расхождение при сверке печатных материалов (`recon`).
  */
 export interface Deviation {
   id: string;
   opened: number;
-  kind: 'oos' | 'ipc' | 'param' | 'yield';
+  kind: 'oos' | 'ipc' | 'param' | 'yield' | 'recon';
   lot?: string;
   batch?: string;
   /** стадия серии */
   stage?: string;
-  /** испытания вне пределов; методика МОК; режим */
+  /** испытания вне пределов; методика МОК; режим; материал сверки */
   tests?: string[];
   test?: Id;
   param?: string;
-  status: 'open';
+  material?: Id;
+  /** `assessed` — уполномоченное лицо оценило отклонение «без влияния на качество» и выпустило серию */
+  status: 'open' | 'assessed';
 }
 
 // ---------------------------------------------------------------- производство
@@ -218,9 +225,111 @@ export interface CauseHit {
 
 /**
  * Серия: `waiting` — не хватает материалов; `reserved` — материалы зарезервированы, ждёт даты и комплектации;
- * `kitting` — комплект едет к шлюзу; `process` — стадии по карте; `bulk` — балк сделан (его статус — у партии балка).
+ * `kitting` — комплект едет к шлюзу; `process` — стадии по карте; `bulk` — балк сделан (его статус — у партии балка);
+ * `packing` — задание на упаковку; `fg` — упакована, ГП в карантине до решения уполномоченного лица; `released` —
+ * выпущена; `rejected` — отклонена (балк или ГП).
  */
-export type BatchStatus = 'waiting' | 'reserved' | 'kitting' | 'process' | 'bulk';
+export type BatchStatus = 'waiting' | 'reserved' | 'kitting' | 'process' | 'bulk' | 'packing' | 'fg' | 'released' | 'rejected';
+
+/** Состояние машины линии на отрезке (для OEE): на номинале, медленнее, микроостановка, ждёт соседа, наладка, вне смены, без задания. */
+export type MachineState = 'run' | 'slow' | 'micro' | 'wait' | 'setup' | 'off' | 'idle';
+
+/**
+ * Время машины за задание по состояниям, с, и проход — шестидесятые доли таблетки (docs/specs/2026-10-engine.md, 1г).
+ * `slowOut` — проход в состоянии «медленнее»: проход = номинал × `run` + `slowOut`.
+ */
+export interface MachineTimes {
+  run: number;
+  slow: number;
+  micro: number;
+  wait: number;
+  setup: number;
+  off: number;
+  out: number;
+  slowOut: number;
+}
+
+/** Машина линии: позиция — сколько таблеток прошло через неё за задание, шестидесятые доли; скорость — таких долей в секунду. */
+export interface LineMachine {
+  id: string;
+  type: Id;
+  pos: number;
+  rate: number;
+  state: MachineState;
+  /** микроостановка — до этого момента; следующая — на этой позиции */
+  down?: number;
+  next: number;
+  times: MachineTimes;
+}
+
+/** Упаковочная линия (docs/specs/2026-10-engine.md, 1г): формат, очистка, серия на линии, машины, паллета ГП, время потока. */
+export interface Line {
+  id: string;
+  /** формат, на который налажена; нет — не налажена */
+  format?: string;
+  /** очищена после прошлой серии и проверена мастером */
+  clear: boolean;
+  batch?: string;
+  machines: LineMachine[];
+  /** паллета ГП, которую собирают, и сколько ящиков уложено за задание */
+  pallet?: string;
+  cases: number;
+  /** до какого момента посчитан поток; версия событий линии */
+  t: number;
+  v: number;
+  /** без задания, с */
+  idle: number;
+}
+
+/** Сверка материала после упаковки: выдано = использовано + испорчено + возвращено (шт. или мг). */
+export interface Recon {
+  material: Id;
+  issued: number;
+  used: number;
+  spoiled: number;
+  returned: number;
+}
+
+/**
+ * Задание на упаковку серии: `waiting` — не хватает материалов; `reserved` — зарезервированы; `kitting` — комплект едет
+ * к шлюзу; `ready` — комплект у линии; `running` — линия упаковывает; `done` — упаковано.
+ */
+export interface PackJob {
+  sku: Id;
+  line: string;
+  state: 'waiting' | 'reserved' | 'kitting' | 'ready' | 'running' | 'done';
+  created: number;
+  short?: { material: Id; qty: number }[];
+  tried?: number;
+  kit: KitLine[];
+  kitUnit?: string;
+  /** списано на серию по факту: тара, партия, сколько */
+  used: KitLine[];
+  /** таблеток к упаковке — весь остаток балка */
+  tablets: number;
+  /** партия ГП */
+  fg?: string;
+  /** когда линия взяла задание, пошла первая таблетка, упаковка кончилась */
+  taken?: number;
+  start?: number;
+  end?: number;
+  /** сколько пачек камера картонажной уже проверила: коды выбракованных — в `rejected` */
+  checked: number;
+  /** коды пачек: брак камеры, архивные образцы */
+  rejected: number[];
+  retained: number[];
+  /** итог: блистеров сделано и в браке, пачек сделано и в браке, ящиков, таблеток в браке и в остатке */
+  blisters?: number;
+  blisterRejects?: number;
+  cartons?: number;
+  cartonRejects?: number;
+  cases?: number;
+  scrap?: number;
+  remainder?: number;
+  recon?: Recon[];
+  /** OEE машин за задание: номинал (долей в секунду) и время по состояниям */
+  oee?: { machine: string; nominal: number; times: MachineTimes }[];
+}
 
 export interface Batch {
   id: string;
@@ -256,6 +365,14 @@ export interface Batch {
   /** балк: партия полупродукта и сколько таблеток */
   bulk?: string;
   units?: number;
+  /** в какую позицию упаковать балк; задание на упаковку */
+  sku?: Id;
+  pack?: PackJob;
+  /** проверка ООК кончилась; решение игрока для уполномоченного лица; держит ли УЛ серию; когда выпущена */
+  checked?: number;
+  decision?: 'release' | 'reject' | 'hold';
+  held?: boolean;
+  released?: number;
 }
 
 // ---------------------------------------------------------------- закупки
@@ -315,7 +432,8 @@ export interface Vehicle {
  * Виды задач. Склад: разгрузка, приёмка, размещение (в карантин или на стеллаж), перемещение (в зону отклонённого).
  * Лаборатория: паллета в пробоотборную и обратно, отбор проб, передача проб в лабораторию, испытание, проверка
  * результата, решение по партии. Производство: паллета с комплектом серии к шлюзу, перекладка в шлюзе, возврат
- * остатков, стадия серии, уборка помещения.
+ * остатков, стадия серии, уборка помещения. Линия: смена у линии, переналадка, очистка линии и её проверка, балк к
+ * линии. Качество: проверка ГП и досье, решение уполномоченного лица.
  */
 export type TaskKind =
   | 'unload'
@@ -333,7 +451,14 @@ export type TaskKind =
   | 'transfer'
   | 'return'
   | 'stage'
-  | 'clean';
+  | 'clean'
+  | 'crew'
+  | 'changeover'
+  | 'clearance'
+  | 'clearCheck'
+  | 'feed'
+  | 'fgCheck'
+  | 'qpDecide';
 
 /** Место задачи: место паллеты, рампа с фурой или точка. */
 export type Place = { kind: 'slot'; id: string } | { kind: 'truck'; id: string } | { kind: 'point'; x: number; z: number };
@@ -366,6 +491,7 @@ export interface Task {
   test?: string;
   batch?: string;
   room?: string;
+  line?: string;
   /** работа на месте, с */
   work: number;
   /** больше — раньше */
@@ -397,7 +523,9 @@ export type PlantEvent =
   /** прибор кончил работать сам: результат испытания */
   | { kind: 'run'; test: string; v: number }
   /** подошла дата «не раньше» задания на серию */
-  | { kind: 'batch'; id: string };
+  | { kind: 'batch'; id: string }
+  /** граница потока линии: накопитель, микроостановка, балк, места паллет, отметка раз в 10 минут; v = −1 — пересчитать всегда */
+  | { kind: 'line'; id: string; v: number };
 
 export interface PlantState {
   schema: number;
@@ -441,6 +569,8 @@ export interface PlantState {
   rooms: Record<string, Room>;
   equipment: Record<string, Equipment>;
   batches: Record<string, Batch>;
+  /** упаковочные линии по именам из плана */
+  lines: Record<string, Line>;
 }
 
 /** Команда — единственный способ изменить состояние (docs/02-architecture.md, §7). */
@@ -450,10 +580,17 @@ export type Command =
   /** заказ поставщику: количество — мг или шт., округляется вверх до целой тары */
   | { kind: 'po'; supplier: Id; lines: PoLine[]; by?: string }
   /** задание на серию по карте: не раньше — игровые секунды; нет — сейчас */
-  | { kind: 'order'; recipe: Id; notBefore?: number; by?: string };
+  | { kind: 'order'; recipe: Id; notBefore?: number; by?: string; sku?: Id }
+  /** упаковать балк серии в товарную позицию — когда балк разрешат */
+  | { kind: 'pack'; batch: string; sku: Id }
+  /**
+   * решение игрока вместо уполномоченного лица по упакованной серии. «Выпустить» при открытых отклонениях — законный
+   * риск: отклонения оценены «без влияния на качество» (продукт, «Чего нет сознательно»)
+   */
+  | { kind: 'release'; batch: string; decision: 'release' | 'reject' | 'hold' };
 
 /** Почему команда не выполнена — для окна. */
-export type Refusal = 'noSupplier' | 'notSold' | 'belowMoq' | 'empty' | 'noRecipe';
+export type Refusal = 'noSupplier' | 'notSold' | 'belowMoq' | 'empty' | 'noRecipe' | 'noBatch' | 'notBulk' | 'noSku' | 'notReady';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
@@ -469,7 +606,13 @@ export type Notice =
   | { kind: 'lotRejected'; lot: string; deviation: string }
   /** серия сделана: балк в карантине */
   | { kind: 'batchBulk'; batch: string; lot: string }
-  /** открыто отклонение производства: МОК, режим, выход */
+  /** открыто отклонение производства: МОК, режим, выход, сверка */
   | { kind: 'deviation'; id: string }
+  /** серия упакована: ГП в карантине */
+  | { kind: 'batchPacked'; batch: string; lot: string }
+  /** решение уполномоченного лица: выпущена, отклонена, держать */
+  | { kind: 'batchReleased'; batch: string; lot: string }
+  | { kind: 'batchRejected'; batch: string; lot: string }
+  | { kind: 'batchHeld'; batch: string }
   /** команда не выполнена */
   | { kind: 'refused'; cmd: Command['kind']; why: Refusal; detail?: string };

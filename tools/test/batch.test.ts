@@ -255,9 +255,9 @@ describe('сценарий', () => {
     const out = live(db, s, 90);
     const batches = Object.values(s.batches);
     expect(batches.length).toBe(8);
-    expect(out.filter(n => n.kind === 'batchBulk').length).toBe(batches.filter(b => b.status === 'bulk').length);
-    // первые пять — из запаса, дальше — когда разрешена партия АФС из заказа
-    for (const b of batches.slice(0, 5)) expect(b.status).toBe('bulk');
+    // все восемь сделаны (дальше их упаковывает линия — tools/test/line.test.ts)
+    expect(out.filter(n => n.kind === 'batchBulk').length).toBe(8);
+    for (const b of batches) expect(s.lots[b.bulk!].material).toBe(recipe.bulk);
     const api = Object.values(s.lots).find(l => l.material === 'mat.api.paracetamol' && l.po)!;
     for (const b of batches.filter(x => x.dispensed.some(d => d.lot === api.id))) {
       expect(b.records[0].start).toBeGreaterThan(api.received);

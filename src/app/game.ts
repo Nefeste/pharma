@@ -113,6 +113,10 @@ export class Game {
       : n.kind === 'lotReleased' ? T.notices.lotReleased
       : n.kind === 'lotRejected' ? T.notices.lotRejected
       : n.kind === 'batchBulk' ? T.notices.batchBulk
+      : n.kind === 'batchPacked' ? T.notices.batchPacked
+      : n.kind === 'batchReleased' ? T.notices.batchReleased
+      : n.kind === 'batchRejected' ? T.notices.batchRejected
+      : n.kind === 'batchHeld' ? T.notices.batchHeld
       : n.kind === 'deviation' ? T.notices.deviation
       : T.notices.refused;
     this.notices.unshift({ t: this.t, text });

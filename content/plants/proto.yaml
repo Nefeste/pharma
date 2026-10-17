@@ -11,10 +11,12 @@ zones:
   - { id: quar, kind: quarantine, rect: [8, 2, 12, 8], grid: [5, 3] }
   - { id: cold, kind: cold, rect: [1, 12, 6, 6], grid: [2, 2] }
   - { id: rej, kind: rejected, rect: [1, 19, 6, 4], grid: [3, 2] }
-  - { id: fgq, kind: fgQuarantine, rect: [1, 24, 6, 6], grid: [2, 2] }
+  - { id: fgq, kind: fgQuarantine, rect: [1, 24, 6, 6], grid: [3, 3] }
   - { id: ship, kind: shipping, rect: [1, 31, 6, 7], grid: [2, 2] }
   - { id: stage, kind: staging, rect: [30, 2, 5, 5], grid: [2, 2] }
   - { id: samp, kind: sampling, rect: [21, 2, 5, 5], grid: [2, 1] }
+  # конец упаковочной линии: два места для паллет, которые собирают упаковщики
+  - { id: pal, kind: palletizing, rect: [31, 33, 5, 3], grid: [2, 1] }
 racks:
   - { id: A, x: 8, z: 12, bays: 6, levels: 4 }
   - { id: B, x: 8, z: 16, bays: 6, levels: 4 }
@@ -44,6 +46,16 @@ equipment:
   - { id: blender-1, type: eq.blender, room: blending }
   - { id: press-1, type: eq.press, room: compression }
   - { id: deduster-1, type: eq.deduster, room: compression }
+# упаковочная линия: машины по порядку, после каждой — накопитель на столько её штук (блистеров, пачек); паллеты —
+# в зоне pal
+lines:
+  - id: line-1
+    room: packaging
+    out: pal
+    machines:
+      - { id: blister-1, type: mach.blister, buffer: 600 }
+      - { id: cartoner-1, type: mach.cartoner, buffer: 400 }
+      - { id: casepack-1, type: mach.casepack }
 points:
   park: [12, 37]
   entrance: [28, 38]

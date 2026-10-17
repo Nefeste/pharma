@@ -1,0 +1,12 @@
+# Готовая продукция — пачки в гофроящиках на паллете. Партия ГП — серия: номер изготовителя — номер серии. Срок годности
+# и число архивных образцов — гипотезы.
+id: mat.fg.paracetamol500-n10
+kind: fg
+name: { ru: "Парацетамол, таблетки 500 мг, №10", en: "Paracetamol 500 mg tablets, 10" }
+unit: pcs
+container: cnt.case.fg
+storage: room
+shelf: 36
+spec: spec.fg.paracetamol500
+# архивные образцы серии, пачек
+sample: 6

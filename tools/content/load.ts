@@ -20,6 +20,7 @@ import {
   type ContentDb,
   type EquipmentType,
   type InstrumentType,
+  type Machine,
   type Material,
   PARAM_SCALE,
   type ParamUnit,
@@ -32,6 +33,7 @@ import {
   type Role,
   type Scenario,
   type Shift,
+  type Sku,
   type Spec,
   type SpecLine,
   type Supplier,
@@ -328,6 +330,50 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     for (const e of c.effects) need(!qual(e.attr), `${where}: ${e.attr} — качественное свойство`);
     causes[c.id] = { ...c, effects: c.effects.map(e => ({ attr: e.attr, coef: (e.coef * scaleOf(e.attr)) / per })) };
   }
+  // машины линии: секунды и доли
+  const machines: Record<string, Machine> = {};
+  for (const m of Object.values(raw.machines)) {
+    need(raw.roles[m.crew.role], `машина ${m.id}: нет роли ${m.crew.role}`);
+    if (m.micro) need(m.micro.duration < m.micro.every, `машина ${m.id}: микроостановка дольше промежутка между ними`);
+    machines[m.id] = {
+      id: m.id,
+      name: m.name,
+      item: m.item,
+      nominal: m.nominal,
+      crew: m.crew,
+      ...(m.micro ? { micro: { every: sec(m.micro.every), duration: sec(m.micro.duration) } } : {}),
+      reject: share(m.reject),
+      changeover: sec(m.changeover),
+      ...(m.source ? { source: m.source, review: m.review } : {}),
+    };
+  }
+  // товарные позиции: готовая продукция, материалы на блистер (г → мг) и на пачку, ящик и паллета
+  const skus: Record<string, Sku> = {};
+  for (const k of Object.values(raw.skus)) {
+    const where = `позиция ${k.id}`;
+    need(raw.products[k.product], `${where}: нет продукта ${k.product}`);
+    const fg = raw.materials[k.fg];
+    need(fg?.kind === 'fg' && fg.unit === 'pcs', `${where}: ${k.fg} — не готовая продукция в пачках (вид fg)`);
+    for (const l of k.blister) {
+      const m = raw.materials[l.material];
+      need(m?.kind === 'packaging' && m.unit === 'kg', `${where}: на блистер ${l.material} — не упаковочный материал по массе`);
+    }
+    for (const l of [...k.carton, { material: k.case.material }]) {
+      const m = raw.materials[l.material];
+      need(m?.kind === 'packaging' && m.unit === 'pcs', `${where}: ${l.material} — не упаковочный материал в штуках`);
+    }
+    need(new Set([...k.blister, ...k.carton].map(l => l.material)).size === k.blister.length + k.carton.length, `${where}: материал повторяется`);
+    const ct = fg && raw.containers[fg.container];
+    if (ct) {
+      need('pcs' in ct.capacity && ct.capacity.pcs >= k.case.per, `${where}: в ящик ${ct.id} не входит ${k.case.per} пачек`);
+      need(k.pallet.cases <= ct.perPallet, `${where}: на паллету ${ct.id} не входит ${k.pallet.cases} ящиков`);
+    }
+    skus[k.id] = {
+      ...k,
+      blister: k.blister.map(l => ({ material: l.material, qty: Math.round(l.g * 1000) })),
+      carton: k.carton.map(l => ({ material: l.material, qty: l.n })),
+    };
+  }
   const plants: Record<string, Plant> = {};
   for (const p of Object.values(raw.plants)) {
     const r4 = (r: [number, number, number, number]): [number, number, number, number] => [cm(r[0]), cm(r[1]), cm(r[2]), cm(r[3])];
@@ -339,10 +385,32 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       rooms: p.rooms.map(r => ({ ...r, rect: r4(r.rect) })),
       instruments: p.instruments,
       equipment: p.equipment,
+      lines: p.lines,
       points: { park: [cm(p.points.park[0]), cm(p.points.park[1])], entrance: [cm(p.points.entrance[0]), cm(p.points.entrance[1])] },
     };
-    const ids = [...p.docks.map(d => d.id), ...p.zones.map(z => z.id), ...p.racks.map(r => r.id), ...p.rooms.map(r => r.id), ...p.instruments.map(i => i.id), ...p.equipment.map(e => e.id)];
-    need(new Set(ids).size === ids.length, `план ${p.id}: имена рамп, зон, стеллажей, помещений, приборов и оборудования повторяются`);
+    const ids = [
+      ...p.docks.map(d => d.id),
+      ...p.zones.map(z => z.id),
+      ...p.racks.map(r => r.id),
+      ...p.rooms.map(r => r.id),
+      ...p.instruments.map(i => i.id),
+      ...p.equipment.map(e => e.id),
+      ...p.lines.flatMap(l => [l.id, ...l.machines.map(m => m.id)]),
+    ];
+    need(new Set(ids).size === ids.length, `план ${p.id}: имена рамп, зон, стеллажей, помещений, приборов, оборудования, линий и машин повторяются`);
+    // линия: помещение, зона паллетирования на выходе; первая машина делает блистеры, остальные работают с пачками;
+    // накопитель — после каждой машины, кроме последней
+    for (const ln of p.lines) {
+      need(p.rooms.some(r => r.id === ln.room), `план ${p.id}: линия ${ln.id} — нет помещения ${ln.room}`);
+      need(p.zones.some(z => z.id === ln.out && z.kind === 'palletizing'), `план ${p.id}: линия ${ln.id} — нет зоны паллетирования ${ln.out}`);
+      ln.machines.forEach((m, i) => {
+        const mt = raw.machines[m.type];
+        need(mt, `план ${p.id}: машина ${m.id} — нет вида ${m.type}`);
+        const last = i === ln.machines.length - 1;
+        need(last === (m.buffer === undefined), `план ${p.id}: машина ${m.id} — ${last ? 'после последней машины накопителя нет' : 'после машины нужен накопитель'}`);
+        if (mt) need((i === 0) === (mt.item === 'blister'), `план ${p.id}: линия ${ln.id} — первая машина делает блистеры, остальные работают с пачками`);
+      });
+    }
     need(new Set(p.rooms.map(r => r.type)).size === p.rooms.length, `план ${p.id}: тип помещения повторяется — стадия не знает, куда идти`);
     for (const e of p.equipment) {
       need(raw.equipment[e.type], `план ${p.id}: оборудование ${e.id} — нет вида ${e.type}`);
@@ -381,6 +449,13 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         need(room, `${where}: для стадии ${st.id} нет помещения «${st.room}»`);
         for (const e of st.equipment) need(room && pl.equipment.some(x => x.room === room.id && x.type === e), `${where}: в помещении «${st.room}» нет ${e}`);
       }
+      // товарная позиция: того же продукта, что карта, и линия в плане, где её упаковать
+      if (b.sku) {
+        const k = raw.skus[b.sku];
+        need(k, `${where}: нет товарной позиции ${b.sku}`);
+        if (k && r) need(k.product === r.product, `${where}: позиция ${b.sku} — не того продукта, что карта ${b.recipe}`);
+        need(pl && pl.lines.length > 0, `${where}: в плане нет упаковочной линии для ${b.sku}`);
+      }
     }
     for (const o of s.orders) {
       const sup = suppliers[o.supplier];
@@ -416,5 +491,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     equipment,
     recipes,
     causes,
+    machines,
+    skus,
   };
 }

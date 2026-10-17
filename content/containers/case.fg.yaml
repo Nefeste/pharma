@@ -1,0 +1,8 @@
+# Гофроящик с пачками готовой продукции — тара партии ГП; размер — unit.case.m. Сколько пачек в нём — у товарной
+# позиции; здесь — наибольшее. Гипотезы.
+id: cnt.case.fg
+name: { ru: Гофроящик с пачками, en: Shipping case of cartons }
+kind: case
+capacity: { pcs: 240 }
+perPallet: 40
+load: cases

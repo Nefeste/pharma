@@ -216,9 +216,9 @@ describe('путь партии', () => {
 });
 
 describe('ни одна партия не уходит дальше карантина до решения', () => {
-  // где паллета партии до решения — смотрим перед каждым событием; полные инварианты — раз в 6 часов: так 30 прогонов
-  // укладываются в секунду
-  test('30 зёрен × 90 суток: до решения паллеты — в приёмке, карантине и пробоотборной; решение — по результатам; брак отклонён', () => {
+  // где паллета партии до решения — смотрим перед каждым событием; полные инварианты — раз в сутки: с линией и ящиками
+  // ГП проверка стала дороже, а 30 прогонов должны укладываться в несколько секунд
+  test('30 зёрен × 90 суток: до решения паллеты — в приёмке, карантине и пробоотборной (ГП — у линии и в карантине ГП); решение — по результатам; брак отклонён', () => {
     let decided = 0;
     let bad = 0;
     for (let seed = 1; seed <= 30; seed++) {
@@ -233,9 +233,10 @@ describe('ни одна партия не уходит дальше карант
             continue;
           }
           const kind = u.where.kind === 'slot' ? plan.slot[u.where.id].kind : 'truck';
-          if (!['truck', 'receiving', 'quarantine', 'sampling'].includes(kind)) throw new Error(`seed ${seed}: ${lot.id} (${lot.status}) в «${kind}»`);
+          const allowed = db.materials[lot.material].kind === 'fg' ? ['palletizing', 'fgQuarantine'] : ['truck', 'receiving', 'quarantine', 'sampling'];
+          if (!allowed.includes(kind)) throw new Error(`seed ${seed}: ${lot.id} (${lot.status}) в «${kind}»`);
         }
-      }, 6 * HOUR);
+      }, DAY);
       for (const n of out) {
         if (n.kind !== 'lotReleased' && n.kind !== 'lotRejected') continue;
         const lot = s.lots[n.lot];
@@ -250,12 +251,13 @@ describe('ни одна партия не уходит дальше карант
           expect(n.kind).toBe('lotRejected');
         }
       }
-      for (const lot of Object.values(s.lots)) expect(['released', 'rejected']).toContain(lot.status);
+      // сырьё и балк к концу решены все; готовую продукцию серии с отклонением уполномоченное лицо держит
+      for (const lot of Object.values(s.lots)) if (db.materials[lot.material].kind !== 'fg') expect(['released', 'rejected']).toContain(lot.status);
     }
     expect(decided).toBe(30 * db.scenarios[SC].orders.reduce((k, o) => k + o.lines.length, 0));
     expect(bad).toBeGreaterThan(0);
-    // 30 прогонов с производством — около двух секунд; запас на медленную машину CI
-  }, 20_000);
+    // 30 прогонов с производством и упаковкой — около четырёх секунд; запас на медленную машину CI
+  }, 40_000);
 });
 
 describe('сохранение посреди испытания', () => {

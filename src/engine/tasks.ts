@@ -6,7 +6,7 @@
 import type { ContentDb, Id, ZoneKind } from '../content/types';
 import { schedule } from './core/agenda';
 import { dist, type PlantPlan, planOf, type Point, travel } from './plant';
-import { canTake, hasPermit } from './staff';
+import { canTake, hasPermit, shiftEnd } from './staff';
 import { findSlot, nextId } from './stock';
 import type { Instrument, Person, Place, PlantState, Task, TaskKind, Vehicle } from './types';
 
@@ -31,6 +31,7 @@ export interface NewTask {
   test?: string;
   batch?: string;
   room?: string;
+  line?: string;
 }
 
 export function addTask(s: PlantState, n: NewTask): Task {
@@ -156,6 +157,11 @@ function start(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, people: P
     // пешком: дойти, взять, донести до места назначения (если оно есть) и там работать
     const walk = Math.max(...people.map(p => travel(p, from, WALK)));
     const carry = to ? travel(from, plan.slot[to], WALK) : 0;
+    // смена у линии — до конца смены того, у кого она кончается раньше; линия узнаёт о приходе людей событием
+    if (t.kind === 'crew') {
+      t.work = Math.max(1, Math.min(...people.map(p => shiftEnd(db, s, p)!)) - (t0 + walk));
+      schedule(s.agenda, t0 + walk, { kind: 'line', id: t.line!, v: -1 });
+    }
     times = [t0, t0 + walk, t0 + walk, t0 + walk + carry, t0 + walk + carry + t.work];
   }
   if (to) {
@@ -181,6 +187,13 @@ function start(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, people: P
   t.times = times;
   t.v++;
   schedule(s.agenda, times[4], { kind: 'task', id: t.id, v: t.v });
+}
+
+/** Снять задачу: открытую — из очереди, занятую — освободив людей и технику. Событие её конца устареет само. */
+export function dropTask(db: ContentDb, s: PlantState, t: Task) {
+  if (t.state === 'busy') return release(db, s, t);
+  s.open.splice(s.open.indexOf(t.id), 1);
+  delete s.tasks[t.id];
 }
 
 /** Освободить людей и технику задачи и поставить их туда, где задача кончилась. Задача уходит из состояния; прибор — нет. */

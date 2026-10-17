@@ -1,0 +1,18 @@
+# Товарная позиция: 20 таблеток — два блистера по 10 в пачке с инструкцией; 120 пачек в ящике, 40 ящиков на паллете.
+# Масса плёнки и фольги на блистер, брак на наладку — гипотезы.
+id: sku.paracetamol500.n20
+name: { ru: "Парацетамол, таблетки 500 мг, №20", en: "Paracetamol 500 mg tablets, 20" }
+product: prd.paracetamol500
+fg: mat.fg.paracetamol500-n20
+format: n20
+perBlister: 10
+blisters: 2
+blister:
+  - { material: mat.pk.pvc, g: 0.9 }
+  - { material: mat.pk.alu, g: 0.4 }
+carton:
+  - { material: mat.pk.carton-n20, n: 1 }
+  - { material: mat.pk.leaflet, n: 1 }
+case: { material: mat.pk.case, per: 120 }
+pallet: { cases: 40 }
+waste: { blisters: 50, cartons: 20 }

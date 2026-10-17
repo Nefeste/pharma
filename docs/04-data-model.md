@@ -79,7 +79,7 @@ storage: { temp: [15C, 25C], humidity: max60 }
 retest: 36mo                     # дата повторных испытаний, а не срок годности
 potency: true                    # навеска пересчитывается на содержание партии
 containers: [cnt.drum.fibre50]
-sampling: { identity: each, other: sqrt-n-plus-1 }
+sampling: { default: each, reduced: who-n }   # 1 + √N — только одобренный изготовитель напрямую
 spec: spec.mat.paracetamol
 source: [gmp-eaeu]               # ключи из 10-domain.md
 review: draft

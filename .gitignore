@@ -1,0 +1,10 @@
+node_modules/
+src/content/generated/
+tools/bench/out/
+*.cpuprofile
+# игра: сборка страницы, файлы electron-builder, снимки сценария и бенча, итог бенча в Electron из корня
+dist/
+release/
+tools/app/out/
+bench-electron-*
+bench-browser-*

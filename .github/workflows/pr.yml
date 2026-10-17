@@ -1,0 +1,46 @@
+# из bolnitsa: .github/workflows/pr.yml @ e0a3491 — изменено: база игры вместо медицинской базы.
+# Быстрые проверки на каждый PR в main (ADR студии 0019): сборка и валидатор базы, типы, тесты движка — те же команды,
+# что в AGENTS.md («Commands»), и сборка страницы игры (esbuild, секунды). Без установщиков: их собирает build.yml по
+# тегу версии, поэтому Electron здесь не скачивается. Проверка отвечает на каждом PR, и на документах тоже, — поэтому
+# без paths-ignore: иначе она повисла бы «ожидающей». Черновик PR не проверяется — задание пропускается внутри.
+name: PR
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Проверки PR
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      # бандл базы не хранится в репозитории: типы и тесты читают собранный
+      - name: База игры — сборка и валидатор
+        run: bun tools/content/build.ts
+      - name: Типы
+        run: npx tsc --noEmit
+      - name: Тесты
+        run: bun test tools/test
+      - name: Страница игры и поток расчёта
+        run: node tools/app/build.mjs

@@ -1,0 +1,5 @@
+# Роли прототипа (геймдизайн, §8.1). Зарплаты — гипотезы, рубли в месяц.
+id: role.storekeeper
+name: { ru: Кладовщик, en: Storekeeper }
+dept: wms
+salary: 55000

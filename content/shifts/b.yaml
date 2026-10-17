@@ -1,0 +1,5 @@
+id: shift.b
+name: { ru: Вторая смена 5/2, en: Second shift 5/2 }
+days: [1, 2, 3, 4, 5]
+from: 15
+to: 23

@@ -1,0 +1,6 @@
+id: cnt.bag.20
+name: { ru: Мешок 20 кг, en: Bag 20 kg }
+kind: bag
+capacity: { kg: 20 }
+perPallet: 32
+load: bags

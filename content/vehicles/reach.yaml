@@ -1,0 +1,8 @@
+id: veh.reach
+name: { ru: Ричтрак, en: Reach truck }
+speedEmpty: 2.2
+speedLoaded: 1.8
+levels: 4
+liftBase: 8
+liftPerLevel: 20
+permit: forklift

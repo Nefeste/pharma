@@ -29,8 +29,8 @@ The project documents itself in [`docs/`](docs/README.md), in Russian. Start the
 - `docs/README.md` — index and reading order.
 - `docs/01-product.md` — what the game is, its pillars, for whom, what is deliberately absent,
   vocabulary (UI and code terms must match it).
-- `docs/08-game-design.md` — the game as it should ship in 1.0; **all game-design numbers live
-  only there**.
+- `docs/08-game-design.md` — the game as it should ship in 1.0; **game-design numbers live there or in the
+  content records it points to — each number in one place**.
 - `docs/10-domain.md` — facts about real pharmaceutical manufacturing that mechanics rely on,
   each with a source key; regulations change — check the date before relying on a fact.
 - `docs/02-architecture.md` — engine modules, time and flow, determinism, window and 3D, plan
@@ -90,6 +90,7 @@ npm run e2e                        # after build: the game in headless Chromium 
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zip → release/ (from Linux, no wine) — the release file
 bun tools/test/make-save-fixture.ts  # only when SCHEMA changes: a new save sample (old ones stay)
+npm run bench                      # engine without a window: a year of scn.proto (--days, --step, --seed); compare before/after engine changes
 ```
 
 The browser scenario needs Chromium: `PLAYWRIGHT_BROWSERS_PATH` (default `/opt/pw-browsers`) or `CHROMIUM_PATH`.
@@ -102,8 +103,12 @@ first, or copy the working code of Bolnitsa on the same versions.
 
 - `src/engine/` — the engine (pure TypeScript; see «Hard rules»): `core/` (seeded branches, hashes, own `log2` — copies;
   the event agenda as a heap in plain arrays and the calendar without `Date` — ours), `types.ts` (state, commands,
-  notices, `SCHEMA`), `engine.ts` (`newPlant`, `apply`, `catchUp`), `random.ts` (named branches in the state),
-  `save.ts` (snapshot and migrations).
+  notices, `SCHEMA`), `engine.ts` (`newPlant`, `apply`, `catchUp`, events), `random.ts` (named branches in the state),
+  `save.ts` (snapshot and migrations), `plant.ts` (slots, docks, rooms and distances from the plant record),
+  `stock.ts` (lots, containers, pallets, slots, the lot status table), `supply.ts` (purchase orders), `wms.ts` (truck,
+  unloading, receiving, putaway), `tasks.ts` (tasks and the dispatcher), `staff.ts` (shifts), `invariants.ts`.
+- **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
+  intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker (`worker.ts`)
   and its client in the window (`client.ts`). The window never runs the engine.
 - `src/app/` — the game in the window: content, stage, clock and speeds, input, panels (`game.ts`, `main.tsx`).

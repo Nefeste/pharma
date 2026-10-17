@@ -1,0 +1,11 @@
+id: sup.exc
+name: { ru: Поставщик вспомогательных веществ, en: Excipient supplier }
+lead: [10, 20]
+prepay: 0
+payDays: 30
+approved: true
+items:
+  mat.exc.starch: { price: 110, moq: 250 }
+  mat.exc.povidone: { price: 900, moq: 50 }
+  mat.exc.mcc: { price: 320, moq: 100 }
+  mat.exc.mgst: { price: 600, moq: 20 }

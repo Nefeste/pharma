@@ -1,0 +1,7 @@
+id: mat.exc.starch
+kind: excipient
+name: { ru: Крахмал картофельный, en: Potato starch }
+unit: kg
+container: cnt.bag.25
+storage: room
+shelf: 24

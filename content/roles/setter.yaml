@@ -1,0 +1,4 @@
+id: role.setter
+name: { ru: Наладчик, en: Line setter }
+dept: maint
+salary: 80000

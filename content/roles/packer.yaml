@@ -1,0 +1,4 @@
+id: role.packer
+name: { ru: Упаковщик, en: Packer }
+dept: line
+salary: 50000

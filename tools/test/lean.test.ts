@@ -109,7 +109,7 @@ describe('задержки задач', () => {
     const from = { x: op.x, z: op.z };
     clean(s);
     const walk = s.losses.at(-1)!.walk.mes!;
-    expect(walk.cm - before.cm).toBe(dist(from, plan.room.workshop));
+    expect(walk.cm - before.cm).toBe(dist(plan, from, plan.room.workshop));
   });
 });
 

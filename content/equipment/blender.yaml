@@ -1,4 +1,6 @@
 id: eq.blender
 name: { ru: Контейнерный смеситель, en: Bin blender }
+# ширина, глубина, высота, м — след на полу и короб до модели (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
+size: [2.0, 1.8, 2.6]
 cleaning: { minor: 20, major: 90 }
 kw: 7.5

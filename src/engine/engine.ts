@@ -16,6 +16,7 @@ import { marketDone, marketHour, marketStep, newCustomers, rznPublished } from '
 import { BATCH_HOUR, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, stageBegin } from './mes';
 import { planOf } from './plant';
 import { qaDone, qaStep, releaseCommand } from './qa';
+import { goHome } from './staff';
 import { createLot, findSlot } from './stock';
 import { placePo } from './supply';
 import { dispatch, release } from './tasks';
@@ -219,6 +220,7 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
     case 'hour':
       // смены начинаются и кончаются в целые часы: раздать то, что ждало людей; партии, готовые к отбору проб, — в план
       schedule(s.agenda, s.t + HOUR, { kind: 'hour' });
+      for (const p of Object.values(s.people)) goHome(db, s, p);
       startSampling(db, s);
       cashHour(db, s, notices);
       maintStep(db, s);

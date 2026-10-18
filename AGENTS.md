@@ -111,8 +111,10 @@ first, or copy the working code of Bolnitsa on the same versions.
 - `src/engine/` — the engine (pure TypeScript; see «Hard rules»): `core/` (seeded branches, hashes, own `log2` — copies;
   the event agenda as a heap in plain arrays and the calendar without `Date` — ours), `types.ts` (state, commands,
   notices, `SCHEMA`), `engine.ts` (`newPlant`, `apply`, `catchUp`, events), `random.ts` (named branches in the state,
-  the integer normal draw), `save.ts` (snapshot and migrations), `plant.ts` (slots, docks, rooms, the lab and distances
-  from the plant record), `stock.ts` (lots, containers, pallets, slots, the lot status table), `supply.ts` (purchase
+  the integer normal draw), `save.ts` (snapshot and migrations), `nav.ts` (the plan's 1 m grid: walls, doors and
+  footprints, where people may walk and vehicles may drive, access cells, distance fields cached per plan, route length
+  and the route polyline shared with the window), `plant.ts` (slots, docks, rooms, the lab, work points and distances
+  along the plan's routes), `stock.ts` (lots, containers, pallets, slots, the lot status table), `supply.ts` (purchase
   orders), `wms.ts` (truck, unloading, receiving, putaway), `quality.ts` (true lot properties, the lab result, spec
   limits), `lab.ts` (sampling, lab tests, the lot decision), `mes.ts` (batch orders, FEFO reservation with potency,
   kitting through the airlock, stages in rooms with equipment and people, cleaning, process parameters, true batch
@@ -128,17 +130,24 @@ first, or copy the working code of Bolnitsa on the same versions.
   replacement by the mechanic with a spare from the workshop, spares replenished by level, the maintenance policy,
   `maintain`), `lean.ts` (losses per day by kind and department: waiting tasks by cause, transport and walking,
   defects; a batch's time by state; the line master's shift task and the rhythm coefficient), `tasks.ts` (tasks and
-  the dispatcher: people, vehicles, instruments; why a task waits), `staff.ts` (shifts), `invariants.ts`.
+  the dispatcher: people, vehicles, instruments; why a task waits), `staff.ts` (shifts; off-shift people leave through
+  the entrance), `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
-- `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker (`worker.ts`)
-  and its client in the window (`client.ts`). The window never runs the engine. Saves cross the thread boundary as a
-  string: the window never parses the state with the true lot properties.
-- `src/app/` — the game in the window: content, stage, clock and speeds, input, panels (`game.ts`, `main.tsx`).
-- `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa), the floor,
-  racks and pallet loads by instancing (`stage.ts`, `loads.ts`), the demo warehouse of part 0 (`demo.ts`).
+- `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`, format 2: rooms, trucks,
+  changed pallets; no truth fields), Web Worker (`worker.ts`) and its client in the window (`client.ts`). The window
+  never runs the engine. Saves cross the thread boundary as a string: the window never parses the state with the true
+  lot properties.
+- `src/app/` — the game in the window: content, stage, clock and speeds, input, panels (`game.ts`, `main.tsx`); what
+  the slice puts on the floor — pallets, trucks, rooms (`scene.ts`).
+- `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa); the plant
+  from the plan (`layout.ts` — rooms, walls, doors and spots from `planOf`), floors, zone markings, ground and yard,
+  walls with the cut and openings (`world.ts`), doors, lamps and floor textures (`doors.ts`, `lamps.ts`, `textures.ts`
+  — copies of Bolnitsa, adapted), racks and pallet loads by instancing (`loads.ts`), trucks at docks (`trucks.ts`),
+  room status signs (`signs.ts`), equipment as boxes of their size (`boxes.ts`), the composition (`stage.ts`).
 - `src/ui/` — panels (React) and their store; `src/i18n/` — every player-facing string, Russian and English.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML;
-  `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`).
+  `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
+  plan rules in `plan.ts`: doors on walls, docks on outer walls, class D only through airlocks, reachability).
 - `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
 - `tools/app/` — page build, local server, browser scenario; `tools/test/` — Bun tests and save samples.

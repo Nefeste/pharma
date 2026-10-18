@@ -6,7 +6,7 @@ import type { ContentDb } from '../content/types';
 import { apply, catchUp, newPlant } from '../engine/engine';
 import { fromSave, toSave } from '../engine/save';
 import type { Command, Notice, PlantState } from '../engine/types';
-import { packSlice } from './pack';
+import { Packer } from './pack';
 import type { FromSim, ToSim } from './protocol';
 
 /** Счёт до `ms` от сейчас; одно событие — всегда. */
@@ -30,9 +30,11 @@ export function createSim(db: ContentDb): SimHost {
   let s: PlantState | undefined;
   /** игровые секунды, которые часы игры уже прошли, а движок ещё не начал */
   let owed = 0;
+  /** помнит, какие паллеты окно уже знает: в срезе — только изменённые */
+  const packer = new Packer(db);
   const slice = (notices: Notice[]): FromSim => {
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
-    return { kind: 'slice', buf: packSlice(s!, lag), notices, lag };
+    return { kind: 'slice', buf: packer.pack(s!, lag), notices, lag };
   };
   /** Дожить время, которое часы игры уже прошли: команда видит завод таким, как игрок. */
   const settle = (): Notice[] => {
@@ -48,10 +50,12 @@ export function createSim(db: ContentDb): SimHost {
           case 'start':
             s = newPlant(db, { scenario: msg.scenario, seed: msg.seed });
             owed = 0;
+            packer.reset();
             return slice([]);
           case 'load':
             s = fromSave(db, msg.json);
             owed = 0;
+            packer.reset();
             return slice([]);
           case 'command':
             if (!s) return { kind: 'error', message: 'no plant' };

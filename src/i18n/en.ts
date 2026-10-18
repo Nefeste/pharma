@@ -6,7 +6,7 @@ export const en: Strings = {
     title: 'Farmzavod',
     loading: 'Loading…',
     error: 'Error',
-    stage: 'Prototype: plant engine — part 1, view — the part 0 demo warehouse',
+    stage: 'Prototype: the plant from the plan — part 2a',
   },
   date: {
     months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
@@ -41,6 +41,24 @@ export const en: Strings = {
     failure: 'A machine part failed: awaiting repair',
     repaired: 'A machine part was repaired or replaced',
     refused: 'The command was refused',
+  },
+  view: {
+    walls: 'Walls',
+    wallsFull: 'Full',
+    wallsCut: 'Cut',
+    wallsDown: 'Down',
+  },
+  room: {
+    status: { clean: 'Clean', busy: 'In use', dirty: 'To clean' },
+    batch: (code: string) => `Batch ${code}`,
+  },
+  stages: {
+    dispense: 'Dispensing',
+    granulate: 'Granulation',
+    dry: 'Drying',
+    mill: 'Sizing',
+    blend: 'Lubrication',
+    compress: 'Compression',
   },
   debug: {
     title: 'Debug',

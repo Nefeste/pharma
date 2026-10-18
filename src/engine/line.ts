@@ -138,6 +138,13 @@ function crews(db: ContentDb, line: Line): { role: Id; n: number; machines: numb
   return out;
 }
 
+/** Где стоит смена роли: у первой её машины (docs/specs/2026-10-view.md, 2а) — середина следа машины по плану. */
+function crewPoint(db: ContentDb, s: PlantState, line: Line, role: Id): Point {
+  const def = planOf(db, s.plant).plant.lines.find(l => l.id === line.id)!;
+  const i = crews(db, line).find(r => r.role === role)!.machines[0];
+  return { x: def.machines[i].at[0], z: def.machines[i].at[1] };
+}
+
 /** Есть ли у линии смена этой роли: задача занята и люди дошли. */
 function crewHere(s: PlantState, line: Line, role: Id): boolean {
   return tasksOf(s, line, 'crew').some(t => t.roles[0] === role && t.state === 'busy' && t.times![1] <= s.t);
@@ -537,7 +544,7 @@ function startRun(db: ContentDb, s: PlantState, line: Line, b: Batch, g: Geo) {
     armParts(db, s, mc, g, i);
     drawNext(db, s, mc, g, i);
   });
-  for (const c of crews(db, line)) addCrew(s, line, b, c.role, c.n, g.at);
+  for (const c of crews(db, line)) addCrew(s, line, b, c.role, c.n, crewPoint(db, s, line, c.role));
 }
 
 function addCrew(s: PlantState, line: Line, b: Batch, role: Id, n: number, at: Point) {
@@ -700,7 +707,7 @@ export function lineDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[
       lineUpdate(db, s, line!, notices);
       const b = line!.batch ? s.batches[line!.batch] : undefined;
       if (b && b.id === t.batch && b.pack?.state === 'running' && !tasksOf(s, line!, 'crew').some(x => x.roles[0] === t.roles[0])) {
-        addCrew(s, line!, b, t.roles[0], t.count, geo(db, s, line!, b.pack.sku).at);
+        addCrew(s, line!, b, t.roles[0], t.count, crewPoint(db, s, line!, t.roles[0]));
       }
       return true;
     }

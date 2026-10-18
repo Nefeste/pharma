@@ -265,24 +265,39 @@ export interface Shift {
 
 export type ZoneKind = 'receiving' | 'quarantine' | 'cold' | 'rejected' | 'fgQuarantine' | 'shipping' | 'staging' | 'sampling' | 'palletizing';
 
-/** План завода прототипа (docs/specs/2026-10-engine.md, «План завода прототипа»). Координаты — сантиметры участка. */
+/** Дверь: одна створка, две, откатные ворота для техники, ворота рампы, проём для ленты в стене (не проход). */
+export type DoorKind = 'door' | 'double' | 'gate' | 'dock' | 'hatch';
+
+/**
+ * План завода прототипа (docs/specs/2026-10-engine.md, «План завода прототипа»; docs/specs/2026-10-view.md, 2а). Координаты
+ * — сантиметры участка; клетка — 100 см. Здание и помещения — прямоугольники со стенами по краю: соседние помещения делят
+ * общую стену.
+ */
 export interface Plant {
   id: Id;
+  building: [number, number, number, number];
+  /** рампа — точка на клетке ворот рампы в стене здания */
   docks: { id: string; kind: 'in' | 'out'; x: number; z: number }[];
   /** зона на полу: прямоугольник [x, z, ширина, глубина] и места сеткой [столбцов, рядов] */
   zones: { id: string; kind: ZoneKind; rect: [number, number, number, number]; grid: [number, number] }[];
-  /** ряды стеллажей: начало ряда, секций, ярусов */
-  racks: { id: string; x: number; z: number; bays: number; levels: number }[];
-  rooms: { id: string; type: string; rect: [number, number, number, number]; grade: 'D' | 'cnc' }[];
+  /** ряды стеллажей: начало ряда, секций, ярусов; проход — с севера (`n`, меньше z) или с юга (`s`) */
+  racks: { id: string; x: number; z: number; bays: number; levels: number; face: 'n' | 's' }[];
+  /** помещение: прямоугольник со стенами, класс, можно ли туда технике, рабочая точка (нет — середина) */
+  rooms: { id: string; type: string; rect: [number, number, number, number]; grade: 'D' | 'cnc'; vehicles: boolean; at?: [number, number] }[];
+  /**
+   * двери — клетки на стене: первая клетка (номера клеток), сколько клеток, вдоль какой оси идёт стена, вид; дверь только
+   * для материалов (внутренняя дверь шлюза для материалов) — люди через неё не ходят
+   */
+  doors: { cell: [number, number]; len: number; along: 'x' | 'z'; kind: DoorKind; materials?: boolean }[];
   /** приборы лаборатории: вид и помещение */
   instruments: { id: string; type: Id; room: string }[];
-  /** оборудование производства: вид и помещение */
-  equipment: { id: string; type: Id; room: string }[];
+  /** оборудование производства: вид, помещение, середина следа и поворот на четверти */
+  equipment: { id: string; type: Id; room: string; at: [number, number]; turn: number }[];
   /**
    * упаковочные линии: помещение, зона паллетирования на выходе, машины по порядку; после машины — накопитель на
    * `buffer` её штук (у последней — нет)
    */
-  lines: { id: string; room: string; out: string; machines: { id: string; type: Id; buffer?: number }[] }[];
+  lines: { id: string; room: string; out: string; machines: { id: string; type: Id; buffer?: number; at: [number, number]; turn: number }[] }[];
   /** точки: стоянка техники, вход персонала */
   points: { park: [number, number]; entrance: [number, number] };
   /** вентиляция — Вт на м² помещения по классу, круглые сутки; постоянная база — Вт */
@@ -367,6 +382,8 @@ export interface PartType {
 export interface EquipmentType {
   id: Id;
   name: Text;
+  /** ширина, глубина, высота, см — след на полу и короб до модели (гипотеза) */
+  size: [number, number, number];
   cleaning: { minor: number; major: number };
   /** мощность, пока идёт стадия, Вт */
   kw: number;
@@ -451,6 +468,8 @@ export interface Cause {
 export interface Machine {
   id: Id;
   name: Text;
+  /** ширина, глубина, высота, см — след на полу и короб до модели (гипотеза) */
+  size: [number, number, number];
   item: 'blister' | 'carton';
   nominal: number;
   crew: { role: Id; n: number };

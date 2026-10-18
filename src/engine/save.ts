@@ -153,5 +153,9 @@ export function fromSave(db: ContentDb, json: string): PlantState {
     v++;
     raw.schema = v;
   }
+  // план из базы мог вырасти без смены схемы (план здания, docs/specs/2026-10-view.md, 2а): новые помещения — чистые
+  const plant = db.plants[raw.plant as string];
+  const rooms = raw.rooms as Record<string, Raw> | undefined;
+  if (plant && rooms) for (const r of plant.rooms) rooms[r.id] ??= { id: r.id, type: r.type, status: 'clean', since: raw.t };
   return raw as unknown as PlantState;
 }

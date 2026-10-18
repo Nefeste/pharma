@@ -23,6 +23,7 @@ const actions: Actions = {
   setSpeed: later('setSpeed'),
   untilMorning: later('untilMorning'),
   setQuality: later('setQuality'),
+  setWalls: later('setWalls'),
   toggleDebug: later('toggleDebug'),
 };
 createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} />);

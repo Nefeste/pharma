@@ -137,7 +137,8 @@ describe('узкое место', () => {
     const o = pack(N20);
     expect(o['blister-1'].run).toBeGreaterThan(o['cartoner-1'].run);
     expect(o['cartoner-1'].slow).toBeGreaterThan(o['cartoner-1'].run);
-    expect(o['casepack-1'].run).toBe(0);
+    // укладка быстрее машин перед ней: на номинале — только пока догоняет пачки, накопленные до прихода её смены к столу
+    expect(o['casepack-1'].run * 100).toBeLessThan(o['casepack-1'].slow);
   });
 
   test('№10: держит картонажная — она на номинале, блистерная упирается в полный накопитель', () => {

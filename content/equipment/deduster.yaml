@@ -1,4 +1,6 @@
 id: eq.deduster
 name: { ru: Обеспыливатель с металлодетектором, en: Deduster with metal detector }
+# ширина, глубина, высота, м — след на полу и короб до модели (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
+size: [0.6, 0.6, 1.4]
 cleaning: { minor: 15, major: 45 }
 kw: 1

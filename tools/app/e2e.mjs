@@ -1,7 +1,8 @@
 // Сценарий в браузере (часть 0 прототипа, docs/specs/2026-10-prototype.md): Chromium без окна (Playwright, браузер из
 // PLAYWRIGHT_BROWSERS_PATH) открывает dist/. Страница грузится, сцена видна, часы завода идут; ×4 двигает их на часы;
-// пробел — пауза; «До утра» (клавиша 5) доходит до планёрки в 08:00 и ставит паузу. Ошибок в консоли и запросов наружу
-// нет. Снимок — tools/app/out/e2e.png.
+// пробел — пауза; «До утра» (клавиша 5) доходит до планёрки в 08:00 и ставит паузу. Завод из плана (2а,
+// docs/specs/2026-10-view.md): переключатель стен; снимки с трёх высот камеры — участок, цех, машина — днём и ночью;
+// вызовы отрисовки — в бюджете. Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
@@ -88,10 +89,53 @@ try {
   if (!shown) fail(`извещение: ${notice}`);
   else ok(`извещение: ${notice}`);
 
-  // снимок: общий план склада
+  // снимок: общий план завода
   await page.waitForTimeout(300);
   await page.screenshot({ path: join(out, 'e2e.png') });
   ok(`снимок: ${join(out, 'e2e.png')}`);
+
+  // переключатель стен: «вниз» — стены опущены, «срез» — по умолчанию
+  const walls = await page.$$('[data-test=walls] button');
+  if (walls.length !== 3) fail(`кнопок стен: ${walls.length}`);
+  else {
+    await walls[2].click();
+    const down = await page.evaluate(() => window.__game.stage.wallMode);
+    await walls[1].click();
+    const cut = await page.evaluate(() => window.__game.stage.wallMode);
+    if (down !== 'down' || cut !== 'cut') fail(`стены: ${down}, ${cut}`);
+    else ok('стены: «вниз» и «срез»');
+  }
+
+  // три высоты камеры днём и ночью (13-art.md, §17): участок, цех упаковки, блистерная машина
+  const heights = [
+    ['site', null],
+    ['hall', { x: 39, z: 17, half: 9 }],
+    ['machine', { x: 44, z: 16.5, half: 3.5 }],
+  ];
+  const shoot = async when => {
+    for (const [name, v] of heights) {
+      await page.evaluate(v => {
+        const c = window.__game.stage.cam;
+        if (v) {
+          c.target.set(v.x, 0, v.z);
+          c.half = v.half;
+        } else c.overview();
+      }, v);
+      await page.waitForTimeout(400);
+      const calls = await page.evaluate(() => window.__game.stage.calls);
+      if (calls > 150) fail(`${name}, ${when}: вызовов отрисовки ${calls} — больше бюджета 150`);
+      const file = join(out, `e2e-${name}-${when}.png`);
+      await page.screenshot({ path: file });
+      ok(`снимок ${name}, ${when}: ${calls} вызовов отрисовки`);
+    }
+  };
+  await shoot('day');
+  // ночь: ×4 до 22:00 и пауза
+  await page.keyboard.press('Digit4');
+  await page.waitForFunction(() => (window.__game.t % 86400) >= 22 * 3600, null, { timeout: 90_000 });
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(300);
+  await shoot('night');
 
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');

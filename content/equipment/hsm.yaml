@@ -1,4 +1,6 @@
 id: eq.hsm
 name: { ru: Смеситель-гранулятор, en: High-shear mixer granulator }
+# ширина, глубина, высота, м — след на полу и короб до модели (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
+size: [1.6, 1.2, 2.2]
 cleaning: { minor: 45, major: 180 }
 kw: 30

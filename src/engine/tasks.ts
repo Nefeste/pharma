@@ -7,7 +7,7 @@ import type { ContentDb, Id, ZoneKind } from '../content/types';
 import { schedule } from './core/agenda';
 import { moved, waitEnd, waitNote } from './lean';
 import { dist, type PlantPlan, planOf, type Point, travel } from './plant';
-import { canTake, hasPermit, LAST_CALL, shiftEnd } from './staff';
+import { canTake, goHome, hasPermit, LAST_CALL, shiftEnd } from './staff';
 import { findSlot, nextId } from './stock';
 import type { Instrument, Person, Place, PlantState, Task, TaskKind, Vehicle, WaitCause } from './types';
 
@@ -69,10 +69,14 @@ export function pointOf(plan: PlantPlan, s: PlantState, p: Place): Point {
 
 /**
  * Куда везут груз задачи без своего места: в фуру у рампы или на паллету заказа в экспедиции; слесарь несёт запчасть
- * к машине — в её помещение.
+ * к машине — в её помещение; балк к линии несут к первой её машине.
  */
 function destOf(plan: PlantPlan, s: PlantState, t: Task): Point | undefined {
   if (t.kind === 'repair' && t.room) return plan.room[t.room];
+  if (t.kind === 'feed' && t.line) {
+    const m = plan.plant.lines.find(l => l.id === t.line)!.machines[0];
+    return { x: m.at[0], z: m.at[1] };
+  }
   if (t.truck && s.trucks[t.truck]) return pointOf(plan, s, { kind: 'truck', id: t.truck });
   const u = t.dest ? s.units[t.dest] : undefined;
   return u?.where.kind === 'slot' ? plan.slot[u.where.id] : undefined;
@@ -85,12 +89,12 @@ function levelOf(plan: PlantPlan, p: Place | string | undefined): number {
 }
 
 /** Ближайший свободный человек ролей задачи, который может взять задачу сейчас; при равенстве — меньший номер. */
-function nearestPerson(db: ContentDb, s: PlantState, t: Task, at: Point, permit: string | undefined, skip: Set<string>): Person | undefined {
+function nearestPerson(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, at: Point, permit: string | undefined, skip: Set<string>): Person | undefined {
   let best: Person | undefined;
   let bestD = 0;
   for (const p of Object.values(s.people)) {
     if (skip.has(p.id) || !t.roles.includes(p.role) || t.not?.includes(p.id) || !canTake(db, s, p) || !hasPermit(db, p, permit)) continue;
-    const d = dist(p, at);
+    const d = dist(plan, p, at);
     if (!best || d < bestD || (d === bestD && idNum(p.id) < idNum(best.id))) {
       best = p;
       bestD = d;
@@ -130,16 +134,16 @@ function assign(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task): WaitCau
     // техника, ближайшая к грузу, с водителем; место назначения — по силам этой технике
     const free = Object.values(s.vehicles)
       .filter(v => !v.task && t.veh!.includes(v.type) && db.vehicles[v.type].levels >= fromLevel)
-      .sort((a, b) => dist(a, from) - dist(b, from) || idNum(a.id) - idNum(b.id));
+      .sort((a, b) => dist(plan, a, from, 'drive') - dist(plan, b, from, 'drive') || idNum(a.id) - idNum(b.id));
     if (free.length === 0) return 'vehicle';
     let place = false;
     for (const v of free) {
       const vt = db.vehicles[v.type];
-      const driver = nearestPerson(db, s, t, v, vt.permit, new Set());
+      const driver = nearestPerson(db, s, plan, t, v, vt.permit, new Set());
       if (!driver) continue;
       let to: string | undefined;
       if (t.toKind) {
-        const sl = findSlot(s, plan, t.toKind, t.near ?? from, vt.levels);
+        const sl = findSlot(s, plan, t.toKind, t.near ?? from, vt.levels, 'drive');
         if (!sl) {
           place = true;
           continue;
@@ -154,7 +158,7 @@ function assign(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task): WaitCau
   const people: Person[] = [];
   const skip = new Set<string>();
   for (let i = 0; i < t.count; i++) {
-    const p = nearestPerson(db, s, t, from, undefined, skip);
+    const p = nearestPerson(db, s, plan, t, from, undefined, skip);
     if (!p) return crewWait(db, s, t);
     people.push(p);
     skip.add(p.id);
@@ -162,7 +166,7 @@ function assign(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task): WaitCau
   // пешком, но с местом назначения на полу (возврат остатков в шлюз): место — ближе к началу задачи
   let to: string | undefined;
   if (t.toKind) {
-    const sl = findSlot(s, plan, t.toKind, t.near ?? from, 0);
+    const sl = findSlot(s, plan, t.toKind, t.near ?? from, 0, 'walk');
     if (!sl) return 'place';
     to = sl.id;
   }
@@ -177,26 +181,26 @@ function start(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, people: P
   waitEnd(s, t);
   if (v) {
     const vt = db.vehicles[v.type];
-    const walk = travel(people[0], v, WALK);
-    const empty = travel(v, from, vt.speedEmpty);
+    const walk = travel(plan, people[0], v, WALK);
+    const empty = travel(plan, v, from, vt.speedEmpty, 'drive');
     const atLoad = t0 + walk + empty;
     const off = atLoad + vt.liftBase + levelOf(plan, t.from) * vt.liftPerLevel;
     const dest = to ? plan.slot[to] : (destOf(plan, s, t) ?? from);
-    const loaded = travel(from, dest, vt.speedLoaded);
+    const loaded = travel(plan, from, dest, vt.speedLoaded, 'drive');
     const atDrop = off + loaded;
     const end = atDrop + (to ? vt.liftBase + plan.slot[to].level * vt.liftPerLevel : 0) + t.work;
     times = [t0, atLoad, off, atDrop, end];
     v.task = t.id;
     t.vehicle = v.id;
     // водитель идёт к технике — перемещение; техника едет порожняком и с грузом — транспортировка
-    moved(s, t.kind, dist(people[0], v), walk, dist(v, from), dist(from, dest), empty + loaded);
+    moved(s, t.kind, dist(plan, people[0], v), walk, dist(plan, v, from, 'drive'), dist(plan, from, dest, 'drive'), empty + loaded);
   } else {
     // пешком: дойти, взять, донести до места назначения (если оно есть) и там работать
-    const walk = Math.max(...people.map(p => travel(p, from, WALK)));
+    const walk = Math.max(...people.map(p => travel(plan, p, from, WALK)));
     const dest = to ? plan.slot[to] : destOf(plan, s, t);
-    const carry = dest ? travel(from, dest, WALK) : 0;
+    const carry = dest ? travel(plan, from, dest, WALK) : 0;
     // каждый идёт к месту — перемещение; груз на руках — транспортировка
-    moved(s, t.kind, people.reduce((n, p) => n + dist(p, from), 0), people.reduce((n, p) => n + travel(p, from, WALK), 0), 0, dest ? dist(from, dest) : 0, carry);
+    moved(s, t.kind, people.reduce((n, p) => n + dist(plan, p, from), 0), people.reduce((n, p) => n + travel(plan, p, from, WALK), 0), 0, dest ? dist(plan, from, dest) : 0, carry);
     // смена у линии — до конца смены того, у кого она кончается раньше; линия узнаёт о приходе людей событием
     if (t.kind === 'crew') {
       t.work = Math.max(1, Math.min(...people.map(p => shiftEnd(db, s, p)!)) - (t0 + walk));
@@ -252,6 +256,8 @@ export function release(db: ContentDb, s: PlantState, t: Task) {
     delete p.task;
     p.x = endAt.x;
     p.z = endAt.z;
+    // кончил после смены — уходит через вход
+    goHome(db, s, p);
   }
   if (t.vehicle) {
     const v = s.vehicles[t.vehicle];

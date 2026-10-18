@@ -5,6 +5,7 @@ import { useSyncExternalStore } from 'react';
 import type { Ymd } from '../engine/core/calendar';
 import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
+import type { WallMode } from '../render/world';
 
 /** Скорости геймдизайна (§2): 0 — пауза; 1–4 — минута, 5 минут, 20 минут, 2 часа за секунду. */
 export type Speed = 0 | 1 | 2 | 3 | 4;
@@ -26,6 +27,8 @@ export interface Hud {
   notices: { t: number; text: string }[];
   debug: boolean;
   quality: Quality;
+  /** стены: целые, срез у камеры, вниз */
+  walls: WallMode;
   fps: number;
   cpuMs: number;
   gpuMs: number | null;
@@ -44,6 +47,7 @@ export const initial: Hud = {
   notices: [],
   debug: false,
   quality: 'medium',
+  walls: 'cut',
   fps: 0,
   cpuMs: 0,
   gpuMs: null,
@@ -53,6 +57,7 @@ export interface Actions {
   setSpeed(s: Speed): void;
   untilMorning(): void;
   setQuality(q: Quality): void;
+  setWalls(m: WallMode): void;
   toggleDebug(): void;
 }
 

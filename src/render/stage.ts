@@ -1,21 +1,28 @@
-// Сцена завода (docs/02-architecture.md, §10): отрисовщик, свет, камера и постобработка — копии «Больницы» (view.ts,
-// post.ts, gpu.ts); пол участка, стеллажи и грузы — свои. В части 0 склад — показательный (demo.ts): так проверяется
-// путь «экземпляры по виду груза» до того, как срез движка начнёт двигать настоящие паллеты (часть 2).
+// Сцена завода (docs/02-architecture.md, §10; docs/specs/2026-10-view.md, 2а): отрисовщик, свет, камера и постобработка —
+// копии «Больницы» (view.ts, post.ts, gpu.ts); стены со срезом, двери, светильники и полы — её копии под план завода
+// (world.ts, doors.ts, lamps.ts, textures.ts); двор, разметка склада, стеллажи, грузы, фуры, таблички и короба
+// оборудования — свои. Всё стоит по плану движка (`planOf`), паллеты и фуры — из среза.
 import * as THREE from 'three';
+import type { ContentDb } from '../content/types';
+import type { RoomRow, TruckRow } from '../sim/pack';
+import { buildBoxes } from './boxes';
+import { buildDoors, type Doors } from './doors';
 import { GpuTimer } from './gpu';
-import { buildRacks, Loads, type PalletView, type RackRow } from './loads';
+import { buildLamps, type Lamps } from './lamps';
+import type { Layout } from './layout';
+import { buildRacks, Loads, type PalletView } from './loads';
 import { Post } from './post';
+import { Signs } from './signs';
+import type { FloorKind, FloorTex } from './textures';
+import { Trucks } from './trucks';
 import { createRenderer, Daylight, gpuString, IsoCamera, PRESETS, type Quality } from './view';
+import { buildFloors, buildGround, buildMarkings, buildWalls, type WallMode, type Walls } from './world';
 
 export interface StageInit {
   host: HTMLElement;
-  /** участок в клетках 1 × 1 м */
-  w: number;
-  h: number;
+  layout: Layout;
+  db: ContentDb;
   quality: Quality;
-  racks: RackRow[];
-  /** разметка проездов на полу: прямоугольники [x, z, ширина, глубина], м */
-  lanes: [number, number, number, number][];
   /** сколько паллет помещается в сцену */
   capacity: number;
 }
@@ -26,35 +33,75 @@ export class Stage {
   readonly light: Daylight;
   renderer: THREE.WebGLRenderer;
   readonly loads: Loads;
+  readonly walls: Walls;
+  readonly doors: Doors;
+  readonly lamps: Lamps;
+  readonly trucks = new Trucks();
+  readonly signs: Signs;
+  private floors: THREE.Mesh[];
+  private floorTex = new Map<FloorKind, FloorTex>();
   private post: Post | null = null;
   quality: Quality;
+  wallMode: WallMode = 'cut';
   gpu: GpuTimer;
   gpuName: string;
   /** вызовов отрисовки и треугольников в последнем кадре */
   calls = 0;
   tris = 0;
+  /** рампы, у которых стоит фура: их ворота подняты */
+  private docked = new Set<number>();
   private hourShown = -1;
   private host: HTMLElement;
 
-  constructor(init: StageInit) {
-    this.host = init.host;
+  constructor(readonly init: StageInit) {
+    const { layout, host } = init;
+    this.host = host;
     this.quality = init.quality;
-    this.cam = new IsoCamera(init.w, init.h);
+    this.cam = new IsoCamera(layout.w, layout.h);
     this.cam.overview();
-    this.light = new Daylight(this.scene, init.w, init.h);
-    this.renderer = createRenderer(init.host, init.quality);
+    this.light = new Daylight(this.scene, layout.w, layout.h);
+    this.renderer = createRenderer(host, init.quality);
     this.gpu = new GpuTimer(this.renderer.getContext() as WebGL2RenderingContext);
     this.gpuName = gpuString(this.renderer);
     const aniso = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
-    this.scene.add(buildFloor(init.w, init.h, init.lanes, aniso));
-    this.scene.add(buildRacks(init.racks));
+    for (const m of buildGround(layout, aniso)) this.scene.add(m);
+    this.lamps = buildLamps(layout);
+    this.floors = buildFloors(layout, aniso, this.lamps.lightMap, this.floorTex);
+    for (const m of this.floors) this.scene.add(m);
+    this.scene.add(buildMarkings(layout, aniso));
+    this.walls = buildWalls(layout);
+    this.scene.add(this.walls.mesh);
+    this.doors = buildDoors(layout);
+    this.scene.add(this.doors.mesh);
+    this.scene.add(this.lamps.mesh);
+    this.scene.add(buildRacks(layout.plan.plant.racks.map(r => ({ x: r.x / 100, z: r.z / 100, bays: r.bays, levels: r.levels }))));
+    this.scene.add(buildBoxes(layout, init.db));
     this.loads = new Loads(init.capacity);
     this.scene.add(this.loads.group);
+    this.scene.add(this.trucks.group);
+    this.signs = new Signs(layout, init.db);
+    this.scene.add(this.signs.group);
     this.applyQuality(init.quality);
+    this.walls.setMode(this.wallMode);
   }
 
   setPallets(list: readonly PalletView[]) {
     this.loads.set(list);
+  }
+
+  /** Фуры из среза: у рампы — кузовом к воротам (ворота подняты), ждущие — во дворе. */
+  setTrucks(rows: readonly TruckRow[], front: (dock: number) => { x: number; z: number }) {
+    this.trucks.set(rows, front);
+    this.docked = new Set(rows.filter(r => r.docked).map(r => r.dock));
+  }
+
+  setRooms(rows: readonly RoomRow[]) {
+    this.signs.set(rows);
+  }
+
+  setWalls(m: WallMode) {
+    this.wallMode = m;
+    this.walls.setMode(m);
   }
 
   applyQuality(q: Quality) {
@@ -75,13 +122,23 @@ export class Stage {
     this.post?.setSize();
   }
 
-  /** Кадр: камера, свет по часам завода — и отрисовка. */
+  /** Кадр: камера, срез стен, двери и ворота рамп, светильники, таблички, свет по часам завода — и отрисовка. */
   frame(dt: number, hour: number) {
-    this.cam.update(dt);
+    const cam = this.cam;
+    cam.update(dt);
+    const u = this.walls.uniforms;
+    u.uFocus.value.set(cam.target.x, cam.target.z);
+    u.uRadius.value = Math.max(6, cam.half * 0.55);
+    cam.toCam(u.uToCam.value);
     if (Math.abs(hour - this.hourShown) > 0.02) {
       this.hourShown = hour;
       this.light.setHour(hour);
+      this.lamps.setHour(hour, this.floors.map(m => m.material as THREE.MeshStandardMaterial));
     }
+    this.lamps.update(u, cam.half);
+    // в 2а людей и техники на экране ещё нет: распашные двери закрыты, ворота рамп — по фурам
+    this.doors.update(dt, () => false, this.docked, u);
+    this.signs.update(u, cam.half);
     this.draw();
   }
 
@@ -103,40 +160,4 @@ export class Stage {
     this.calls = r.info.render.calls;
     this.tris = r.info.render.triangles;
   }
-}
-
-/** Наливной пол склада: серый, с жёлтой разметкой проездов и сеткой клеток через метр (видна вблизи). */
-function buildFloor(w: number, h: number, lanes: [number, number, number, number][], anisotropy: number): THREE.Mesh {
-  const px = 16;
-  const c = document.createElement('canvas');
-  c.width = w * px;
-  c.height = h * px;
-  const g = c.getContext('2d')!;
-  g.fillStyle = '#8d9396';
-  g.fillRect(0, 0, c.width, c.height);
-  g.strokeStyle = 'rgba(255,255,255,0.06)';
-  g.lineWidth = 1;
-  for (let x = 0; x <= w; x++) {
-    g.beginPath();
-    g.moveTo(x * px + 0.5, 0);
-    g.lineTo(x * px + 0.5, c.height);
-    g.stroke();
-  }
-  for (let z = 0; z <= h; z++) {
-    g.beginPath();
-    g.moveTo(0, z * px + 0.5);
-    g.lineTo(c.width, z * px + 0.5);
-    g.stroke();
-  }
-  // разметка проездов — жёлтые полосы по краям, как на складе
-  g.strokeStyle = '#e7b416';
-  g.lineWidth = Math.max(2, px * 0.1);
-  for (const [x, z, lw, ld] of lanes) g.strokeRect(x * px, z * px, lw * px, ld * px);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = anisotropy;
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.75 }));
-  mesh.position.set(w / 2, 0, h / 2);
-  mesh.receiveShadow = true;
-  return mesh;
 }

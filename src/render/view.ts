@@ -1,4 +1,4 @@
-// из bolnitsa: src/render/view.ts @ e0a3491
+// из bolnitsa: src/render/view.ts @ e0a3491 — изменено: камера уходит на запад за край участка — во двор рамп с фурами.
 // Отрисовщик, свет и камера. Пресеты качества меняют тени, сглаживание, затенение и разрешение кадра; сглаживание
 // задаётся при создании контекста WebGL, поэтому смена пресета пересоздаёт WebGLRenderer — геометрия и текстуры
 // загружаются в видеокарту заново сами.
@@ -189,7 +189,7 @@ export class IsoCamera {
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     this.target.addScaledVector(right, -dxPx * k);
     this.target.addScaledVector(fwd, (dyPx * k) / Math.sin(this.pitch));
-    this.target.x = THREE.MathUtils.clamp(this.target.x, -5, this.w + 5);
+    this.target.x = THREE.MathUtils.clamp(this.target.x, -22, this.w + 5);
     this.target.z = THREE.MathUtils.clamp(this.target.z, -5, this.h + 5);
   }
 

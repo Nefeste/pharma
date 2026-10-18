@@ -1,11 +1,13 @@
-// Панели части 0 (геймдизайн, §18): верхняя полоса — дата и часы завода, сутки, скорости, «До утра», извещение;
-// полоса отладки; состояние загрузки и ошибки. Панели только читают хранилище и зовут действия игры.
+// Панели (геймдизайн, §18): верхняя полоса — дата и часы завода, сутки, скорости, «До утра», стены, извещение; полоса
+// отладки; состояние загрузки и ошибки. Панели только читают хранилище и зовут действия игры.
 import { momentOf } from '../engine/core/calendar';
 import { clock, dateText, T } from '../i18n';
 import { QUALITIES } from '../render/view';
+import type { WallMode } from '../render/world';
 import { type Actions, type Speed, type Store, useHud } from './store';
 
 const SPEEDS: Speed[] = [1, 2, 3, 4];
+const WALLS: WallMode[] = ['full', 'cut', 'down'];
 
 export function App({ store, actions }: { store: Store; actions: Actions }) {
   const s = useHud(store);
@@ -39,6 +41,14 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
           <button className={s.ff ? 'on' : ''} onClick={() => actions.untilMorning()} title={T.top.morningHint}>
             {T.top.morning}
           </button>
+        </span>
+        <span className="group" data-test="walls">
+          <span className="label">{T.view.walls}</span>
+          {WALLS.map(m => (
+            <button key={m} className={s.walls === m ? 'on' : ''} onClick={() => actions.setWalls(m)}>
+              {m === 'full' ? T.view.wallsFull : m === 'cut' ? T.view.wallsCut : T.view.wallsDown}
+            </button>
+          ))}
         </span>
         {s.lag >= 5 && <span className="warn">{T.top.lag(s.lag)}</span>}
         <span className="notice">{s.notices[0]?.text ?? T.app.stage}</span>

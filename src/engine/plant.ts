@@ -1,10 +1,10 @@
-// План завода в движке (docs/specs/2026-10-engine.md, «План завода прототипа»): места паллет из зон и стеллажей, рампы,
-// помещения, точки, расстояния. Чистые функции над записью плана; результат запоминается на запись (одна и та же база —
-// один и тот же план). Окно берёт места отсюда же, поэтому паллета на экране стоит там, где её держит движок.
+// План завода в движке (docs/specs/2026-10-engine.md, «План завода прототипа»; docs/specs/2026-10-view.md, 2а): места паллет
+// из зон и стеллажей, рампы, помещения, точки, сетка и маршруты (nav.ts). Чистые функции над записью плана; результат
+// запоминается на запись (одна и та же база — один и тот же план). Окно берёт места и пути отсюда же, поэтому паллета на
+// экране стоит там, где её держит движок, и едет тем путём, который он посчитал.
 import type { ContentDb, Plant, ZoneKind } from '../content/types';
+import { buildNav, CELL_CM, type Mover, type Nav, pathLength, RACK } from './nav';
 
-/** Геометрия секции стеллажа, см: три места по 90 см, глубина 110, ярус 150 (как src/render/loads.ts, BAY). */
-export const RACK = { bay: 270, depth: 110, level: 150, slots: 3 } as const;
 
 export interface Slot {
   /** `quar-03` — место зоны; `A-03-2-1` — ряд, секция, ярус (с 1), место */
@@ -20,6 +20,8 @@ export interface Slot {
   level: number;
 }
 
+export { type Mover, RACK } from './nav';
+
 export interface Point {
   x: number;
   z: number;
@@ -32,7 +34,7 @@ export interface PlantPlan {
   /** места по виду, в порядке плана */
   byKind: Record<string, Slot[]>;
   dock: Record<string, Point & { kind: 'in' | 'out' }>;
-  /** центры помещений */
+  /** рабочие точки помещений: своя точка записи или середина */
   room: Record<string, Point & { type: string }>;
   /** помещение по типу: в плане тип помещения не повторяется (проверяет сборка базы) */
   roomOf: Record<string, string>;
@@ -40,6 +42,8 @@ export interface PlantPlan {
   lab: Point;
   park: Point;
   entrance: Point;
+  /** сетка клеток и поля расстояний */
+  nav: Nav;
 }
 
 const cache = new WeakMap<Plant, PlantPlan>();
@@ -93,11 +97,25 @@ export function planOf(db: ContentDb, plantId: string): PlantPlan {
   const dock: PlantPlan['dock'] = {};
   for (const d of plant.docks) dock[d.id] = { x: d.x, z: d.z, kind: d.kind };
   const room: PlantPlan['room'] = {};
-  for (const r of plant.rooms) room[r.id] = { x: r.rect[0] + Math.floor(r.rect[2] / 2), z: r.rect[1] + Math.floor(r.rect[3] / 2), type: r.type };
+  for (const r of plant.rooms) room[r.id] = r.at ? { x: r.at[0], z: r.at[1], type: r.type } : { x: r.rect[0] + Math.floor(r.rect[2] / 2), z: r.rect[1] + Math.floor(r.rect[3] / 2), type: r.type };
   const roomOf: Record<string, string> = {};
   for (const r of plant.rooms) roomOf[r.type] = r.id;
   const lab = Object.values(room).find(r => r.type === 'lab');
   if (!lab) throw new Error(`plant ${plantId}: no lab`);
+  const nav = buildNav(db, plant);
+  // клетка доступа места: на полу — своя, на стеллаже — клетка прохода перед ним (с его стороны); у ярусов — одна
+  for (const sl of slots) {
+    const at = (x: number, z: number) => z * nav.w + x;
+    if (sl.kind !== 'storage') nav.known.set(`${sl.x},${sl.z}`, at(Math.floor(sl.x / CELL_CM), Math.floor(sl.z / CELL_CM)));
+    else {
+      const r = plant.racks.find(k => k.id === sl.group)!;
+      // занятые ряды клеток — те, чья середина внутри стеллажа (начало включительно, конец — нет, как в nav.ts)
+      const first = Math.ceil((r.z - CELL_CM / 2) / CELL_CM);
+      const last = Math.ceil((r.z + RACK.depth - CELL_CM / 2) / CELL_CM) - 1;
+      const row = r.face === 'n' ? first - 1 : last + 1;
+      nav.known.set(`${sl.x},${sl.z}`, at(Math.floor(sl.x / CELL_CM), row));
+    }
+  }
   const plan: PlantPlan = {
     plant,
     slots,
@@ -109,17 +127,18 @@ export function planOf(db: ContentDb, plantId: string): PlantPlan {
     lab: { x: lab.x, z: lab.z },
     park: { x: plant.points.park[0], z: plant.points.park[1] },
     entrance: { x: plant.points.entrance[0], z: plant.points.entrance[1] },
+    nav,
   };
   cache.set(plant, plan);
   return plan;
 }
 
-/** Расстояние по складу, см: |dx| + |dz| — дорога по проездам без пробок (ADR 0003). */
-export function dist(a: Point, b: Point): number {
-  return Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
+/** Расстояние, см: длина маршрута по плану — пешком или на технике (nav.ts); пробок нет (ADR 0003). */
+export function dist(plan: PlantPlan, a: Point, b: Point, mover: Mover = 'walk'): number {
+  return pathLength(plan.nav, a, b, mover);
 }
 
 /** Секунды пути: расстояние в см / скорость в см/с, вверх до секунды. */
-export function travel(a: Point, b: Point, speed: number): number {
-  return Math.ceil(dist(a, b) / speed);
+export function travel(plan: PlantPlan, a: Point, b: Point, speed: number, mover: Mover = 'walk'): number {
+  return Math.ceil(dist(plan, a, b, mover) / speed);
 }

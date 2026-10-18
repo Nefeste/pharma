@@ -98,7 +98,9 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       putUnit(s, u, t.to!);
       const sm = sampleOf(s, t.lot!);
       const n = u.items.filter(c => sm.plan.includes(c)).length;
-      addTask(s, { kind: 'sample', roles: [...QC.samplers], unit: u.id, from: { kind: 'slot', id: t.to! }, work: n * SAMPLE_WORK, prio: LAB_PRIO.sample, lot: t.lot });
+      // паллета ждёт в шлюзе пробоотборной, пробы берут под ламинаром в самой пробоотборной (docs/specs/2026-10-view.md, 2а)
+      const at = planOf(db, s.plant).room[planOf(db, s.plant).roomOf.sampling];
+      addTask(s, { kind: 'sample', roles: [...QC.samplers], unit: u.id, from: { kind: 'point', x: at.x, z: at.z }, work: n * SAMPLE_WORK, prio: LAB_PRIO.sample, lot: t.lot });
       return true;
     }
     case 'sample': {

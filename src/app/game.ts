@@ -4,14 +4,17 @@
 import type { ContentDb, Scenario } from '../content/types';
 import { momentOf } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
+import { planOf } from '../engine/plant';
 import type { Notice } from '../engine/types';
 import { T } from '../i18n';
-import { demoWarehouse } from '../render/demo';
+import { type Layout, layoutOf } from '../render/layout';
 import { Stage } from '../render/stage';
 import type { Quality } from '../render/view';
+import type { WallMode } from '../render/world';
 import { type Slice, SimClient } from '../sim/client';
-import { H } from '../sim/pack';
+import { unpack } from '../sim/pack';
 import type { Actions, Speed, Store } from '../ui/store';
+import { dockFront, palletsOf, SceneState } from './scene';
 
 /** Сценарий части 0 (content/scenarios/proto.yaml). */
 export const SCENARIO = 'scn.proto';
@@ -46,6 +49,10 @@ export class Game {
   stage!: Stage;
   client!: SimClient;
   scenario!: Scenario;
+  layout!: Layout;
+  /** что видно на полу: паллеты, фуры, помещения — из срезов */
+  readonly view = new SceneState();
+  private shownVersion = -1;
   speed: Speed = 1;
   /** промотка «До утра» — до ближайших 08:00; `ffLeft` — сколько игровых секунд ещё отправить */
   ff = false;
@@ -77,9 +84,9 @@ export class Game {
     const sc = db.scenarios[SCENARIO];
     if (!sc) throw new Error(`no scenario ${SCENARIO}`);
     g.scenario = sc;
-    const demo = demoWarehouse(sc.site.w, sc.site.h);
-    g.stage = new Stage({ host, w: sc.site.w, h: sc.site.h, quality, racks: demo.racks, lanes: demo.lanes, capacity: 512 });
-    g.stage.setPallets(demo.pallets);
+    g.layout = layoutOf(planOf(db, sc.plant));
+    // паллет в сцене — сколько мест в плане и ещё на фуры и в помещения
+    g.stage = new Stage({ host, layout: g.layout, db, quality, capacity: g.layout.plan.slots.length + 256 });
     g.client = new SimClient('./sim.js');
     g.client.onSlice = s => g.receive(s);
     g.client.onError = m => store.set({ error: m });
@@ -87,15 +94,23 @@ export class Game {
     await g.firstSlice;
     new ResizeObserver(() => g.stage.resize()).observe(host);
     g.bindInput();
-    store.set({ ready: true, start: sc.start.date, quality });
+    store.set({ ready: true, start: sc.start.date, quality, walls: g.stage.wallMode });
     requestAnimationFrame(g.loop);
     return g;
   }
 
   private receive(s: Slice) {
-    this.t = s.buf[H.t];
-    this.day = s.buf[H.day];
+    const sl = unpack(s.buf);
+    this.t = sl.t;
+    this.day = sl.day;
     this.lag = s.lag;
+    this.view.apply(sl);
+    if (this.view.version !== this.shownVersion) {
+      this.shownVersion = this.view.version;
+      this.stage.setPallets(palletsOf(this.db, this.scenario.plant, this.view));
+    }
+    this.stage.setTrucks(this.view.trucks, d => dockFront(this.layout, d));
+    this.stage.setRooms(this.view.rooms);
     for (const n of s.notices) this.notice(n);
     // «До утра» кончается планёркой — и паузой: игрок видит итог суток (геймдизайн, §2)
     if (this.ff && s.notices.some(n => n.kind === 'morning')) {
@@ -209,6 +224,10 @@ export class Game {
     setQuality: (q: Quality) => {
       this.stage.applyQuality(q);
       this.store.set({ quality: q });
+    },
+    setWalls: (m: WallMode) => {
+      this.stage.setWalls(m);
+      this.store.set({ walls: m });
     },
     toggleDebug: () => this.store.set({ debug: !this.store.get().debug }),
   };

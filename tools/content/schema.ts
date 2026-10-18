@@ -216,10 +216,16 @@ export const spec = z
 
 const rect = z.tuple([z.number(), z.number(), z.number().positive(), z.number().positive()]);
 const point = z.tuple([z.number(), z.number()]);
+/** клетки плана — целые метры */
+const cells = z.tuple([z.number().int().min(0), z.number().int().min(0), z.number().int().positive(), z.number().int().positive()]);
+const cell = z.tuple([z.number().int().min(0), z.number().int().min(0)]);
+const turn = z.number().int().min(0).max(3).default(0);
 
 /** План завода: метры участка. */
 export const plant = z.strictObject({
   id: z.string(),
+  /** здание — прямоугольник клеток со стенами по краю */
+  building: cells,
   docks: z.array(z.strictObject({ id: z.string(), kind: z.enum(['in', 'out']), x: z.number(), z: z.number() })).min(1),
   zones: z.array(
     z.strictObject({
@@ -229,12 +235,34 @@ export const plant = z.strictObject({
       grid: z.tuple([z.number().int().min(1), z.number().int().min(1)]),
     }),
   ),
-  racks: z.array(z.strictObject({ id: z.string().regex(/^[A-Z]$/), x: z.number(), z: z.number(), bays: z.number().int().min(1).max(30), levels: z.number().int().min(1).max(6) })),
-  rooms: z.array(z.strictObject({ id: z.string(), type: z.string(), rect, grade: z.enum(['D', 'cnc']) })),
+  racks: z.array(
+    z.strictObject({
+      id: z.string().regex(/^[A-Z]$/),
+      x: z.number(),
+      z: z.number(),
+      bays: z.number().int().min(1).max(30),
+      levels: z.number().int().min(1).max(6),
+      /** проход — с севера (меньше z) или с юга */
+      face: z.enum(['n', 's']),
+    }),
+  ),
+  /** помещение — прямоугольник клеток со стенами по краю; соседние делят стену; технике туда можно; рабочая точка */
+  rooms: z.array(z.strictObject({ id: z.string(), type: z.string(), rect: cells, grade: z.enum(['D', 'cnc']), vehicles: z.boolean().default(false), at: point.optional() })),
+  /** двери на стенах: первая клетка, сколько клеток, вдоль какой оси идёт стена, вид */
+  doors: z.array(
+    z.strictObject({
+      at: cell,
+      len: z.number().int().min(1).max(6),
+      along: z.enum(['x', 'z']),
+      kind: z.enum(['door', 'double', 'gate', 'dock', 'hatch']),
+      /** только для материалов: люди через неё не ходят */
+      materials: z.boolean().optional(),
+    }),
+  ),
   /** приборы лаборатории: вид и помещение */
   instruments: z.array(z.strictObject({ id: z.string(), type: id, room: z.string() })).default([]),
   /** оборудование производства: вид и помещение */
-  equipment: z.array(z.strictObject({ id: z.string(), type: id, room: z.string() })).default([]),
+  equipment: z.array(z.strictObject({ id: z.string(), type: id, room: z.string(), at: point, turn })).default([]),
   /**
    * упаковочные линии: помещение, зона паллетирования на выходе и машины по порядку; после каждой машины, кроме
    * последней, — накопитель: сколько её штук (блистеров, пачек) он держит
@@ -245,7 +273,7 @@ export const plant = z.strictObject({
         id: z.string(),
         room: z.string(),
         out: z.string(),
-        machines: z.array(z.strictObject({ id: z.string(), type: id, buffer: z.number().int().positive().optional() })).min(2),
+        machines: z.array(z.strictObject({ id: z.string(), type: id, buffer: z.number().int().positive().optional(), at: point, turn })).min(2),
       }),
     )
     .default([]),
@@ -268,6 +296,8 @@ export const product = z.strictObject({
 }).refine(paired, pairedMsg);
 
 const minutes = z.number().min(0);
+/** ширина, глубина, высота, м */
+const size3 = z.tuple([z.number().positive(), z.number().positive(), z.number().positive()]);
 const days = z.tuple([z.number().int().min(1), z.number().int().min(1)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' });
 
 /**
@@ -294,6 +324,8 @@ export const equipment = z
   .strictObject({
     id: z.string(),
     name: text,
+    /** ширина, глубина, высота, м — след на полу и короб до модели (docs/specs/2026-10-view.md, 2а; гипотеза) */
+    size: size3,
     cleaning: z.strictObject({ minor: minutes, major: minutes }),
     /** мощность, пока идёт стадия, кВт */
     kw: z.number().min(0).default(0),
@@ -404,6 +436,8 @@ export const machine = z
   .strictObject({
     id: z.string(),
     name: text,
+    /** ширина, глубина, высота, м — след на полу и короб до модели (гипотеза) */
+    size: size3,
     /** скорость — блистеров или пачек в минуту */
     item: z.enum(['blister', 'carton']),
     nominal: z.number().int().positive(),

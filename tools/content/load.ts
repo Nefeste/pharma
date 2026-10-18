@@ -46,6 +46,7 @@ import {
 } from '../../src/content/types';
 import { fnv1a, stableJson } from '../../src/engine/core/hash';
 import { KINDS, type Kind } from './schema';
+import { planErrors } from './plan';
 
 const ROOT = join(import.meta.dir, '../..');
 const CONTENT = join(ROOT, 'content');
@@ -55,6 +56,8 @@ const share = (pct: number) => Math.round(pct * 100);
 const kop = (rub: number) => Math.round(rub * 100);
 const mg = (kg: number) => Math.round(kg * 1_000_000);
 const cm = (m: number) => Math.round(m * 100);
+const size = (s: [number, number, number]): [number, number, number] => [cm(s[0]), cm(s[1]), cm(s[2])];
+const at2 = (p: [number, number]): [number, number] => [cm(p[0]), cm(p[1])];
 const sec = (min: number) => Math.round(min * 60);
 const watt = (kw: number) => Math.round(kw * 1000);
 const qual = (a: Attr) => QUALITATIVE.includes(a);
@@ -137,6 +140,16 @@ export function buildDb(): Built {
   }
 
   const db = convert(raw, errors);
+  // план — когда ссылки целы: сетка, двери, шлюзы, что достижимо (plan.ts)
+  if (errors.length === 0) {
+    for (const id of Object.keys(db.plants)) {
+      try {
+        errors.push(...planErrors({ hash: '', ...db }, id));
+      } catch (e) {
+        errors.push(`план ${id}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  }
   const hash = fnv1a(stableJson(db)).toString(16).padStart(8, '0');
   return { db: { hash, ...db }, errors, files: count };
 }
@@ -274,6 +287,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     equipment[e.id] = {
       id: e.id,
       name: e.name,
+      size: size(e.size),
       cleaning: { minor: sec(e.cleaning.minor), major: sec(e.cleaning.major) },
       kw: watt(e.kw),
       parts: partsOf(e.parts, `оборудование ${e.id}`, undefined),
@@ -388,6 +402,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     machines[m.id] = {
       id: m.id,
       name: m.name,
+      size: size(m.size),
       item: m.item,
       nominal: m.nominal,
       crew: m.crew,
@@ -438,13 +453,15 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     const r4 = (r: [number, number, number, number]): [number, number, number, number] => [cm(r[0]), cm(r[1]), cm(r[2]), cm(r[3])];
     plants[p.id] = {
       id: p.id,
+      building: r4(p.building),
       docks: p.docks.map(d => ({ ...d, x: cm(d.x), z: cm(d.z) })),
       zones: p.zones.map(zn => ({ ...zn, rect: r4(zn.rect) })),
       racks: p.racks.map(r => ({ ...r, x: cm(r.x), z: cm(r.z) })),
-      rooms: p.rooms.map(r => ({ ...r, rect: r4(r.rect) })),
+      rooms: p.rooms.map(r => ({ id: r.id, type: r.type, rect: r4(r.rect), grade: r.grade, vehicles: r.vehicles, ...(r.at ? { at: at2(r.at) } : {}) })),
+      doors: p.doors.map(d => ({ cell: d.at, len: d.len, along: d.along, kind: d.kind, ...(d.materials ? { materials: true } : {}) })),
       instruments: p.instruments,
-      equipment: p.equipment,
-      lines: p.lines,
+      equipment: p.equipment.map(e => ({ ...e, at: at2(e.at) })),
+      lines: p.lines.map(ln => ({ ...ln, machines: ln.machines.map(m => ({ ...m, at: at2(m.at) })) })),
       points: { park: [cm(p.points.park[0]), cm(p.points.park[1])], entrance: [cm(p.points.entrance[0]), cm(p.points.entrance[1])] },
       energy: { hvac: p.energy.hvac, base: watt(p.energy.base) },
     };

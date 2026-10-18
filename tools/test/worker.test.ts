@@ -8,7 +8,7 @@ import { DAY } from '../../src/engine/core/calendar';
 import { fingerprint } from '../../src/engine/core/hash';
 import { apply, newPlant } from '../../src/engine/engine';
 import { fromSave } from '../../src/engine/save';
-import { H } from '../../src/sim/pack';
+import { FORMAT, H, unpack } from '../../src/sim/pack';
 import type { FromSim, ToSim } from '../../src/sim/protocol';
 
 function call(w: Worker, msg: ToSim): Promise<FromSim> {
@@ -52,14 +52,18 @@ describe('поток расчёта', () => {
     }
   });
 
-  test('срез: заголовок с часами и сутками', async () => {
+  test('срез: заголовок с часами и сутками; после старта — все паллеты, дальше — изменённые', async () => {
     const w = new Worker(new URL('./sim-worker.ts', import.meta.url));
     try {
       const r = await call(w, { kind: 'start', scenario: 'scn.proto' });
       if (r.kind !== 'slice') throw new Error(r.kind);
-      expect(r.buf.length).toBe(H.size);
+      expect(r.buf[H.format]).toBe(FORMAT);
       expect(r.buf[H.t]).toBe(db.scenarios['scn.proto'].start.hour * 3600);
       expect(r.buf[H.day]).toBe(0);
+      expect(unpack(r.buf).units.length).toBeGreaterThan(0);
+      const still = await call(w, { kind: 'tick', seconds: 0, budgetMs: 4 });
+      if (still.kind !== 'slice') throw new Error(still.kind);
+      expect(unpack(still.buf).units).toEqual([]);
       const e = await call(w, { kind: 'command', cmd: { kind: 'advance', seconds: DAY } });
       if (e.kind !== 'slice') throw new Error(e.kind);
       expect(e.buf[H.day]).toBe(1);

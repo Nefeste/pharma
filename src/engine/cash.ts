@@ -57,12 +57,19 @@ export function addEnergy(s: PlantState, w: number, sec: number) {
   if (w > 0 && sec > 0) s.cash.energy.wh += Math.floor((w * sec) / HOUR);
 }
 
+/** Помещения склада: их свет и холод — в постоянной базе плана. */
+const WAREHOUSE = new Set(['warehouse', 'cold', 'rejected']);
+
 /** Мощность, которая работает круглые сутки: вентиляция по площади помещений и их классу и постоянная база, Вт. */
 export function baseLoad(db: ContentDb, s: PlantState): number {
   const plant = planOf(db, s.plant).plant;
   let w = plant.energy.base;
-  // площадь — см² → м²
-  for (const r of plant.rooms) w += Math.floor((r.rect[2] * r.rect[3] * plant.energy.hvac[r.grade]) / 10000);
+  // вентиляция — помещения производства, лаборатории и вспомогательные, площадь без стен (см² → м²); склад с холодом и
+  // отклонённым — в постоянной базе (docs/specs/2026-10-view.md, 2а)
+  for (const r of plant.rooms) {
+    if (WAREHOUSE.has(r.type)) continue;
+    w += Math.floor(((r.rect[2] - 200) * (r.rect[3] - 200) * plant.energy.hvac[r.grade]) / 10000);
+  }
   return w;
 }
 

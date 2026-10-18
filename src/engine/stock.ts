@@ -3,7 +3,7 @@
 import type { ContentDb, Id } from '../content/types';
 import { momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
-import { dist, type PlantPlan, type Point, type Slot } from './plant';
+import { dist, type Mover, type PlantPlan, type Point, type Slot } from './plant';
 import { lotProps, type Props } from './quality';
 import type { Container, Lot, LotStatus, PlantState, Tag, Unit, Where } from './types';
 
@@ -235,12 +235,13 @@ export function findSlot(
   kind: string,
   near: Point,
   maxLevel: number,
+  mover: Mover = 'drive',
 ): Slot | undefined {
   let best: Slot | undefined;
   let bestKey: [number, number, string] | undefined;
   for (const sl of plan.byKind[kind] ?? []) {
     if (sl.level > maxLevel || !slotFree(s, sl.id)) continue;
-    const key: [number, number, string] = [sl.level, dist(sl, near), sl.id];
+    const key: [number, number, string] = [sl.level, dist(plan, sl, near, mover), sl.id];
     if (!bestKey || key[0] < bestKey[0] || (key[0] === bestKey[0] && (key[1] < bestKey[1] || (key[1] === bestKey[1] && key[2] < bestKey[2])))) {
       best = sl;
       bestKey = key;

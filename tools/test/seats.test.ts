@@ -28,6 +28,8 @@ const COMMANDS: Command[] = [
   { kind: 'rush', lot: 'L1', by: 'player' },
   { kind: 'release', batch: 'B1', decision: 'hold' },
   { kind: 'po', supplier: 'sup.exc', lines: [{ material: 'mat.exc.starch', qty: 25_000_000 }], by: 'player' },
+  { kind: 'investigate', inv: 'I1', step: 'records', by: 'player' },
+  { kind: 'conclude', inv: 'I1', cause: 'lab', fate: 'reject', by: 'player' },
 ];
 
 describe('журнал мест', () => {

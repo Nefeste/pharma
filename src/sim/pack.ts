@@ -60,7 +60,7 @@ export type EqState = (typeof EQ_STATES)[number];
 const KIND_NO: Record<TaskKind, number> = {
   unload: 0, receive: 1, putaway: 2, move: 3, toSampling: 4, sample: 5, fromSampling: 6, handover: 7, prep: 8, review: 9,
   decide: 10, pick: 11, transfer: 12, return: 13, stage: 14, clean: 15, crew: 16, changeover: 17, clearance: 18, clearCheck: 19,
-  feed: 20, fgCheck: 21, qpDecide: 22, ship: 23, casePick: 24, load: 25, repair: 26, truckCheck: 27,
+  feed: 20, fgCheck: 21, qpDecide: 22, ship: 23, casePick: 24, load: 25, repair: 26, truckCheck: 27, invStep: 28, invFix: 29,
 };
 /** Виды задач по номерам — как в срезе. */
 export const TASK_KINDS: readonly TaskKind[] = (Object.keys(KIND_NO) as TaskKind[]).sort((a, b) => KIND_NO[a] - KIND_NO[b]);

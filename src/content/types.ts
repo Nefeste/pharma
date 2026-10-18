@@ -106,6 +106,23 @@ export interface Scenario {
   norm: number;
   /** какие места игрок может взять (3е); остальные ведёт сценарий */
   seats: SeatId[];
+  /** происшествие прототипа (часть 4): у задания на серию — неисправность по жребию зерна */
+  incident?: IncidentDef;
+}
+
+/** Корень происшествия: ошибка лаборатории, пересмазывание, сила прессования, сито калибратора. */
+export type IncidentRoot = 'lab' | 'lube' | 'force' | 'screen';
+
+/**
+ * Происшествие сценария (docs/specs/2026-10-investigation.md, «Происшествие»): задание на серию по номеру (с 1), модель
+ * расследования, веса корней и величина неисправности каждого корня в единицах движка — от и до: ошибка лаборатории —
+ * доли 1/10 000 ниже истинного, опудривание — с сверх цели, сила — сотые кН сверх цели, сито — мкм крупнее карты.
+ */
+export interface IncidentDef {
+  batch: number;
+  inv: Id;
+  roots: Partial<Record<IncidentRoot, number>>;
+  sizes: Record<IncidentRoot, [number, number]>;
 }
 
 /** Грузовая единица: паллета или транспортный короб (docs/04-data-model.md, §3). */
@@ -141,7 +158,8 @@ export type Attr =
   | 'hardness'
   | 'friability'
   | 'disintegration'
-  | 'dissolution';
+  | 'dissolution'
+  | 'granule';
 
 /**
  * Единицы свойства в записях и в движке. Проценты — в долях 1/10 000 (99,8 % — 9 980); ньютоны — в сотых; минуты — в
@@ -159,6 +177,8 @@ export const ATTRS: Record<Attr, { unit: 'qual' | 'pct' | 'N' | 'min' | 'um'; wh
   hardness: { unit: 'N' },
   disintegration: { unit: 'min' },
   particle: { unit: 'um' },
+  /** средний размер гранул гранулята (часть 4): его меряет ситовой анализ архивного гранулята */
+  granule: { unit: 'um' },
 };
 
 /** Во сколько раз значение в движке больше записанного: % → доли 1/10 000, Н → сотые, мин → с, мкм → мкм. */
@@ -453,6 +473,8 @@ export interface RecipeStage {
   time: { setup: number; perLoad?: number; loads?: number; perComponent?: number; mgPerHour?: number; unitsPerHour?: number; spread: number };
   params: StageParam[];
   ipc: StageIpc[];
+  /** ячейка сита калибратора по карте, мкм (часть 4): сито крупнее — гранулят крупнее */
+  screen?: number;
   /** потери стадии: среднее и разброс, доли 1/10 000 от массы на входе */
   loss: [number, number];
 }
@@ -478,7 +500,7 @@ export interface Recipe {
  * Откуда вклад причины: отход режима от цели; содержание АФС против измеренного; свойство отвешенных партий; показатель;
  * средний износ узла оборудования за стадию (доли 1/10 000).
  */
-export type CauseDriver = { param: string } | { potency: true } | { lots: 'api' | 'excipient'; attr: Attr } | { attr: Attr } | { wear: string };
+export type CauseDriver = { param: string } | { potency: true } | { lots: 'api' | 'excipient'; attr: Attr } | { attr: Attr } | { wear: string } | { screen: true };
 
 /** Причина: вклад в показатели серии — единиц движка показателя на единицу движка отхода. */
 export interface Cause {
@@ -486,6 +508,75 @@ export interface Cause {
   name: Text;
   driver: CauseDriver;
   effects: { attr: Attr; coef: number }[];
+  source?: string[];
+  review?: Review;
+}
+
+/**
+ * Как улику читают из состояния завода (docs/specs/2026-10-investigation.md, «Шаги»): отметка у записи испытания или у
+ * прибора; повторное испытание в пределах; режим стадии выше пределов карты; среднее МОК ниже или выше значения;
+ * замена сита в журнале калибратора; свойство по паспорту отвешенной партии выше значения; другие серии той же партии
+ * тоже вне спецификации; сито на калибраторе не по карте; результат испытания шага выше значения. Значения — в единицах
+ * движка.
+ */
+export type FindingRead =
+  | { mark: 'calc' | 'instrument' }
+  | { retest: true }
+  | { param: string }
+  | { ipc: Id; below?: number; above?: number }
+  | { journal: 'screen' }
+  | { coa: Attr; above: number }
+  | { peers: true }
+  | { screen: true }
+  | { measure: Attr; above: number };
+
+/** Версия расследования: причина каталога или ошибка лаборатории (без причины); априорный вес — доли 1/10 000. */
+export interface InvCandidate {
+  id: string;
+  name: Text;
+  cause?: Id;
+  prior: number;
+}
+
+/** Улика: доля фона и вероятность от каждой версии — noisy-OR, доли 1/10 000; как её читают из состояния. */
+export interface InvFinding {
+  id: string;
+  name: Text;
+  leak: number;
+  by: Record<string, number>;
+  read: FindingRead;
+}
+
+/**
+ * Шаг расследования: кто и сколько работы, или испытание лаборатории (повторное — той же пробы другим аналитиком); у
+ * осмотра — оборудование, у которого его делают; что шаг проверяет — улика, чувствительность и специфичность, доли
+ * 1/10 000.
+ */
+export interface InvStep {
+  id: string;
+  name: Text;
+  role?: Id;
+  work?: number;
+  at?: Id;
+  test?: Id;
+  retest?: true;
+  checks: { f: string; sens: number; spec: number }[];
+}
+
+/**
+ * Модель расследования (docs/specs/2026-10-investigation.md, «Вывод — копия «Анамнеза»»): испытание, результат которого
+ * вне спецификации её открывает; версии, улики, шаги; уверенность, при которой коллега решает, и польза шага (биты), ниже
+ * которой шаг ему не нужен.
+ */
+export interface InvModel {
+  id: Id;
+  name: Text;
+  test: Id;
+  candidates: InvCandidate[];
+  findings: InvFinding[];
+  steps: InvStep[];
+  threshold: number;
+  minGain: number;
   source?: string[];
   review?: Review;
 }
@@ -584,6 +675,7 @@ export interface ContentDb {
   equipment: Record<Id, EquipmentType>;
   recipes: Record<Id, Recipe>;
   causes: Record<Id, Cause>;
+  investigations: Record<Id, InvModel>;
   machines: Record<Id, Machine>;
   skus: Record<Id, Sku>;
   customers: Record<Id, Customer>;

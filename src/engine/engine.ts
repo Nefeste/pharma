@@ -8,6 +8,7 @@ import type { ContentDb, Id } from '../content/types';
 import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
+import { concludeCommand, invDone, investigateCommand, invStep, newIncident } from './investigation';
 import { labDone, runDone, rushCommand, startSampling } from './lab';
 import { leanHour, leanStep, newLoss } from './lean';
 import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from './line';
@@ -64,6 +65,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     samples: {},
     tests: {},
     deviations: {},
+    investigations: {},
     rooms: {},
     equipment: {},
     batches: {},
@@ -122,6 +124,8 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   for (const o of sc.orders) placePo(db, s, { kind: 'po', supplier: o.supplier, lines: o.lines, by: 'scenario' }, out);
   // задания на серию сценария: день от начала партии, с начала смены аппаратчиков
   for (const b of sc.batches) placeOrder(db, s, { kind: 'order', recipe: b.recipe, notBefore: today + b.day * DAY + BATCH_HOUR, by: 'scenario', ...(b.sku ? { sku: b.sku } : {}) }, out);
+  // происшествие сценария (часть 4): корень по жребию зерна — скрытое
+  newIncident(db, s);
   settle(db, s);
   return s;
 }
@@ -186,6 +190,20 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: () => boolea
     case 'seat': {
       const notices: Notice[] = [];
       seatCommand(db, s, cmd, notices);
+      // место качества отдали — коллега качества ведёт открытые расследования дальше
+      if (invStep(db, s, notices)) settle(db, s);
+      return notices;
+    }
+    case 'investigate': {
+      const notices: Notice[] = [];
+      investigateCommand(db, s, cmd, notices);
+      steps(db, s, notices);
+      return notices;
+    }
+    case 'conclude': {
+      const notices: Notice[] = [];
+      concludeCommand(db, s, cmd, notices);
+      steps(db, s, notices);
       return notices;
     }
   }
@@ -210,6 +228,7 @@ function steps(db: ContentDb, s: PlantState, notices: Notice[]) {
   mesStep(db, s);
   lineStep(db, s, notices);
   qaStep(db, s);
+  invStep(db, s, notices);
   marketStep(db, s, notices);
   settle(db, s);
 }
@@ -267,7 +286,7 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       const t = s.tasks[ev.id];
       if (!t || t.v !== ev.v || t.state !== 'busy') return;
       release(db, s, t);
-      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices) && !maintDone(db, s, t, notices)) wmsDone(db, s, t, notices);
+      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices) && !maintDone(db, s, t, notices) && !invDone(db, s, t, notices)) wmsDone(db, s, t, notices);
       // паллета ГП уехала с места паллетирования — у линии освободилось место; машину линии починили — она снова в работе
       if ((t.kind === 'putaway' || t.kind === 'repair') && t.line) lineUpdate(db, s, s.lines[t.line], notices);
       if (t.kind === 'putaway' || t.kind === 'stage') startSampling(db, s);

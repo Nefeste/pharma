@@ -13,7 +13,7 @@ const percent = z.number().min(0).max(100);
 const day = z.number().int().min(1).max(28);
 const id = z.string().regex(/^[a-z][a-zA-Z0-9.-]*$/, 'идентификатор — латиница, цифры, точка и дефис');
 /** Свойство качества (src/content/types.ts, `Attr` и `ATTRS` — единицы). */
-const attr = z.enum(['identity', 'assay', 'moisture', 'appearance', 'particle', 'mass', 'hardness', 'friability', 'disintegration', 'dissolution']);
+const attr = z.enum(['identity', 'assay', 'moisture', 'appearance', 'particle', 'mass', 'hardness', 'friability', 'disintegration', 'dissolution', 'granule']);
 /** Источник и review пишутся вместе: запись с фактом — с источником; выбор геймдизайна — без. */
 const paired = <T extends { source?: unknown; review?: unknown }>(o: T) => (o.source === undefined) === (o.review === undefined);
 const pairedMsg = { message: 'источник и review пишутся вместе' };
@@ -80,6 +80,24 @@ export const scenario = z.strictObject({
   norm: percent.default(100),
   /** места, которые игрок может взять (геймдизайн, §29.5); остальные ведёт сценарий; нет — все */
   seats: z.array(z.enum(SEATS)).min(1).default([...SEATS]),
+  /**
+   * происшествие прототипа (docs/specs/2026-10-investigation.md): задание на серию по номеру с 1, модель расследования,
+   * веса корней, %, и величина неисправности — от и до: ошибка лаборатории — % ниже истинного, опудривание — мин сверх
+   * цели, сила прессования — кН сверх цели, сито — мм крупнее карты
+   */
+  incident: z
+    .strictObject({
+      batch: z.number().int().min(1),
+      inv: id,
+      roots: z.partialRecord(z.enum(['lab', 'lube', 'force', 'screen']), percent),
+      sizes: z.strictObject({
+        lab: z.tuple([z.number().positive(), z.number().positive()]),
+        lube: z.tuple([z.number().positive(), z.number().positive()]),
+        force: z.tuple([z.number().positive(), z.number().positive()]),
+        screen: z.tuple([z.number().positive(), z.number().positive()]),
+      }),
+    })
+    .optional(),
 });
 
 /**
@@ -416,6 +434,8 @@ export const recipe = z
           ipc: z.array(z.strictObject({ test: id, every: minutes.optional(), min: z.number().optional(), max: z.number().optional() })).default([]),
           /** потери стадии: среднее и разброс, % от массы на входе */
           loss: z.tuple([percent, percent]).default([0, 0]),
+          /** ячейка сита калибратора по карте, мм */
+          screen: z.number().positive().optional(),
         }),
       )
       .min(1),
@@ -449,6 +469,8 @@ export const cause = z
       z.strictObject({ attr }),
       /** средний износ узла оборудования за стадию, % */
       z.strictObject({ wear: z.string().regex(/^[a-z][a-zA-Z0-9]*$/) }),
+      /** сито калибратора крупнее карты, мм (часть 4) */
+      z.strictObject({ screen: z.literal(true) }),
     ]),
     /** вклад: показатель серии и коэффициент — единиц показателя на единицу отхода */
     effects: z.array(z.strictObject({ attr, coef: z.number() })).min(1),
@@ -561,6 +583,61 @@ export const spare = z
   })
   .refine(paired, pairedMsg);
 
+/**
+ * Модель расследования (docs/specs/2026-10-investigation.md, «Вывод — копия «Анамнеза»»): какое испытание её открывает;
+ * версии с априорными весами, %; улики — доля фона и вероятность от версий, %, и как улику читают из состояния завода;
+ * шаги — кто, минуты работы или испытание, что проверяют — чувствительность и специфичность, %. Уверенность, при которой
+ * коллега решает, %, и польза шага, ниже которой он ему не нужен, биты. Доли — гипотезы геймдизайна; направление каждой
+ * связи — факт с источником.
+ */
+const short = z.string().regex(/^[a-z][a-zA-Z0-9]*$/, 'имя в модели — латиница и цифры');
+export const investigation = z
+  .strictObject({
+    id: z.string(),
+    name: text,
+    test: id,
+    threshold: percent,
+    minGain: z.number().min(0),
+    candidates: z.array(z.strictObject({ id: short, name: text, cause: id.optional(), prior: percent })).min(2),
+    findings: z
+      .array(
+        z.strictObject({
+          id: short,
+          name: text,
+          leak: percent,
+          by: z.record(short, percent),
+          read: z.union([
+            z.strictObject({ mark: z.enum(['calc', 'instrument']) }),
+            z.strictObject({ retest: z.literal(true) }),
+            z.strictObject({ param: short }),
+            z.strictObject({ ipc: id, below: z.number().optional(), above: z.number().optional() }),
+            z.strictObject({ journal: z.literal('screen') }),
+            z.strictObject({ coa: attr, above: z.number() }),
+            z.strictObject({ peers: z.literal(true) }),
+            z.strictObject({ screen: z.literal(true) }),
+            z.strictObject({ measure: attr, above: z.number() }),
+          ]),
+        }),
+      )
+      .min(1),
+    steps: z
+      .array(
+        z.strictObject({
+          id: short,
+          name: text,
+          role: id.optional(),
+          work: minutes.optional(),
+          at: id.optional(),
+          test: id.optional(),
+          retest: z.literal(true).optional(),
+          checks: z.array(z.strictObject({ f: short, sens: percent, spec: percent })).min(1),
+        }),
+      )
+      .min(1),
+    source: sources,
+    review,
+  });
+
 /** Папка в content/ → приставка идентификатора и схема. */
 export const KINDS = {
   profiles: { prefix: 'prf', schema: profile },
@@ -580,6 +657,7 @@ export const KINDS = {
   equipment: { prefix: 'eq', schema: equipment },
   recipes: { prefix: 'rcp', schema: recipe },
   causes: { prefix: 'cause', schema: cause },
+  investigations: { prefix: 'inv', schema: investigation },
   machines: { prefix: 'mach', schema: machine },
   skus: { prefix: 'sku', schema: sku },
   customers: { prefix: 'cus', schema: customer },

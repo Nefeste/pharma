@@ -40,6 +40,8 @@ export interface NewTask {
   part?: string;
   planned?: boolean;
   begin?: boolean;
+  inv?: string;
+  step?: string;
 }
 
 export function addTask(s: PlantState, n: NewTask): Task {

@@ -1,0 +1,128 @@
+# Модель расследования (docs/specs/2026-10-investigation.md): растворение балка вне спецификации. Версии, улики и шаги —
+# модель «идеального специалиста», по которой считает вывод, копия вывода «Анамнеза» (src/engine/infer.ts). Доли —
+# гипотезы геймдизайна; направление каждой связи — с источником (docs/10-domain.md, §7): ошибку лаборатории признают
+# только по установленной лабораторной причине, сначала проверяют записи, расчёты и прибор, повтор — той же пробы, по
+# процедуре завода другим аналитиком (fda-oos, gmp-eaeu); что делает растворение неверным в лаборатории — ГФ XV и FDA
+# (gf-15, fda-diss-mc); долгое опудривание и сила прессования замедляют растворение (li-wu-2014, adeleye-2019,
+# fda-qbd-ir), крупные частицы АФС — тоже (gao-2021, kalantzi-2006); сито крупнее — гранулы крупнее, растворение
+# медленнее — по аналогии с таблеткой с оболочкой и плохо растворимым веществом (fda-osd-1994, kaul-2011), сверить.
+id: inv.dissolution
+name: { ru: Растворение вне спецификации, en: Dissolution out of specification }
+test: test.dissolution
+# уверенность, при которой коллега решает, % — как у разумного врача «Анамнеза»; польза шага, ниже которой он ему не
+# нужен, биты — там же
+threshold: 90
+minGain: 0.02
+candidates:
+  - { id: lab, name: { ru: Ошибка лаборатории, en: Laboratory error }, prior: 30 }
+  - { id: lube, name: { ru: "Пересмазывание: долгое опудривание", en: "Over-lubrication: long blending" }, cause: cause.blend.lube, prior: 20 }
+  - { id: force, name: { ru: Высокая сила прессования, en: High compression force }, cause: cause.press.force, prior: 10 }
+  - { id: api, name: { ru: Крупная фракция АФС, en: Coarse API particles }, cause: cause.api.particle, prior: 15 }
+  - { id: screen, name: { ru: Крупный гранулят после смены сита калибратора, en: Coarse granules after a mill screen change }, cause: cause.mill.screen, prior: 25 }
+findings:
+  # отметки у записи испытания и у прибора: от ошибки лаборатории или фон — описка, которая на результат не влияет
+  - id: calc
+    name: { ru: В записи испытания — ошибка расчёта или описка, en: A calculation or transcription error in the test record }
+    leak: 3
+    by: { lab: 40 }
+    read: { mark: calc }
+  - id: instrument
+    name: { ru: Прибор растворения не прошёл проверку пригодности или механическую калибровку, en: The dissolution tester failed system suitability or mechanical calibration }
+    leak: 3
+    by: { lab: 35 }
+    read: { mark: instrument }
+  # повтор той же пробы: при ошибке лаборатории — в пределах; при настоящей причине — изредка, у самого предела
+  - id: retest
+    name: { ru: Повторное испытание той же пробы — в пределах, en: The retest of the same sample is within specification }
+    leak: 3
+    by: { lab: 97 }
+    read: { retest: true }
+  - id: lubeLong
+    name: { ru: Время опудривания — выше пределов карты, en: Blending time with the lubricant above the limits }
+    leak: 2
+    by: { lube: 99 }
+    read: { param: lubeTime }
+  - id: soft
+    name: { ru: "По МОК таблетки мягче обычного: средняя прочность ниже 70 Н", en: "In-process tablets softer than usual: mean hardness below 70 N" }
+    leak: 5
+    by: { lube: 90 }
+    read: { ipc: test.ipc.hardness, below: 70 }
+  - id: forceHigh
+    name: { ru: Сила прессования — выше пределов карты, en: Compression force above the limits }
+    leak: 2
+    by: { force: 99 }
+    read: { param: force }
+  - id: hard
+    name: { ru: "По МОК таблетки прочнее пределов: средняя прочность выше 110 Н", en: "In-process tablets harder than the limit: mean hardness above 110 N" }
+    leak: 3
+    by: { force: 95 }
+    read: { ipc: test.ipc.hardness, above: 110 }
+  - id: apiCoarse
+    name: { ru: "По паспорту частицы АФС крупнее обычного: больше 80 мкм", en: "API particles coarser than usual on the certificate: above 80 µm" }
+    leak: 3
+    by: { api: 80 }
+    read: { coa: particle, above: 80 }
+  - id: apiShared
+    name: { ru: Другие серии из той же партии АФС — тоже вне спецификации, en: Other batches made from the same API lot are also out of specification }
+    leak: 2
+    by: { api: 90 }
+    read: { peers: true }
+  - id: screenChanged
+    name: { ru: В журнале калибратора — замена сита перед серией, en: A screen change on the mill log before the batch }
+    leak: 10
+    by: { screen: 100 }
+    read: { journal: screen }
+  - id: screenWrong
+    name: { ru: На калибраторе — сито крупнее карты, en: The screen on the mill is coarser than specified }
+    leak: 1
+    by: { screen: 100 }
+    read: { screen: true }
+  - id: coarseGranule
+    name: { ru: "Гранулы крупнее обычного: средний размер больше 450 мкм", en: "Granules coarser than usual: mean size above 450 µm" }
+    leak: 5
+    by: { screen: 90, api: 10 }
+    read: { measure: granule, above: 450 }
+# шаги — из таблицы геймдизайна (§6.6); кто и сколько — гипотезы
+steps:
+  - id: records
+    name: { ru: Проверить расчёты и записи лаборатории, en: Check the laboratory calculations and records }
+    role: role.qc-head
+    work: 15
+    checks: [{ f: calc, sens: 95, spec: 99 }]
+  - id: instrument
+    name: { ru: "Проверить прибор: пригодность системы, калибровку", en: "Check the instrument: system suitability, calibration" }
+    role: role.analyst
+    work: 60
+    checks: [{ f: instrument, sens: 95, spec: 99 }]
+  - id: retest
+    name: { ru: Повторное испытание той же пробы вторым аналитиком, en: Retest of the same sample by a second analyst }
+    test: test.dissolution
+    retest: true
+    checks: [{ f: retest, sens: 100, spec: 100 }]
+  - id: dossier
+    name: { ru: "Поднять досье серии: режимы, МОК, тревоги", en: "Review the batch record: parameters, in-process controls, alarms" }
+    role: role.qa
+    work: 30
+    checks: [{ f: lubeLong, sens: 100, spec: 100 }, { f: soft, sens: 100, spec: 100 }, { f: forceHigh, sens: 100, spec: 100 }, { f: hard, sens: 100, spec: 100 }]
+  - id: journal
+    name: { ru: "Журнал оборудования: наработка, ППР, ремонты", en: "Equipment log: run time, maintenance, repairs" }
+    role: role.qa
+    work: 30
+    checks: [{ f: screenChanged, sens: 100, spec: 100 }]
+  - id: passport
+    name: { ru: Паспорт и история партий сырья, en: Raw material certificates and lot history }
+    role: role.qa
+    work: 30
+    checks: [{ f: apiCoarse, sens: 100, spec: 100 }, { f: apiShared, sens: 100, spec: 100 }]
+  - id: inspect
+    name: { ru: Осмотреть оборудование на месте, en: Inspect the equipment on site }
+    role: role.mechanic
+    work: 60
+    at: eq.mill
+    checks: [{ f: screenWrong, sens: 95, spec: 99 }]
+  - id: granulate
+    name: { ru: "Испытать промежуточный продукт: гранулометрия архивного гранулята", en: "Test the intermediate: size distribution of the retained granules" }
+    test: test.sieve
+    checks: [{ f: coarseGranule, sens: 100, spec: 100 }]
+source: [fda-oos, gmp-eaeu, gf-15, fda-diss-mc, li-wu-2014, adeleye-2019, fda-qbd-ir, gao-2021, kalantzi-2006, fda-osd-1994, kaul-2011]
+review: draft

@@ -38,6 +38,8 @@ export const AREA: Record<TaskKind, Dept> = {
   qpDecide: 'qa',
   repair: 'maint',
   truckCheck: 'wms',
+  invStep: 'qa',
+  invFix: 'maint',
 };
 
 export function newLoss(day: number): DayLoss {

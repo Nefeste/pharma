@@ -7,6 +7,7 @@
 import type { ContentDb } from '../content/types';
 import { schedule } from './core/agenda';
 import { MIN } from './core/calendar';
+import { incidentMeasured, invTestDone, modelFor, openInvestigation } from './investigation';
 import { defect } from './lean';
 import { type PlantPlan, planOf } from './plant';
 import { measure, within } from './quality';
@@ -85,7 +86,7 @@ export function sampleCount(db: ContentDb, lot: Lot, n: number): number {
 
 const sampleOf = (s: PlantState, lotId: string): Sample => s.samples[s.lots[lotId].sample!];
 
-const labPlace = (plan: PlantPlan): Place => ({ kind: 'point', x: plan.lab.x, z: plan.lab.z });
+export const labPlace = (plan: PlantPlan): Place => ({ kind: 'point', x: plan.lab.x, z: plan.lab.z });
 
 /**
  * Партии, все паллеты которых стоят в карантине или холоде, — на отбор проб: план отбора и задачи «в пробоотборную».
@@ -165,7 +166,7 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       const u = s.units[t.unit!];
       putUnit(s, u, t.to!);
       // решение могло прийти, пока паллета ждала места: сразу дальше
-      settle(db, s, s.lots[t.lot!], u);
+      settleLot(db, s, s.lots[t.lot!], u);
       return true;
     }
     case 'handover': {
@@ -201,6 +202,11 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       q.state = 'done';
       q.done = s.t;
       q.pass = within({ test: q.method, min: q.min, max: q.max }, q.result!);
+      // испытание шага расследования (часть 4): в решение по партии не входит
+      if (q.inv) {
+        invTestDone(db, s, q, notices);
+        return true;
+      }
       const sm = s.samples[q.sample];
       if (sm.tests.every(id => s.tests[id].state === 'done')) addTask(s, { kind: 'decide', roles: [...QC.heads], from: t.from, work: DECIDE_WORK, prio: prioOf(s, 'decide', { lot: sm.lot }), lot: sm.lot });
       return true;
@@ -209,10 +215,15 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       // политика по умолчанию: все испытания в пределах — разрешить; иначе — отклонить и открыть отклонение
       const lot = s.lots[t.lot!];
       const out = sampleOf(s, lot.id).tests.filter(id => !s.tests[id].pass);
+      const model = modelFor(db, s, lot, out);
       if (out.length === 0) {
         setLotStatus(s, lot, 'released');
         stockChanged(s);
         notices.push({ kind: 'lotReleased', lot: lot.id });
+      } else if (model) {
+        // результат вне спецификации у своей продукции — расследование (часть 4): партия ждёт его решения
+        openInvestigation(db, s, model, lot, out, notices);
+        return true;
       } else {
         setLotStatus(s, lot, 'rejected');
         const d: Deviation = { id: nextId(s, 'D'), opened: s.t, kind: 'oos', lot: lot.id, tests: out, status: 'open' };
@@ -221,7 +232,7 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
         defect(s, lot.batch ? 'batches' : 'lots');
         notices.push({ kind: 'lotRejected', lot: lot.id, deviation: d.id });
       }
-      for (const u of unitsOfLot(s, lot.id)) settle(db, s, lot, u);
+      for (const u of unitsOfLot(s, lot.id)) settleLot(db, s, lot, u);
       return true;
     }
     default:
@@ -241,6 +252,8 @@ function measured(db: ContentDb, s: PlantState, q: LabTest) {
   const m = db.tests[q.method];
   const lot = s.lots[s.samples[q.sample].lot];
   q.result = measure(s, `qc/${q.inst ?? m.id}`, lot.truth[m.attr] ?? 0, m.sd);
+  // происшествие сценария (часть 4): грубая ошибка испытания и отметки у записи и прибора
+  incidentMeasured(db, s, q);
   if (q.inst) delete s.instruments[q.inst].test;
   q.state = 'review';
   addTask(s, { kind: 'review', roles: [...QC.reviewers], not: q.by ? [q.by] : [], from: labPlace(planOf(db, s.plant)), work: REVIEW_WORK, prio: prioOf(s, 'review', { test: q.id }), test: q.id });
@@ -250,7 +263,7 @@ function measured(db: ContentDb, s: PlantState, q: LabTest) {
  * Паллета решённой партии — на своё место: разрешённое — на стеллаж ближе к шлюзу для материалов (ABC прототипа), в
  * холоде — остаётся в холоде; отклонённое — в зону отклонённого. Паллету, которую уже везут, — когда довезут.
  */
-function settle(db: ContentDb, s: PlantState, lot: Lot, u: Unit) {
+export function settleLot(db: ContentDb, s: PlantState, lot: Lot, u: Unit) {
   if (lot.status !== 'released' && lot.status !== 'rejected') return;
   if (u.where.kind !== 'slot' || Object.values(s.tasks).some(x => x.unit === u.id)) return;
   const plan = planOf(db, s.plant);

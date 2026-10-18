@@ -118,7 +118,13 @@ first, or copy the working code of Bolnitsa on the same versions.
   the lab, work points, posts of roles and distances along the plan's routes), `stock.ts` (lots, containers, pallets,
   slots, the lot status table), `supply.ts` (purchase orders), `wms.ts` (truck, its check at the dock before unloading,
   unloading, receiving, putaway), `quality.ts` (true lot properties, the lab result, spec limits), `lab.ts` (sampling,
-  lab tests, the lot decision, a lot raised by the player), `mes.ts` (batch orders, FEFO reservation with potency,
+  lab tests, the lot decision, a lot raised by the player), `infer.ts` (the inference — a copy of Anamnez's: noisy-OR
+  findings, the posterior over candidates, entropy and the expected gain of a step), `investigation.ts` (the scenario's
+  incident — root and size by the seed, its traces in parameters, the mill screen and the lab test; an out-of-spec
+  dissolution opens a deviation and an investigation, the lot waits; steps as tasks of their roles or lab tests — the
+  retest of the same sample by another analyst; findings read from the plant's state; the conclusion — cause and fate,
+  release only with a proven lab error; the quality colleague — lab first, then gain per hour — while the player does
+  not hold the quality post; the debrief after the decision — `debrief`), `mes.ts` (batch orders, FEFO reservation with potency,
   kitting through the airlock, stages in rooms with equipment and people, cleaning, process parameters, true batch
   quality with causes, IPC, the bulk lot; the packing job and its packaging kit; a stage stopped by a part failure and
   resumed after the repair; a new not-before time of a batch order from the player — `shift`; room readiness, nominal
@@ -126,8 +132,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   twin — `stageRedraw`), `plan/schedule.ts` (the schedule run — a pure function: running tasks to their end, then
   kitting, stages and cleaning by the engine's rules and its own functions, with the player's draft changes; bars and
   the reasons why not earlier), `plan/twin.ts` (the plan run's twin: on a copy, forget what the plant does not know —
-  true lot and batch properties, causes, part budgets, unrecorded jams, results before review — and redraw it from what
-  was measured; branches anew from the run seed), `plan/run.ts` (the plan run — a pure function: per seed a copy, the
+  true lot and batch properties, causes, part budgets, unrecorded jams, results before review, the incident not yet
+  seen, marks no step has looked for — and redraw it from what was measured, the root of an open investigation from its
+  versions; branches anew from the run seed), `plan/run.ts` (the plan run — a pure function: per seed a copy, the
   twin, the variant's commands, the horizon, the outcome — orders, batches, cash, OEE, load; per variant — lowest,
   median and highest over seeds), `line.ts` (the packaging line as flow between events: machines, buffers, micro-stops,
   camera rejects by count, codes in cases, FG pallets, changeover and line clearance, the crew, the end of a batch with
@@ -191,7 +198,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   starts, `shift` commands on approval (`draft.ts`), the «Кем вы будете» screen of places (`Seats.tsx`), status icons
   (`icons.tsx`), the content base for names (`db.ts`); `src/i18n/` — every player-facing string, Russian
   and English, and number, quantity, money, duration and date formats.
-- `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML;
+- `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML (with part 4 —
+  `investigations/`: the investigation model — candidates, findings, steps);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   plan rules in `plan.ts`: doors on walls, docks on outer walls, class D only through airlocks, reachability, posts on
   walkable floor; models in

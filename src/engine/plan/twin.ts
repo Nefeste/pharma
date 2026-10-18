@@ -3,13 +3,15 @@
 // до отказа, результат испытания до проверки вторым лицом, незаписанные заминки, следующую микроостановку. Ветви зерна —
 // заново из номера зерна. Меняет только копию: его зовут на `structuredClone` состояния, а не на сам завод.
 import { type Attr, type ContentDb, QUALITATIVE } from '../../content/types';
-import { Rng } from '../core/rng';
+import { P_ONE, Rng } from '../core/rng';
+import { posterior } from '../infer';
+import { isScreenCause } from '../investigation';
 import { lineRedraw } from '../line';
 import { ONE_FAILURE } from '../maint';
 import { clampAttr, stageRedraw } from '../mes';
 import { attrsOf, lotProps } from '../quality';
 import { expo, normal, roll, spread } from '../random';
-import type { Batch, Lot, Notice, Part, PlantState } from '../types';
+import { type Batch, INSTRUMENT_FAULTS, type Investigation, type Lot, type Notice, type Part, type PlantState } from '../types';
 
 type Props = Partial<Record<Attr, number>>;
 /** Измеренное значение свойства и погрешность методики. */
@@ -66,6 +68,62 @@ function noiseOf(db: ContentDb, b: Batch) {
 }
 
 /**
+ * Происшествие сценария (часть 4) двойник не знает: пока его результата вне спецификации нет — забывает целиком; сито
+ * крупнее карты на калибровке серии — тоже. Отметки у записи испытания и у прибора завод знает, только если их искал шаг.
+ * У открытого расследования корень — заново по нынешним версиям: корень «ошибка лаборатории» — истинное у балка как у
+ * серии без причин, корень «сито» — на калибраторе сито крупнее карты; отметки, которых шаг ещё не искал, — от нового
+ * корня или фон, как у происшествия. Решённое расследование назвало сито, а сито ещё не поменяли, — завод это знает.
+ */
+function forgetIncident(db: ContentDb, s: PlantState) {
+  for (const b of Object.values(s.batches)) delete b.screen;
+  const inc = s.incident;
+  const def = db.scenarios[s.scenario].incident;
+  const invs = Object.values(s.investigations);
+  const named = invs.some(i => i.status === 'closed' && isScreenCause(db, db.investigations[i.model], i.conclusion!.cause));
+  const screen = inc?.screen !== undefined && named ? inc.screen : undefined;
+  delete s.incident;
+  // отметки, которые искал шаг, остаются; остальные завод не знает
+  const markOf = (inv: Investigation, f: string) => {
+    const r = db.investigations[inv.model].findings.find(x => x.id === f)?.read;
+    return r && 'mark' in r ? r.mark : undefined;
+  };
+  const seen = new Set<string>();
+  for (const inv of invs) {
+    for (const o of inv.obs) {
+      const mark = markOf(inv, o.f);
+      if (mark === 'calc') seen.add(inv.test);
+      else if (mark === 'instrument' && s.tests[inv.test].inst) seen.add(s.tests[inv.test].inst!);
+    }
+  }
+  for (const q of Object.values(s.tests)) if (q.mark && !seen.has(q.id)) delete q.mark;
+  for (const i of Object.values(s.instruments)) if (i.check && !seen.has(i.id)) delete i.check;
+  let coarse = screen;
+  for (const inv of invs) {
+    if (inv.status !== 'open') continue;
+    const m = db.investigations[inv.model];
+    const beliefs = posterior(m, inv.obs);
+    const root = roll(s, `twin/${inv.id}`, r => r.weighted(beliefs, b => Math.round(b.p * P_ONE)).id);
+    inv.truth = { root, fired: {} };
+    const lot = s.lots[inv.lot];
+    const attr = db.tests[m.test].attr;
+    if (m.candidates.some(c => c.id === root && c.cause === undefined)) {
+      const q = db.recipes[s.batches[inv.batch].recipe].quality[attr];
+      if (q) lot.truth[attr] = roll(s, `twin/${inv.id}/${attr}`, r => clampAttr(attr, q[0] + spread(q[1], normal(r))));
+    } else if (isScreenCause(db, m, root) && def) coarse = Math.floor((def.sizes.screen[0] + def.sizes.screen[1]) / 2);
+    const first = s.tests[inv.test];
+    for (const f of m.findings) {
+      const mark = markOf(inv, f.id);
+      if (!mark || inv.obs.some(o => o.f === f.id)) continue;
+      const by = roll(s, `twin/${inv.id}/${f.id}`, r => r.chance(f.by[root] ?? 0)) ? 'root' : roll(s, `twin/${inv.id}/leak/${f.id}`, r => r.chance(f.leak)) ? 'leak' : undefined;
+      if (!by) continue;
+      if (mark === 'calc') first.mark = by === 'leak' ? 'typo' : 'calc';
+      else if (first.inst) s.instruments[first.inst].check = by === 'leak' ? 'overdue' : roll(s, `twin/${inv.id}/instrument`, r => r.pick(INSTRUMENT_FAULTS));
+    }
+  }
+  if (coarse !== undefined && def) s.incident = { batch: `B${def.batch}`, inv: def.inv, root: 'screen', size: coarse, fired: {}, screen: coarse };
+}
+
+/**
  * Забыть истину на копии `s` и разыграть её заново для зерна `k` — из того, что завод знает. После этого прогон не читает
  * ничего, чего не знает завод: два завода, у которых различаются только истинные поля, дают один и тот же прогон.
  */
@@ -117,6 +175,8 @@ export function blind(db: ContentDb, s: PlantState, k: number) {
     const lot = s.lots[s.samples[q.sample].lot];
     q.result = roll(s, `twin/${q.id}`, r => (lot.truth[m.attr] ?? 0) + spread(m.sd, normal(r)));
   }
+  // происшествие сценария и корни открытых расследований (часть 4)
+  forgetIncident(db, s);
   // узлы: запас до отказа исправных — заново, без памяти; отказы в очереди идущей стадии и линии — по новому запасу
   const redraw = (pt: Part) => roll(s, `maint/${pt.id}`, r => expo(r, ONE_FAILURE));
   stageRedraw(db, s, redraw);

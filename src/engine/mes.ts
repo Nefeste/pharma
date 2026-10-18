@@ -180,6 +180,18 @@ export function mesStep(db: ContentDb, s: PlantState) {
   }
 }
 
+/**
+ * Команда «сдвинуть» (3д): у задания, которое ещё не начало комплектовку, — новый срок «не раньше», не раньше нынешней
+ * минуты. В очереди — событие задания на новом сроке; прежнее событие без вреда — оно будит шаг производства для всех.
+ */
+export function shiftCommand(s: PlantState, cmd: Extract<Command, { kind: 'shift' }>, notices: Notice[]) {
+  const b = s.batches[cmd.batch];
+  if (!b) return notices.push({ kind: 'refused', cmd: 'shift', why: 'noBatch', detail: cmd.batch });
+  if (b.status !== 'waiting' && b.status !== 'reserved') return notices.push({ kind: 'refused', cmd: 'shift', why: 'started', detail: cmd.batch });
+  b.notBefore = Math.max(s.t, Math.floor(cmd.notBefore));
+  schedule(s.agenda, b.notBefore, { kind: 'batch', id: b.id });
+}
+
 /** Команда «упаковать»: позиция того же продукта; задание заведётся, когда балк разрешат. */
 export function packOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'pack' }>, notices: Notice[]) {
   const b = s.batches[cmd.batch];
@@ -331,8 +343,8 @@ function kitStep(db: ContentDb, s: PlantState, b: Batch) {
   }
 }
 
-/** Чисто ли помещение для продукта: убрано, чистота не просрочена, после малой уборки — тот же продукт. */
-function readyFor(room: Room, product: Id, now: number): boolean {
+/** Чисто ли помещение для продукта: убрано, чистота не просрочена, после малой уборки — тот же продукт. Одна проверка для движка и прогона расписания (3д). */
+export function readyFor(room: Room, product: Id, now: number): boolean {
   return room.status === 'clean' && !room.batch && (room.cleanFor === undefined || room.cleanFor === product) && now - room.since <= CLEAN_HOLD;
 }
 
@@ -451,14 +463,21 @@ export function pressFail(db: ContentDb, s: PlantState, ev: Extract<PlantEvent, 
   release(db, s, t);
 }
 
-/** Длительность стадии по карте: подготовка + загрузки + компоненты + количество / скорость, с разбросом. */
-function duration(db: ContentDb, s: PlantState, b: Batch, st: RecipeStage, roomId: string): number {
-  const r = db.recipes[b.recipe];
+/** Номинальная длительность стадии по карте: подготовка + загрузки + компоненты + масса / скорость; без разброса — для прогона расписания (3д). */
+export function nominal(db: ContentDb, recipe: Id, st: RecipeStage, mass: number): number {
+  const r = db.recipes[recipe];
   const t = st.time;
-  const units = Math.floor((b.mass * r.batch.units) / r.batch.mass);
+  const units = Math.floor((mass * r.batch.units) / r.batch.mass);
   let sec = t.setup + (t.perLoad ?? 0) * (t.loads ?? 1) + (t.perComponent ?? 0) * r.bom.length;
-  if (t.mgPerHour) sec += Math.ceil((b.mass * HOUR) / t.mgPerHour);
+  if (t.mgPerHour) sec += Math.ceil((mass * HOUR) / t.mgPerHour);
   if (t.unitsPerHour) sec += Math.ceil((units * HOUR) / t.unitsPerHour);
+  return sec;
+}
+
+/** Длительность стадии по карте: номинальная, с разбросом. */
+function duration(db: ContentDb, s: PlantState, b: Batch, st: RecipeStage, roomId: string): number {
+  const t = st.time;
+  const sec = nominal(db, b.recipe, st, b.mass);
   if (t.spread === 0) return sec;
   return Math.max(MIN, sec + roll(s, `mes/${roomId}`, rng => spread(Math.floor((sec * t.spread) / P_ONE), normal(rng))));
 }
@@ -473,8 +492,13 @@ function ensureCleaning(db: ContentDb, s: PlantState, room: Room) {
 
 /** Уборка помещения — уборка всего оборудования в нём (геймдизайн, §5.5): сумма времён по виду уборки. */
 function cleanTime(db: ContentDb, s: PlantState, room: Room): number {
+  return cleanWork(db, s, room.id, !!room.major);
+}
+
+/** Время уборки помещения малой или большой уборкой — для движка и прогона расписания (3д). */
+export function cleanWork(db: ContentDb, s: PlantState, roomId: string, major: boolean): number {
   let sec = 0;
-  for (const e of Object.values(s.equipment)) if (e.room === room.id) sec += db.equipment[e.type].cleaning[room.major ? 'major' : 'minor'];
+  for (const e of Object.values(s.equipment)) if (e.room === roomId) sec += db.equipment[e.type].cleaning[major ? 'major' : 'minor'];
   return Math.max(sec, 10 * MIN);
 }
 

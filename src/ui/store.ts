@@ -7,6 +7,7 @@ import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import type { ChartView, LabView } from '../sim/lab';
+import type { GanttView, GhostView } from '../sim/plan';
 import type { CashView, MorningView, TopView } from '../sim/report';
 import type { CardView, StockQuery, StockView, Thing } from '../sim/views';
 
@@ -52,7 +53,15 @@ export interface Hud {
   top?: TopView;
   /** панель лаборатории (3г): открыта ли, вкладка; очередь и контрольная карта средней массы */
   lab: { open: boolean; tab: 'queue' | 'chart'; view?: LabView; chart?: ChartView };
+  /**
+   * расписание (3д): открыто ли; окно времени — с какого мгновения (нет — от полуночи, вслед за часами) и сколько суток;
+   * вид; задание, которое тянут, и куда, — и его призрак
+   */
+  gantt: { open: boolean; from?: number; days: GanttDays; view?: GanttView; drag?: { batch: string; notBefore: number }; ghost?: GhostView };
 }
+
+/** Окно расписания, суток: сегодня; вчера, сегодня и завтра; вчера, сегодня и неделя вперёд. */
+export type GanttDays = 1 | 3 | 9;
 
 /** Запрос склада по умолчанию: все партии по номеру, первая страница. */
 export const STOCK: StockQuery = { view: 'stock', status: [], kinds: [], sort: 'code', desc: false, page: 0, lang: 'ru' };
@@ -80,6 +89,7 @@ export const initial: Hud = {
   morningPause: true,
   cash: { open: false, page: 0 },
   lab: { open: false, tab: 'queue' },
+  gantt: { open: false, days: 3 },
 };
 
 export interface Actions {
@@ -110,6 +120,16 @@ export interface Actions {
   toggleLab(): void;
   setLabTab(tab: 'queue' | 'chart'): void;
   rush(lot: string): void;
+  /**
+   * расписание: открыть или закрыть; окно — сутки, трое, неделя; на сутки назад, вперёд, к сегодня (0); тянуть задание —
+   * призрак с новым сроком; отпустить — команда `shift`; отменить
+   */
+  toggleGantt(): void;
+  setGanttDays(days: GanttDays): void;
+  moveGantt(dir: -1 | 0 | 1): void;
+  drag(batch: string, notBefore: number): void;
+  drop(): void;
+  cancelDrag(): void;
 }
 
 export class Store {

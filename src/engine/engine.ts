@@ -13,7 +13,7 @@ import { leanHour, leanStep, newLoss } from './lean';
 import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from './line';
 import { maintainCommand, maintDone, maintStep, newParts, spareArrives } from './maint';
 import { marketDone, marketHour, marketStep, newCustomers, rznPublished } from './market';
-import { BATCH_HOUR, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, stageBegin } from './mes';
+import { BATCH_HOUR, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
 import { planOf } from './plant';
 import { qaDone, qaStep, releaseCommand } from './qa';
 import { goHome, LAST_CALL, postArrive, toPosts } from './staff';
@@ -170,6 +170,12 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: () => boolea
     case 'rush': {
       const notices: Notice[] = [];
       rushCommand(s, cmd, notices);
+      steps(db, s, notices);
+      return notices;
+    }
+    case 'shift': {
+      const notices: Notice[] = [];
+      shiftCommand(s, cmd, notices);
       steps(db, s, notices);
       return notices;
     }

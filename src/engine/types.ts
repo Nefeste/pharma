@@ -933,10 +933,12 @@ export type Command =
   /** заменить узел машины вне отказа — как только машина свободна */
   | { kind: 'maintain'; machine: string; part: string }
   /** поднять пробу партии (3г): её задачи лаборатории — выше, и те, что появятся позже */
-  | { kind: 'rush'; lot: string; by?: string };
+  | { kind: 'rush'; lot: string; by?: string }
+  /** новый срок «не раньше» задания на серию, которое ещё не начало комплектовку (3д): игровые секунды */
+  | { kind: 'shift'; batch: string; notBefore: number; by?: string };
 
 /** Почему команда не выполнена — для окна. */
-export type Refusal = 'noSupplier' | 'notSold' | 'belowMoq' | 'empty' | 'noRecipe' | 'noBatch' | 'notBulk' | 'noSku' | 'notReady' | 'noPart' | 'busy' | 'noSpare' | 'noLot' | 'notLab' | 'already';
+export type Refusal = 'noSupplier' | 'notSold' | 'belowMoq' | 'empty' | 'noRecipe' | 'noBatch' | 'notBulk' | 'noSku' | 'notReady' | 'noPart' | 'busy' | 'noSpare' | 'noLot' | 'notLab' | 'already' | 'started';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =

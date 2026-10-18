@@ -192,6 +192,12 @@ export class Game {
         if (hud.lab.open) this.store.set({ lab: { ...this.store.get().lab, view: d } });
       } else if (d.view === 'chart') {
         if (hud.lab.open) this.store.set({ lab: { ...this.store.get().lab, chart: d } });
+      } else if (d.view === 'gantt') {
+        if (hud.gantt.open) this.store.set({ gantt: { ...this.store.get().gantt, view: d } });
+      } else if (d.view === 'ghost') {
+        // призрак того, что тянут сейчас; прежний запрос — не показываем
+        const g = this.store.get().gantt;
+        if (g.drag?.batch === d.batch && g.drag.notBefore === d.notBefore) this.store.set({ gantt: { ...g, ghost: d } });
       } else this.store.set({ top: d });
     }
     for (const n of s.notices) this.notice(n);
@@ -325,8 +331,9 @@ export class Game {
     if (a.length > 600) a.splice(0, a.length - 300);
   }
 
-  /** Полоса сверху — 10 раз в секунду. */
+  /** Полоса сверху — 10 раз в секунду; окно расписания вслед за часами — с новой полуночью. */
   private hud() {
+    if (this.store.get().gantt.open) this.sendViews();
     const iv = this.frames.interval.slice(-30);
     const mean = iv.reduce((x, y) => x + y, 0) / Math.max(1, iv.length);
     const draw = this.frames.draw.slice(-30);
@@ -385,6 +392,46 @@ export class Game {
       this.store.set({ stock: { ...st, open: !st.open, query: { ...st.query, lang: this.store.get().lang } }, ...this.rightClosed('stock') });
       this.sendViews();
     },
+    toggleGantt: () => {
+      const g = this.store.get().gantt;
+      // большое окно поверх карты во всю ширину: панели справа закрываются; закрыли — то, что тянули, отменено
+      const open = !g.open;
+      this.store.set({ gantt: { open, days: g.days, ...(g.from !== undefined ? { from: g.from } : {}) }, ...(open ? this.rightClosed() : {}) });
+      this.sendViews();
+    },
+    setGanttDays: days => {
+      this.store.set({ gantt: { ...this.store.get().gantt, days } });
+      this.sendViews();
+    },
+    moveGantt: dir => {
+      const g = this.store.get().gantt;
+      const { from, days } = g;
+      const { from: now } = this.ganttWindow(undefined, days);
+      const start = from ?? now;
+      // к сегодня — снова вслед за часами
+      const next = dir === 0 ? undefined : start + dir * DAY;
+      this.store.set({ gantt: { ...g, ...(next === undefined || next === now ? { from: undefined } : { from: next }) } });
+      this.sendViews();
+    },
+    drag: (batch, notBefore) => {
+      const g = this.store.get().gantt;
+      if (g.drag?.batch === batch && g.drag.notBefore === notBefore) return;
+      this.store.set({ gantt: { ...g, drag: { batch, notBefore }, ...(g.ghost?.batch === batch ? {} : { ghost: undefined }) } });
+      this.sendViews();
+    },
+    drop: () => {
+      const g = this.store.get().gantt;
+      if (!g.drag) return;
+      this.client.command({ kind: 'shift', batch: g.drag.batch, notBefore: g.drag.notBefore, by: 'player' });
+      this.store.set({ gantt: { ...g, drag: undefined, ghost: undefined } });
+      this.sendViews();
+    },
+    cancelDrag: () => {
+      const g = this.store.get().gantt;
+      if (!g.drag) return;
+      this.store.set({ gantt: { ...g, drag: undefined, ghost: undefined } });
+      this.sendViews();
+    },
     setStock: patch => {
       const st = this.store.get().stock;
       this.store.set({ stock: { ...st, query: { ...st.query, ...patch } } });
@@ -429,12 +476,15 @@ export class Game {
     },
     showUnit: n => this.actions.show({ kind: 'unit', n }),
     show: t => {
+      const r = t.kind === 'room' ? this.layout.rooms[t.i] : undefined;
       const b =
         t.kind === 'unit'
           ? palletBoxes([...this.pallets, ...this.carriedNow]).find(x => same(x.thing, t))
           : t.kind === 'machine' || t.kind === 'equipment'
             ? this.machineBoxes.find(x => same(x.thing, t))
-            : undefined;
+            : r
+              ? { min: [r.x, 0, r.z] as V3, max: [r.x + r.w, 0, r.z + r.d] as V3 }
+              : undefined;
       if (b) {
         const cam = this.stage.cam;
         const el = this.stage.renderer.domElement;
@@ -452,17 +502,30 @@ export class Game {
     },
   };
 
-  /** Справа — одна панель: открыть одну — значит закрыть две другие. */
-  private rightClosed(keep: 'stock' | 'cash' | 'lab'): Partial<Hud> {
+  /**
+   * Справа — одна панель: открыть одну — значит закрыть две другие и расписание (оно во всю ширину); без `keep` — закрыть
+   * все три.
+   */
+  private rightClosed(keep?: 'stock' | 'cash' | 'lab'): Partial<Hud> {
     const h = this.store.get();
     return {
       ...(keep !== 'stock' ? { stock: { ...h.stock, open: false } } : {}),
       ...(keep !== 'cash' ? { cash: { ...h.cash, open: false } } : {}),
       ...(keep !== 'lab' ? { lab: { ...h.lab, open: false } } : {}),
+      ...(keep && h.gantt.open ? { gantt: { open: false, days: h.gantt.days, ...(h.gantt.from !== undefined ? { from: h.gantt.from } : {}) } } : {}),
     };
   }
 
-  /** Открытые виды панелей — потоку, если набор изменился: касса полосы — всегда; склад, карточка, планёрка, касса, лаборатория. */
+  /** Окно расписания: с `from` или, вслед за часами, от полуночи — сегодняшней для суток, вчерашней для трёх суток и недели. */
+  private ganttWindow(from: number | undefined, days: number): { from: number; to: number } {
+    const start = from ?? Math.floor(this.t / DAY) * DAY - (days > 1 ? DAY : 0);
+    return { from: start, to: start + days * DAY };
+  }
+
+  /**
+   * Открытые виды панелей — потоку, если набор изменился: касса полосы — всегда; склад, карточка, планёрка, касса,
+   * лаборатория, расписание и призрак того, что тянут.
+   */
   private sendViews() {
     const h = this.store.get();
     const st = h.stock;
@@ -472,6 +535,8 @@ export class Game {
     if (h.morning.open && h.morning.day !== undefined) list.push({ id: 'morning', view: 'morning', day: h.morning.day });
     if (h.cash.open) list.push({ id: 'cash', view: 'cash', page: h.cash.page });
     if (h.lab.open) list.push(h.lab.tab === 'queue' ? { id: 'lab', view: 'lab' } : { id: 'chart', view: 'chart', test: 'test.ipc.mass' });
+    if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days) });
+    if (h.gantt.open && h.gantt.drag) list.push({ id: 'ghost', view: 'ghost', ...h.gantt.drag });
     const key = JSON.stringify(list);
     if (key === this.viewsSent) return;
     this.viewsSent = key;
@@ -601,6 +666,8 @@ export class Game {
     window.addEventListener('keydown', e => {
       if ((e.target as HTMLElement | null)?.tagName === 'INPUT') return;
       const k = e.code;
+      // в окне расписания стрелки двигают задание, а не камеру (Gantt.tsx)
+      if ((e.target as HTMLElement | null)?.closest?.('.gantt') && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(k)) return;
       if (k === 'Space') {
         e.preventDefault();
         this.actions.setSpeed(this.speed === 0 && !this.ff ? 1 : 0);
@@ -613,13 +680,17 @@ export class Game {
       else if (k === 'KeyQ') this.stage.cam.rotate(-1);
       else if (k === 'KeyE') this.stage.cam.rotate(1);
       else if (k === 'Backquote') this.actions.toggleDebug();
+      else if (k === 'KeyG') this.actions.toggleGantt();
       else if (k === 'F2') {
         e.preventDefault();
         this.actions.toggleStock();
       } else if (k === 'Escape') {
-        // Esc: сначала выбор, потом верхнее окно — планёрка, затем панель справа
+        // Esc: сначала то, что тянут в расписании, потом выбор, потом верхнее окно — расписание (оно поверх планёрки),
+        // планёрка, затем панель справа
         const h = this.store.get();
-        if (this.selected) this.actions.select(undefined);
+        if (h.gantt.drag) this.actions.cancelDrag();
+        else if (this.selected) this.actions.select(undefined);
+        else if (h.gantt.open) this.actions.toggleGantt();
         else if (h.morning.open) this.actions.closeMorning(false);
         else if (h.cash.open) this.actions.toggleCash();
         else if (h.lab.open) this.actions.toggleLab();

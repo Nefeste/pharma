@@ -1,9 +1,9 @@
 // Люди и смены (docs/specs/2026-10-engine.md, 1а, «Люди, смены, задачи, техника»; геймдизайн, §8.3). В части 1 график
 // — дни недели и часы смены; праздников, отпусков, болезней и усталости ещё нет. С 3а у каждой роли — пост ожидания
 // (docs/specs/2026-10-panels.md, 3а): без задачи человек идёт туда своим маршрутом, а в пути он свободен.
-import type { ContentDb } from '../content/types';
+import type { ContentDb, Id } from '../content/types';
 import { schedule } from './core/agenda';
-import { HOUR, MIN, momentOf } from './core/calendar';
+import { HOUR, MIN, momentOf, type Ymd } from './core/calendar';
 import { walked } from './lean';
 import { pointAlong, route } from './nav';
 import { dist, type PlantPlan, planOf, type Point, travel } from './plant';
@@ -15,22 +15,35 @@ export const WALK = 120;
 /** Новую задачу не берут, если до конца смены меньше этого. */
 export const LAST_CALL = 15 * MIN;
 
-/** Конец смены человека, если он сейчас в смене, — игровые секунды; иначе `undefined`. */
-export function shiftEnd(db: ContentDb, s: PlantState, p: Person): number | undefined {
-  const sh = db.shifts[p.shift];
-  const m = momentOf(s.start, s.t);
+/** Конец смены графика `shift` в мгновение `t`, если оно в смене, — игровые секунды; иначе `undefined`. */
+export function shiftEndAt(db: ContentDb, start: Ymd, shift: Id, t: number): number | undefined {
+  const sh = db.shifts[shift];
+  const m = momentOf(start, t);
   if (!sh.days.includes(m.weekday)) return undefined;
   const from = sh.from * HOUR;
   const to = sh.to * HOUR;
   if (m.sec < from || m.sec >= to) return undefined;
-  return s.t - m.sec + to;
+  return t - m.sec + to;
+}
+
+/** Конец смены человека, если он сейчас в смене, — игровые секунды; иначе `undefined`. */
+export function shiftEnd(db: ContentDb, s: PlantState, p: Person): number | undefined {
+  return shiftEndAt(db, s.start, p.shift, s.t);
+}
+
+/**
+ * Может ли человек графика `shift` взять новую задачу в мгновение `t`: в смене и до её конца не меньше `LAST_CALL`. Одна
+ * проверка для раздатчика задач и для прогона расписания (3д).
+ */
+export function takesAt(db: ContentDb, start: Ymd, shift: Id, t: number): boolean {
+  const end = shiftEndAt(db, start, shift, t);
+  return end !== undefined && end - t >= LAST_CALL;
 }
 
 /** Может ли человек сейчас взять новую задачу: в смене, свободен, до конца смены не меньше `LAST_CALL`. */
 export function canTake(db: ContentDb, s: PlantState, p: Person): boolean {
   if (p.task) return false;
-  const end = shiftEnd(db, s, p);
-  return end !== undefined && end - s.t >= LAST_CALL;
+  return takesAt(db, s.start, p.shift, s.t);
 }
 
 /**

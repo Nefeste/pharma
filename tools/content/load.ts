@@ -589,6 +589,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     for (const e of pl?.equipment ?? []) for (const pt of raw.equipment[e.type]?.parts ?? []) parts.add(`${e.id}/${pt.id}`);
     for (const l of pl?.lines ?? []) for (const mc of l.machines) for (const pt of raw.machines[mc.type]?.parts ?? []) parts.add(`${mc.id}/${pt.id}`);
     for (const k of [...Object.keys(s.wear), ...Object.keys(s.maint)]) need(parts.has(k), `${where}: в плане нет узла ${k}`);
+    need(new Set(s.seats).size === s.seats.length, `${where}: место повторяется в seats`);
     const [y, m, d] = s.start.date.split('-').map(Number);
     scenarios[s.id] = {
       ...s,

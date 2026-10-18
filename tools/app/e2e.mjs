@@ -12,7 +12,9 @@
 // ровно в 08:00 — планёрка открылась сама, мир на паузе, Esc закрывает; «До утра» тоже открывает планёрку; касса — остаток
 // как в полосе. Лаборатория (3г): на шестые сутки — очередь, «Поднять» доходит до движка, на карте средней массы точки и
 // границы. Расписание (3д): G открывает окно, на нём полосы; задание тянут мышью — виден призрак с причинами, отпустили —
-// срок задания сменился; Esc закрывает. Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
+// срок задания сменился; Esc закрывает. «Кем вы будете» (3е): экран открыт с начала, мир стоит; взяли «Производство» —
+// часы пошли; на планёрке — «Ваше место»; «Поднять» без поста качества погашено, кнопкой «Место» добавили его — мир на
+// паузе, после «Взять» поднять можно. Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -75,6 +77,29 @@ try {
   if (!/^0[78]:\d\d$/.test(clock ?? '')) fail(`часы в начале: ${clock}`);
   else ok(`часы: ${clock}, ${date}`);
 
+  // «Кем вы будете» (3е): экран открыт с начала, мир стоит, пять плиток, две ведёт сценарий; взяли «Производство» — экран
+  // закрылся, часы пошли на ×1, на кнопке «Место» — производство
+  {
+    const at = await page.evaluate(() => ({
+      open: window.__game.store.get().seats.open,
+      speed: window.__game.speed,
+      tiles: document.querySelectorAll('[data-test=seat-tile]').length,
+      off: document.querySelectorAll('[data-test=seat-tile]:disabled').length,
+    }));
+    const t0 = await gameT();
+    await page.keyboard.press('Digit4');
+    await page.waitForTimeout(600);
+    const t1 = await gameT();
+    if (!at.open || at.speed !== 0 || t1 !== t0 || at.tiles !== 5 || at.off !== 2) fail(`«Кем вы будете»: экран ${at.open ? 'открыт' : 'закрыт'}, скорость ${at.speed}, часы прошли ${t1 - t0} с, плиток ${at.tiles}, погашено ${at.off}`);
+    else ok(`«Кем вы будете»: экран открыт с начала, мир стоит и на ×4; плиток ${at.tiles}, ведёт сценарий ${at.off}`);
+    await page.click('[data-test=seat-tile][data-seat=production]');
+    await page.click('[data-test=seats-take]');
+    await page.waitForFunction(() => window.__game.store.get().top?.seats?.join() === 'production', null, { timeout: 20_000 });
+    const after = await page.evaluate(() => ({ open: !!document.querySelector('#seats'), speed: window.__game.speed, label: document.querySelector('[data-test=seats-open]')?.textContent ?? '' }));
+    if (after.open || after.speed !== 1 || !/Производство/.test(after.label)) fail(`взяли «Производство»: экран ${after.open ? 'открыт' : 'закрыт'}, скорость ${after.speed}, кнопка «${after.label}»`);
+    else ok(`взяли «Производство»: экран закрыт, ×1, на кнопке — «${after.label}»`);
+  }
+
   // ×4 — два часа в секунду. Программная отрисовка без видеокарты даёт несколько кадров в секунду, а шаг кадра ограничен
   // 0,1 с — поэтому проверка мягкая: больше, чем ×2 смог бы и при 60 к/с (5 минут в секунду). В 08:00 часы встают на
   // планёрку (3в) — и тогда за 1,5 с прошло меньше, но ровно до 08:00
@@ -125,6 +150,14 @@ try {
   else if (morning.speed !== 0) fail(`после «До утра» скорость ${morning.speed}, а не пауза`);
   else if (!morning.open) fail('после «До утра» планёрка не открылась');
   else ok('«До утра»: планёрка в 08:00, пауза');
+  // «Ваше место» (3е): итог производства за время на месте — с начала партии
+  {
+    const seat = await page
+      .waitForSelector('[data-test=morning-seat][data-seat=production]', { timeout: 20_000 })
+      .then(e => e.innerText(), () => '');
+    if (!seat) fail('планёрка: раздела «Ваше место» с производством нет');
+    else ok(`планёрка: «Ваше место» — ${seat.replace(/\s*\n\s*/g, ' · ').slice(0, 120)}`);
+  }
   await page.keyboard.press('Escape');
   // панели обновляются 10 раз в секунду: извещение может прийти на кадр позже паузы
   const shown = await page
@@ -314,6 +347,23 @@ try {
     await frames(2);
     if ((await page.$$eval('[data-test=lab-row]', r => r.length)) === 0) continue;
     const lot = await page.getAttribute('[data-test=lab-row]', 'data-lot');
+    // своё и чужое (3е): с одним производством «Поднять» погашено; кнопкой «Место» добавили качество — мир на паузе,
+    // после «Взять» поднять можно
+    {
+      const off = await page.$eval('[data-test=lab-rush]', b => ({ disabled: b.disabled, title: b.title }));
+      if (!off.disabled || !/Качество и технология/.test(off.title)) fail(`«Поднять» без поста качества: ${off.disabled ? 'погашено' : 'нажимается'}, подсказка «${off.title}»`);
+      else ok(`«Поднять» без поста качества погашено: «${off.title}»`);
+      await page.click('[data-test=seats-open]');
+      await page.waitForSelector('#seats', { timeout: 20_000 });
+      const paused = await page.evaluate(() => window.__game.speed === 0);
+      await page.click('[data-test=seat-tile][data-seat=quality]');
+      await page.click('[data-test=seats-take]');
+      await page.waitForFunction(() => window.__game.store.get().top?.seats?.join() === 'production,quality', null, { timeout: 20_000 });
+      await frames(2);
+      const on = await page.$eval('[data-test=lab-rush]', b => !b.disabled);
+      if (!paused || !on) fail(`«Место»: мир ${paused ? 'на паузе' : 'шёл'}, «Поднять» после «Взять» ${on ? 'нажимается' : 'погашено'}`);
+      else ok('«Место»: мир на паузе; взяли ещё «Качество и технологию» — «Поднять» нажимается');
+    }
     await page.click('[data-test=lab-rush]');
     const up = await page
       .waitForFunction(l => window.__game.store.get().lab.view?.rows.some(r => r.lot === l && r.rush), lot, { timeout: 20_000 })

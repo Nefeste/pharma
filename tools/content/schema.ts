@@ -2,6 +2,7 @@
 // ошибка сборки, а не молча пропущенное поле. Числа в записях — в единицах автора (килограммы, рубли, метры, проценты);
 // в единицы движка их переводит load.ts.
 import { z } from 'zod';
+import { SEATS } from '../../src/content/types';
 
 const text = z.strictObject({ ru: z.string().min(1), en: z.string().min(1).optional() });
 const review = z.enum(['draft', 'checked']);
@@ -77,6 +78,8 @@ export const scenario = z.strictObject({
   maint: z.record(z.string(), z.number().min(1).max(300)).default({}),
   /** мастер линии: сменное задание — такая доля номинала узкого места линии за смену, % */
   norm: percent.default(100),
+  /** места, которые игрок может взять (геймдизайн, §29.5); остальные ведёт сценарий; нет — все */
+  seats: z.array(z.enum(SEATS)).min(1).default([...SEATS]),
 });
 
 /**

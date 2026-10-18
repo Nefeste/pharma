@@ -69,6 +69,10 @@ export interface StartStock {
 }
 
 /** Сценарий: с чего начинается партия. */
+/** Места игрока (геймдизайн, §29.2): директор и четыре поста. */
+export const SEATS = ['director', 'production', 'quality', 'supply', 'commerce'] as const;
+export type SeatId = (typeof SEATS)[number];
+
 export interface Scenario {
   id: Id;
   name: Text;
@@ -100,6 +104,8 @@ export interface Scenario {
   maint: Record<string, number>;
   /** мастер линии: норма сменного задания — доля номинала узкого места, 1/10 000 */
   norm: number;
+  /** какие места игрок может взять (3е); остальные ведёт сценарий */
+  seats: SeatId[];
 }
 
 /** Грузовая единица: паллета или транспортный короб (docs/04-data-model.md, §3). */

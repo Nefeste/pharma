@@ -2,6 +2,7 @@
 // Хранилище панелей: игра пишет сюда не чаще 10 раз в секунду, панели читают через `useSyncExternalStore`. Снимок
 // неизменяемый: каждое `set` — новый объект.
 import { useSyncExternalStore } from 'react';
+import type { SeatId } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
 import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
@@ -58,6 +59,17 @@ export interface Hud {
    * вид; задание, которое тянут, и куда, — и его призрак
    */
   gantt: { open: boolean; from?: number; days: GanttDays; view?: GanttView; drag?: { batch: string; notBefore: number }; ghost?: GhostView };
+  /** экран «Кем вы будете» (3е): открыт ли, что отмечено */
+  seats: { open: boolean; pick: SeatId[] };
+}
+
+/**
+ * Держит ли игрок место, чьи команды нужны: места не выбраны — всё можно, как до 3е; директор в прототипе отвечает за
+ * всё. Окно гасит чужое, движок отказывает (src/engine/seats.ts, `foreign`).
+ */
+export function holds(h: Hud, seat: SeatId): boolean {
+  const mine = h.top?.seats;
+  return !mine || mine.includes('director') || mine.includes(seat);
 }
 
 /** Окно расписания, суток: сегодня; вчера, сегодня и завтра; вчера, сегодня и неделя вперёд. */
@@ -90,6 +102,7 @@ export const initial: Hud = {
   cash: { open: false, page: 0 },
   lab: { open: false, tab: 'queue' },
   gantt: { open: false, days: 3 },
+  seats: { open: false, pick: [] },
 };
 
 export interface Actions {
@@ -130,6 +143,11 @@ export interface Actions {
   drag(batch: string, notBefore: number): void;
   drop(): void;
   cancelDrag(): void;
+  /** экран «Кем вы будете»: открыть — мир на паузе; отметить место; взять отмеченные — команда `seat`; закрыть без смены */
+  openSeats(): void;
+  pickSeat(seat: SeatId): void;
+  takeSeats(): void;
+  closeSeats(): void;
 }
 
 export class Store {

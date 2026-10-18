@@ -1,13 +1,13 @@
 // Состояние завода и обмен с движком (docs/02-architecture.md, §1, §3, §7; docs/specs/2026-10-engine.md). Состояние —
 // обычный сериализуемый объект: сохранение — его снимок со схемой и миграциями (ADR студии 0004). Сущности — словари с
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
-import type { Attr, Dept, Id, ZoneKind } from '../content/types';
+import type { Attr, Dept, Id, SeatId, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 12;
+export const SCHEMA = 13;
 
 // ---------------------------------------------------------------- склад
 
@@ -913,6 +913,15 @@ export interface PlantState {
   /** потери по суткам, по порядку; сменные задания линий, по порядку */
   losses: DayLoss[];
   shiftTasks: ShiftTask[];
+  /** журнал мест игрока (3е): какое место, с какого мгновения и по какое; места ещё не выбраны — нет */
+  seats?: Tenure[];
+}
+
+/** Запись журнала мест: место игрока, с какого мгновения и по какое; держит его сейчас — без конца. */
+export interface Tenure {
+  seat: SeatId;
+  from: number;
+  to?: number;
 }
 
 /** Команда — единственный способ изменить состояние (docs/02-architecture.md, §7). */
@@ -935,10 +944,12 @@ export type Command =
   /** поднять пробу партии (3г): её задачи лаборатории — выше, и те, что появятся позже */
   | { kind: 'rush'; lot: string; by?: string }
   /** новый срок «не раньше» задания на серию, которое ещё не начало комплектовку (3д): игровые секунды */
-  | { kind: 'shift'; batch: string; notBefore: number; by?: string };
+  | { kind: 'shift'; batch: string; notBefore: number; by?: string }
+  /** места игрока (3е): набор целиком */
+  | { kind: 'seat'; seats: SeatId[] };
 
 /** Почему команда не выполнена — для окна. */
-export type Refusal = 'noSupplier' | 'notSold' | 'belowMoq' | 'empty' | 'noRecipe' | 'noBatch' | 'notBulk' | 'noSku' | 'notReady' | 'noPart' | 'busy' | 'noSpare' | 'noLot' | 'notLab' | 'already' | 'started';
+export type Refusal = 'noSupplier' | 'notSold' | 'belowMoq' | 'empty' | 'noRecipe' | 'noBatch' | 'notBulk' | 'noSku' | 'notReady' | 'noPart' | 'busy' | 'noSpare' | 'noLot' | 'notLab' | 'already' | 'started' | 'notYours' | 'noSeat';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =

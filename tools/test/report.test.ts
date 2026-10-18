@@ -149,7 +149,7 @@ describe('касса', () => {
     const day = s.cash.ledger.filter(e => e.t > s.t - DAY && e.t <= s.t);
     expect(v.entries.map(e => e.sum)).toEqual(day.map(e => e.sum));
     expect(v.day).toBe(day.reduce((n, e) => n + e.sum, 0));
-    expect(topView(s)).toEqual({ view: 'top', balance: s.cash.balance, day: v.day });
+    expect(topView(db, s)).toEqual({ view: 'top', balance: s.cash.balance, day: v.day, offered: db.scenarios[SC].seats });
     // «почему» есть у счетов поставщикам, покупателям, зарплаты, взносов, энергии, НДС
     for (const d of all) if (['supplier', 'sale', 'wages', 'contrib', 'energy', 'vat'].includes(d.item)) expect(d.why).toBeDefined();
   });
@@ -178,6 +178,6 @@ describe('без истины', () => {
     for (const p of Object.values(b.parts)) p.budget += 12345;
     for (let day = day0 + 1; day <= today; day++) expect(JSON.stringify(morningView(db, b, { view: 'morning', day }))).toBe(JSON.stringify(morningView(db, a, { view: 'morning', day })));
     expect(JSON.stringify(cashView(db, b, { view: 'cash', page: 0 }))).toBe(JSON.stringify(cashView(db, a, { view: 'cash', page: 0 })));
-    expect(topView(b)).toEqual(topView(a));
+    expect(topView(db, b)).toEqual(topView(db, a));
   });
 });

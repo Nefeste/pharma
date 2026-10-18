@@ -164,7 +164,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   and the card of a thing, built here on request and sent with the slice only when they changed, without truth fields
   (`views.ts`); the 08:00 meeting — the player's places over their tenure, yesterday by calendar day, events of the 24
   hours before it, what waits now — the cash panel and the top-bar cash with the player's places (`report.ts`); the lab queue and the X–Rm control chart of the in-process average
-  tablet mass with its limits and special-cause signs (`lab.ts`); the schedule — the Gantt of the past, the running and
+  tablet mass with its limits and special-cause signs, a lot under investigation and its steps' tests (`lab.ts`); the
+  investigation board — what happened, participants, steps, findings, versions from the findings only, whether release
+  is proven, the debrief only once concluded (`inv.ts`); the schedule — the Gantt of the past, the running and
   the schedule run with the player's draft, the old bars of what the draft moves, and the ghost of a dragged batch order
   (`plan.ts`), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how far the window's clock ran ahead
   of the last slice; at most one `tick` in flight); the plan run's own thread — a second Web Worker over the same engine
@@ -195,7 +197,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   thing — what it is, state, why, what can be done, history (`Card.tsx`), the 08:00 meeting (`Morning.tsx`), the cash
   panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), the schedule window with dragging, the draft, «Прогнать
   план» and the run's outcome per variant (`Gantt.tsx`), the draft's pure rules — a row per batch order, gone once kitting
-  starts, `shift` commands on approval (`draft.ts`), the «Кем вы будете» screen of places (`Seats.tsx`), status icons
+  starts, `shift` commands on approval (`draft.ts`), the «Кем вы будете» screen of places (`Seats.tsx`), the
+  investigation board — steps, findings in words with numbers from the records, version bars, the decision, the
+  debrief (`Inv.tsx`), status icons
   (`icons.tsx`), the content base for names (`db.ts`); `src/i18n/` — every player-facing string, Russian
   and English, and number, quantity, money, duration and date formats.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML (with part 4 —

@@ -15,7 +15,9 @@
 // (часть 5): отпустили — задание в черновике, срок прежний; «Прогнать план» — итог «как сейчас» и черновика на пяти зёрнах,
 // часы завода в это время идут; «Утвердить» — срок задания сменился; Esc закрывает. «Кем вы будете» (3е): экран открыт с начала, мир стоит; взяли «Производство» —
 // часы пошли; на планёрке — «Ваше место»; «Поднять» без поста качества погашено, кнопкой «Место» добавили его — мир на
-// паузе, после «Взять» поднять можно. Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
+// паузе, после «Взять» поднять можно. Расследование (часть 4б): «До утра», пока растворение второй серии не выйдет за
+// спецификацию, — извещение ставит мир на паузу и открывает доску; три шага, решение, разбор; Esc закрывает. Ошибок в
+// консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -537,6 +539,55 @@ try {
   await lister.screenshot({ path: join(out, 'contact.png'), fullPage: true });
   await lister.close();
   ok(`контактный лист: ${sheet.length} снимков → ${join(out, 'contact.png')}`);
+
+  // расследование (часть 4б): «До утра», пока растворение второй серии не выйдет за спецификацию. У игрока пост качества —
+  // извещение ставит мир на паузу и ведёт к доске; три шага; решение по лучшей версии; разбор; Esc закрывает
+  {
+    const open = () => page.evaluate(() => (window.__game.store.get().top?.inv ?? 0) > 0);
+    for (let i = 0; i < 12 && !(await open()); i++) {
+      const day = await page.evaluate(() => window.__game.day);
+      await page.keyboard.press('Digit5');
+      await page.waitForFunction(d => (window.__game.day > d && !window.__game.ff && window.__game.store.get().morning.open) || (window.__game.store.get().top?.inv ?? 0) > 0, day, { timeout: 90_000 });
+      if (await page.evaluate(() => window.__game.store.get().morning.open)) await page.keyboard.press('Escape');
+    }
+    const stop = await page.evaluate(() => ({ inv: window.__game.store.get().top?.inv ?? 0, speed: window.__game.speed, ff: window.__game.ff, notice: document.querySelector('[data-test=notice-inv]')?.textContent ?? '' }));
+    if (stop.inv < 1 || stop.speed !== 0 || stop.ff || !/вне спецификации/.test(stop.notice)) fail(`расследование: идёт ${stop.inv}, скорость ${stop.speed}, промотка ${stop.ff}, извещение «${stop.notice}»`);
+    else ok(`расследование: «${stop.notice}» — мир на паузе`);
+    await page.click('[data-test=notice-inv]');
+    await page.waitForFunction(() => !!window.__game.store.get().inv.view?.board, null, { timeout: 20_000 });
+    await frames(2);
+    const steps = ['records', 'dossier', 'journal'];
+    for (const st of steps) await page.click(`[data-test=inv-step][data-step=${st}] [data-test=inv-do]`);
+    await page.keyboard.press('Digit2');
+    await page.waitForFunction(list => {
+      const b = window.__game.store.get().inv.view?.board;
+      return !!b && list.every(id => b.steps.find(x => x.id === id)?.state === 'done');
+    }, steps, { timeout: 120_000 });
+    await page.keyboard.press('Space');
+    await frames(2);
+    const seen = await page.evaluate(() => ({
+      obs: document.querySelectorAll('[data-test=inv-obs]').length,
+      shown: document.querySelectorAll('[data-test=inv-obs][data-shown="1"]').length,
+      top: window.__game.store.get().inv.view.board.beliefs[0],
+      bars: document.querySelectorAll('[data-test=inv-version]').length,
+    }));
+    if (seen.obs < steps.length || seen.bars < 2) fail(`расследование: улик ${seen.obs}, версий ${seen.bars}`);
+    else ok(`расследование: три шага сделаны — улик ${seen.obs}, «есть» у ${seen.shown}; лучшая версия — ${seen.top.id}, ${(seen.top.p / 100).toFixed(1)} %`);
+    await page.click(`[data-test=inv-cause][data-id=${seen.top.id}]`);
+    await page.click('[data-test=inv-fate][data-id=reject]');
+    await page.click('[data-test=inv-conclude]');
+    await page.waitForSelector('[data-test=inv-debrief]', { timeout: 20_000 });
+    await frames(2);
+    await page.screenshot({ path: join(out, 'e2e-inv.png') });
+    const deb = await page.evaluate(() => {
+      const d = document.querySelector('[data-test=inv-debrief]');
+      return { root: d?.getAttribute('data-root') ?? '', cause: d?.getAttribute('data-cause'), fate: d?.getAttribute('data-fate'), text: d?.textContent ?? '' };
+    });
+    if (!deb.root || !/на самом деле/.test(deb.text)) fail(`разбор: корень «${deb.root}», текст «${deb.text.slice(0, 120)}»`);
+    else ok(`разбор: на самом деле — ${deb.root}; причина ${deb.cause === '1' ? 'верна' : 'неверна'}, судьба серии ${deb.fate === '1' ? 'верна' : 'неверна'}; снимок ${join(out, 'e2e-inv.png')}`);
+    await page.keyboard.press('Escape');
+    if (await page.evaluate(() => !!document.querySelector('#inv'))) fail('расследование: Esc не закрыл');
+  }
 
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');

@@ -35,10 +35,15 @@ export interface LabTestRow {
   /** только у проверенного испытания */
   result?: number;
   pass?: boolean;
+  /** испытание шага расследования (часть 4): той же пробы, в решение по партии не входит */
+  inv?: true;
 }
 
-/** Где партия на пути через лабораторию: ждёт плана отбора, отбор проб, передача проб, испытания, решение. */
-export type LabStage = 'plan' | 'sampling' | 'handover' | 'tests' | 'decide';
+/**
+ * Где партия на пути через лабораторию: ждёт плана отбора, отбор проб, передача проб, испытания, решение; результат вне
+ * спецификации — расследование (часть 4).
+ */
+export type LabStage = 'plan' | 'sampling' | 'handover' | 'tests' | 'decide' | 'inv';
 
 export interface LabLotRow {
   /** номер партии в учёте — для команды «поднять» */
@@ -63,7 +68,7 @@ export interface LabView {
 
 const LAB = new Set<string>(Object.keys(LAB_PRIO));
 
-const nowOf = (s: PlantState, t: Task): TaskNow => ({
+export const nowOf = (s: PlantState, t: Task): TaskNow => ({
   task: t.kind,
   busy: t.state === 'busy',
   ...(t.why ? { wait: t.why } : {}),
@@ -81,6 +86,10 @@ export function labView(db: ContentDb, s: PlantState): LabView {
     if (t.test) byTest.set(t.test, [...(byTest.get(t.test) ?? []), t]);
     else if (t.lot) byLot.set(t.lot, [...(byLot.get(t.lot) ?? []), t]);
   }
+  // расследования (часть 4): открытые — по партии; испытания их шагов — по пробе
+  const open = new Set(Object.values(s.investigations).flatMap(i => (i.status === 'open' ? [i.lot] : [])));
+  const extra = new Map<string, LabTest[]>();
+  for (const q of Object.values(s.tests)) if (q.inv) extra.set(q.sample, [...(extra.get(q.sample) ?? []), q]);
   const rank = (t: Task) => (t.state === 'busy' ? -1 : (order.get(t.id) ?? Number.MAX_SAFE_INTEGER));
   const first = (list: Task[] | undefined) => (list ?? []).slice().sort((a, b) => rank(a) - rank(b))[0];
   const rows: (LabLotRow & { pos: number })[] = [];
@@ -90,9 +99,10 @@ export function labView(db: ContentDb, s: PlantState): LabView {
     const sm = lot.sample ? s.samples[lot.sample] : undefined;
     const tests = (sm?.tests ?? []).map(id => s.tests[id]).filter((q): q is LabTest => !!q);
     const done = tests.filter(q => q.state === 'done').length;
-    const stage: LabStage = !sm ? 'plan' : sm.left.length > 0 ? 'sampling' : tests.length === 0 ? 'handover' : done < tests.length ? 'tests' : 'decide';
+    const stage: LabStage = open.has(lot.id) ? 'inv' : !sm ? 'plan' : sm.left.length > 0 ? 'sampling' : tests.length === 0 ? 'handover' : done < tests.length ? 'tests' : 'decide';
     const own = first(byLot.get(lot.id));
-    const testRows: LabTestRow[] = tests.map(q => {
+    const more = sm ? (extra.get(sm.id) ?? []) : [];
+    const testRows: LabTestRow[] = [...tests, ...more].map(q => {
       const t = first(byTest.get(q.id));
       return {
         method: q.method,
@@ -100,10 +110,11 @@ export function labView(db: ContentDb, s: PlantState): LabView {
         ...(q.inst && s.instruments[q.inst] ? { inst: s.instruments[q.inst].type } : {}),
         ...(t ? { now: nowOf(s, t) } : {}),
         ...(q.state === 'done' && q.result !== undefined ? { result: q.result, pass: !!q.pass } : {}),
+        ...(q.inv ? { inv: true as const } : {}),
       };
     });
     // место в очереди — первая открытая задача партии или её испытаний
-    const all = [...(byLot.get(lot.id) ?? []), ...tests.flatMap(q => byTest.get(q.id) ?? [])];
+    const all = [...(byLot.get(lot.id) ?? []), ...[...tests, ...more].flatMap(q => byTest.get(q.id) ?? [])];
     const pos = Math.min(Number.MAX_SAFE_INTEGER, ...all.map(t => order.get(t.id) ?? Number.MAX_SAFE_INTEGER));
     rows.push({ lot: lot.id, code: code(lot.code), material: lot.material, rush: !!lot.rush, stage, done, all: tests.length, ...(own ? { now: nowOf(s, own) } : {}), tests: testRows, pos });
   }

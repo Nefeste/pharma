@@ -67,6 +67,8 @@ export interface DevRow {
   lot?: Code;
   batch?: Code;
   material?: Id;
+  /** расследование отклонения (часть 4): к его доске ведёт строка */
+  inv?: string;
 }
 
 export interface DecisionRow {
@@ -280,6 +282,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
       kind: d.kind,
       ...(d.lot && s.lots[d.lot] ? { lot: code(s.lots[d.lot].code), material: s.lots[d.lot].material } : {}),
       ...(d.batch && s.batches[d.batch] ? { batch: code(s.batches[d.batch].code) } : {}),
+      ...(d.inv ? { inv: d.inv } : {}),
     }));
   const decisions: DecisionRow[] = Object.values(s.lots)
     .filter(l => l.supplier !== 'start' && (l.status === 'released' || l.status === 'rejected') && l.since !== undefined && inW(l.since))
@@ -600,9 +603,12 @@ export interface TopView {
   /** места игрока сейчас (3е); ещё не выбирал — нет; какие места даёт сценарий */
   seats?: SeatId[];
   offered: SeatId[];
+  /** расследований идёт (часть 4) */
+  inv: number;
 }
 
 export function topView(db: ContentDb, s: PlantState): TopView {
   const held = s.seats?.filter(x => x.to === undefined).map(x => x.seat);
-  return { view: 'top', balance: s.cash.balance, day: dayChange(s, s.t), ...(held ? { seats: held } : {}), offered: db.scenarios[s.scenario].seats };
+  const inv = Object.values(s.investigations).filter(i => i.status === 'open').length;
+  return { view: 'top', balance: s.cash.balance, day: dayChange(s, s.t), ...(held ? { seats: held } : {}), offered: db.scenarios[s.scenario].seats, inv };
 }

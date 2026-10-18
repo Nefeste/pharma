@@ -64,7 +64,10 @@ function LotRows({ r, start, actions, mine }: { r: LabLotRow; start: Ymd; action
         const m = db?.tests[q.method];
         return (
           <tr key={i} className="test">
-            <td className="sub">{named(m?.name, q.method)}</td>
+            <td className="sub">
+              {named(m?.name, q.method)}
+              {q.inv ? <span className="muted"> · {T.lab.invTest}</span> : null}
+            </td>
             <td>
               {T.lab.state[q.state]}
               {q.inst ? <span className="muted"> · {named(db?.instruments[q.inst]?.name, q.inst)}</span> : null}

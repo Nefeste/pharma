@@ -6,7 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:">
   <link rel="icon" href="data:,">
   <title>Farmzavod</title>
-  <!-- из bolnitsa: app/index.html @ e0a3491 — изменено: полоса сверху, отладка и состояние (часть 0); карточка вещи — её стиль `.card`, панель склада — своя (3б); планёрка и касса — свои (3в); лаборатория (3г), расписание (3д), «Кем вы будете» (3е) и прогон плана (часть 5) — свои -->
+  <!-- из bolnitsa: app/index.html @ e0a3491 — изменено: полоса сверху, отладка и состояние (часть 0); карточка вещи — её стиль `.card`, панель склада — своя (3б); планёрка и касса — свои (3в); лаборатория (3г), расписание (3д), «Кем вы будете» (3е), прогон плана (часть 5) и доска расследования (4б) — свои -->
   <style>
     :root {
       --panel: rgba(22, 30, 34, 0.86);
@@ -165,6 +165,32 @@
     .sfoot { display: flex; align-items: center; gap: 12px; }
     .sfoot .muted { margin-right: auto; }
     .seatbtn { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* доска расследования (часть 4б) — большое окно во всю ширину под полосой, как расписание: три столбца и решение снизу */
+    .inv { position: absolute; left: 8px; right: 8px; top: calc(var(--top-h, 48px) + 8px); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 4px; }
+    .icols { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.7fr) minmax(220px, 1fr); gap: 14px; }
+    @media (max-width: 900px) { .icols { grid-template-columns: 1fr; } }
+    .isec { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .isec .msec { margin-top: 6px; }
+    .small { font-size: 11px; }
+    ul.iplain { margin: 0 0 4px; padding-left: 16px; }
+    ol.isteps { margin: 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    ol.isteps > li { border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; background: var(--panel-2); }
+    ol.isteps > li[data-state="done"] { background: transparent; }
+    .ihead { display: flex; align-items: center; gap: 8px; }
+    .ihead2 { font-size: 14px; margin: 2px 0; }
+    ul.iobs { margin: 3px 0 0; padding-left: 0; list-style: none; }
+    ul.iobs li { padding-left: 10px; border-left: 3px solid var(--line); margin: 2px 0; }
+    ul.iobs li.yes { border-left-color: var(--yellow); }
+    ul.ivers { margin: 2px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+    ul.ivers li { display: grid; grid-template-columns: minmax(90px, 1.3fr) 1fr 44px; gap: 6px; align-items: center; }
+    .vbar { height: 10px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; }
+    .vbar > span { display: block; height: 100%; background: var(--accent); }
+    .idecide .irow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .idecide .label { min-width: 100px; margin-left: 0; }
+    .idebrief { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 2px; }
+    .badge { color: var(--yellow); font-weight: 600; }
+    button.notice.link { background: none; border: none; padding: 0; color: var(--yellow); cursor: pointer; }
+    button.notice.link:hover { text-decoration: underline; text-decoration-color: var(--accent); }
   </style>
 </head>
 <body>

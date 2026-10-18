@@ -1,17 +1,21 @@
 // Расписание (docs/specs/2026-10-panels.md, 3д; геймдизайн, §9.4): большое окно поверх карты — Гант по помещениям
 // производства и линии: прошлое, идущее и прогон по правилам движка. Задание на серию, ещё не начавшее комплектовку,
 // тянут мышью или стрелками — призрак показывает, где оно встанет и почему не там, куда тянут; отпустили (Enter) —
-// команда `shift`, Esc — отмена. Щелчок по полосе — камера к помещению или линии. Виды собирает поток расчёта
-// (src/sim/plan.ts); здесь — слова, рисунок и мышь.
+// строка черновика (часть 5, docs/specs/2026-10-plan-run.md): его полосы — в белой рамке, прежние — бледнее;
+// «Утвердить» — команды `shift`, «Сбросить» — черновик пуст; Esc — отмена перетаскивания. «Прогнать план» — завод на 14
+// суток вперёд на пяти зёрнах во втором потоке: «как сейчас» и черновик на одних и тех же зёрнах; итог — под расписанием.
+// Щелчок по полосе — камера к помещению или линии. Виды собирает поток расчёта (src/sim/plan.ts), итог прогона — поток
+// прогона (src/sim/planHost.ts); здесь — слова, рисунок и мышь.
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
-import { HOUR, momentOf } from '../engine/core/calendar';
+import { HOUR, momentOf, type Ymd } from '../engine/core/calendar';
+import type { Range, RunSum } from '../engine/plan/run';
 import type { Bar, Why } from '../engine/plan/schedule';
 import { planOf } from '../engine/plant';
-import { clock, dayText, durText, named, qtyText, T, whenText } from '../i18n';
+import { clock, dayText, durText, money, named, pctText, qtyText, T, whenText } from '../i18n';
 import type { BatchLabel, GanttRow, GanttView } from '../sim/plan';
 import type { Thing } from '../sim/views';
 import { db } from './db';
-import { type Actions, type GanttDays, type Hud, holds } from './store';
+import { type Actions, type GanttDays, type Hud, holds, PLAN_RUN, type PlanRun } from './store';
 
 /** Шаг срока, куда тянут: 15 минут; стрелка с Shift — час. */
 const SNAP = 15 * 60;
@@ -69,6 +73,8 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
   const mine = holds(hud, 'production');
   const movable = new Set(mine ? v.movable : []);
   const labels: Labels = { ...v.batches, ...(g.ghost?.batches ?? {}) };
+  // черновик: полосы сдвинутых им серий — в белой рамке; прежние — бледнее
+  const moved = new Set(v.moved);
 
   /** Мгновение — словами для причин: сегодня — часы; в пределах недели — день недели и часы; дальше — дата и часы. */
   const timeText = (t: number) => {
@@ -128,6 +134,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
     if (b.kind === 'clean' && b.batch) lines[0] = `${lines[0]} · ${who(labels, b.batch)}`;
     if (b.material) lines.push(T.gantt.material);
     if (b.repair) lines.push(T.gantt.repair);
+    if (b.batch && b.when === 'plan' && moved.has(b.batch)) lines.push(T.gantt.inDraft);
     lines.push(...whyOf(b, v.why[b.batch ?? '']).map(whyText));
     if (b.batch && movable.has(b.batch)) lines.push(T.gantt.hintDrag);
     return lines.join('\n');
@@ -207,6 +214,9 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
     const l = pct(b.from);
     return { left: `${l}%`, width: `${Math.max(0.15, pct(b.to) - l)}%` };
   };
+  const lineNo = (id: string) => v.rows.filter(r => r.kind === 'line').findIndex(r => r.id === id) + 1;
+  const rowName = (id: string) => (roomType.has(id) ? roomName(id) : T.gantt.line(lineNo(id)));
+  const p = hud.plan;
 
   return (
     <div className="gantt panel" id="gantt" role="dialog" aria-labelledby="gantt-title" data-test="gantt">
@@ -232,6 +242,36 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         <button type="button" className="close" onClick={() => actions.toggleGantt()} title={T.card.closeHint}>
           ✕
         </button>
+      </div>
+      <div className="gdraft" data-test="gantt-draft">
+        {g.draft.length > 0 ? (
+          <>
+            <span data-test="draft-list">{T.plan.draft(g.draft.map(c => who(labels, c.batch) || c.batch).join(', '))}</span>
+            <button type="button" onClick={() => actions.approveDraft()} disabled={!mine} title={T.plan.approveHint} data-test="draft-approve">
+              {T.plan.approve}
+            </button>
+            <button type="button" onClick={() => actions.resetDraft()} title={T.plan.resetHint} data-test="draft-reset">
+              {T.plan.reset}
+            </button>
+          </>
+        ) : mine ? (
+          <span className="muted">{T.plan.noDraft}</span>
+        ) : null}
+        <span className="grow" />
+        {p.running ? (
+          <>
+            <span className="muted" data-test="plan-running">
+              {T.plan.running}
+            </span>
+            <button type="button" onClick={() => actions.stopPlan()} data-test="plan-stop">
+              {T.plan.stop}
+            </button>
+          </>
+        ) : (
+          <button type="button" className="on" onClick={() => actions.runPlan()} title={T.plan.runHint(PLAN_RUN.days, PLAN_RUN.seeds)} data-test="plan-run">
+            {T.plan.run}
+          </button>
+        )}
       </div>
       <div className="grow-row gaxis">
         <div className="glabel" />
@@ -260,6 +300,13 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
             {ticks.filter(t => momentOf(start, t).sec === 0).map(t => (
               <div key={t} className="gday" style={{ left: `${pct(t)}%` }} />
             ))}
+            {v.was
+              .filter(b => b.row === row.id)
+              .map((b, i) => (
+                <div key={`w${i}`} className={`gbar was k-${b.kind} w-plan`} style={style(b)} title={`${barText(b)}\n${T.gantt.was}`} data-test="was">
+                  {barText(b)}
+                </div>
+              ))}
             {v.bars
               .filter(b => b.row === row.id)
               .map((b, i) => {
@@ -273,6 +320,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
                   b.major ? 'major' : '',
                   b.pack ? 'pk' : '',
                   can ? 'move' : '',
+                  b.batch && b.when === 'plan' && moved.has(b.batch) ? 'draft' : '',
                   ghost && b.batch === ghost.batch && b.when === 'plan' ? 'dim' : '',
                 ].filter(Boolean).join(' ');
                 return (
@@ -289,6 +337,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
                     data-kind={b.kind}
                     data-when={b.when}
                     data-movable={can ? '1' : undefined}
+                    data-draft={b.batch && b.when === 'plan' && moved.has(b.batch) ? '1' : undefined}
                   >
                     {barText(b)}
                   </div>
@@ -321,6 +370,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         </span>
         {v.stuck.length > 0 ? <span className="bad">{T.gantt.stuck(v.stuck.map(id => who(labels, id)).join(', '))}</span> : null}
       </div>
+      {p.running || p.error || p.sums.some(Boolean) ? <PlanSum p={p} start={start} stale={p.key !== JSON.stringify(g.draft)} rowName={rowName} lineNo={lineNo} /> : null}
       {g.drag && tip ? (
         <div className="gtip panel" style={{ left: Math.min(tip.x + 14, window.innerWidth - 380), top: tip.y + 14 }} data-test="gtip">
           <div>
@@ -341,6 +391,202 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
           ) : (
             <div className="muted">{T.app.loading}</div>
           )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Мгновение — датой и часами; середина и разброс по зёрнам: одно — само, разные — «середина, от … до …». */
+function spanOf(start: Ymd, r: Range): string {
+  const w = (t: number) => whenText(start, t);
+  return r[0] === r[2] ? w(r[1]) : T.plan.span(w(r[1]), w(r[0]), w(r[2]));
+}
+
+/** Число по зёрнам: «7» или «7 (5–8)». */
+const countOf = (r: Range) => (r[0] === r[2] ? String(r[1]) : `${r[1]} (${r[0]}–${r[2]})`);
+
+/** Насколько середина варианта раньше или позже середины «как сейчас»; меньше минуты — никак. */
+function shiftOf(a: number | undefined, b: number | undefined): React.ReactNode {
+  if (a === undefined || b === undefined || Math.abs(a - b) < 60) return null;
+  return <span className="delta"> · {b < a ? T.plan.earlier(durText(a - b)) : T.plan.laterBy(durText(b - a))}</span>;
+}
+
+/** Балк к снимку уже сделан. */
+const BULK_DONE = ['bulk', 'packing', 'fg'];
+
+/**
+ * Итог прогона (docs/specs/2026-10-plan-run.md, «Окно прогона»): по столбцу на вариант — заказы со сроком в горизонте, в
+ * скольких зёрнах сорвутся; серии — балк и выпуск, середина и разброс; касса, OEE, узкое место. Подписан мгновением снимка.
+ */
+function PlanSum({ p, start, stale, rowName, lineNo }: { p: PlanRun; start: Ymd; stale: boolean; rowName: (id: string) => string; lineNo: (id: string) => number }) {
+  const sums: (RunSum | undefined)[] = Array.from({ length: Math.max(1, p.variants) }, (_, i) => p.sums[i]);
+  const first = sums.find((x): x is RunSum => !!x);
+  const head = [T.plan.now, T.plan.draftCol].slice(0, sums.length);
+  const label = (id: string) => {
+    const b = p.batches[id];
+    return b?.code ? T.gantt.batch(T.batchCode(...b.code)) : b ? T.gantt.order(b.n) : id;
+  };
+  /** Ячейка варианта: итог ещё считается — «…». */
+  const cells = (f: (s: RunSum, i: number) => React.ReactNode, cls?: (s: RunSum) => string) =>
+    sums.map((s, i) =>
+      s ? (
+        <td key={i} className={cls?.(s)}>
+          {f(s, i)}
+        </td>
+      ) : (
+        <td key={i} className="muted">
+          …
+        </td>
+      ),
+    );
+  const batchOf = (s: RunSum, id: string) => s.batches.find(b => b.batch === id);
+  const ids = first?.batches.map(b => b.batch) ?? [];
+  const active = ids.filter(id => sums.some(s => s && (batchOf(s, id)?.bulkIn || batchOf(s, id)?.releasedIn || batchOf(s, id)?.rejected)));
+  const beyond = ids.filter(id => !active.includes(id));
+  const base = sums[0];
+  return (
+    <div className="gplan" data-test="plan">
+      <div className="phead">
+        <b>{T.plan.title}</b>
+        {p.at !== undefined && first ? <span className="muted">{T.plan.at(whenText(start, p.at), first.days, first.seeds)}</span> : null}
+        {stale && first ? <span className="warn">{T.plan.stale}</span> : null}
+      </div>
+      {p.error ? (
+        <div className="bad" title={p.error}>
+          {T.plan.error}
+        </div>
+      ) : null}
+      {!first && p.running ? <div className="muted">{T.plan.running}</div> : null}
+      {first ? (
+        <table className="grid gsum" data-test="plan-sum">
+          <thead>
+            <tr>
+              <th />
+              {head.map(h => (
+                <th key={h}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="sec">
+              <td colSpan={sums.length + 1}>{T.plan.orders}</td>
+            </tr>
+            {first.orders.length === 0 ? (
+              <tr>
+                <td colSpan={sums.length + 1} className="muted">
+                  {T.plan.noOrders}
+                </td>
+              </tr>
+            ) : null}
+            {first.orders.map(o => (
+              <tr key={o.order} data-test="plan-order">
+                <td>{T.plan.order(named(db?.customers[o.customer]?.name, o.customer), dayText(momentOf(start, o.due).day))}</td>
+                {cells(
+                  s => {
+                    const x = s.orders.find(r => r.order === o.order);
+                    return x ? `${T.plan.fails(x.fails, s.seeds)}${x.fails > 0 && x.missing > 0 ? ` · ${T.plan.missing(x.missing)}` : ''}` : '—';
+                  },
+                  s => ((s.orders.find(r => r.order === o.order)?.fails ?? 0) > 0 ? 'bad' : ''),
+                )}
+              </tr>
+            ))}
+            <tr>
+              <td>{T.plan.later}</td>
+              {cells(s => T.plan.laterCell(countOf(s.later.placed), countOf(s.later.failed)))}
+            </tr>
+            <tr className="sec">
+              <td colSpan={sums.length + 1}>{T.plan.batches}</td>
+            </tr>
+            {active.flatMap(id => [
+              <tr key={`${id}b`} data-test="plan-batch" data-batch={id}>
+                <td>
+                  {label(id)} · {T.plan.bulk}
+                </td>
+                {cells((s, i) => {
+                  const x = batchOf(s, id);
+                  if (BULK_DONE.includes(p.batches[id]?.status ?? '')) return <span className="muted">{T.plan.done}</span>;
+                  if (!x?.bulk) return <span className="muted">{T.plan.beyond}</span>;
+                  const was = i > 0 && base ? batchOf(base, id)?.bulk?.[1] : undefined;
+                  return (
+                    <>
+                      {spanOf(start, x.bulk)}
+                      {x.bulkIn < s.seeds ? ` · ${T.plan.inSeeds(x.bulkIn, s.seeds)}` : ''}
+                      {shiftOf(was, x.bulk[1])}
+                    </>
+                  );
+                })}
+              </tr>,
+              <tr key={`${id}r`}>
+                <td>
+                  {label(id)} · {T.plan.release}
+                </td>
+                {cells(
+                  (s, i) => {
+                    const x = batchOf(s, id);
+                    const rejected = x?.rejected ? T.plan.rejected(x.rejected, s.seeds) : '';
+                    if (!x?.released) return rejected || <span className="muted">{T.plan.beyond}</span>;
+                    const was = i > 0 && base ? batchOf(base, id)?.released?.[1] : undefined;
+                    return (
+                      <>
+                        {spanOf(start, x.released)}
+                        {x.releasedIn < s.seeds ? ` · ${T.plan.inSeeds(x.releasedIn, s.seeds)}` : ''}
+                        {shiftOf(was, x.released[1])}
+                        {rejected ? `; ${rejected}` : ''}
+                      </>
+                    );
+                  },
+                  s => (batchOf(s, id)?.rejected ? 'bad' : ''),
+                )}
+              </tr>,
+            ])}
+            {beyond.length > 0 ? (
+              <tr>
+                <td colSpan={sums.length + 1} className="muted">
+                  {T.plan.beyondAll(beyond.map(label).join(', '))}
+                </td>
+              </tr>
+            ) : null}
+            <tr className="sec">
+              <td colSpan={sums.length + 1}>{T.plan.plant}</td>
+            </tr>
+            <tr data-test="plan-cash">
+              <td>{T.plan.cash}</td>
+              {cells((s, i) => {
+                const c = s.cash;
+                const text = c[0] === c[2] ? money(c[1]) : T.plan.span(money(c[1]), money(c[0]), money(c[2]));
+                const d = i > 0 && base ? Math.round((c[1] - base.cash[1]) / 100) : 0;
+                return (
+                  <>
+                    {text}
+                    {d !== 0 ? <span className="delta"> · {money(c[1] - base!.cash[1], true)}</span> : null}
+                  </>
+                );
+              })}
+            </tr>
+            {first.lines.map(l => (
+              <tr key={l.line}>
+                <td>{T.plan.oee(lineNo(l.line))}</td>
+                {cells(s => {
+                  const o = s.lines.find(x => x.line === l.line)?.oee;
+                  return o ? <span title={`${pctText(o[0])} – ${pctText(o[2])}`}>{pctText(o[1])}</span> : '—';
+                })}
+              </tr>
+            ))}
+            <tr>
+              <td>{T.plan.bottleneck}</td>
+              {cells(s => {
+                const top = [...s.busy].sort((a, b) => b.share[1] - a.share[1])[0];
+                return top ? `${rowName(top.row)} · ${pctText(top.share[1])}` : '—';
+              })}
+            </tr>
+          </tbody>
+        </table>
+      ) : null}
+      {first ? (
+        <div className="muted gnote">
+          {sums.length > 1 ? <div>{T.plan.same}</div> : null}
+          <div>{T.plan.twin}</div>
         </div>
       ) : null}
     </div>

@@ -5,7 +5,9 @@
 // Сохранение ходит строкой: состояние с истинными свойствами партий окно не разбирает (§9) — его пишет и читает поток
 // расчёта, со своими миграциями (src/engine/save.ts).
 import type { Id } from '../content/types';
+import type { RunSum } from '../engine/plan/run';
 import type { Command, Notice } from '../engine/types';
+import type { BatchLabel } from './plan';
 import type { ViewOut, ViewQuery } from './views';
 
 export type ToSim =
@@ -34,3 +36,19 @@ export type FromSim =
   /** ответ на `save`: снимок состояния строкой */
   | { kind: 'saved'; json: string }
   | { kind: 'error'; message: string };
+
+/**
+ * Поток прогона плана (docs/specs/2026-10-plan-run.md): снимок состояния строкой — как сохранение, окно его не разбирает;
+ * варианты — команды игрока; горизонт, сутки, и число зёрен.
+ */
+export type ToPlan = { kind: 'run'; id: number; json: string; variants: Command[][]; days: number; seeds: number };
+
+export type FromPlan =
+  /**
+   * итог варианта `index`, когда он готов: мгновение снимка, подписи его серий (номер серии или задания — каким он был к
+   * снимку), сколько миллисекунд считался
+   */
+  | { kind: 'variant'; id: number; index: number; at: number; sum: RunSum; batches: Record<string, BatchLabel>; ms: number }
+  /** все варианты готовы */
+  | { kind: 'done'; id: number; ms: number }
+  | { kind: 'error'; id: number; message: string };

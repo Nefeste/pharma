@@ -21,7 +21,7 @@ import { expo, roll } from './random';
 import { shiftEnd } from './staff';
 import { containersByLot, emptyLot, nextId, slotFree, stockChanged } from './stock';
 import { addTask, dropTask } from './tasks';
-import type { Batch, Container, Line, LineMachine, MachineTimes, Notice, PackJob, PlantState, Task, Unit } from './types';
+import type { Batch, Container, Line, LineMachine, MachineTimes, Notice, PackJob, Part, PlantState, Task, Unit } from './types';
 import { PRIO, WMS } from './wms';
 
 /** Шестидесятые доли таблетки: скорость в таблетках в минуту × секунды — целое. */
@@ -486,6 +486,25 @@ export function lineUpdate(db: ContentDb, s: PlantState, line: Line, notices: No
   line.v++;
   const dt = nextBoundary(db, s, line);
   if (dt !== undefined) schedule(s.agenda, s.t + dt, { kind: 'line', id: line.id, v: line.v });
+}
+
+/**
+ * Двойник прогона плана (docs/specs/2026-10-plan-run.md): запас до отказа исправных узлов машин линии — от `redraw`. У
+ * идущей линии поток доживается до этой минуты, наработка узлов учитывается до позиции машины, затем отказ и следующая
+ * микроостановка — заново, и событие границы отрезка — по новым позициям.
+ */
+export function lineRedraw(db: ContentDb, s: PlantState, line: Line, redraw: (pt: Part) => number, notices: Notice[]) {
+  lineUpdate(db, s, line, notices);
+  const b = line.batch ? s.batches[line.batch] : undefined;
+  const g = b?.pack?.state === 'running' ? geo(db, s, line, b.pack.sku) : undefined;
+  line.machines.forEach((mc, i) => {
+    if (g) syncParts(db, s, mc, g, i);
+    for (const pt of partsOf(s, mc.id)) if (pt.state === 'ok') pt.budget = redraw(pt);
+    if (!g) return;
+    if (!mc.broken) armParts(db, s, mc, g, i);
+    if (mc.down === undefined) drawNext(db, s, mc, g, i);
+  });
+  if (g) lineUpdate(db, s, line, notices);
 }
 
 /** Событие линии: устаревшая версия — ничего; v = −1 (пришла смена) — пересчитать всегда. */

@@ -134,20 +134,26 @@ first, or copy the working code of Bolnitsa on the same versions.
   the entrance), `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
-- `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`, format 2: rooms, trucks,
-  changed pallets; no truth fields), Web Worker (`worker.ts`) and its client in the window (`client.ts`). The window
-  never runs the engine. Saves cross the thread boundary as a string: the window never parses the state with the true
-  lot properties.
+- `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`, format 3: rooms, trucks,
+  changed pallets, tasks in progress, people, vehicles; no truth fields), Web Worker (`worker.ts`) and its client in the
+  window (`client.ts`). The window never runs the engine. Saves cross the thread boundary as a string: the window never
+  parses the state with the true lot properties.
 - `src/app/` — the game in the window: content, stage, clock and speeds, input, panels (`game.ts`, `main.tsx`); what
-  the slice puts on the floor — pallets, trucks, rooms (`scene.ts`).
+  the slice puts on the floor — pallets, trucks, rooms, pallets on forks (`scene.ts`); where people and vehicles are now
+  — a pure function of the tasks in the slice and the clock, on the plan's routes and with the engine's travel times
+  (`movers.ts`).
 - `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa); the plant
   from the plan (`layout.ts` — rooms, walls, doors and spots from `planOf`), floors, zone markings, ground and yard,
   walls with the cut and openings (`world.ts`), doors, lamps and floor textures (`doors.ts`, `lamps.ts`, `textures.ts`
   — copies of Bolnitsa, adapted), racks and pallet loads by instancing (`loads.ts`), trucks at docks (`trucks.ts`),
-  room status signs (`signs.ts`), equipment as boxes of their size (`boxes.ts`), the composition (`stage.ts`).
+  room status signs (`signs.ts`), equipment as boxes of their size (`boxes.ts`), the pallet truck and the reach truck in
+  code (`vehicles.ts`), people — Bolnitsa's crowd on the GPU (`bake.ts`, `people.ts`, copies) with looks and clothes by
+  role (`cast.ts`), the composition (`stage.ts`).
 - `src/ui/` — panels (React) and their store; `src/i18n/` — every player-facing string, Russian and English.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML;
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   plan rules in `plan.ts`: doors on walls, docks on outer walls, class D only through airlocks, reachability).
 - `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
+- `assets/` — CC0 people models (copies of Bolnitsa's, byte for byte) and `LICENSES.md` (sources, licenses, SHA-256);
+  never add a model without its line there and in `assets/models/sources.json`.
 - `tools/app/` — page build, local server, browser scenario; `tools/test/` — Bun tests and save samples.

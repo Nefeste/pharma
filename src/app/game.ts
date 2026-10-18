@@ -1,20 +1,26 @@
 // Игра в окне (docs/02-architecture.md, §10): база, поток расчёта, 3D-вид, часы и скорости, ввод, панели. Устройство —
 // как у «Больницы» (её src/app/game.ts): окно не считает завод, оно шлёт ход часов и команды и рисует срез. Всё, что знает
 // игра, — здесь; панели только читают хранилище и просят.
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { ContentDb, Scenario } from '../content/types';
 import { momentOf } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
 import { planOf } from '../engine/plant';
 import type { Notice } from '../engine/types';
 import { T } from '../i18n';
-import { type Layout, layoutOf } from '../render/layout';
+import { bakeLook, lodOf, packPeople } from '../render/bake';
+import { type Layout, layoutOf, levelY } from '../render/layout';
 import { Stage } from '../render/stage';
+import { forkY } from '../render/vehicles';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import { type Slice, SimClient } from '../sim/client';
 import { unpack } from '../sim/pack';
 import type { Actions, Speed, Store } from '../ui/store';
-import { dockFront, palletsOf, SceneState } from './scene';
+import { moversAt } from './movers';
+import { carriedOf, dockFront, palletsOf, SceneState } from './scene';
 
 /** Сценарий части 0 (content/scenarios/proto.yaml). */
 export const SCENARIO = 'scn.proto';
@@ -45,6 +51,21 @@ declare global {
   }
 }
 
+const loader = new GLTFLoader();
+loader.setMeshoptDecoder(MeshoptDecoder);
+
+/**
+ * Люди — модели CC0 из assets/models/people (assets/LICENSES.md): загрузить, запечь анимации и упростить для дальнего
+ * плана, как в «Больнице» (её src/app/game.ts).
+ */
+async function loadPeople() {
+  const base = './assets/models';
+  const index = (await (await fetch(`${base}/index.json`)).json()) as { people: string[] };
+  await MeshoptSimplifier.ready;
+  const raws = await Promise.all(index.people.map(async n => bakeLook((await loader.loadAsync(`${base}/people/${n}.glb`)) as never, n)));
+  return { people: packPeople(raws, raws.map(r => lodOf(r, 0.25, MeshoptSimplifier))), names: index.people };
+}
+
 export class Game {
   stage!: Stage;
   client!: SimClient;
@@ -53,6 +74,8 @@ export class Game {
   /** что видно на полу: паллеты, фуры, помещения — из срезов */
   readonly view = new SceneState();
   private shownVersion = -1;
+  /** паллеты, которые сейчас везут: их нет на местах, они на вилах */
+  private moving = '';
   speed: Speed = 1;
   /** промотка «До утра» — до ближайших 08:00; `ffLeft` — сколько игровых секунд ещё отправить */
   ff = false;
@@ -87,6 +110,8 @@ export class Game {
     g.layout = layoutOf(planOf(db, sc.plant));
     // паллет в сцене — сколько мест в плане и ещё на фуры и в помещения
     g.stage = new Stage({ host, layout: g.layout, db, quality, capacity: g.layout.plan.slots.length + 256 });
+    const crowd = await loadPeople();
+    g.stage.setPeople(crowd.people, crowd.names);
     g.client = new SimClient('./sim.js');
     g.client.onSlice = s => g.receive(s);
     g.client.onError = m => store.set({ error: m });
@@ -105,10 +130,7 @@ export class Game {
     this.day = sl.day;
     this.lag = s.lag;
     this.view.apply(sl);
-    if (this.view.version !== this.shownVersion) {
-      this.shownVersion = this.view.version;
-      this.stage.setPallets(palletsOf(this.db, this.scenario.plant, this.view));
-    }
+    this.showPallets();
     this.stage.setTrucks(this.view.trucks, d => dockFront(this.layout, d));
     this.stage.setRooms(this.view.rooms);
     for (const n of s.notices) this.notice(n);
@@ -118,6 +140,23 @@ export class Game {
       this.speed = 0;
     }
     this.gotSlice();
+  }
+
+  /** Паллеты на местах — когда изменился учёт или то, какие паллеты сейчас везут. */
+  private showPallets(moving: number[] = []) {
+    const key = moving.join(',');
+    if (this.view.version === this.shownVersion && key === this.moving) return;
+    this.shownVersion = this.view.version;
+    this.moving = key;
+    this.stage.setPallets(palletsOf(this.db, this.scenario.plant, this.view, new Set(moving)));
+  }
+
+  /** Люди и техника — где они в момент часов завода; паллеты на вилах. */
+  private showMovers(ts: number) {
+    const v = this.view;
+    const mv = moversAt(this.db, this.layout.plan, v.tasks, v.people, v.vehicles, this.t);
+    this.showPallets(mv.carried.map(c => c.unit).sort((a, b) => a - b));
+    this.stage.setMovers(mv, carriedOf(v, mv.carried, c => (c.placed ? levelY(c.level) : forkY(c.level))), ts / 1000);
   }
 
   private notice(n: Notice) {
@@ -162,6 +201,7 @@ export class Game {
     this.client.frame(game, this.ff ? 14 : 8);
     this.edgePan(dt);
     const a = performance.now();
+    this.showMovers(ts);
     this.stage.frame(dt, (((this.t % 86400) + 86400) % 86400) / 3600);
     this.push(this.frames.draw, performance.now() - a);
     if (!this.firstFrameMs) {

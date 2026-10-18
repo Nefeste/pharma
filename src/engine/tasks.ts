@@ -71,7 +71,7 @@ export function pointOf(plan: PlantPlan, s: PlantState, p: Place): Point {
  * Куда везут груз задачи без своего места: в фуру у рампы или на паллету заказа в экспедиции; слесарь несёт запчасть
  * к машине — в её помещение; балк к линии несут к первой её машине.
  */
-function destOf(plan: PlantPlan, s: PlantState, t: Task): Point | undefined {
+export function destOf(plan: PlantPlan, s: PlantState, t: Task): Point | undefined {
   if (t.kind === 'repair' && t.room) return plan.room[t.room];
   if (t.kind === 'feed' && t.line) {
     const m = plan.plant.lines.find(l => l.id === t.line)!.machines[0];
@@ -82,7 +82,7 @@ function destOf(plan: PlantPlan, s: PlantState, t: Task): Point | undefined {
   return u?.where.kind === 'slot' ? plan.slot[u.where.id] : undefined;
 }
 
-function levelOf(plan: PlantPlan, p: Place | string | undefined): number {
+export function levelOf(plan: PlantPlan, p: Place | string | undefined): number {
   if (!p) return 0;
   if (typeof p === 'string') return plan.slot[p].level;
   return p.kind === 'slot' ? plan.slot[p.id].level : 0;

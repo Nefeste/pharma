@@ -2,7 +2,8 @@
 // PLAYWRIGHT_BROWSERS_PATH) открывает dist/. Страница грузится, сцена видна, часы завода идут; ×4 двигает их на часы;
 // пробел — пауза; «До утра» (клавиша 5) доходит до планёрки в 08:00 и ставит паузу. Завод из плана (2а,
 // docs/specs/2026-10-view.md): переключатель стен; снимки с трёх высот камеры — участок, цех, машина — днём и ночью;
-// вызовы отрисовки — в бюджете. Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
+// вызовы отрисовки — в бюджете. Люди и техника (2б): в 08:00 люди смены и техника на полу. Ошибок в консоли и запросов
+// наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
@@ -89,8 +90,13 @@ try {
   if (!shown) fail(`извещение: ${notice}`);
   else ok(`извещение: ${notice}`);
 
-  // снимок: общий план завода
+  // люди смены и техника — на полу (2б)
   await page.waitForTimeout(300);
+  const floor = await page.evaluate(() => ({ people: window.__game.stage.peopleShown, vehicles: window.__game.stage.vehiclesShown }));
+  if (floor.people < 1 || floor.vehicles < 1) fail(`на полу: людей ${floor.people}, техники ${floor.vehicles}`);
+  else ok(`на полу: людей ${floor.people}, техники ${floor.vehicles}`);
+
+  // снимок: общий план завода
   await page.screenshot({ path: join(out, 'e2e.png') });
   ok(`снимок: ${join(out, 'e2e.png')}`);
 

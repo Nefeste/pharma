@@ -1,22 +1,39 @@
-// Сцена завода (docs/02-architecture.md, §10; docs/specs/2026-10-view.md, 2а): отрисовщик, свет, камера и постобработка —
+// Сцена завода (docs/02-architecture.md, §10; docs/specs/2026-10-view.md, 2а–2б): отрисовщик, свет, камера и постобработка —
 // копии «Больницы» (view.ts, post.ts, gpu.ts); стены со срезом, двери, светильники и полы — её копии под план завода
-// (world.ts, doors.ts, lamps.ts, textures.ts); двор, разметка склада, стеллажи, грузы, фуры, таблички и короба
-// оборудования — свои. Всё стоит по плану движка (`planOf`), паллеты и фуры — из среза.
+// (world.ts, doors.ts, lamps.ts, textures.ts); люди — её толпа на видеокарте (bake.ts, people.ts); двор, разметка склада,
+// стеллажи, грузы, фуры, техника, таблички и короба оборудования — свои. Всё стоит по плану движка (`planOf`), паллеты,
+// фуры, люди и техника — из среза.
 import * as THREE from 'three';
+import type { Movers } from '../app/movers';
 import type { ContentDb } from '../content/types';
 import type { RoomRow, TruckRow } from '../sim/pack';
+import type { People } from './bake';
 import { buildBoxes } from './boxes';
+import { dressOf, lookOf, skinOf } from './cast';
 import { buildDoors, type Doors } from './doors';
 import { GpuTimer } from './gpu';
 import { buildLamps, type Lamps } from './lamps';
 import type { Layout } from './layout';
 import { buildRacks, Loads, type PalletView } from './loads';
+import { type Body, IDLE, PeopleView, WALK } from './people';
 import { Post } from './post';
 import { Signs } from './signs';
 import type { FloorKind, FloorTex } from './textures';
 import { Trucks } from './trucks';
+import { Fleet } from './vehicles';
 import { createRenderer, Daylight, gpuString, IsoCamera, PRESETS, type Quality } from './view';
 import { buildFloors, buildGround, buildMarkings, buildWalls, type WallMode, type Walls } from './world';
+
+/** Сколько людей рисуется самое большее (на вид). */
+const MAX_PEOPLE = 64;
+/** Ближе этого (половина высоты кадра, м) люди — полной моделью, дальше — упрощённой. */
+const FULL_NEAR = 14;
+
+/** Человек на экране с тем, по чему его красить. */
+interface Shown extends Body {
+  role: string;
+  person: number;
+}
 
 export interface StageInit {
   host: HTMLElement;
@@ -37,7 +54,16 @@ export class Stage {
   readonly doors: Doors;
   readonly lamps: Lamps;
   readonly trucks = new Trucks();
+  readonly fleet: Fleet;
+  /** паллеты, которые везут: на вилах и только что поставленные */
+  readonly carried = new Loads(16);
   readonly signs: Signs;
+  private people?: PeopleView;
+  private looks: string[] = [];
+  private shown: Shown[] = [];
+  /** где сейчас люди и техника — двери открываются перед ними */
+  private near: { x: number; z: number }[] = [];
+  private paint = new Map<string, { clothes: THREE.Color; skin: THREE.Color }>();
   private floors: THREE.Mesh[];
   private floorTex = new Map<FloorKind, FloorTex>();
   private post: Post | null = null;
@@ -79,6 +105,9 @@ export class Stage {
     this.loads = new Loads(init.capacity);
     this.scene.add(this.loads.group);
     this.scene.add(this.trucks.group);
+    this.fleet = new Fleet(Object.keys(init.db.vehicles));
+    this.scene.add(this.fleet.group);
+    this.scene.add(this.carried.group);
     this.signs = new Signs(layout, init.db);
     this.scene.add(this.signs.group);
     this.applyQuality(init.quality);
@@ -97,6 +126,54 @@ export class Stage {
 
   setRooms(rows: readonly RoomRow[]) {
     this.signs.set(rows);
+  }
+
+  /** Сколько людей и техники нарисовано в последнем кадре — для сценария в браузере и бенча. */
+  get peopleShown() {
+    return (this.people?.nearCount ?? 0) + (this.people?.farCount ?? 0);
+  }
+  vehiclesShown = 0;
+
+  /** Запечённые виды людей (`names` — их имена по порядку): с ними на полу появляются люди. */
+  setPeople(p: People, names: string[]) {
+    this.people = new PeopleView(p, MAX_PEOPLE);
+    this.looks = names;
+    this.scene.add(this.people.group);
+  }
+
+  /**
+   * Люди и техника кадра (`src/app/movers.ts`) и паллеты на вилах. Водитель ричтрака стоит в нём, рохлю толкают сзади;
+   * `clock` — секунды жизни окна для шага анимации: шаг идёт с обычной скоростью и на ×4.
+   */
+  setMovers(mv: Movers, carried: readonly PalletView[], clock: number) {
+    const roles = Object.keys(this.init.db.roles);
+    const types = Object.keys(this.init.db.vehicles);
+    this.fleet.set(mv.vehicles);
+    this.vehiclesShown = mv.vehicles.length;
+    this.carried.set(carried);
+    const shown: Shown[] = [];
+    const near: { x: number; z: number }[] = [];
+    for (const f of mv.people) {
+      let { x, z, heading } = f;
+      let y = 0;
+      let clip = f.doing === 'walk' ? WALK : IDLE;
+      if (f.doing === 'ride') {
+        const v = mv.vehicles.find(m => m.vehicle === f.vehicle);
+        if (v) {
+          ({ x, z } = this.fleet.driverAt(v.type, v));
+          heading = v.heading;
+          const walks = types[v.type] === 'veh.jack';
+          clip = walks && v.moving ? WALK : IDLE;
+          y = walks ? 0 : 0.12;
+        }
+      }
+      const role = roles[f.role];
+      shown.push({ x, y, z, heading, look: lookOf(this.looks, role, f.person), clip, clipTime: clock + (f.person % 7) * 0.31, loop: true, lie: 0, role, person: f.person });
+      near.push({ x, z });
+    }
+    for (const v of mv.vehicles) near.push({ x: v.x, z: v.z });
+    this.shown = shown;
+    this.near = near;
   }
 
   setWalls(m: WallMode) {
@@ -136,10 +213,23 @@ export class Stage {
       this.lamps.setHour(hour, this.floors.map(m => m.material as THREE.MeshStandardMaterial));
     }
     this.lamps.update(u, cam.half);
-    // в 2а людей и техники на экране ещё нет: распашные двери закрыты, ворота рамп — по фурам
-    this.doors.update(dt, () => false, this.docked, u);
+    // двери — перед людьми и техникой, ворота рамп — по фурам
+    const near = this.near;
+    this.doors.update(dt, (x, z, r) => near.some(p => (p.x - x) ** 2 + (p.z - z) ** 2 < r * r), this.docked, u);
+    this.people?.update(this.shown, b => this.paintOf(b), cam.target, 1000, cam.half < FULL_NEAR);
     this.signs.update(u, cam.half);
     this.draw();
+  }
+
+  /** Одежда — по роли, тон кожи — по номеру человека (cast.ts). */
+  private paintOf(b: Shown) {
+    const key = `${b.role}/${b.person}`;
+    let p = this.paint.get(key);
+    if (!p) {
+      p = { clothes: new THREE.Color(dressOf(b.role).color), skin: new THREE.Color(skinOf(b.person)) };
+      this.paint.set(key, p);
+    }
+    return p;
   }
 
   private draw() {

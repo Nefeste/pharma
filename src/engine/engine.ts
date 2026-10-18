@@ -16,6 +16,7 @@ import { marketDone, marketHour, marketStep, newCustomers, rznPublished } from '
 import { BATCH_HOUR, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
 import { planOf } from './plant';
 import { qaDone, qaStep, releaseCommand } from './qa';
+import { foreign, seatCommand } from './seats';
 import { goHome, LAST_CALL, postArrive, toPosts } from './staff';
 import { createLot, findSlot } from './stock';
 import { placePo } from './supply';
@@ -133,6 +134,9 @@ export function apply(db: ContentDb, s: PlantState, cmd: Command, more?: () => b
 }
 
 function command(db: ContentDb, s: PlantState, cmd: Command, more?: () => boolean): Notice[] {
+  // своё и чужое (3е): команда игрока чужого поста — отказ с местом, чья она
+  const own = foreign(s, cmd);
+  if (own) return [{ kind: 'refused', cmd: cmd.kind, why: 'notYours', detail: own }];
   switch (cmd.kind) {
     case 'advance':
       if (cmd.seconds <= 0) return [];
@@ -177,6 +181,11 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: () => boolea
       const notices: Notice[] = [];
       shiftCommand(s, cmd, notices);
       steps(db, s, notices);
+      return notices;
+    }
+    case 'seat': {
+      const notices: Notice[] = [];
+      seatCommand(db, s, cmd, notices);
       return notices;
     }
   }

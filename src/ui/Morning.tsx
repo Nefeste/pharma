@@ -1,12 +1,12 @@
-// Планёрка в 08:00 (docs/specs/2026-10-panels.md, 3в; docs/13-art.md, §11): страница, которую читают минуту, — вчера в
-// цифрах, одна главная потеря, одна подсказка; что было с прошлой планёрки; что ждёт сейчас. Большое окно поверх карты с
+// Планёрка в 08:00 (docs/specs/2026-10-panels.md, 3в; docs/13-art.md, §11): страница, которую читают минуту, — ваше место
+// за время на нём (3е), вчера в цифрах, одна главная потеря, одна подсказка; что было с прошлой планёрки; что ждёт сейчас. Большое окно поверх карты с
 // вопросом в заголовке. Вид собирает поток расчёта (src/sim/report.ts) без слов и без истины; слова — отсюда.
 import type { ReactNode } from 'react';
 import type { PartType } from '../content/types';
 import { civilFromDays, momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
 import { dateText, dayText, durText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
-import type { LineSum, MainLoss, MorningView } from '../sim/report';
+import type { LineSum, MainLoss, MorningView, SeatSum } from '../sim/report';
 import type { Thing } from '../sim/views';
 import { db } from './db';
 import type { Actions } from './store';
@@ -69,6 +69,43 @@ function Rows({ title, rows }: { title: string; rows: ReactNode[] }) {
   );
 }
 
+/** Итог места за время на нём (3е): мерило места строками. */
+function SeatBlock({ x, start }: { x: SeatSum; start: Ymd }) {
+  const rows: string[] = [];
+  switch (x.seat) {
+    case 'production': {
+      const packs = (n: number) => T.morning.packs(num(n));
+      rows.push(x.shifts === 0 ? T.morning.prod.noShifts : T.morning.prod.plan(packs(x.fact), packs(x.plan), pctText(Math.floor((x.fact * 10000) / x.plan))));
+      if (x.rhythm !== undefined) rows.push(T.morning.prod.rhythm(pctText(x.rhythm)));
+      for (const l of x.lines) rows.push(l.oee ? T.morning.prod.oee(T.morning.line(l.line + 1), pctText(Math.min(l.oee.oee, 10000))) : T.morning.prod.noOee(T.morning.line(l.line + 1)));
+      rows.push(T.morning.prod.recleans(x.recleans));
+      break;
+    }
+    case 'quality':
+      rows.push(T.morning.qual.devs(x.deviations, x.open));
+      rows.push(x.decided === 0 ? T.morning.qual.noDecisions : T.morning.qual.first(x.first, x.decided));
+      if (x.toDecision !== undefined) rows.push(T.morning.qual.toDecision(durText(x.toDecision)));
+      break;
+    case 'director':
+      rows.push(T.morning.dir.cash(money(x.balance), money(x.change, true)));
+      rows.push(x.closed === 0 ? T.morning.dir.noOrders : T.morning.dir.orders(x.onTime, x.closed));
+      rows.push(T.morning.dir.rejected(x.rejected));
+      break;
+    default:
+      rows.push(T.morning.otherSeat);
+  }
+  return (
+    <div className="mblock" data-test="morning-seat" data-seat={x.seat}>
+      <div className="mhead">{T.morning.seatSince(T.seats.names[x.seat], dayText(momentOf(start, x.from).day))}</div>
+      <ul className="mlist">
+        {rows.map((r, i) => (
+          <li key={i}>{r}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningView; day: number; start: Ymd; plant: string; pause: boolean; actions: Actions }) {
   const d = civilFromDays(day);
   const at = momentOf(d, 0);
@@ -92,6 +129,13 @@ export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningV
         <div className="muted">{T.app.loading}</div>
       ) : (
         <>
+          {v.seats.length > 0 ? (
+            <Section title={T.morning.seatsTitle}>
+              {v.seats.map(x => (
+                <SeatBlock key={x.seat} x={x} start={start} />
+              ))}
+            </Section>
+          ) : null}
           <Section title={T.morning.yesterday(T.date.full(yest.d, T.date.months[yest.m - 1], yest.y))}>
             {v.first ? <div className="muted" data-test="morning-yesterday">{T.morning.first}</div> : null}
             {v.first ? null : (

@@ -451,7 +451,7 @@ export function viewOf(db: ContentDb, s: PlantState, q: ViewQuery): ViewData {
     case 'cash':
       return cashView(db, s, q);
     case 'top':
-      return topView(s);
+      return topView(db, s);
     case 'lab':
       return labView(db, s);
     case 'chart':

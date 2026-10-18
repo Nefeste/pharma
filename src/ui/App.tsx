@@ -1,7 +1,7 @@
 // Панели (геймдизайн, §18): верхняя полоса — дата и часы завода, сутки, скорости, «До утра», стены, склад, планёрка,
 // касса с изменением за сутки, извещение; панель склада и карточка выбранной вещи (docs/specs/2026-10-panels.md, 3б);
-// планёрка и панель кассы (3в); лаборатория (3г); расписание (3д); полоса отладки; состояние загрузки и ошибки. Панели
-// только читают хранилище и зовут действия игры.
+// планёрка и панель кассы (3в); лаборатория (3г); расписание (3д); экран «Кем вы будете» и кнопка «Место» (3е); полоса
+// отладки; состояние загрузки и ошибки. Панели только читают хранилище и зовут действия игры.
 import { useLayoutEffect, useRef } from 'react';
 import { momentOf } from '../engine/core/calendar';
 import { clock, dateText, money, T } from '../i18n';
@@ -12,13 +12,14 @@ import { Cash } from './Cash';
 import { Gantt } from './Gantt';
 import { Lab } from './Lab';
 import { Morning } from './Morning';
+import { Seats } from './Seats';
 import { Stock } from './Stock';
 import { type Actions, LIVE, type Speed, type Store, useHud } from './store';
 
 const SPEEDS: Speed[] = [1, 2, 3, 4];
 const WALLS: WallMode[] = ['full', 'cut', 'down'];
 
-export function App({ store, actions, plant }: { store: Store; actions: Actions; plant: string }) {
+export function App({ store, actions, plant, scenario }: { store: Store; actions: Actions; plant: string; scenario: string }) {
   const s = useHud(store);
   // низ верхней полосы — для панелей под ней: на узком окне полоса переносится во вторую строку
   const top = useRef<HTMLDivElement>(null);
@@ -37,6 +38,7 @@ export function App({ store, actions, plant }: { store: Store; actions: Actions;
     );
   if (!s.ready) return <div className="status panel">{T.app.loading}</div>;
   const m = momentOf(s.start, s.t);
+  const mine = s.top?.seats?.map(id => T.seats.names[id]).join(', ');
   return (
     <>
       <div className="top panel" ref={top}>
@@ -72,6 +74,9 @@ export function App({ store, actions, plant }: { store: Store; actions: Actions;
           ))}
         </span>
         <span className="group">
+          <button type="button" className={`seatbtn${s.seats.open ? ' on' : ''}`} onClick={() => actions.openSeats()} title={`${T.seats.hint}${mine ? ` · ${mine}` : ''}`} data-test="seats-open">
+            {mine ? `${T.seats.button}: ${mine}` : T.seats.button}
+          </button>
           <button type="button" className={s.stock.open ? 'on' : ''} onClick={() => actions.toggleStock()} title={T.stock.hint} data-test="stock">
             {T.stock.button}
           </button>
@@ -102,6 +107,7 @@ export function App({ store, actions, plant }: { store: Store; actions: Actions;
       {s.lab.open && <Lab hud={s} actions={actions} />}
       {s.morning.open && s.morning.day !== undefined && <Morning v={s.morning.view} day={s.morning.day} start={s.start} plant={plant} pause={s.morningPause} actions={actions} />}
       {s.gantt.open && <Gantt hud={s} actions={actions} plant={plant} />}
+      {s.seats.open && <Seats hud={s} actions={actions} scenario={scenario} />}
       {s.selected && s.card && <Card v={s.card} start={s.start} plant={plant} actions={actions} beside={s.stock.open || s.cash.open || s.lab.open} />}
       {s.debug && (
         <div className="debug panel">

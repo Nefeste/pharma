@@ -11,7 +11,7 @@ import { clock, dayText, durText, named, qtyText, T, whenText } from '../i18n';
 import type { BatchLabel, GanttRow, GanttView } from '../sim/plan';
 import type { Thing } from '../sim/views';
 import { db } from './db';
-import type { Actions, GanttDays, Hud } from './store';
+import { type Actions, type GanttDays, type Hud, holds } from './store';
 
 /** Шаг срока, куда тянут: 15 минут; стрелка с Shift — час. */
 const SNAP = 15 * 60;
@@ -65,7 +65,9 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
   const day = (t: number) => momentOf(start, t).day;
   const roomType = new Map(v.rows.map(r => [r.id, r.type]));
   const roomName = (id: string) => T.roomTypes[roomType.get(id) ?? ''] ?? id;
-  const movable = new Set(v.movable);
+  // тянуть — только с постом производства (3е): расписание — его команда
+  const mine = holds(hud, 'production');
+  const movable = new Set(mine ? v.movable : []);
   const labels: Labels = { ...v.batches, ...(g.ghost?.batches ?? {}) };
 
   /** Мгновение — словами для причин: сегодня — часы; в пределах недели — день недели и часы; дальше — дата и часы. */
@@ -314,7 +316,9 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
           <span className="gbar k-stage w-plan">{T.gantt.when.plan}</span>
           <span className="goff-key">{T.gantt.off}</span>
         </span>
-        <span className="muted">{T.gantt.hintDrag}</span>
+        <span className="muted" data-test="gantt-hint">
+          {mine ? T.gantt.hintDrag : T.seats.gantt}
+        </span>
         {v.stuck.length > 0 ? <span className="bad">{T.gantt.stuck(v.stuck.map(id => who(labels, id)).join(', '))}</span> : null}
       </div>
       {g.drag && tip ? (

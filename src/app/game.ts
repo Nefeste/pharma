@@ -161,6 +161,10 @@ export class Game {
     new ResizeObserver(() => g.stage.resize()).observe(host);
     g.bindInput();
     store.set({ ready: true, start: sc.start.date, quality, walls: g.stage.wallMode });
+    // игра начинается с экрана «Кем вы будете» (3е): мир стоит, пока место не выбрано; «Взять» пустит его на ×1
+    g.speed = 0;
+    g.resume = 1;
+    store.set({ seats: { open: true, pick: [] } });
     g.sendViews();
     requestAnimationFrame(g.loop);
     return g;
@@ -276,6 +280,7 @@ export class Game {
       : n.kind === 'cashLow' ? T.notices.cashLow
       : n.kind === 'failure' ? T.notices.failure
       : n.kind === 'repaired' ? T.notices.repaired
+      : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;
     this.notices.unshift({ t: this.t, text });
@@ -360,11 +365,14 @@ export class Game {
 
   readonly actions: Actions = {
     setSpeed: s => {
+      // пока открыт экран «Кем вы будете», мир стоит
+      if (this.store.get().seats.open) return;
       this.speed = s;
       this.ff = false;
       this.hud();
     },
     untilMorning: () => {
+      if (this.store.get().seats.open) return;
       // часы игры — это часы завода плюс отставание расчёта
       const now = this.t + this.lag;
       const day = Math.floor(now / 86400) * 86400;
@@ -431,6 +439,32 @@ export class Game {
       if (!g.drag) return;
       this.store.set({ gantt: { ...g, drag: undefined, ghost: undefined } });
       this.sendViews();
+    },
+    openSeats: () => {
+      // сменить место — на паузе; «Взять» пустит мир с прежней скоростью
+      if (this.speed !== 0) this.resume = this.speed;
+      this.speed = 0;
+      this.ff = false;
+      this.store.set({ seats: { open: true, pick: [...(this.store.get().top?.seats ?? [])] } });
+      this.hud();
+    },
+    pickSeat: seat => {
+      const h = this.store.get();
+      if (!this.scenario.seats.includes(seat)) return;
+      const pick = h.seats.pick.includes(seat) ? h.seats.pick.filter(x => x !== seat) : [...h.seats.pick, seat];
+      this.store.set({ seats: { ...h.seats, pick } });
+    },
+    takeSeats: () => {
+      const h = this.store.get();
+      if (h.seats.pick.length === 0) return;
+      this.client.command({ kind: 'seat', seats: h.seats.pick });
+      this.store.set({ seats: { open: false, pick: [] } });
+      this.actions.setSpeed(this.resume);
+    },
+    closeSeats: () => {
+      // в начале партии место нужно выбрать: закрыть экран нечем
+      if (!this.store.get().top?.seats) return;
+      this.store.set({ seats: { open: false, pick: [] } });
     },
     setStock: patch => {
       const st = this.store.get().stock;
@@ -666,6 +700,11 @@ export class Game {
     window.addEventListener('keydown', e => {
       if ((e.target as HTMLElement | null)?.tagName === 'INPUT') return;
       const k = e.code;
+      // экран «Кем вы будете» — поверх всего: клавиши мира молчат, Esc закрывает его, если место уже выбрано
+      if (this.store.get().seats.open) {
+        if (k === 'Escape') this.actions.closeSeats();
+        return;
+      }
       // в окне расписания стрелки двигают задание, а не камеру (Gantt.tsx)
       if ((e.target as HTMLElement | null)?.closest?.('.gantt') && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(k)) return;
       if (k === 'Space') {

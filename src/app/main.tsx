@@ -6,7 +6,7 @@ import { setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import { App } from '../ui/App';
 import { type Actions, Store } from '../ui/store';
-import { Game, PLANT } from './game';
+import { Game, PLANT, SCENARIO } from './game';
 
 declare const __VERSION__: string;
 
@@ -46,8 +46,12 @@ const actions: Actions = {
   drag: later('drag'),
   drop: later('drop'),
   cancelDrag: later('cancelDrag'),
+  openSeats: later('openSeats'),
+  pickSeat: later('pickSeat'),
+  takeSeats: later('takeSeats'),
+  closeSeats: later('closeSeats'),
 };
-createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} plant={PLANT} />);
+createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} plant={PLANT} scenario={SCENARIO} />);
 
 const quality = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q')) ?? 'medium';
 
@@ -59,6 +63,9 @@ Game.create(document.getElementById('view')!, store, quality)
     const has = (k: string) => q.get(k) === '1' || args.includes(`--${k}`);
     const val = (k: string) => q.get(k) ?? (args.includes(`--${k}`) ? args[args.indexOf(`--${k}`) + 1] : null);
     if (has('bench')) {
+      // бенч сцены — директором: экран «Кем вы будете» не заслоняет снимки
+      g.actions.pickSeat('director');
+      g.actions.takeSeats();
       const { runBench } = await import('./bench');
       const num = (k: string) => (val(k) ? Number(val(k)) : undefined);
       const qs = val('qualities')?.split(',') as Quality[] | undefined;

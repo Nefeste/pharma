@@ -2,13 +2,13 @@
 // (views.ts). Планёрка говорит о вчерашних календарных сутках — потери, смены и OEE движок ведёт по ним, — о событиях за
 // 24 часа до неё и о том, что ждёт сейчас. Данные — без слов и без истины: время машин, счётчики линии, ожидания задач,
 // записи отклонений, журнал оборудования, решения, заказы и проводки — то, что завод мог узнать.
-import type { ContentDb, Dept, Id } from '../content/types';
+import type { ContentDb, Dept, Id, SeatId } from '../content/types';
 import { DAY, momentOf } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
 import { P_ONE } from '../engine/core/rng';
 import { AREA, type Oee, oee, rhythm, shiftsOfDay } from '../engine/lean';
 import { planOf } from '../engine/plant';
-import type { CashItem, DayLoss, Deviation, LineDay, MachineTimes, PlantState, TaskKind, WaitCause } from '../engine/types';
+import type { Batch, CashItem, DayLoss, Deviation, LineDay, MachineTimes, PlantState, TaskKind, WaitCause } from '../engine/types';
 import type { Thing } from './views';
 
 /** Планёрка в 08:00 суток `day` (номер дня от 1970-01-01). */
@@ -146,6 +146,8 @@ export interface MorningView {
   broken: BrokenRow[];
   risk: RiskRow[];
   cash: { balance: number; day: number; next?: { due: number; item: CashItem; sum: number } };
+  /** ваше место (3е): итог каждого взятого места за время на нём */
+  seats: SeatSum[];
 }
 
 const LOAD: (keyof MachineTimes)[] = ['run', 'slow', 'micro', 'fail', 'wait', 'setup'];
@@ -359,7 +361,140 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     broken,
     risk: risks(db, s),
     cash: { balance: s.cash.balance, day: dayChange(s, s.t), ...(next ? { next: { due: next.due, item: next.item, sum: next.sum } } : {}) },
+    seats: seatSums(db, s),
   };
+}
+
+// ---------------------------------------------------------------- ваше место (3е)
+
+/** Итог места за время на нём (геймдизайн, §29.2): с какого мгновения игрок держит место и мерило места. */
+export type SeatSum =
+  | {
+      seat: 'production';
+      from: number;
+      /** сменные задания линий: задание и выпуск, пачки, по кончившимся сменам */
+      plan: number;
+      fact: number;
+      shifts: number;
+      rhythm?: number;
+      lines: { line: number; oee?: Oee }[];
+      recleans: number;
+    }
+  | {
+      seat: 'quality';
+      from: number;
+      /** отклонений открыто за время на месте и сколько из них ещё открыто */
+      deviations: number;
+      open: number;
+      /** серий решено уполномоченным лицом; из них выпущено без отклонений; среднее от конца упаковки до решения, с */
+      decided: number;
+      first: number;
+      toDecision?: number;
+    }
+  | {
+      seat: 'director';
+      from: number;
+      balance: number;
+      /** изменение кассы за время на месте */
+      change: number;
+      /** заказы покупателей, закрытые за время на месте, и из них отгруженные в срок и полностью */
+      closed: number;
+      onTime: number;
+      rejected: number;
+    }
+  | { seat: 'supply' | 'commerce'; from: number };
+
+/** Сутки линии за несколько суток: время, проход, выпуск по номиналу и годные — суммой; OEE ключевой машины. */
+function lineOee(days: LineDay[]): Oee | undefined {
+  if (days.length === 0) return undefined;
+  const n = days[0].ideal.length;
+  const ideal = Array.from({ length: n }, (_, i) => days.reduce((x, d) => x + (d.ideal[i] ?? 0), 0));
+  let key = 0;
+  ideal.forEach((v, i) => {
+    if (v < ideal[key]) key = i;
+  });
+  const run = days.reduce((x, d) => x + (d.run[key] ?? 0), 0);
+  const out = days.reduce((x, d) => x + (d.times[key]?.out ?? 0), 0);
+  return oee({ ideal: ideal[key], run, out }, days.reduce((x, d) => x + d.good, 0));
+}
+
+/** Когда серию решили: выпуск — по записи серии, отклонение ГП — по статусу её партии; балк отклоняет лаборатория, не УЛ. */
+function decidedAt(s: PlantState, b: Batch): number | undefined {
+  if (b.status === 'released') return b.released;
+  const fg = b.pack?.fg ? s.lots[b.pack.fg] : undefined;
+  return b.status === 'rejected' && fg?.status === 'rejected' ? fg.since : undefined;
+}
+
+/** Серия без отклонений: ни у неё, ни у её балка и ГП. */
+const clean = (s: PlantState, b: Batch) => !Object.values(s.deviations).some(d => d.batch === b.id || (d.lot !== undefined && (d.lot === b.bulk || d.lot === b.pack?.fg)));
+
+/** Отклонённой партии своей серии — когда; такой нет — `undefined`. */
+function rejectedAt(s: PlantState, b: Batch): number | undefined {
+  if (b.status !== 'rejected') return undefined;
+  for (const id of [b.bulk, b.pack?.fg]) if (id && s.lots[id]?.status === 'rejected') return s.lots[id].since;
+  return undefined;
+}
+
+/**
+ * Итог каждого места, которое игрок держит сейчас, — за время на нём. Сменные задания, сутки линии и повторные уборки
+ * движок ведёт по календарным суткам: сутки, в которые место взяли, — целиком. Остальное — с мгновения, когда взяли.
+ */
+export function seatSums(db: ContentDb, s: PlantState): SeatSum[] {
+  return (s.seats ?? []).filter(x => x.to === undefined).map(x => seatSum(db, s, x.seat, x.from));
+}
+
+function seatSum(db: ContentDb, s: PlantState, seat: SeatId, from: number): SeatSum {
+  switch (seat) {
+    case 'production': {
+      const day = momentOf(s.start, from).day;
+      const tasks = s.shiftTasks.filter(t => momentOf(s.start, t.from).day >= day && t.plan > 0 && t.fact !== undefined);
+      const days = s.losses.filter(d => d.day >= day);
+      const r = rhythm(tasks);
+      return {
+        seat,
+        from,
+        plan: tasks.reduce((n, t) => n + t.plan, 0),
+        fact: tasks.reduce((n, t) => n + (t.fact ?? 0), 0),
+        shifts: tasks.length,
+        ...(r !== undefined ? { rhythm: r } : {}),
+        lines: planOf(db, s.plant).plant.lines.map((l, n) => {
+          const o = lineOee(days.flatMap(d => (d.lines[l.id] ? [d.lines[l.id]] : [])));
+          return { line: n, ...(o ? { oee: o } : {}) };
+        }),
+        recleans: days.reduce((n, d) => n + d.recleans, 0),
+      };
+    }
+    case 'quality': {
+      const devs = Object.values(s.deviations).filter(d => d.opened >= from);
+      const decided = Object.values(s.batches).filter(b => (decidedAt(s, b) ?? -1) >= from);
+      const waited = decided.filter(b => b.status === 'released' && b.released !== undefined && b.pack?.end !== undefined).map(b => b.released! - b.pack!.end!);
+      return {
+        seat,
+        from,
+        deviations: devs.length,
+        open: devs.filter(d => d.status === 'open').length,
+        decided: decided.length,
+        first: decided.filter(b => b.status === 'released' && clean(s, b)).length,
+        ...(waited.length > 0 ? { toDecision: Math.round(waited.reduce((a, b) => a + b, 0) / waited.length) } : {}),
+      };
+    }
+    case 'director': {
+      const closed = Object.values(s.orders)
+        .filter(o => o.status !== 'open')
+        .filter(o => (o.shipment && s.shipments[o.shipment] ? s.shipments[o.shipment].t : o.due) >= from);
+      return {
+        seat,
+        from,
+        balance: s.cash.balance,
+        change: s.cash.ledger.reduce((n, e) => n + (e.t >= from ? e.sum : 0), 0),
+        closed: closed.length,
+        onTime: closed.filter(o => o.status === 'shipped').length,
+        rejected: Object.values(s.batches).filter(b => (rejectedAt(s, b) ?? -1) >= from).length,
+      };
+    }
+    default:
+      return { seat, from };
+  }
 }
 
 // ---------------------------------------------------------------- касса
@@ -462,6 +597,12 @@ export interface TopView {
   view: 'top';
   balance: number;
   day: number;
+  /** места игрока сейчас (3е); ещё не выбирал — нет; какие места даёт сценарий */
+  seats?: SeatId[];
+  offered: SeatId[];
 }
 
-export const topView = (s: PlantState): TopView => ({ view: 'top', balance: s.cash.balance, day: dayChange(s, s.t) });
+export function topView(db: ContentDb, s: PlantState): TopView {
+  const held = s.seats?.filter(x => x.to === undefined).map(x => x.seat);
+  return { view: 'top', balance: s.cash.balance, day: dayChange(s, s.t), ...(held ? { seats: held } : {}), offered: db.scenarios[s.scenario].seats };
+}

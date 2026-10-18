@@ -6,7 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:">
   <link rel="icon" href="data:,">
   <title>Farmzavod</title>
-  <!-- из bolnitsa: app/index.html @ e0a3491 — изменено: полоса сверху, отладка и состояние (часть 0); карточка вещи — её стиль `.card`, панель склада — своя (3б); планёрка и касса — свои (3в); лаборатория (3г) и расписание (3д) — свои -->
+  <!-- из bolnitsa: app/index.html @ e0a3491 — изменено: полоса сверху, отладка и состояние (часть 0); карточка вещи — её стиль `.card`, панель склада — своя (3б); планёрка и касса — свои (3в); лаборатория (3г), расписание (3д) и «Кем вы будете» (3е) — свои -->
   <style>
     :root {
       --panel: rgba(22, 30, 34, 0.86);
@@ -139,6 +139,19 @@
     .glegend .gbar { position: static; display: inline-block; padding: 0 6px; line-height: 18px; cursor: default; }
     .goff-key { display: inline-block; padding: 0 6px; line-height: 18px; background: rgba(0,0,0,.35); border-radius: 3px; color: var(--muted); }
     .gtip { position: fixed; z-index: 10; max-width: 380px; padding: 6px 10px; font-size: 12px; pointer-events: none; }
+    /* «Кем вы будете» (3е) — посередине поверх всего: пять плиток мест */
+    .seats { position: absolute; left: 50%; top: calc(var(--top-h, 48px) + 16px); transform: translateX(-50%); width: min(1100px, calc(100% - 16px)); max-height: calc(100% - var(--top-h, 48px) - 32px); overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; z-index: 5; background: rgba(22, 30, 34, 0.97); box-shadow: 0 6px 30px rgba(0,0,0,.5); }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+    .tile { display: flex; flex-direction: column; gap: 6px; align-items: stretch; text-align: left; padding: 10px; font-size: 12px; line-height: 1.35; white-space: normal; }
+    .tile .tname { font-size: 15px; }
+    .tile.on { background: rgba(47,181,201,.18); color: var(--text); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+    .tile .tkey { color: var(--muted); }
+    .tile .tnote { color: var(--yellow); }
+    .tile:disabled { opacity: .6; }
+    .tile:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+    .sfoot { display: flex; align-items: center; gap: 12px; }
+    .sfoot .muted { margin-right: auto; }
+    .seatbtn { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   </style>
 </head>
 <body>

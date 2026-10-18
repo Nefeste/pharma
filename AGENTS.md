@@ -140,15 +140,17 @@ first, or copy the working code of Bolnitsa on the same versions.
   vehicles, instruments; why a task waits; a person walking to a post is free and measured from where they are),
   `staff.ts` (shifts; whether a person of a shift may take a task at a moment — shared with the schedule run; a free
   person walks to the post of their role, and to the exit 15 minutes before the end of the shift; where they are on the
-  way; off-shift people leave through the entrance), `invariants.ts`.
+  way; off-shift people leave through the entrance), `seats.ts` (the player's places — the director and four posts:
+  whose each command is, the `seat` command, the log of places; a player's command of another's post is refused),
+  `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`, format 5: rooms, trucks
   with their open body, changed pallets, tasks in progress, people with their walk to a post, vehicles, lines with their
   machines, equipment; no truth fields — not the next micro-stop, not a part's budget), views for panels — the warehouse
   and the card of a thing, built here on request and sent with the slice only when they changed, without truth fields
-  (`views.ts`); the 08:00 meeting — yesterday by calendar day, events of the 24 hours before it, what waits now — the
-  cash panel and the top-bar cash (`report.ts`); the lab queue and the X–Rm control chart of the in-process average
+  (`views.ts`); the 08:00 meeting — the player's places over their tenure, yesterday by calendar day, events of the 24
+  hours before it, what waits now — the cash panel and the top-bar cash with the player's places (`report.ts`); the lab queue and the X–Rm control chart of the in-process average
   tablet mass with its limits and special-cause signs (`lab.ts`); the schedule — the Gantt of the past, the running and
   the schedule run, and the ghost of a dragged batch order (`plan.ts`), Web Worker (`worker.ts`) and its client in the
   window (`client.ts`; how far the window's clock ran ahead of the last slice; at most one `tick` in flight). The window
@@ -176,8 +178,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   composition (`stage.ts`).
 - `src/ui/` — panels (React) and their store: the top bar (`App.tsx`), the warehouse (`Stock.tsx`), the card of a
   thing — what it is, state, why, what can be done, history (`Card.tsx`), the 08:00 meeting (`Morning.tsx`), the cash
-  panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), the schedule window with dragging (`Gantt.tsx`),
-  status icons (`icons.tsx`), the content base for names (`db.ts`); `src/i18n/` — every player-facing string, Russian
+  panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), the schedule window with dragging (`Gantt.tsx`), the
+  «Кем вы будете» screen of places (`Seats.tsx`), status icons (`icons.tsx`), the content base for names (`db.ts`); `src/i18n/` — every player-facing string, Russian
   and English, and number, quantity, money, duration and date formats.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML;
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;

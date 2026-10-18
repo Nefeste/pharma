@@ -130,8 +130,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   date, suppliers, wages twice a month, contributions, energy, VAT by quarter, the credit line), `maint.ts` (machine
   parts, wear by work done, failure by the hazard table of wear, repairs and planned replacement by the mechanic with a
   spare from the workshop, spares replenished by level, the maintenance policy, `maintain`), `lean.ts` (losses per day
-  by kind and department: waiting tasks by cause, a truck waiting for the dock, transport and walking, defects; a batch's
-  time by state; the line master's shift task and the rhythm coefficient), `tasks.ts` (tasks and the dispatcher: people,
+  by kind and department: waiting tasks by cause, a truck waiting for the dock, transport and walking, defects; a line's
+  day — machine times, rated output over loading and working time, good tablets — and `oee()`; a batch's time by state;
+  the line master's shift task and the rhythm coefficient), `tasks.ts` (tasks and the dispatcher: people,
   vehicles, instruments; why a task waits; a person walking to a post is free and measured from where they are),
   `staff.ts` (shifts; a free person walks to the post of their role, and to the exit 15 minutes before the end of the
   shift; where they are on the way; off-shift people leave through the entrance), `invariants.ts`.
@@ -141,9 +142,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   with their open body, changed pallets, tasks in progress, people with their walk to a post, vehicles, lines with their
   machines, equipment; no truth fields — not the next micro-stop, not a part's budget), views for panels — the warehouse
   and the card of a thing, built here on request and sent with the slice only when they changed, without truth fields
-  (`views.ts`), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how far the window's clock ran ahead
-  of the last slice; at most one `tick` in flight). The window never runs the engine. Saves cross the thread boundary as a
-  string: the window never parses the state with the true lot properties.
+  (`views.ts`); the 08:00 meeting — yesterday by calendar day, events of the 24 hours before it, what waits now — the
+  cash panel and the top-bar cash (`report.ts`), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how
+  far the window's clock ran ahead of the last slice; at most one `tick` in flight). The window never runs the engine.
+  Saves cross the thread boundary as a string: the window never parses the state with the true lot properties.
 - `src/app/` — the game in the window: content, stage, clock and speeds with live time 1:1, input, panels (`game.ts`,
   `main.tsx`); what the slice puts on the floor — pallets, trucks, rooms, pallets on forks (`scene.ts`); where people
   and vehicles are now — a pure function of the tasks in the slice and the clock, on the plan's routes and with the
@@ -164,9 +166,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   outline of the selected thing (`select.ts`), people
   — Bolnitsa's crowd on the GPU (`bake.ts`, `people.ts`, copies) with looks and clothes by role (`cast.ts`), the
   composition (`stage.ts`).
-- `src/ui/` — panels (React) and their store: the top bar (`App.tsx`), the warehouse (`Stock.tsx`), the card of a thing —
-  what it is, state, why, what can be done, history (`Card.tsx`), status icons (`icons.tsx`), the content base for names
-  (`db.ts`); `src/i18n/` — every player-facing string, Russian and English, and number, quantity and date formats.
+- `src/ui/` — panels (React) and their store: the top bar (`App.tsx`), the warehouse (`Stock.tsx`), the card of a
+  thing — what it is, state, why, what can be done, history (`Card.tsx`), the 08:00 meeting (`Morning.tsx`), the cash
+  panel (`Cash.tsx`), status icons (`icons.tsx`), the content base for names (`db.ts`); `src/i18n/` — every player-facing
+  string, Russian and English, and number, quantity, money, duration and date formats.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML;
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   plan rules in `plan.ts`: doors on walls, docks on outer walls, class D only through airlocks, reachability, posts on

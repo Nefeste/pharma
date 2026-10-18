@@ -9,7 +9,8 @@
 // следующая заказана, в очереди — событие её прихода. С схемы 8 — посреди смены с заданием: сменное задание открыто,
 // задачи ждут с причиной, у серий идёт время по состояниям. С схемы 9 — фура поставщика у рампы на проверке, кузов закрыт,
 // а люди идут на свои посты: в очереди — события их прихода. С схемы 10 — лаборатория посреди работы: у одних испытаний
-// результат готов (с мгновением), другие идут; у партий — с какого мгновения они в своём статусе.
+// результат готов (с мгновением), другие идут; у партий — с какого мгновения они в своём статусе. С схемы 11 — упаковка
+// посреди суток: у прошлых суток — записи линии, у нынешних запись копится.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { DAY, MIN } from '../../src/engine/core/calendar';
@@ -27,8 +28,9 @@ const repairing = () => Object.values(s.tasks).some(t => t.kind === 'repair' && 
 const planned = () => s.shiftTasks.some(t => t.to === undefined && t.plan > 0) && Object.values(s.tasks).some(t => t.why !== undefined);
 const checking = () => Object.values(s.tasks).some(t => t.kind === 'truckCheck' && t.state === 'busy') && Object.values(s.people).some(p => p.walk);
 const midLab = () => Object.values(s.tests).some(q => q.done !== undefined) && Object.values(s.tests).some(q => q.state !== 'done') && Object.values(s.lots).some(l => l.supplier !== 'start' && l.status === 'released');
+const lineDays = () => s.losses.filter(d => Object.keys(d.lines).length > 0).length >= 2 && Object.values(s.lines).some(l => l.batch && s.batches[l.batch].pack?.state === 'running');
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : midLab();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : lineDays();
 while (s.t < end && !busy()) apply(db, s, { kind: 'advance', seconds: SCHEMA < 6 ? 10 * MIN : MIN });
 writeFileSync(new URL(`./fixtures/save-v${SCHEMA}.json`, import.meta.url), `${toSave(s)}\n`);
 console.log(`fixtures/save-v${SCHEMA}.json: сутки ${s.day}, испытаний ${Object.keys(s.tests).length}`);

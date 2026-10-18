@@ -5,7 +5,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { ContentDb, Scenario } from '../content/types';
-import { momentOf } from '../engine/core/calendar';
+import { DAY, momentOf } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
 import { planOf } from '../engine/plant';
 import type { Notice } from '../engine/types';
@@ -103,6 +103,9 @@ export class Game {
   private machineBoxes: Box[] = [];
   /** набор видов, который поток уже получил: шлём заново, только если изменился */
   private viewsSent = '';
+  /** планёрка (3в): мгновение последней, которую окно видело; скорость, которую включит «Продолжить» */
+  private morningSeen = Number.NEGATIVE_INFINITY;
+  private resume: Speed = 1;
   /** крупность показа: уровень по высоте камеры (с запасом у порогов) и веса уровней на экране (detail.ts) */
   private camLevel: Detail = 1;
   detail: Weights = AT[1];
@@ -158,6 +161,7 @@ export class Game {
     new ResizeObserver(() => g.stage.resize()).observe(host);
     g.bindInput();
     store.set({ ready: true, start: sc.start.date, quality, walls: g.stage.wallMode });
+    g.sendViews();
     requestAnimationFrame(g.loop);
     return g;
   }
@@ -174,18 +178,45 @@ export class Game {
     this.showPallets();
     this.yard.update(this.view.trucks, d => dockFront(this.layout, d), sl.t);
     this.stage.setRooms(this.view.rooms);
-    for (const v of s.views ?? []) {
-      if (v.data.view === 'stock') this.store.set({ stock: { ...this.store.get().stock, view: v.data } });
-      // вид прежнего выбора, отправленный до нового запроса, не показываем
-      else if (same(v.data.thing, this.selected)) this.store.set({ card: v.data });
+    const hud = this.store.get();
+    for (const { data: d } of s.views ?? []) {
+      if (d.view === 'stock') this.store.set({ stock: { ...this.store.get().stock, view: d } });
+      // вид прежнего выбора или прежних суток, отправленный до нового запроса, не показываем
+      else if (d.view === 'card') {
+        if (same(d.thing, this.selected)) this.store.set({ card: d });
+      } else if (d.view === 'morning') {
+        if (hud.morning.open && hud.morning.day === d.day) this.store.set({ morning: { ...this.store.get().morning, view: d } });
+      } else if (d.view === 'cash') {
+        if (hud.cash.open) this.store.set({ cash: { ...this.store.get().cash, view: d } });
+      } else this.store.set({ top: d });
     }
     for (const n of s.notices) this.notice(n);
-    // «До утра» кончается планёркой — и паузой: игрок видит итог суток (геймдизайн, §2)
-    if (this.ff && s.notices.some(n => n.kind === 'morning')) {
-      this.ff = false;
+    if (s.notices.some(n => n.kind === 'morning')) this.morning(sl.t);
+    this.gotSlice();
+  }
+
+  /**
+   * Планёрка в 08:00 (3в): открывается сама; «До утра» и пауза на планёрке (по умолчанию) ставят мир на паузу — игрок видит
+   * итог суток (геймдизайн, §2). Срез мог уйти дальше 08:00 только без паузы: планёрка — последних 08:00 до среза.
+   */
+  private morning(t: number) {
+    const at = Math.floor((t - MORNING) / DAY) * DAY + MORNING;
+    this.morningSeen = at;
+    if (this.ff || this.store.get().morningPause) {
+      if (this.speed !== 0) this.resume = this.speed;
       this.speed = 0;
     }
-    this.gotSlice();
+    this.ff = false;
+    this.store.set({ morning: { open: true, day: momentOf(this.scenario.start.date, at).day } });
+    this.sendViews();
+    this.hud();
+  }
+
+  /** Ближайшие 08:00 не раньше `now`, планёрку которых окно ещё не видело: до них часы идут, пока на планёрке пауза. */
+  private nextMorning(now: number): number {
+    let m = Math.floor((now - MORNING) / DAY) * DAY + MORNING;
+    if (m < now || m <= this.morningSeen) m += DAY;
+    return m;
   }
 
   /** Паллеты на местах — когда изменился учёт или то, какие паллеты сейчас везут. */
@@ -255,6 +286,10 @@ export class Game {
         game = Math.min(FF_CHUNK, this.ffLeft);
         this.ffLeft -= game;
       }
+    } else if (game > 0 && this.store.get().morningPause) {
+      // пауза на планёрке: часы не уходят за 08:00, пока не пришло её извещение
+      const now = this.t + this.lag;
+      game = Math.min(game, this.nextMorning(now) - now);
     }
     if (!this.manual) this.client.frame(game, this.ff ? 14 : 8);
     this.onFrame?.(ts);
@@ -341,7 +376,8 @@ export class Game {
     },
     toggleStock: () => {
       const st = this.store.get().stock;
-      this.store.set({ stock: { ...st, open: !st.open, query: { ...st.query, lang: this.store.get().lang } } });
+      // справа — одна панель: склад или касса
+      this.store.set({ stock: { ...st, open: !st.open, query: { ...st.query, lang: this.store.get().lang } }, cash: { ...this.store.get().cash, open: false } });
       this.sendViews();
     },
     setStock: patch => {
@@ -355,29 +391,61 @@ export class Game {
       this.store.set({ selected: t, card: undefined });
       this.sendViews();
     },
-    showUnit: n => {
-      const p = [...this.pallets, ...this.carriedNow].find(x => x.unit === n);
-      if (p) {
+    openMorning: () => {
+      // последняя планёрка, которую окно видело; до первой — нечего открыть
+      if (this.morningSeen === Number.NEGATIVE_INFINITY) return;
+      this.store.set({ morning: { open: true, day: momentOf(this.scenario.start.date, this.morningSeen).day } });
+      this.sendViews();
+    },
+    closeMorning: resume => {
+      this.store.set({ morning: { open: false } });
+      if (resume && this.speed === 0) this.actions.setSpeed(this.resume);
+      this.sendViews();
+    },
+    setMorningPause: on => this.store.set({ morningPause: on }),
+    toggleCash: () => {
+      const c = this.store.get().cash;
+      this.store.set({ cash: { ...c, open: !c.open }, stock: { ...this.store.get().stock, open: false } });
+      this.sendViews();
+    },
+    setCashPage: page => {
+      this.store.set({ cash: { ...this.store.get().cash, page } });
+      this.sendViews();
+    },
+    showUnit: n => this.actions.show({ kind: 'unit', n }),
+    show: t => {
+      const b =
+        t.kind === 'unit'
+          ? palletBoxes([...this.pallets, ...this.carriedNow]).find(x => same(x.thing, t))
+          : t.kind === 'machine' || t.kind === 'equipment'
+            ? this.machineBoxes.find(x => same(x.thing, t))
+            : undefined;
+      if (b) {
         const cam = this.stage.cam;
         const el = this.stage.renderer.domElement;
-        cam.target.set(p.x, 0, p.z);
+        cam.target.set((b.min[0] + b.max[0]) / 2, 0, (b.min[2] + b.max[2]) / 2);
         cam.half = Math.min(cam.half, 8);
-        // паллета — посреди части экрана, не закрытой панелью склада (она справа), и выше карточки (она снизу слева)
+        // вещь — посреди части экрана, не закрытой панелью справа, и выше карточки (она снизу слева)
         const box = el.getBoundingClientRect();
-        const panel = document.getElementById('stock')?.getBoundingClientRect();
+        const panel = (document.getElementById('stock') ?? document.getElementById('cash'))?.getBoundingClientRect();
         const free = panel ? Math.max(0, panel.left - box.left) : box.width;
         cam.pan(free / 2 - box.width / 2, -0.2 * box.height, el.clientHeight);
+        // матрицы камеры — сейчас, а не в следующем кадре: точка вещи на экране и луч щелчка сразу новые
+        cam.update(0);
       }
-      this.actions.select({ kind: 'unit', n });
+      this.actions.select(t);
     },
   };
 
-  /** Открытые виды панелей — потоку, если набор изменился: склад и карточка выбранного (3б). */
+  /** Открытые виды панелей — потоку, если набор изменился: касса полосы — всегда; склад, карточка, планёрка, касса. */
   private sendViews() {
-    const st = this.store.get().stock;
-    const list: ViewQuery[] = [];
+    const h = this.store.get();
+    const st = h.stock;
+    const list: ViewQuery[] = [{ id: 'top', view: 'top' }];
     if (st.open) list.push({ id: 'stock', ...st.query });
     if (this.selected) list.push({ id: 'card', view: 'card', thing: this.selected });
+    if (h.morning.open && h.morning.day !== undefined) list.push({ id: 'morning', view: 'morning', day: h.morning.day });
+    if (h.cash.open) list.push({ id: 'cash', view: 'cash', page: h.cash.page });
     const key = JSON.stringify(list);
     if (key === this.viewsSent) return;
     this.viewsSent = key;
@@ -523,9 +591,12 @@ export class Game {
         e.preventDefault();
         this.actions.toggleStock();
       } else if (k === 'Escape') {
-        // Esc: сначала выбор, потом панель склада
+        // Esc: сначала выбор, потом верхнее окно — планёрка, затем панель справа
+        const h = this.store.get();
         if (this.selected) this.actions.select(undefined);
-        else if (this.store.get().stock.open) this.actions.toggleStock();
+        else if (h.morning.open) this.actions.closeMorning(false);
+        else if (h.cash.open) this.actions.toggleCash();
+        else if (h.stock.open) this.actions.toggleStock();
       } else this.mouse.keys.add(k);
     });
     window.addEventListener('keyup', e => this.mouse.keys.delete(e.code));

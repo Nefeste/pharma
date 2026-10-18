@@ -11,6 +11,7 @@ import { shiftEnd } from '../engine/staff';
 import { TAG } from '../engine/stock';
 import type { Lot, LotStatus, MachineState, PlantState, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
 import { type EqState, eqStateOf } from './pack';
+import { type CashQuery, type CashView, cashView, type MorningQuery, type MorningView, morningView, type TopQuery, type TopView, topView } from './report';
 
 /** Вещь на полу — теми же номерами, что в срезе: паллета, помещение и оборудование — по порядку плана, машина — линия и место. */
 export type Thing =
@@ -41,7 +42,7 @@ export interface CardQuery {
   thing: Thing;
 }
 
-export type ViewQuery = { id: string } & (StockQuery | CardQuery);
+export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery);
 
 /** Место паллеты: место плана (номер по порядку), помещение (номер по порядку), фура. */
 export type PlaceRef = { k: 'slot'; i: number } | { k: 'room'; i: number } | { k: 'truck'; n: number; customer: boolean };
@@ -147,7 +148,7 @@ export interface CardView {
   card: CardData;
 }
 
-export type ViewData = StockView | CardView;
+export type ViewData = StockView | CardView | MorningView | CashView | TopView;
 
 const num = (id: string) => Number(id.slice(1));
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
@@ -438,7 +439,18 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
 }
 
 export function viewOf(db: ContentDb, s: PlantState, q: ViewQuery): ViewData {
-  return q.view === 'stock' ? stockView(db, s, q) : cardView(db, s, q.thing);
+  switch (q.view) {
+    case 'stock':
+      return stockView(db, s, q);
+    case 'card':
+      return cardView(db, s, q.thing);
+    case 'morning':
+      return morningView(db, s, q);
+    case 'cash':
+      return cashView(db, s, q);
+    case 'top':
+      return topView(s);
+  }
 }
 
 /** Вид, который уходит окну: номер запроса окна, версия и данные. */

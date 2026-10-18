@@ -6,6 +6,7 @@ import type { Ymd } from '../engine/core/calendar';
 import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
+import type { CashView, MorningView, TopView } from '../sim/report';
 import type { CardView, StockQuery, StockView, Thing } from '../sim/views';
 
 /** Скорости геймдизайна (§2): 0 — пауза; 1–4 — минута, 5 минут, 20 минут, 2 часа за секунду; 5 — «живое время» 1:1. */
@@ -41,6 +42,13 @@ export interface Hud {
   /** выбранная вещь и её карточка (3б) */
   selected?: Thing;
   card?: CardView;
+  /** планёрка (3в): открыта ли, на какие сутки, вид; пауза на планёрке — до перезапуска игры */
+  morning: { open: boolean; day?: number; view?: MorningView };
+  morningPause: boolean;
+  /** панель кассы (3в): открыта ли, страница календаря, вид */
+  cash: { open: boolean; page: number; view?: CashView };
+  /** касса верхней полосы */
+  top?: TopView;
 }
 
 /** Запрос склада по умолчанию: все партии по номеру, первая страница. */
@@ -65,6 +73,9 @@ export const initial: Hud = {
   gpuMs: null,
   status: '',
   stock: { open: false, query: STOCK },
+  morning: { open: false },
+  morningPause: true,
+  cash: { open: false, page: 0 },
 };
 
 export interface Actions {
@@ -82,6 +93,15 @@ export interface Actions {
   select(t: Thing | undefined): void;
   /** камера — к паллете, паллета — выбрана */
   showUnit(n: number): void;
+  /** камера — к вещи (паллета, машина, оборудование), вещь — выбрана */
+  show(t: Thing): void;
+  /** планёрка: открыть последнюю; закрыть — и включить скорость, что была до паузы планёрки; пауза на планёрке */
+  openMorning(): void;
+  closeMorning(resume: boolean): void;
+  setMorningPause(on: boolean): void;
+  /** панель кассы: открыть или закрыть; страница календаря */
+  toggleCash(): void;
+  setCashPage(page: number): void;
 }
 
 export class Store {

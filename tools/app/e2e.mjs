@@ -8,8 +8,9 @@
 // показа и проверки (2г): с высоты участка — стрелки, люди и техника скрыты, с высоты цеха — снова по одному; контактный
 // лист — три высоты днём и ночью на трёх пресетах, один файл tools/app/out/contact.png. Посты (3а): на шестые сутки
 // свободные ждут на постах своих ролей — у входа не больше двух. Склад и карточка (3б): строка склада — паллета на экране
-// мимо панели и карточка партии; щелчок мышью по паллете — её карточка; Esc закрывает. Ошибок в консоли и запросов наружу
-// нет. Снимки — tools/app/out/e2e*.png.
+// мимо панели и карточка партии; щелчок мышью по паллете — её карточка; Esc закрывает. Планёрка и касса (3в): ×4 встают
+// ровно в 08:00 — планёрка открылась сама, мир на паузе, Esc закрывает; «До утра» тоже открывает планёрку; касса — остаток
+// как в полосе. Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -51,10 +52,15 @@ const ok = msg => console.log(`✓ ${msg}`);
 /** Часы завода в игровых секундах — из игры, а не из текста полосы: текст обновляется 10 раз в секунду. */
 const gameT = () => page.evaluate(() => window.__game.t + window.__game.lag);
 /** «До утра»: промотка до планёрки следующих суток. */
-const untilMorning = async () => {
+/** Дождаться `n` кадров: программная отрисовка даёт несколько кадров в секунду, а камера и сцена меняются в кадре. */
+const frames = n => page.evaluate(k => new Promise(r => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
+
+/** «До утра» — до планёрки в 08:00; планёрку (3в) закрыть, чтобы она не заслоняла завод, — если не просят оставить. */
+const untilMorning = async (keep = false) => {
   const day = await page.evaluate(() => window.__game.day);
   await page.keyboard.press('Digit5');
-  await page.waitForFunction(d => window.__game.day > d && !window.__game.ff, day, { timeout: 60_000 });
+  await page.waitForFunction(d => window.__game.day > d && !window.__game.ff && window.__game.store.get().morning.open, day, { timeout: 60_000 });
+  if (!keep) await page.keyboard.press('Escape');
 };
 
 try {
@@ -68,16 +74,40 @@ try {
   else ok(`часы: ${clock}, ${date}`);
 
   // ×4 — два часа в секунду. Программная отрисовка без видеокарты даёт несколько кадров в секунду, а шаг кадра ограничен
-  // 0,1 с — поэтому проверка мягкая: больше, чем ×2 смог бы и при 60 к/с (5 минут в секунду)
+  // 0,1 с — поэтому проверка мягкая: больше, чем ×2 смог бы и при 60 к/с (5 минут в секунду). В 08:00 часы встают на
+  // планёрку (3в) — и тогда за 1,5 с прошло меньше, но ровно до 08:00
   await page.keyboard.press('Digit4');
   const t0 = await gameT();
   await page.waitForTimeout(1500);
   const t1 = await gameT();
   const speed = await page.evaluate(() => window.__game.speed);
-  if (speed !== 4 || t1 - t0 < 1200) fail(`×4: скорость ${speed}, за 1,5 с прошло ${t1 - t0} игровых секунд`);
-  else ok(`×4: за 1,5 с прошло ${Math.round((t1 - t0) / 60)} игровых минут`);
+  const atMorning = t1 % 86400 === 8 * 3600 && speed === 0;
+  if ((speed !== 4 && !atMorning) || (t1 - t0 < 1200 && !atMorning)) fail(`×4: скорость ${speed}, за 1,5 с прошло ${t1 - t0} игровых секунд`);
+  else ok(`×4: за 1,5 с прошло ${Math.round((t1 - t0) / 60)} игровых минут${atMorning ? ' — до планёрки' : ''}`);
 
-  // пробел — пауза
+  // планёрка (3в): ×4 доходят до 08:00 — часы встают ровно в 08:00, мир на паузе, страница открылась сама; Esc закрывает
+  {
+    await page.waitForFunction(() => window.__game.store.get().morning.open, null, { timeout: 30_000 });
+    await page.waitForSelector('[data-test=morning-now]', { timeout: 20_000 });
+    const m = await page.evaluate(() => ({
+      sec: window.__game.t % 86400,
+      speed: window.__game.speed,
+      title: document.querySelector('#morning-title')?.textContent ?? '',
+      yesterday: !!document.querySelector('[data-test=morning-yesterday]'),
+      now: !!document.querySelector('[data-test=morning-now]'),
+    }));
+    if (m.sec !== 8 * 3600 || m.speed !== 0 || !/Планёрка/.test(m.title) || !m.yesterday || !m.now)
+      fail(`планёрка: часы ${m.sec / 3600} ч, скорость ${m.speed}, «${m.title}», вчера ${m.yesterday}, сейчас ${m.now}`);
+    else ok(`планёрка открылась сама в 08:00, мир на паузе: «${m.title}»`);
+    await page.keyboard.press('Escape');
+    const closed = await page.evaluate(() => !document.querySelector('#morning'));
+    if (!closed) fail('планёрка: Esc не закрыл');
+    else ok('планёрка: Esc закрыл');
+  }
+
+  // пробел — пуск и пауза
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(300);
   await page.keyboard.press('Space');
   await page.waitForTimeout(300);
   const p0 = await gameT();
@@ -87,11 +117,13 @@ try {
   else ok('пауза: часы стоят');
 
   // «До утра» — до планёрки в 08:00 и пауза
-  await untilMorning();
-  const morning = await page.evaluate(() => ({ t: window.__game.t, speed: window.__game.speed }));
+  await untilMorning(true);
+  const morning = await page.evaluate(() => ({ t: window.__game.t, speed: window.__game.speed, open: window.__game.store.get().morning.open }));
   if (morning.t % 86400 !== 8 * 3600) fail(`«До утра» остановилось в ${(morning.t % 86400) / 3600} ч`);
   else if (morning.speed !== 0) fail(`после «До утра» скорость ${morning.speed}, а не пауза`);
+  else if (!morning.open) fail('после «До утра» планёрка не открылась');
   else ok('«До утра»: планёрка в 08:00, пауза');
+  await page.keyboard.press('Escape');
   // панели обновляются 10 раз в секунду: извещение может прийти на кадр позже паузы
   const shown = await page
     .waitForFunction(() => /Планёрка/.test(document.querySelector('.top .notice')?.textContent ?? ''), null, { timeout: 2000 })
@@ -110,8 +142,8 @@ try {
     await page.click('[data-test=stock-row]');
     await page.waitForSelector('[data-test=card]', { timeout: 20_000 });
     const card = await page.evaluate(() => ({ title: document.querySelector('#card-title')?.textContent ?? '', selected: window.__game.selected, history: document.querySelectorAll('[data-test=card-history] li').length }));
-    // камера привела паллету на экран, и её не закрывает панель склада справа
-    await page.waitForTimeout(100);
+    // камера привела паллету на экран, и её не закрывает панель склада справа; кадр с новой камерой — нарисован
+    await frames(2);
     const seen = await page.evaluate(u => {
       const g = window.__game;
       const p = g.pallets.find(x => x.unit === u);
@@ -122,6 +154,7 @@ try {
       fail(`склад: строк ${rows}, выбрано ${JSON.stringify(card.selected)}, карточка «${card.title}», записей истории ${card.history}, паллета ${seen ? 'видна' : 'не видна'}`);
     else ok(`склад: строк ${rows}; строка — паллета ${unit} на экране мимо панели, карточка «${card.title}», записей истории ${card.history}`);
     await page.keyboard.press('Escape');
+    await frames(2);
     // щелчок мышью по паллете на экране — та же паллета: точка её груза, не заслонённая соседями и панелями
     const at = await page.evaluate(u => window.__game.clickPoint(u), unit);
     if (!at) fail(`щелчок по паллете ${unit}: на экране не нашлось точки, которую не заслоняют соседи и панели`);
@@ -137,6 +170,22 @@ try {
     const closed = await page.evaluate(() => ({ card: !!document.querySelector('[data-test=card]'), stock: !!document.querySelector('#stock') }));
     if (closed.card || closed.stock) fail(`Esc: карточка ${closed.card ? 'открыта' : 'закрыта'}, склад ${closed.stock ? 'открыт' : 'закрыт'}`);
     else ok('Esc: выбор снят, склад закрыт');
+  }
+
+  // касса (3в): кнопка открывает панель; остаток — как в верхней полосе; Esc закрывает
+  {
+    await page.click('[data-test=cash-open]');
+    await page.waitForSelector('[data-test=cash-balance]', { timeout: 20_000 });
+    const c = await page.evaluate(() => ({
+      panel: document.querySelector('[data-test=cash-balance]')?.textContent ?? '',
+      top: document.querySelector('[data-test=top-cash]')?.textContent ?? '',
+      rows: document.querySelectorAll('#cash table.grid tbody tr').length,
+    }));
+    if (!c.panel || !c.top.includes(c.panel)) fail(`касса: в панели «${c.panel}», в полосе «${c.top}»`);
+    else ok(`касса: остаток ${c.panel} — как в полосе; строк календаря и проводок ${c.rows}`);
+    await page.keyboard.press('Escape');
+    if (await page.evaluate(() => !!document.querySelector('#cash'))) fail('касса: Esc не закрыл');
+    else ok('касса: Esc закрыл');
   }
 
   // камера: участок — общий план, цех упаковки, блистерная машина (геймдизайн, §19.1)

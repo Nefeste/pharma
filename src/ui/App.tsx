@@ -1,11 +1,15 @@
-// Панели (геймдизайн, §18): верхняя полоса — дата и часы завода, сутки, скорости, «До утра», стены, склад, извещение;
-// панель склада и карточка выбранной вещи (docs/specs/2026-10-panels.md, 3б); полоса отладки; состояние загрузки и ошибки.
-// Панели только читают хранилище и зовут действия игры.
+// Панели (геймдизайн, §18): верхняя полоса — дата и часы завода, сутки, скорости, «До утра», стены, склад, планёрка,
+// касса с изменением за сутки, извещение; панель склада и карточка выбранной вещи (docs/specs/2026-10-panels.md, 3б);
+// планёрка и панель кассы (3в); полоса отладки; состояние загрузки и ошибки. Панели только читают хранилище и зовут
+// действия игры.
+import { useLayoutEffect, useRef } from 'react';
 import { momentOf } from '../engine/core/calendar';
-import { clock, dateText, T } from '../i18n';
+import { clock, dateText, money, T } from '../i18n';
 import { QUALITIES } from '../render/view';
 import type { WallMode } from '../render/world';
 import { Card } from './Card';
+import { Cash } from './Cash';
+import { Morning } from './Morning';
 import { Stock } from './Stock';
 import { type Actions, LIVE, type Speed, type Store, useHud } from './store';
 
@@ -14,6 +18,15 @@ const WALLS: WallMode[] = ['full', 'cut', 'down'];
 
 export function App({ store, actions, plant }: { store: Store; actions: Actions; plant: string }) {
   const s = useHud(store);
+  // низ верхней полосы — для панелей под ней: на узком окне полоса переносится во вторую строку
+  const top = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = top.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => document.documentElement.style.setProperty('--top-h', `${Math.ceil(el.getBoundingClientRect().bottom)}px`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [s.ready]);
   if (s.error)
     return (
       <div className="status panel">
@@ -24,7 +37,7 @@ export function App({ store, actions, plant }: { store: Store; actions: Actions;
   const m = momentOf(s.start, s.t);
   return (
     <>
-      <div className="top panel">
+      <div className="top panel" ref={top}>
         <span className="clock" data-test="clock">
           {clock(m.sec)}
         </span>
@@ -60,12 +73,26 @@ export function App({ store, actions, plant }: { store: Store; actions: Actions;
           <button type="button" className={s.stock.open ? 'on' : ''} onClick={() => actions.toggleStock()} title={T.stock.hint} data-test="stock">
             {T.stock.button}
           </button>
+          <button type="button" className={s.morning.open ? 'on' : ''} onClick={() => (s.morning.open ? actions.closeMorning(false) : actions.openMorning())} title={T.morning.hint} data-test="morning-open">
+            {T.morning.button}
+          </button>
+          <button type="button" className={s.cash.open ? 'on' : ''} onClick={() => actions.toggleCash()} title={T.cash.hint} data-test="cash-open">
+            {T.cash.button}
+          </button>
         </span>
+        {s.top ? (
+          <span className="stat" data-test="top-cash" title={T.cash.day}>
+            {T.cash.top(money(s.top.balance))}
+            {Math.round(s.top.day / 100) !== 0 ? <span className={s.top.day < 0 ? 'bad' : 'muted'}> {money(s.top.day, true)}</span> : null}
+          </span>
+        ) : null}
         {s.lag >= 5 && <span className="warn">{T.top.lag(s.lag)}</span>}
         <span className="notice">{s.notices[0]?.text ?? T.app.stage}</span>
       </div>
       {s.stock.open && <Stock hud={s} actions={actions} plant={plant} />}
-      {s.selected && s.card && <Card v={s.card} start={s.start} plant={plant} actions={actions} beside={s.stock.open} />}
+      {s.cash.open && <Cash hud={s} actions={actions} />}
+      {s.morning.open && s.morning.day !== undefined && <Morning v={s.morning.view} day={s.morning.day} start={s.start} plant={plant} pause={s.morningPause} actions={actions} />}
+      {s.selected && s.card && <Card v={s.card} start={s.start} plant={plant} actions={actions} beside={s.stock.open || s.cash.open} />}
       {s.debug && (
         <div className="debug panel">
           <b>{T.debug.title}</b>

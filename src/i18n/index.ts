@@ -57,3 +57,29 @@ export function whenText(start: Ymd, t: number): string {
   const m = momentOf(start, t);
   return T.date.when(m.date.d, m.date.m, clock(m.sec));
 }
+
+/** Деньги — копейки рублями без копеек, с разрядами: «28 450 000 ₽»; со знаком — «+1 200 000 ₽» и «−1 200 000 ₽». */
+export function money(kop: number, sign = false): string {
+  const rub = Math.round(kop / 100);
+  const s = `${num(Math.abs(rub))} ₽`;
+  return rub < 0 ? `−${s}` : sign && rub > 0 ? `+${s}` : s;
+}
+
+/** Длительность: «3 ч 20 мин», «46 мин». */
+export function durText(sec: number): string {
+  const all = Math.round(sec / 60);
+  const h = Math.floor(all / 60);
+  const m = all % 60;
+  if (h === 0) return `${m} ${T.units.min}`;
+  return m > 0 ? `${h} ${T.units.h} ${m} ${T.units.min}` : `${h} ${T.units.h}`;
+}
+
+/** Доля 1/10 000 — процентами: «61 %». */
+export function pctText(share: number, digits = 0): string {
+  return `${num(share / 100, digits)} %`;
+}
+
+/** Сантиметры — километрами: «2,4 км». */
+export function kmText(cm: number): string {
+  return `${num(cm / 1e5, 1)} ${T.units.km}`;
+}

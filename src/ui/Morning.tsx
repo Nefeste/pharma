@@ -1,0 +1,271 @@
+// Планёрка в 08:00 (docs/specs/2026-10-panels.md, 3в; docs/13-art.md, §11): страница, которую читают минуту, — вчера в
+// цифрах, одна главная потеря, одна подсказка; что было с прошлой планёрки; что ждёт сейчас. Большое окно поверх карты с
+// вопросом в заголовке. Вид собирает поток расчёта (src/sim/report.ts) без слов и без истины; слова — отсюда.
+import type { ReactNode } from 'react';
+import type { PartType } from '../content/types';
+import { civilFromDays, momentOf, type Ymd } from '../engine/core/calendar';
+import { planOf } from '../engine/plant';
+import { dateText, dayText, durText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
+import type { LineSum, MainLoss, MorningView } from '../sim/report';
+import type { Thing } from '../sim/views';
+import { db } from './db';
+import type { Actions } from './store';
+
+/** Название машины или оборудования по виду; узлы — из той же записи. */
+function machineOf(thing: Thing | undefined, type: string): { name: string; parts: readonly PartType[] } {
+  const rec = thing?.kind === 'equipment' ? db?.equipment[type] : db?.machines[type];
+  return { name: named(rec?.name, type), parts: rec?.parts ?? [] };
+}
+
+const partName = (parts: readonly PartType[], id: string) => named(parts.find(p => p.id === id)?.name, id);
+
+/** Вид машины линии по плану. */
+function lineMachine(plant: string, line: number, k: number): { thing: Thing; name: string } {
+  const type = db ? (planOf(db, plant).plant.lines[line]?.machines[k]?.type ?? '') : '';
+  return { thing: { kind: 'machine', line, k }, name: named(db?.machines[type]?.name, type) };
+}
+
+function lineLossText(plant: string, l: LineSum): string {
+  if (!l.loss || l.key === undefined) return '';
+  const key = lineMachine(plant, l.line, l.key).name;
+  const text = T.morning.lineLoss[l.loss.what](key, durText(l.loss.sec));
+  if (!l.neighbour) return text;
+  const nb = lineMachine(plant, l.line, l.neighbour.k).name;
+  return `${text} — ${T.morning.neighbour[l.neighbour.what](nb, durText(l.neighbour.sec))}`;
+}
+
+function mainText(plant: string, m: MainLoss): string {
+  switch (m.k) {
+    case 'wait':
+      return T.morning.main.wait(T.morning.depts[m.dept], T.wait[m.cause], durText(m.sec));
+    case 'line':
+      return `${T.morning.line(m.line + 1)}: ${lineLossText(plant, m)}`;
+    case 'move':
+      return T.morning.main.move(kmText(m.cm), durText(m.sec), m.cm > 0 ? pctText(Math.round((m.empty * 10000) / m.cm)) : pctText(0));
+    case 'walk':
+      return T.morning.main.walk(kmText(m.cm), durText(m.sec));
+  }
+}
+
+const hintOf = (m: MainLoss): string => (m.k === 'wait' ? T.morning.hints[m.cause] : m.k === 'line' ? T.morning.hints[m.loss.what] : T.morning.hints[m.k]);
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <>
+      <div className="msec">{title}</div>
+      {children}
+    </>
+  );
+}
+
+/** Список строк; пустой не показываем — страницу читают минуту. */
+function Rows({ title, rows }: { title: string; rows: ReactNode[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="mblock">
+      <div className="mhead">{title}</div>
+      <ul className="mlist">{rows}</ul>
+    </div>
+  );
+}
+
+export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningView; day: number; start: Ymd; plant: string; pause: boolean; actions: Actions }) {
+  const d = civilFromDays(day);
+  const at = momentOf(d, 0);
+  const yest = civilFromDays(day - 1);
+  // щелчок по строке с машиной — камера к ней и её карточка; планёрка закрывается, пауза остаётся
+  const go = (t: Thing | undefined) => (t ? () => {
+    actions.closeMorning(false);
+    actions.show(t);
+  } : undefined);
+  const when = (t: number) => whenText(start, t);
+  return (
+    <div className="morning panel" id="morning" role="dialog" aria-labelledby="morning-title" data-test="morning">
+      <div className="phead">
+        <b id="morning-title">{T.morning.title(dateText(at))}</b>
+        <span className="muted">{T.morning.question}</span>
+        <button type="button" className="close" onClick={() => actions.closeMorning(false)} title={T.card.closeHint}>
+          ✕
+        </button>
+      </div>
+      {!v ? (
+        <div className="muted">{T.app.loading}</div>
+      ) : (
+        <>
+          <Section title={T.morning.yesterday(T.date.full(yest.d, T.date.months[yest.m - 1], yest.y))}>
+            {v.first ? <div className="muted" data-test="morning-yesterday">{T.morning.first}</div> : null}
+            {v.first ? null : (
+              <>
+                <div className="mblock" data-test="morning-yesterday">
+                  <div className="mhead">{T.morning.output}</div>
+                  {v.shifts.length === 0 ? (
+                    <div className="muted">{T.morning.noShifts}</div>
+                  ) : (
+                    <ul className="mlist">
+                      {v.shifts.map((s, i) => {
+                        const shift = named(db?.shifts[s.shift]?.name, s.shift);
+                        const packs = (n: number) => T.morning.packs(num(n));
+                        return (
+                          <li key={i}>
+                            {s.fact === undefined
+                              ? T.morning.shiftOpen(shift, packs(s.plan))
+                              : s.plan > 0
+                                ? T.morning.shift(shift, packs(s.fact), packs(s.plan), pctText(Math.floor((s.fact * 10000) / s.plan)))
+                                : T.morning.noPlan(shift, packs(s.fact))}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  {v.rhythm !== undefined ? <div>{T.morning.rhythm(pctText(v.rhythm))}</div> : null}
+                </div>
+                <div className="mblock">
+                  <div className="mhead">{T.morning.oee}</div>
+                  <ul className="mlist">
+                    {v.lines.map(l => {
+                      const name = T.morning.line(l.line + 1);
+                      if (!l.oee || l.key === undefined) return <li key={l.line}>{T.morning.noJob(name)}</li>;
+                      const key = lineMachine(plant, l.line, l.key);
+                      return (
+                        <li key={l.line} className="go" onClick={go(key.thing)}>
+                          {T.morning.oeeRow(name, pctText(Math.min(l.oee.oee, 10000)), pctText(l.oee.a), pctText(Math.min(l.oee.p, 10000)), pctText(Math.min(l.oee.q, 10000)))}
+                          {l.loss ? <div className="muted">{lineLossText(plant, l)}</div> : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+                <div className="mblock main" data-test="morning-main">
+                  <div className="mhead">{T.morning.mainTitle}</div>
+                  {v.main ? (
+                    <>
+                      <div className={v.main.k === 'line' ? 'go' : ''} onClick={v.main.k === 'line' ? go(lineMachine(plant, v.main.line, v.main.key).thing) : undefined}>
+                        <b>{mainText(plant, v.main)}</b>
+                      </div>
+                      <div className="hint">
+                        <span className="muted">{T.morning.hintTitle}: </span>
+                        {hintOf(v.main)}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="muted">{T.morning.noMain}</div>
+                  )}
+                </div>
+              </>
+            )}
+          </Section>
+          <Section title={T.morning.since}>
+            {v.deviations.length + v.decisions.length + v.maint.length + v.shipments.length + v.closed.length === 0 ? <div className="muted">{T.morning.nothing}</div> : null}
+            <Rows
+              title={T.morning.devTitle}
+              rows={v.deviations.map((x, i) => (
+                <li key={i}>
+                  <span className="mono muted">{when(x.t)}</span> {T.morning.devKinds[x.kind]}
+                  {x.lot ? ` · ${named(db?.materials[x.material ?? '']?.name, x.material)} ${T.lotCode(...x.lot)}` : ''}
+                  {x.batch ? ` · ${T.card.batch} ${T.batchCode(...x.batch)}` : ''}
+                </li>
+              ))}
+            />
+            <Rows
+              title={T.morning.decTitle}
+              rows={v.decisions.map((x, i) => (
+                <li key={i}>
+                  <span className="mono muted">{when(x.t)}</span> {named(db?.materials[x.material]?.name, x.material)} {T.lotCode(...x.lot)}
+                  {x.batch ? ` (${T.card.batch} ${T.batchCode(...x.batch)})` : ''}: {T.status[x.status]}
+                </li>
+              ))}
+            />
+            <Rows
+              title={T.morning.maintTitle}
+              rows={v.maint.map((x, i) => {
+                const m = machineOf(x.thing, x.type);
+                return (
+                  <li key={i} className={x.thing ? 'go' : ''} onClick={go(x.thing)}>
+                    <span className="mono muted">{when(x.t)}</span> {m.name}: {T.hist.maint[x.what]} · {partName(m.parts, x.part)} · {T.hist.wear(pctText(x.wear))}
+                  </li>
+                );
+              })}
+            />
+            <Rows
+              title={T.morning.shipTitle}
+              rows={[
+                ...v.shipments.map((x, i) => (
+                  <li key={`s${i}`}>
+                    <span className="mono muted">{when(x.t)}</span> {T.morning.shipped(named(db?.customers[x.customer]?.name, x.customer), x.cases)}
+                  </li>
+                )),
+                ...v.closed.map((x, i) => (
+                  <li key={`c${i}`} className="bad">
+                    <span className="mono muted">{when(x.t)}</span> {T.morning.closed(named(db?.customers[x.customer]?.name, x.customer), x.status === 'late', x.missing)}
+                  </li>
+                )),
+              ]}
+            />
+          </Section>
+          <Section title={T.morning.now}>
+            <div className="mblock" data-test="morning-now">
+              <div className="mhead">{T.morning.labTitle}</div>
+              <div>{T.morning.lab(v.lab.queued, v.lab.prep + v.lab.run, v.lab.review)}</div>
+              {v.lab.busy.length ? <div className="muted">{T.morning.busy(v.lab.busy.map(id => named(db?.instruments[id]?.name, id)).join(', '))}</div> : null}
+              {v.lab.oldest ? (
+                <div className="muted">{T.morning.oldest(T.tasks[v.lab.oldest.task] ?? v.lab.oldest.task, when(v.lab.oldest.since), v.lab.oldest.wait ? T.wait[v.lab.oldest.wait] : '')}</div>
+              ) : null}
+            </div>
+            <Rows
+              title={T.morning.shortTitle}
+              rows={v.short.map((x, i) => {
+                const mat = db?.materials[x.material];
+                return (
+                  <li key={i}>
+                    {T.morning.short(x.orders, x.pack, named(mat?.name, x.material), mat ? qtyText(x.qty, mat.unit) : num(x.qty))}
+                    <span className="muted"> — {x.po ? T.morning.po(x.po.id, dayText(momentOf(start, x.po.eta).day)) : T.morning.noPo}</span>
+                  </li>
+                );
+              })}
+            />
+            <Rows
+              title={T.morning.brokenTitle}
+              rows={v.broken.map((x, i) => {
+                const m = machineOf(x.thing, x.type);
+                return (
+                  <li key={i} className={x.thing ? 'go bad' : 'bad'} onClick={go(x.thing)}>
+                    {T.morning.broken(m.name, partName(m.parts, x.part), when(x.since))}
+                    <span className="muted">, {T.morning.repair[x.repair]}</span>
+                  </li>
+                );
+              })}
+            />
+            <Rows
+              title={T.morning.riskTitle}
+              rows={v.risk.map((x, i) => (
+                <li key={i} className="bad">
+                  {T.morning.risk(named(db?.customers[x.customer]?.name, x.customer), dayText(momentOf(start, x.due).day), x.missing)}
+                  {x.pending > 0 ? <span className="muted">; {T.morning.pending(x.pending)}</span> : null}
+                </li>
+              ))}
+            />
+            <div className="mblock">
+              <div className="mhead">{T.morning.cashTitle}</div>
+              <div>{T.morning.cash(money(v.cash.balance), money(v.cash.day, true))}</div>
+              {v.cash.next ? (
+                <div className="muted">{T.morning.next(dayText(momentOf(start, v.cash.next.due).day), T.cash.items[v.cash.next.item], money(v.cash.next.sum))}</div>
+              ) : null}
+            </div>
+          </Section>
+        </>
+      )}
+      <div className="mfoot">
+        <label title={T.morning.pauseHint}>
+          <input type="checkbox" checked={pause} onChange={e => actions.setMorningPause(e.currentTarget.checked)} /> {T.morning.pause}
+        </label>
+        <span className="grow" />
+        <button type="button" onClick={() => actions.closeMorning(true)} data-test="morning-resume">
+          {T.morning.resume}
+        </button>
+        <button type="button" onClick={() => actions.closeMorning(false)}>
+          {T.morning.close}
+        </button>
+      </div>
+    </div>
+  );
+}

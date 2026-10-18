@@ -13,7 +13,7 @@ import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
 import { civilFromDays, daysFromCivil, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
-import { defect } from './lean';
+import { defect, lineDay, NO_TIMES } from './lean';
 import { blocked, consume, failPart, partsOf, partType, pending, untilFail, wearAt } from './maint';
 import { deviate, returnTask } from './mes';
 import { type PlantPlan, planOf, type Point } from './plant';
@@ -43,7 +43,6 @@ export const LINE = { setters: ['role.setter'], cleaners: ['role.packer'], check
 /** Смена у линии — раньше всего, что ещё делают те же люди; балк и очистка — раньше переналадки. */
 export const LINE_PRIO = { crew: 40, feed: 33, clearance: 32, clearCheck: 32, changeover: 30 } as const;
 
-const EMPTY: MachineTimes = { run: 0, slow: 0, micro: 0, fail: 0, wait: 0, setup: 0, off: 0, out: 0, slowOut: 0 };
 
 /** Годных из первых `n` при доле брака `p` (1/10 000): бракуется каждая (1/p)-я штука. */
 export function good(n: number, p: number): number {
@@ -110,7 +109,7 @@ export function newLines(db: ContentDb, plantId: string, t: number): Record<stri
     out[l.id] = {
       id: l.id,
       clear: true,
-      machines: l.machines.map(m => ({ id: m.id, type: m.type, pos: 0, rate: 0, state: 'idle', next: 0, times: { ...EMPTY } })),
+      machines: l.machines.map(m => ({ id: m.id, type: m.type, pos: 0, rate: 0, state: 'idle', next: 0, times: { ...NO_TIMES } })),
       cases: 0,
       t,
       v: 0,
@@ -168,9 +167,8 @@ function placeable(plan: PlantPlan, s: PlantState, line: Line, g: Geo): number {
 
 // ---------------------------------------------------------------- поток
 
-/** Время машины за отрезок: при номинале и подрезке в последней секунде — секунда «медленнее». */
-function account(mc: LineMachine, dt: number, out: number) {
-  const t = mc.times;
+/** Время машины за отрезок — в её время за задание или в сутки линии: при номинале и подрезке в последней секунде — секунда «медленнее». */
+function account(t: MachineTimes, mc: LineMachine, dt: number, out: number) {
   t.out += out;
   if (mc.state === 'run') {
     if (out === mc.rate * dt) t.run += dt;
@@ -200,21 +198,35 @@ function advance(db: ContentDb, s: PlantState, line: Line, to: number) {
     line.t = to;
     return;
   }
+  const g = geo(db, s, line, job.sku);
+  // сутки линии (3в): отрезок — в сутки, в которые он начался; полночь он не переходит — в 00:00 линии досчитаны часом
+  const day = lineDay(s, line.id, m.length, line.t);
+  const load = (mc: LineMachine, i: number) => {
+    if (mc.state === 'off' || mc.state === 'idle') return;
+    day.ideal[i] += g.nominal[i] * dt;
+    if (mc.state !== 'fail' && mc.state !== 'setup') day.run[i] += g.nominal[i] * dt;
+  };
   if (job.state !== 'running') {
-    for (const mc of m) account(mc, dt, 0);
+    m.forEach((mc, i) => {
+      account(mc.times, mc, dt, 0);
+      account(day.times[i], mc, dt, 0);
+      load(mc, i);
+    });
     line.t = to;
     return;
   }
-  const g = geo(db, s, line, job.sku);
   // энергия: машины на номинале и медленнее
   addEnergy(s, m.reduce((w, mc) => w + (mc.state === 'run' || mc.state === 'slow' ? db.machines[mc.type].kw : 0), 0), dt);
   const last = m[m.length - 1];
   const from = last.pos;
   const next = project(db, s, line, job, g, dt);
   m.forEach((mc, i) => {
-    account(mc, dt, next[i] - mc.pos);
+    account(mc.times, mc, dt, next[i] - mc.pos);
+    account(day.times[i], mc, dt, next[i] - mc.pos);
+    load(mc, i);
     mc.pos = next[i];
   });
+  day.good += (goodCartonsAt(g, last.pos) - goodCartonsAt(g, from)) * g.sku.blisters * g.sku.perBlister * SIXTY;
   const t0 = line.t;
   line.t = to;
   materialize(db, s, line, g, b!, (pos: number) => (last.rate > 0 ? Math.min(to, t0 + Math.ceil((pos - from) / last.rate)) : to));
@@ -507,7 +519,7 @@ export function lineStep(db: ContentDb, s: PlantState, notices: Notice[]) {
       lineUpdate(db, s, line, notices);
       line.batch = b.id;
       b.pack!.taken = s.t;
-      for (const mc of line.machines) mc.times = { ...EMPTY };
+      for (const mc of line.machines) mc.times = { ...NO_TIMES };
       lineUpdate(db, s, line, notices);
     }
     const b = s.batches[line.batch!];
@@ -649,7 +661,7 @@ function finish(db: ContentDb, s: PlantState, line: Line, g: Geo, b: Batch, noti
     mc.rate = 0;
     delete mc.down;
     delete mc.fail;
-    mc.times = { ...EMPTY };
+    mc.times = { ...NO_TIMES };
   });
   notices.push({ kind: 'batchPacked', batch: b.id, lot: job.fg! });
 }

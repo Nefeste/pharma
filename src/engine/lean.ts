@@ -6,7 +6,7 @@ import type { ContentDb, Dept, Id } from '../content/types';
 import { HOUR, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { planOf } from './plant';
-import type { Batch, BatchPhase, DayLoss, Line, PlantState, ShiftTask, Task, TaskKind, WaitCause } from './types';
+import type { Batch, BatchPhase, DayLoss, Line, LineDay, MachineTimes, PlantState, ShiftTask, Task, TaskKind, WaitCause } from './types';
 
 /** Участок задачи — отдел, чья это работа; отгрузку делает склад. */
 export const AREA: Record<TaskKind, Dept> = {
@@ -41,7 +41,17 @@ export const AREA: Record<TaskKind, Dept> = {
 };
 
 export function newLoss(day: number): DayLoss {
-  return { day, wait: {}, move: {}, walk: {}, defects: { blisters: 0, cartons: 0, deviations: 0, lots: 0, batches: 0 }, recleans: 0 };
+  return { day, wait: {}, move: {}, walk: {}, defects: { blisters: 0, cartons: 0, deviations: 0, lots: 0, batches: 0 }, recleans: 0, lines: {} };
+}
+
+/** Время машины по состояниям — пустое: у задания и у суток линии. */
+export const NO_TIMES: MachineTimes = { run: 0, slow: 0, micro: 0, fail: 0, wait: 0, setup: 0, off: 0, out: 0, slowOut: 0 };
+
+/** Сутки линии (3в) в сутках мгновения `t`: время машин, выпуск по номиналу, годные. Первая запись за сутки — с нуля. */
+export function lineDay(s: PlantState, line: string, machines: number, t: number): LineDay {
+  const d = dayOf(s, momentOf(s.start, t).day);
+  d.lines[line] ??= { times: Array.from({ length: machines }, () => ({ ...NO_TIMES })), ideal: Array(machines).fill(0), run: Array(machines).fill(0), good: 0 };
+  return d.lines[line];
 }
 
 /** Сутки потерь с номером `day`: нынешние — последние; новые сутки — в конец. */
@@ -206,6 +216,26 @@ export function rhythm(tasks: ShiftTask[]): number | undefined {
     got += Math.min(t.fact, t.plan);
   }
   return plan > 0 ? Math.floor((got * P_ONE) / plan) : undefined;
+}
+
+/** OEE и его множители, доли 1/10 000. */
+export interface Oee {
+  a: number;
+  p: number;
+  q: number;
+  oee: number;
+}
+
+/**
+ * OEE машины (`10-domain.md`, §6: доступность × производительность × качество) по выпуску по номиналу за загрузку и за
+ * работу, её проходу и годным линии — в одних единицах. Доступность — работа против загрузки, производительность — проход
+ * против выпуска за работу, качество — годные против прохода. Множители — по выпуску, а не по секундам, поэтому их
+ * произведение — OEE и тогда, когда за сутки позиция с другим номиналом сменила прежнюю. Загрузки не было — `undefined`.
+ */
+export function oee(m: { ideal: number; run: number; out: number }, good: number): Oee | undefined {
+  if (m.ideal <= 0) return undefined;
+  const share = (x: number, of: number) => (of > 0 ? Math.floor((x * P_ONE) / of) : 0);
+  return { a: share(m.run, m.ideal), p: share(m.out, m.run), q: share(good, m.out), oee: share(good, m.ideal) };
 }
 
 /** Сменные задания, начатые в сутки `day`. */

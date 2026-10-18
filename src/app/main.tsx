@@ -31,6 +31,12 @@ const actions: Actions = {
   setStock: later('setStock'),
   select: later('select'),
   showUnit: later('showUnit'),
+  show: later('show'),
+  openMorning: later('openMorning'),
+  closeMorning: later('closeMorning'),
+  setMorningPause: later('setMorningPause'),
+  toggleCash: later('toggleCash'),
+  setCashPage: later('setCashPage'),
 };
 createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} plant={PLANT} />);
 

@@ -23,7 +23,7 @@ import { type Slice, SimClient } from '../sim/client';
 import { unpack } from '../sim/pack';
 import type { Thing, ViewQuery } from '../sim/views';
 import { useDb } from '../ui/db';
-import { type Actions, LIVE, type Speed, type Store } from '../ui/store';
+import { type Actions, type Hud, LIVE, type Speed, type Store } from '../ui/store';
 import { fillsOf, Flows, lineArrows, moveArrows, movesOf } from './flows';
 import { type Movers, moversAt } from './movers';
 import { type Box, machineBoxes, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
@@ -188,6 +188,10 @@ export class Game {
         if (hud.morning.open && hud.morning.day === d.day) this.store.set({ morning: { ...this.store.get().morning, view: d } });
       } else if (d.view === 'cash') {
         if (hud.cash.open) this.store.set({ cash: { ...this.store.get().cash, view: d } });
+      } else if (d.view === 'lab') {
+        if (hud.lab.open) this.store.set({ lab: { ...this.store.get().lab, view: d } });
+      } else if (d.view === 'chart') {
+        if (hud.lab.open) this.store.set({ lab: { ...this.store.get().lab, chart: d } });
       } else this.store.set({ top: d });
     }
     for (const n of s.notices) this.notice(n);
@@ -266,6 +270,7 @@ export class Game {
       : n.kind === 'cashLow' ? T.notices.cashLow
       : n.kind === 'failure' ? T.notices.failure
       : n.kind === 'repaired' ? T.notices.repaired
+      : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;
     this.notices.unshift({ t: this.t, text });
     if (this.notices.length > 30) this.notices.length = 30;
@@ -376,8 +381,8 @@ export class Game {
     },
     toggleStock: () => {
       const st = this.store.get().stock;
-      // справа — одна панель: склад или касса
-      this.store.set({ stock: { ...st, open: !st.open, query: { ...st.query, lang: this.store.get().lang } }, cash: { ...this.store.get().cash, open: false } });
+      // справа — одна панель: склад, касса или лаборатория
+      this.store.set({ stock: { ...st, open: !st.open, query: { ...st.query, lang: this.store.get().lang } }, ...this.rightClosed('stock') });
       this.sendViews();
     },
     setStock: patch => {
@@ -405,9 +410,19 @@ export class Game {
     setMorningPause: on => this.store.set({ morningPause: on }),
     toggleCash: () => {
       const c = this.store.get().cash;
-      this.store.set({ cash: { ...c, open: !c.open }, stock: { ...this.store.get().stock, open: false } });
+      this.store.set({ cash: { ...c, open: !c.open }, ...this.rightClosed('cash') });
       this.sendViews();
     },
+    toggleLab: () => {
+      const l = this.store.get().lab;
+      this.store.set({ lab: { ...l, open: !l.open }, ...this.rightClosed('lab') });
+      this.sendViews();
+    },
+    setLabTab: tab => {
+      this.store.set({ lab: { ...this.store.get().lab, tab } });
+      this.sendViews();
+    },
+    rush: lot => this.client.command({ kind: 'rush', lot, by: 'player' }),
     setCashPage: page => {
       this.store.set({ cash: { ...this.store.get().cash, page } });
       this.sendViews();
@@ -427,7 +442,7 @@ export class Game {
         cam.half = Math.min(cam.half, 8);
         // вещь — посреди части экрана, не закрытой панелью справа, и выше карточки (она снизу слева)
         const box = el.getBoundingClientRect();
-        const panel = (document.getElementById('stock') ?? document.getElementById('cash'))?.getBoundingClientRect();
+        const panel = (document.getElementById('stock') ?? document.getElementById('cash') ?? document.getElementById('lab'))?.getBoundingClientRect();
         const free = panel ? Math.max(0, panel.left - box.left) : box.width;
         cam.pan(free / 2 - box.width / 2, -0.2 * box.height, el.clientHeight);
         // матрицы камеры — сейчас, а не в следующем кадре: точка вещи на экране и луч щелчка сразу новые
@@ -437,7 +452,17 @@ export class Game {
     },
   };
 
-  /** Открытые виды панелей — потоку, если набор изменился: касса полосы — всегда; склад, карточка, планёрка, касса. */
+  /** Справа — одна панель: открыть одну — значит закрыть две другие. */
+  private rightClosed(keep: 'stock' | 'cash' | 'lab'): Partial<Hud> {
+    const h = this.store.get();
+    return {
+      ...(keep !== 'stock' ? { stock: { ...h.stock, open: false } } : {}),
+      ...(keep !== 'cash' ? { cash: { ...h.cash, open: false } } : {}),
+      ...(keep !== 'lab' ? { lab: { ...h.lab, open: false } } : {}),
+    };
+  }
+
+  /** Открытые виды панелей — потоку, если набор изменился: касса полосы — всегда; склад, карточка, планёрка, касса, лаборатория. */
   private sendViews() {
     const h = this.store.get();
     const st = h.stock;
@@ -446,6 +471,7 @@ export class Game {
     if (this.selected) list.push({ id: 'card', view: 'card', thing: this.selected });
     if (h.morning.open && h.morning.day !== undefined) list.push({ id: 'morning', view: 'morning', day: h.morning.day });
     if (h.cash.open) list.push({ id: 'cash', view: 'cash', page: h.cash.page });
+    if (h.lab.open) list.push(h.lab.tab === 'queue' ? { id: 'lab', view: 'lab' } : { id: 'chart', view: 'chart', test: 'test.ipc.mass' });
     const key = JSON.stringify(list);
     if (key === this.viewsSent) return;
     this.viewsSent = key;
@@ -596,6 +622,7 @@ export class Game {
         if (this.selected) this.actions.select(undefined);
         else if (h.morning.open) this.actions.closeMorning(false);
         else if (h.cash.open) this.actions.toggleCash();
+        else if (h.lab.open) this.actions.toggleLab();
         else if (h.stock.open) this.actions.toggleStock();
       } else this.mouse.keys.add(k);
     });

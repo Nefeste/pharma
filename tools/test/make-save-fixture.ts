@@ -10,7 +10,8 @@
 // задачи ждут с причиной, у серий идёт время по состояниям. С схемы 9 — фура поставщика у рампы на проверке, кузов закрыт,
 // а люди идут на свои посты: в очереди — события их прихода. С схемы 10 — лаборатория посреди работы: у одних испытаний
 // результат готов (с мгновением), другие идут; у партий — с какого мгновения они в своём статусе. С схемы 11 — упаковка
-// посреди суток: у прошлых суток — записи линии, у нынешних запись копится.
+// посреди суток: у прошлых суток — записи линии, у нынешних запись копится. С схемы 12 — поднятая партия посреди
+// лаборатории: у её открытых задач приоритет выше.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { DAY, MIN } from '../../src/engine/core/calendar';
@@ -28,9 +29,17 @@ const repairing = () => Object.values(s.tasks).some(t => t.kind === 'repair' && 
 const planned = () => s.shiftTasks.some(t => t.to === undefined && t.plan > 0) && Object.values(s.tasks).some(t => t.why !== undefined);
 const checking = () => Object.values(s.tasks).some(t => t.kind === 'truckCheck' && t.state === 'busy') && Object.values(s.people).some(p => p.walk);
 const midLab = () => Object.values(s.tests).some(q => q.done !== undefined) && Object.values(s.tests).some(q => q.state !== 'done') && Object.values(s.lots).some(l => l.supplier !== 'start' && l.status === 'released');
+const rushed = () => Object.values(s.lots).some(l => l.rush) && Object.values(s.tasks).some(t => t.state === 'open' && t.lot !== undefined && s.lots[t.lot]?.rush);
 const lineDays = () => s.losses.filter(d => Object.keys(d.lines).length > 0).length >= 2 && Object.values(s.lines).some(l => l.batch && s.batches[l.batch].pack?.state === 'running');
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : lineDays();
-while (s.t < end && !busy()) apply(db, s, { kind: 'advance', seconds: SCHEMA < 6 ? 10 * MIN : MIN });
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : rushed();
+while (s.t < end && !busy()) {
+  // с схемы 12 — поднять первую партию, которая ждёт лабораторию с пробами
+  if (SCHEMA >= 12 && !Object.values(s.lots).some(l => l.rush)) {
+    const lot = Object.values(s.lots).find(l => l.status === 'quarantine' && l.supplier !== 'start' && l.sample);
+    if (lot) apply(db, s, { kind: 'rush', lot: lot.id, by: 'player' });
+  }
+  apply(db, s, { kind: 'advance', seconds: SCHEMA < 6 ? 10 * MIN : MIN });
+}
 writeFileSync(new URL(`./fixtures/save-v${SCHEMA}.json`, import.meta.url), `${toSave(s)}\n`);
 console.log(`fixtures/save-v${SCHEMA}.json: сутки ${s.day}, испытаний ${Object.keys(s.tests).length}`);

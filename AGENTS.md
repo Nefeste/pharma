@@ -115,9 +115,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   the integer normal draw), `save.ts` (snapshot and migrations), `nav.ts` (the plan's 1 m grid: walls, doors and
   footprints, where people may walk and vehicles may drive, access cells, distance fields cached per plan, route length
   and the route polyline shared with the window, a point along it in whole centimetres), `plant.ts` (slots, docks, rooms,
-  the lab, work points, posts of roles and distances along the plan's routes), `stock.ts` (lots, containers, pallets, slots, the lot status table), `supply.ts` (purchase
-  orders), `wms.ts` (truck, its check at the dock before unloading, unloading, receiving, putaway), `quality.ts` (true lot properties, the lab result, spec
-  limits), `lab.ts` (sampling, lab tests, the lot decision), `mes.ts` (batch orders, FEFO reservation with potency,
+  the lab, work points, posts of roles and distances along the plan's routes), `stock.ts` (lots, containers, pallets,
+  slots, the lot status table), `supply.ts` (purchase orders), `wms.ts` (truck, its check at the dock before unloading,
+  unloading, receiving, putaway), `quality.ts` (true lot properties, the lab result, spec limits), `lab.ts` (sampling,
+  lab tests, the lot decision, a lot raised by the player), `mes.ts` (batch orders, FEFO reservation with potency,
   kitting through the airlock, stages in rooms with equipment and people, cleaning, process parameters, true batch
   quality with causes, IPC, the bulk lot; the packing job and its packaging kit; a stage stopped by a part failure and
   resumed after the repair), `line.ts` (the packaging line as flow between events: machines, buffers, micro-stops,
@@ -143,9 +144,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   machines, equipment; no truth fields — not the next micro-stop, not a part's budget), views for panels — the warehouse
   and the card of a thing, built here on request and sent with the slice only when they changed, without truth fields
   (`views.ts`); the 08:00 meeting — yesterday by calendar day, events of the 24 hours before it, what waits now — the
-  cash panel and the top-bar cash (`report.ts`), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how
-  far the window's clock ran ahead of the last slice; at most one `tick` in flight). The window never runs the engine.
-  Saves cross the thread boundary as a string: the window never parses the state with the true lot properties.
+  cash panel and the top-bar cash (`report.ts`); the lab queue and the X–Rm control chart of the in-process average
+  tablet mass with its limits and special-cause signs (`lab.ts`), Web Worker (`worker.ts`) and its client in the window
+  (`client.ts`; how far the window's clock ran ahead of the last slice; at most one `tick` in flight). The window never
+  runs the engine. Saves cross the thread boundary as a string: the window never parses the state with the true lot
+  properties.
 - `src/app/` — the game in the window: content, stage, clock and speeds with live time 1:1, input, panels (`game.ts`,
   `main.tsx`); what the slice puts on the floor — pallets, trucks, rooms, pallets on forks (`scene.ts`); where people
   and vehicles are now — a pure function of the tasks in the slice and the clock, on the plan's routes and with the
@@ -168,8 +171,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   composition (`stage.ts`).
 - `src/ui/` — panels (React) and their store: the top bar (`App.tsx`), the warehouse (`Stock.tsx`), the card of a
   thing — what it is, state, why, what can be done, history (`Card.tsx`), the 08:00 meeting (`Morning.tsx`), the cash
-  panel (`Cash.tsx`), status icons (`icons.tsx`), the content base for names (`db.ts`); `src/i18n/` — every player-facing
-  string, Russian and English, and number, quantity, money, duration and date formats.
+  panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), status icons (`icons.tsx`), the content base for
+  names (`db.ts`); `src/i18n/` — every player-facing string, Russian and English, and number, quantity, money, duration
+  and date formats.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML;
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   plan rules in `plan.ts`: doors on walls, docks on outer walls, class D only through airlocks, reachability, posts on

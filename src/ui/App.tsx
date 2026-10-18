@@ -1,15 +1,18 @@
-// Панели (геймдизайн, §18): верхняя полоса — дата и часы завода, сутки, скорости, «До утра», стены, извещение; полоса
-// отладки; состояние загрузки и ошибки. Панели только читают хранилище и зовут действия игры.
+// Панели (геймдизайн, §18): верхняя полоса — дата и часы завода, сутки, скорости, «До утра», стены, склад, извещение;
+// панель склада и карточка выбранной вещи (docs/specs/2026-10-panels.md, 3б); полоса отладки; состояние загрузки и ошибки.
+// Панели только читают хранилище и зовут действия игры.
 import { momentOf } from '../engine/core/calendar';
 import { clock, dateText, T } from '../i18n';
 import { QUALITIES } from '../render/view';
 import type { WallMode } from '../render/world';
+import { Card } from './Card';
+import { Stock } from './Stock';
 import { type Actions, LIVE, type Speed, type Store, useHud } from './store';
 
 const SPEEDS: Speed[] = [1, 2, 3, 4];
 const WALLS: WallMode[] = ['full', 'cut', 'down'];
 
-export function App({ store, actions }: { store: Store; actions: Actions }) {
+export function App({ store, actions, plant }: { store: Store; actions: Actions; plant: string }) {
   const s = useHud(store);
   if (s.error)
     return (
@@ -53,9 +56,16 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
             </button>
           ))}
         </span>
+        <span className="group">
+          <button type="button" className={s.stock.open ? 'on' : ''} onClick={() => actions.toggleStock()} title={T.stock.hint} data-test="stock">
+            {T.stock.button}
+          </button>
+        </span>
         {s.lag >= 5 && <span className="warn">{T.top.lag(s.lag)}</span>}
         <span className="notice">{s.notices[0]?.text ?? T.app.stage}</span>
       </div>
+      {s.stock.open && <Stock hud={s} actions={actions} plant={plant} />}
+      {s.selected && s.card && <Card v={s.card} start={s.start} plant={plant} actions={actions} beside={s.stock.open} />}
       {s.debug && (
         <div className="debug panel">
           <b>{T.debug.title}</b>

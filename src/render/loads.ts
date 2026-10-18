@@ -20,6 +20,8 @@ export interface PalletView {
   fill: number;
   tag: Tag;
   plastic?: boolean;
+  /** номер паллеты в срезе — для выбора щелчком (3б); у паллет бенча нет */
+  unit?: number;
 }
 
 /** Схемы укладки на паллету 120 × 80 (выбор геймдизайна; размеры тары — content/units, content/containers). */
@@ -43,6 +45,16 @@ export const TAG_COLOR: Record<Tag, number> = {
 };
 
 const PALLET: [number, number, number] = [1.2, 0.144, 0.8];
+
+/**
+ * Высота паллеты с грузом, м: основание и столько слоёв тары, сколько её на паллете по схеме укладки, — как её рисует
+ * `Loads` (для выбора щелчком, src/app/pick.ts).
+ */
+export function palletHeight(load: Load, fill: number): number {
+  const pat = PATTERN[load];
+  const layers = Math.min(pat.layers, Math.ceil(Math.max(0, fill) / pat.per));
+  return PALLET[1] + layers * pat.size[1];
+}
 
 export class Loads {
   readonly group = new THREE.Group();

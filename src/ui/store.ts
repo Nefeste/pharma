@@ -6,6 +6,7 @@ import type { Ymd } from '../engine/core/calendar';
 import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
+import type { CardView, StockQuery, StockView, Thing } from '../sim/views';
 
 /** Скорости геймдизайна (§2): 0 — пауза; 1–4 — минута, 5 минут, 20 минут, 2 часа за секунду; 5 — «живое время» 1:1. */
 export type Speed = 0 | 1 | 2 | 3 | 4 | 5;
@@ -35,7 +36,15 @@ export interface Hud {
   gpuMs: number | null;
   /** строка состояния: авто-бенч и снимки */
   status: string;
+  /** панель склада (3б): открыта ли, запрос и последний вид из потока расчёта */
+  stock: { open: boolean; query: StockQuery; view?: StockView };
+  /** выбранная вещь и её карточка (3б) */
+  selected?: Thing;
+  card?: CardView;
 }
+
+/** Запрос склада по умолчанию: все партии по номеру, первая страница. */
+export const STOCK: StockQuery = { view: 'stock', status: [], kinds: [], sort: 'code', desc: false, page: 0, lang: 'ru' };
 
 export const initial: Hud = {
   ready: false,
@@ -55,6 +64,7 @@ export const initial: Hud = {
   cpuMs: 0,
   gpuMs: null,
   status: '',
+  stock: { open: false, query: STOCK },
 };
 
 export interface Actions {
@@ -65,6 +75,13 @@ export interface Actions {
   toggleDebug(): void;
   /** авто-бенч; без vsync — перезапуск оболочки с ключом `--uncapped` */
   bench(uncapped: boolean): void;
+  /** панель склада: открыть или закрыть; сменить фильтр, сортировку, страницу */
+  toggleStock(): void;
+  setStock(patch: Partial<Omit<StockQuery, 'view'>>): void;
+  /** выбрать вещь (`undefined` — снять выбор) */
+  select(t: Thing | undefined): void;
+  /** камера — к паллете, паллета — выбрана */
+  showUnit(n: number): void;
 }
 
 export class Store {

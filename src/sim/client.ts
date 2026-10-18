@@ -1,14 +1,18 @@
 // из bolnitsa: src/sim/client.ts @ e0a3491 — изменено: завод вместо смены; без режима врача и мира больницы; `ahead` —
-// на сколько часы окна ушли вперёд среза («живое время», docs/specs/2026-10-view.md, 2в).
+// на сколько часы окна ушли вперёд среза («живое время», docs/specs/2026-10-view.md, 2в); виды панелей (3б). Исправлено
+// (перенести в «Больницу»): `tick` в пути освобождает только ответ на `tick` — ответ на команду его не освобождает.
 // Сторона потока отрисовки: Web Worker с движком, ход часов кадрами, последний срез. В пути — не больше одного `tick`:
 // пока ответ не пришёл, игровые секунды копятся, и поток не захлёбывается кадрами, если не успевает.
 import type { Command, Notice } from '../engine/types';
 import type { FromSim, ToSim } from './protocol';
+import type { ViewOut, ViewQuery } from './views';
 
 export interface Slice {
   buf: Int32Array;
   notices: Notice[];
   lag: number;
+  /** виды панелей, которые изменились (3б) */
+  views?: ViewOut[];
 }
 
 export class SimClient {
@@ -41,12 +45,13 @@ export class SimClient {
       this.saves.shift()?.(msg.json);
       return;
     }
-    if (this.ticking) {
+    // ответ на команду или виды не освобождает `tick` в пути: иначе их стало бы два
+    if (this.ticking && msg.tick) {
       this.ticking = false;
       this.roundTrips.push(performance.now() - this.sentAt);
       if (this.roundTrips.length > 2000) this.roundTrips.splice(0, 1000);
     }
-    this.onSlice({ buf: msg.buf, notices: msg.notices, lag: msg.lag });
+    this.onSlice({ buf: msg.buf, notices: msg.notices, lag: msg.lag, ...(msg.views ? { views: msg.views } : {}) });
   }
 
   start(msg: Extract<ToSim, { kind: 'start' }>) {
@@ -56,6 +61,11 @@ export class SimClient {
 
   command(cmd: Command) {
     this.post({ kind: 'command', cmd });
+  }
+
+  /** Открытые виды панелей — весь набор: поток пришлёт их со срезом, а дальше — когда изменятся. */
+  views(list: ViewQuery[]) {
+    this.post({ kind: 'views', views: list });
   }
 
   /** `tick` в пути: промотка добавляет секунды, только когда поток ответил, — иначе долг копится быстрее, чем поток считает. */

@@ -13,6 +13,7 @@ import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
 import { civilFromDays, daysFromCivil, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
+import { defect } from './lean';
 import { blocked, consume, failPart, partsOf, partType, pending, untilFail, wearAt } from './maint';
 import { deviate, returnTask } from './mes';
 import { type PlantPlan, planOf, type Point } from './plant';
@@ -114,6 +115,8 @@ export function newLines(db: ContentDb, plantId: string, t: number): Record<stri
       t,
       v: 0,
       idle: 0,
+      packs: 0,
+      made: 0,
     };
   }
   return out;
@@ -224,7 +227,9 @@ function materialize(db: ContentDb, s: PlantState, line: Line, g: Geo, b: Batch,
   const made = cartonsAt(g, m[1].pos);
   for (let j = job.checked; j < made; j++) if (good(j + 1, g.rej[1]) === good(j, g.rej[1])) job.rejected.push(j + 1);
   job.checked = Math.max(job.checked, made);
-  const full = Math.floor(goodCartonsAt(g, m[m.length - 1].pos) / g.perCase);
+  // годных пачек за задание до этой позиции — выпуск смены считает от него (1ж)
+  line.made = goodCartonsAt(g, m[m.length - 1].pos);
+  const full = Math.floor(line.made / g.perCase);
   while (line.cases < full) {
     const n = line.cases;
     makeCase(db, s, line, g, b, n * g.perCase, g.perCase, when(posForGood(g, (n + 1) * g.perCase)));
@@ -463,6 +468,11 @@ export function lineHour(db: ContentDb, s: PlantState, notices: Notice[]) {
  * очищается, получает балк; когда комплект и балк у линии — смена встаёт к линии. Зовётся после каждого события.
  */
 export function lineStep(db: ContentDb, s: PlantState, notices: Notice[]) {
+  // задания на упаковку линии: сколько годных пачек ждать из всех таблеток при браке камер — для сменного задания (1ж)
+  for (const b of Object.values(s.batches)) {
+    const job = b.pack;
+    if (b.status === 'packing' && job && job.expect === undefined && s.lines[job.line]) job.expect = goodCartonsAt(geo(db, s, s.lines[job.line], job.sku), job.tablets * SIXTY);
+  }
   for (const line of Object.values(s.lines)) {
     if (!line.batch) {
       const b = Object.values(s.batches).find(x => x.status === 'packing' && x.pack!.line === line.id && x.pack!.taken === undefined && ['reserved', 'kitting', 'ready'].includes(x.pack!.state));
@@ -592,6 +602,8 @@ function finish(db: ContentDb, s: PlantState, line: Line, g: Geo, b: Batch, noti
   job.cartonRejects = cartons - goodCartons;
   job.cases = line.cases;
   job.scrap = job.blisterRejects * sku.perBlister + job.cartonRejects * sku.blisters * sku.perBlister;
+  defect(s, 'blisters', job.blisterRejects);
+  defect(s, 'cartons', job.cartonRejects);
   job.remainder = job.tablets - blisters * sku.perBlister + (goodBlisters - cartons * sku.blisters) * sku.perBlister;
   book(db, s, b, line, g, notices);
   job.state = 'done';
@@ -600,6 +612,8 @@ function finish(db: ContentDb, s: PlantState, line: Line, g: Geo, b: Batch, noti
   b.status = 'fg';
   delete line.batch;
   line.clear = false;
+  line.packs += goodCartons;
+  line.made = 0;
   for (const t of tasksOf(s, line, 'crew')) dropTask(db, s, t);
   line.machines.forEach((mc, i) => {
     syncParts(db, s, mc, g, i);

@@ -75,6 +75,8 @@ export const scenario = z.strictObject({
    * узла нет — меняют по отказу
    */
   maint: z.record(z.string(), z.number().min(1).max(300)).default({}),
+  /** мастер линии: сменное задание — такая доля номинала узкого места линии за смену, % */
+  norm: percent.default(100),
 });
 
 /**

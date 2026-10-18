@@ -1,13 +1,13 @@
 // Состояние завода и обмен с движком (docs/02-architecture.md, §1, §3, §7; docs/specs/2026-10-engine.md). Состояние —
 // обычный сериализуемый объект: сохранение — его снимок со схемой и миграциями (ADR студии 0004). Сущности — словари с
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
-import type { Attr, Id, ZoneKind } from '../content/types';
+import type { Attr, Dept, Id, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 7;
+export const SCHEMA = 8;
 
 // ---------------------------------------------------------------- склад
 
@@ -259,6 +259,27 @@ export interface CauseHit {
 export type BatchStatus = 'waiting' | 'reserved' | 'kitting' | 'process' | 'bulk' | 'packing' | 'fg' | 'released' | 'rejected';
 
 /**
+ * Чем занято время серии (геймдизайн, §5.4): ждёт своей даты; нет материалов; комплектация; стадия ждёт людей;
+ * помещение занято другой серией; уборка; оборудование занято другой серией; ремонт; идёт стадия; балк на испытаниях;
+ * упаковка ждёт линию; линия упаковывает; ГП ждёт проверки и решения; до миграции сохранения — неизвестно.
+ */
+export type BatchPhase =
+  | 'plan'
+  | 'materials'
+  | 'kitting'
+  | 'people'
+  | 'room'
+  | 'cleaning'
+  | 'equipment'
+  | 'repair'
+  | 'work'
+  | 'lab'
+  | 'line'
+  | 'packing'
+  | 'decision'
+  | 'before';
+
+/**
  * Состояние машины линии на отрезке (для OEE): на номинале, медленнее, микроостановка, авария (отказ узла — до конца
  * ремонта), ждёт соседа, наладка, вне смены, без задания.
  */
@@ -313,6 +334,9 @@ export interface Line {
   v: number;
   /** без задания, с */
   idle: number;
+  /** годных пачек: за прошлые задания и за нынешнее — для выпуска смен */
+  packs: number;
+  made: number;
 }
 
 /** Сверка материала после упаковки: выдано = использовано + испорчено + возвращено (шт. или мг). */
@@ -339,8 +363,9 @@ export interface PackJob {
   kitUnit?: string;
   /** списано на серию по факту: тара, партия, сколько */
   used: KitLine[];
-  /** таблеток к упаковке — весь остаток балка */
+  /** таблеток к упаковке — весь остаток балка; годных пачек из них при браке камер — для сменного задания */
   tablets: number;
+  expect?: number;
   /** партия ГП */
   fg?: string;
   /** когда линия взяла задание, пошла первая таблетка, упаковка кончилась */
@@ -411,6 +436,10 @@ export interface Batch {
   pack?: PackJob;
   /** стадия с узлами под износом, пока идёт */
   run?: StageRun;
+  /** время серии по состояниям, с (docs/specs/2026-10-engine.md, 1ж); нынешнее состояние и с какого момента */
+  spent: Partial<Record<BatchPhase, number>>;
+  phase?: BatchPhase;
+  phaseAt: number;
   /** проверка ООК кончилась; решение игрока для уполномоченного лица; держит ли УЛ серию; когда выпущена */
   checked?: number;
   decision?: 'release' | 'reject' | 'hold';
@@ -514,6 +543,12 @@ export type TaskKind =
   | 'load'
   | 'repair';
 
+/**
+ * Почему задача ждёт (1ж): люди её ролей в смене, но заняты; людей её ролей нет в смене; нет свободной техники; нет
+ * свободного прибора; нет свободного места назначения.
+ */
+export type WaitCause = 'people' | 'shift' | 'vehicle' | 'instrument' | 'place';
+
 /** Место задачи: место паллеты, рампа с фурой или точка. */
 export type Place = { kind: 'slot'; id: string } | { kind: 'truck'; id: string } | { kind: 'point'; x: number; z: number };
 
@@ -556,6 +591,9 @@ export interface Task {
   planned?: boolean;
   /** когда люди дошли и начали работу — событие `begin` (стадия с узлами под износом) */
   begin?: boolean;
+  /** открытая задача: чего ждёт по последнему проходу раздатчика и с какого момента (1ж) */
+  why?: WaitCause;
+  since?: number;
   /** работа на месте, с */
   work: number;
   /** больше — раньше */
@@ -701,6 +739,34 @@ export interface SpareOrder {
   by: string;
 }
 
+// ---------------------------------------------------------------- потери и ритм
+
+/**
+ * Потери за сутки (docs/specs/2026-10-engine.md, 1ж; геймдизайн, §9.6) по участкам — отделам работы: задержки задач по
+ * причинам, с; транспортировка — см техники с грузом и порожняком (и груза на руках), с в пути; перемещения людей
+ * пешком без груза — см и с; дефекты; лишняя обработка — уборки после просроченной чистоты.
+ */
+export interface DayLoss {
+  /** номер дня от 1970-01-01 */
+  day: number;
+  wait: Partial<Record<Dept, Partial<Record<WaitCause, number>>>>;
+  move: Partial<Record<Dept, { loaded: number; empty: number; sec: number }>>;
+  walk: Partial<Record<Dept, { cm: number; sec: number }>>;
+  defects: { blisters: number; cartons: number; deviations: number; lots: number; batches: number };
+  recleans: number;
+}
+
+/** Сменное задание линии (1ж): смена, начало и конец, задание и выпуск — годных пачек; счётчик линии в начале смены. */
+export interface ShiftTask {
+  line: string;
+  shift: Id;
+  from: number;
+  to?: number;
+  plan: number;
+  start: number;
+  fact?: number;
+}
+
 /** Запись журнала оборудования (GMP ЕАЭС, ч. I, п. 4.31): отказ, ремонт после отказа, замена по плану. */
 export interface MaintEntry {
   t: number;
@@ -802,6 +868,9 @@ export interface PlantState {
   spares: Record<Id, SpareStock>;
   spareOrders: Record<string, SpareOrder>;
   maintLog: MaintEntry[];
+  /** потери по суткам, по порядку; сменные задания линий, по порядку */
+  losses: DayLoss[];
+  shiftTasks: ShiftTask[];
 }
 
 /** Команда — единственный способ изменить состояние (docs/02-architecture.md, §7). */

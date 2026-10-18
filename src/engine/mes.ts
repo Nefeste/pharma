@@ -8,6 +8,7 @@ import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
 import { HOUR, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
+import { defect, recleaned } from './lean';
 import { blocked, consume, failPart, partsOf, partType, untilFail, wearAt } from './maint';
 import { type PlantPlan, planOf } from './plant';
 import { measure, within } from './quality';
@@ -62,6 +63,8 @@ export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, {
     truth: {},
     noise: {},
     causes: [],
+    spent: {},
+    phaseAt: s.t,
   };
   s.batches[b.id] = b;
   schedule(s.agenda, b.notBefore, { kind: 'batch', id: b.id });
@@ -348,7 +351,9 @@ function tryStart(db: ContentDb, s: PlantState, b: Batch) {
   if (room.batch !== b.id) {
     if (room.batch || room.status === 'dirty') return ensureCleaning(db, s, room);
     if (!readyFor(room, b.product, s.t)) {
-      // чистота просрочена — убрать снова, малой уборкой; чисто только для другого продукта — большой
+      // чистота просрочена — убрать снова, малой уборкой; чисто только для другого продукта — большой. Повторная уборка
+      // после просрочки — лишняя обработка (1ж)
+      if (s.t - room.since > CLEAN_HOLD) recleaned(s);
       room.status = 'dirty';
       if (room.cleanFor !== undefined && room.cleanFor !== b.product) room.major = true;
       room.since = s.t;
@@ -476,6 +481,7 @@ function cleanTime(db: ContentDb, s: PlantState, room: Room): number {
 export function deviate(s: PlantState, notices: Notice[], d: Omit<Deviation, 'id' | 'opened' | 'status'>) {
   const dev: Deviation = { id: nextId(s, 'D'), opened: s.t, status: 'open', ...d };
   s.deviations[dev.id] = dev;
+  defect(s, 'deviations');
   notices.push({ kind: 'deviation', id: dev.id });
 }
 

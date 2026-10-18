@@ -126,8 +126,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   (kopecks and ledger entries, dues by date, suppliers, wages twice a month, contributions, energy, VAT by quarter, the
   credit line), `maint.ts` (machine parts, wear by work done, failure by the hazard table of wear, repairs and planned
   replacement by the mechanic with a spare from the workshop, spares replenished by level, the maintenance policy,
-  `maintain`), `tasks.ts` (tasks and the dispatcher: people, vehicles, instruments), `staff.ts` (shifts),
-  `invariants.ts`.
+  `maintain`), `lean.ts` (losses per day by kind and department: waiting tasks by cause, transport and walking,
+  defects; a batch's time by state; the line master's shift task and the rhythm coefficient), `tasks.ts` (tasks and
+  the dispatcher: people, vehicles, instruments; why a task waits), `staff.ts` (shifts), `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker (`worker.ts`)

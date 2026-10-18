@@ -37,6 +37,9 @@ const actions: Actions = {
   setMorningPause: later('setMorningPause'),
   toggleCash: later('toggleCash'),
   setCashPage: later('setCashPage'),
+  toggleLab: later('toggleLab'),
+  setLabTab: later('setLabTab'),
+  rush: later('rush'),
 };
 createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} plant={PLANT} />);
 

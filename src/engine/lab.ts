@@ -11,8 +11,8 @@ import { defect } from './lean';
 import { type PlantPlan, planOf } from './plant';
 import { measure, within } from './quality';
 import { containersByLot, nextId, putUnit, setLotStatus, stockChanged, unitsOfLot } from './stock';
-import { addTask } from './tasks';
-import type { Deviation, LabTest, Lot, Notice, Place, PlantState, Sample, Task, Unit } from './types';
+import { addTask, resort } from './tasks';
+import type { Command, Deviation, LabTest, Lot, Notice, Place, PlantState, Sample, Task, TaskKind, Unit } from './types';
 import { PRIO, WMS } from './wms';
 
 /** Роли лаборатории. */
@@ -29,6 +29,39 @@ export const QC = {
  * размещения, чтобы места отбора не стояли; в пробоотборную везут после размещения.
  */
 export const LAB_PRIO = { fromSampling: 35, sample: 28, handover: 28, toSampling: 25, decide: 24, review: 22, prep: 20 } as const;
+
+/** Поднятая партия (3г): её задачи лаборатории — на столько выше (гипотеза) — выше таких же задач других партий. */
+export const RUSH = 10;
+
+/** Партия задачи лаборатории: своя у отбора, перевозок, передачи и решения; у подготовки и проверки — партия пробы. */
+function lotOfTask(s: PlantState, t: { lot?: string; test?: string }): string | undefined {
+  if (t.lot) return t.lot;
+  const q = t.test ? s.tests[t.test] : undefined;
+  return q ? s.samples[q.sample]?.lot : undefined;
+}
+
+/** Приоритет задачи лаборатории: по виду — и выше, если партия поднята. */
+function prioOf(s: PlantState, kind: keyof typeof LAB_PRIO, t: { lot?: string; test?: string }): number {
+  const lot = lotOfTask(s, t);
+  return LAB_PRIO[kind] + (lot && s.lots[lot]?.rush ? RUSH : 0);
+}
+
+/**
+ * Поднять пробу (3г; геймдизайн, §6.2): открытые задачи лаборатории партии — выше, очередь раздачи — заново; задачи,
+ * которые появятся позже, — тоже выше. Партии нет, она уже прошла лабораторию или уже поднята — отказ.
+ */
+export function rushCommand(s: PlantState, cmd: Extract<Command, { kind: 'rush' }>, notices: Notice[]) {
+  const lot = s.lots[cmd.lot];
+  if (!lot) return notices.push({ kind: 'refused', cmd: 'rush', why: 'noLot', detail: cmd.lot });
+  if (lot.status !== 'quarantine' && lot.status !== 'sampled' && lot.status !== 'testing') return notices.push({ kind: 'refused', cmd: 'rush', why: 'notLab', detail: lot.id });
+  if (lot.rush) return notices.push({ kind: 'refused', cmd: 'rush', why: 'already', detail: lot.id });
+  lot.rush = true;
+  for (const id of s.open) {
+    const t = s.tasks[id];
+    if ((t.kind as TaskKind) in LAB_PRIO && lotOfTask(s, t) === lot.id) t.prio += RUSH;
+  }
+  resort(s);
+}
 
 /** Работа на месте: отбор с одной тары, передача проб в лабораторию, проверка результата, решение по партии. */
 export const SAMPLE_WORK = 8 * MIN;
@@ -81,10 +114,10 @@ export function startSampling(db: ContentDb, s: PlantState) {
       if (u.where.kind === 'room') {
         const at = plan.room[u.where.id];
         const n = u.items.filter(c => sm.plan.includes(c)).length;
-        addTask(s, { kind: 'sample', roles: [...QC.samplers], unit: uid, from: { kind: 'point', x: at.x, z: at.z }, work: n * SAMPLE_WORK, prio: LAB_PRIO.sample, lot: lot.id });
+        addTask(s, { kind: 'sample', roles: [...QC.samplers], unit: uid, from: { kind: 'point', x: at.x, z: at.z }, work: n * SAMPLE_WORK, prio: prioOf(s, 'sample', { lot: lot.id }), lot: lot.id });
       } else {
         const from = u.where as { kind: 'slot'; id: string };
-        addTask(s, { kind: 'toSampling', roles: [...WMS.movers], veh: [...WMS.floor], unit: uid, from, toKind: 'sampling', work: 0, prio: LAB_PRIO.toSampling, lot: lot.id });
+        addTask(s, { kind: 'toSampling', roles: [...WMS.movers], veh: [...WMS.floor], unit: uid, from, toKind: 'sampling', work: 0, prio: prioOf(s, 'toSampling', { lot: lot.id }), lot: lot.id });
       }
     }
   }
@@ -100,7 +133,7 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       const n = u.items.filter(c => sm.plan.includes(c)).length;
       // паллета ждёт в шлюзе пробоотборной, пробы берут под ламинаром в самой пробоотборной (docs/specs/2026-10-view.md, 2а)
       const at = planOf(db, s.plant).room[planOf(db, s.plant).roomOf.sampling];
-      addTask(s, { kind: 'sample', roles: [...QC.samplers], unit: u.id, from: { kind: 'point', x: at.x, z: at.z }, work: n * SAMPLE_WORK, prio: LAB_PRIO.sample, lot: t.lot });
+      addTask(s, { kind: 'sample', roles: [...QC.samplers], unit: u.id, from: { kind: 'point', x: at.x, z: at.z }, work: n * SAMPLE_WORK, prio: prioOf(s, 'sample', t), lot: t.lot });
       return true;
     }
     case 'sample': {
@@ -120,11 +153,11 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       }
       sm.left = sm.left.filter(id => id !== u.id);
       // из пробоотборной — обратно в карантин; балк, отобранный на месте, остаётся где стоит
-      if (u.where.kind === 'slot') addTask(s, { kind: 'fromSampling', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from: t.from, toKind: m.storage === 'cold' ? 'cold' : 'quarantine', work: 0, prio: LAB_PRIO.fromSampling, lot: lot.id });
+      if (u.where.kind === 'slot') addTask(s, { kind: 'fromSampling', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from: t.from, toKind: m.storage === 'cold' ? 'cold' : 'quarantine', work: 0, prio: prioOf(s, 'fromSampling', { lot: lot.id }), lot: lot.id });
       if (sm.left.length === 0) {
         sm.taken = s.t;
         setLotStatus(s, lot, 'sampled');
-        addTask(s, { kind: 'handover', roles: [...QC.samplers], from: labPlace(planOf(db, s.plant)), work: HANDOVER_WORK, prio: LAB_PRIO.handover, lot: lot.id });
+        addTask(s, { kind: 'handover', roles: [...QC.samplers], from: labPlace(planOf(db, s.plant)), work: HANDOVER_WORK, prio: prioOf(s, 'handover', { lot: lot.id }), lot: lot.id });
       }
       return true;
     }
@@ -147,7 +180,7 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
         if (line.max !== undefined) q.max = line.max;
         s.tests[q.id] = q;
         sm.tests.push(q.id);
-        addTask(s, { kind: 'prep', roles: [...QC.analysts], ...(m.inst ? { inst: [m.inst] } : {}), from: t.from, work: m.prep + (m.unattended ? 0 : m.run), prio: LAB_PRIO.prep, test: q.id });
+        addTask(s, { kind: 'prep', roles: [...QC.analysts], ...(m.inst ? { inst: [m.inst] } : {}), from: t.from, work: m.prep + (m.unattended ? 0 : m.run), prio: prioOf(s, 'prep', { test: q.id }), test: q.id });
       }
       return true;
     }
@@ -169,7 +202,7 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       q.done = s.t;
       q.pass = within({ test: q.method, min: q.min, max: q.max }, q.result!);
       const sm = s.samples[q.sample];
-      if (sm.tests.every(id => s.tests[id].state === 'done')) addTask(s, { kind: 'decide', roles: [...QC.heads], from: t.from, work: DECIDE_WORK, prio: LAB_PRIO.decide, lot: sm.lot });
+      if (sm.tests.every(id => s.tests[id].state === 'done')) addTask(s, { kind: 'decide', roles: [...QC.heads], from: t.from, work: DECIDE_WORK, prio: prioOf(s, 'decide', { lot: sm.lot }), lot: sm.lot });
       return true;
     }
     case 'decide': {
@@ -210,7 +243,7 @@ function measured(db: ContentDb, s: PlantState, q: LabTest) {
   q.result = measure(s, `qc/${q.inst ?? m.id}`, lot.truth[m.attr] ?? 0, m.sd);
   if (q.inst) delete s.instruments[q.inst].test;
   q.state = 'review';
-  addTask(s, { kind: 'review', roles: [...QC.reviewers], not: q.by ? [q.by] : [], from: labPlace(planOf(db, s.plant)), work: REVIEW_WORK, prio: LAB_PRIO.review, test: q.id });
+  addTask(s, { kind: 'review', roles: [...QC.reviewers], not: q.by ? [q.by] : [], from: labPlace(planOf(db, s.plant)), work: REVIEW_WORK, prio: prioOf(s, 'review', { test: q.id }), test: q.id });
 }
 
 /**

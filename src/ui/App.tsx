@@ -9,6 +9,7 @@ import { QUALITIES } from '../render/view';
 import type { WallMode } from '../render/world';
 import { Card } from './Card';
 import { Cash } from './Cash';
+import { Lab } from './Lab';
 import { Morning } from './Morning';
 import { Stock } from './Stock';
 import { type Actions, LIVE, type Speed, type Store, useHud } from './store';
@@ -79,6 +80,9 @@ export function App({ store, actions, plant }: { store: Store; actions: Actions;
           <button type="button" className={s.cash.open ? 'on' : ''} onClick={() => actions.toggleCash()} title={T.cash.hint} data-test="cash-open">
             {T.cash.button}
           </button>
+          <button type="button" className={s.lab.open ? 'on' : ''} onClick={() => actions.toggleLab()} title={T.lab.hint} data-test="lab-open">
+            {T.lab.button}
+          </button>
         </span>
         {s.top ? (
           <span className="stat" data-test="top-cash" title={T.cash.day}>
@@ -91,8 +95,9 @@ export function App({ store, actions, plant }: { store: Store; actions: Actions;
       </div>
       {s.stock.open && <Stock hud={s} actions={actions} plant={plant} />}
       {s.cash.open && <Cash hud={s} actions={actions} />}
+      {s.lab.open && <Lab hud={s} actions={actions} />}
       {s.morning.open && s.morning.day !== undefined && <Morning v={s.morning.view} day={s.morning.day} start={s.start} plant={plant} pause={s.morningPause} actions={actions} />}
-      {s.selected && s.card && <Card v={s.card} start={s.start} plant={plant} actions={actions} beside={s.stock.open || s.cash.open} />}
+      {s.selected && s.card && <Card v={s.card} start={s.start} plant={plant} actions={actions} beside={s.stock.open || s.cash.open || s.lab.open} />}
       {s.debug && (
         <div className="debug panel">
           <b>{T.debug.title}</b>

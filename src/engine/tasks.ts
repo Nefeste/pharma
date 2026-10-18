@@ -52,6 +52,11 @@ export function addTask(s: PlantState, n: NewTask): Task {
   return t;
 }
 
+/** Очередь раздачи заново — после того как у задач сменился приоритет (3г, поднятая проба). */
+export function resort(s: PlantState) {
+  s.open.sort((x, y) => (before(s.tasks[x], s.tasks[y]) ? -1 : before(s.tasks[y], s.tasks[x]) ? 1 : 0));
+}
+
 function before(a: Task, b: Task): boolean {
   if (a.prio !== b.prio) return a.prio > b.prio;
   if (a.created !== b.created) return a.created < b.created;

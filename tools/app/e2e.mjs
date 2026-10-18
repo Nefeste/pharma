@@ -10,7 +10,8 @@
 // свободные ждут на постах своих ролей — у входа не больше двух. Склад и карточка (3б): строка склада — паллета на экране
 // мимо панели и карточка партии; щелчок мышью по паллете — её карточка; Esc закрывает. Планёрка и касса (3в): ×4 встают
 // ровно в 08:00 — планёрка открылась сама, мир на паузе, Esc закрывает; «До утра» тоже открывает планёрку; касса — остаток
-// как в полосе. Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
+// как в полосе. Лаборатория (3г): на шестые сутки — очередь, «Поднять» доходит до движка, на карте средней массы точки и
+// границы. Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -254,8 +255,26 @@ try {
   }
 
   // первая упаковка (2в): «До утра» до шестых суток (сколько раз — зависит от того, ушли ли ×4 за 08:00), затем ×4 —
-  // пока через линию не пошли штуки
-  while ((await page.evaluate(() => window.__game.day)) < 6) await untilMorning();
+  // пока через линию не пошли штуки. Панель лаборатории (3г) открыта: в первое утро, когда в очереди есть партия, —
+  // «Поднять»; команда доходит до движка и обратно в вид. Утром 6 сентября балк первой серии ещё ждёт решения
+  await page.click('[data-test=lab-open]');
+  let rushed = '';
+  while ((await page.evaluate(() => window.__game.day)) < 6) {
+    await untilMorning();
+    if (rushed) continue;
+    await page.waitForFunction(() => !!window.__game.store.get().lab.view, null, { timeout: 20_000 });
+    await frames(2);
+    if ((await page.$$eval('[data-test=lab-row]', r => r.length)) === 0) continue;
+    const lot = await page.getAttribute('[data-test=lab-row]', 'data-lot');
+    await page.click('[data-test=lab-rush]');
+    const up = await page
+      .waitForFunction(l => window.__game.store.get().lab.view?.rows.some(r => r.lot === l && r.rush), lot, { timeout: 20_000 })
+      .then(() => true, () => false);
+    rushed = up ? lot : 'нет';
+  }
+  if (!rushed || rushed === 'нет') fail(`лаборатория: «Поднять» ${rushed ? 'не дошло до движка' : 'не проверено — в очереди ни разу не было партии'}`);
+  else ok(`лаборатория: партия ${rushed} поднята — команда дошла до движка и вернулась в вид`);
+  await page.keyboard.press('Escape');
   await page.keyboard.press('Digit4');
   await page.waitForFunction(() => window.__game.view.lines[0]?.machines[1]?.items > 0, null, { timeout: 120_000 });
   await page.keyboard.press('Space');
@@ -281,6 +300,24 @@ try {
   });
   if (posts.atEntrance > 2) fail(`посты: у входа ждут ${posts.atEntrance} из ${posts.free} свободных`);
   else ok(`посты: свободных ${posts.free}, идут на пост ${posts.walking}, у входа ждут ${posts.atEntrance}`);
+
+  // лаборатория (3г): на карте средней массы к шестым суткам — точки МОК таблетирования и границы; Esc закрывает
+  {
+    await page.click('[data-test=lab-open]');
+    await page.waitForFunction(() => !!window.__game.store.get().lab.view, null, { timeout: 20_000 });
+    const rows = await page.$$eval('[data-test=lab-row]', r => r.length);
+    await page.click('[data-test=lab-tab-chart]');
+    await page.waitForFunction(() => !!window.__game.store.get().lab.chart, null, { timeout: 20_000 });
+    await frames(2);
+    const chart = await page.evaluate(() => {
+      const v = window.__game.store.get().lab.chart;
+      return { points: v?.points.length ?? 0, limits: !!v?.limits, marks: document.querySelectorAll('[data-test=lab-chart] .pt').length };
+    });
+    if (chart.points < 2 || !chart.limits || chart.marks < chart.points) fail(`лаборатория: точек ${chart.points}, границы ${chart.limits}, на рисунке ${chart.marks}`);
+    else ok(`лаборатория: в очереди ${rows}; на карте точек ${chart.points}, границы есть`);
+    await page.keyboard.press('Escape');
+    if (await page.evaluate(() => !!document.querySelector('#lab'))) fail('лаборатория: Esc не закрыл');
+  }
 
   // крупность показа (2г): с высоты участка — стрелки перевозок и линии, люди и техника скрыты; с высоты цеха — по одному
   await camAt(null);

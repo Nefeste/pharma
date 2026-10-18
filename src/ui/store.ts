@@ -6,6 +6,7 @@ import type { Ymd } from '../engine/core/calendar';
 import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
+import type { ChartView, LabView } from '../sim/lab';
 import type { CashView, MorningView, TopView } from '../sim/report';
 import type { CardView, StockQuery, StockView, Thing } from '../sim/views';
 
@@ -49,6 +50,8 @@ export interface Hud {
   cash: { open: boolean; page: number; view?: CashView };
   /** касса верхней полосы */
   top?: TopView;
+  /** панель лаборатории (3г): открыта ли, вкладка; очередь и контрольная карта средней массы */
+  lab: { open: boolean; tab: 'queue' | 'chart'; view?: LabView; chart?: ChartView };
 }
 
 /** Запрос склада по умолчанию: все партии по номеру, первая страница. */
@@ -76,6 +79,7 @@ export const initial: Hud = {
   morning: { open: false },
   morningPause: true,
   cash: { open: false, page: 0 },
+  lab: { open: false, tab: 'queue' },
 };
 
 export interface Actions {
@@ -102,6 +106,10 @@ export interface Actions {
   /** панель кассы: открыть или закрыть; страница календаря */
   toggleCash(): void;
   setCashPage(page: number): void;
+  /** панель лаборатории: открыть или закрыть; вкладка; поднять пробу партии — команда `rush` */
+  toggleLab(): void;
+  setLabTab(tab: 'queue' | 'chart'): void;
+  rush(lot: string): void;
 }
 
 export class Store {

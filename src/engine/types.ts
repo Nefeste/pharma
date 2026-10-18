@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 11;
+export const SCHEMA = 12;
 
 // ---------------------------------------------------------------- склад
 
@@ -27,6 +27,8 @@ export interface Lot {
   /** срок годности или повторных испытаний — номер дня от 1970-01-01 */
   expiry: number;
   status: LotStatus;
+  /** поднята игроком (3г): задачи лаборатории партии — выше таких же задач других партий */
+  rush?: true;
   /**
    * в нынешнем статусе с этого мгновения (3б, карточка вещи): у разрешённой и отклонённой — мгновение решения. В
    * сохранениях до схемы 10 нет
@@ -929,10 +931,12 @@ export type Command =
    */
   | { kind: 'release'; batch: string; decision: 'release' | 'reject' | 'hold' }
   /** заменить узел машины вне отказа — как только машина свободна */
-  | { kind: 'maintain'; machine: string; part: string };
+  | { kind: 'maintain'; machine: string; part: string }
+  /** поднять пробу партии (3г): её задачи лаборатории — выше, и те, что появятся позже */
+  | { kind: 'rush'; lot: string; by?: string };
 
 /** Почему команда не выполнена — для окна. */
-export type Refusal = 'noSupplier' | 'notSold' | 'belowMoq' | 'empty' | 'noRecipe' | 'noBatch' | 'notBulk' | 'noSku' | 'notReady' | 'noPart' | 'busy' | 'noSpare';
+export type Refusal = 'noSupplier' | 'notSold' | 'belowMoq' | 'empty' | 'noRecipe' | 'noBatch' | 'notBulk' | 'noSku' | 'notReady' | 'noPart' | 'busy' | 'noSpare' | 'noLot' | 'notLab' | 'already';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =

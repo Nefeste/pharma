@@ -151,6 +151,8 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     for (const d of (raw.losses as Raw[] | undefined) ?? []) d.lines ??= {};
     return raw;
   },
+  // 11 → 12 (часть 3г): партия может быть поднята игроком. В прежних сохранениях поднятых нет.
+  11: raw => raw,
 };
 
 export function toSave(s: PlantState): string {

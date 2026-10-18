@@ -89,6 +89,22 @@
     .cashsum { display: flex; gap: 24px; margin: 0; }
     .cashsum dt { color: var(--muted); font-size: 11px; }
     .cashsum dd { margin: 0; font-size: 18px; font-weight: 600; text-align: left; }
+    /* лаборатория (3г): строки партий и их испытаний; карта X–Rm */
+    .labp table.grid tbody tr { cursor: default; }
+    .labp tr.lot td { border-top: 1px solid var(--line); }
+    .labp tr.test td { border-bottom: none; padding-top: 1px; padding-bottom: 1px; }
+    .labp td.sub { padding-left: 22px; color: var(--muted); }
+    .rush { color: var(--yellow); }
+    .chartsum { font-size: 12px; }
+    svg.chart { background: rgba(0,0,0,.18); border-radius: 4px; }
+    svg.chart line { stroke-width: 1; }
+    svg.chart .cl line { stroke: var(--accent); }
+    svg.chart .lim line { stroke: #ff8a7a; stroke-dasharray: 5 4; }
+    svg.chart .spec line { stroke: var(--muted); stroke-dasharray: 2 4; }
+    svg.chart text { fill: var(--muted); font-size: 10px; }
+    svg.chart .trace { fill: none; stroke: rgba(255,255,255,.35); stroke-width: 1; }
+    svg.chart .pt { fill: var(--text); }
+    svg.chart .pt.bad { fill: #ff8a7a; }
   </style>
 </head>
 <body>

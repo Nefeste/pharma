@@ -8,7 +8,7 @@ import type { ContentDb, Id } from '../content/types';
 import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
-import { labDone, runDone, startSampling } from './lab';
+import { labDone, runDone, rushCommand, startSampling } from './lab';
 import { leanHour, leanStep, newLoss } from './lean';
 import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from './line';
 import { maintainCommand, maintDone, maintStep, newParts, spareArrives } from './maint';
@@ -164,6 +164,12 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: () => boolea
     case 'maintain': {
       const notices: Notice[] = [];
       maintainCommand(db, s, cmd, notices);
+      steps(db, s, notices);
+      return notices;
+    }
+    case 'rush': {
+      const notices: Notice[] = [];
+      rushCommand(s, cmd, notices);
       steps(db, s, notices);
       return notices;
     }

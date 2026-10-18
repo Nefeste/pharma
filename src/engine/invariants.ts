@@ -7,6 +7,7 @@ import { partsOf, partType } from './maint';
 import { orderReserved } from './market';
 import { clampAttr } from './mes';
 import { planOf } from './plant';
+import { shiftEnd } from './staff';
 import { containersByLot, LOT_FLOW, TAG } from './stock';
 import type { LotStatus, PlantState } from './types';
 
@@ -101,6 +102,9 @@ export function check(db: ContentDb, s: PlantState): string[] {
   // люди и техника — не больше одной задачи; задача знает своих людей
   for (const p of Object.values(s.people)) {
     if (p.task && !s.tasks[p.task]?.people.includes(p.id)) bad.push(`человек ${p.id}: задача ${p.task} его не знает`);
+    // путь на пост или к выходу — только у свободного в смене (3а)
+    if (p.walk && p.task) bad.push(`человек ${p.id}: идёт на пост с задачей ${p.task}`);
+    if (p.walk && shiftEnd(db, s, p) === undefined) bad.push(`человек ${p.id}: идёт на пост вне смены`);
   }
   for (const v of Object.values(s.vehicles)) {
     if (v.task && s.tasks[v.task]?.vehicle !== v.id) bad.push(`техника ${v.id}: задача ${v.task} её не знает`);

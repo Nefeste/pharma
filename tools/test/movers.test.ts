@@ -9,6 +9,7 @@ import { DAY } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
 import { cellOf } from '../../src/engine/nav';
 import { planOf } from '../../src/engine/plant';
+import { here } from '../../src/engine/staff';
 import type { PlantState } from '../../src/engine/types';
 import { Packer, unpack } from '../../src/sim/pack';
 
@@ -113,17 +114,19 @@ describe('где люди и техника', () => {
       const copy = structuredClone(s);
       apply(db, copy, { kind: 'advance', seconds: tk.times[4] - copy.t });
       const e = copy.people[`E${person}`];
+      // где он в мгновение конца задачи: свободный идёт на пост и ещё не сделал ни шага (3а)
+      const at = here(plan, e, copy.t);
       // кончил после смены — ушёл через вход
-      if (e.x === plan.entrance.x && e.z === plan.entrance.z) continue;
+      if (at.x === plan.entrance.x && at.z === plan.entrance.z) continue;
       const end = moversAt(db, plan, sl.tasks, sl.people, sl.vehicles, tk.times[4]);
       const f = end.people.find(x => x.person === person)!;
       if (f.doing === 'ride') {
         const v = copy.vehicles[`V${f.vehicle}`];
         const mv = end.vehicles.find(x => x.vehicle === f.vehicle)!;
         expect([mv.x, mv.z]).toEqual([v.x / 100, v.z / 100]);
-        expect([e.x, e.z]).toEqual([v.x, v.z]);
+        expect([at.x, at.z]).toEqual([v.x, v.z]);
       } else {
-        const sp = standPoint(plan, { x: e.x, z: e.z });
+        const sp = standPoint(plan, at);
         expect([tk.kind, Math.hypot(f.x - sp.x / 100, f.z - sp.z / 100) < 1e-9]).toEqual([tk.kind, true]);
       }
       checked++;

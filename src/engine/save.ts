@@ -135,6 +135,13 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     leanStep(db, out as unknown as PlantState);
     return out;
   },
+  // 8 → 9 (часть 3а): посты ожидания и проверка фуры у рампы. Фура у рампы открыта — её разгрузка или погрузка уже идёт;
+  // фура во дворе закрыта и при постановке к рампе пройдёт проверку. Путей на пост нет: свободные в смене пойдут на пост
+  // при ближайшей раздаче задач. Ожидание рампы в потерях — с миграции.
+  8: raw => {
+    for (const t of Object.values(raw.trucks as Record<string, Raw>)) t.open = t.docked === true;
+    return raw;
+  },
 };
 
 export function toSave(s: PlantState): string {

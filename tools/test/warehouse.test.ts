@@ -125,7 +125,7 @@ describe('фура → приёмка → карантин', () => {
     expect(s.open).toEqual([]);
   });
 
-  test('в выходной фуру не разгружают: задачи ждут понедельника, 08:00', () => {
+  test('в выходной фуру не проверяют и не разгружают: проверка ждёт понедельника, 08:00, разгрузка — её конца', () => {
     const s = newPlant(db, { scenario: SC, seed: 5 });
     // 2027-09-04 — суббота: до неё — 3 суток от среды
     apply(db, s, { kind: 'advance', seconds: 3 * DAY + 10 * HOUR - s.t });
@@ -133,10 +133,14 @@ describe('фура → приёмка → карантин', () => {
     const po = Object.values(s.pos).find(p => p.supplier === 'sup.exc')!;
     truckArrives(db, s, po.id, []);
     dispatch(db, s);
-    expect(Object.values(s.tasks).filter(t => t.kind === 'unload' && t.state === 'busy')).toEqual([]);
-    // понедельник 06.09, 08:00 — день кладовщиков и водителей
+    expect(Object.values(s.tasks).filter(t => (t.kind === 'truckCheck' || t.kind === 'unload') && t.state === 'busy')).toEqual([]);
+    // понедельник 06.09, 08:00 — день кладовщиков и водителей: сначала проверка, разгрузки ещё нет
     apply(db, s, { kind: 'advance', seconds: 5 * DAY + 8 * HOUR + 1 - s.t });
-    expect(Object.values(s.tasks).some(t => t.kind === 'unload' && t.state === 'busy')).toBe(true);
+    const chk = Object.values(s.tasks).find(t => t.kind === 'truckCheck' && t.state === 'busy')!;
+    expect(chk).toBeDefined();
+    expect(Object.values(s.tasks).some(t => t.kind === 'unload')).toBe(false);
+    apply(db, s, { kind: 'advance', seconds: chk.times![4] - s.t });
+    expect(Object.values(s.tasks).some(t => t.kind === 'unload')).toBe(true);
     expect(check(db, s)).toEqual([]);
   });
 

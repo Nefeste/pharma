@@ -16,7 +16,7 @@ import { marketDone, marketHour, marketStep, newCustomers, rznPublished } from '
 import { BATCH_HOUR, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, stageBegin } from './mes';
 import { planOf } from './plant';
 import { qaDone, qaStep, releaseCommand } from './qa';
-import { goHome } from './staff';
+import { goHome, LAST_CALL, postArrive, toPosts } from './staff';
 import { createLot, findSlot } from './stock';
 import { placePo } from './supply';
 import { dispatch, release } from './tasks';
@@ -170,9 +170,13 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: () => boolea
   }
 }
 
-/** Раздать задачи; затем у серий — чем занято их время (1ж): ждут они людей или уже работают, видно после раздачи. */
+/**
+ * Раздать задачи; кому задачи не досталось — на пост (3а); затем у серий — чем занято их время (1ж): ждут они людей или
+ * уже работают, видно после раздачи.
+ */
 function settle(db: ContentDb, s: PlantState) {
   dispatch(db, s);
+  toPosts(db, s);
   leanStep(db, s);
 }
 
@@ -220,6 +224,7 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
     case 'hour':
       // смены начинаются и кончаются в целые часы: раздать то, что ждало людей; партии, готовые к отбору проб, — в план
       schedule(s.agenda, s.t + HOUR, { kind: 'hour' });
+      schedule(s.agenda, s.t + HOUR - LAST_CALL, { kind: 'leave' });
       for (const p of Object.values(s.people)) goHome(db, s, p);
       startSampling(db, s);
       cashHour(db, s, notices);
@@ -274,6 +279,14 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
     case 'spare':
       spareArrives(db, s, ev.order);
       steps(db, s, notices);
+      return;
+    case 'post':
+      // дошёл до поста: раздавать нечего — свободным он был и в пути
+      postArrive(db, s, ev.person, ev.t);
+      return;
+    case 'leave':
+      // последний зов перед концом смены: кому задачи не нашлось — к выходу
+      settle(db, s);
       return;
   }
 }

@@ -3,16 +3,16 @@
 // открытые задачи по порядку (приоритет, время создания, номер) и даёт каждой ближайших свободных людей в смене,
 // ближайшую свободную технику и свободный прибор. Длина задачи считается сразу: дорога, подъём, работа. Конец — событие
 // с версией задачи. Задача не досталась никому — раздатчик называет причину, а путь назначенной — потери (lean.ts).
+// Человек, который идёт без задачи на пост (staff.ts), свободен: расстояние меряется от точки маршрута, где он сейчас.
 import type { ContentDb, Id, ZoneKind } from '../content/types';
 import { schedule } from './core/agenda';
 import { moved, waitEnd, waitNote } from './lean';
 import { dist, type PlantPlan, planOf, type Point, travel } from './plant';
-import { canTake, goHome, hasPermit, LAST_CALL, shiftEnd } from './staff';
+import { canTake, goHome, hasPermit, here, LAST_CALL, shiftEnd, stopWalk, WALK } from './staff';
 import { findSlot, nextId } from './stock';
 import type { Instrument, Person, Place, PlantState, Task, TaskKind, Vehicle, WaitCause } from './types';
 
-/** Человек пешком, см/с. */
-export const WALK = 120;
+export { WALK };
 
 export interface NewTask {
   kind: TaskKind;
@@ -88,13 +88,16 @@ export function levelOf(plan: PlantPlan, p: Place | string | undefined): number 
   return p.kind === 'slot' ? plan.slot[p.id].level : 0;
 }
 
+/** Где человек сейчас — на один проход раздатчика: у идущих на пост точка маршрута считается один раз. */
+type Where = (p: Person) => Point;
+
 /** Ближайший свободный человек ролей задачи, который может взять задачу сейчас; при равенстве — меньший номер. */
-function nearestPerson(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, at: Point, permit: string | undefined, skip: Set<string>): Person | undefined {
+function nearestPerson(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, at: Point, permit: string | undefined, skip: Set<string>, where: Where): Person | undefined {
   let best: Person | undefined;
   let bestD = 0;
   for (const p of Object.values(s.people)) {
     if (skip.has(p.id) || !t.roles.includes(p.role) || t.not?.includes(p.id) || !canTake(db, s, p) || !hasPermit(db, p, permit)) continue;
-    const d = dist(plan, p, at);
+    const d = dist(plan, where(p), at);
     if (!best || d < bestD || (d === bestD && idNum(p.id) < idNum(best.id))) {
       best = p;
       bestD = d;
@@ -107,9 +110,15 @@ function nearestPerson(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, a
 export function dispatch(db: ContentDb, s: PlantState) {
   if (s.open.length === 0) return;
   const plan = planOf(db, s.plant);
+  const at = new Map<string, Point>();
+  const where: Where = p => {
+    let q = at.get(p.id);
+    if (!q) at.set(p.id, (q = here(plan, p, s.t)));
+    return q;
+  };
   for (const id of [...s.open]) {
     const t = s.tasks[id];
-    const why = assign(db, s, plan, t);
+    const why = assign(db, s, plan, t, where);
     if (why === undefined) s.open.splice(s.open.indexOf(id), 1);
     else waitNote(s, t, why);
   }
@@ -121,7 +130,7 @@ function crewWait(db: ContentDb, s: PlantState, t: Task): WaitCause {
 }
 
 /** Назначить задачу; не вышло — причина: прибор, техника, место назначения, люди. */
-function assign(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task): WaitCause | undefined {
+function assign(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, where: Where): WaitCause | undefined {
   const from = pointOf(plan, s, t.from);
   const fromLevel = levelOf(plan, t.from);
   // прибор — первый свободный нужного вида в порядке плана
@@ -139,7 +148,7 @@ function assign(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task): WaitCau
     let place = false;
     for (const v of free) {
       const vt = db.vehicles[v.type];
-      const driver = nearestPerson(db, s, plan, t, v, vt.permit, new Set());
+      const driver = nearestPerson(db, s, plan, t, v, vt.permit, new Set(), where);
       if (!driver) continue;
       let to: string | undefined;
       if (t.toKind) {
@@ -158,7 +167,7 @@ function assign(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task): WaitCau
   const people: Person[] = [];
   const skip = new Set<string>();
   for (let i = 0; i < t.count; i++) {
-    const p = nearestPerson(db, s, plan, t, from, undefined, skip);
+    const p = nearestPerson(db, s, plan, t, from, undefined, skip, where);
     if (!p) return crewWait(db, s, t);
     people.push(p);
     skip.add(p.id);
@@ -179,6 +188,8 @@ function start(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, people: P
   const t0 = s.t;
   let times: [number, number, number, number, number];
   waitEnd(s, t);
+  // кто шёл на пост — остановился там, где его застала задача: путь к ней — оттуда
+  for (const p of people) stopWalk(db, s, p);
   if (v) {
     const vt = db.vehicles[v.type];
     const walk = travel(plan, people[0], v, WALK);

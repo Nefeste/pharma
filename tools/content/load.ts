@@ -499,6 +499,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       equipment: p.equipment.map(e => ({ ...e, at: at2(e.at) })),
       lines: p.lines.map(ln => ({ ...ln, machines: ln.machines.map(m => ({ ...m, at: at2(m.at) })) })),
       points: { park: [cm(p.points.park[0]), cm(p.points.park[1])], entrance: [cm(p.points.entrance[0]), cm(p.points.entrance[1])] },
+      posts: Object.fromEntries(Object.entries(p.posts).map(([role, at]) => [role, at2(at)])),
       energy: { hvac: p.energy.hvac, base: watt(p.energy.base) },
     };
     need(p.docks.some(d => d.kind === 'out') === p.zones.some(z => z.kind === 'shipping'), `план ${p.id}: рампа отгрузки и зона экспедиции бывают только вместе`);
@@ -536,6 +537,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     // узлы с износом чинит слесарь: запчасти — в мастерской, она вне чистой зоны (GMP ЕАЭС, ч. I, п. 3.32)
     const worn = p.equipment.some(e => raw.equipment[e.type]?.parts.length) || p.lines.some(l => l.machines.some(m => raw.machines[m.type]?.parts.length));
     if (worn) need(p.rooms.some(r => r.type === 'workshop' && r.grade === 'cnc'), `план ${p.id}: у машин есть узлы — нужна мастерская вне чистой зоны (тип workshop, класс cnc)`);
+    for (const role of Object.keys(p.posts)) need(raw.roles[role], `план ${p.id}: пост у неизвестной роли ${role}`);
     for (const i of p.instruments) {
       need(raw.instruments[i.type], `план ${p.id}: прибор ${i.id} — нет вида ${i.type}`);
       need(p.rooms.some(r => r.id === i.room), `план ${p.id}: прибор ${i.id} — нет помещения ${i.room}`);
@@ -554,6 +556,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     for (const r of s.staff) {
       need(roles[r.role], `${where}: нет роли ${r.role}`);
       need(shifts[r.shift], `${where}: нет графика ${r.shift}`);
+      need(raw.plants[s.plant]?.posts[r.role], `${where}: у роли ${r.role} нет поста в плане ${s.plant}`);
     }
     for (const v of s.vehicles) need(vehicles[v.type], `${where}: нет техники ${v.type}`);
     for (const c of s.customers) need(raw.customers[c], `${where}: нет покупателя ${c}`);

@@ -24,6 +24,7 @@ import { type Actions, LIVE, type Speed, type Store } from '../ui/store';
 import { fillsOf, Flows, lineArrows, moveArrows, movesOf } from './flows';
 import { moversAt } from './movers';
 import { carriedOf, dockFront, palletsOf, SceneState } from './scene';
+import { Yard } from './yard';
 
 /** Сценарий части 0 (content/scenarios/proto.yaml). */
 export const SCENARIO = 'scn.proto';
@@ -85,6 +86,8 @@ export class Game {
   private moving = '';
   /** частоты перевозок между зонами — для стрелок участка (2г) */
   readonly flows = new Flows();
+  /** фуры двора: въезд, ожидание, отъезд — картинка по срезам (3а) */
+  readonly yard = new Yard();
   /** крупность показа: уровень по высоте камеры (с запасом у порогов) и веса уровней на экране (detail.ts) */
   private camLevel: Detail = 1;
   detail: Weights = AT[1];
@@ -152,7 +155,7 @@ export class Game {
     this.view.apply(sl);
     this.stage.setOverlay([...moveArrows(this.layout, this.flows), ...lineArrows(this.db, this.layout, sl.lines)], fillsOf(this.layout.plan, this.view.units.values()));
     this.showPallets();
-    this.stage.setTrucks(this.view.trucks, d => dockFront(this.layout, d));
+    this.yard.update(this.view.trucks, d => dockFront(this.layout, d), sl.t);
     this.stage.setRooms(this.view.rooms);
     for (const n of s.notices) this.notice(n);
     // «До утра» кончается планёркой — и паузой: игрок видит итог суток (геймдизайн, §2)
@@ -182,6 +185,7 @@ export class Game {
     const v = this.view;
     const t = this.speed === LIVE ? this.t + Math.min(1, this.client.ahead) : this.t;
     const mv = moversAt(this.db, this.layout.plan, v.tasks, v.people, v.vehicles, t);
+    this.stage.setTrucks(this.yard.at(t));
     this.showPallets(mv.carried.map(c => c.unit).sort((a, b) => a - b));
     this.stage.setMovers(mv, carriedOf(v, mv.carried, c => (c.placed ? levelY(c.level) : forkY(c.level))), ts / 1000);
   }

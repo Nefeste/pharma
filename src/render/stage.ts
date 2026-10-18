@@ -6,7 +6,8 @@
 import * as THREE from 'three';
 import type { Movers } from '../app/movers';
 import type { ContentDb } from '../content/types';
-import type { EquipmentRow, LineRow, RoomRow, TruckRow } from '../sim/pack';
+import type { TruckPose } from '../app/yard';
+import type { EquipmentRow, LineRow, RoomRow } from '../sim/pack';
 import type { Arrow, Fill } from '../app/flows';
 import type { People } from './bake';
 import { dressOf, lookOf, skinOf } from './cast';
@@ -133,10 +134,10 @@ export class Stage {
     this.loads.set(list);
   }
 
-  /** Фуры из среза: у рампы — кузовом к воротам (ворота подняты), ждущие — во дворе. */
-  setTrucks(rows: readonly TruckRow[], front: (dock: number) => { x: number; z: number }) {
-    this.trucks.set(rows, front);
-    this.docked = new Set(rows.filter(r => r.docked).map(r => r.dock));
+  /** Фуры в кадре: у рампы — кузовом к воротам (ворота подняты, пока фура стоит у рампы по учёту), во дворе — где едут. */
+  setTrucks(poses: readonly TruckPose[]) {
+    this.trucks.set(poses);
+    this.docked = new Set(poses.filter(r => r.docked).map(r => r.dock));
   }
 
   setRooms(rows: readonly RoomRow[]) {

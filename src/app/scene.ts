@@ -89,8 +89,9 @@ export function palletsOf(db: ContentDb, plantId: string, st: SceneState, moving
       out.push({ x: p.x, z: p.z, y: 0, turn: 0, load: u.load ?? 'cases', fill: u.fill, tag: u.tag, ...(u.plastic ? { plastic: true } : {}) });
     });
   }
+  // паллеты в кузове видны, когда фура у рампы и кузов открыт (3а): до проверки и во дворе — закрыт
   for (const t of st.trucks) {
-    if (!t.docked) continue;
+    if (!t.docked || !t.open) continue;
     const front = dockFront(l, t.dock);
     (onTruck.get(t.truck) ?? []).forEach((u, k) => {
       const p = truckSpot(front, k);

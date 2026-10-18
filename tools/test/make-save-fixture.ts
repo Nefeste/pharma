@@ -7,7 +7,8 @@
 // серии или ВЭЖХ — хотя бы что-то одно. С схемы 6 — отгрузка посреди погрузки: фура покупателя у рампы, паллета заказа
 // едет в неё, у кассы — счета к оплате и к получению. С схемы 7 — замена узла посреди работы слесаря: запчасть в резерве,
 // следующая заказана, в очереди — событие её прихода. С схемы 8 — посреди смены с заданием: сменное задание открыто,
-// задачи ждут с причиной, у серий идёт время по состояниям.
+// задачи ждут с причиной, у серий идёт время по состояниям. С схемы 9 — фура поставщика у рампы на проверке, кузов закрыт,
+// а люди идут на свои посты: в очереди — события их прихода.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { DAY, MIN } from '../../src/engine/core/calendar';
@@ -23,7 +24,9 @@ const stage = () => Object.values(s.tasks).some(t => t.kind === 'stage' && t.sta
 const loading = () => Object.values(s.tasks).some(t => t.kind === 'load' && t.state === 'busy') && s.cash.dues.some(d => d.sum > 0) && s.cash.dues.some(d => d.sum < 0);
 const repairing = () => Object.values(s.tasks).some(t => t.kind === 'repair' && t.state === 'busy') && Object.values(s.spareOrders).some(o => o.status === 'ordered');
 const planned = () => s.shiftTasks.some(t => t.to === undefined && t.plan > 0) && Object.values(s.tasks).some(t => t.why !== undefined);
-const busy = () => (SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : planned());
+const checking = () => Object.values(s.tasks).some(t => t.kind === 'truckCheck' && t.state === 'busy') && Object.values(s.people).some(p => p.walk);
+const busy = () =>
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : checking();
 while (s.t < end && !busy()) apply(db, s, { kind: 'advance', seconds: SCHEMA < 6 ? 10 * MIN : MIN });
 writeFileSync(new URL(`./fixtures/save-v${SCHEMA}.json`, import.meta.url), `${toSave(s)}\n`);
 console.log(`fixtures/save-v${SCHEMA}.json: сутки ${s.day}, испытаний ${Object.keys(s.tests).length}`);

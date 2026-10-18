@@ -7,14 +7,17 @@ import * as THREE from 'three';
 import type { Movers } from '../app/movers';
 import type { ContentDb } from '../content/types';
 import type { EquipmentRow, LineRow, RoomRow, TruckRow } from '../sim/pack';
+import type { Arrow, Fill } from '../app/flows';
 import type { People } from './bake';
 import { dressOf, lookOf, skinOf } from './cast';
+import { AT, shownOf, type Weights } from './detail';
 import { buildDoors, type Doors } from './doors';
 import { GpuTimer } from './gpu';
 import { buildLamps, type Lamps } from './lamps';
 import type { Layout } from './layout';
 import { buildRacks, Loads, type PalletView } from './loads';
 import { Machines } from './machines';
+import { Overlay } from './overlay';
 import { type Body, IDLE, PeopleView, WALK } from './people';
 import { Post } from './post';
 import { Signs } from './signs';
@@ -49,13 +52,17 @@ export class Stage {
   readonly cam: IsoCamera;
   readonly light: Daylight;
   renderer: THREE.WebGLRenderer;
-  readonly loads: Loads;
+  loads: Loads;
   readonly walls: Walls;
   readonly doors: Doors;
   readonly lamps: Lamps;
   readonly trucks = new Trucks();
   readonly fleet: Fleet;
   readonly machines: Machines;
+  /** слой участка: стрелки и загрузка мест (2г) */
+  readonly overlay: Overlay;
+  /** что видно при нынешней крупности показа (detail.ts) */
+  private shownD = shownOf(AT[1]);
   private lineRows: readonly LineRow[] = [];
   private eqRows: readonly EquipmentRow[] = [];
   private gameRate = 0;
@@ -107,6 +114,9 @@ export class Stage {
     this.scene.add(buildRacks(layout.plan.plant.racks.map(r => ({ x: r.x / 100, z: r.z / 100, bays: r.bays, levels: r.levels }))));
     this.machines = new Machines(layout, init.db);
     this.scene.add(this.machines.group);
+    this.overlay = new Overlay(layout);
+    this.overlay.setShown(0);
+    this.scene.add(this.overlay.group);
     this.loads = new Loads(init.capacity);
     this.scene.add(this.loads.group);
     this.scene.add(this.trucks.group);
@@ -140,6 +150,18 @@ export class Stage {
     this.gameRate = gameRate;
   }
 
+  /** Крупность показа кадра — веса уровней (detail.ts): люди и техника уходят в пол, штуки — в полосу, слой проступает. */
+  setDetail(w: Weights) {
+    this.shownD = shownOf(w);
+    this.overlay.setShown(this.shownD.layer);
+  }
+
+  /** Стрелки перевозок и линии, загрузка мест склада — слой участка (2г). */
+  setOverlay(arrows: readonly Arrow[], fills: readonly Fill[]) {
+    this.overlay.setArrows(arrows);
+    this.overlay.setFills(fills);
+  }
+
   /** Сколько людей и техники нарисовано в последнем кадре — для сценария в браузере и бенча. */
   get peopleShown() {
     return (this.people?.nearCount ?? 0) + (this.people?.farCount ?? 0);
@@ -160,9 +182,11 @@ export class Stage {
   setMovers(mv: Movers, carried: readonly PalletView[], clock: number) {
     const roles = Object.keys(this.init.db.roles);
     const types = Object.keys(this.init.db.vehicles);
-    this.fleet.set(mv.vehicles);
-    this.vehiclesShown = mv.vehicles.length;
-    this.carried.set(carried);
+    const k = this.shownD.movers;
+    this.fleet.set(mv.vehicles, k);
+    this.vehiclesShown = k > 0.01 ? mv.vehicles.length : 0;
+    // груз на вилах уходит вместе с техникой
+    this.carried.set(k > 0.5 ? carried : []);
     const shown: Shown[] = [];
     const near: { x: number; z: number }[] = [];
     for (const f of mv.people) {
@@ -205,6 +229,33 @@ export class Stage {
     this.resize();
   }
 
+  /** Мест для паллет сцены — не меньше `n`: бенч ставит паллеты сверх учёта (docs/specs/2026-10-view.md, 2г). */
+  reserve(n: number) {
+    if (n <= this.loads.capacity) return;
+    this.scene.remove(this.loads.group);
+    this.loads = new Loads(n);
+    this.scene.add(this.loads.group);
+  }
+
+  /** Сколько людей нарисовано полной и упрощённой моделью в последнем кадре — для бенча. */
+  get peopleCounts() {
+    return { near: this.people?.nearCount ?? 0, far: this.people?.farCount ?? 0 };
+  }
+
+  /** Снимок кадра `w` × `h` в час `hour` — PNG строкой данных (как у «Больницы»: бенч и снимки). */
+  shot(w: number, h: number, hour: number): string {
+    const pr = this.renderer.getPixelRatio();
+    this.renderer.setPixelRatio(1);
+    this.renderer.setSize(w, h, false);
+    this.cam.aspect = w / h;
+    this.post?.setSize();
+    this.frame(0, hour);
+    const url = this.renderer.domElement.toDataURL('image/png');
+    this.renderer.setPixelRatio(pr);
+    this.resize();
+    return url;
+  }
+
   resize(w = this.host.clientWidth, h = this.host.clientHeight) {
     this.renderer.setSize(w, h, true);
     this.cam.aspect = w / Math.max(1, h);
@@ -228,8 +279,11 @@ export class Stage {
     // двери — перед людьми и техникой, ворота рамп — по фурам
     const near = this.near;
     this.doors.update(dt, (x, z, r) => near.some(p => (p.x - x) ** 2 + (p.z - z) ** 2 < r * r), this.docked, u);
-    this.people?.update(this.shown, b => this.paintOf(b), cam.target, 1000, cam.half < FULL_NEAR);
-    this.machines.update(dt, this.gameRate, this.lineRows, this.eqRows);
+    if (this.people) {
+      this.people.scale = this.shownD.movers;
+      this.people.update(this.shown, b => this.paintOf(b), cam.target, 1000, cam.half < FULL_NEAR);
+    }
+    this.machines.update(dt, this.gameRate, this.lineRows, this.eqRows, this.shownD);
     this.signs.update(u, cam.half);
     this.draw();
   }

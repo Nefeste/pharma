@@ -1,4 +1,6 @@
-// из bolnitsa: src/render/view.ts @ e0a3491 — изменено: камера уходит на запад за край участка — во двор рамп с фурами.
+// из bolnitsa: src/render/view.ts @ e0a3491 — изменено: камера уходит на запад за край участка — во двор рамп с фурами;
+// окружение для отражений ночью гаснет вместе с солнцем — иначе на среднем и высоком пресетах ночь светла, как день
+// (контактный лист, docs/specs/2026-10-view.md, 2г; исправление — перенести в «Больницу»).
 // Отрисовщик, свет и камера. Пресеты качества меняют тени, сглаживание, затенение и разрешение кадра; сглаживание
 // задаётся при создании контекста WebGL, поэтому смена пресета пересоздаёт WebGLRenderer — геометрия и текстуры
 // загружаются в видеокарту заново сами.
@@ -60,6 +62,9 @@ export class Daylight {
   private envTex: THREE.Texture | null = null;
   private envOwner: THREE.WebGLRenderer | null = null;
   hour = 12;
+  /** сила окружения днём; ночью — четверть */
+  private envDay = 0.3;
+  private night = 0;
 
   constructor(
     private scene: THREE.Scene,
@@ -103,7 +108,7 @@ export class Daylight {
       this.envTex = null;
     }
     this.scene.environment = this.envTex;
-    this.scene.environmentIntensity = 0.3;
+    this.scene.environmentIntensity = this.envDay * (1 - 0.75 * this.night);
   }
 
   setShadowSize(n: number) {
@@ -127,6 +132,8 @@ export class Daylight {
     const low = 1 - Math.min(1, el / 0.6);
     // сумерки — с 18:30 до 20:00 (зима; дневная смена кончается в 20:00): к вечеру видно свет светильников
     const night = hour >= 18.5 ? Math.min(1, (hour - 18.5) / 1.5) : hour < 6.5 ? 1 - Math.max(0, hour - 6) / 0.5 : 0;
+    this.night = night;
+    this.scene.environmentIntensity = this.envDay * (1 - 0.75 * night);
     const warm = new THREE.Color(0xfff4e6).lerp(new THREE.Color(0xff8a3c), low);
     this.sun.color.copy(warm);
     this.sun.intensity = (1.6 + 2.2 * (1 - low)) * (1 - night * 0.9);

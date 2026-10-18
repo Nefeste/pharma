@@ -146,10 +146,13 @@ export class Fleet {
     return { x: at.x + Math.sin(at.heading) * z, z: at.z + Math.cos(at.heading) * z };
   }
 
-  /** Техника из движущихся: каждая — своим видом, вилы — на своём ярусе. */
-  set(list: readonly Machine[]) {
+  /**
+   * Техника из движущихся: каждая — своим видом, вилы — на своём ярусе. `scale` — общий масштаб: при смене крупности показа
+   * техника уходит в пол (0 — не рисуется).
+   */
+  set(list: readonly Machine[], scale = 1) {
     const count = new Map<Part, number>();
-    for (const v of list) {
+    for (const v of scale > 0.01 ? list : []) {
       const k = this.kinds.get(v.type);
       if (!k) continue;
       const fy = forkY(v.fork);
@@ -161,9 +164,9 @@ export class Fleet {
         for (const [x, y, z, sx, sy, sz, lift] of part.pieces) {
           if (n >= MAX * part.pieces.length) break;
           const dy = lift === 'fork' ? fy : lift === 'mast' ? mastUp : 0;
-          this.o.set(x, y + dy, z).applyQuaternion(this.q);
+          this.o.set(x, y + dy, z).multiplyScalar(scale).applyQuaternion(this.q);
           this.p.set(v.x + this.o.x, this.o.y, v.z + this.o.z);
-          this.m.compose(this.p, this.q, this.s.set(sx, sy, sz));
+          this.m.compose(this.p, this.q, this.s.set(sx * scale, sy * scale, sz * scale));
           part.mesh.setMatrixAt(n++, this.m);
         }
         count.set(part, n);

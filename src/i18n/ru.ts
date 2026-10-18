@@ -1,4 +1,5 @@
 // Строки игры по-русски (устав, docs/05-rules.md: все строки для игрока — здесь). Английский — en.ts, того же вида.
+import type { ZoneKind } from '../content/types';
 import { pluralRu } from './plural';
 
 export const ru = {
@@ -6,7 +7,7 @@ export const ru = {
     title: 'Фармзавод',
     loading: 'Загрузка…',
     error: 'Ошибка',
-    stage: 'Прототип: завод из плана — часть 2а',
+    stage: 'Прототип, часть 2: 3D-вид завода',
   },
   date: {
     /** родительный падеж: «1 сентября 2027» */
@@ -51,6 +52,18 @@ export const ru = {
     wallsCut: 'Срез',
     wallsDown: 'Вниз',
   },
+  /** названия зон склада — краской на полу (docs/specs/2026-10-view.md, 2г) */
+  zones: {
+    receiving: 'Приёмка',
+    quarantine: 'Карантин',
+    sampling: 'Отбор проб',
+    staging: 'Комплектация',
+    palletizing: 'Паллетирование',
+    cold: 'Холод',
+    rejected: 'Отклонённое',
+    fgQuarantine: 'Карантин ГП',
+    shipping: 'Экспедиция',
+  } as Record<ZoneKind, string>,
   /** табличка помещения производства: статус чистоты, серия и стадия (GMP ЕАЭС, ч. I, пп. 5.12, 5.13) */
   room: {
     status: { clean: 'Чисто', busy: 'Занято', dirty: 'Грязно' },
@@ -72,7 +85,20 @@ export const ru = {
     gpu: (ms: string) => `видеокарта ${ms} мс`,
     quality: 'Качество',
     qualities: { low: 'низкое', medium: 'среднее', high: 'высокое' },
+    bench: 'Авто-бенч',
+    benchUncapped: 'Авто-бенч без vsync (перезапуск)',
+    benchRunning: 'Авто-бенч идёт…',
+    benchCell: (q: string, cam: string, phase: string) => `Авто-бенч: ${q}, ${cam} — ${phase}`,
+    warm: 'прогрев',
+    measure: 'замер',
+    shots: 'Авто-бенч: снимки…',
+    done: (path: string) => `Готово. Итог сохранён: ${path} (и снимки рядом)`,
+    download: 'Готово — скачать итог (JSON)',
+    overviewCam: 'общий план',
+    closeCam: 'крупный план',
   },
+  /** снимки авто-бенча */
+  shots: { overview: 'общий план, день', racks: 'склад и стеллажи', line: 'упаковочная линия', machine: 'блистерная машина' },
 };
 
 export type Strings = typeof ru;

@@ -1,5 +1,6 @@
 // Страница игры (docs/02-architecture.md, §10): панели React и 3D-вид. Параметры адреса — для проверок:
-//   ?q=low|medium|high — пресет качества; ?lang=en — язык. В Electron — те же ключи: --q low.
+//   ?q=low|medium|high — пресет качества; ?lang=en — язык; ?bench=1 (&secs=15&warm=3&qualities=low,high&shots=0) —
+//   авто-бенч сцены (docs/specs/2026-10-view.md, 2г). В Electron — те же ключи: --q low, --bench, --secs 15.
 import { createRoot } from 'react-dom/client';
 import { setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
@@ -25,15 +26,25 @@ const actions: Actions = {
   setQuality: later('setQuality'),
   setWalls: later('setWalls'),
   toggleDebug: later('toggleDebug'),
+  bench: later('bench'),
 };
 createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} />);
 
 const quality = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q')) ?? 'medium';
 
 Game.create(document.getElementById('view')!, store, quality)
-  .then(g => {
+  .then(async g => {
     game = g;
     window.__game = g;
+    const args = window.shell ? await window.shell.args() : [];
+    const has = (k: string) => q.get(k) === '1' || args.includes(`--${k}`);
+    const val = (k: string) => q.get(k) ?? (args.includes(`--${k}`) ? args[args.indexOf(`--${k}`) + 1] : null);
+    if (has('bench')) {
+      const { runBench } = await import('./bench');
+      const num = (k: string) => (val(k) ? Number(val(k)) : undefined);
+      const qs = val('qualities')?.split(',') as Quality[] | undefined;
+      await runBench(g, { secs: num('secs'), warm: num('warm'), qualities: qs, shots: val('shots') !== '0' });
+    }
   })
   .catch(e => {
     store.set({ error: String(e) });

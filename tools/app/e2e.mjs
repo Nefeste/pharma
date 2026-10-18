@@ -3,12 +3,14 @@
 // пробел — пауза; «До утра» (клавиша 5) доходит до планёрки в 08:00 и ставит паузу. Завод из плана (2а,
 // docs/specs/2026-10-view.md): переключатель стен; снимки с трёх высот камеры — участок, цех, машина — днём и ночью;
 // вызовы отрисовки — в бюджете. Люди и техника (2б): в 08:00 люди смены и техника на полу. Оборудование и линия (2в):
-// лампа у каждой машины и единицы оборудования плана; «1:1» — часы идут секунда в секунду; на седьмые сутки линия
-// упаковывает первую серию — лампы машин горят, на лентах и в накопителях штуки; снимки дня — в этот час. Ошибок в
-// консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed]
+// лампа у каждой машины и единицы оборудования плана; «1:1» — часы идут секунда в секунду; на шестые сутки линия
+// упаковывает первую серию — лампы машин горят, на лентах и в накопителях штуки; снимки дня — в этот час. Крупность
+// показа и проверки (2г): с высоты участка — стрелки, люди и техника скрыты, с высоты цеха — снова по одному; контактный
+// лист — три высоты днём и ночью на трёх пресетах, один файл tools/app/out/contact.png. Ошибок в консоли и запросов
+// наружу нет. Снимки — tools/app/out/e2e*.png.
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findChromium } from './e2e-lib.mjs';
 import { serve } from './serve.mjs';
@@ -20,7 +22,7 @@ const arg = (k, d) => {
 
 const out = new URL('./out/', import.meta.url).pathname;
 mkdirSync(out, { recursive: true });
-const port = 8094;
+const port = Number(arg('port', 8094));
 const server = await serve(port);
 const browser = await chromium.launch({
   executablePath: findChromium(),
@@ -96,8 +98,26 @@ try {
   if (!shown) fail(`извещение: ${notice}`);
   else ok(`извещение: ${notice}`);
 
-  // люди смены и техника — на полу (2б)
-  await page.waitForTimeout(300);
+  // камера: участок — общий план, цех упаковки, блистерная машина (геймдизайн, §19.1)
+  const camAt = v =>
+    page.evaluate(v => {
+      const c = window.__game.stage.cam;
+      if (v) {
+        c.target.set(v.x, 0, v.z);
+        c.half = v.half;
+      } else c.overview();
+    }, v);
+  const HALL = { x: 39, z: 17, half: 9 };
+  const MACHINE = { x: 44, z: 16.5, half: 3.5 };
+  /**
+   * Дождаться, пока показ дойдёт до уровня: переход — 0,4 с, а шаг кадра — не больше 0,1 с, то есть не меньше четырёх
+   * кадров; программная отрисовка на высоком пресете тратит на кадр секунды.
+   */
+  const settle = level => page.waitForFunction(k => window.__game.detail[k - 1] === 1, level, { timeout: 90_000 });
+
+  // люди смены и техника — на полу (2б): с высоты цеха; с высоты участка их скрывает крупность показа (2г)
+  await camAt(HALL);
+  await settle(1);
   const floor = await page.evaluate(() => ({ people: window.__game.stage.peopleShown, vehicles: window.__game.stage.vehiclesShown }));
   if (floor.people < 1 || floor.vehicles < 1) fail(`на полу: людей ${floor.people}, техники ${floor.vehicles}`);
   else ok(`на полу: людей ${floor.people}, техники ${floor.vehicles}`);
@@ -113,18 +133,21 @@ try {
   else ok(`лампы: ${lamps.shown.length} — ${[...new Set(lamps.shown)].join(', ')}`);
 
   // «живое время» (2в): «1:1» — секунда в секунду. Программная отрисовка даёт несколько кадров в секунду, а шаг кадра
-  // ограничен 0,1 с — поэтому часы могут отстать, но не уйти вперёд
+  // ограничен 0,1 с — поэтому часы окна (с дробью, ещё не ушедшей в поток) могут отстать, но не уйти вперёд
+  const liveT = () => page.evaluate(() => window.__game.t + window.__game.lag + window.__game.client.ahead);
   await page.click('[data-test=live]');
-  const l0 = await gameT();
-  await page.waitForTimeout(2000);
-  const l1 = await gameT();
+  const l0 = await liveT();
+  await page.waitForTimeout(3000);
+  const l1 = await liveT();
   const live = await page.evaluate(() => window.__game.speed);
-  if (live !== 5 || l1 - l0 < 0 || l1 - l0 > 3) fail(`«1:1»: скорость ${live}, за 2 с прошло ${l1 - l0} игровых секунд`);
-  else ok(`«1:1»: за 2 с прошло ${l1 - l0} игровых секунд`);
+  if (live !== 5 || l1 - l0 <= 0.1 || l1 - l0 > 3.5) fail(`«1:1»: скорость ${live}, за 3 с прошло ${(l1 - l0).toFixed(2)} игровых секунд`);
+  else ok(`«1:1»: за 3 с прошло ${(l1 - l0).toFixed(2)} игровых секунд`);
   await page.keyboard.press('Space');
   await page.waitForTimeout(300);
 
   // снимок: общий план завода
+  await camAt(null);
+  await settle(3);
   await page.screenshot({ path: join(out, 'e2e.png') });
   ok(`снимок: ${join(out, 'e2e.png')}`);
 
@@ -140,12 +163,16 @@ try {
     else ok('стены: «вниз» и «срез»');
   }
 
-  // первая упаковка (2в): «До утра» до седьмых суток, затем ×4 — пока через линию не пошли штуки
-  for (let i = 0; i < 4; i++) await untilMorning();
+  // первая упаковка (2в): «До утра» до шестых суток (сколько раз — зависит от того, ушли ли ×4 за 08:00), затем ×4 —
+  // пока через линию не пошли штуки
+  while ((await page.evaluate(() => window.__game.day)) < 6) await untilMorning();
   await page.keyboard.press('Digit4');
   await page.waitForFunction(() => window.__game.view.lines[0]?.machines[1]?.items > 0, null, { timeout: 120_000 });
   await page.keyboard.press('Space');
-  await page.waitForTimeout(400);
+  // штуки на лентах видны по одной — с высоты цеха
+  await camAt(HALL);
+  await settle(1);
+  await page.waitForTimeout(300);
   const packing = await page.evaluate(() => {
     const g = window.__game;
     const plant = g.db.plants[g.db.scenarios['scn.proto'].plant];
@@ -154,28 +181,41 @@ try {
   if (packing.lamps.every(l => l === 'off') || packing.items < 1) fail(`линия: лампы ${packing.lamps.join(', ')}, штук на лентах ${packing.items}`);
   else ok(`линия в ${packing.hour.toFixed(1)} ч: лампы ${packing.lamps.join(', ')}, штук на лентах и в накопителях ${packing.items}`);
 
-  // три высоты камеры днём и ночью (13-art.md, §17): участок, цех упаковки, блистерная машина
+  // крупность показа (2г): с высоты участка — стрелки перевозок и линии, люди и техника скрыты; с высоты цеха — по одному
+  await camAt(null);
+  await settle(3);
+  const site = await page.evaluate(() => ({ people: window.__game.stage.peopleShown, vehicles: window.__game.stage.vehiclesShown, arrows: window.__game.stage.overlay.arrowsShown }));
+  if (site.people || site.vehicles || site.arrows < 1) fail(`участок: людей ${site.people}, техники ${site.vehicles}, стрелок ${site.arrows}`);
+  else ok(`участок: стрелок ${site.arrows}, люди и техника скрыты`);
+  await camAt(HALL);
+  await settle(1);
+  const hall = await page.evaluate(() => ({ people: window.__game.stage.peopleShown, layer: window.__game.stage.overlay.group.visible }));
+  if (hall.people < 1 || hall.layer) fail(`цех: людей ${hall.people}, слой участка ${hall.layer ? 'виден' : 'скрыт'}`);
+  else ok(`цех: по одному — людей ${hall.people}, слой участка скрыт`);
+
+  // контактный лист (13-art.md, §17): три высоты камеры днём (час упаковки) и ночью на трёх пресетах
   const heights = [
-    ['site', null],
-    ['hall', { x: 39, z: 17, half: 9 }],
-    ['machine', { x: 44, z: 16.5, half: 3.5 }],
+    ['site', null, 3],
+    ['hall', HALL, 1],
+    ['machine', MACHINE, 1],
   ];
+  const sheet = [];
   const shoot = async when => {
-    for (const [name, v] of heights) {
-      await page.evaluate(v => {
-        const c = window.__game.stage.cam;
-        if (v) {
-          c.target.set(v.x, 0, v.z);
-          c.half = v.half;
-        } else c.overview();
-      }, v);
-      await page.waitForTimeout(400);
-      const calls = await page.evaluate(() => window.__game.stage.calls);
-      if (calls > 150) fail(`${name}, ${when}: вызовов отрисовки ${calls} — больше бюджета 150`);
-      const file = join(out, `e2e-${name}-${when}.png`);
-      await page.screenshot({ path: file });
-      ok(`снимок ${name}, ${when}: ${calls} вызовов отрисовки`);
+    for (const q of ['low', 'medium', 'high']) {
+      await page.evaluate(q => window.__game.actions.setQuality(q), q);
+      for (const [name, v, level] of heights) {
+        await camAt(v);
+        await settle(level);
+        await page.waitForTimeout(300);
+        const calls = await page.evaluate(() => window.__game.stage.calls);
+        if (calls > 150) fail(`${name}, ${when}, ${q}: вызовов отрисовки ${calls} — больше бюджета 150`);
+        const file = join(out, `e2e-${name}-${when}-${q}.png`);
+        await page.screenshot({ path: file });
+        sheet.push({ file, label: `${name} · ${when} · ${q} · ${calls} вызовов` });
+        ok(`снимок ${name}, ${when}, ${q}: ${calls} вызовов отрисовки`);
+      }
     }
+    await page.evaluate(() => window.__game.actions.setQuality('low'));
   };
   await shoot('day');
   // ночь: ×4 до 22:00 и пауза
@@ -184,6 +224,15 @@ try {
   await page.keyboard.press('Space');
   await page.waitForTimeout(300);
   await shoot('night');
+  // один лист: строки — пресет и время суток, столбцы — высота
+  const cells = sheet.map(c => `<figure><img src="data:image/png;base64,${readFileSync(c.file).toString('base64')}"><figcaption>${c.label}</figcaption></figure>`).join('');
+  const lister = await browser.newPage({ viewport: { width: 1290, height: 800 } });
+  await lister.setContent(
+    `<style>body{margin:6px;background:#1d2226;font:12px sans-serif;color:#d8dde0}main{display:grid;grid-template-columns:repeat(3,420px);gap:6px}figure{margin:0}img{width:420px;display:block}figcaption{padding:2px 0 4px}</style><main>${cells}</main>`,
+  );
+  await lister.screenshot({ path: join(out, 'contact.png'), fullPage: true });
+  await lister.close();
+  ok(`контактный лист: ${sheet.length} снимков → ${join(out, 'contact.png')}`);
 
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');

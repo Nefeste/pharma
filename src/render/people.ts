@@ -1,5 +1,6 @@
 // из bolnitsa: src/render/people.ts @ e0a3491 — изменено: экземпляры — из движущихся завода (src/app/movers.ts), а не из
-// толпы больницы; человек — минимальная запись `Body` вместо `Walker` толпы.
+// толпы больницы; человек — минимальная запись `Body` вместо `Walker` толпы; общий масштаб — люди уходят в пол при смене
+// крупности показа (docs/specs/2026-10-view.md, 2г).
 // из spikes/render-3d: src/people.ts — изменено: экземпляры — из толпы crowd.ts (стоит, идёт, сидит, лежит), цвет одежды и
 // кожи — на экземпляр (одна геометрия на вид, разные должности и пациенты), матрица лёжа.
 //
@@ -140,12 +141,14 @@ export class PeopleView {
   private p = new THREE.Vector3();
   private one = new THREE.Vector3(1, 1, 1);
   private up = new THREE.Vector3(0, 1, 0);
+  /** общий масштаб людей: 1 — в полный рост, 0 — ушли в пол (крупность показа) */
+  scale = 1;
 
   /** Матрица человека: стоит — у ступней, повёрнут по ходу; лежит — на спине, головой к изголовью (bake.ts, `lie`). */
   matrixOf(w: Body, out: THREE.Matrix4): THREE.Matrix4 {
     const look = this.people.looks[w.look];
     this.q.setFromAxisAngle(this.up, w.heading);
-    out.compose(this.p.set(w.x, w.y, w.z), this.q, this.one);
+    out.compose(this.p.set(w.x, w.y, w.z), this.q, this.one.setScalar(this.scale));
     if (w.lie > 0) {
       const k = w.lie;
       out.multiply(this.tmp.makeTranslation(0, look.lie.back * k, look.lie.mid * k));
@@ -163,7 +166,7 @@ export class PeopleView {
     const nFull = new Array(L).fill(0);
     const nFar = new Array(L).fill(0);
     const cull2 = cull * cull;
-    for (const w of bodies) {
+    for (const w of this.scale > 0.01 ? bodies : []) {
       const li = w.look;
       const look = this.people.looks[li];
       const dx = w.x - focus.x;

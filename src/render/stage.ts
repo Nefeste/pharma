@@ -6,15 +6,15 @@
 import * as THREE from 'three';
 import type { Movers } from '../app/movers';
 import type { ContentDb } from '../content/types';
-import type { RoomRow, TruckRow } from '../sim/pack';
+import type { EquipmentRow, LineRow, RoomRow, TruckRow } from '../sim/pack';
 import type { People } from './bake';
-import { buildBoxes } from './boxes';
 import { dressOf, lookOf, skinOf } from './cast';
 import { buildDoors, type Doors } from './doors';
 import { GpuTimer } from './gpu';
 import { buildLamps, type Lamps } from './lamps';
 import type { Layout } from './layout';
 import { buildRacks, Loads, type PalletView } from './loads';
+import { Machines } from './machines';
 import { type Body, IDLE, PeopleView, WALK } from './people';
 import { Post } from './post';
 import { Signs } from './signs';
@@ -55,6 +55,10 @@ export class Stage {
   readonly lamps: Lamps;
   readonly trucks = new Trucks();
   readonly fleet: Fleet;
+  readonly machines: Machines;
+  private lineRows: readonly LineRow[] = [];
+  private eqRows: readonly EquipmentRow[] = [];
+  private gameRate = 0;
   /** паллеты, которые везут: на вилах и только что поставленные */
   readonly carried = new Loads(16);
   readonly signs: Signs;
@@ -101,7 +105,8 @@ export class Stage {
     this.scene.add(this.doors.mesh);
     this.scene.add(this.lamps.mesh);
     this.scene.add(buildRacks(layout.plan.plant.racks.map(r => ({ x: r.x / 100, z: r.z / 100, bays: r.bays, levels: r.levels }))));
-    this.scene.add(buildBoxes(layout, init.db));
+    this.machines = new Machines(layout, init.db);
+    this.scene.add(this.machines.group);
     this.loads = new Loads(init.capacity);
     this.scene.add(this.loads.group);
     this.scene.add(this.trucks.group);
@@ -126,6 +131,13 @@ export class Stage {
 
   setRooms(rows: readonly RoomRow[]) {
     this.signs.set(rows);
+  }
+
+  /** Линии и оборудование из среза и игровых секунд в секунду — для ламп, роторов и лент (2в). */
+  setMachines(lines: readonly LineRow[], equipment: readonly EquipmentRow[], gameRate: number) {
+    this.lineRows = lines;
+    this.eqRows = equipment;
+    this.gameRate = gameRate;
   }
 
   /** Сколько людей и техники нарисовано в последнем кадре — для сценария в браузере и бенча. */
@@ -217,6 +229,7 @@ export class Stage {
     const near = this.near;
     this.doors.update(dt, (x, z, r) => near.some(p => (p.x - x) ** 2 + (p.z - z) ** 2 < r * r), this.docked, u);
     this.people?.update(this.shown, b => this.paintOf(b), cam.target, 1000, cam.half < FULL_NEAR);
+    this.machines.update(dt, this.gameRate, this.lineRows, this.eqRows);
     this.signs.update(u, cam.half);
     this.draw();
   }

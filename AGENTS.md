@@ -121,38 +121,42 @@ first, or copy the working code of Bolnitsa on the same versions.
   quality with causes, IPC, the bulk lot; the packing job and its packaging kit; a stage stopped by a part failure and
   resumed after the repair), `line.ts` (the packaging line as flow between events: machines, buffers, micro-stops,
   camera rejects by count, codes in cases, FG pallets, changeover and line clearance, the crew, the end of a batch with
-  reconciliation, machine times for OEE, a machine part failing at a flow boundary, jams of the cartoner), `qa.ts` (QA
-  check of finished goods with retention samples, the qualified person's decision, FG shelf life), `market.ts`
-  (customers and their orders, FG into circulation after the regulator publishes the batch, FEFO allocation with the
-  residual shelf life, whole pallets and case picking, the customer's truck at 15:00, shipments with codes), `cash.ts`
-  (kopecks and ledger entries, dues by date, suppliers, wages twice a month, contributions, energy, VAT by quarter, the
-  credit line), `maint.ts` (machine parts, wear by work done, failure by the hazard table of wear, repairs and planned
-  replacement by the mechanic with a spare from the workshop, spares replenished by level, the maintenance policy,
-  `maintain`), `lean.ts` (losses per day by kind and department: waiting tasks by cause, transport and walking,
-  defects; a batch's time by state; the line master's shift task and the rhythm coefficient), `tasks.ts` (tasks and
-  the dispatcher: people, vehicles, instruments; why a task waits), `staff.ts` (shifts; off-shift people leave through
-  the entrance), `invariants.ts`.
+  reconciliation, machine times for OEE, a machine part failing at a flow boundary, jams of the cartoner; the flow at a
+  moment between events without writing the state — `flowAt`, for the slice), `qa.ts` (QA check of finished goods with
+  retention samples, the qualified person's decision, FG shelf life), `market.ts` (customers and their orders, FG into
+  circulation after the regulator publishes the batch, FEFO allocation with the residual shelf life, whole pallets and
+  case picking, the customer's truck at 15:00, shipments with codes), `cash.ts` (kopecks and ledger entries, dues by
+  date, suppliers, wages twice a month, contributions, energy, VAT by quarter, the credit line), `maint.ts` (machine
+  parts, wear by work done, failure by the hazard table of wear, repairs and planned replacement by the mechanic with a
+  spare from the workshop, spares replenished by level, the maintenance policy, `maintain`), `lean.ts` (losses per day
+  by kind and department: waiting tasks by cause, transport and walking, defects; a batch's time by state; the line
+  master's shift task and the rhythm coefficient), `tasks.ts` (tasks and the dispatcher: people, vehicles, instruments;
+  why a task waits), `staff.ts` (shifts; off-shift people leave through the entrance), `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
-- `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`, format 3: rooms, trucks,
-  changed pallets, tasks in progress, people, vehicles; no truth fields), Web Worker (`worker.ts`) and its client in the
-  window (`client.ts`). The window never runs the engine. Saves cross the thread boundary as a string: the window never
-  parses the state with the true lot properties.
-- `src/app/` — the game in the window: content, stage, clock and speeds, input, panels (`game.ts`, `main.tsx`); what
-  the slice puts on the floor — pallets, trucks, rooms, pallets on forks (`scene.ts`); where people and vehicles are now
-  — a pure function of the tasks in the slice and the clock, on the plan's routes and with the engine's travel times
-  (`movers.ts`).
+- `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`, format 4: rooms, trucks,
+  changed pallets, tasks in progress, people, vehicles, lines with their machines, equipment; no truth fields — not the
+  next micro-stop, not a part's budget), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how far the
+  window's clock ran ahead of the last slice). The window never runs the engine. Saves cross the thread boundary as a
+  string: the window never parses the state with the true lot properties.
+- `src/app/` — the game in the window: content, stage, clock and speeds with live time 1:1, input, panels (`game.ts`,
+  `main.tsx`); what the slice puts on the floor — pallets, trucks, rooms, pallets on forks (`scene.ts`); where people
+  and vehicles are now — a pure function of the tasks in the slice and the clock, on the plan's routes and with the
+  engine's travel times (`movers.ts`).
 - `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa); the plant
   from the plan (`layout.ts` — rooms, walls, doors and spots from `planOf`), floors, zone markings, ground and yard,
-  walls with the cut and openings (`world.ts`), doors, lamps and floor textures (`doors.ts`, `lamps.ts`, `textures.ts`
-  — copies of Bolnitsa, adapted), racks and pallet loads by instancing (`loads.ts`), trucks at docks (`trucks.ts`),
-  room status signs (`signs.ts`), equipment as boxes of their size (`boxes.ts`), the pallet truck and the reach truck in
-  code (`vehicles.ts`), people — Bolnitsa's crowd on the GPU (`bake.ts`, `people.ts`, copies) with looks and clothes by
-  role (`cast.ts`), the composition (`stage.ts`).
+  walls with the cut and openings (`world.ts`), doors, lamps and floor textures (`doors.ts`, `lamps.ts`, `textures.ts` —
+  copies of Bolnitsa, adapted), racks and pallet loads by instancing (`loads.ts`), trucks at docks (`trucks.ts`), room
+  status signs (`signs.ts`), equipment and line machines as models in code from their records' `model` parts, with
+  status lamps and icons, rotors, covers, belts and buffers (`machines.ts`; the lamp of each state, belt speed and
+  buffer fill — pure functions in `flow.ts`), the pallet truck and the reach truck in code (`vehicles.ts`), people —
+  Bolnitsa's crowd on the GPU (`bake.ts`, `people.ts`, copies) with looks and clothes by role (`cast.ts`), the
+  composition (`stage.ts`).
 - `src/ui/` — panels (React) and their store; `src/i18n/` — every player-facing string, Russian and English.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML;
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
-  plan rules in `plan.ts`: doors on walls, docks on outer walls, class D only through airlocks, reachability).
+  plan rules in `plan.ts`: doors on walls, docks on outer walls, class D only through airlocks, reachability; models in
+  code — parts inside the footprint, round cylinders, upright hoppers, items only on belts: `modelErrors` in `load.ts`).
 - `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
 - `assets/` — CC0 people models (copies of Bolnitsa's, byte for byte) and `LICENSES.md` (sources, licenses, SHA-256);
   never add a model without its line there and in `assets/models/sources.json`.

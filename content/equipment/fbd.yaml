@@ -1,6 +1,15 @@
 id: eq.fbd
 name: { ru: Сушилка с псевдоожиженным слоем, en: Fluid-bed dryer }
-# ширина, глубина, высота, м — след на полу и короб до модели (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
+# ширина, глубина, высота, м — след на полу (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
 size: [2.0, 2.0, 3.2]
+# модель кодом из частей (docs/13-art.md, §8; docs/specs/2026-10-view.md, 2в): силуэт класса, м — гипотеза, сверить
+model:
+  - { shape: box, x: 0, z: 0, y: 0.12, w: 1.2, d: 1.2, h: 0.24, color: grey }
+  - { shape: cone, x: 0, z: 0, y: 0.55, w: 1.1, d: 1.1, h: 0.6, bottom: 0.8, color: steel }
+  - { shape: cyl, x: 0, z: 0, y: 1.5, w: 1.3, d: 1.3, h: 1.3, color: steel }
+  - { shape: cyl, x: 0, z: 0, y: 2.55, w: 1.4, d: 1.4, h: 0.8, color: steel }
+  - { shape: cyl, x: 0, z: 0, y: 3.05, w: 0.9, d: 0.9, h: 0.2, color: steel }
+  - { shape: box, x: 0.85, z: 0, y: 1.6, w: 0.3, d: 0.3, h: 3.2, color: grey }
+  - { shape: box, x: -0.85, z: 0.6, y: 1.3, w: 0.25, d: 0.06, h: 0.4, color: dark }
 cleaning: { minor: 45, major: 180 }
 kw: 45

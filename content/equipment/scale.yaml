@@ -2,7 +2,16 @@
 # продукт или просроченная чистота (§5.5). Числа — гипотезы.
 id: eq.scale
 name: { ru: Весы с ламинарным боксом, en: Scales with a laminar-flow booth }
-# ширина, глубина, высота, м — след на полу и короб до модели (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
+# ширина, глубина, высота, м — след на полу (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
 size: [1.0, 1.0, 1.0]
+# модель кодом из частей (docs/13-art.md, §8; docs/specs/2026-10-view.md, 2в): силуэт класса, м — гипотеза, сверить
+model:
+  - { shape: box, x: 0, z: -0.45, y: 0.5, w: 1.0, d: 0.1, h: 1.0, color: white }
+  - { shape: box, x: 0, z: 0, y: 0.93, w: 1.0, d: 1.0, h: 0.14, color: white }
+  - { shape: glass, x: -0.47, z: 0, y: 0.5, w: 0.06, d: 1.0, h: 0.86 }
+  - { shape: glass, x: 0.47, z: 0, y: 0.5, w: 0.06, d: 1.0, h: 0.86 }
+  - { shape: box, x: 0, z: -0.05, y: 0.37, w: 0.8, d: 0.6, h: 0.74, color: grey }
+  - { shape: box, x: -0.1, z: -0.05, y: 0.76, w: 0.4, d: 0.4, h: 0.04, color: steel }
+  - { shape: box, x: 0.25, z: -0.25, y: 0.82, w: 0.2, d: 0.04, h: 0.14, color: dark }
 cleaning: { minor: 20, major: 60 }
 kw: 0.5

@@ -21,6 +21,8 @@ export const en: Strings = {
     perSecond: ['1 minute', '5 minutes', '20 minutes', '2 hours'],
     morning: 'Until morning',
     morningHint: 'Fast-forward to the 08:00 meeting',
+    live: '1:1',
+    liveHint: 'Live time: a second per second, everything moves as in life',
     lag: (min: number) => `calculation is ${min} min behind`,
   },
   notices: {

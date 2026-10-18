@@ -7,8 +7,9 @@ import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 
-/** Скорости геймдизайна (§2): 0 — пауза; 1–4 — минута, 5 минут, 20 минут, 2 часа за секунду. */
-export type Speed = 0 | 1 | 2 | 3 | 4;
+/** Скорости геймдизайна (§2): 0 — пауза; 1–4 — минута, 5 минут, 20 минут, 2 часа за секунду; 5 — «живое время» 1:1. */
+export type Speed = 0 | 1 | 2 | 3 | 4 | 5;
+export const LIVE: Speed = 5;
 
 export interface Hud {
   ready: boolean;

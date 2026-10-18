@@ -4,7 +4,7 @@ import { momentOf } from '../engine/core/calendar';
 import { clock, dateText, T } from '../i18n';
 import { QUALITIES } from '../render/view';
 import type { WallMode } from '../render/world';
-import { type Actions, type Speed, type Store, useHud } from './store';
+import { type Actions, LIVE, type Speed, type Store, useHud } from './store';
 
 const SPEEDS: Speed[] = [1, 2, 3, 4];
 const WALLS: WallMode[] = ['full', 'cut', 'down'];
@@ -32,6 +32,9 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
         <span className="group">
           <button className={s.speed === 0 && !s.ff ? 'on' : ''} onClick={() => actions.setSpeed(0)} title={T.top.pause}>
             ❚❚
+          </button>
+          <button className={s.speed === LIVE && !s.ff ? 'on' : ''} onClick={() => actions.setSpeed(LIVE)} title={T.top.liveHint} data-test="live">
+            {T.top.live}
           </button>
           {SPEEDS.map(k => (
             <button key={k} className={s.speed === k && !s.ff ? 'on' : ''} onClick={() => actions.setSpeed(k)} title={T.top.speedHint(T.top.perSecond[k - 1])}>

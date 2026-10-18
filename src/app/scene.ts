@@ -5,7 +5,7 @@ import type { ContentDb } from '../content/types';
 import { planOf } from '../engine/plant';
 import { layoutOf, type Layout, levelY, roomSpots, truckSpot } from '../render/layout';
 import type { PalletView } from '../render/loads';
-import type { PersonRow, RoomRow, TaskRow, TruckRow, UnitRow, Unpacked, VehicleRow } from '../sim/pack';
+import type { EquipmentRow, LineRow, PersonRow, RoomRow, TaskRow, TruckRow, UnitRow, Unpacked, VehicleRow } from '../sim/pack';
 import type { Carried } from './movers';
 
 export class SceneState {
@@ -16,6 +16,9 @@ export class SceneState {
   tasks: TaskRow[] = [];
   people: PersonRow[] = [];
   vehicles: VehicleRow[] = [];
+  /** линии и оборудование последнего среза (2в) — целиком */
+  lines: LineRow[] = [];
+  equipment: EquipmentRow[] = [];
   /** версия паллет: растёт, когда паллеты изменились, — сцена пересобирает экземпляры только тогда */
   version = 0;
 
@@ -29,6 +32,8 @@ export class SceneState {
     this.tasks = sl.tasks;
     this.people = sl.people;
     this.vehicles = sl.vehicles;
+    this.lines = sl.lines;
+    this.equipment = sl.equipment;
   }
 
   reset() {
@@ -38,6 +43,8 @@ export class SceneState {
     this.tasks = [];
     this.people = [];
     this.vehicles = [];
+    this.lines = [];
+    this.equipment = [];
     this.version++;
   }
 }

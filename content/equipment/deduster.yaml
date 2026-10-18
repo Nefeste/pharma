@@ -1,6 +1,12 @@
 id: eq.deduster
 name: { ru: Обеспыливатель с металлодетектором, en: Deduster with metal detector }
-# ширина, глубина, высота, м — след на полу и короб до модели (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
+# ширина, глубина, высота, м — след на полу (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
 size: [0.6, 0.6, 1.4]
+# модель кодом из частей (docs/13-art.md, §8; docs/specs/2026-10-view.md, 2в): силуэт класса, м — гипотеза, сверить
+model:
+  - { shape: box, x: 0, z: 0, y: 0.45, w: 0.3, d: 0.3, h: 0.9, color: grey }
+  - { shape: cyl, axis: x, x: 0, z: 0, y: 1.05, w: 0.55, d: 0.2, h: 0.2, color: steel, spin: x }
+  - { shape: cyl, axis: x, x: 0.15, z: 0, y: 1.05, w: 0.12, d: 0.3, h: 0.3, color: white }
+  - { shape: cone, x: -0.2, z: 0, y: 1.27, w: 0.2, d: 0.2, h: 0.15, bottom: 0.1, color: steel }
 cleaning: { minor: 15, major: 45 }
 kw: 1

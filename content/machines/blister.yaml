@@ -3,8 +3,20 @@
 # блистер с пустой ячейкой или сломанной таблеткой. Скорость, микроостановки и брак — гипотезы старой линии кампании.
 id: mach.blister
 name: { ru: Блистерная машина, en: Blister machine }
-# ширина, глубина, высота, м — след на полу и короб до модели (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
+# ширина, глубина, высота, м — след на полу (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
 size: [5.0, 1.4, 1.9]
+# модель кодом из частей (docs/13-art.md, §8; docs/specs/2026-10-view.md, 2в): силуэт класса, м — гипотеза, сверить
+model:
+  - { shape: box, x: 0, z: 0, y: 0.45, w: 5.0, d: 1.2, h: 0.9, color: white }
+  - { shape: box, x: 0, z: 0, y: 0.92, w: 5.0, d: 1.3, h: 0.04, color: steel }
+  - { shape: glass, x: -0.3, z: 0, y: 1.3, w: 3.8, d: 1.1, h: 0.7, cover: true }
+  - { shape: box, x: 1.2, z: 0, y: 1.15, w: 0.4, d: 0.7, h: 0.45, color: steel }
+  - { shape: box, x: 0.2, z: 0, y: 1.15, w: 0.4, d: 0.7, h: 0.45, color: steel }
+  - { shape: box, x: -0.9, z: 0, y: 1.15, w: 0.4, d: 0.7, h: 0.45, color: steel }
+  - { shape: cyl, axis: z, x: 2.15, z: 0, y: 1.35, w: 0.6, d: 0.3, h: 0.6, color: film, spin: z }
+  - { shape: cyl, axis: z, x: 0.6, z: 0, y: 1.75, w: 0.3, d: 0.3, h: 0.3, color: foil, spin: z }
+  - { shape: belt, x: -1.6, z: 0, y: 0.96, w: 1.6, d: 0.25, h: 0.04, item: blister }
+  - { shape: box, x: 0, z: 0.66, y: 1.3, w: 0.4, d: 0.06, h: 0.3, color: dark }
 item: blister
 nominal: 120
 crew: { role: role.line-operator, n: 1 }

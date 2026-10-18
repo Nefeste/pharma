@@ -18,7 +18,7 @@ import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import { type Slice, SimClient } from '../sim/client';
 import { unpack } from '../sim/pack';
-import type { Actions, Speed, Store } from '../ui/store';
+import { type Actions, LIVE, type Speed, type Store } from '../ui/store';
 import { moversAt } from './movers';
 import { carriedOf, dockFront, palletsOf, SceneState } from './scene';
 
@@ -26,7 +26,7 @@ import { carriedOf, dockFront, palletsOf, SceneState } from './scene';
 export const SCENARIO = 'scn.proto';
 
 /** Игровых секунд в секунду на каждой скорости (геймдизайн, §2). */
-export const RATE: Record<Speed, number> = { 0: 0, 1: 60, 2: 300, 3: 1200, 4: 7200 };
+export const RATE: Record<Speed, number> = { 0: 0, 1: 60, 2: 300, 3: 1200, 4: 7200, 5: 1 };
 
 /** «До утра»: кусок игровых секунд на кадр и предел отставания, при котором поток получает новый кусок. */
 const FF_CHUNK = 1800;
@@ -151,10 +151,15 @@ export class Game {
     this.stage.setPallets(palletsOf(this.db, this.scenario.plant, this.view, new Set(moving)));
   }
 
-  /** Люди и техника — где они в момент часов завода; паллеты на вилах. */
+  /**
+   * Люди и техника — где они в момент часов завода; паллеты на вилах. В «живом времени» срез приходит раз в игровую
+   * секунду — люди шли бы рывками по метру; поэтому часы для них — часы среза и то, на сколько часы окна ушли вперёд, не
+   * больше секунды.
+   */
   private showMovers(ts: number) {
     const v = this.view;
-    const mv = moversAt(this.db, this.layout.plan, v.tasks, v.people, v.vehicles, this.t);
+    const t = this.speed === LIVE ? this.t + Math.min(1, this.client.ahead) : this.t;
+    const mv = moversAt(this.db, this.layout.plan, v.tasks, v.people, v.vehicles, t);
     this.showPallets(mv.carried.map(c => c.unit).sort((a, b) => a - b));
     this.stage.setMovers(mv, carriedOf(v, mv.carried, c => (c.placed ? levelY(c.level) : forkY(c.level))), ts / 1000);
   }
@@ -202,6 +207,7 @@ export class Game {
     this.edgePan(dt);
     const a = performance.now();
     this.showMovers(ts);
+    this.stage.setMachines(this.view.lines, this.view.equipment, this.ff ? FF_CHUNK * 60 : RATE[this.speed]);
     this.stage.frame(dt, (((this.t % 86400) + 86400) % 86400) / 3600);
     this.push(this.frames.draw, performance.now() - a);
     if (!this.firstFrameMs) {
@@ -317,7 +323,8 @@ export class Game {
       if (k === 'Space') {
         e.preventDefault();
         this.actions.setSpeed(this.speed === 0 && !this.ff ? 1 : 0);
-      } else if (k === 'Digit1') this.actions.setSpeed(1);
+      } else if (k === 'Digit0') this.actions.setSpeed(LIVE);
+      else if (k === 'Digit1') this.actions.setSpeed(1);
       else if (k === 'Digit2') this.actions.setSpeed(2);
       else if (k === 'Digit3') this.actions.setSpeed(3);
       else if (k === 'Digit4') this.actions.setSpeed(4);

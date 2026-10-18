@@ -33,6 +33,8 @@ export interface Hud {
   fps: number;
   cpuMs: number;
   gpuMs: number | null;
+  /** строка состояния: авто-бенч и снимки */
+  status: string;
 }
 
 export const initial: Hud = {
@@ -52,6 +54,7 @@ export const initial: Hud = {
   fps: 0,
   cpuMs: 0,
   gpuMs: null,
+  status: '',
 };
 
 export interface Actions {
@@ -60,6 +63,8 @@ export interface Actions {
   setQuality(q: Quality): void;
   setWalls(m: WallMode): void;
   toggleDebug(): void;
+  /** авто-бенч; без vsync — перезапуск оболочки с ключом `--uncapped` */
+  bench(uncapped: boolean): void;
 }
 
 export class Store {

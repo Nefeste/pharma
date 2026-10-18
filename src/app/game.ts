@@ -11,7 +11,9 @@ import { planOf } from '../engine/plant';
 import type { Notice } from '../engine/types';
 import { T } from '../i18n';
 import { bakeLook, lodOf, packPeople } from '../render/bake';
+import { AT, camDetail, type Detail, ease, speedDetail, type Weights } from '../render/detail';
 import { type Layout, layoutOf, levelY } from '../render/layout';
+import type { PalletView } from '../render/loads';
 import { Stage } from '../render/stage';
 import { forkY } from '../render/vehicles';
 import type { Quality } from '../render/view';
@@ -19,6 +21,7 @@ import type { WallMode } from '../render/world';
 import { type Slice, SimClient } from '../sim/client';
 import { unpack } from '../sim/pack';
 import { type Actions, LIVE, type Speed, type Store } from '../ui/store';
+import { fillsOf, Flows, lineArrows, moveArrows, movesOf } from './flows';
 import { moversAt } from './movers';
 import { carriedOf, dockFront, palletsOf, SceneState } from './scene';
 
@@ -48,6 +51,10 @@ declare global {
     shell?: ShellBridge;
     __game?: Game;
     __ready?: boolean;
+    /** итог и ошибка авто-бенча, снимки — для бенча в Chromium без окна (tools/app/bench.mjs) */
+    __benchResult?: unknown;
+    __benchError?: string;
+    __shots?: { name: string; dataUrl: string }[];
   }
 }
 
@@ -76,6 +83,17 @@ export class Game {
   private shownVersion = -1;
   /** паллеты, которые сейчас везут: их нет на местах, они на вилах */
   private moving = '';
+  /** частоты перевозок между зонами — для стрелок участка (2г) */
+  readonly flows = new Flows();
+  /** крупность показа: уровень по высоте камеры (с запасом у порогов) и веса уровней на экране (detail.ts) */
+  private camLevel: Detail = 1;
+  detail: Weights = AT[1];
+  /** уровень, к которому идёт показ, — для сценария в браузере */
+  detailTarget: Detail = 1;
+  /** авто-бенч (bench.ts): часы ведёт он сам; крючок кадра; паллеты сцены сверх учёта — только для нагрузки отрисовки */
+  manual = false;
+  onFrame: ((ts: number) => void) | null = null;
+  extra: PalletView[] = [];
   speed: Speed = 1;
   /** промотка «До утра» — до ближайших 08:00; `ffLeft` — сколько игровых секунд ещё отправить */
   ff = false;
@@ -126,10 +144,13 @@ export class Game {
 
   private receive(s: Slice) {
     const sl = unpack(s.buf);
+    // перевозки — по прежним местам паллет окна, до того как срез их перепишет
+    this.flows.step(sl.t, movesOf(this.layout.plan, this.view.units, this.view.trucks, sl));
     this.t = sl.t;
     this.day = sl.day;
     this.lag = s.lag;
     this.view.apply(sl);
+    this.stage.setOverlay([...moveArrows(this.layout, this.flows), ...lineArrows(this.db, this.layout, sl.lines)], fillsOf(this.layout.plan, this.view.units.values()));
     this.showPallets();
     this.stage.setTrucks(this.view.trucks, d => dockFront(this.layout, d));
     this.stage.setRooms(this.view.rooms);
@@ -148,7 +169,8 @@ export class Game {
     if (this.view.version === this.shownVersion && key === this.moving) return;
     this.shownVersion = this.view.version;
     this.moving = key;
-    this.stage.setPallets(palletsOf(this.db, this.scenario.plant, this.view, new Set(moving)));
+    const list = palletsOf(this.db, this.scenario.plant, this.view, new Set(moving));
+    this.stage.setPallets(this.extra.length ? [...list, ...this.extra] : list);
   }
 
   /**
@@ -203,8 +225,14 @@ export class Game {
         this.ffLeft -= game;
       }
     }
-    this.client.frame(game, this.ff ? 14 : 8);
+    if (!this.manual) this.client.frame(game, this.ff ? 14 : 8);
+    this.onFrame?.(ts);
     this.edgePan(dt);
+    // крупность показа — по скорости и высоте камеры; веса доходят до нового уровня за 0,4 с
+    this.camLevel = camDetail(this.stage.cam.half, this.camLevel);
+    this.detailTarget = Math.max(this.camLevel, speedDetail(this.speed, this.ff)) as Detail;
+    this.detail = ease(this.detail, this.detailTarget, dt);
+    this.stage.setDetail(this.detail);
     const a = performance.now();
     this.showMovers(ts);
     this.stage.setMachines(this.view.lines, this.view.equipment, this.ff ? FF_CHUNK * 60 : RATE[this.speed]);
@@ -276,7 +304,17 @@ export class Game {
       this.store.set({ walls: m });
     },
     toggleDebug: () => this.store.set({ debug: !this.store.get().debug }),
+    bench: uncapped => {
+      if (uncapped && window.shell) window.shell.relaunch(['--bench', '--uncapped']);
+      else void import('./bench').then(m => m.runBench(this, {}));
+    },
   };
+
+  /** Паллеты сцены заново — после того как бенч сменил `extra`. */
+  refreshPallets() {
+    this.shownVersion = -1;
+    this.showPallets();
+  }
 
   // ---------------------------------------------------------------- ввод (как в «Больнице»)
 

@@ -1,7 +1,7 @@
 // из bolnitsa: src/render/world.ts @ e0a3491 — изменено: сетка плана завода (nav.ts) вместо плана больницы; полы по типу
 // и классу помещения; зоны склада — «покрашенный» пол одной текстурой поверх; высота стен — по помещению (склад выше);
 // окна — только вне чистых зон, у склада — высокие; проёмы ворот, рамп и ленты; двор с запада ниже пола здания — к уровню
-// кузова фуры. Без карты света светильников у участка и без дорожек больницы.
+// кузова фуры; названия зон краской на полу. Без карты света светильников у участка и без дорожек больницы.
 //
 // Мир: x — столбец клетки, z — строка, y — вверх; клетка — 1 м. Стены режет вершинный шейдер: переключение режима и
 // движение камеры ничего не перестраивают; тени считаются по срезанным стенам тем же шейдером (docs/13-art.md, §4).
@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { ZoneKind } from '../content/types';
 import { CELL } from '../engine/nav';
+import { T } from '../i18n';
 import { isOutside, type Layout, outward, STORE, TALL, wallHeight } from './layout';
 import { type FloorKind, type FloorTex, makeFloor } from './textures';
 
@@ -124,15 +125,16 @@ export function buildFloors(l: Layout, anisotropy: number, lightMap: THREE.Textu
 
 /**
  * Оттенки зон склада (docs/13-art.md, §5): «покрашенный» пол — нейтральные цвета, которые не спорят с ярлыками статусов
- * (жёлтый, зелёный, красный, серый).
+ * (жёлтый, зелёный, красный, серый). Оттенки намеренно близки: при обычном зрении различимы, а в любом виде зону называет
+ * слово на полу (геймдизайн, §23; tools/test/palette.test.ts).
  */
 export const ZONE_TINT: Record<ZoneKind, string> = {
-  receiving: '#8fa3b8',
+  receiving: '#8194b3',
   quarantine: '#c8b98e',
   cold: '#9cc1d6',
   rejected: '#b39a9a',
   fgQuarantine: '#ab9fbf',
-  shipping: '#93ad9a',
+  shipping: '#8ca38f',
   staging: '#8fb3ae',
   sampling: '#b9b3a6',
   palletizing: '#a0a8b8',
@@ -159,6 +161,13 @@ export function buildMarkings(l: Layout, anisotropy: number): THREE.Mesh {
     g.strokeStyle = ZONE_TINT[zn.kind];
     g.lineWidth = px * 0.1;
     g.strokeRect(x + g.lineWidth / 2, z + g.lineWidth / 2, zw - g.lineWidth, zd - g.lineWidth);
+    // название зоны — краской у северного края, как на настоящем складе: зона читается не только по цвету
+    g.globalAlpha = 0.8;
+    g.fillStyle = '#2c3a44';
+    g.font = `bold ${Math.round(px * 0.42)}px sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(T.zones[zn.kind].toUpperCase(), x + zw / 2, z + px * 0.42, zw - px * 0.3);
   }
   // места на полу: прямоугольник паллеты 1,2 × 0,8 м с запасом, белой линией
   g.globalAlpha = 0.85;

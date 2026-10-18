@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { ContentDb, ModelPart, Sku } from '../content/types';
 import type { EquipmentRow, LineRow } from '../sim/pack';
+import { inkOf } from './color';
 import { beltOffsets, beltSpeed, bufferCount, type Lamp, LAMP_COLOR, lampOfEquipment, lampOfMachine, PITCH } from './flow';
 import type { Layout } from './layout';
 
@@ -33,8 +34,16 @@ const ITEM: Record<'blister' | 'carton' | 'case', { size: [number, number, numbe
   case: { size: [0.4, 0.25, 0.3], finish: { color: 0xc49a62, rough: 0.9, metal: 0 } },
 };
 
-/** Сколько штук одного вида рисуется на всех лентах и в накопителях. */
+/** Сколько штук одного вида рисуется на всех лентах и в накопителях; сколько полос — на всех лентах. */
 const MAX_ITEMS = 400;
+const MAX_BANDS = 64;
+
+/** Что показывать на лентах (крупность показа, detail.ts): штуки, полосы на лентах машин, полосы в накопителях — 0…1. */
+export interface BeltShown {
+  items: number;
+  bands: number;
+  buffers: number;
+}
 /** Лампа: высота над машиной, размер; значок — над лампой. */
 const LAMP_H = 0.22;
 const ICON = 0.3;
@@ -96,7 +105,7 @@ function partGeometry(p: ModelPart): THREE.BufferGeometry {
   return new THREE.BoxGeometry(p.w, p.h, p.d);
 }
 
-/** Значок лампы — маленький холст: треугольник, пауза, квадрат, восклицание, ключ, капля, круг. */
+/** Значок лампы — маленький холст: треугольник, пауза, квадрат, восклицание, ключ, капля, круг; на светлой лампе — тёмный. */
 function iconTexture(lamp: Lamp): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
@@ -105,8 +114,9 @@ function iconTexture(lamp: Lamp): THREE.CanvasTexture {
   g.beginPath();
   g.arc(32, 32, 30, 0, Math.PI * 2);
   g.fill();
-  g.fillStyle = '#ffffff';
-  g.strokeStyle = '#ffffff';
+  const ink = `#${inkOf(LAMP_COLOR[lamp]).toString(16).padStart(6, '0')}`;
+  g.fillStyle = ink;
+  g.strokeStyle = ink;
   g.lineWidth = 6;
   g.lineCap = 'round';
   g.beginPath();
@@ -151,6 +161,9 @@ export class Machines {
   private units: Unit[] = [];
   private belts: Belt[] = [];
   private items: Record<'blister' | 'carton' | 'case', THREE.InstancedMesh>;
+  /** полосы «потока»: на ленте машины — во всю ленту, в накопителе — на долю ёмкости */
+  private bands: THREE.InstancedMesh;
+  private c = new THREE.Color();
   private icons = new Map<Lamp, THREE.SpriteMaterial>();
   private lampMats = new Map<Lamp, THREE.MeshStandardMaterial>();
   /** ёмкость накопителей линий плана, штук: [линия][машина] */
@@ -275,6 +288,13 @@ export class Machines {
       return mesh;
     };
     this.items = { blister: item('blister'), carton: item('carton'), case: item('case') };
+    this.bands = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.3 }), MAX_BANDS);
+    this.bands.count = 0;
+    this.bands.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.bands.setColorAt(0, this.c.set(0xffffff));
+    this.bands.frustumCulled = false;
+    this.bands.name = 'belt bands';
+    this.group.add(this.bands);
   }
 
   /** Что показывают лампы — оборудование участков по порядку плана, затем машины линий: для сценария в браузере. */
@@ -302,9 +322,10 @@ export class Machines {
 
   /**
    * Кадр: лампы по состоянию из среза, роторы на ходу, кожухи открыты на переналадке и уборке, штуки на лентах и в
-   * накопителях. `gameRate` — игровых секунд в секунду: от неё скорость лент (не быстрее `BELT_MAX`).
+   * накопителях. `gameRate` — игровых секунд в секунду: от неё скорость лент (не быстрее `BELT_MAX`). `shown` — крупность
+   * показа: штуки по одной или полосой.
    */
-  update(dt: number, gameRate: number, lines: readonly LineRow[], equipment: readonly EquipmentRow[]) {
+  update(dt: number, gameRate: number, lines: readonly LineRow[], equipment: readonly EquipmentRow[], shown: BeltShown = { items: 1, bands: 0, buffers: 0 }) {
     for (const u of this.units) {
       let lamp: Lamp = 'off';
       let running = false;
@@ -338,6 +359,17 @@ export class Machines {
       }
     }
     const n = { blister: 0, carton: 0, case: 0 };
+    let nb = 0;
+    // полоса длиной `len` на ленте `b`: в накопителе — от входа следующей машины, на ленте машины — во всю ленту
+    const band = (b: Belt, len: number, k: number) => {
+      if (nb >= MAX_BANDS || len <= 0) return;
+      const size = ITEM[b.item].size;
+      this.p.copy(b.origin).addScaledVector(b.dir, b.length - len / 2);
+      this.p.y += (size[1] * k) / 2;
+      this.m.compose(this.p, this.q, this.s.set(len, size[1] * k, size[2] * k));
+      this.bands.setMatrixAt(nb, this.m);
+      this.bands.setColorAt(nb++, this.c.set(ITEM[b.item].finish.color));
+    };
     for (const b of this.belts) {
       const ln = lines.find(x => x.line === b.line);
       const mc = ln?.machines[b.machine];
@@ -345,14 +377,15 @@ export class Machines {
       const mesh = this.items[b.item];
       const size = ITEM[b.item].size;
       this.q.setFromAxisAngle(this.up, Math.atan2(-b.dir.z, b.dir.x));
-      this.s.set(size[0], size[1], size[2]);
       if (!ln || !mc || ln.batch < 0) continue;
       let offsets: number[];
       if (b.buffer) {
         // накопитель: штуки копятся у входа следующей машины — та же доля, что в движке
+        const cap = this.caps[b.line][b.machine] ?? 0;
         const slots = Math.floor(b.length / pitch);
-        const k = bufferCount(mc.fill, this.caps[b.line][b.machine] ?? 0, slots);
+        const k = bufferCount(mc.fill, cap, slots);
         offsets = Array.from({ length: k }, (_, i) => b.length - pitch / 2 - i * pitch);
+        if (shown.buffers > 0.01 && cap > 0 && mc.fill > 0) band(b, Math.min(1, mc.fill / cap) * b.length, shown.buffers);
       } else {
         if (mc.items <= 0) continue;
         // лента входа картонажной везёт блистеры: их идёт столько, сколько в пачке, на каждую пачку
@@ -361,11 +394,16 @@ export class Machines {
         const v = mc.state === 'run' || mc.state === 'slow' ? beltSpeed(mc.rate * per, gameRate, pitch) : 0;
         b.phase = (b.phase + v * dt) % pitch;
         offsets = beltOffsets(b.length, pitch, b.phase);
+        if (shown.bands > 0.01) band(b, b.length, shown.bands);
       }
+      // штуки по одной: при смене крупности показа сжимаются к своей середине
+      const k = shown.items;
+      if (k <= 0.01) continue;
+      this.s.set(size[0] * k, size[1] * k, size[2] * k);
       for (const d of offsets) {
         if (n[b.item] >= MAX_ITEMS) break;
         this.p.copy(b.origin).addScaledVector(b.dir, d);
-        this.p.y += size[1] / 2;
+        this.p.y += (size[1] * k) / 2;
         this.m.compose(this.p, this.q, this.s);
         mesh.setMatrixAt(n[b.item]++, this.m);
       }
@@ -374,6 +412,9 @@ export class Machines {
       this.items[k].count = n[k];
       this.items[k].instanceMatrix.needsUpdate = true;
     }
+    this.bands.count = nb;
+    this.bands.instanceMatrix.needsUpdate = true;
+    if (this.bands.instanceColor) this.bands.instanceColor.needsUpdate = true;
     this.itemsShown = n.blister + n.carton + n.case;
   }
 }

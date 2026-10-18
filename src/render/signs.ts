@@ -13,8 +13,12 @@ import { cutAt, type Walls, WALL_T } from './world';
 /** Помещения с табличкой: где идут стадии, хранится балк, упаковывают, отбирают пробы и моют. */
 const SIGNED = new Set(['sampling', 'dispensing', 'granulation', 'blending', 'compression', 'washing', 'bulk', 'packaging']);
 
-/** Цвет статуса чистоты: чисто — зелёный, занято — синий, грязно — янтарный; рядом всегда значок и слово. */
-const COLOR = { clean: '#3d8b57', busy: '#3b6a96', dirty: '#b3812a' } as const;
+/**
+ * Цвет статуса чистоты: чисто — зелёный, занято — синий, грязно — янтарный; рядом всегда значок и слово. Пары различимы и
+ * в имитации трёх видов цветовой слепоты (геймдизайн, §23; tools/test/palette.test.ts).
+ */
+export const ROOM_COLOR = { clean: 0x3d8b57, busy: 0x27457a, dirty: 0xb3812a } as const;
+const COLOR = Object.fromEntries(Object.entries(ROOM_COLOR).map(([k, v]) => [k, `#${v.toString(16).padStart(6, '0')}`])) as Record<keyof typeof ROOM_COLOR, string>;
 
 const W = 0.42;
 const H = 0.3;

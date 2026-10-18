@@ -71,7 +71,18 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
               </button>
             ))}
           </span>
+          <span className="group">
+            <button onClick={() => actions.bench(false)} data-test="bench">
+              {T.debug.bench}
+            </button>
+            <button onClick={() => actions.bench(true)}>{T.debug.benchUncapped}</button>
+          </span>
           <span className="muted">v{s.version}</span>
+        </div>
+      )}
+      {s.status && (
+        <div className="status panel" id="status">
+          {s.status}
         </div>
       )}
     </>

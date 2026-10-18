@@ -93,7 +93,8 @@ npm run content                    # build and validate content/ → src/content
 npm run typecheck                  # content + tsc --noEmit (src incl. .tsx, tools)
 npm test                           # content + bun test tools/test
 npm run build                      # content + page and worker (esbuild) → dist/ (not in git)
-npm run e2e                        # after build: the game in headless Chromium — clock, ×4, pause, «Until morning»; tools/app/out/e2e.png
+npm run e2e                        # after build: the game in headless Chromium; tools/app/out/e2e*.png and contact.png
+npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zip → release/ (from Linux, no wine) — the release file
 bun tools/test/make-save-fixture.ts  # only when SCHEMA changes: a new save sample (old ones stay)
@@ -142,15 +143,18 @@ first, or copy the working code of Bolnitsa on the same versions.
 - `src/app/` — the game in the window: content, stage, clock and speeds with live time 1:1, input, panels (`game.ts`,
   `main.tsx`); what the slice puts on the floor — pallets, trucks, rooms, pallets on forks (`scene.ts`); where people
   and vehicles are now — a pure function of the tasks in the slice and the clock, on the plan's routes and with the
-  engine's travel times (`movers.ts`).
+  engine's travel times (`movers.ts`); pallet moves between zones seen from the slice, their rates, arrows and the fill
+  of warehouse places (`flows.ts`); the scene bench, a copy of Bolnitsa's (`bench.ts`, `stats.ts`).
 - `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa); the plant
   from the plan (`layout.ts` — rooms, walls, doors and spots from `planOf`), floors, zone markings, ground and yard,
   walls with the cut and openings (`world.ts`), doors, lamps and floor textures (`doors.ts`, `lamps.ts`, `textures.ts` —
   copies of Bolnitsa, adapted), racks and pallet loads by instancing (`loads.ts`), trucks at docks (`trucks.ts`), room
   status signs (`signs.ts`), equipment and line machines as models in code from their records' `model` parts, with
   status lamps and icons, rotors, covers, belts and buffers (`machines.ts`; the lamp of each state, belt speed and
-  buffer fill — pure functions in `flow.ts`), the pallet truck and the reach truck in code (`vehicles.ts`), people —
-  Bolnitsa's crowd on the GPU (`bake.ts`, `people.ts`, copies) with looks and clothes by role (`cast.ts`), the
+  buffer fill — pure functions in `flow.ts`), the pallet truck and the reach truck in code (`vehicles.ts`), the detail
+  level by speed and camera height with its soft change (`detail.ts`), the site layer — arrows above the walls and the
+  fill of places (`overlay.ts`), colour checks — colour-blindness simulation, ΔE and icon contrast (`color.ts`), people
+  — Bolnitsa's crowd on the GPU (`bake.ts`, `people.ts`, copies) with looks and clothes by role (`cast.ts`), the
   composition (`stage.ts`).
 - `src/ui/` — panels (React) and their store; `src/i18n/` — every player-facing string, Russian and English.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML;
@@ -160,4 +164,5 @@ first, or copy the working code of Bolnitsa on the same versions.
 - `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
 - `assets/` — CC0 people models (copies of Bolnitsa's, byte for byte) and `LICENSES.md` (sources, licenses, SHA-256);
   never add a model without its line there and in `assets/models/sources.json`.
-- `tools/app/` — page build, local server, browser scenario; `tools/test/` — Bun tests and save samples.
+- `tools/app/` — page build, local server, browser scenario with the contact sheet, the headless scene bench
+  (`bench.mjs`); `tools/test/` — Bun tests and save samples.

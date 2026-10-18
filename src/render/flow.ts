@@ -8,15 +8,17 @@ export type Lamp = 'run' | 'wait' | 'stop' | 'fail' | 'setup' | 'clean' | 'off';
 /**
  * Цвет лампы (`13-art.md`, §5: состояния машин — цвет и значок): зелёный — работает, синий — ждёт, жёлтый — стоит,
  * красный — авария, фиолетовый — переналадка, бирюзовый — уборка, серый — без дела. Значок — всегда рядом с цветом.
+ * Оттенки подобраны так, чтобы каждая пара различалась и в имитации трёх видов цветовой слепоты (геймдизайн, §23;
+ * проверка — tools/test/palette.test.ts).
  */
 export const LAMP_COLOR: Record<Lamp, number> = {
-  run: 0x3fb950,
-  wait: 0x4a8fd8,
-  stop: 0xd9a21b,
-  fail: 0xe5534b,
-  setup: 0x9a6ee8,
-  clean: 0x36b7c2,
-  off: 0x7d858c,
+  run: 0x6aaf58,
+  wait: 0x284b99,
+  stop: 0xebd233,
+  fail: 0xeb2019,
+  setup: 0xdc3feb,
+  clean: 0x3cd9d4,
+  off: 0x7c7c7d,
 };
 
 /**

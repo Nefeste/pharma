@@ -11,7 +11,8 @@
 // мимо панели и карточка партии; щелчок мышью по паллете — её карточка; Esc закрывает. Планёрка и касса (3в): ×4 встают
 // ровно в 08:00 — планёрка открылась сама, мир на паузе, Esc закрывает; «До утра» тоже открывает планёрку; касса — остаток
 // как в полосе. Лаборатория (3г): на шестые сутки — очередь, «Поднять» доходит до движка, на карте средней массы точки и
-// границы. Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
+// границы. Расписание (3д): G открывает окно, на нём полосы; задание тянут мышью — виден призрак с причинами, отпустили —
+// срок задания сменился; Esc закрывает. Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -187,6 +188,53 @@ try {
     await page.keyboard.press('Escape');
     if (await page.evaluate(() => !!document.querySelector('#cash'))) fail('касса: Esc не закрыл');
     else ok('касса: Esc закрыл');
+  }
+
+  // расписание (3д): G открывает окно; на неделе — строки и полосы; задание на серию, не начавшее комплектовку, тянут мышью
+  // на сутки раньше — виден призрак и причины у курсора; отпустили — срок задания сменился (команда `shift` дошла до
+  // движка и вернулась в вид); Esc закрывает. Вторая серия и на сутки раньше — после последних суток сценария
+  {
+    await page.keyboard.press('KeyG');
+    await page.waitForFunction(() => !!window.__game.store.get().gantt.view, null, { timeout: 20_000 });
+    await page.click('[data-test=gantt-days-9]');
+    await page.waitForFunction(() => {
+      const v = window.__game.store.get().gantt.view;
+      return !!v && v.to - v.from === 9 * 86400;
+    }, null, { timeout: 20_000 });
+    await frames(2);
+    const rows = await page.$$eval('[data-test=gantt-row]', r => r.length);
+    const bars = await page.$$eval('[data-test=gbar]', r => r.length);
+    const bar = await page.$('[data-test=gbar][data-movable="1"][data-kind=kit]');
+    if (rows < 6 || bars < 5 || !bar) fail(`расписание: строк ${rows}, полос ${bars}, задания, которое можно тянуть, ${bar ? 'есть' : 'нет'}`);
+    else {
+      const batch = await bar.getAttribute('data-batch');
+      const before = await page.evaluate(b => window.__game.store.get().gantt.view.batches[b].notBefore, batch);
+      const box = await bar.boundingBox();
+      const width = await page.$eval('[data-test=gantt-row] .gtrack', e => e.getBoundingClientRect().width);
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x - Math.round(width / 9), y, { steps: 8 });
+      const ghost = await page
+        .waitForFunction(() => document.querySelectorAll('[data-test=ghost]').length > 0 && !!document.querySelector('[data-test=gtip] li'), null, { timeout: 20_000 })
+        .then(() => true, () => false);
+      const tip = ((await page.innerText('[data-test=gtip]').catch(() => '')) ?? '').replace(/\s*\n\s*/g, ' · ');
+      await page.screenshot({ path: join(out, 'e2e-gantt.png') });
+      await page.mouse.up();
+      const moved = await page
+        .waitForFunction(([b, t]) => {
+          const v = window.__game.store.get().gantt.view;
+          return !!v?.batches[b] && v.batches[b].notBefore !== t;
+        }, [batch, before], { timeout: 20_000 })
+        .then(() => true, () => false);
+      const after = await page.evaluate(b => window.__game.store.get().gantt.view?.batches[b]?.notBefore, batch);
+      if (!ghost || !moved) fail(`расписание: призрак ${ghost ? 'виден' : 'не виден'}, срок задания ${batch}: ${before} → ${after}`);
+      else ok(`расписание: строк ${rows}, полос ${bars}; задание ${batch} протянули на сутки раньше — призрак, у курсора «${tip.slice(0, 90)}…»; срок раньше на ${Math.round((before - after) / 3600)} ч`);
+    }
+    await page.keyboard.press('Escape');
+    if (await page.evaluate(() => !!document.querySelector('#gantt'))) fail('расписание: Esc не закрыл');
+    else ok('расписание: Esc закрыл');
   }
 
   // камера: участок — общий план, цех упаковки, блистерная машина (геймдизайн, §19.1)

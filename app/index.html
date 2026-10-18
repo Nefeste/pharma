@@ -6,7 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:">
   <link rel="icon" href="data:,">
   <title>Farmzavod</title>
-  <!-- из bolnitsa: app/index.html @ e0a3491 — изменено: полоса сверху, отладка и состояние (часть 0); карточка вещи — её стиль `.card`, панель склада — своя (3б); планёрка и касса — свои (3в) -->
+  <!-- из bolnitsa: app/index.html @ e0a3491 — изменено: полоса сверху, отладка и состояние (часть 0); карточка вещи — её стиль `.card`, панель склада — своя (3б); планёрка и касса — свои (3в); лаборатория (3г) и расписание (3д) — свои -->
   <style>
     :root {
       --panel: rgba(22, 30, 34, 0.86);
@@ -105,6 +105,40 @@
     svg.chart .trace { fill: none; stroke: rgba(255,255,255,.35); stroke-width: 1; }
     svg.chart .pt { fill: var(--text); }
     svg.chart .pt.bad { fill: #ff8a7a; }
+    /* расписание (3д) — большое окно во всю ширину под полосой: строки — комплектовка, помещения, линия; полосы — по времени */
+    .gantt { position: absolute; left: 8px; right: 8px; top: calc(var(--top-h, 48px) + 8px); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+    .gantt .phead .filters { margin-left: 12px; }
+    .grow-row { display: flex; align-items: stretch; min-height: 30px; }
+    .glabel { flex: 0 0 180px; padding: 7px 8px 0 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gtrack { position: relative; flex: 1 1 auto; border-bottom: 1px solid rgba(255,255,255,.06); overflow: hidden; }
+    .gaxis { min-height: 20px; }
+    .gaxis .gtrack { border-bottom: 1px solid var(--line); }
+    .gtick { position: absolute; top: 0; bottom: 0; border-left: 1px solid rgba(255,255,255,.08); }
+    .gtick.day { border-left-color: rgba(255,255,255,.3); }
+    .gtick span { position: absolute; left: 3px; top: 3px; font-size: 10px; color: var(--muted); white-space: nowrap; }
+    .gday { position: absolute; top: 0; bottom: 0; border-left: 1px solid rgba(255,255,255,.18); }
+    .goff { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,.24); }
+    .gnow { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--yellow); pointer-events: none; }
+    .gbar { --c: #2fb5c9; position: absolute; top: 4px; bottom: 4px; box-sizing: border-box; border-radius: 3px; padding: 0 4px; font-size: 11px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #0b1a1e; background: var(--c); border: 1px solid var(--c); cursor: pointer; user-select: none; }
+    .gbar.k-kit { --c: #d9b45a; }
+    .gbar.k-clean { --c: #8fa7c4; top: 9px; bottom: 9px; line-height: 10px; font-size: 9px; }
+    .gbar.k-setup { --c: #b89ad8; }
+    .gbar.k-pack { --c: #6fc28a; }
+    .gbar.w-past { opacity: .6; }
+    .gbar.w-now { box-shadow: inset 3px 0 0 #fff; }
+    .gbar.w-plan { background: color-mix(in srgb, var(--c) 32%, transparent); border-style: dashed; color: var(--text); }
+    .gbar.material { background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.3) 0 4px, transparent 4px 8px); }
+    .gbar.repair { box-shadow: inset 0 -3px 0 var(--red); }
+    .gbar.move { cursor: grab; }
+    .gbar.move:active { cursor: grabbing; }
+    .gbar:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+    .gbar.dim { opacity: .25; }
+    .gbar.ghost { background: transparent; border: 2px dashed #fff; color: #fff; pointer-events: none; z-index: 2; }
+    .gfoot { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 6px; font-size: 12px; }
+    .glegend { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+    .glegend .gbar { position: static; display: inline-block; padding: 0 6px; line-height: 18px; cursor: default; }
+    .goff-key { display: inline-block; padding: 0 6px; line-height: 18px; background: rgba(0,0,0,.35); border-radius: 3px; color: var(--muted); }
+    .gtip { position: fixed; z-index: 10; max-width: 380px; padding: 6px 10px; font-size: 12px; pointer-events: none; }
   </style>
 </head>
 <body>

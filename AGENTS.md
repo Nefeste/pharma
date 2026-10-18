@@ -121,7 +121,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   lab tests, the lot decision, a lot raised by the player), `mes.ts` (batch orders, FEFO reservation with potency,
   kitting through the airlock, stages in rooms with equipment and people, cleaning, process parameters, true batch
   quality with causes, IPC, the bulk lot; the packing job and its packaging kit; a stage stopped by a part failure and
-  resumed after the repair), `line.ts` (the packaging line as flow between events: machines, buffers, micro-stops,
+  resumed after the repair; a new not-before time of a batch order from the player — `shift`; room readiness, nominal
+  stage time and cleaning time shared with the schedule run), `plan/schedule.ts` (the schedule run — a pure function:
+  running tasks to their end, then kitting, stages and cleaning by the engine's rules and its own functions; bars and
+  the reasons why not earlier), `line.ts` (the packaging line as flow between events: machines, buffers, micro-stops,
   camera rejects by count, codes in cases, FG pallets, changeover and line clearance, the crew, the end of a batch with
   reconciliation, machine times for OEE, a machine part failing at a flow boundary, jams of the cartoner; the flow at a
   moment between events without writing the state — `flowAt`, for the slice), `qa.ts` (QA check of finished goods with
@@ -135,8 +138,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   day — machine times, rated output over loading and working time, good tablets — and `oee()`; a batch's time by state;
   the line master's shift task and the rhythm coefficient), `tasks.ts` (tasks and the dispatcher: people,
   vehicles, instruments; why a task waits; a person walking to a post is free and measured from where they are),
-  `staff.ts` (shifts; a free person walks to the post of their role, and to the exit 15 minutes before the end of the
-  shift; where they are on the way; off-shift people leave through the entrance), `invariants.ts`.
+  `staff.ts` (shifts; whether a person of a shift may take a task at a moment — shared with the schedule run; a free
+  person walks to the post of their role, and to the exit 15 minutes before the end of the shift; where they are on the
+  way; off-shift people leave through the entrance), `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`, format 5: rooms, trucks
@@ -145,10 +149,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   and the card of a thing, built here on request and sent with the slice only when they changed, without truth fields
   (`views.ts`); the 08:00 meeting — yesterday by calendar day, events of the 24 hours before it, what waits now — the
   cash panel and the top-bar cash (`report.ts`); the lab queue and the X–Rm control chart of the in-process average
-  tablet mass with its limits and special-cause signs (`lab.ts`), Web Worker (`worker.ts`) and its client in the window
-  (`client.ts`; how far the window's clock ran ahead of the last slice; at most one `tick` in flight). The window never
-  runs the engine. Saves cross the thread boundary as a string: the window never parses the state with the true lot
-  properties.
+  tablet mass with its limits and special-cause signs (`lab.ts`); the schedule — the Gantt of the past, the running and
+  the schedule run, and the ghost of a dragged batch order (`plan.ts`), Web Worker (`worker.ts`) and its client in the
+  window (`client.ts`; how far the window's clock ran ahead of the last slice; at most one `tick` in flight). The window
+  never runs the engine. Saves cross the thread boundary as a string: the window never parses the state with the true
+  lot properties.
 - `src/app/` — the game in the window: content, stage, clock and speeds with live time 1:1, input, panels (`game.ts`,
   `main.tsx`); what the slice puts on the floor — pallets, trucks, rooms, pallets on forks (`scene.ts`); where people
   and vehicles are now — a pure function of the tasks in the slice and the clock, on the plan's routes and with the
@@ -171,9 +176,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   composition (`stage.ts`).
 - `src/ui/` — panels (React) and their store: the top bar (`App.tsx`), the warehouse (`Stock.tsx`), the card of a
   thing — what it is, state, why, what can be done, history (`Card.tsx`), the 08:00 meeting (`Morning.tsx`), the cash
-  panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), status icons (`icons.tsx`), the content base for
-  names (`db.ts`); `src/i18n/` — every player-facing string, Russian and English, and number, quantity, money, duration
-  and date formats.
+  panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), the schedule window with dragging (`Gantt.tsx`),
+  status icons (`icons.tsx`), the content base for names (`db.ts`); `src/i18n/` — every player-facing string, Russian
+  and English, and number, quantity, money, duration and date formats.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML;
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   plan rules in `plan.ts`: doors on walls, docks on outer walls, class D only through airlocks, reachability, posts on

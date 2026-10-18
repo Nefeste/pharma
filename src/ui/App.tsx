@@ -1,7 +1,7 @@
 // Панели (геймдизайн, §18): верхняя полоса — дата и часы завода, сутки, скорости, «До утра», стены, склад, планёрка,
 // касса с изменением за сутки, извещение; панель склада и карточка выбранной вещи (docs/specs/2026-10-panels.md, 3б);
-// планёрка и панель кассы (3в); полоса отладки; состояние загрузки и ошибки. Панели только читают хранилище и зовут
-// действия игры.
+// планёрка и панель кассы (3в); лаборатория (3г); расписание (3д); полоса отладки; состояние загрузки и ошибки. Панели
+// только читают хранилище и зовут действия игры.
 import { useLayoutEffect, useRef } from 'react';
 import { momentOf } from '../engine/core/calendar';
 import { clock, dateText, money, T } from '../i18n';
@@ -9,6 +9,7 @@ import { QUALITIES } from '../render/view';
 import type { WallMode } from '../render/world';
 import { Card } from './Card';
 import { Cash } from './Cash';
+import { Gantt } from './Gantt';
 import { Lab } from './Lab';
 import { Morning } from './Morning';
 import { Stock } from './Stock';
@@ -83,6 +84,9 @@ export function App({ store, actions, plant }: { store: Store; actions: Actions;
           <button type="button" className={s.lab.open ? 'on' : ''} onClick={() => actions.toggleLab()} title={T.lab.hint} data-test="lab-open">
             {T.lab.button}
           </button>
+          <button type="button" className={s.gantt.open ? 'on' : ''} onClick={() => actions.toggleGantt()} title={T.gantt.hint} data-test="gantt-open">
+            {T.gantt.button}
+          </button>
         </span>
         {s.top ? (
           <span className="stat" data-test="top-cash" title={T.cash.day}>
@@ -97,6 +101,7 @@ export function App({ store, actions, plant }: { store: Store; actions: Actions;
       {s.cash.open && <Cash hud={s} actions={actions} />}
       {s.lab.open && <Lab hud={s} actions={actions} />}
       {s.morning.open && s.morning.day !== undefined && <Morning v={s.morning.view} day={s.morning.day} start={s.start} plant={plant} pause={s.morningPause} actions={actions} />}
+      {s.gantt.open && <Gantt hud={s} actions={actions} plant={plant} />}
       {s.selected && s.card && <Card v={s.card} start={s.start} plant={plant} actions={actions} beside={s.stock.open || s.cash.open || s.lab.open} />}
       {s.debug && (
         <div className="debug panel">

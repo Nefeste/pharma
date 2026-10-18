@@ -40,6 +40,12 @@ const actions: Actions = {
   toggleLab: later('toggleLab'),
   setLabTab: later('setLabTab'),
   rush: later('rush'),
+  toggleGantt: later('toggleGantt'),
+  setGanttDays: later('setGanttDays'),
+  moveGantt: later('moveGantt'),
+  drag: later('drag'),
+  drop: later('drop'),
+  cancelDrag: later('cancelDrag'),
 };
 createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} plant={PLANT} />);
 

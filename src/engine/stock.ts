@@ -50,6 +50,7 @@ export const TAG: Record<LotStatus, Tag> = {
 export function setLotStatus(s: PlantState, lot: Lot, to: LotStatus, flow: Record<LotStatus, LotStatus[]> = LOT_FLOW) {
   if (!flow[lot.status].includes(to)) throw new Error(`lot ${lot.id}: ${lot.status} → ${to}`);
   lot.status = to;
+  lot.since = s.t;
   // ярлыки на паллетах партии — по статусу
   for (const u of unitsOfLot(s, lot.id)) u.tag = TAG[to];
 }
@@ -113,6 +114,7 @@ export function createLot(db: ContentDb, s: PlantState, o: NewLot): { lot: Lot; 
     // срок — от дня приёмки: месяцы по 30 дней (упрощение прототипа)
     expiry: at.day + m.shelf * 30,
     status: o.status,
+    since: s.t,
     received: s.t,
     ...(o.po ? { po: o.po } : {}),
     used: 0,
@@ -152,6 +154,7 @@ export function emptyLot(s: PlantState, o: { material: Id; vendorLot: string; ba
     qty: 0,
     expiry: o.expiry,
     status: 'quarantine',
+    since: s.t,
     received: s.t,
     used: 0,
     sampled: 0,

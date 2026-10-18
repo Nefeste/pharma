@@ -7,8 +7,9 @@
 // упаковывает первую серию — лампы машин горят, на лентах и в накопителях штуки; снимки дня — в этот час. Крупность
 // показа и проверки (2г): с высоты участка — стрелки, люди и техника скрыты, с высоты цеха — снова по одному; контактный
 // лист — три высоты днём и ночью на трёх пресетах, один файл tools/app/out/contact.png. Посты (3а): на шестые сутки
-// свободные ждут на постах своих ролей — у входа не больше двух. Ошибок в консоли и запросов наружу нет. Снимки —
-// tools/app/out/e2e*.png.
+// свободные ждут на постах своих ролей — у входа не больше двух. Склад и карточка (3б): строка склада — паллета на экране
+// мимо панели и карточка партии; щелчок мышью по паллете — её карточка; Esc закрывает. Ошибок в консоли и запросов наружу
+// нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -98,6 +99,45 @@ try {
   const notice = await page.textContent('.top .notice');
   if (!shown) fail(`извещение: ${notice}`);
   else ok(`извещение: ${notice}`);
+
+  // склад и карточка (3б): строка склада ведёт камеру к паллете (мимо панели) и открывает карточку партии; щелчок по паллете —
+  // карточка её партии; Esc снимает выбор и закрывает склад
+  {
+    await page.click('[data-test=stock]');
+    await page.waitForSelector('[data-test=stock-row]', { timeout: 20_000 });
+    const rows = await page.$$eval('[data-test=stock-row]', r => r.length);
+    const unit = Number(await page.getAttribute('[data-test=stock-row]', 'data-unit'));
+    await page.click('[data-test=stock-row]');
+    await page.waitForSelector('[data-test=card]', { timeout: 20_000 });
+    const card = await page.evaluate(() => ({ title: document.querySelector('#card-title')?.textContent ?? '', selected: window.__game.selected, history: document.querySelectorAll('[data-test=card-history] li').length }));
+    // камера привела паллету на экран, и её не закрывает панель склада справа
+    await page.waitForTimeout(100);
+    const seen = await page.evaluate(u => {
+      const g = window.__game;
+      const p = g.pallets.find(x => x.unit === u);
+      const sp = p && g.stage.screen(p.x, p.y + 0.5, p.z);
+      return !!sp && document.elementFromPoint(sp.x, sp.y) === g.stage.renderer.domElement;
+    }, unit);
+    if (rows < 1 || card.selected?.n !== unit || !/П-\d{4}-\d{4}/.test(card.title) || card.history < 1 || !seen)
+      fail(`склад: строк ${rows}, выбрано ${JSON.stringify(card.selected)}, карточка «${card.title}», записей истории ${card.history}, паллета ${seen ? 'видна' : 'не видна'}`);
+    else ok(`склад: строк ${rows}; строка — паллета ${unit} на экране мимо панели, карточка «${card.title}», записей истории ${card.history}`);
+    await page.keyboard.press('Escape');
+    // щелчок мышью по паллете на экране — та же паллета: точка её груза, не заслонённая соседями и панелями
+    const at = await page.evaluate(u => window.__game.clickPoint(u), unit);
+    if (!at) fail(`щелчок по паллете ${unit}: на экране не нашлось точки, которую не заслоняют соседи и панели`);
+    else {
+      await page.mouse.click(at.x, at.y);
+      await page.waitForSelector('[data-test=card]', { timeout: 20_000 });
+      const clicked = await page.evaluate(() => window.__game.selected);
+      if (clicked?.kind !== 'unit' || clicked.n !== unit) fail(`щелчок по паллете: выбрано ${JSON.stringify(clicked)}`);
+      else ok(`щелчок по паллете ${unit} — её карточка`);
+    }
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    const closed = await page.evaluate(() => ({ card: !!document.querySelector('[data-test=card]'), stock: !!document.querySelector('#stock') }));
+    if (closed.card || closed.stock) fail(`Esc: карточка ${closed.card ? 'открыта' : 'закрыта'}, склад ${closed.stock ? 'открыт' : 'закрыт'}`);
+    else ok('Esc: выбор снят, склад закрыт');
+  }
 
   // камера: участок — общий план, цех упаковки, блистерная машина (геймдизайн, §19.1)
   const camAt = v =>

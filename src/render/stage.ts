@@ -5,6 +5,7 @@
 // фуры, люди и техника — из среза.
 import * as THREE from 'three';
 import type { Movers } from '../app/movers';
+import type { Ray } from '../app/pick';
 import type { ContentDb } from '../content/types';
 import type { TruckPose } from '../app/yard';
 import type { EquipmentRow, LineRow, RoomRow } from '../sim/pack';
@@ -21,6 +22,7 @@ import { Machines } from './machines';
 import { Overlay } from './overlay';
 import { type Body, IDLE, PeopleView, WALK } from './people';
 import { Post } from './post';
+import { type Outline, Selection } from './select';
 import { Signs } from './signs';
 import type { FloorKind, FloorTex } from './textures';
 import { Trucks } from './trucks';
@@ -88,6 +90,8 @@ export class Stage {
   tris = 0;
   /** рампы, у которых стоит фура: их ворота подняты */
   private docked = new Set<number>();
+  /** рамка выбранной вещи (3б) */
+  readonly selection = new Selection();
   private hourShown = -1;
   private host: HTMLElement;
 
@@ -126,12 +130,36 @@ export class Stage {
     this.scene.add(this.carried.group);
     this.signs = new Signs(layout, init.db);
     this.scene.add(this.signs.group);
+    this.scene.add(this.selection.line);
     this.applyQuality(init.quality);
     this.walls.setMode(this.wallMode);
   }
 
   setPallets(list: readonly PalletView[]) {
     this.loads.set(list);
+  }
+
+  /** Рамка выбранной вещи: где она в этом кадре — решает окно (3б). */
+  setSelection(o: Outline | undefined) {
+    this.selection.set(o);
+  }
+
+  /** Луч камеры через точку экрана — как `pickCell` «Больницы» (её src/render/stage.ts). */
+  ray(clientX: number, clientY: number): Ray {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    const rc = new THREE.Raycaster();
+    rc.setFromCamera(ndc, this.cam.camera);
+    const { origin: o, direction: d } = rc.ray;
+    return { o: [o.x, o.y, o.z], d: [d.x, d.y, d.z] };
+  }
+
+  /** Точка мира на экране, точки окна; за камерой или вне кадра — `undefined` (как `screenOf` «Больницы»). */
+  screen(x: number, y: number, z: number): { x: number; y: number } | undefined {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const v = new THREE.Vector3(x, y, z).project(this.cam.camera);
+    if (v.z > 1 || Math.abs(v.x) > 1 || Math.abs(v.y) > 1) return undefined;
+    return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
   }
 
   /** Фуры в кадре: у рампы — кузовом к воротам (ворота подняты, пока фура стоит у рампы по учёту), во дворе — где едут. */

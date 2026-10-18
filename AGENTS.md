@@ -139,15 +139,19 @@ first, or copy the working code of Bolnitsa on the same versions.
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`, format 5: rooms, trucks
   with their open body, changed pallets, tasks in progress, people with their walk to a post, vehicles, lines with their
-  machines, equipment; no truth fields — not the next micro-stop, not a part's budget), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how far the
-  window's clock ran ahead of the last slice). The window never runs the engine. Saves cross the thread boundary as a
+  machines, equipment; no truth fields — not the next micro-stop, not a part's budget), views for panels — the warehouse
+  and the card of a thing, built here on request and sent with the slice only when they changed, without truth fields
+  (`views.ts`), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how far the window's clock ran ahead
+  of the last slice; at most one `tick` in flight). The window never runs the engine. Saves cross the thread boundary as a
   string: the window never parses the state with the true lot properties.
 - `src/app/` — the game in the window: content, stage, clock and speeds with live time 1:1, input, panels (`game.ts`,
   `main.tsx`); what the slice puts on the floor — pallets, trucks, rooms, pallets on forks (`scene.ts`); where people
   and vehicles are now — a pure function of the tasks in the slice and the clock, on the plan's routes and with the
   engine's travel times, free people on their way to a post too (`movers.ts`); trucks in the yard — backing in, waiting,
-  driving off, a picture only (`yard.ts`); pallet moves between zones seen from the slice, their rates, arrows and the
-  fill of warehouse places (`flows.ts`); the scene bench, a copy of Bolnitsa's (`bench.ts`, `stats.ts`).
+  driving off, a picture only (`yard.ts`); what is under the cursor — people by their point on screen, pallets, machines
+  and trucks by the camera ray, the room by the floor (`pick.ts`); pallet moves between zones seen from the slice, their
+  rates, arrows and the fill of warehouse places (`flows.ts`); the scene bench, a copy of Bolnitsa's (`bench.ts`,
+  `stats.ts`).
 - `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa); the plant
   from the plan (`layout.ts` — rooms, walls, doors and spots from `planOf`), floors, zone markings, ground and yard,
   walls with the cut and openings (`world.ts`), doors, lamps and floor textures (`doors.ts`, `lamps.ts`, `textures.ts` —
@@ -156,10 +160,13 @@ first, or copy the working code of Bolnitsa on the same versions.
   status lamps and icons, rotors, covers, belts and buffers (`machines.ts`; the lamp of each state, belt speed and
   buffer fill — pure functions in `flow.ts`), the pallet truck and the reach truck in code (`vehicles.ts`), the detail
   level by speed and camera height with its soft change (`detail.ts`), the site layer — arrows above the walls and the
-  fill of places (`overlay.ts`), colour checks — colour-blindness simulation, ΔE and icon contrast (`color.ts`), people
+  fill of places (`overlay.ts`), colour checks — colour-blindness simulation, ΔE and icon contrast (`color.ts`), the
+  outline of the selected thing (`select.ts`), people
   — Bolnitsa's crowd on the GPU (`bake.ts`, `people.ts`, copies) with looks and clothes by role (`cast.ts`), the
   composition (`stage.ts`).
-- `src/ui/` — panels (React) and their store; `src/i18n/` — every player-facing string, Russian and English.
+- `src/ui/` — panels (React) and their store: the top bar (`App.tsx`), the warehouse (`Stock.tsx`), the card of a thing —
+  what it is, state, why, what can be done, history (`Card.tsx`), status icons (`icons.tsx`), the content base for names
+  (`db.ts`); `src/i18n/` — every player-facing string, Russian and English, and number, quantity and date formats.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML;
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   plan rules in `plan.ts`: doors on walls, docks on outer walls, class D only through airlocks, reachability, posts on

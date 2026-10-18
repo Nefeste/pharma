@@ -1,7 +1,7 @@
 // из bolnitsa: src/i18n/index.ts @ e0a3491 — изменено: дата завода вместо денег и падежей больницы.
 // Язык интерфейса: русский и английский с первого дня. Строки читаются при отрисовке — `T.раздел.ключ`, не в константы
 // модуля: язык можно сменить на ходу. Названия из базы — `name.ru`, английское — если есть.
-import type { Moment } from '../engine/core/calendar';
+import { civilFromDays, type Moment, momentOf, type Ymd } from '../engine/core/calendar';
 import { en } from './en';
 import { ru, type Strings } from './ru';
 
@@ -34,4 +34,26 @@ export function clock(sec: number): string {
 /** Дата завода: «ср, 1 сентября 2027». */
 export function dateText(m: Moment): string {
   return `${T.date.weekdays[m.weekday]}, ${T.date.full(m.date.d, T.date.months[m.date.m - 1], m.date.y)}`;
+}
+
+/** Число с разрядами по языку: «40 000», «12,5». */
+export function num(n: number, digits = 0): string {
+  return new Intl.NumberFormat(lang === 'en' ? 'en-GB' : 'ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+}
+
+/** Количество в единице материала: масса — мг в килограммах, штуки — штуками; единица — рядом. */
+export function qtyText(value: number, unit: 'mass' | 'pcs'): string {
+  return unit === 'mass' ? `${num(value / 1e6, 1)}\u00a0${T.units.kg}` : `${num(value)}\u00a0${T.units.pcs}`;
+}
+
+/** День от 1970-01-01 — короткой датой: «14.09.2027». */
+export function dayText(day: number): string {
+  const d = civilFromDays(day);
+  return T.date.short(d.d, d.m, d.y);
+}
+
+/** Мгновение завода — днём и часами: «14.09 12:56». */
+export function whenText(start: Ymd, t: number): string {
+  const m = momentOf(start, t);
+  return T.date.when(m.date.d, m.date.m, clock(m.sec));
 }

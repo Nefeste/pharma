@@ -257,13 +257,13 @@ function lineRow(db: ContentDb, s: PlantState, ix: Index, i: number, line: Line)
  * Состояние оборудования участка: авария — узел отказал (до конца ремонта); работает — держит стадию серии; уборка — в
  * помещении идёт уборка. Плановая замена узла идёт на свободной машине — она «свободна», механик рядом.
  */
-function eqState(s: PlantState, id: string): number {
+export function eqStateOf(s: PlantState, id: string): EqState {
   const e = s.equipment[id];
-  if (!e) return 0;
-  if (partsOf(s, id).some(p => p.state === 'failed')) return EQ_STATES.indexOf('fail');
-  if (e.batch) return EQ_STATES.indexOf('run');
-  if (Object.values(s.tasks).some(t => t.kind === 'clean' && t.room === e.room && t.state === 'busy')) return EQ_STATES.indexOf('clean');
-  return EQ_STATES.indexOf('idle');
+  if (!e) return 'idle';
+  if (partsOf(s, id).some(p => p.state === 'failed')) return 'fail';
+  if (e.batch) return 'run';
+  if (Object.values(s.tasks).some(t => t.kind === 'clean' && t.room === e.room && t.state === 'busy')) return 'clean';
+  return 'idle';
 }
 
 /**
@@ -314,7 +314,7 @@ export class Packer {
     });
     const vehicles = Object.values(s.vehicles).map(v => [num(v.id), ix.vehicle.get(v.type)!, v.x, v.z, v.task !== undefined ? row.get(v.task) ?? -1 : -1]);
     const lines = plan.plant.lines.map((l, i) => lineRow(db, s, ix, i, s.lines[l.id]));
-    const equipment = plan.plant.equipment.map((e, i) => [i, eqState(s, e.id)]);
+    const equipment = plan.plant.equipment.map((e, i) => [i, EQ_STATES.indexOf(eqStateOf(s, e.id))]);
     const size = [tasks, people, vehicles, lines, equipment].reduce((n, rows) => n + rows.reduce((k, r) => k + r.length, 0), 0);
     const buf = new Int32Array(H.size + rooms.length * R.size + trucks.length * K.size + changed.length * U.size + gone.length + size);
     buf[H.format] = FORMAT;

@@ -71,7 +71,7 @@ export function palletsOf(db: ContentDb, plantId: string, st: SceneState, moving
     if (moving.has(u.unit)) continue;
     if (u.where === 'slot') {
       const sl = l.plan.slots[u.ref];
-      out.push({ x: sl.x / 100, z: sl.z / 100, y: levelY(sl.level), turn: sl.kind === 'storage' ? 1 : 0, load: u.load ?? 'cases', fill: u.fill, tag: u.tag, ...(u.plastic ? { plastic: true } : {}) });
+      out.push({ x: sl.x / 100, z: sl.z / 100, y: levelY(sl.level), turn: sl.kind === 'storage' ? 1 : 0, load: u.load ?? 'cases', fill: u.fill, tag: u.tag, ...(u.plastic ? { plastic: true } : {}), unit: u.unit });
     } else if (u.where === 'room') {
       const list = inRoom.get(u.ref) ?? [];
       list.push(u);
@@ -86,7 +86,7 @@ export function palletsOf(db: ContentDb, plantId: string, st: SceneState, moving
     const spots = roomSpots(l, room);
     list.forEach((u, k) => {
       const p = spots[k % Math.max(1, spots.length)] ?? { x: l.rooms[room].x + 1.5, z: l.rooms[room].z + 1.5 };
-      out.push({ x: p.x, z: p.z, y: 0, turn: 0, load: u.load ?? 'cases', fill: u.fill, tag: u.tag, ...(u.plastic ? { plastic: true } : {}) });
+      out.push({ x: p.x, z: p.z, y: 0, turn: 0, load: u.load ?? 'cases', fill: u.fill, tag: u.tag, ...(u.plastic ? { plastic: true } : {}), unit: u.unit });
     });
   }
   // паллеты в кузове видны, когда фура у рампы и кузов открыт (3а): до проверки и во дворе — закрыт
@@ -95,7 +95,7 @@ export function palletsOf(db: ContentDb, plantId: string, st: SceneState, moving
     const front = dockFront(l, t.dock);
     (onTruck.get(t.truck) ?? []).forEach((u, k) => {
       const p = truckSpot(front, k);
-      out.push({ x: p.x, z: p.z, y: 0, turn: 0, load: u.load ?? 'cases', fill: u.fill, tag: u.tag, ...(u.plastic ? { plastic: true } : {}) });
+      out.push({ x: p.x, z: p.z, y: 0, turn: 0, load: u.load ?? 'cases', fill: u.fill, tag: u.tag, ...(u.plastic ? { plastic: true } : {}), unit: u.unit });
     });
   }
   return out;
@@ -111,7 +111,7 @@ export function carriedOf(st: SceneState, carried: readonly Carried[], y: (c: Ca
     const u = st.units.get(c.unit);
     if (!u) continue;
     const alongX = Math.abs(Math.sin(c.heading)) > 0.7;
-    out.push({ x: c.x, z: c.z, y: y(c), turn: alongX ? 0 : 1, load: u.load ?? 'cases', fill: u.fill, tag: u.tag, ...(u.plastic ? { plastic: true } : {}) });
+    out.push({ x: c.x, z: c.z, y: y(c), turn: alongX ? 0 : 1, load: u.load ?? 'cases', fill: u.fill, tag: u.tag, ...(u.plastic ? { plastic: true } : {}), unit: u.unit });
   }
   return out;
 }

@@ -166,6 +166,7 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       const q = s.tests[t.test!];
       q.checker = t.people[0];
       q.state = 'done';
+      q.done = s.t;
       q.pass = within({ test: q.method, min: q.min, max: q.max }, q.result!);
       const sm = s.samples[q.sample];
       if (sm.tests.every(id => s.tests[id].state === 'done')) addTask(s, { kind: 'decide', roles: [...QC.heads], from: t.from, work: DECIDE_WORK, prio: LAB_PRIO.decide, lot: sm.lot });

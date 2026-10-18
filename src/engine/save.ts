@@ -142,6 +142,9 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     for (const t of Object.values(raw.trucks as Record<string, Raw>)) t.open = t.docked === true;
     return raw;
   },
+  // 9 → 10 (часть 3б): отметки для истории вещи — с какого мгновения партия в своём статусе и когда готов результат
+  // испытания. У прежних партий и испытаний их нет: карточка пишет «время не записано».
+  9: raw => raw,
 };
 
 export function toSave(s: PlantState): string {

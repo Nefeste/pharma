@@ -6,7 +6,7 @@ import { setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import { App } from '../ui/App';
 import { type Actions, Store } from '../ui/store';
-import { Game } from './game';
+import { Game, PLANT } from './game';
 
 declare const __VERSION__: string;
 
@@ -27,8 +27,12 @@ const actions: Actions = {
   setWalls: later('setWalls'),
   toggleDebug: later('toggleDebug'),
   bench: later('bench'),
+  toggleStock: later('toggleStock'),
+  setStock: later('setStock'),
+  select: later('select'),
+  showUnit: later('showUnit'),
 };
-createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} />);
+createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} plant={PLANT} />);
 
 const quality = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q')) ?? 'medium';
 

@@ -1,8 +1,9 @@
-// из bolnitsa: tools/app/build.mjs @ e0a3491 — изменено: без моделей (появятся с частью 2), база завода рядом.
+// из bolnitsa: tools/app/build.mjs @ e0a3491 — изменено: база завода рядом.
 // Сборка страницы игры в dist/: esbuild — страница (src/app/main.tsx → app.js) и поток расчёта (src/sim/worker.ts →
-// sim.js), index.html и собранная база (content.json). Сеть не нужна ни при запуске, ни при работе: всё лежит локально.
+// sim.js), index.html, собранная база (content.json), модели людей и их лицензии (assets/). Сеть не нужна ни при запуске,
+// ни при работе: всё лежит локально.
 import { build } from 'esbuild';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = new URL('../..', import.meta.url).pathname;
@@ -28,4 +29,6 @@ await build({ ...common, entryPoints: [join(root, 'src/app/main.tsx')], outfile:
 await build({ ...common, entryPoints: [join(root, 'src/sim/worker.ts')], outfile: join(out, 'sim.js') });
 copyFileSync(join(root, 'app/index.html'), join(out, 'index.html'));
 copyFileSync(bundle, join(out, 'content.json'));
+cpSync(join(root, 'assets/models'), join(out, 'assets/models'), { recursive: true });
+copyFileSync(join(root, 'assets/LICENSES.md'), join(out, 'LICENSES.md'));
 console.log(`dist/ — версия ${version}`);

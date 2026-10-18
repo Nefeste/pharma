@@ -1,0 +1,67 @@
+{
+ "people/Doctor_Male_Young.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Doctor_Male_Young.gltf",
+  "sha256": "4f39182b6ecff6affac27f7c4cb2abf9529d68be4a77cc71343b40a83fe6e0cd",
+  "out": "a5287a16a3735fcfc75b440218df747b58c63bd61338cccab4ca4f778fcb187f"
+ },
+ "people/Doctor_Female_Young.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Doctor_Female_Young.gltf",
+  "sha256": "2fd5082696aca804d77555eff96f6e07c11549e4f03661ce2467e2b9f881e5ab",
+  "out": "677cfae07fd11baa18cdf24a6141b855f659f5ae6e9a23a249c2f11e85862029"
+ },
+ "people/Doctor_Male_Old.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Doctor_Male_Old.gltf",
+  "sha256": "882741dd558d5a4e91704c6ef88f2979f9c34d956f2da6ce83aca80e5f43a6ab",
+  "out": "cad5beb6c8fa106894705726a4c725ace66c3b3211a22acd5b680c2cf9c5334b"
+ },
+ "people/Doctor_Female_Old.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Doctor_Female_Old.gltf",
+  "sha256": "7574bea268ed05f11bb1e4a16fdf36ab6302051b5514f20e12f4befb4c99b172",
+  "out": "0aa4cd25132ce657ad673dec7df83d4d1b822a9aa2cc5d1de68e2ea194a9f936"
+ },
+ "people/Suit_Male.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Suit_Male.gltf",
+  "sha256": "d89d245d10c81ee637116b3400657dad2873ec1bbfb7f90579b2f77a8779fa5b",
+  "out": "e593798e03c68edd74bdba8861bcd4df0258d2f7865a665f881521a38cc0be62"
+ },
+ "people/Suit_Female.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Suit_Female.gltf",
+  "sha256": "37cbe38d428f57aff788be0f585fb9892b6115cc014c494cb19ec65c621e1f07",
+  "out": "20ee4b1b6812f70ec2e6aa98a6dfb2e489691607c89f1884ee683567f5ce7974"
+ },
+ "people/Casual_Male.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Casual_Male.gltf",
+  "sha256": "db66b2424af60d7799760795ca63c8a5be1c8af64e9f134217f0a3ff9e405379",
+  "out": "e1d4018b01f851c8236e0648a208bec24cb653a7e924bbd1fb995222dae7e721"
+ },
+ "people/Casual_Female.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Casual_Female.gltf",
+  "sha256": "87327963ab0f37d004c7340d130808727f3d67b724c3d41aad01fd63c7d6fc8a",
+  "out": "3013a3e5cc765eaf1bd43a0e0e0bb67eb45ae948e3c93e29ab2b992862632857"
+ },
+ "people/Casual2_Male.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Casual2_Male.gltf",
+  "sha256": "9e8f23af968979cc6945d11015d9fd3cb1e94d53c3b91c39cac39a80e7490a79",
+  "out": "a83778988838e5e31282d0f258b9173b95f10438d964fce81ed3c66d0dde5cdf"
+ },
+ "people/Casual2_Female.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Casual2_Female.gltf",
+  "sha256": "b614bfe01ae69e0d9dfdfb6ff74fb53abfcc32be59858a9b89fb05ffd3062324",
+  "out": "ee38ad91991e33c655b729a82221391578ea5a44c5196e0eba8d8e27564800a3"
+ },
+ "people/Casual3_Male.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Casual3_Male.gltf",
+  "sha256": "f84ec360f53796287cfdb6082ad82fd76464dc34845759ca7f1f2ee9e7604057",
+  "out": "a93b5f2826ccb14007c4740e9247913fdba59c213091b78a786b50974dd45fc1"
+ },
+ "people/Casual3_Female.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Casual3_Female.gltf",
+  "sha256": "75cb6d7fa20674cb6b1dc3ad4e3c6d0d1de03f0128817ba60dcc4fad4ca008a2",
+  "out": "8be063ff5ebf3f753887364b813b880d5f495dd1f3d37b0627d674c7b8ace634"
+ },
+ "people/Casual_Bald.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Casual_Bald.gltf",
+  "sha256": "a75e2ade5703cd02371d7f38bb6ab307d94a7db2f07d4a219f9248fdecab5e6a",
+  "out": "1023a993fb3bc2e559dd1825514334cb8684adf51d0a28cf371f6d1c2b58c4f1"
+ }
+}

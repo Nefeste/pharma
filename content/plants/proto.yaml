@@ -32,6 +32,8 @@ rooms:
   - { id: bulk, type: bulk, rect: [36, 9, 6, 9], grade: D }
   - { id: packaging, type: packaging, rect: [31, 24, 28, 12], grade: D }
   - { id: lab, type: lab, rect: [16, 30, 12, 9], grade: cnc }
+  # мастерская техслужбы со складом ЗИП — отдельно от производственных зон (GMP ЕАЭС, ч. I, п. 3.32)
+  - { id: workshop, type: workshop, rect: [52, 18, 7, 5], grade: cnc }
 instruments:
   - { id: hplc-1, type: inst.hplc, room: lab }
   - { id: ir-1, type: inst.ir, room: lab }

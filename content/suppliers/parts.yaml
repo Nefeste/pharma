@@ -1,0 +1,10 @@
+# Поставщик запчастей — вымышленный (ADR 0004). Материалов он не продаёт: что, почём и в какой срок — в записях
+# content/spares/; `lead` — его обычный срок. Условия оплаты — гипотезы.
+id: sup.parts
+name: { ru: Поставщик запчастей, en: Spare parts supplier }
+lead: [30, 90]
+prepay: 50
+payDays: 30
+approved: true
+defects: 0
+items: {}

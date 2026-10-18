@@ -1,8 +1,9 @@
-// Инварианты завода (docs/02-architecture.md, §15; docs/specs/2026-10-engine.md, «Инварианты 1а», 1б–1г). Чистая
+// Инварианты завода (docs/02-architecture.md, §15; docs/specs/2026-10-engine.md, «Инварианты 1а», 1б–1е). Чистая
 // проверка состояния: список нарушений, пустой — всё в порядке. Её зовут тесты и «виртуальный директор» на каждом шаге
 // проверки.
 import type { Attr, ContentDb } from '../content/types';
 import { geo, good, SIXTY } from './line';
+import { partsOf, partType } from './maint';
 import { orderReserved } from './market';
 import { clampAttr } from './mes';
 import { planOf } from './plant';
@@ -150,7 +151,48 @@ export function check(db: ContentDb, s: PlantState): string[] {
   production(db, s, bad);
   packing(db, s, bad);
   market(db, s, bad);
+  maint(db, s, bad);
   return bad;
+}
+
+/**
+ * Инварианты техслужбы (docs/specs/2026-10-engine.md, 1е): исправный узел — с запасом до отказа, отказавший — без; задача
+ * ремонта и узел знают друг друга; в резерве ЗИП — столько запчастей, сколько задач ремонта, и не больше, чем на складе;
+ * машина линии в аварии — пока её узел не исправен; на отказавшем узле стадия не идёт; стадия с остановкой — ждёт ремонта.
+ */
+function maint(db: ContentDb, s: PlantState, bad: string[]) {
+  const reserved: Record<string, number> = {};
+  for (const pt of Object.values(s.parts)) {
+    if (pt.done < 0) bad.push(`узел ${pt.id}: наработка ${pt.done}`);
+    if (pt.state === 'ok' && pt.budget <= 0) bad.push(`узел ${pt.id}: исправен, а запаса до отказа нет`);
+    if (pt.state === 'failed' && (pt.budget !== 0 || pt.failed === undefined)) bad.push(`узел ${pt.id}: отказал, а запас ${pt.budget}`);
+    if (pt.task) {
+      const t = s.tasks[pt.task];
+      if (!t || t.kind !== 'repair' || t.part !== pt.id) bad.push(`узел ${pt.id}: задачи ремонта ${pt.task} нет`);
+      const spare = partType(db, pt).spare;
+      reserved[spare] = (reserved[spare] ?? 0) + 1;
+    }
+    if (pt.state === 'failed' && !pt.line && Object.values(s.tasks).some(t => t.kind === 'stage' && t.state === 'busy' && t.batch === s.equipment[pt.machine].batch)) bad.push(`узел ${pt.id}: отказал, а стадия на нём идёт`);
+  }
+  for (const t of Object.values(s.tasks)) if (t.kind === 'repair' && s.parts[t.part!]?.task !== t.id) bad.push(`задача ${t.id}: узел ${t.part} её не знает`);
+  for (const [id, st] of Object.entries(s.spares)) {
+    if (st.reserved !== (reserved[id] ?? 0)) bad.push(`ЗИП ${id}: в резерве ${st.reserved}, а задач ремонта ${reserved[id] ?? 0}`);
+    if (st.reserved < 0 || st.reserved > st.qty) bad.push(`ЗИП ${id}: на складе ${st.qty}, в резерве ${st.reserved}`);
+  }
+  for (const line of Object.values(s.lines)) {
+    for (const mc of line.machines) {
+      const down = partsOf(s, mc.id).some(p => p.state === 'failed' || p.task !== undefined);
+      const failed = partsOf(s, mc.id).some(p => p.state === 'failed');
+      if (mc.broken && !down) bad.push(`линия ${line.id}, ${mc.id}: авария, а узлы исправны`);
+      if (failed && !mc.broken) bad.push(`линия ${line.id}, ${mc.id}: узел отказал, а машина работает`);
+    }
+  }
+  for (const b of Object.values(s.batches)) {
+    if (!b.run) continue;
+    const working = Object.values(s.tasks).some(t => t.kind === 'stage' && t.batch === b.id);
+    if (b.status !== 'process' || (!working && b.run.rest === undefined)) bad.push(`серия ${b.id}: стадия с узлами не идёт и не ждёт ремонта`);
+    if (b.run.left < 0 || b.run.left > b.run.units) bad.push(`серия ${b.id}: таблеток стадии осталось ${b.run.left} из ${b.run.units}`);
+  }
 }
 
 /**
@@ -265,7 +307,7 @@ function packing(db: ContentDb, s: PlantState, bad: string[]) {
     const m = line.machines;
     m.forEach((mc, i) => {
       const t = mc.times;
-      const spent = t.run + t.slow + t.micro + t.wait + t.setup + t.off;
+      const spent = t.run + t.slow + t.micro + t.fail + t.wait + t.setup + t.off;
       if (spent !== line.t - job.taken!) bad.push(`линия ${line.id}, ${mc.id}: время состояний ${spent}, а задание идёт ${line.t - job.taken!}`);
       if (t.out !== mc.pos) bad.push(`линия ${line.id}, ${mc.id}: проход ${t.out}, а позиция ${mc.pos}`);
       if (t.out !== g.nominal[i] * t.run + t.slowOut) bad.push(`линия ${line.id}, ${mc.id}: проход ${t.out} ≠ номинал × ${t.run} + ${t.slowOut}`);
@@ -305,7 +347,11 @@ function packing(db: ContentDb, s: PlantState, bad: string[]) {
       at += count;
     }
     if (at !== job.cartons! + 1) bad.push(`серия ${b.id}: коды пачек — не каждый ровно в одном месте`);
-    for (const r of job.recon ?? []) if (r.issued !== r.used + r.spoiled + r.returned) bad.push(`серия ${b.id}: сверка ${r.material} не сходится`);
+    // сверка сходится с точностью до испорченного при заминках, но не записанного
+    for (const r of job.recon ?? []) {
+      const lost = (job.lost ?? 0) * (sku.carton.find(l => l.material === r.material)?.qty ?? 0);
+      if (r.issued !== r.used + r.spoiled + r.returned + lost) bad.push(`серия ${b.id}: сверка ${r.material} не сходится на незаписанное`);
+    }
   }
 }
 

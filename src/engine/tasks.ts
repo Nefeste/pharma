@@ -36,6 +36,9 @@ export interface NewTask {
   cases?: string[];
   dest?: string;
   truck?: string;
+  part?: string;
+  planned?: boolean;
+  begin?: boolean;
 }
 
 export function addTask(s: PlantState, n: NewTask): Task {
@@ -63,8 +66,12 @@ export function pointOf(plan: PlantPlan, s: PlantState, p: Place): Point {
   return p;
 }
 
-/** Куда везут груз задачи без своего места: в фуру у рампы или на паллету заказа в экспедиции. */
+/**
+ * Куда везут груз задачи без своего места: в фуру у рампы или на паллету заказа в экспедиции; слесарь несёт запчасть
+ * к машине — в её помещение.
+ */
 function destOf(plan: PlantPlan, s: PlantState, t: Task): Point | undefined {
+  if (t.kind === 'repair' && t.room) return plan.room[t.room];
   if (t.truck && s.trucks[t.truck]) return pointOf(plan, s, { kind: 'truck', id: t.truck });
   const u = t.dest ? s.units[t.dest] : undefined;
   return u?.where.kind === 'slot' ? plan.slot[u.where.id] : undefined;
@@ -167,7 +174,8 @@ function start(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, people: P
   } else {
     // пешком: дойти, взять, донести до места назначения (если оно есть) и там работать
     const walk = Math.max(...people.map(p => travel(p, from, WALK)));
-    const carry = to ? travel(from, plan.slot[to], WALK) : 0;
+    const dest = to ? plan.slot[to] : destOf(plan, s, t);
+    const carry = dest ? travel(from, dest, WALK) : 0;
     // смена у линии — до конца смены того, у кого она кончается раньше; линия узнаёт о приходе людей событием
     if (t.kind === 'crew') {
       t.work = Math.max(1, Math.min(...people.map(p => shiftEnd(db, s, p)!)) - (t0 + walk));
@@ -197,6 +205,9 @@ function start(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, people: P
   t.state = 'busy';
   t.times = times;
   t.v++;
+  // стадия с узлами под износом узнаёт, когда люди начали работу: от этого момента считается отказ (mes.ts); раньше
+  // конца задачи, даже если работы нет
+  if (t.begin) schedule(s.agenda, times[1], { kind: 'begin', task: t.id, v: t.v });
   schedule(s.agenda, times[4], { kind: 'task', id: t.id, v: t.v });
 }
 

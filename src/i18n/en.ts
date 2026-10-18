@@ -38,6 +38,8 @@ export const en: Strings = {
     shipped: "The customer's truck has left with a shipment",
     lateOrder: 'Customer order: short or late',
     cashLow: 'Cash is below the credit line limit',
+    failure: 'A machine part failed: awaiting repair',
+    repaired: 'A machine part was repaired or replaced',
     refused: 'The command was refused',
   },
   debug: {

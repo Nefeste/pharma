@@ -121,6 +121,8 @@ export class Game {
       : n.kind === 'shipped' ? T.notices.shipped
       : n.kind === 'lateOrder' ? T.notices.lateOrder
       : n.kind === 'cashLow' ? T.notices.cashLow
+      : n.kind === 'failure' ? T.notices.failure
+      : n.kind === 'repaired' ? T.notices.repaired
       : T.notices.refused;
     this.notices.unshift({ t: this.t, text });
     if (this.notices.length > 30) this.notices.length = 30;

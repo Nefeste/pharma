@@ -10,8 +10,9 @@ import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR } from './core/calendar';
 import { labDone, runDone, startSampling } from './lab';
 import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from './line';
+import { maintainCommand, maintDone, maintStep, newParts, spareArrives } from './maint';
 import { marketDone, marketHour, marketStep, newCustomers, rznPublished } from './market';
-import { BATCH_HOUR, mesDone, mesHour, mesStep, packOrder, placeOrder } from './mes';
+import { BATCH_HOUR, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, stageBegin } from './mes';
 import { planOf } from './plant';
 import { qaDone, qaStep, releaseCommand } from './qa';
 import { createLot, findSlot } from './stock';
@@ -67,6 +68,10 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     customers: newCustomers(sc, sc.start.hour * HOUR),
     orders: {},
     shipments: {},
+    parts: {},
+    spares: {},
+    spareOrders: {},
+    maintLog: [],
   };
   // люди — у входа, техника — на стоянке, приборы — в лаборатории по плану
   for (const row of sc.staff) {
@@ -86,6 +91,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   for (const r of plan.plant.rooms) s.rooms[r.id] = { id: r.id, type: r.type, status: 'clean', since: s.t };
   for (const e of plan.plant.equipment) s.equipment[e.id] = { id: e.id, type: e.type, room: e.room };
   s.lines = newLines(db, sc.plant, s.t);
+  newParts(db, s);
   // запас на старте — разрешённые партии на стеллажах, ближе к шлюзу для материалов и ниже
   const near = plan.slot[plan.byKind.staging[0].id];
   for (const st of sc.stock) {
@@ -150,11 +156,21 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: () => boolea
       steps(db, s, notices);
       return notices;
     }
+    case 'maintain': {
+      const notices: Notice[] = [];
+      maintainCommand(db, s, cmd, notices);
+      steps(db, s, notices);
+      return notices;
+    }
   }
 }
 
-/** После события: производство, линии, качество, отгрузка, раздача задач. */
+/**
+ * После события: техслужба (раньше производства: свободную машину, которой пора в замену узла, не займёт серия),
+ * производство, линии, качество, отгрузка, раздача задач.
+ */
 function steps(db: ContentDb, s: PlantState, notices: Notice[]) {
+  maintStep(db, s);
   mesStep(db, s);
   lineStep(db, s, notices);
   qaStep(db, s);
@@ -195,6 +211,7 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       schedule(s.agenda, s.t + HOUR, { kind: 'hour' });
       startSampling(db, s);
       cashHour(db, s, notices);
+      maintStep(db, s);
       mesHour(db, s);
       lineHour(db, s, notices);
       marketHour(db, s, notices);
@@ -211,9 +228,9 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       const t = s.tasks[ev.id];
       if (!t || t.v !== ev.v || t.state !== 'busy') return;
       release(db, s, t);
-      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices)) wmsDone(db, s, t, notices);
-      // паллета ГП уехала с места паллетирования — у линии освободилось место
-      if (t.kind === 'putaway' && t.line) lineUpdate(db, s, s.lines[t.line], notices);
+      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices) && !maintDone(db, s, t, notices)) wmsDone(db, s, t, notices);
+      // паллета ГП уехала с места паллетирования — у линии освободилось место; машину линии починили — она снова в работе
+      if ((t.kind === 'putaway' || t.kind === 'repair') && t.line) lineUpdate(db, s, s.lines[t.line], notices);
       if (t.kind === 'putaway' || t.kind === 'stage') startSampling(db, s);
       steps(db, s, notices);
       return;
@@ -232,6 +249,17 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       return;
     case 'rzn':
       rznPublished(s, ev.lot);
+      steps(db, s, notices);
+      return;
+    case 'begin':
+      stageBegin(db, s, ev.task, ev.v);
+      return;
+    case 'fail':
+      pressFail(db, s, ev, notices);
+      steps(db, s, notices);
+      return;
+    case 'spare':
+      spareArrives(db, s, ev.order);
       steps(db, s, notices);
       return;
   }

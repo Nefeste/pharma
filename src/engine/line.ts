@@ -1,7 +1,9 @@
 // Упаковочная линия (docs/specs/2026-10-engine.md, 1г; геймдизайн, §5.6–5.8; ADR 0003): поток между событиями —
 // блистерная → картонажная с маркировкой → укладка в гофроящики; накопители, микроостановки, брак камер, коды пачек в
-// ящиках, паллеты ГП, переналадка и очистка линии, смена у линии, конец серии со сверкой, время машин для OEE. Задание
-// на упаковку и комплект материалов — mes.ts; проверка ГП и выпуск — qa.ts.
+// ящиках, паллеты ГП, переналадка и очистка линии, смена у линии, конец серии со сверкой, время машин для OEE. Узлы
+// машин (1е): наработка — штуками машины, отказ — граница отрезка, авария до конца ремонта, микроостановки чаще с
+// износом; заминки картонажной портят пачки. Задание на упаковку и комплект материалов — mes.ts; ремонт — maint.ts;
+// проверка ГП и выпуск — qa.ts.
 //
 // Счёт — в шестидесятых долях таблетки: позиция машины — сколько таблеток прошло через неё за задание, скорость —
 // таблеток в минуту, то есть долей в секунду. Накопитель после машины — разность позиций соседей. Блистеры, пачки и
@@ -11,6 +13,7 @@ import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
 import { civilFromDays, daysFromCivil, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
+import { blocked, consume, failPart, partsOf, partType, pending, untilFail, wearAt } from './maint';
 import { deviate, returnTask } from './mes';
 import { type PlantPlan, planOf, type Point } from './plant';
 import { expo, roll } from './random';
@@ -39,7 +42,7 @@ export const LINE = { setters: ['role.setter'], cleaners: ['role.packer'], check
 /** Смена у линии — раньше всего, что ещё делают те же люди; балк и очистка — раньше переналадки. */
 export const LINE_PRIO = { crew: 40, feed: 33, clearance: 32, clearCheck: 32, changeover: 30 } as const;
 
-const EMPTY: MachineTimes = { run: 0, slow: 0, micro: 0, wait: 0, setup: 0, off: 0, out: 0, slowOut: 0 };
+const EMPTY: MachineTimes = { run: 0, slow: 0, micro: 0, fail: 0, wait: 0, setup: 0, off: 0, out: 0, slowOut: 0 };
 
 /** Годных из первых `n` при доле брака `p` (1/10 000): бракуется каждая (1/p)-я штука. */
 export function good(n: number, p: number): number {
@@ -89,6 +92,9 @@ export function geo(db: ContentDb, s: PlantState, line: Line, skuId: Id): Geo {
     at: plan.room[def.room],
   };
 }
+
+/** Штук машины `i` (блистеров или пачек), прошедших её позицию, — её наработка за задание. */
+const itemsAt = (g: Geo, i: number, pos: number) => Math.floor(pos / (g.unit[i] * SIXTY));
 
 /** Блистеров, прошедших позицию; пачек из них; годных пачек; позиция, на которой годных пачек становится `n`. */
 const blistersAt = (g: Geo, pos: number) => Math.floor(pos / (g.unit[0] * SIXTY));
@@ -288,7 +294,10 @@ function solve(db: ContentDb, s: PlantState, line: Line) {
   m.forEach((mc, i) => {
     const role = db.machines[mc.type].crew.role;
     if (!crewHere(s, line, role)) {
-      mc.state = shiftOn(db, s, role) ? 'wait' : 'off';
+      mc.state = !shiftOn(db, s, role) ? 'off' : mc.broken ? 'fail' : 'wait';
+      mc.rate = 0;
+    } else if (mc.broken) {
+      mc.state = 'fail';
       mc.rate = 0;
     } else if (mc.down !== undefined) {
       mc.state = 'micro';
@@ -332,16 +341,63 @@ function nextBoundary(db: ContentDb, s: PlantState, line: Line): number | undefi
   if (m[n - 1].rate > 0) take(up(posForGood(g, (line.cases + placeable(plan, s, line, g)) * g.perCase) - m[n - 1].pos, m[n - 1].rate));
   for (const mc of m) {
     if (mc.rate > 0 && db.machines[mc.type].micro) take(up(mc.next - mc.pos, mc.rate));
+    if (mc.rate > 0 && mc.fail !== undefined) take(up(mc.fail - mc.pos, mc.rate));
     if (mc.down !== undefined) take(Math.max(1, mc.down - s.t));
   }
   if (m.some(mc => mc.rate > 0)) take(TICK);
   return best;
 }
 
-/** Следующая микроостановка — через случайный проход со средним «раз в `every` секунд на номинале» (ветвь машины). */
-function drawNext(db: ContentDb, s: PlantState, mc: LineMachine, nominal: number) {
+/**
+ * Следующая микроостановка — через случайный проход со средним «раз в `every` секунд на номинале» (ветвь машины). С
+ * износом узла они чаще: при износе 100 % — во столько раз, сколько в записи узла (гипотеза).
+ */
+function drawNext(db: ContentDb, s: PlantState, mc: LineMachine, g: Geo, i: number) {
   const micro = db.machines[mc.type].micro;
-  mc.next = micro ? mc.pos + roll(s, `line/${mc.id}`, r => expo(r, micro.every * nominal)) : Number.MAX_SAFE_INTEGER;
+  if (!micro) {
+    mc.next = Number.MAX_SAFE_INTEGER;
+    return;
+  }
+  let factor = P_ONE;
+  for (const pt of partsOf(s, mc.id)) {
+    const ty = partType(db, pt);
+    if (ty.micro) factor += Math.floor(((ty.micro - P_ONE) * wearAt(ty, pt.done + itemsAt(g, i, mc.pos) - itemsAt(g, i, pt.mark))) / P_ONE);
+  }
+  mc.next = mc.pos + roll(s, `line/${mc.id}`, r => expo(r, Math.floor((micro.every * g.nominal[i] * P_ONE) / factor)));
+}
+
+/** Наработка узлов машины — до её позиции: запас до отказа расходуется по таблице; учтено до этой позиции. */
+function syncParts(db: ContentDb, s: PlantState, mc: LineMachine, g: Geo, i: number) {
+  for (const pt of partsOf(s, mc.id)) {
+    const n = itemsAt(g, i, mc.pos) - itemsAt(g, i, pt.mark);
+    if (n > 0) {
+      const ty = partType(db, pt);
+      if (pt.state === 'ok') pt.budget -= consume(ty, pt.done, n);
+      pt.done += n;
+    }
+    pt.mark = mc.pos;
+  }
+}
+
+/** Позиция машины, на которой кончится запас до отказа её исправного узла: на последней штуке — граница отрезка. */
+function armParts(db: ContentDb, s: PlantState, mc: LineMachine, g: Geo, i: number) {
+  delete mc.fail;
+  for (const pt of partsOf(s, mc.id)) {
+    if (pt.state !== 'ok') continue;
+    const n = untilFail(partType(db, pt), pt.done, pt.budget);
+    if (n === Infinity) continue;
+    const at = (itemsAt(g, i, pt.mark) + n) * g.unit[i] * SIXTY;
+    if (mc.fail === undefined || at < mc.fail) mc.fail = at;
+  }
+}
+
+/** Заминка картонажной — микроостановка, которая портит пачки с вложениями; изредка испорченное не записывают. */
+function jam(db: ContentDb, s: PlantState, mc: LineMachine, g: Geo, job: PackJob) {
+  const j = db.machines[mc.type].jam;
+  if (!j || (job.jammed ?? 0) + j.cartons > g.sku.waste.jams) return;
+  job.jams = (job.jams ?? 0) + 1;
+  job.jammed = (job.jammed ?? 0) + j.cartons;
+  if (roll(s, `line/${mc.id}`, r => r.chance(j.uncounted))) job.lost = (job.lost ?? 0) + j.cartons;
 }
 
 /**
@@ -351,17 +407,36 @@ function drawNext(db: ContentDb, s: PlantState, mc: LineMachine, nominal: number
 export function lineUpdate(db: ContentDb, s: PlantState, line: Line, notices: Notice[]) {
   advance(db, s, line, s.t);
   const b = line.batch ? s.batches[line.batch] : undefined;
-  if (b?.pack?.state === 'running') {
-    const g = geo(db, s, line, b.pack.sku);
+  const running = b?.pack?.state === 'running';
+  // починили — машина снова в работе; посреди задания — со следующим отказом нового узла
+  line.machines.forEach((mc, i) => {
+    if (!mc.broken || blocked(s, mc.id)) return;
+    delete mc.broken;
+    if (running) armParts(db, s, mc, geo(db, s, line, b.pack!.sku), i);
+  });
+  if (running) {
+    const g = geo(db, s, line, b!.pack!.sku);
     line.machines.forEach((mc, i) => {
       const micro = db.machines[mc.type].micro;
+      // отказ узла: наработка до этой позиции, авария до конца ремонта
+      if (!mc.broken && mc.fail !== undefined && mc.pos >= mc.fail) {
+        syncParts(db, s, mc, g, i);
+        delete mc.fail;
+        delete mc.down;
+        mc.broken = true;
+        for (const pt of partsOf(s, mc.id)) if (pt.state === 'ok' && pt.budget <= 0) failPart(db, s, pt, notices, b!.id);
+      }
+      if (mc.broken) return;
       if (mc.down !== undefined && mc.down <= s.t) {
         delete mc.down;
-        drawNext(db, s, mc, g.nominal[i]);
+        drawNext(db, s, mc, g, i);
       }
-      if (micro && mc.down === undefined && mc.pos >= mc.next) mc.down = s.t + roll(s, `line/${mc.id}`, r => Math.max(10, expo(r, micro.duration)));
+      if (micro && mc.down === undefined && mc.pos >= mc.next) {
+        mc.down = s.t + roll(s, `line/${mc.id}`, r => Math.max(10, expo(r, micro.duration)));
+        jam(db, s, mc, g, b!.pack!);
+      }
     });
-    finish(db, s, line, g, b, notices);
+    finish(db, s, line, g, b!, notices);
   }
   solve(db, s, line);
   line.v++;
@@ -426,6 +501,8 @@ export function lineStep(db: ContentDb, s: PlantState, notices: Notice[]) {
       addTask(s, { kind: 'feed', roles: [...LINE.feeders], unit: u.id, from: { kind: 'point', x: at.x, z: at.z }, work: FEED_WORK, prio: LINE_PRIO.feed, batch: b.id, line: line.id });
     }
     if (job.state !== 'ready' || !bulk.every(u => u.where.kind === 'room' && u.where.id === room)) continue;
+    // машина в ремонте или вот-вот уйдёт в замену узла — задание ждёт (maint.ts)
+    if (line.machines.some(mc => blocked(s, mc.id) || pending(db, s, mc.id))) continue;
     startRun(db, s, line, b, g);
     lineUpdate(db, s, line, notices);
   }
@@ -447,7 +524,8 @@ function startRun(db: ContentDb, s: PlantState, line: Line, b: Batch, g: Geo) {
   line.machines.forEach((mc, i) => {
     mc.pos = 0;
     delete mc.down;
-    drawNext(db, s, mc, g.nominal[i]);
+    armParts(db, s, mc, g, i);
+    drawNext(db, s, mc, g, i);
   });
   for (const c of crews(db, line)) addCrew(s, line, b, c.role, c.n, g.at);
 }
@@ -523,12 +601,15 @@ function finish(db: ContentDb, s: PlantState, line: Line, g: Geo, b: Batch, noti
   delete line.batch;
   line.clear = false;
   for (const t of tasksOf(s, line, 'crew')) dropTask(db, s, t);
-  for (const mc of line.machines) {
+  line.machines.forEach((mc, i) => {
+    syncParts(db, s, mc, g, i);
+    for (const pt of partsOf(s, mc.id)) pt.mark = 0;
     mc.pos = 0;
     mc.rate = 0;
     delete mc.down;
+    delete mc.fail;
     mc.times = { ...EMPTY };
-  }
+  });
   notices.push({ kind: 'batchPacked', batch: b.id, lot: job.fg! });
 }
 
@@ -545,9 +626,11 @@ function book(db: ContentDb, s: PlantState, b: Batch, line: Line, g: Geo, notice
     delete s.containers[c.id];
     if (u.items.length === 0) delete s.units[u.id];
   }
+  // заминки испортили пачки с вложениями сверх наладки
+  const jammed = job.jammed ?? 0;
   const usage = new Map<Id, number>();
   for (const l of sku.blister) usage.set(l.material, (job.blisters! + sku.waste.blisters) * l.qty);
-  for (const l of sku.carton) usage.set(l.material, (job.cartons! + sku.waste.cartons) * l.qty);
+  for (const l of sku.carton) usage.set(l.material, (job.cartons! + sku.waste.cartons + jammed) * l.qty);
   usage.set(sku.case.material, job.cases!);
   // из комплекта: снять резерв строки, списать по факту в её порядке
   const issued = new Map<Id, number>();
@@ -565,13 +648,14 @@ function book(db: ContentDb, s: PlantState, b: Batch, line: Line, g: Geo, notice
     job.used.push({ ...k, qty: q });
   }
   for (const [material, rest] of usage) if (rest !== 0) throw new Error(`pack ${b.id}: ${material} short by ${rest}`);
-  // сверка печатных материалов (пачки и инструкции): выдано = использовано + испорчено + возвращено
+  // сверка печатных материалов (пачки и инструкции): выдано = использовано + испорчено + возвращено. Возвращают то, что
+  // осталось на самом деле; испорченное — по записям, а незаписанное при заминках в них не попало: расхождение
   const goodCartons = job.cartons! - job.cartonRejects!;
+  const spoilt = job.cartonRejects! + sku.waste.cartons + jammed;
   job.recon = sku.carton.map(l => {
     const out = issued.get(l.material) ?? 0;
     const used = goodCartons * l.qty;
-    const spoiled = (job.cartonRejects! + sku.waste.cartons) * l.qty;
-    return { material: l.material, issued: out, used, spoiled, returned: out - used - spoiled };
+    return { material: l.material, issued: out, used, spoiled: (spoilt - (job.lost ?? 0)) * l.qty, returned: out - used - spoilt * l.qty };
   });
   for (const r of job.recon) {
     const gap = Math.abs(r.issued - r.used - r.spoiled - r.returned);

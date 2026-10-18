@@ -111,20 +111,23 @@ first, or copy the working code of Bolnitsa on the same versions.
 - `src/engine/` — the engine (pure TypeScript; see «Hard rules»): `core/` (seeded branches, hashes, own `log2` — copies;
   the event agenda as a heap in plain arrays and the calendar without `Date` — ours), `types.ts` (state, commands,
   notices, `SCHEMA`), `engine.ts` (`newPlant`, `apply`, `catchUp`, events), `random.ts` (named branches in the state,
-  the integer normal draw), `save.ts` (snapshot and migrations), `plant.ts` (slots, docks, rooms, the lab and
-  distances from the plant record), `stock.ts` (lots, containers, pallets, slots, the lot status table), `supply.ts`
-  (purchase orders), `wms.ts` (truck, unloading, receiving, putaway), `quality.ts` (true lot properties, the lab
-  result, spec limits), `lab.ts` (sampling, lab tests, the lot decision), `mes.ts` (batch orders, FEFO reservation
-  with potency, kitting through the airlock, stages in rooms with equipment and people, cleaning, process parameters,
-  true batch quality with causes, IPC, the bulk lot; the packing job and its packaging kit), `line.ts` (the packaging
-  line as flow between events: machines, buffers, micro-stops, camera rejects by count, codes in cases, FG pallets,
-  changeover and line clearance, the crew, the end of a batch with reconciliation, machine times for OEE), `qa.ts` (QA
-  check of finished goods with retention samples, the qualified person's decision, FG shelf life), `market.ts` (customers
-  and their orders, FG into circulation after the regulator publishes the batch, FEFO allocation with the residual shelf
-  life, whole pallets and case picking, the customer's truck at 15:00, shipments with codes), `cash.ts` (kopecks and
-  ledger entries, dues by date, suppliers, wages twice a month, contributions, energy, VAT by quarter, the credit line),
-  `tasks.ts` (tasks
-  and the dispatcher: people, vehicles, instruments), `staff.ts` (shifts), `invariants.ts`.
+  the integer normal draw), `save.ts` (snapshot and migrations), `plant.ts` (slots, docks, rooms, the lab and distances
+  from the plant record), `stock.ts` (lots, containers, pallets, slots, the lot status table), `supply.ts` (purchase
+  orders), `wms.ts` (truck, unloading, receiving, putaway), `quality.ts` (true lot properties, the lab result, spec
+  limits), `lab.ts` (sampling, lab tests, the lot decision), `mes.ts` (batch orders, FEFO reservation with potency,
+  kitting through the airlock, stages in rooms with equipment and people, cleaning, process parameters, true batch
+  quality with causes, IPC, the bulk lot; the packing job and its packaging kit; a stage stopped by a part failure and
+  resumed after the repair), `line.ts` (the packaging line as flow between events: machines, buffers, micro-stops,
+  camera rejects by count, codes in cases, FG pallets, changeover and line clearance, the crew, the end of a batch with
+  reconciliation, machine times for OEE, a machine part failing at a flow boundary, jams of the cartoner), `qa.ts` (QA
+  check of finished goods with retention samples, the qualified person's decision, FG shelf life), `market.ts`
+  (customers and their orders, FG into circulation after the regulator publishes the batch, FEFO allocation with the
+  residual shelf life, whole pallets and case picking, the customer's truck at 15:00, shipments with codes), `cash.ts`
+  (kopecks and ledger entries, dues by date, suppliers, wages twice a month, contributions, energy, VAT by quarter, the
+  credit line), `maint.ts` (machine parts, wear by work done, failure by the hazard table of wear, repairs and planned
+  replacement by the mechanic with a spare from the workshop, spares replenished by level, the maintenance policy,
+  `maintain`), `tasks.ts` (tasks and the dispatcher: people, vehicles, instruments), `staff.ts` (shifts),
+  `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker (`worker.ts`)

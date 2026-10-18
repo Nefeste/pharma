@@ -1,18 +1,20 @@
 // Производство (docs/specs/2026-10-engine.md, 1в, 1г; геймдизайн, §5.3–5.5): задание на серию, резерв по FEFO, комплект к
 // шлюзу, стадии по технологической карте — помещение, оборудование, люди; чистота и уборка; режимы; истинные показатели
 // и причины; МОК; балк в карантине; задание на упаковку и комплект упаковочных материалов к линии (саму линию ведёт
-// line.ts). Задачи раздаёт раздатчик (tasks.ts); здесь — когда их заводить и что они делают, когда кончаются.
+// line.ts). Стадия с узлами под износом (1е) останавливается на отказе узла и продолжается после ремонта (maint.ts).
+// Задачи раздаёт раздатчик (tasks.ts); здесь — когда их заводить и что они делают, когда кончаются.
 import { ATTRS, type Attr, type CauseDriver, type ContentDb, type Id, type RecipeStage } from '../content/types';
 import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
 import { HOUR, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
+import { blocked, consume, failPart, partsOf, partType, untilFail, wearAt } from './maint';
 import { type PlantPlan, planOf } from './plant';
 import { measure, within } from './quality';
 import { normal, roll, spread } from './random';
 import { containersByLot, createLot, free, knownAssay, nextId, putUnit, stockChanged } from './stock';
-import { addTask } from './tasks';
-import type { Batch, Command, Container, Deviation, KitLine, Lot, Notice, PackJob, Place, PlantState, Room, StageRecord, Task, Unit } from './types';
+import { addTask, release } from './tasks';
+import type { Batch, Command, Container, Deviation, Equipment, KitLine, Lot, Notice, PackJob, Part, Place, PlantEvent, PlantState, Room, StageRecord, Task, Unit } from './types';
 import { PRIO, WMS } from './wms';
 
 /** Роли производства. */
@@ -202,8 +204,9 @@ function startPacking(db: ContentDb, s: PlantState, b: Batch) {
 
 /**
  * Сколько материала может понадобиться на упаковку: на блистер — блистеров не больше таблеток / в блистере, плюс брак на
- * наладку; на пачку — пачек не больше блистеров / в пачке (плюс наладка — у самой пачки и инструкции); ящиков — вверх
- * до целого. Это верхняя граница: брак камер только уменьшает расход, поэтому материала на линии всегда хватает.
+ * наладку; на пачку — пачек не больше блистеров / в пачке (плюс наладка и запас на заминки — у самой пачки и
+ * инструкции); ящиков — вверх до целого. Это верхняя граница: брак камер только уменьшает расход, а заминки портят не
+ * больше запаса (line.ts), поэтому материала на линии всегда хватает.
  */
 export function packNeeds(db: ContentDb, job: PackJob): { material: Id; qty: number }[] {
   const sku = db.skus[job.sku];
@@ -211,7 +214,7 @@ export function packNeeds(db: ContentDb, job: PackJob): { material: Id; qty: num
   const cartons = Math.floor(blisters / sku.blisters);
   return [
     ...sku.blister.map(l => ({ material: l.material, qty: (blisters + sku.waste.blisters) * l.qty })),
-    ...sku.carton.map(l => ({ material: l.material, qty: (cartons + sku.waste.cartons) * l.qty })),
+    ...sku.carton.map(l => ({ material: l.material, qty: (cartons + sku.waste.cartons + sku.waste.jams) * l.qty })),
     { material: sku.case.material, qty: Math.ceil(cartons / sku.case.per) },
   ];
 }
@@ -353,12 +356,94 @@ function tryStart(db: ContentDb, s: PlantState, b: Batch) {
     }
   }
   const eqs = st.equipment.map(type => Object.values(s.equipment).find(e => e.room === roomId && e.type === type && (!e.batch || e.batch === b.id)));
-  if (eqs.some(e => !e)) return;
+  // неисправное оборудование выведено из работы до устранения (GMP ЕАЭС, ч. I, п. 3.44): стадия ждёт ремонта
+  if (eqs.some(e => !e || blocked(s, e.id))) return;
   room.status = 'busy';
   room.batch = b.id;
   b.room = roomId;
   for (const e of eqs) e!.batch = b.id;
-  addTask(s, { kind: 'stage', roles: [st.staff.role], count: st.staff.n, from: roomPlace(plan, roomId), work: duration(db, s, b, st, roomId), prio: MES_PRIO.stage, batch: b.id });
+  // после отказа — остаток работы без подготовки; у оборудования с узлами — событие начала работы (stageBegin)
+  const work = b.run?.rest ?? duration(db, s, b, st, roomId);
+  const worn = eqs.some(e => partsOf(s, e!.id).length > 0);
+  addTask(s, { kind: 'stage', roles: [st.staff.role], count: st.staff.n, from: roomPlace(plan, roomId), work, prio: MES_PRIO.stage, batch: b.id, ...(worn ? { begin: true } : {}) });
+}
+
+/** Узлы оборудования, на котором идёт стадия серии. */
+function stageParts(db: ContentDb, s: PlantState, b: Batch): Part[] {
+  const st = db.recipes[b.recipe].stages[b.stage];
+  return stageEquipment(s, b, st).flatMap(e => partsOf(s, e.id));
+}
+
+function stageEquipment(s: PlantState, b: Batch, st: RecipeStage): Equipment[] {
+  return Object.values(s.equipment).filter(e => e.batch === b.id && e.room === b.room && st.equipment.includes(e.type));
+}
+
+/** Таблеток на стадию по массе полупродукта — как в длительности стадии. */
+const unitsOf = (db: ContentDb, b: Batch) => Math.floor((b.mass * db.recipes[b.recipe].batch.units) / db.recipes[b.recipe].batch.mass);
+
+/**
+ * Аппаратчик начал стадию с узлами под износом (событие `begin`). Отрезок прессования — от конца подготовки (её нет
+ * после отказа) до конца задачи, таблетки — поровну по времени. Для каждого исправного узла — на какой таблетке кончится
+ * его запас до отказа; если раньше конца отрезка — событие отказа (docs/specs/2026-10-engine.md, 1е).
+ */
+export function stageBegin(db: ContentDb, s: PlantState, id: string, v: number) {
+  const t = s.tasks[id];
+  if (!t || t.v !== v || t.state !== 'busy' || t.kind !== 'stage') return;
+  const b = s.batches[t.batch!];
+  const st = db.recipes[b.recipe].stages[b.stage];
+  const first = !b.run;
+  if (!b.run) b.run = { start: s.t, units: unitsOf(db, b), left: unitsOf(db, b), wear: {}, stops: [], people: [] };
+  const run = b.run;
+  for (const p of t.people) if (!run.people.includes(p)) run.people.push(p);
+  const stop = run.stops[run.stops.length - 1];
+  if (stop && stop.to === undefined) stop.to = s.t;
+  delete run.rest;
+  const end = t.times![4];
+  run.from = Math.min(end, s.t + (first ? st.time.setup : 0));
+  const span = end - run.from;
+  if (span <= 0 || run.left === 0) return;
+  for (const pt of stageParts(db, s, b)) {
+    const n = untilFail(partType(db, pt), pt.done, pt.budget);
+    if (n >= run.left) continue;
+    const at = run.from + Math.ceil((n * span) / run.left);
+    if (at < end) schedule(s.agenda, at, { kind: 'fail', part: pt.id, v: pt.v, n });
+  }
+}
+
+/**
+ * Наработка узлов стадии — ещё `n` таблеток: запас до отказа расходуется, износ копится для среднего за стадию. Отрезок
+ * кончился — события отказа, поставленные на него, устаревают.
+ */
+function syncStage(db: ContentDb, s: PlantState, b: Batch, n: number) {
+  const run = b.run!;
+  for (const pt of stageParts(db, s, b)) {
+    const ty = partType(db, pt);
+    const d0 = pt.done;
+    pt.done += n;
+    pt.budget -= consume(ty, d0, n);
+    pt.v++;
+    run.wear[pt.id] = (run.wear[pt.id] ?? 0) + n * (wearAt(ty, d0) + wearAt(ty, pt.done));
+  }
+  run.left -= n;
+}
+
+/**
+ * Отказ узла посреди стадии (событие `fail`): наработка до этой таблетки, узел — в ремонт; стадия встаёт — люди уходят,
+ * серия держит помещение и оборудование, остаток работы ждёт ремонта.
+ */
+export function pressFail(db: ContentDb, s: PlantState, ev: Extract<PlantEvent, { kind: 'fail' }>, notices: Notice[]) {
+  const pt = s.parts[ev.part];
+  if (!pt || pt.v !== ev.v || pt.state !== 'ok') return;
+  const b = s.equipment[pt.machine].batch ? s.batches[s.equipment[pt.machine].batch!] : undefined;
+  const t = b && Object.values(s.tasks).find(x => x.kind === 'stage' && x.batch === b.id && x.state === 'busy');
+  if (!b?.run || !t) return;
+  const st = db.recipes[b.recipe].stages[b.stage];
+  syncStage(db, s, b, ev.n);
+  failPart(db, s, pt, notices, b.id);
+  addEnergy(s, stageEquipment(s, b, st).reduce((w, e) => w + db.equipment[e.type].kw, 0), s.t - t.times![1]);
+  b.run.rest = t.times![4] - s.t;
+  b.run.stops.push({ part: pt.id, from: s.t });
+  release(db, s, t);
 }
 
 /** Длительность стадии по карте: подготовка + загрузки + компоненты + количество / скорость, с разбросом. */
@@ -484,9 +569,21 @@ function stageDone(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, notic
   const r = db.recipes[b.recipe];
   const st = r.stages[b.stage];
   const roomId = b.room!;
-  const eqs = Object.values(s.equipment).filter(e => e.batch === b.id && e.room === roomId && st.equipment.includes(e.type));
+  const eqs = stageEquipment(s, b, st);
   addEnergy(s, eqs.reduce((w, e) => w + db.equipment[e.type].kw, 0), s.t - t.times![1]);
-  const rec: StageRecord = { stage: st.id, room: roomId, start: t.times![1], end: s.t, people: [...t.people], equipment: eqs.map(e => e.id), params: {}, in: b.mass, out: b.mass, loss: 0, ipc: [] };
+  const rec: StageRecord = { stage: st.id, room: roomId, start: b.run?.start ?? t.times![1], end: s.t, people: [...(b.run?.people ?? t.people)], equipment: eqs.map(e => e.id), params: {}, in: b.mass, out: b.mass, loss: 0, ipc: [] };
+  // узлы: наработка остатка стадии; средний износ за стадию и простои — в досье. Запас кончился на последней таблетке —
+  // стадия кончилась, узел отказывает после неё
+  const worn: Part[] = [];
+  if (b.run) {
+    const run = b.run;
+    syncStage(db, s, b, run.left);
+    rec.wear = {};
+    for (const [k, sum] of Object.entries(run.wear)) rec.wear[k] = run.units > 0 ? Math.round(sum / (2 * run.units)) : 0;
+    if (run.stops.length > 0) rec.stops = run.stops.map(x => ({ part: x.part, from: x.from, to: x.to ?? s.t }));
+    for (const pt of stageParts(db, s, b)) if (pt.state === 'ok' && pt.budget <= 0) worn.push(pt);
+    delete b.run;
+  }
   // режимы: цель + разброс от серии к серии; у опытного аппаратчика разброс меньше (навык 3 — как в карте)
   const skill = s.people[t.people[0]].skill;
   if (st.params.length > 0) {
@@ -513,6 +610,7 @@ function stageDone(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, notic
   const attrs = (Object.keys(r.quality) as Attr[]).filter(a => last || st.ipc.some(c => db.tests[c.test].attr === a));
   truthOf(db, s, b, attrs, st.id);
   ipc(db, s, b, st, rec, notices);
+  for (const pt of worn) failPart(db, s, pt, notices, b.id);
   // оборудование свободно; помещение — грязное, если серия из него уходит
   for (const e of eqs) delete e.batch;
   const next = r.stages[b.stage + 1];
@@ -606,6 +704,11 @@ function driver(db: ContentDb, s: PlantState, b: Batch, d: CauseDriver): number 
     }
     return planned > 0 ? Math.round(((real - planned) * P_ONE) / planned) : 0;
   }
+  if ('wear' in d) {
+    // средний износ узла за стадию: у оборудования, на котором он стоит
+    for (const rec of b.records) for (const [k, w] of Object.entries(rec.wear ?? {})) if (k.endsWith(`/${d.wear}`)) return w;
+    return 0;
+  }
   if ('lots' in d) {
     // среднее по массе отклонение свойства отвешенных партий этого вида от среднего материала
     let sum = 0;
@@ -628,19 +731,34 @@ function causeStage(db: ContentDb, b: Batch, d: CauseDriver, stage: string): str
   const r = db.recipes[b.recipe];
   if ('param' in d) return r.stages.find(st => st.params.some(p => p.id === d.param))?.id ?? stage;
   if ('potency' in d || 'lots' in d) return r.stages[0].id;
+  if ('wear' in d) return b.records.find(rec => Object.keys(rec.wear ?? {}).some(k => k.endsWith(`/${d.wear}`)))?.stage ?? stage;
   return stage;
 }
 
-/** МОК стадии: через равные промежутки или раз в конце — измерение истины с погрешностью; вне пределов — отклонение. */
+/**
+ * МОК стадии: через равные промежутки работы (простои после отказов не в счёт) или раз в конце — измерение истины с
+ * погрешностью; с изношенными узлами — ещё и разброс по ходу стадии (запись узла, при износе 100 %). Вне пределов —
+ * отклонение.
+ */
 function ipc(db: ContentDb, s: PlantState, b: Batch, st: RecipeStage, rec: StageRecord, notices: Notice[]) {
+  const stopped = (rec.stops ?? []).reduce((n, x) => n + x.to - x.from, 0);
+  // момент `k`-го замера: от начала стадии плюс простои до него
+  const at = (work: number) => {
+    let t = rec.start + work;
+    for (const stop of rec.stops ?? []) if (stop.from <= t) t += stop.to - stop.from;
+    return Math.min(rec.end, t);
+  };
   for (const c of st.ipc) {
     const m = db.tests[c.test];
-    const n = c.every ? Math.max(1, Math.floor((rec.end - rec.start) / c.every)) : 1;
+    const n = c.every ? Math.max(1, Math.floor((rec.end - rec.start - stopped) / c.every)) : 1;
+    let extra = 0;
+    for (const [k, w] of Object.entries(rec.wear ?? {})) extra += Math.floor(((partType(db, s.parts[k]).scatter?.[m.attr] ?? 0) * w) / P_ONE);
     let out = false;
     for (let k = 1; k <= n; k++) {
-      const result = measure(s, `ipc/${rec.room}`, b.truth[m.attr] ?? 0, m.sd);
+      let result = measure(s, `ipc/${rec.room}`, b.truth[m.attr] ?? 0, m.sd);
+      if (extra > 0) result += roll(s, `ipc/${rec.room}`, r => spread(extra, normal(r)));
       const pass = within({ test: c.test, min: c.min, max: c.max }, result);
-      rec.ipc.push({ test: c.test, t: c.every ? Math.min(rec.end, rec.start + k * c.every) : rec.end, result, pass });
+      rec.ipc.push({ test: c.test, t: c.every ? at(k * c.every) : rec.end, result, pass });
       if (!pass) out = true;
     }
     if (out) deviate(s, notices, { kind: 'ipc', batch: b.id, stage: st.id, test: c.test });

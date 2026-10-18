@@ -378,12 +378,34 @@ export interface PartType {
   micro?: number;
 }
 
+/**
+ * Часть модели кодом (docs/13-art.md, §8; docs/specs/2026-10-view.md, 2в), м — только для окна: середина относительно
+ * середины следа на полу, размеры по x, z и высоте; форма, цвет отделки, ось цилиндра, нижний диаметр бункера, штуки на
+ * ленте; крутится со скоростью машины; открывается на переналадке и уборке.
+ */
+export interface ModelPart {
+  shape: 'box' | 'cyl' | 'cone' | 'glass' | 'belt';
+  x: number;
+  z: number;
+  y: number;
+  w: number;
+  d: number;
+  h: number;
+  color?: 'white' | 'steel' | 'grey' | 'dark' | 'blue' | 'film' | 'foil' | 'card';
+  axis?: 'x' | 'y' | 'z';
+  bottom?: number;
+  item?: 'blister' | 'carton' | 'case';
+  spin?: 'x' | 'y' | 'z';
+  cover?: boolean;
+}
+
 /** Вид оборудования производства: уборка малая и большая, с (геймдизайн, §5.5); мощность; узлы с износом. */
 export interface EquipmentType {
   id: Id;
   name: Text;
-  /** ширина, глубина, высота, см — след на полу и короб до модели (гипотеза) */
+  /** ширина, глубина, высота, см — след на полу (гипотеза) */
   size: [number, number, number];
+  model: ModelPart[];
   cleaning: { minor: number; major: number };
   /** мощность, пока идёт стадия, Вт */
   kw: number;
@@ -468,8 +490,9 @@ export interface Cause {
 export interface Machine {
   id: Id;
   name: Text;
-  /** ширина, глубина, высота, см — след на полу и короб до модели (гипотеза) */
+  /** ширина, глубина, высота, см — след на полу (гипотеза) */
   size: [number, number, number];
+  model: ModelPart[];
   item: 'blister' | 'carton';
   nominal: number;
   crew: { role: Id; n: number };

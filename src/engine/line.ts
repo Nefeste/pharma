@@ -206,17 +206,11 @@ function advance(db: ContentDb, s: PlantState, line: Line, to: number) {
     return;
   }
   const g = geo(db, s, line, job.sku);
-  const plan = planOf(db, s.plant);
   // энергия: машины на номинале и медленнее
   addEnergy(s, m.reduce((w, mc) => w + (mc.state === 'run' || mc.state === 'slow' ? db.machines[mc.type].kw : 0), 0), dt);
-  const n = m.length;
-  const last = m[n - 1];
+  const last = m[m.length - 1];
   const from = last.pos;
-  const next = m.map(mc => mc.pos + mc.rate * dt);
-  next[0] = Math.min(next[0], job.tablets * SIXTY);
-  for (let i = 1; i < n; i++) next[i] = Math.min(next[i], next[i - 1]);
-  next[n - 1] = Math.min(next[n - 1], posForGood(g, (line.cases + placeable(plan, s, line, g)) * g.perCase));
-  for (let i = n - 2; i >= 0; i--) next[i] = Math.min(next[i], next[i + 1] + g.cap[i]);
+  const next = project(db, s, line, job, g, dt);
   m.forEach((mc, i) => {
     account(mc, dt, next[i] - mc.pos);
     mc.pos = next[i];
@@ -224,6 +218,32 @@ function advance(db: ContentDb, s: PlantState, line: Line, to: number) {
   const t0 = line.t;
   line.t = to;
   materialize(db, s, line, g, b!, (pos: number) => (last.rate > 0 ? Math.min(to, t0 + Math.ceil((pos - from) / last.rate)) : to));
+}
+
+/**
+ * Позиции машин через `dt` секунд со скоростями отрезка, подрезанные ограничениями: балк, места для ящиков, накопитель
+ * не ниже нуля и не выше ёмкости. Состояние не меняется.
+ */
+function project(db: ContentDb, s: PlantState, line: Line, job: PackJob, g: Geo, dt: number): number[] {
+  const plan = planOf(db, s.plant);
+  const m = line.machines;
+  const n = m.length;
+  const next = m.map(mc => mc.pos + mc.rate * dt);
+  next[0] = Math.min(next[0], job.tablets * SIXTY);
+  for (let i = 1; i < n; i++) next[i] = Math.min(next[i], next[i - 1]);
+  next[n - 1] = Math.min(next[n - 1], posForGood(g, (line.cases + placeable(plan, s, line, g)) * g.perCase));
+  for (let i = n - 2; i >= 0; i--) next[i] = Math.min(next[i], next[i + 1] + g.cap[i]);
+  return next;
+}
+
+/**
+ * Позиции машин линии в момент `t` — тот же поток, что `advance`, без записи в состояние (срез окну, 2в). Линия считана
+ * до `line.t`; до следующей границы отрезка скорости не меняются, поэтому позиции между событиями — прямая.
+ */
+export function flowAt(db: ContentDb, s: PlantState, line: Line, t: number): number[] {
+  const job = line.batch ? s.batches[line.batch]?.pack : undefined;
+  if (t <= line.t || !job || job.state !== 'running') return line.machines.map(mc => mc.pos);
+  return project(db, s, line, job, geo(db, s, line, job.sku), t - line.t);
 }
 
 /** Коды выбракованных пачек и уложенные ящики — до текущих позиций. Время ящика — когда укладка дошла до его последней пачки. */

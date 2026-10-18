@@ -319,13 +319,38 @@ const part = z.strictObject({
   micro: z.number().min(1).optional(),
 });
 
+/**
+ * Часть модели кодом (docs/13-art.md, §8; docs/specs/2026-10-view.md, 2в), м: середина на полу относительно середины следа
+ * (`x` — вдоль ширины записи, `z` — вдоль глубины), высота середины `y`; размеры `w` (по x), `d` (по z), `h` (высота).
+ * Цилиндр — вдоль оси `axis`; конус (бункер) — сверху диаметр `w`, снизу `bottom`; лента — поток штук `item`. `spin` —
+ * крутится со скоростью машины; `cover` — открывается на переналадке и уборке.
+ */
+const modelPart = z.strictObject({
+  shape: z.enum(['box', 'cyl', 'cone', 'glass', 'belt']),
+  x: z.number(),
+  z: z.number(),
+  y: z.number(),
+  w: z.number().positive(),
+  d: z.number().positive(),
+  h: z.number().positive(),
+  color: z.enum(['white', 'steel', 'grey', 'dark', 'blue', 'film', 'foil', 'card']).optional(),
+  axis: z.enum(['x', 'y', 'z']).optional(),
+  bottom: z.number().positive().optional(),
+  item: z.enum(['blister', 'carton', 'case']).optional(),
+  spin: z.enum(['x', 'y', 'z']).optional(),
+  cover: z.boolean().optional(),
+});
+const model = z.array(modelPart).min(1);
+
 /** Вид оборудования (геймдизайн, §5.2, §5.5, §7.1): уборка малая и большая, минуты; мощность; узлы с износом. */
 export const equipment = z
   .strictObject({
     id: z.string(),
     name: text,
-    /** ширина, глубина, высота, м — след на полу и короб до модели (docs/specs/2026-10-view.md, 2а; гипотеза) */
+    /** ширина, глубина, высота, м — след на полу (docs/specs/2026-10-view.md, 2а; гипотеза) */
     size: size3,
+    /** модель кодом из частей (2в) */
+    model,
     cleaning: z.strictObject({ minor: minutes, major: minutes }),
     /** мощность, пока идёт стадия, кВт */
     kw: z.number().min(0).default(0),
@@ -436,8 +461,10 @@ export const machine = z
   .strictObject({
     id: z.string(),
     name: text,
-    /** ширина, глубина, высота, м — след на полу и короб до модели (гипотеза) */
+    /** ширина, глубина, высота, м — след на полу (гипотеза) */
     size: size3,
+    /** модель кодом из частей (2в) */
+    model,
     /** скорость — блистеров или пачек в минуту */
     item: z.enum(['blister', 'carton']),
     nominal: z.number().int().positive(),

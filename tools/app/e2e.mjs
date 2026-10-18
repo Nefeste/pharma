@@ -2,8 +2,10 @@
 // PLAYWRIGHT_BROWSERS_PATH) открывает dist/. Страница грузится, сцена видна, часы завода идут; ×4 двигает их на часы;
 // пробел — пауза; «До утра» (клавиша 5) доходит до планёрки в 08:00 и ставит паузу. Завод из плана (2а,
 // docs/specs/2026-10-view.md): переключатель стен; снимки с трёх высот камеры — участок, цех, машина — днём и ночью;
-// вызовы отрисовки — в бюджете. Люди и техника (2б): в 08:00 люди смены и техника на полу. Ошибок в консоли и запросов
-// наружу нет. Снимки — tools/app/out/e2e*.png.
+// вызовы отрисовки — в бюджете. Люди и техника (2б): в 08:00 люди смены и техника на полу. Оборудование и линия (2в):
+// лампа у каждой машины и единицы оборудования плана; «1:1» — часы идут секунда в секунду; на седьмые сутки линия
+// упаковывает первую серию — лампы машин горят, на лентах и в накопителях штуки; снимки дня — в этот час. Ошибок в
+// консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
@@ -44,6 +46,12 @@ const fail = msg => {
 const ok = msg => console.log(`✓ ${msg}`);
 /** Часы завода в игровых секундах — из игры, а не из текста полосы: текст обновляется 10 раз в секунду. */
 const gameT = () => page.evaluate(() => window.__game.t + window.__game.lag);
+/** «До утра»: промотка до планёрки следующих суток. */
+const untilMorning = async () => {
+  const day = await page.evaluate(() => window.__game.day);
+  await page.keyboard.press('Digit5');
+  await page.waitForFunction(d => window.__game.day > d && !window.__game.ff, day, { timeout: 60_000 });
+};
 
 try {
   await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru`);
@@ -75,9 +83,7 @@ try {
   else ok('пауза: часы стоят');
 
   // «До утра» — до планёрки в 08:00 и пауза
-  const dayBefore = await page.evaluate(() => window.__game.day);
-  await page.keyboard.press('Digit5');
-  await page.waitForFunction(d => window.__game.day > d && !window.__game.ff, dayBefore, { timeout: 30_000 });
+  await untilMorning();
   const morning = await page.evaluate(() => ({ t: window.__game.t, speed: window.__game.speed }));
   if (morning.t % 86400 !== 8 * 3600) fail(`«До утра» остановилось в ${(morning.t % 86400) / 3600} ч`);
   else if (morning.speed !== 0) fail(`после «До утра» скорость ${morning.speed}, а не пауза`);
@@ -96,6 +102,28 @@ try {
   if (floor.people < 1 || floor.vehicles < 1) fail(`на полу: людей ${floor.people}, техники ${floor.vehicles}`);
   else ok(`на полу: людей ${floor.people}, техники ${floor.vehicles}`);
 
+  // лампы (2в): у каждой единицы оборудования и машины линии плана — лампа состояния
+  const lamps = await page.evaluate(() => {
+    const g = window.__game;
+    const plant = g.db.plants[g.db.scenarios['scn.proto'].plant];
+    return { shown: g.stage.machines.lamps, want: plant.equipment.length + plant.lines.reduce((n, l) => n + l.machines.length, 0) };
+  });
+  const kinds = new Set(['run', 'wait', 'stop', 'fail', 'setup', 'clean', 'off']);
+  if (lamps.shown.length !== lamps.want || !lamps.shown.every(l => kinds.has(l))) fail(`лампы: ${lamps.shown.join(', ')} — ждали ${lamps.want}`);
+  else ok(`лампы: ${lamps.shown.length} — ${[...new Set(lamps.shown)].join(', ')}`);
+
+  // «живое время» (2в): «1:1» — секунда в секунду. Программная отрисовка даёт несколько кадров в секунду, а шаг кадра
+  // ограничен 0,1 с — поэтому часы могут отстать, но не уйти вперёд
+  await page.click('[data-test=live]');
+  const l0 = await gameT();
+  await page.waitForTimeout(2000);
+  const l1 = await gameT();
+  const live = await page.evaluate(() => window.__game.speed);
+  if (live !== 5 || l1 - l0 < 0 || l1 - l0 > 3) fail(`«1:1»: скорость ${live}, за 2 с прошло ${l1 - l0} игровых секунд`);
+  else ok(`«1:1»: за 2 с прошло ${l1 - l0} игровых секунд`);
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(300);
+
   // снимок: общий план завода
   await page.screenshot({ path: join(out, 'e2e.png') });
   ok(`снимок: ${join(out, 'e2e.png')}`);
@@ -111,6 +139,20 @@ try {
     if (down !== 'down' || cut !== 'cut') fail(`стены: ${down}, ${cut}`);
     else ok('стены: «вниз» и «срез»');
   }
+
+  // первая упаковка (2в): «До утра» до седьмых суток, затем ×4 — пока через линию не пошли штуки
+  for (let i = 0; i < 4; i++) await untilMorning();
+  await page.keyboard.press('Digit4');
+  await page.waitForFunction(() => window.__game.view.lines[0]?.machines[1]?.items > 0, null, { timeout: 120_000 });
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(400);
+  const packing = await page.evaluate(() => {
+    const g = window.__game;
+    const plant = g.db.plants[g.db.scenarios['scn.proto'].plant];
+    return { lamps: g.stage.machines.lamps.slice(plant.equipment.length), items: g.stage.machines.itemsShown, hour: (g.t % 86400) / 3600 };
+  });
+  if (packing.lamps.every(l => l === 'off') || packing.items < 1) fail(`линия: лампы ${packing.lamps.join(', ')}, штук на лентах ${packing.items}`);
+  else ok(`линия в ${packing.hour.toFixed(1)} ч: лампы ${packing.lamps.join(', ')}, штук на лентах и в накопителях ${packing.items}`);
 
   // три высоты камеры днём и ночью (13-art.md, §17): участок, цех упаковки, блистерная машина
   const heights = [

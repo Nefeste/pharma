@@ -1,6 +1,13 @@
 id: eq.mill
 name: { ru: Калибратор, en: Mill }
-# ширина, глубина, высота, м — след на полу и короб до модели (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
+# ширина, глубина, высота, м — след на полу (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
 size: [1.0, 0.8, 1.6]
+# модель кодом из частей (docs/13-art.md, §8; docs/specs/2026-10-view.md, 2в): силуэт класса, м — гипотеза, сверить
+model:
+  - { shape: box, x: 0, z: 0, y: 0.5, w: 0.6, d: 0.5, h: 1.0, color: grey }
+  - { shape: box, x: -0.3, z: 0, y: 1.15, w: 0.35, d: 0.35, h: 0.3, color: white }
+  - { shape: cyl, x: 0.05, z: 0, y: 1.1, w: 0.4, d: 0.4, h: 0.2, color: steel, spin: y }
+  - { shape: cone, x: 0.05, z: 0, y: 1.4, w: 0.7, d: 0.7, h: 0.4, bottom: 0.3, color: steel }
+  - { shape: cyl, x: 0.05, z: 0, y: 0.9, w: 0.25, d: 0.25, h: 0.2, color: steel }
 cleaning: { minor: 20, major: 90 }
 kw: 5.5

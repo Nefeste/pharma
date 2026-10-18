@@ -1,6 +1,14 @@
 id: eq.blender
 name: { ru: Контейнерный смеситель, en: Bin blender }
-# ширина, глубина, высота, м — след на полу и короб до модели (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
+# ширина, глубина, высота, м — след на полу (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
 size: [2.0, 1.8, 2.6]
+# модель кодом из частей (docs/13-art.md, §8; docs/specs/2026-10-view.md, 2в): силуэт класса, м — гипотеза, сверить
+model:
+  - { shape: box, x: 0, z: 0, y: 0.08, w: 2.0, d: 0.6, h: 0.16, color: grey }
+  - { shape: box, x: -0.9, z: 0, y: 1.2, w: 0.15, d: 0.3, h: 2.4, color: white }
+  - { shape: box, x: 0.9, z: 0, y: 1.2, w: 0.15, d: 0.3, h: 2.4, color: white }
+  - { shape: cyl, axis: x, x: 0, z: 0, y: 1.5, w: 1.65, d: 0.12, h: 0.12, color: steel }
+  - { shape: box, x: 0, z: 0, y: 1.5, w: 1.0, d: 1.0, h: 1.1, color: steel, spin: x }
+  - { shape: box, x: 0, z: 0.85, y: 1.0, w: 0.4, d: 0.06, h: 0.3, color: dark }
 cleaning: { minor: 20, major: 90 }
 kw: 7.5

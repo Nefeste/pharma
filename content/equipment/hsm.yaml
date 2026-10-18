@@ -1,6 +1,15 @@
 id: eq.hsm
 name: { ru: Смеситель-гранулятор, en: High-shear mixer granulator }
-# ширина, глубина, высота, м — след на полу и короб до модели (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
+# ширина, глубина, высота, м — след на полу (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
 size: [1.6, 1.2, 2.2]
+# модель кодом из частей (docs/13-art.md, §8; docs/specs/2026-10-view.md, 2в): силуэт класса, м — гипотеза, сверить
+model:
+  - { shape: box, x: 0.1, z: 0, y: 0.4, w: 1.4, d: 1.1, h: 0.8, color: white }
+  - { shape: cyl, x: -0.1, z: 0, y: 1.15, w: 1.0, d: 1.0, h: 0.7, color: steel }
+  - { shape: cyl, x: -0.1, z: 0, y: 1.55, w: 1.04, d: 1.04, h: 0.1, color: steel, cover: true }
+  - { shape: box, x: -0.1, z: 0, y: 1.85, w: 0.4, d: 0.4, h: 0.5, color: grey }
+  - { shape: cyl, axis: x, x: 0.55, z: 0.2, y: 1.15, w: 0.3, d: 0.22, h: 0.22, color: grey }
+  - { shape: box, x: 0.45, z: -0.35, y: 0.95, w: 0.2, d: 0.2, h: 0.3, color: steel }
+  - { shape: box, x: 0.78, z: 0.3, y: 1.2, w: 0.04, d: 0.3, h: 0.4, color: dark }
 cleaning: { minor: 45, major: 180 }
 kw: 30

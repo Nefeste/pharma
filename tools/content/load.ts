@@ -22,6 +22,7 @@ import {
   type EquipmentType,
   type InstrumentType,
   type Machine,
+  type ModelPart,
   type Material,
   PARAM_SCALE,
   type ParamUnit,
@@ -85,6 +86,33 @@ export function sourceKeys(): Set<string> {
     if (m) keys.add(m[1]);
   }
   return keys;
+}
+
+/**
+ * Ошибки модели кодом (docs/specs/2026-10-view.md, 2в). Модель — в метрах и только для окна: части внутри следа записи
+ * [ширина, глубина, высота] и не ниже пола; у цилиндра поперёк оси — круг; у бункера ось — вертикаль, сверху круг, снизу
+ * диаметр; у ленты — что на ней едет, у других частей — ничего.
+ */
+export function modelErrors(list: readonly ModelPart[], foot: [number, number, number], where: string): string[] {
+  const [W, D, H] = foot;
+  const eps = 1e-6;
+  const out: string[] = [];
+  const need = (ok: unknown, msg: string) => {
+    if (!ok) out.push(msg);
+  };
+  list.forEach((p, i) => {
+    const at = `${where}: часть ${i + 1} (${p.shape})`;
+    need(Math.abs(p.x) + p.w / 2 <= W / 2 + eps && Math.abs(p.z) + p.d / 2 <= D / 2 + eps, `${at}: выходит за след ${W} × ${D} м`);
+    need(p.y - p.h / 2 >= -eps && p.y + p.h / 2 <= H + eps, `${at}: ниже пола или выше ${H} м`);
+    if (p.shape === 'cyl') {
+      const axis = p.axis ?? 'y';
+      const across = axis === 'y' ? [p.w, p.d] : axis === 'x' ? [p.h, p.d] : [p.w, p.h];
+      need(Math.abs(across[0] - across[1]) < eps, `${at}: поперёк оси ${axis} — не круг`);
+    }
+    if (p.shape === 'cone') need((p.axis ?? 'y') === 'y' && Math.abs(p.w - p.d) < eps && p.bottom !== undefined, `${at}: бункер — вертикальный, сверху круг, снизу диаметр`);
+    need((p.shape === 'belt') === (p.item !== undefined), `${at}: штуки — только у ленты, и у ленты — обязательно`);
+  });
+  return out;
 }
 
 export interface Built {
@@ -246,6 +274,12 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   }
   const products: Record<string, Product> = { ...raw.products };
   for (const pr of Object.values(raw.products)) if (pr.jnvlp) need(pr.source, `продукт ${pr.id}: «в перечне ЖНВЛП» — факт, нужен источник`);
+  // модель кодом (2в): проверка — `modelErrors`
+  type RawModel = z.infer<(typeof KINDS)['equipment']['schema']>['model'];
+  const modelOf = (list: RawModel, foot: [number, number, number], where: string): ModelPart[] => {
+    errors.push(...modelErrors(list, foot, where));
+    return list.map(p => ({ ...p }));
+  };
   // узлы: ресурс, ступени отказов (износ % → доли, отказов на миллион → 10⁻¹² отказа на единицу), запчасть, времена
   type RawPart = z.infer<(typeof KINDS)['equipment']['schema']>['parts'][number];
   const partsOf = (list: RawPart[], where: string, line: { micro: boolean } | undefined): PartType[] => {
@@ -288,6 +322,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       id: e.id,
       name: e.name,
       size: size(e.size),
+      model: modelOf(e.model, e.size, `оборудование ${e.id}`),
       cleaning: { minor: sec(e.cleaning.minor), major: sec(e.cleaning.major) },
       kw: watt(e.kw),
       parts: partsOf(e.parts, `оборудование ${e.id}`, undefined),
@@ -403,6 +438,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       id: m.id,
       name: m.name,
       size: size(m.size),
+      model: modelOf(m.model, m.size, `машина ${m.id}`),
       item: m.item,
       nominal: m.nominal,
       crew: m.crew,

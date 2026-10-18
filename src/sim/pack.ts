@@ -1,10 +1,11 @@
 // Упакованный срез для отрисовки (docs/02-architecture.md, §10; docs/specs/2026-10-view.md, «Срез 2а», «Срез 2б»,
-// «Срез 2в»): `Int32Array` уходит из потока расчёта без копии (transferList). Формат 4: заголовок, помещения, фуры,
-// изменённые и ушедшие паллеты, задачи в работе, люди, техника, линии и оборудование. Строк в срезе нет: номера мест и
-// помещений — по порядку плана, который окно строит само из той же базы (`planOf`). Истины здесь нет (§9): упаковка читает
-// только номер, место, ярлык, вид и число тары паллеты, статус и серию помещения, рампу фуры, вид и времена задачи, где
-// человек и техника, состояние машины, её скорость, сколько штук прошло и сколько в накопителе, — то, что завод видит
-// глазами. Позиция следующей микроостановки и запас узла до отказа в срез не идут.
+// «Срез 2в»; docs/specs/2026-10-panels.md, «Срез 3а»): `Int32Array` уходит из потока расчёта без копии (transferList).
+// Формат 5: заголовок, помещения, фуры, изменённые и ушедшие паллеты, задачи в работе, люди, техника, линии и
+// оборудование. Строк в срезе нет: номера мест и помещений — по порядку плана, который окно строит само из той же базы
+// (`planOf`). Истины здесь нет (§9): упаковка читает только номер, место, ярлык, вид и число тары паллеты, статус и серию
+// помещения, рампу фуры и открыт ли её кузов, вид и времена задачи, где человек и техника и откуда человек идёт на пост,
+// состояние машины, её скорость, сколько штук прошло и сколько в накопителе, — то, что завод видит глазами. Позиция
+// следующей микроостановки и запас узла до отказа в срез не идут.
 import type { ContentDb } from '../content/types';
 import { flowAt, geo, SIXTY } from '../engine/line';
 import { partsOf } from '../engine/maint';
@@ -13,14 +14,14 @@ import { shiftEnd } from '../engine/staff';
 import { destOf, pointOf } from '../engine/tasks';
 import type { Line, MachineState, PlantState, Tag, Task, TaskKind, Unit } from '../engine/types';
 
-export const FORMAT = 4;
+export const FORMAT = 5;
 
 /** Поля заголовка: формат, часы, сутки, отставание; сколько записей в каждом разделе. */
 export const H = { format: 0, t: 1, day: 2, lag: 3, rooms: 4, trucks: 5, units: 6, gone: 7, tasks: 8, people: 9, vehicles: 10, lines: 11, equipment: 12, size: 13 } as const;
 /** Помещение: номер в плане, статус, серия (`270901`; −1 — нет), карта и стадия серии (номера в базе; −1 — нет). */
 export const R = { room: 0, status: 1, batch: 2, recipe: 3, stage: 4, size: 5 } as const;
-/** Фура: номер (`K12` → 12), рампа (номер в плане), встала ли, покупатель ли. */
-export const K = { truck: 0, dock: 1, docked: 2, customer: 3, size: 4 } as const;
+/** Фура: номер (`K12` → 12), рампа (номер в плане), встала ли, покупатель ли, открыт ли кузов (3а). */
+export const K = { truck: 0, dock: 1, docked: 2, customer: 3, open: 4, size: 5 } as const;
 /** Паллета: номер (`U77` → 77), где, номер места, фуры или помещения, вид груза, сколько тары, ярлык, флаги. */
 export const U = { unit: 0, where: 1, ref: 2, load: 3, fill: 4, tag: 5, flags: 6, size: 7 } as const;
 
@@ -30,8 +31,11 @@ export const U = { unit: 0, where: 1, ref: 2, load: 3, fill: 4, tag: 5, flags: 6
  * техника и паллета — номера (−1 — нет).
  */
 export const J = { task: 0, kind: 1, t0: 2, t1: 3, t2: 4, t3: 5, t4: 6, fx: 7, fz: 8, dx: 9, dz: 10, fromSlot: 11, toSlot: 12, vehicle: 13, unit: 14, size: 15 } as const;
-/** Человек: номер (`E3` → 3), роль — номер в базе, на заводе ли, где он (в задаче — где её начал), см, номер строки задачи. */
-export const P = { person: 0, role: 1, present: 2, x: 3, z: 4, task: 5, size: 6 } as const;
+/**
+ * Человек: номер (`E3` → 3), роль — номер в базе, на заводе ли, где он (в задаче — где её начал; в пути на пост — куда
+ * идёт), см, номер строки задачи; путь на пост или к выходу (3а) — откуда, см, и с какого мгновения (−1 — не идёт).
+ */
+export const P = { person: 0, role: 1, present: 2, x: 3, z: 4, task: 5, wx: 6, wz: 7, wt: 8, size: 9 } as const;
 /** Техника: номер (`V2` → 2), вид — номер в базе, где она (в задаче — где её начала), см, номер строки задачи. */
 export const V = { vehicle: 0, type: 1, x: 2, z: 3, task: 4, size: 5 } as const;
 
@@ -56,7 +60,7 @@ export type EqState = (typeof EQ_STATES)[number];
 const KIND_NO: Record<TaskKind, number> = {
   unload: 0, receive: 1, putaway: 2, move: 3, toSampling: 4, sample: 5, fromSampling: 6, handover: 7, prep: 8, review: 9,
   decide: 10, pick: 11, transfer: 12, return: 13, stage: 14, clean: 15, crew: 16, changeover: 17, clearance: 18, clearCheck: 19,
-  feed: 20, fgCheck: 21, qpDecide: 22, ship: 23, casePick: 24, load: 25, repair: 26,
+  feed: 20, fgCheck: 21, qpDecide: 22, ship: 23, casePick: 24, load: 25, repair: 26, truckCheck: 27,
 };
 /** Виды задач по номерам — как в срезе. */
 export const TASK_KINDS: readonly TaskKind[] = (Object.keys(KIND_NO) as TaskKind[]).sort((a, b) => KIND_NO[a] - KIND_NO[b]);
@@ -96,6 +100,8 @@ export interface TruckRow {
   dock: number;
   docked: boolean;
   customer: boolean;
+  /** кузов открыт: фура поставщика проверена, фура покупателя встала к рампе */
+  open: boolean;
 }
 
 export interface TaskRow {
@@ -119,6 +125,8 @@ export interface PersonRow {
   z: number;
   /** номер строки задачи в срезе; −1 — без задачи */
   task: number;
+  /** идёт без задачи на пост или к выходу (`x`, `z`): откуда, см, и с какого мгновения */
+  walk?: { x: number; z: number; t: number };
 }
 
 export interface VehicleRow {
@@ -281,7 +289,7 @@ export class Packer {
       const code = b ? b.code.y * 10000 + b.code.m * 100 + b.code.n : -1;
       return [i, room ? ROOM_STATUS.indexOf(room.status) : 0, code, b ? ix.recipe.get(b.recipe)! : -1, b && room?.status === 'busy' ? b.stage : -1];
     });
-    const trucks: number[][] = Object.values(s.trucks).map(t => [num(t.id), ix.dock.get(t.dock)!, t.docked ? 1 : 0, t.customer ? 1 : 0]);
+    const trucks: number[][] = Object.values(s.trucks).map(t => [num(t.id), ix.dock.get(t.dock)!, t.docked ? 1 : 0, t.customer ? 1 : 0, t.open ? 1 : 0]);
     const changed: number[][] = [];
     const seen = new Set<number>();
     for (const u of Object.values(s.units)) {
@@ -301,7 +309,8 @@ export class Packer {
     const tasks = busy.map(t => taskRow(db, s, ix, t));
     const people = Object.values(s.people).map(p => {
       const present = p.task !== undefined || shiftEnd(db, s, p) !== undefined;
-      return [num(p.id), ix.role.get(p.role)!, present ? 1 : 0, p.x, p.z, p.task !== undefined ? row.get(p.task) ?? -1 : -1];
+      const w = p.walk;
+      return [num(p.id), ix.role.get(p.role)!, present ? 1 : 0, p.x, p.z, p.task !== undefined ? row.get(p.task) ?? -1 : -1, w ? w.x : -1, w ? w.z : -1, w ? w.t : -1];
     });
     const vehicles = Object.values(s.vehicles).map(v => [num(v.id), ix.vehicle.get(v.type)!, v.x, v.z, v.task !== undefined ? row.get(v.task) ?? -1 : -1]);
     const lines = plan.plant.lines.map((l, i) => lineRow(db, s, ix, i, s.lines[l.id]));
@@ -366,7 +375,7 @@ export function unpack(buf: Int32Array): Unpacked {
   }
   const trucks: TruckRow[] = [];
   for (let i = 0; i < buf[H.trucks]; i++, o += K.size) {
-    trucks.push({ truck: buf[o + K.truck], dock: buf[o + K.dock], docked: buf[o + K.docked] === 1, customer: buf[o + K.customer] === 1 });
+    trucks.push({ truck: buf[o + K.truck], dock: buf[o + K.dock], docked: buf[o + K.docked] === 1, customer: buf[o + K.customer] === 1, open: buf[o + K.open] === 1 });
   }
   const units: UnitRow[] = [];
   for (let i = 0; i < buf[H.units]; i++, o += U.size) {
@@ -401,7 +410,16 @@ export function unpack(buf: Int32Array): Unpacked {
   }
   const people: PersonRow[] = [];
   for (let i = 0; i < buf[H.people]; i++, o += P.size) {
-    people.push({ person: buf[o + P.person], role: buf[o + P.role], present: buf[o + P.present] === 1, x: buf[o + P.x], z: buf[o + P.z], task: buf[o + P.task] });
+    const wt = buf[o + P.wt];
+    people.push({
+      person: buf[o + P.person],
+      role: buf[o + P.role],
+      present: buf[o + P.present] === 1,
+      x: buf[o + P.x],
+      z: buf[o + P.z],
+      task: buf[o + P.task],
+      ...(wt >= 0 ? { walk: { x: buf[o + P.wx], z: buf[o + P.wz], t: wt } } : {}),
+    });
   }
   const vehicles: VehicleRow[] = [];
   for (let i = 0; i < buf[H.vehicles]; i++, o += V.size) {

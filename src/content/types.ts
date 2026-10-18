@@ -300,6 +300,8 @@ export interface Plant {
   lines: { id: string; room: string; out: string; machines: { id: string; type: Id; buffer?: number; at: [number, number]; turn: number }[] }[];
   /** точки: стоянка техники, вход персонала */
   points: { park: [number, number]; entrance: [number, number] };
+  /** посты ожидания по ролям: где человек ждёт задачи — после прихода на смену и после каждой задачи */
+  posts: Record<Id, [number, number]>;
   /** вентиляция — Вт на м² помещения по классу, круглые сутки; постоянная база — Вт */
   energy: { hvac: { D: number; cnc: number }; base: number };
 }

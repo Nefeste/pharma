@@ -37,6 +37,7 @@ export const AREA: Record<TaskKind, Dept> = {
   fgCheck: 'qa',
   qpDecide: 'qa',
   repair: 'maint',
+  truckCheck: 'wms',
 };
 
 export function newLoss(day: number): DayLoss {
@@ -98,6 +99,21 @@ export function moved(s: PlantState, kind: TaskKind, walk: number, walkSec: numb
     m.loaded += loaded;
     m.sec += driveSec;
   }
+}
+
+/** Пеший переход без задачи — на пост или к выходу (3а): на отдел роли человека, см и с. */
+export function walked(s: PlantState, dept: Dept, cm: number, sec: number) {
+  if (cm <= 0 && sec <= 0) return;
+  const w = (today(s).walk[dept] ??= { cm: 0, sec: 0 });
+  w.cm += cm;
+  w.sec += sec;
+}
+
+/** Фура ждала рампы во дворе (3а): от прихода до того, как встала к рампе, — ожидание склада с причиной «рампа занята». */
+export function dockWait(s: PlantState, sec: number) {
+  if (sec <= 0) return;
+  const w = (today(s).wait.wms ??= {});
+  w.dock = (w.dock ?? 0) + sec;
 }
 
 /** Дефекты за сутки: брак камер, отклонения, отклонённые партии и серии. */

@@ -278,6 +278,8 @@ export const plant = z.strictObject({
     )
     .default([]),
   points: z.strictObject({ park: point, entrance: point }),
+  /** посты ожидания: роль → точка, где человек ждёт задачи (docs/specs/2026-10-panels.md, 3а) */
+  posts: z.record(id, point).default({}),
   /** вентиляция круглые сутки — Вт на м² помещения по классу; постоянная база (свет, офис, склад) — кВт */
   energy: z.strictObject({ hvac: z.strictObject({ D: z.number().min(0), cnc: z.number().min(0) }), base: z.number().min(0) }),
 });

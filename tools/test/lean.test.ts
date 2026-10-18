@@ -14,6 +14,7 @@ import { check } from '../../src/engine/invariants';
 import { rhythm } from '../../src/engine/lean';
 import { MES } from '../../src/engine/mes';
 import { dist, planOf } from '../../src/engine/plant';
+import { here } from '../../src/engine/staff';
 import { fromSave, toSave } from '../../src/engine/save';
 import { addTask, dispatch } from '../../src/engine/tasks';
 import type { Batch, DayLoss, Notice, PlantState, ShiftTask } from '../../src/engine/types';
@@ -106,7 +107,9 @@ describe('задержки задач', () => {
     const s = plant(bare);
     const before = { ...(s.losses.at(-1)!.walk.mes ?? { cm: 0, sec: 0 }) };
     const op = Object.values(s.people).find(p => p.role === 'role.operator' && p.shift === 'shift.a')!;
-    const from = { x: op.x, z: op.z };
+    // смена только началась: аппаратчик вышел от входа на пост и ещё не сделал ни шага
+    const from = here(plan, op, s.t);
+    expect(from).toEqual(plan.entrance);
     clean(s);
     const walk = s.losses.at(-1)!.walk.mes!;
     expect(walk.cm - before.cm).toBe(dist(plan, from, plan.room.workshop));

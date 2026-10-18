@@ -7,6 +7,7 @@ import { schedule } from './core/agenda';
 import type { Rng } from './core/rng';
 import { addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf, workdayOnOrAfter } from './core/calendar';
 import { BANK_HOUR, dueIn, owe, part } from './cash';
+import { dockWait } from './lean';
 import { planOf } from './plant';
 import { expo, roll } from './random';
 import { containersByLot, findSlot, nextId, putUnit, stockChanged } from './stock';
@@ -264,14 +265,17 @@ function trucksArrive(db: ContentDb, s: PlantState, notices: Notice[]) {
       for (const o of mine) close(s, o, notices);
       continue;
     }
-    const tr: Truck = { id: nextId(s, 'R'), dock: outDock(db, s), customer: id, units: [], arrived: s.t, docked: false };
+    const tr: Truck = { id: nextId(s, 'R'), dock: outDock(db, s), customer: id, units: [], arrived: s.t, docked: false, open: false };
     s.trucks[tr.id] = tr;
     for (const o of mine) o.truck = tr.id;
   }
   dockNext(db, s, notices);
 }
 
-/** К свободной рампе отгрузки — первая ждущая фура покупателя. */
+/**
+ * К свободной рампе отгрузки — первая ждущая фура покупателя: кузов открыт для погрузки; сколько она ждала во дворе — в
+ * потери (3а).
+ */
 function dockNext(db: ContentDb, s: PlantState, notices: Notice[]) {
   const dock = outDock(db, s);
   const trucks = Object.values(s.trucks).filter(tr => tr.dock === dock);
@@ -279,6 +283,8 @@ function dockNext(db: ContentDb, s: PlantState, notices: Notice[]) {
   const next = trucks[0];
   if (!next) return;
   next.docked = true;
+  next.open = true;
+  dockWait(s, s.t - next.arrived);
   loadReady(db, s, next);
   depart(db, s, next, notices);
 }

@@ -6,8 +6,9 @@
 // лампа у каждой машины и единицы оборудования плана; «1:1» — часы идут секунда в секунду; на шестые сутки линия
 // упаковывает первую серию — лампы машин горят, на лентах и в накопителях штуки; снимки дня — в этот час. Крупность
 // показа и проверки (2г): с высоты участка — стрелки, люди и техника скрыты, с высоты цеха — снова по одному; контактный
-// лист — три высоты днём и ночью на трёх пресетах, один файл tools/app/out/contact.png. Ошибок в консоли и запросов
-// наружу нет. Снимки — tools/app/out/e2e*.png.
+// лист — три высоты днём и ночью на трёх пресетах, один файл tools/app/out/contact.png. Посты (3а): на шестые сутки
+// свободные ждут на постах своих ролей — у входа не больше двух. Ошибок в консоли и запросов наружу нет. Снимки —
+// tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -180,6 +181,17 @@ try {
   });
   if (packing.lamps.every(l => l === 'off') || packing.items < 1) fail(`линия: лампы ${packing.lamps.join(', ')}, штук на лентах ${packing.items}`);
   else ok(`линия в ${packing.hour.toFixed(1)} ч: лампы ${packing.lamps.join(', ')}, штук на лентах и в накопителях ${packing.items}`);
+
+  // посты (3а): свободные ждут на постах своих ролей, а не у входа
+  const posts = await page.evaluate(() => {
+    const g = window.__game;
+    const plant = g.db.plants[g.db.scenarios['scn.proto'].plant];
+    const [ex, ez] = plant.points.entrance;
+    const free = g.view.people.filter(p => p.present && p.task < 0);
+    return { free: free.length, atEntrance: free.filter(p => !p.walk && Math.hypot(p.x - ex, p.z - ez) < 300).length, walking: free.filter(p => p.walk).length };
+  });
+  if (posts.atEntrance > 2) fail(`посты: у входа ждут ${posts.atEntrance} из ${posts.free} свободных`);
+  else ok(`посты: свободных ${posts.free}, идут на пост ${posts.walking}, у входа ждут ${posts.atEntrance}`);
 
   // крупность показа (2г): с высоты участка — стрелки перевозок и линии, люди и техника скрыты; с высоты цеха — по одному
   await camAt(null);

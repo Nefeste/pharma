@@ -154,6 +154,9 @@ export function accessOf(nav: Nav, p: Point, mover: Mover): number {
   const known = nav.known.get(k);
   const ok = mover === 'walk' ? nav.walk : nav.drive;
   if (known !== undefined && ok[known]) return known;
+  // своя клетка проходима — она и есть клетка доступа; так точки в пути на пост (staff.ts) не копятся в кэше
+  const own = cellOf(nav, p);
+  if (ok[own]) return own;
   const hit = nav.access[mover].get(k);
   if (hit !== undefined) return hit;
   const c = searchAccess(nav, p, ok);
@@ -283,4 +286,21 @@ export function polylineLength(pts: readonly Point[]): number {
   let n = 0;
   for (let i = 1; i < pts.length; i++) n += manhattan(pts[i - 1], pts[i]);
   return n;
+}
+
+/**
+ * Точка ломаной вдоль осей (`route`) на расстоянии `d` см от начала; дальше конца — конец. Отрезки идут вдоль осей,
+ * поэтому у целых вершин и целого `d` точка — в целых сантиметрах: движок хранит её в состоянии.
+ */
+export function pointAlong(pts: readonly Point[], d: number): Point {
+  let left = Math.max(0, d);
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    const len = manhattan(a, b);
+    if (left <= len) return a.x === b.x ? { x: a.x, z: a.z + Math.sign(b.z - a.z) * left } : { x: a.x + Math.sign(b.x - a.x) * left, z: a.z };
+    left -= len;
+  }
+  const last = pts[pts.length - 1];
+  return { x: last.x, z: last.z };
 }

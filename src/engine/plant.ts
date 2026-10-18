@@ -42,6 +42,8 @@ export interface PlantPlan {
   lab: Point;
   park: Point;
   entrance: Point;
+  /** посты ожидания по ролям (docs/specs/2026-10-panels.md, 3а) */
+  posts: Record<string, Point>;
   /** сетка клеток и поля расстояний */
   nav: Nav;
 }
@@ -127,6 +129,7 @@ export function planOf(db: ContentDb, plantId: string): PlantPlan {
     lab: { x: lab.x, z: lab.z },
     park: { x: plant.points.park[0], z: plant.points.park[1] },
     entrance: { x: plant.points.entrance[0], z: plant.points.entrance[1] },
+    posts: Object.fromEntries(Object.entries(plant.posts).map(([role, [x, z]]) => [role, { x, z }])),
     nav,
   };
   cache.set(plant, plan);

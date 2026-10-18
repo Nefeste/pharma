@@ -1,8 +1,9 @@
 // Где люди и техника сейчас (docs/specs/2026-10-view.md, 2б): чистая функция задач среза и часов. Задача в движке — пять
 // времён (начало, у груза, отъезд с грузом, у места, конец); здесь между ними — путь по тем же маршрутам плана (`route`) и
 // с той же длительностью (`travel`), что считает раздатчик (`src/engine/tasks.ts`). Поэтому человек приходит к паллете ровно
-// тогда, когда движок начинает работу, а паллета едет ровно столько, сколько длится задача (`13-art.md`, §2). Без Three.js и
-// DOM: проверяют тесты в Bun.
+// тогда, когда движок начинает работу, а паллета едет ровно столько, сколько длится задача (`13-art.md`, §2). Человек без
+// задачи идёт на пост или к выходу тем же маршрутом и столько же, сколько считает движок (docs/specs/2026-10-panels.md,
+// 3а). Без Three.js и DOM: проверяют тесты в Bun.
 import type { ContentDb } from '../content/types';
 import { accessOf, cellOf, centerOf, type Mover, type Point, polylineLength, route } from '../engine/nav';
 import { type PlantPlan, travel } from '../engine/plant';
@@ -232,8 +233,22 @@ export function moversAt(db: ContentDb, plan: PlantPlan, tasks: readonly TaskRow
     });
   });
 
-  // люди без задачи — там, где кончили; вне завода — не видны
-  const idle = people.filter(p => p.task < 0 && p.present);
+  // люди без задачи — идут на пост или к выходу своим маршрутом, дошедшие стоят там; вне завода — не видны
+  const idle: PersonRow[] = [];
+  for (const p of people) {
+    if (p.task >= 0 || !p.present) continue;
+    const w = p.walk;
+    if (w) {
+      const to = { x: p.x, z: p.z };
+      const t1 = w.t + travel(plan, w, to, WALK);
+      if (t < t1) {
+        const leg = walkLeg(plan, w, to, w.t, t1, t);
+        outPeople.push({ person: p.person, role: p.role, x: m(leg.x), z: m(leg.z), heading: leg.heading, doing: leg.moving ? 'walk' : 'stand' });
+        continue;
+      }
+    }
+    idle.push(p);
+  }
   const groups = new Map<string, PersonRow[]>();
   for (const p of idle) {
     const key = `${p.x},${p.z}`;

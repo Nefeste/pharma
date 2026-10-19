@@ -5,6 +5,7 @@
 // расследование сам, пока игрок не держит пост качества. Скрытое — корень и что вызвало улики — окно видит только в
 // разборе.
 import type { Attr, ContentDb, FindingRead, Id, IncidentRoot, InvFinding, InvModel, InvStep, RecipeStage } from '../content/types';
+import { batchNo } from './batchno';
 import { MIN } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { expectedGain, posterior, quantize } from './infer';
@@ -196,7 +197,7 @@ export function openInvestigation(db: ContentDb, s: PlantState, m: InvModel, lot
   const inc = s.incident;
   const truth = inc && inc.batch === b.id && inc.inv === m.id ? { root: inc.root, fired: { ...inc.fired } } : truthOf(db, s, m, b, lot);
   s.investigations[id] = { id, model: m.id, deviation: d.id, batch: b.id, lot: lot.id, test: out[0], opened: s.t, runs: [], obs: [], status: 'open', truth };
-  notices.push({ kind: 'investigation', id, batch: b.id, lot: lot.id, method: m.test, code: [b.code.y, b.code.m, b.code.n] });
+  notices.push({ kind: 'investigation', id, batch: b.id, lot: lot.id, method: m.test, code: batchNo(b.code) });
 }
 
 // ---------------------------------------------------------------- шаги

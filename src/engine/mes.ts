@@ -4,6 +4,7 @@
 // line.ts). Стадия с узлами под износом (1е) останавливается на отказе узла и продолжается после ремонта (maint.ts).
 // Задачи раздаёт раздатчик (tasks.ts); здесь — когда их заводить и что они делают, когда кончаются.
 import { ATTRS, type Attr, type CauseDriver, type ContentDb, type Id, type RecipeStage } from '../content/types';
+import { batchNo, issueNo } from './batchno';
 import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
 import { HOUR, MIN, momentOf } from './core/calendar';
@@ -48,7 +49,7 @@ export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, {
   }
   const b: Batch = {
     id: nextId(s, 'B'),
-    code: { y: 0, m: 0, n: 0 },
+    code: { pp: '', n: 0, m: 0, y: 0 },
     recipe: r.id,
     product: r.product,
     notBefore: Math.max(s.t, cmd.notBefore ?? s.t),
@@ -150,10 +151,7 @@ export function mesStep(db: ContentDb, s: PlantState) {
         if (b.tried !== (s.next.stock ?? 0)) reserve(db, s, b);
         break;
       case 'reserved':
-        if (!kitting && s.t >= b.notBefore) {
-          startKitting(db, s, b);
-          kitting = true;
-        }
+        if (!kitting && s.t >= b.notBefore && startKitting(db, s, b)) kitting = true;
         break;
       case 'kitting':
         kitStep(db, s, b);
@@ -302,17 +300,20 @@ export function mesHour(db: ContentDb, s: PlantState) {
   mesStep(db, s);
 }
 
-/** Начать комплектацию: номер серии — с выдачей досье; пластиковая паллета ждёт комплект в помещении первой стадии. */
-function startKitting(db: ContentDb, s: PlantState, b: Batch) {
+/**
+ * Начать комплектацию: с выдачей досье — короткий номер серии (batchno.ts); свободного номера нет — досье ждёт.
+ * Пластиковая паллета ждёт комплект в помещении первой стадии.
+ */
+function startKitting(db: ContentDb, s: PlantState, b: Batch): boolean {
+  if (!issueNo(db, s, b)) return false;
   const plan = planOf(db, s.plant);
-  const at = momentOf(s.start, s.t);
-  b.code = { y: at.date.y % 100, m: at.date.m, n: (s.next.batchCode = (s.next.batchCode ?? 0) + 1) };
   const room = plan.roomOf[db.recipes[b.recipe].stages[0].room];
   const u: Unit = { id: nextId(s, 'U'), type: 'unit.pallet.plastic', where: { kind: 'room', id: room }, items: [], tag: 'released' };
   s.units[u.id] = u;
   b.kitUnit = u.id;
   b.status = 'kitting';
   kitStep(db, s, b);
+  return true;
 }
 
 /**
@@ -845,7 +846,7 @@ function finish(db: ContentDb, s: PlantState, plan: PlantPlan, b: Batch, rec: St
   b.units = units;
   if ((units * P_ONE) / r.batch.units < r.yield.alarm) deviate(s, notices, { kind: 'yield', batch: b.id, stage: rec.stage });
   const bulkRoom = plan.roomOf.bulk;
-  const code = `${String(b.code.y).padStart(2, '0')}${String(b.code.m).padStart(2, '0')}${String(b.code.n).padStart(2, '0')}`;
+  const code = batchNo(b.code);
   const { lot } = createLot(db, s, {
     material: r.bulk,
     supplier: 'plant',

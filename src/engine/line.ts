@@ -9,6 +9,7 @@
 // таблеток в минуту, то есть долей в секунду. Накопитель после машины — разность позиций соседей. Блистеры, пачки и
 // ящики — формулы от позиций; брак — счётом: из первых n штук годных n − ⌊n × доля⌋.
 import type { ContentDb, Id, Sku } from '../content/types';
+import { batchNo } from './batchno';
 import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
 import { civilFromDays, daysFromCivil, MIN, momentOf } from './core/calendar';
@@ -584,9 +585,8 @@ function startRun(db: ContentDb, s: PlantState, line: Line, b: Batch, g: Geo) {
   const job = b.pack!;
   job.state = 'running';
   job.start = s.t;
-  const code = `${String(b.code.y).padStart(2, '0')}${String(b.code.m).padStart(2, '0')}${String(b.code.n).padStart(2, '0')}`;
-  const lot = emptyLot(s, { material: g.sku.fg, vendorLot: code, batch: b.id, expiry: 0, truth: { ...b.truth } });
-  lot.expiry = fgExpiry(prodDay(s, b), prodDay(s, b), db.materials[g.sku.fg].shelf);
+  const lot = emptyLot(s, { material: g.sku.fg, vendorLot: batchNo(b.code), batch: b.id, expiry: 0, truth: { ...b.truth } });
+  lot.expiry = fgExpiry(prodDay(db, s, b), prodDay(db, s, b), db.materials[g.sku.fg].shelf);
   job.fg = lot.id;
   line.cases = 0;
   line.machines.forEach((mc, i) => {
@@ -602,9 +602,10 @@ function addCrew(s: PlantState, line: Line, b: Batch, role: Id, n: number, at: P
   addTask(s, { kind: 'crew', roles: [role], count: n, from: { kind: 'point', ...at }, work: 0, prio: LINE_PRIO.crew, batch: b.id, line: line.id });
 }
 
-/** День производства (номер от 1970-01-01) — первая операция смешивания субстанции с другими ингредиентами: стадия после отвешивания. */
-export function prodDay(s: PlantState, b: Batch): number {
-  const rec = b.records[1] ?? b.records[0];
+/** День производства (номер от 1970-01-01) — первая операция смешивания субстанции с другими ингредиентами: стадия карты `mix`. */
+export function prodDay(db: ContentDb, s: PlantState, b: Batch): number {
+  const mix = db.recipes[b.recipe].stages.find(st => st.mix)?.id;
+  const rec = b.records.find(r => r.stage === mix) ?? b.records[0];
   return momentOf(s.start, rec?.start ?? s.t).day;
 }
 

@@ -4,6 +4,7 @@
 // поток, что движок насчитает к следующему событию; окно не видит истины.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
+import { batchNo, packNo, unpackNo } from '../../src/engine/batchno';
 import type { ModelPart } from '../../src/content/types';
 import { MIN } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
@@ -127,7 +128,9 @@ describe('срез линий и оборудования (формат 4)', () 
       const ln = line();
       const r = sl.lines[0];
       if (s.batches[ln.batch ?? '']?.pack?.state !== 'running') break;
-      expect(r.batch).toBe(s.batches[ln.batch!].code.y * 10000 + s.batches[ln.batch!].code.m * 100 + s.batches[ln.batch!].code.n);
+      // номер серии — одним целым: в упаковке он уже полный (src/engine/batchno.ts)
+      expect(r.batch).toBe(packNo(s.batches[ln.batch!].code));
+      expect(batchNo(unpackNo(r.batch)!)).toMatch(/^PA\d{7}$/);
       const pos = flowAt(db, s, ln, s.t);
       ln.machines.forEach((mc, k) => {
         const m = r.machines[k];

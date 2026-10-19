@@ -308,7 +308,7 @@ export class Game {
       : n.kind === 'cashLow' ? T.notices.cashLow
       : n.kind === 'failure' ? T.notices.failure
       : n.kind === 'repaired' ? T.notices.repaired
-      : n.kind === 'investigation' ? T.notices.investigation(named(this.db.tests[n.method]?.name, n.method), T.batchCode(...n.code))
+      : n.kind === 'investigation' ? T.notices.investigation(named(this.db.tests[n.method]?.name, n.method), n.code)
       : n.kind === 'invStep' ? T.notices.invStep
       : n.kind === 'concluded' ? T.notices.concluded(n.fate)
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')

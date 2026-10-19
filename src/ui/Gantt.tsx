@@ -32,7 +32,7 @@ function who(l: Labels, id: string | undefined, kase: 'nom' | 'gen' | 'ins' = 'n
   const b = id ? l[id] : undefined;
   if (!b) return '';
   if (b.code) {
-    const c = T.batchCode(...b.code);
+    const c = b.code;
     return kase === 'gen' ? T.gantt.batchGen(c) : kase === 'ins' ? T.gantt.batchIns(c) : T.gantt.batch(c);
   }
   return kase === 'gen' ? T.gantt.orderGen(b.n) : kase === 'ins' ? T.gantt.orderIns(b.n) : T.gantt.order(b.n);
@@ -41,7 +41,7 @@ function who(l: Labels, id: string | undefined, kase: 'nom' | 'gen' | 'ins' = 'n
 /** Короткая подпись серии на полосе: номер серии или «задание N». */
 const short = (l: Labels, id: string | undefined) => {
   const b = id ? l[id] : undefined;
-  return b?.code ? T.batchCode(...b.code) : b ? T.gantt.order(b.n) : '';
+  return b?.code ?? (b ? T.gantt.order(b.n) : '');
 };
 
 export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; plant: string }) {
@@ -425,7 +425,7 @@ function PlanSum({ p, start, stale, rowName, lineNo }: { p: PlanRun; start: Ymd;
   const head = [T.plan.now, T.plan.draftCol].slice(0, sums.length);
   const label = (id: string) => {
     const b = p.batches[id];
-    return b?.code ? T.gantt.batch(T.batchCode(...b.code)) : b ? T.gantt.order(b.n) : id;
+    return b?.code ? T.gantt.batch(b.code) : b ? T.gantt.order(b.n) : id;
   };
   /** Ячейка варианта: итог ещё считается — «…». */
   const cells = (f: (s: RunSum, i: number) => React.ReactNode, cls?: (s: RunSum) => string) =>

@@ -278,6 +278,13 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   }
   const products: Record<string, Product> = { ...raw.products };
   for (const pr of Object.values(raw.products)) if (pr.jnvlp) need(pr.source, `продукт ${pr.id}: «в перечне ЖНВЛП» — факт, нужен источник`);
+  // код продукта в номере серии — у каждого свой: иначе номера двух продуктов совпадут
+  const codes = new Map<string, string>();
+  for (const pr of Object.values(raw.products)) {
+    const other = codes.get(pr.code);
+    need(!other, `продукт ${pr.id}: код ${pr.code} уже у ${other}`);
+    codes.set(pr.code, pr.id);
+  }
   // модель кодом (2в): проверка — `modelErrors`
   type RawModel = z.infer<(typeof KINDS)['equipment']['schema']>['model'];
   const modelOf = (list: RawModel, foot: [number, number, number], where: string): ModelPart[] => {
@@ -349,6 +356,9 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     need(r.bom.filter(l => l.qs).length <= 1, `${where}: «до массы» — не больше одной строки`);
     need(Math.abs(r.bom.reduce((n, l) => n + l.kg, 0) - r.batch.kg) < 0.0005, `${where}: состав не сходится с массой серии`);
     need(new Set(r.stages.map(st => st.id)).size === r.stages.length, `${where}: стадии повторяются`);
+    // первое смешивание — одна стадия, и не отвешивание: от неё дата производства и месяц и год в номере серии
+    need(r.stages.filter(st => st.mix).length === 1, `${where}: нужна ровно одна стадия первого смешивания (mix)`);
+    need(!r.stages[0].mix, `${where}: первое смешивание — не отвешивание`);
     const stages: RecipeStage[] = r.stages.map(st => {
       const at = `${where}, стадия ${st.id}`;
       for (const e of st.equipment) need(raw.equipment[e], `${at}: нет оборудования ${e}`);
@@ -393,6 +403,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         loss: [share(st.loss[0]), share(st.loss[1])] as [number, number],
         // сито калибратора по карте: мм → мкм
         ...(st.screen !== undefined ? { screen: Math.round(st.screen * 1000) } : {}),
+        ...(st.mix ? { mix: true as const } : {}),
       };
     });
     // показатели балка: всё, что испытывает его спецификация, — с номиналом

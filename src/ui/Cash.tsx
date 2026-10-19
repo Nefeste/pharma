@@ -21,7 +21,7 @@ function whyText(w: CashWhy | undefined): string {
     case 'quarter':
       return T.cash.why.quarter(w.q, w.y);
     case 'batch':
-      return T.cash.why.batch(T.batchCode(...w.code));
+      return T.cash.why.batch(w.code);
   }
 }
 

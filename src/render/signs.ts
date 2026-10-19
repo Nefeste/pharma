@@ -4,6 +4,7 @@
 // маленькая текстура: их десяток, перерисовка — только когда статус или серия сменились.
 import * as THREE from 'three';
 import type { ContentDb } from '../content/types';
+import { batchNo, unpackNo } from '../engine/batchno';
 import { CELL } from '../engine/nav';
 import { named, T } from '../i18n';
 import type { RoomRow } from '../sim/pack';
@@ -130,8 +131,9 @@ export class Signs {
     g.fillText(T.room.status[status], 80, cy + 2);
     g.fillStyle = '#23292c';
     g.font = '600 26px system-ui, sans-serif';
-    if (r && r.batch >= 0) {
-      const code = String(r.batch).padStart(6, '0');
+    const no = r ? unpackNo(r.batch) : undefined;
+    if (r && no) {
+      const code = batchNo(no);
       const recipe = Object.values(this.db.recipes)[r.recipe];
       const stage = recipe && r.stage >= 0 ? recipe.stages[r.stage] : undefined;
       g.fillText(`${T.room.batch(code)}${stage ? ` · ${T.stages[stage.id] ?? stage.id}` : ''}`, 14, h * 0.62);

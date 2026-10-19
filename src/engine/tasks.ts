@@ -5,6 +5,7 @@
 // с версией задачи. Задача не досталась никому — раздатчик называет причину, а путь назначенной — потери (lean.ts).
 // Человек, который идёт без задачи на пост (staff.ts), свободен: расстояние меряется от точки маршрута, где он сейчас.
 import type { ContentDb, Id, ZoneKind } from '../content/types';
+import { mixStart } from './batchno';
 import { schedule } from './core/agenda';
 import { moved, waitEnd, waitNote } from './lean';
 import { dist, type PlantPlan, planOf, type Point, travel } from './plant';
@@ -248,6 +249,8 @@ function start(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, people: P
   t.state = 'busy';
   t.times = times;
   t.v++;
+  // первое смешивание: к короткому номеру серии — месяц и год начала работы (batchno.ts)
+  if (t.kind === 'stage') mixStart(db, s, t);
   // стадия с узлами под износом узнаёт, когда люди начали работу: от этого момента считается отказ (mes.ts); раньше
   // конца задачи, даже если работы нет
   if (t.begin) schedule(s.agenda, times[1], { kind: 'begin', task: t.id, v: t.v });

@@ -122,7 +122,6 @@ export const en: Strings = {
   },
   kinds: { api: 'API', excipient: 'Excipients', packaging: 'Packaging', bulk: 'Bulk', fg: 'Finished goods' },
   lotCode: (y: number, m: number, n: number) => `L-${String(y).padStart(2, '0')}${String(m).padStart(2, '0')}-${String(n).padStart(4, '0')}`,
-  batchCode: (y: number, m: number, n: number) => `${String(y).padStart(2, '0')}${String(m).padStart(2, '0')}${String(n).padStart(2, '0')}`,
   units: { kg: 'kg', pcs: 'pcs', h: 'h', min: 'min', km: 'km', N: 'N', kN: 'kN', um: 'µm', rpm: 'rpm', C: '°C', pct: '%', pp: 'pp' },
   stock: {
     title: 'Warehouse',

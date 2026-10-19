@@ -289,8 +289,9 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     slot = Math.max(slot, end);
     holder = { batch: b.id, pack: true };
   }
-  // серии в работе — по порядку комплектации (номер серии): кто раньше в помещениях, тот раньше и дальше
-  const active = order.filter(b => b.status === 'kitting' || b.status === 'process').sort((a, c) => a.code.n - c.code.n);
+  // серии в работе — по порядку комплектации (выдачи досье): кто раньше в помещениях, тот раньше и дальше. У досье до
+  // схемы 15 момента выдачи нет — они раньше всех, между собой — по прежнему порядковому номеру
+  const active = order.filter(b => b.status === 'kitting' || b.status === 'process').sort((a, c) => (a.issued ?? 0) - (c.issued ?? 0) || a.code.n - c.code.n);
   for (const b of active) {
     if (b.status === 'process') {
       inProcess(b);

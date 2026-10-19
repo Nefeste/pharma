@@ -155,10 +155,12 @@ first, or copy the working code of Bolnitsa on the same versions.
   person walks to the post of their role, and to the exit 15 minutes before the end of the shift; where they are on the
   way; off-shift people leave through the entrance), `seats.ts` (the player's places — the director and four posts:
   whose each command is, the `seat` command, the log of places; a player's command of another's post is refused),
-  `invariants.ts`.
+  `batchno.ts` (the batch number `PPNNNMMYY`: the short `PPNNN` when the batch record is issued, month and year when the
+  first mixing starts; a count per product code from 1 January and after 999 again from 001, skipping numbers still held,
+  so a full number never repeats; one integer in the slice), `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
-- `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`, format 5: rooms, trucks
+- `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`, format 6: rooms, trucks
   with their open body, changed pallets, tasks in progress, people with their walk to a post, vehicles, lines with their
   machines, equipment; no truth fields — not the next micro-stop, not a part's budget), views for panels — the warehouse
   and the card of a thing, built here on request and sent with the slice only when they changed, without truth fields

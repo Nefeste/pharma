@@ -123,7 +123,7 @@ function decide(db: ContentDb, s: PlantState, b: Batch, notices: Notice[]) {
     for (const d of open) d.status = 'assessed';
     setLotStatus(s, lot, 'released', FG_FLOW);
     // срок годности — от выпуска, если он не позже 30 дней от производства (Рекомендация Коллегии ЕЭК № 2)
-    lot.expiry = fgExpiry(prodDay(s, b), momentOf(s.start, s.t).day, db.materials[lot.material].shelf);
+    lot.expiry = fgExpiry(prodDay(db, s, b), momentOf(s.start, s.t).day, db.materials[lot.material].shelf);
     b.status = 'released';
     b.released = s.t;
     toRzn(s, lot.id);

@@ -4,6 +4,7 @@
 // ли улика на самом деле, отметки у записи испытания и у прибора, пока их не нашёл шаг, сборщик не читает. Разбор — только
 // у решённого расследования (`debrief` движка).
 import type { ContentDb, Id } from '../content/types';
+import { batchNo } from '../engine/batchno';
 import { posterior } from '../engine/infer';
 import { type Debrief, debrief, labProven } from '../engine/investigation';
 import type { Investigation, InvObs, PlantState } from '../engine/types';
@@ -21,7 +22,8 @@ const code = (c: { y: number; m: number; n: number }): Code => [c.y, c.m, c.n];
 /** Строка списка расследований: номер, серия, когда открыто, решено ли и чем. */
 export interface InvListRow {
   id: string;
-  batch: Code;
+  /** номер серии строкой (src/engine/batchno.ts) */
+  batch: string;
   opened: number;
   status: Investigation['status'];
   fate?: 'reject' | 'release';
@@ -45,7 +47,7 @@ export interface InvWhat {
   max?: number;
   lot: Code;
   material: Id;
-  batch: Code;
+  batch: string;
   recipe: Id;
   t?: number;
 }
@@ -119,7 +121,7 @@ function boardOf(db: ContentDb, s: PlantState, inv: Investigation): InvBoard {
       ...(first.max !== undefined ? { max: first.max } : {}),
       lot: code(lot.code),
       material: lot.material,
-      batch: code(b.code),
+      batch: batchNo(b.code),
       recipe: b.recipe,
       ...(first.done !== undefined ? { t: first.done } : {}),
     },
@@ -138,7 +140,7 @@ export function invView(db: ContentDb, s: PlantState, q: InvQuery): InvView {
   const all = Object.values(s.investigations);
   const list: InvListRow[] = all.map(inv => ({
     id: inv.id,
-    batch: code(s.batches[inv.batch].code),
+    batch: batchNo(s.batches[inv.batch].code),
     opened: inv.opened,
     status: inv.status,
     ...(inv.conclusion ? { fate: inv.conclusion.fate } : {}),

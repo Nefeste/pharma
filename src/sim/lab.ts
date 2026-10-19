@@ -2,6 +2,7 @@
 // виды для панели, чистые функции из состояния, как склад и карточка (views.ts). Без истины: результат испытания — только
 // проверенный вторым лицом, значения карты — измерения МОК, а не истинные свойства серий.
 import type { ContentDb, Id } from '../content/types';
+import { batchNo } from '../engine/batchno';
 import { LAB_PRIO } from '../engine/lab';
 import type { LabTest, PlantState, Task, TaskKind, WaitCause } from '../engine/types';
 
@@ -185,7 +186,8 @@ export interface ChartPoint {
   t: number;
   /** значение — в единицах движка свойства: у массы — доли 1/10 000 номинала */
   v: number;
-  batch: Code;
+  /** номер серии строкой (src/engine/batchno.ts) */
+  batch: string;
   signals: Signal[];
 }
 
@@ -205,10 +207,10 @@ export const SETTLED = 25;
 
 /** Контрольная карта методики МОК: все замеры стадий всех серий по времени; точки серии появляются с концом её стадии. */
 export function chartView(db: ContentDb, s: PlantState, q: ChartQuery): ChartView {
-  const raw: { t: number; v: number; batch: Code }[] = [];
+  const raw: { t: number; v: number; batch: string }[] = [];
   let spec: ChartView['spec'];
   for (const b of Object.values(s.batches)) {
-    for (const rec of b.records) for (const c of rec.ipc) if (c.test === q.test) raw.push({ t: c.t, v: c.result, batch: code(b.code) });
+    for (const rec of b.records) for (const c of rec.ipc) if (c.test === q.test) raw.push({ t: c.t, v: c.result, batch: batchNo(b.code) });
     if (!spec) {
       const st = db.recipes[b.recipe]?.stages.flatMap(x => x.ipc).find(c => c.test === q.test);
       if (st) spec = { ...(st.min !== undefined ? { min: st.min } : {}), ...(st.max !== undefined ? { max: st.max } : {}) };

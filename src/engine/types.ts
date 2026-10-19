@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 14;
+export const SCHEMA = 15;
 
 // ---------------------------------------------------------------- склад
 
@@ -483,10 +483,23 @@ export interface PackJob {
   oee?: { machine: string; nominal: number; times: MachineTimes }[];
 }
 
+/**
+ * Номер серии `PPNNNMMYY` по частям (src/engine/batchno.ts): код продукта, номер по порядку, месяц и год первого
+ * смешивания (две последние цифры). До выдачи досье — без номера (`n` 0), до смешивания — короткий номер (`m` 0).
+ */
+export interface BatchNo {
+  pp: string;
+  n: number;
+  m: number;
+  y: number;
+}
+
 export interface Batch {
   id: string;
-  /** номер серии: год, месяц, порядковый — окно пишет «270901» */
-  code: { y: number; m: number; n: number };
+  /** номер серии: окно пишет «PA001» до смешивания и «PA0010927» после */
+  code: BatchNo;
+  /** когда выдано досье и присвоен короткий номер; нет — досье не выдано или выдано до схемы 15 */
+  issued?: number;
   recipe: Id;
   product: Id;
   /** не раньше, игровые секунды */
@@ -982,6 +995,8 @@ export interface PlantState {
   deviations: Record<string, Deviation>;
   /** расследования результатов вне спецификации (часть 4); происшествие сценария — скрытое */
   investigations: Record<string, Investigation>;
+  /** счёт номеров серий по коду продукта: год последнего досье и последний номер по порядку (src/engine/batchno.ts) */
+  batchNos: Record<string, { year: number; n: number }>;
   incident?: Incident;
   /** помещения и оборудование по именам из плана */
   rooms: Record<string, Room>;
@@ -1102,6 +1117,6 @@ export type Notice =
   | { kind: 'refused'; cmd: Command['kind']; why: Refusal; detail?: string }
   /** результат вне спецификации — расследование открыто; шаг расследования сделан; расследование решено */
   /** результат вне спецификации — расследование; методика и номер серии — для слов извещения */
-  | { kind: 'investigation'; id: string; batch: string; lot: string; method: Id; code: [number, number, number] }
+  | { kind: 'investigation'; id: string; batch: string; lot: string; method: Id; code: string }
   | { kind: 'invStep'; id: string; step: string }
   | { kind: 'concluded'; id: string; cause: string; fate: 'reject' | 'release' };

@@ -211,7 +211,7 @@ export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningV
                 <li key={i}>
                   <span className="mono muted">{when(x.t)}</span> {T.morning.devKinds[x.kind]}
                   {x.lot ? ` · ${named(db?.materials[x.material ?? '']?.name, x.material)} ${T.lotCode(...x.lot)}` : ''}
-                  {x.batch ? ` · ${T.card.batch} ${T.batchCode(...x.batch)}` : ''}
+                  {x.batch ? ` · ${T.card.batch} ${x.batch}` : ''}
                   {x.inv ? (
                     <>
                       {' · '}
@@ -228,7 +228,7 @@ export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningV
               rows={v.decisions.map((x, i) => (
                 <li key={i}>
                   <span className="mono muted">{when(x.t)}</span> {named(db?.materials[x.material]?.name, x.material)} {T.lotCode(...x.lot)}
-                  {x.batch ? ` (${T.card.batch} ${T.batchCode(...x.batch)})` : ''}: {T.status[x.status]}
+                  {x.batch ? ` (${T.card.batch} ${x.batch})` : ''}: {T.status[x.status]}
                 </li>
               ))}
             />

@@ -133,7 +133,6 @@ export const ru = {
   kinds: { api: 'АФС', excipient: 'Вспомогательные', packaging: 'Упаковка', bulk: 'Балк', fg: 'Готовая продукция' },
   /** внутренний номер партии и номер серии */
   lotCode: (y: number, m: number, n: number) => `П-${String(y).padStart(2, '0')}${String(m).padStart(2, '0')}-${String(n).padStart(4, '0')}`,
-  batchCode: (y: number, m: number, n: number) => `${String(y).padStart(2, '0')}${String(m).padStart(2, '0')}${String(n).padStart(2, '0')}`,
   units: { kg: 'кг', pcs: 'шт.', h: 'ч', min: 'мин', km: 'км', N: 'Н', kN: 'кН', um: 'мкм', rpm: 'об/мин', C: '°C', pct: '%', pp: 'п.\u00a0п.' },
   /** панель склада (docs/specs/2026-10-panels.md, 3б) */
   stock: {

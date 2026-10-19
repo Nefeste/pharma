@@ -14,9 +14,11 @@ import { Gantt } from './Gantt';
 import { Inv } from './Inv';
 import { Lab } from './Lab';
 import { Morning } from './Morning';
+import { Now, rowTitle } from './Now';
 import { Ref } from './Ref';
 import { Seats } from './Seats';
 import { Stock } from './Stock';
+import { watchFor } from '../app/watch';
 import { type Actions, LIVE, type Speed, type Store, useHud } from './store';
 
 const SPEEDS: Speed[] = [1, 2, 3, 4];
@@ -92,6 +94,9 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
           <button type="button" className={s.lab.open ? 'on' : ''} onClick={() => actions.toggleLab()} title={T.lab.hint} data-test="lab-open">
             {T.lab.button}
           </button>
+          <button type="button" className={s.now.open ? 'on' : ''} onClick={() => actions.toggleNow()} title={T.now.hint} data-test="now-open">
+            {T.now.button}
+          </button>
           <button type="button" className={s.gantt.open ? 'on' : ''} onClick={() => actions.toggleGantt()} title={T.gantt.hint} data-test="gantt-open">
             {T.gantt.button}
           </button>
@@ -110,6 +115,14 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
           </span>
         ) : null}
         {s.lag >= 5 && <span className="warn">{T.top.lag(s.lag)}</span>}
+        {s.watch ? (
+          <span className="watching" data-test="watching">
+            {T.now.watching(rowTitle(s.watch))}{' '}
+            <button type="button" onClick={() => actions.unwatch()} title={T.now.stopHint} data-test="unwatch">
+              {T.now.stop}
+            </button>
+          </span>
+        ) : null}
         {s.notices[0]?.inv ? (
           <button type="button" className="notice link" onClick={() => actions.openInv(s.notices[0].inv!)} title={T.inv.hint} data-test="notice-inv">
             {s.notices[0].text}
@@ -121,12 +134,15 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
       {s.stock.open && <Stock hud={s} actions={actions} plant={plant} />}
       {s.cash.open && <Cash hud={s} actions={actions} />}
       {s.lab.open && <Lab hud={s} actions={actions} />}
+      {s.now.open && <Now hud={s} actions={actions} />}
       {s.morning.open && s.morning.day !== undefined && <Morning v={s.morning.view} day={s.morning.day} start={s.start} plant={plant} pause={s.morningPause} actions={actions} />}
       {s.gantt.open && <Gantt hud={s} actions={actions} plant={plant} />}
       {s.inv.open && <Inv hud={s} actions={actions} />}
       {s.ref.open && <Ref hud={s} actions={actions} />}
       {s.seats.open && <Seats hud={s} actions={actions} scenario={scenario} />}
-      {s.selected && s.card && <Card v={s.card} start={s.start} plant={plant} actions={actions} beside={s.stock.open || s.cash.open || s.lab.open} />}
+      {s.selected && s.card && (
+        <Card v={s.card} start={s.start} plant={plant} actions={actions} beside={s.stock.open || s.cash.open || s.lab.open || s.now.open} watch={watchFor(s.selected, s.card.card, s.now.view?.rows)} />
+      )}
       {s.debug && (
         <div className="debug panel">
           <b>{T.debug.title}</b>

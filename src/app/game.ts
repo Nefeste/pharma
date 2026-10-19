@@ -112,6 +112,8 @@ export class Game {
   /** планёрка (3в): мгновение последней, которую окно видело; скорость, которую включит «Продолжить» */
   private morningSeen = Number.NEGATIVE_INFINITY;
   private resume: Speed = 1;
+  /** «Смотреть» (Б1б): какую работу — ключ строки «Сейчас» — и к какой скорости вернуться, когда она кончится */
+  private watching?: { key: string; resume: Speed };
   /** крупность показа: уровень по высоте камеры (с запасом у порогов) и веса уровней на экране (detail.ts) */
   private camLevel: Detail = 1;
   detail: Weights = AT[1];
@@ -220,6 +222,10 @@ export class Game {
         if (hud.inv.open) this.store.set({ inv: { ...this.store.get().inv, view: d } });
       } else if (d.view === 'ref') {
         if (hud.ref.open) this.store.set({ ref: { ...this.store.get().ref, view: d } });
+      } else if (d.view === 'now') {
+        this.store.set({ now: { ...this.store.get().now, view: d } });
+        // смотрели работу — её строки больше нет: работа кончилась, прежняя скорость
+        if (this.watching && !d.rows.some(r => r.key === this.watching!.key)) this.actions.setSpeed(this.watching.resume);
       } else if (d.view === 'ghost') {
         // призрак того, что тянут сейчас; прежний запрос — не показываем
         const g = this.store.get().gantt;
@@ -405,10 +411,13 @@ export class Game {
       if (this.store.get().seats.open) return;
       this.speed = s;
       this.ff = false;
+      // скорость сменили — смотреть перестали (сами или потому, что работа кончилась)
+      this.stopWatching();
       this.hud();
     },
     untilMorning: () => {
       if (this.store.get().seats.open) return;
+      this.stopWatching();
       // часы игры — это часы завода плюс отставание расчёта
       const now = this.t + this.lag;
       const day = Math.floor(now / 86400) * 86400;
@@ -594,6 +603,25 @@ export class Game {
       this.store.set({ lab: { ...l, open: !l.open }, ...this.rightClosed('lab') });
       this.sendViews();
     },
+    toggleNow: () => {
+      const n = this.store.get().now;
+      this.store.set({ now: { ...n, open: !n.open }, ...this.rightClosed('now') });
+      this.sendViews();
+    },
+    watch: key => {
+      const row = this.store.get().now.view?.rows.find(r => r.key === key);
+      if (!row || this.store.get().seats.open) return;
+      // прежняя скорость — та, что была до первого «Смотреть»: смотрят другую работу — к ней же и вернёмся
+      const resume = this.watching?.resume ?? this.speed;
+      if (row.thing) this.actions.show(row.thing);
+      this.actions.setSpeed(1);
+      this.watching = { key, resume };
+      this.store.set({ watch: row });
+      this.sendViews();
+    },
+    unwatch: () => {
+      if (this.watching) this.actions.setSpeed(this.watching.resume);
+    },
     setLabTab: tab => {
       this.store.set({ lab: { ...this.store.get().lab, tab } });
       this.sendViews();
@@ -621,7 +649,7 @@ export class Game {
         cam.half = Math.min(cam.half, 8);
         // вещь — посреди части экрана, не закрытой панелью справа, и выше карточки (она снизу слева)
         const box = el.getBoundingClientRect();
-        const panel = (document.getElementById('stock') ?? document.getElementById('cash') ?? document.getElementById('lab'))?.getBoundingClientRect();
+        const panel = (document.getElementById('stock') ?? document.getElementById('cash') ?? document.getElementById('lab') ?? document.getElementById('now'))?.getBoundingClientRect();
         const free = panel ? Math.max(0, panel.left - box.left) : box.width;
         cam.pan(free / 2 - box.width / 2, -0.2 * box.height, el.clientHeight);
         // матрицы камеры — сейчас, а не в следующем кадре: точка вещи на экране и луч щелчка сразу новые
@@ -635,14 +663,23 @@ export class Game {
    * Справа — одна панель: открыть одну — значит закрыть две другие и расписание (оно во всю ширину); без `keep` — закрыть
    * все три.
    */
-  private rightClosed(keep?: 'stock' | 'cash' | 'lab'): Partial<Hud> {
+  private rightClosed(keep?: 'stock' | 'cash' | 'lab' | 'now'): Partial<Hud> {
     const h = this.store.get();
     return {
       ...(keep !== 'stock' ? { stock: { ...h.stock, open: false } } : {}),
       ...(keep !== 'cash' ? { cash: { ...h.cash, open: false } } : {}),
       ...(keep !== 'lab' ? { lab: { ...h.lab, open: false } } : {}),
+      ...(keep !== 'now' ? { now: { ...h.now, open: false } } : {}),
       ...(keep && h.gantt.open ? { gantt: { open: false, days: h.gantt.days, draft: h.gantt.draft, ...(h.gantt.from !== undefined ? { from: h.gantt.from } : {}) } } : {}),
     };
+  }
+
+  /** Перестали смотреть работу: строка «Сейчас» больше не нужна, пока не открыта панель или карточка. */
+  private stopWatching() {
+    if (!this.watching) return;
+    this.watching = undefined;
+    this.store.set({ watch: undefined });
+    this.sendViews();
   }
 
   /** Расписание закрыто: черновик и окно времени остаются. */
@@ -675,6 +712,8 @@ export class Game {
     if (h.gantt.open && h.gantt.drag) list.push({ id: 'ghost', view: 'ghost', ...h.gantt.drag, ...draft });
     if (h.inv.open) list.push({ id: 'inv', view: 'inv', ...(h.inv.id ? { inv: h.inv.id } : {}) });
     if (h.ref.open) list.push({ id: 'ref', view: 'ref' });
+    // «Сейчас» — и при закрытой панели: карточке — для «Смотреть», смотрящему — чтобы знать, когда работа кончилась
+    if (h.now.open || this.selected || this.watching) list.push({ id: 'now', view: 'now' });
     const key = JSON.stringify(list);
     if (key === this.viewsSent) return;
     this.viewsSent = key;
@@ -825,6 +864,7 @@ export class Game {
       else if (k === 'Backquote') this.actions.toggleDebug();
       else if (k === 'KeyG') this.actions.toggleGantt();
       else if (k === 'KeyI') this.actions.toggleInv();
+      else if (k === 'KeyN') this.actions.toggleNow();
       else if (k === 'F1') {
         e.preventDefault();
         this.actions.toggleRef();
@@ -843,6 +883,7 @@ export class Game {
         else if (h.morning.open) this.actions.closeMorning(false);
         else if (h.cash.open) this.actions.toggleCash();
         else if (h.lab.open) this.actions.toggleLab();
+        else if (h.now.open) this.actions.toggleNow();
         else if (h.stock.open) this.actions.toggleStock();
       } else this.mouse.keys.add(k);
     });

@@ -27,7 +27,7 @@ import { useDb } from '../ui/db';
 import { commandsOf, prune, upsert } from '../ui/draft';
 import { type Actions, holds, type Hud, LIVE, NO_RUN, PLAN_RUN, type Speed, type Store } from '../ui/store';
 import { fillsOf, Flows, lineArrows, moveArrows, movesOf } from './flows';
-import { type Movers, moversAt } from './movers';
+import { type Movers, moversAt, taskIcons } from './movers';
 import { keep, windowKeep } from './preset';
 import { type Box, machineBoxes, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
 import { carriedOf, dockFront, palletsOf, SceneState } from './scene';
@@ -295,7 +295,7 @@ export class Game {
     this.showPallets(mv.carried.map(c => c.unit).sort((a, b) => a - b));
     this.moversNow = mv;
     this.carriedNow = carriedOf(v, mv.carried, c => (c.placed ? levelY(c.level) : forkY(c.level)));
-    this.stage.setMovers(mv, this.carriedNow, ts / 1000);
+    this.stage.setMovers(mv, this.carriedNow, ts / 1000, taskIcons(v.tasks, v.people));
     this.stage.setSelection(this.outline());
   }
 

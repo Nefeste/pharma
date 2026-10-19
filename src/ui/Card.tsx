@@ -8,7 +8,7 @@ import { dayText, named, num, qtyText, T, whenText } from '../i18n';
 import type { NowRow } from '../sim/now';
 import type { CardView, Hist, Holds, Why } from '../sim/views';
 import { db } from './db';
-import { StatusIcon } from './icons';
+import { StatusIcon, TaskIcon } from './icons';
 import { placeText, supplierText } from './Stock';
 import type { Actions } from './store';
 
@@ -218,7 +218,19 @@ export function Card({ v, start, plant, actions, beside, watch }: { v: CardView;
       body = (
         <dl>
           <Row k={T.card.state}>
-            {c.doing.k === 'task' ? T.why.taskBusy(T.tasks[c.doing.task] ?? c.doing.task) : c.doing.k === 'walk' ? (c.doing.exit ? T.card.doing.exit : T.card.doing.walk) : T.card.doing[c.doing.k]}
+            {c.doing.k === 'task' ? (
+              <>
+                <TaskIcon kind={c.doing.task} /> {T.why.taskBusy(T.tasks[c.doing.task] ?? c.doing.task)}
+              </>
+            ) : c.doing.k === 'walk' ? (
+              c.doing.exit ? (
+                T.card.doing.exit
+              ) : (
+                T.card.doing.walk
+              )
+            ) : (
+              T.card.doing[c.doing.k]
+            )}
           </Row>
           <Row k={T.card.shift}>{named(db?.shifts[c.shift]?.name, c.shift)}</Row>
         </dl>
@@ -228,7 +240,15 @@ export function Card({ v, start, plant, actions, beside, watch }: { v: CardView;
       title = named(db?.vehicles[c.type]?.name, c.type);
       body = (
         <dl>
-          <Row k={T.card.state}>{c.task ? T.why.taskBusy(T.tasks[c.task] ?? c.task) : T.card.free}</Row>
+          <Row k={T.card.state}>
+            {c.task ? (
+              <>
+                <TaskIcon kind={c.task} /> {T.why.taskBusy(T.tasks[c.task] ?? c.task)}
+              </>
+            ) : (
+              T.card.free
+            )}
+          </Row>
         </dl>
       );
       break;

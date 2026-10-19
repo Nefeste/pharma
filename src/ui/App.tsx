@@ -117,7 +117,9 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
         {s.lag >= 5 && <span className="warn">{T.top.lag(s.lag)}</span>}
         {s.watch ? (
           <span className="watching" data-test="watching">
-            {T.now.watching(rowTitle(s.watch))}{' '}
+            <span className="wtext" title={T.now.watching(rowTitle(s.watch))}>
+              {T.now.watching(rowTitle(s.watch))}
+            </span>
             <button type="button" onClick={() => actions.unwatch()} title={T.now.stopHint} data-test="unwatch">
               {T.now.stop}
             </button>

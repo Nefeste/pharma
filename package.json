@@ -1,7 +1,7 @@
 {
   "name": "pharma",
   "productName": "Farmzavod",
-  "version": "0.0.24",
+  "version": "0.0.25",
   "private": true,
   "description": "«Фармзавод» — симулятор фармацевтического завода для ПК студии «Горница»: движок завода, оболочка Electron и 3D-вид на Three.js",
   "author": "Горница",

@@ -8,6 +8,7 @@ import type { ContentDb } from '../content/types';
 import { accessOf, cellOf, centerOf, type Mover, type Point, polylineLength, route } from '../engine/nav';
 import { type PlantPlan, travel } from '../engine/plant';
 import { WALK } from '../engine/tasks';
+import { ICON_OF, type IconKind } from '../render/taskicons';
 import type { PersonRow, TaskRow, VehicleRow } from '../sim/pack';
 
 /** Что делает человек: идёт, стоит (ждёт или работает), едет на технике. */
@@ -313,4 +314,17 @@ function* spiral(): Generator<[number, number]> {
     for (let i = r - 1; i >= -r; i--) yield [-r, i];
     for (let i = -r + 1; i <= r; i++) yield [i, -r];
   }
+}
+
+/**
+ * Значок работы каждого занятого человека (Б1б; src/render/taskicons.ts): по виду его задачи в срезе. Без задачи — нет
+ * значка: человек идёт на пост, к выходу или ждёт.
+ */
+export function taskIcons(tasks: readonly TaskRow[], people: readonly PersonRow[]): Map<number, IconKind> {
+  const out = new Map<number, IconKind>();
+  for (const p of people) {
+    const t = p.task >= 0 ? tasks[p.task] : undefined;
+    if (t) out.set(p.person, ICON_OF[t.kind]);
+  }
+  return out;
 }

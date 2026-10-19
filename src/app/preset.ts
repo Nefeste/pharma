@@ -40,16 +40,20 @@ export function keep(store: Keep | undefined, q: Quality) {
   }
 }
 
-/** Медиана интервалов между кадрами, мс; меньше 10 кадров — замера нет. */
+/** Медиана интервалов между кадрами, мс; кадров нет — `undefined`. */
 export function medianFrame(intervals: readonly number[]): number | undefined {
-  if (intervals.length < 10) return undefined;
+  if (intervals.length === 0) return undefined;
   const a = [...intervals].sort((x, y) => x - y);
   const k = a.length >> 1;
   return a.length % 2 ? a[k] : (a[k - 1] + a[k]) / 2;
 }
 
-/** Итог замера на среднем пресете: медленный кадр — низкий, иначе средний; замера нет — `undefined`. */
+/**
+ * Итог замера на среднем пресете: медленный кадр — низкий, иначе средний; кадров нет — `undefined`. Меньше 10 кадров за
+ * замер — это кадр дольше 300 мс: тоже низкий (иначе совсем слабая видеокарта осталась бы на среднем навсегда).
+ */
 export function pickPreset(intervals: readonly number[]): Quality | undefined {
   const m = medianFrame(intervals);
-  return m === undefined ? undefined : m > PRESET.slow ? 'low' : 'medium';
+  if (m === undefined) return undefined;
+  return intervals.length < 10 || m > PRESET.slow ? 'low' : 'medium';
 }

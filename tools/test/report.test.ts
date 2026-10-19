@@ -149,7 +149,7 @@ describe('касса', () => {
     const day = s.cash.ledger.filter(e => e.t > s.t - DAY && e.t <= s.t);
     expect(v.entries.map(e => e.sum)).toEqual(day.map(e => e.sum));
     expect(v.day).toBe(day.reduce((n, e) => n + e.sum, 0));
-    expect(topView(db, s)).toEqual({ view: 'top', balance: s.cash.balance, day: v.day, offered: db.scenarios[SC].seats });
+    expect(topView(db, s)).toEqual({ view: 'top', balance: s.cash.balance, day: v.day, offered: db.scenarios[SC].seats, inv: Object.values(s.investigations).filter(i => i.status === 'open').length });
     // «почему» есть у счетов поставщикам, покупателям, зарплаты, взносов, энергии, НДС
     for (const d of all) if (['supplier', 'sale', 'wages', 'contrib', 'energy', 'vat'].includes(d.item)) expect(d.why).toBeDefined();
   });

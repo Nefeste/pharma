@@ -9,7 +9,7 @@ import { DAY, momentOf } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
 import { planOf } from '../engine/plant';
 import type { Command, Notice } from '../engine/types';
-import { T } from '../i18n';
+import { named, T } from '../i18n';
 import { bakeLook, lodOf, packPeople } from '../render/bake';
 import { AT, camDetail, type Detail, ease, speedDetail, type Weights } from '../render/detail';
 import { type Layout, layoutOf, levelY } from '../render/layout';
@@ -133,7 +133,7 @@ export class Game {
   readonly frames: { interval: number[]; draw: number[] } = { interval: [], draw: [] };
   private last = 0;
   private hudAt = 0;
-  private notices: { t: number; text: string }[] = [];
+  private notices: { t: number; text: string; inv?: string }[] = [];
   private mouse = { x: 0, y: 0, inside: false, drag: null as null | { x: number; y: number; moved: number; button: number }, keys: new Set<string>() };
   private gotSlice!: () => void;
   private firstSlice = new Promise<void>(r => (this.gotSlice = r));
@@ -215,6 +215,8 @@ export class Game {
         const draft = prune(g.draft, d.gone);
         if (g.open || draft !== g.draft) this.store.set({ gantt: { ...g, ...(g.open ? { view: d } : {}), draft } });
         if (draft !== g.draft) this.sendViews();
+      } else if (d.view === 'inv') {
+        if (hud.inv.open) this.store.set({ inv: { ...this.store.get().inv, view: d } });
       } else if (d.view === 'ghost') {
         // призрак того, что тянут сейчас; прежний запрос — не показываем
         const g = this.store.get().gantt;
@@ -223,6 +225,15 @@ export class Game {
     }
     for (const n of s.notices) this.notice(n);
     if (s.notices.some(n => n.kind === 'morning')) this.morning(sl.t);
+    // результат вне спецификации — извещение «стоп» для того, кто держит пост качества (13-art.md, §11–12): мир на паузе,
+    // промотка кончилась; без поста расследование ведёт коллега — извещение без паузы
+    if (s.notices.some(n => n.kind === 'investigation') && holds(this.store.get(), 'quality')) {
+      if (this.speed !== 0) this.resume = this.speed;
+      this.speed = 0;
+      this.ff = false;
+      this.ffLeft = 0;
+      this.hud();
+    }
     this.gotSlice();
   }
 
@@ -297,13 +308,15 @@ export class Game {
       : n.kind === 'cashLow' ? T.notices.cashLow
       : n.kind === 'failure' ? T.notices.failure
       : n.kind === 'repaired' ? T.notices.repaired
-      : n.kind === 'investigation' ? T.notices.investigation
+      : n.kind === 'investigation' ? T.notices.investigation(named(this.db.tests[n.method]?.name, n.method), T.batchCode(...n.code))
       : n.kind === 'invStep' ? T.notices.invStep
       : n.kind === 'concluded' ? T.notices.concluded(n.fate)
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;
-    this.notices.unshift({ t: this.t, text });
+    // извещение о расследовании ведёт к его доске
+    const inv = n.kind === 'investigation' || n.kind === 'invStep' || n.kind === 'concluded' ? n.id : undefined;
+    this.notices.unshift({ t: this.t, text, ...(inv ? { inv } : {}) });
     if (this.notices.length > 30) this.notices.length = 30;
   }
 
@@ -424,7 +437,7 @@ export class Game {
       const g = this.store.get().gantt;
       // большое окно поверх карты во всю ширину: панели справа закрываются; закрыли — то, что тянули, отменено
       const open = !g.open;
-      this.store.set({ gantt: { open, days: g.days, draft: g.draft, ...(g.from !== undefined ? { from: g.from } : {}) }, ...(open ? this.rightClosed() : {}) });
+      this.store.set({ gantt: { open, days: g.days, draft: g.draft, ...(g.from !== undefined ? { from: g.from } : {}) }, ...(open ? { ...this.rightClosed(), inv: { open: false } } : {}) });
       this.sendViews();
     },
     setGanttDays: days => {
@@ -494,6 +507,18 @@ export class Game {
       this.planner.stop();
       this.store.set({ plan: NO_RUN });
     },
+    toggleInv: () => {
+      // большое окно поверх карты, как расписание: панели справа и расписание закрываются
+      const open = !this.store.get().inv.open;
+      this.store.set({ inv: { open }, ...(open ? this.rightClosed() : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.sendViews();
+    },
+    openInv: id => {
+      this.store.set({ inv: { open: true, id }, ...this.rightClosed(), ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.sendViews();
+    },
+    investigate: (inv, step) => this.client.command({ kind: 'investigate', inv, step, by: 'player' }),
+    conclude: (inv, cause, fate) => this.client.command({ kind: 'conclude', inv, cause, fate, by: 'player' }),
     openSeats: () => {
       // сменить место — на паузе; «Взять» пустит мир с прежней скоростью
       if (this.speed !== 0) this.resume = this.speed;
@@ -604,6 +629,12 @@ export class Game {
     };
   }
 
+  /** Расписание закрыто: черновик и окно времени остаются. */
+  private ganttClosed(): Partial<Hud> {
+    const g = this.store.get().gantt;
+    return { gantt: { open: false, days: g.days, draft: g.draft, ...(g.from !== undefined ? { from: g.from } : {}) } };
+  }
+
   /** Окно расписания: с `from` или, вслед за часами, от полуночи — сегодняшней для суток, вчерашней для трёх суток и недели. */
   private ganttWindow(from: number | undefined, days: number): { from: number; to: number } {
     const start = from ?? Math.floor(this.t / DAY) * DAY - (days > 1 ? DAY : 0);
@@ -626,6 +657,7 @@ export class Game {
     const draft = h.gantt.draft.length > 0 ? { draft: [...h.gantt.draft] } : {};
     if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days), ...draft });
     if (h.gantt.open && h.gantt.drag) list.push({ id: 'ghost', view: 'ghost', ...h.gantt.drag, ...draft });
+    if (h.inv.open) list.push({ id: 'inv', view: 'inv', ...(h.inv.id ? { inv: h.inv.id } : {}) });
     const key = JSON.stringify(list);
     if (key === this.viewsSent) return;
     this.viewsSent = key;
@@ -775,6 +807,7 @@ export class Game {
       else if (k === 'KeyE') this.stage.cam.rotate(1);
       else if (k === 'Backquote') this.actions.toggleDebug();
       else if (k === 'KeyG') this.actions.toggleGantt();
+      else if (k === 'KeyI') this.actions.toggleInv();
       else if (k === 'F2') {
         e.preventDefault();
         this.actions.toggleStock();
@@ -785,6 +818,7 @@ export class Game {
         if (h.gantt.drag) this.actions.cancelDrag();
         else if (this.selected) this.actions.select(undefined);
         else if (h.gantt.open) this.actions.toggleGantt();
+        else if (h.inv.open) this.actions.toggleInv();
         else if (h.morning.open) this.actions.closeMorning(false);
         else if (h.cash.open) this.actions.toggleCash();
         else if (h.lab.open) this.actions.toggleLab();

@@ -1,7 +1,8 @@
 // Панели (геймдизайн, §18): верхняя полоса — дата и часы завода, сутки, скорости, «До утра», стены, склад, планёрка,
 // касса с изменением за сутки, извещение; панель склада и карточка выбранной вещи (docs/specs/2026-10-panels.md, 3б);
-// планёрка и панель кассы (3в); лаборатория (3г); расписание (3д); экран «Кем вы будете» и кнопка «Место» (3е); полоса
-// отладки; состояние загрузки и ошибки. Панели только читают хранилище и зовут действия игры.
+// планёрка и панель кассы (3в); лаборатория (3г); расписание (3д); экран «Кем вы будете» и кнопка «Место» (3е); доска
+// расследования (часть 4б) — кнопка со счётом идущих, извещение о расследовании ведёт к ней; полоса отладки; состояние
+// загрузки и ошибки. Панели только читают хранилище и зовут действия игры.
 import { useLayoutEffect, useRef } from 'react';
 import { momentOf } from '../engine/core/calendar';
 import { clock, dateText, money, T } from '../i18n';
@@ -10,6 +11,7 @@ import type { WallMode } from '../render/world';
 import { Card } from './Card';
 import { Cash } from './Cash';
 import { Gantt } from './Gantt';
+import { Inv } from './Inv';
 import { Lab } from './Lab';
 import { Morning } from './Morning';
 import { Seats } from './Seats';
@@ -92,6 +94,10 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
           <button type="button" className={s.gantt.open ? 'on' : ''} onClick={() => actions.toggleGantt()} title={T.gantt.hint} data-test="gantt-open">
             {T.gantt.button}
           </button>
+          <button type="button" className={s.inv.open ? 'on' : ''} onClick={() => actions.toggleInv()} title={T.inv.hint} data-test="inv-open">
+            {T.inv.button}
+            {s.top && s.top.inv > 0 ? <span className="badge"> {s.top.inv}</span> : null}
+          </button>
         </span>
         {s.top ? (
           <span className="stat" data-test="top-cash" title={T.cash.day}>
@@ -100,13 +106,20 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
           </span>
         ) : null}
         {s.lag >= 5 && <span className="warn">{T.top.lag(s.lag)}</span>}
-        <span className="notice">{s.notices[0]?.text ?? T.app.stage}</span>
+        {s.notices[0]?.inv ? (
+          <button type="button" className="notice link" onClick={() => actions.openInv(s.notices[0].inv!)} title={T.inv.hint} data-test="notice-inv">
+            {s.notices[0].text}
+          </button>
+        ) : (
+          <span className="notice">{s.notices[0]?.text ?? T.app.stage}</span>
+        )}
       </div>
       {s.stock.open && <Stock hud={s} actions={actions} plant={plant} />}
       {s.cash.open && <Cash hud={s} actions={actions} />}
       {s.lab.open && <Lab hud={s} actions={actions} />}
       {s.morning.open && s.morning.day !== undefined && <Morning v={s.morning.view} day={s.morning.day} start={s.start} plant={plant} pause={s.morningPause} actions={actions} />}
       {s.gantt.open && <Gantt hud={s} actions={actions} plant={plant} />}
+      {s.inv.open && <Inv hud={s} actions={actions} />}
       {s.seats.open && <Seats hud={s} actions={actions} scenario={scenario} />}
       {s.selected && s.card && <Card v={s.card} start={s.start} plant={plant} actions={actions} beside={s.stock.open || s.cash.open || s.lab.open} />}
       {s.debug && (

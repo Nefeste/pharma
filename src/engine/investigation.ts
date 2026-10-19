@@ -196,7 +196,7 @@ export function openInvestigation(db: ContentDb, s: PlantState, m: InvModel, lot
   const inc = s.incident;
   const truth = inc && inc.batch === b.id && inc.inv === m.id ? { root: inc.root, fired: { ...inc.fired } } : truthOf(db, s, m, b, lot);
   s.investigations[id] = { id, model: m.id, deviation: d.id, batch: b.id, lot: lot.id, test: out[0], opened: s.t, runs: [], obs: [], status: 'open', truth };
-  notices.push({ kind: 'investigation', id, batch: b.id, lot: lot.id });
+  notices.push({ kind: 'investigation', id, batch: b.id, lot: lot.id, method: m.test, code: [b.code.y, b.code.m, b.code.n] });
 }
 
 // ---------------------------------------------------------------- шаги
@@ -347,7 +347,9 @@ function observe(db: ContentDb, s: PlantState, inv: Investigation, st: InvStep, 
     if (!r) continue;
     const p = r.present ? c.sens : P_ONE - c.spec;
     const shown = p >= P_ONE ? true : p <= 0 ? false : roll(s, `inv/${inv.id}/${st.id}/${f.id}`, x => x.chance(p));
-    inv.obs.push({ f: f.id, step: st.id, shown, t: s.t, ...(r.data ? { data: r.data } : {}) });
+    // числа отметки — только у найденной: пропущенную шагом ошибку завод не знает; числа записей знает всегда
+    const data = r.data && (shown || !('mark' in f.read)) ? r.data : undefined;
+    inv.obs.push({ f: f.id, step: st.id, shown, t: s.t, ...(data ? { data } : {}) });
     // была ли улика на самом деле — для разбора
     (inv.truth.present ??= {})[f.id] = r.present;
   }

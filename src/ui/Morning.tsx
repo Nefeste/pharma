@@ -116,6 +116,11 @@ export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningV
     actions.show(t);
   } : undefined);
   const when = (t: number) => whenText(start, t);
+  // строка отклонения с расследованием — к его доске; планёрка закрывается, пауза остаётся
+  const goInv = (id: string) => {
+    actions.closeMorning(false);
+    actions.openInv(id);
+  };
   return (
     <div className="morning panel" id="morning" role="dialog" aria-labelledby="morning-title" data-test="morning">
       <div className="phead">
@@ -207,6 +212,14 @@ export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningV
                   <span className="mono muted">{when(x.t)}</span> {T.morning.devKinds[x.kind]}
                   {x.lot ? ` · ${named(db?.materials[x.material ?? '']?.name, x.material)} ${T.lotCode(...x.lot)}` : ''}
                   {x.batch ? ` · ${T.card.batch} ${T.batchCode(...x.batch)}` : ''}
+                  {x.inv ? (
+                    <>
+                      {' · '}
+                      <span className="go" role="link" tabIndex={0} onClick={() => goInv(x.inv!)} onKeyDown={e => e.key === 'Enter' && goInv(x.inv!)} data-test="morning-inv">
+                        {T.inv.button}
+                      </span>
+                    </>
+                  ) : null}
                 </li>
               ))}
             />

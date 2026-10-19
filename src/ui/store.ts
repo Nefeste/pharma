@@ -9,6 +9,7 @@ import type { Change } from '../engine/plan/schedule';
 import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
+import type { InvView } from '../sim/inv';
 import type { ChartView, LabView } from '../sim/lab';
 import type { BatchLabel, GanttView, GhostView } from '../sim/plan';
 import type { CashView, MorningView, TopView } from '../sim/report';
@@ -32,7 +33,8 @@ export interface Hud {
   ff: boolean;
   /** на сколько игровых минут расчёт отстаёт */
   lag: number;
-  notices: { t: number; text: string }[];
+  /** извещения; у извещения о расследовании — его номер: щелчок ведёт к доске */
+  notices: { t: number; text: string; inv?: string }[];
   debug: boolean;
   quality: Quality;
   /** стены: целые, срез у камеры, вниз */
@@ -72,6 +74,8 @@ export interface Hud {
   };
   /** прогон плана (часть 5) */
   plan: PlanRun;
+  /** доска расследования (часть 4б): открыта ли, какое расследование выбрано (нет — последнее открытое), вид */
+  inv: { open: boolean; id?: string; view?: InvView };
   /** экран «Кем вы будете» (3е): открыт ли, что отмечено */
   seats: { open: boolean; pick: SeatId[] };
 }
@@ -137,6 +141,7 @@ export const initial: Hud = {
   lab: { open: false, tab: 'queue' },
   gantt: { open: false, days: 3, draft: [] },
   plan: NO_RUN,
+  inv: { open: false },
   seats: { open: false, pick: [] },
 };
 
@@ -183,6 +188,14 @@ export interface Actions {
   /** прогон плана: «как сейчас» и черновик, если он есть, — во втором потоке; прервать */
   runPlan(): void;
   stopPlan(): void;
+  /**
+   * доска расследования: открыть или закрыть; открыть на расследовании; шаг — команда `investigate`; решение — команда
+   * `conclude`
+   */
+  toggleInv(): void;
+  openInv(id: string): void;
+  investigate(inv: string, step: string): void;
+  conclude(inv: string, cause: string, fate: 'reject' | 'release'): void;
   /** экран «Кем вы будете»: открыть — мир на паузе; отметить место; взять отмеченные — команда `seat`; закрыть без смены */
   openSeats(): void;
   pickSeat(seat: SeatId): void;

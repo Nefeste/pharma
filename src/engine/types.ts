@@ -1101,6 +1101,7 @@ export type Notice =
   /** команда не выполнена */
   | { kind: 'refused'; cmd: Command['kind']; why: Refusal; detail?: string }
   /** результат вне спецификации — расследование открыто; шаг расследования сделан; расследование решено */
-  | { kind: 'investigation'; id: string; batch: string; lot: string }
+  /** результат вне спецификации — расследование; методика и номер серии — для слов извещения */
+  | { kind: 'investigation'; id: string; batch: string; lot: string; method: Id; code: [number, number, number] }
   | { kind: 'invStep'; id: string; step: string }
   | { kind: 'concluded'; id: string; cause: string; fate: 'reject' | 'release' };

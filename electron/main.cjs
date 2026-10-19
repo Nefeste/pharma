@@ -1,5 +1,5 @@
 // из bolnitsa: electron/main.cjs @ e0a3491 — изменено: заголовок окна. Авто-бенч страницы (--bench) — бенч сцены завода
-// (src/app/bench.ts; docs/specs/2026-10-view.md, 2г).
+// (src/app/bench.ts; docs/specs/2026-10-view.md, 2г), окно бенча развёрнуто (перенести в «Больницу»).
 // Оболочка Electron (spec docs/specs/2026-10-shell-3d.md, «Процессы и потоки»): окно, страница из dist/ по своей схеме
 // app:// (без dev-сервера и без сети), запись итога бенча и снимков в файлы рядом с .exe/AppImage.
 //
@@ -185,6 +185,9 @@ app.whenReady().then(async () => {
   win.webContents.on('will-navigate', e => e.preventDefault());
   win.once('ready-to-show', () => {
     timings.readyToShowMs = Date.now() - t0;
+    // бенч — во весь экран с первого прогона: окно 1600 × 900, развёрнутое посреди бенча, сбивало первый прогон
+    // (замер владельца 19.10.2026; перенести в «Больницу»)
+    if (has('bench')) win.maximize();
     win.show();
   });
   win.webContents.on('console-message', e => {

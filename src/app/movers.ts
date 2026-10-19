@@ -274,28 +274,34 @@ function parkHeading(plan: PlantPlan, v: Point): number {
 
 /** Шаг сетки, на которой стоят несколько человек у одной точки, м. */
 const CROWD_STEP = 0.8;
+/** Двое-трое у одной точки стоят плечом к плечу с таким шагом, м: на 0,35 м от точки люди сливались в одного. */
+export const SIDE_STEP = 0.9;
 
 /**
- * Человек стоит у точки (`standPoint`). Двое-трое — по кругу радиусом 0,35 м, лицом к середине; больше — по квадратной
- * спирали с шагом `CROWD_STEP` по проходимым клеткам: у входа после смены собирается два десятка человек.
+ * Человек стоит у точки (`standPoint`). Двое-трое — плечом к плечу с шагом `SIDE_STEP`, лицом туда же, куда смотрит
+ * точка (к машине); не помещаются на проходимом полу или их больше — по квадратной спирали с шагом `CROWD_STEP` по
+ * проходимым клеткам: у входа после смены собирается два десятка человек.
  */
 function standAt(plan: PlantPlan, p: PersonRow, at: Point, k: number, n: number): Figure {
   const sp = standPoint(plan, at);
-  if (n <= 3) {
-    const r = n > 1 ? 0.35 : 0;
-    const a = (2 * Math.PI * k) / Math.max(1, n);
-    const heading = n > 1 ? a + Math.PI : (sp.heading ?? Math.PI);
-    return { person: p.person, role: p.role, x: m(sp.x) + r * Math.sin(a), z: m(sp.z) + r * Math.cos(a), heading, doing: 'stand' };
-  }
   const nav = plan.nav;
+  const heading = sp.heading ?? Math.PI;
+  if (n === 1) return { person: p.person, role: p.role, x: m(sp.x), z: m(sp.z), heading, doing: 'stand' };
+  if (n <= 3) {
+    // поперёк взгляда: взгляд — (sin h, cos h), плечо — (cos h, −sin h)
+    const off = (i: number) => (i - (n - 1) / 2) * SIDE_STEP;
+    const spot = (i: number) => ({ x: m(sp.x) + off(i) * Math.cos(heading), z: m(sp.z) - off(i) * Math.sin(heading) });
+    const fits = Array.from({ length: n }, (_, i) => spot(i)).every(q => nav.walk[cellOf(nav, { x: q.x * 100, z: q.z * 100 })]);
+    if (fits) return { person: p.person, role: p.role, ...spot(k), heading, doing: 'stand' };
+  }
   let seen = 0;
   for (const [dx, dz] of spiral()) {
     const x = m(sp.x) + dx * CROWD_STEP;
     const z = m(sp.z) + dz * CROWD_STEP;
     if (!nav.walk[cellOf(nav, { x: x * 100, z: z * 100 })]) continue;
-    if (seen++ === k) return { person: p.person, role: p.role, x, z, heading: sp.heading ?? Math.PI, doing: 'stand' };
+    if (seen++ === k) return { person: p.person, role: p.role, x, z, heading, doing: 'stand' };
   }
-  return { person: p.person, role: p.role, x: m(sp.x), z: m(sp.z), heading: sp.heading ?? Math.PI, doing: 'stand' };
+  return { person: p.person, role: p.role, x: m(sp.x), z: m(sp.z), heading, doing: 'stand' };
 }
 
 /** Квадратная спираль от середины: (0,0), (1,0), (1,1), (0,1), (−1,1)… — до 12 колец. */

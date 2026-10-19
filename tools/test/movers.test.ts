@@ -69,6 +69,7 @@ describe('где люди и техника', () => {
 
   test('к грузу — ровно к началу работы; техника у места — к его времени; паллета на вилах — там же, где техника', () => {
     let checked = 0;
+    let pairs = 0;
     for (const { sl } of frames(2, 301)) {
       sl.tasks.forEach((tk, ti) => {
         const crew = sl.people.filter(p => p.task === ti);
@@ -76,10 +77,18 @@ describe('где люди и техника', () => {
         const atStart = moversAt(db, plan, sl.tasks, sl.people, sl.vehicles, tk.times[1]);
         if (!v) {
           const sp = standPoint(plan, tk.from);
-          for (const p of crew) {
-            const f = atStart.people.find(x => x.person === p.person)!;
-            expect(Math.hypot(f.x - sp.x / 100, f.z - sp.z / 100)).toBeLessThan(0.36);
+          const here = crew.map(p => atStart.people.find(x => x.person === p.person)!);
+          for (const f of here) {
+            // у точки: плечом к плечу — до 0,9 м, по спирали рядом — до 1,13 м
+            expect(Math.hypot(f.x - sp.x / 100, f.z - sp.z / 100)).toBeLessThan(1.2);
             expect(f.doing).toBe('stand');
+          }
+          // двое-трое у одной точки не стоят друг в друге и смотрят в одну сторону (снимки владельца 19.10.2026)
+          if (here.length > 1 && here.length <= 3) {
+            for (let i = 0; i < here.length; i++)
+              for (let j = i + 1; j < here.length; j++) expect(Math.hypot(here[i].x - here[j].x, here[i].z - here[j].z)).toBeGreaterThan(0.79);
+            expect(new Set(here.map(f => f.heading.toFixed(6))).size).toBe(1);
+            pairs++;
           }
           checked++;
           return;
@@ -101,6 +110,7 @@ describe('где люди и техника', () => {
       });
     }
     expect(checked).toBeGreaterThan(50);
+    expect(pairs).toBeGreaterThan(0);
   });
 
   test('конец задачи — то же место, куда движок ставит человека и технику после неё', () => {

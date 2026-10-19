@@ -15,7 +15,7 @@ import type { Quality } from '../render/view';
 import { PRESETS, QUALITIES } from '../render/view';
 import { YARD_Y } from '../render/world';
 import type { Game } from './game';
-import { summarize } from './stats';
+import { since, summarize } from './stats';
 
 export interface BenchOpts {
   secs?: number;
@@ -148,8 +148,9 @@ export async function runBench(g: Game, opts: BenchOpts) {
         const tris: number[] = [];
         const near: number[] = [];
         const far: number[] = [];
-        const gpu0 = g.stage.gpu.samples.length;
-        const rt0 = g.client.roundTrips.length;
+        // отметки — по счёту замеров, а не по длине их памяти: память обрезается
+        const gpu0 = g.stage.gpu.taken;
+        const rt0 = g.client.roundTripsTaken;
         let last = 0;
         const t0 = performance.now();
         g.onFrame = ts => {
@@ -167,7 +168,7 @@ export async function runBench(g: Game, opts: BenchOpts) {
         store.set({ status: T.debug.benchCell(T.debug.qualities[q], name, T.debug.measure) });
         await sleep(secs * 1000);
         g.onFrame = null;
-        const gpu = g.stage.gpu.samples.slice(gpu0);
+        const gpu = since(g.stage.gpu.samples, g.stage.gpu.taken, gpu0);
         const iv = summarize(interval);
         const avg = (a: number[]) => Math.round(a.reduce((x, y) => x + y, 0) / Math.max(1, a.length));
         const mem = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
@@ -187,7 +188,7 @@ export async function runBench(g: Game, opts: BenchOpts) {
           over100ms: interval.filter(v => v > 100).length,
           drawCpuMs: summarize(draw),
           gpuMs: gpu.length ? summarize(gpu) : null,
-          workerMs: summarize(g.client.roundTrips.slice(rt0)),
+          workerMs: summarize(since(g.client.roundTrips, g.client.roundTripsTaken, rt0)),
           drawCalls: avg(calls),
           triangles: avg(tris),
           peopleNear: Math.max(0, ...near),

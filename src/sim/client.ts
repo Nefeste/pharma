@@ -1,6 +1,8 @@
 // из bolnitsa: src/sim/client.ts @ e0a3491 — изменено: завод вместо смены; без режима врача и мира больницы; `ahead` —
 // на сколько часы окна ушли вперёд среза («живое время», docs/specs/2026-10-view.md, 2в); виды панелей (3б). Исправлено
 // (перенести в «Больницу»): `tick` в пути освобождает только ответ на `tick` — ответ на команду его не освобождает.
+// Исправлено (перенести в «Больницу»): счёт `roundTripsTaken` — память времён обрезана, и отметка начала прогона бенча
+// длиной массива давала пустую выборку со второго прогона.
 // Сторона потока отрисовки: Web Worker с движком, ход часов кадрами, последний срез. В пути — не больше одного `tick`:
 // пока ответ не пришёл, игровые секунды копятся, и поток не захлёбывается кадрами, если не успевает.
 import type { Command, Notice } from '../engine/types';
@@ -23,8 +25,10 @@ export class SimClient {
   /** секунды `tick` в пути */
   private sent = 0;
   private saves: ((json: string) => void)[] = [];
-  /** время на поток: от отправки `tick` до ответа, мс — для бенча */
+  /** время на поток: от отправки `tick` до ответа, мс — для бенча; последние 1000–2000 */
   readonly roundTrips: number[] = [];
+  /** сколько времён пришло всего: отметка начала прогона бенча (`since` в src/app/stats.ts) */
+  roundTripsTaken = 0;
   private sentAt = 0;
   onSlice: (s: Slice) => void = () => {};
   onError: (message: string) => void = () => {};
@@ -49,6 +53,7 @@ export class SimClient {
     if (this.ticking && msg.tick) {
       this.ticking = false;
       this.roundTrips.push(performance.now() - this.sentAt);
+      this.roundTripsTaken++;
       if (this.roundTrips.length > 2000) this.roundTrips.splice(0, 1000);
     }
     this.onSlice({ buf: msg.buf, notices: msg.notices, lag: msg.lag, ...(msg.views ? { views: msg.views } : {}) });

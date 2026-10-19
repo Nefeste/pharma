@@ -1,4 +1,5 @@
-// из bolnitsa: src/render/gpu.ts @ e0a3491
+// из bolnitsa: src/render/gpu.ts @ e0a3491 — исправлено (перенести в «Больницу»): счёт замеров `taken` — память замеров
+// обрезана, и отметка начала прогона длиной массива с третьего прогона бенча давала пустую выборку.
 // Время видеокарты на кадр (spec docs/specs/2026-10-shell-3d.md, «Авто-бенч»): EXT_disjoint_timer_query_webgl2, если оно
 // есть (спецификация Khronos, пример 1: beginQuery/endQuery с TIME_ELAPSED_EXT). С вертикальной синхронизацией к/с
 // упираются в 60, а время видеокарты показывает запас. Результат запроса приходит через кадр-другой — опрашивается без
@@ -13,8 +14,10 @@ export class GpuTimer {
   private free: WebGLQuery[] = [];
   private pending: WebGLQuery[] = [];
   private active: WebGLQuery | null = null;
-  /** готовые замеры, мс; забирает бенч */
+  /** готовые замеры, мс, последние 2000; забирает бенч */
   readonly samples: number[] = [];
+  /** сколько замеров пришло всего: отметка начала прогона бенча (`since` в stats.ts) */
+  taken = 0;
 
   constructor(private gl: WebGL2RenderingContext) {
     this.ext = gl.getExtension('EXT_disjoint_timer_query_webgl2') as TimerExt | null;
@@ -49,7 +52,10 @@ export class GpuTimer {
       const ns = gl.getQueryParameter(q, gl.QUERY_RESULT) as number;
       this.pending.shift();
       this.free.push(q);
-      if (!disjoint) this.samples.push(ns / 1e6);
+      if (!disjoint) {
+        this.samples.push(ns / 1e6);
+        this.taken++;
+      }
     }
     if (this.samples.length > 2000) this.samples.splice(0, this.samples.length - 2000);
   }

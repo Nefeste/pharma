@@ -2,12 +2,29 @@
 import type { ZoneKind } from '../content/types';
 import { pluralRu } from './plural';
 
+/** Тара по виду: одна, две, пять. */
+const TARE_RU: Record<string, [string, string, string]> = {
+  case: ['гофроящик', 'гофроящика', 'гофроящиков'],
+  drum: ['бочка', 'бочки', 'бочек'],
+  bag: ['мешок', 'мешка', 'мешков'],
+  roll: ['рулон', 'рулона', 'рулонов'],
+  box: ['коробка', 'коробки', 'коробок'],
+  bundle: ['связка', 'связки', 'связок'],
+  bin: ['контейнер', 'контейнера', 'контейнеров'],
+};
+/** Число с разрядами, как `num` в index.ts (он сам читает эти строки). */
+const groupRu = (n: number) => new Intl.NumberFormat('ru-RU').format(n);
+const tareRu = (n: number, kind: string) => {
+  const f = TARE_RU[kind];
+  return f ? pluralRu(n, f[0], f[1], f[2]) : pluralRu(n, 'тара', 'тары', 'тар');
+};
+
 export const ru = {
   app: {
     title: 'Фармзавод',
     loading: 'Загрузка…',
     error: 'Ошибка',
-    stage: 'Прототип, часть 3: панели',
+    stage: 'Этап Б, часть 1: что происходит',
   },
   date: {
     /** родительный падеж: «1 сентября 2027» */
@@ -241,6 +258,14 @@ export const ru = {
     expiry: 'Годен до',
     where: 'Где',
     containers: (n: number) => `${n} ${pluralRu(n, 'тара', 'тары', 'тар')} на паллете`,
+    /** что лежит на паллете (Б1а): «40 гофроящиков по 120 пачек», «4 бочки по 50 кг» — по виду тары; у ГП — сколько в полном ящике */
+    holds: (n: number, kind: string, per: string) => `${n} ${tareRu(n, kind)} по ${per}`,
+    /** тара с разным количеством: «4 бочки: 2 по 50 кг, 1 по 37,2 кг, 1 по 12 кг» */
+    holdsBy: (n: number, kind: string, groups: string[]) => `${n} ${tareRu(n, kind)}: ${groups.join(', ')}`,
+    holdsGroup: (n: number, per: string) => `${n} по ${per}`,
+    full: (per: string) => `в полном ящике — ${per}`,
+    packs: (n: number) => `${n} ${pluralRu(n, 'пачка', 'пачки', 'пачек')}`,
+    holdsLabel: 'Что лежит',
     since: (t: string) => `с ${t}`,
     parts: 'Узлы',
     failed: 'отказал',
@@ -550,6 +575,63 @@ export const ru = {
     falseSign: 'ошибка шага: улики не было',
     gain: (bits: string) => `польза — ${bits}\u00a0бита`,
     idle: (bits: string) => `почти ничего не сдвинул бы: польза — ${bits}\u00a0бита`,
+  },
+  /** справочник завода (этап Б, Б1а; docs/specs/2026-10-vertical-slice.md): как должно быть по НСИ и как есть на заводе */
+  ref: {
+    title: 'Справочник завода',
+    question: 'Как должно быть и как есть',
+    button: 'Справочник',
+    hint: 'Продукты, карты, оборудование, лаборатория, люди и контрагенты: как должно быть и как есть (F1)',
+    tabs: { products: 'Продукты', recipes: 'Карты', equipment: 'Оборудование', lab: 'Лаборатория', people: 'Люди', partners: 'Контрагенты' },
+    product: (form: string, code: string) => `${form} · код в номере серии ${code}`,
+    forms: { tablet: 'таблетки' } as Record<string, string>,
+    skuCols: { sku: 'Позиция', blister: 'В блистере', blisters: 'Блистеров в пачке', perCase: 'Пачек в ящике', cases: 'Ящиков на паллете', packs: 'Пачек на паллете', shelf: 'Срок годности', price: 'Цена завода', regPrice: 'Предельная цена' },
+    tablets: (n: number) => `${groupRu(n)} ${pluralRu(n, 'таблетка', 'таблетки', 'таблеток')}`,
+    months: (n: number) => `${n} ${pluralRu(n, 'месяц', 'месяца', 'месяцев')}`,
+    batch: (mass: string, tablets: string) => `Серия — ${mass}, ${tablets}`,
+    bomCols: { material: 'Материал', qty: 'На серию', how: '' },
+    potency: 'с пересчётом на содержание',
+    qs: 'добирает массу серии',
+    stageCols: { n: '№', stage: 'Стадия', room: 'Помещение', equipment: 'Оборудование', staff: 'Люди', plan: 'По карте', fact: 'По факту', now: 'Сейчас', params: 'Режимы', ipc: 'Контроль' },
+    mix: 'первое смешивание — дата производства',
+    staff: (role: string, n: number) => `${role} × ${n}`,
+    last: (d: string) => `последняя ${d}`,
+    mean: (d: string, n: number) => `в среднем ${d} · ${n} ${pluralRu(n, 'серия', 'серии', 'серий')}`,
+    none: 'ещё не было',
+    now: (gone: string, plan: string) => `идёт ${gone} из ${plan}`,
+    idle: '—',
+    planNote: 'По карте — на размер серии по технологической карте; по факту — по записям стадий сделанных серий.',
+    params: { impeller: 'Скорость импеллера', wetMassing: 'Влажное перемешивание', water: 'Вода очищенная', inletTemp: 'Температура воздуха на входе', lubeTime: 'Время опудривания', force: 'Сила прессования' } as Record<string, string>,
+    range: (target: string, lo: string, hi: string) => `${target} (${lo}–${hi})`,
+    eqCols: { name: 'Оборудование', room: 'Помещение', cleaning: 'Уборка: малая · большая', parts: 'Узлы: износ и ресурс', now: 'Сейчас' },
+    part: (name: string, wear: string, life: string) => `${name}: износ ${wear} · ресурс ${life}`,
+    life: (n: string, item: string) => `${n} ${item}`,
+    lifeItems: { equipment: 'таблеток', blister: 'блистеров', carton: 'пачек' } as Record<string, string>,
+    of: (batch: string) => `серия ${batch}`,
+    lineNow: (batch: string, sku: string) => `сейчас: серия ${batch}, ${sku}`,
+    lineIdle: 'сейчас без задания',
+    machineCols: { name: 'Машина', nominal: 'Номинал', buffer: 'Накопитель за ней', now: 'Сейчас', parts: 'Узлы: износ и ресурс' },
+    perMin: (n: string, item: string) => `${n} ${item}/мин`,
+    items: { blister: 'блистеров', carton: 'пачек' } as Record<string, string>,
+    buffer: (n: string, item: string) => `${n} ${item}`,
+    instCols: { name: 'Прибор', room: 'Помещение', now: 'Сейчас' },
+    instFree: 'свободен',
+    methodCols: { name: 'Методика', inst: 'Прибор', prep: 'Аналитик', run: 'Прибор', alone: 'Без аналитика', queued: 'В очереди', running: 'В работе', done: 'Сделано' },
+    noInst: 'без прибора',
+    yes: 'да',
+    no: 'нет',
+    roleCols: { name: 'Роль', dept: 'Отдел', salary: 'Зарплата в месяц', shifts: 'По сменам', present: 'На заводе сейчас', busy: 'Заняты задачей' },
+    shiftCols: { name: 'Смена', days: 'Дни', hours: 'Часы' },
+    hours: (from: number, to: number) => `${String(from).padStart(2, '0')}:00–${String(to).padStart(2, '0')}:00`,
+    supCols: { name: 'Поставщик', items: 'Материалы: цена · наименьшая партия', lead: 'Срок поставки', prepay: 'Предоплата', pay: 'Остаток — через', approved: 'Одобрен' },
+    perKg: (price: string) => `${price}/кг`,
+    perPcs: (price: string) => `${price}/шт.`,
+    spare: (name: string, price: string, lead: string) => `${name} — запчасть: ${price}/шт. · поставка ${lead}`,
+    days: (n: number) => `${n} ${pluralRu(n, 'день', 'дня', 'дней')}`,
+    dayRange: (a: number, b: number) => `${a}–${b} ${pluralRu(b, 'день', 'дня', 'дней')}`,
+    cusCols: { name: 'Покупатель', pay: 'Отсрочка', orders: 'Заказы', lead: 'Срок заказа', shelf: 'Остаточный срок годности, не менее' },
+    orders: (days: string, hour: number) => `${days}, в ${String(hour).padStart(2, '0')}:00`,
+    noHidden: 'Здесь только то, что завод знает по своим документам; как завод живёт на самом деле — видно по факту.',
   },
   /** экран «Кем вы будете» и места игрока (3е; геймдизайн, §29.2) */
   seats: {

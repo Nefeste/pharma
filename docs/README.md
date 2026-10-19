@@ -36,7 +36,8 @@
    [`specs/2026-10-view.md`](specs/2026-10-view.md) — 3D; [`specs/2026-10-panels.md`](specs/2026-10-panels.md) —
    панели; [`specs/2026-10-plan-run.md`](specs/2026-10-plan-run.md) — прогон плана;
    [`specs/2026-10-investigation.md`](specs/2026-10-investigation.md) — расследование;
-   [`specs/2026-10-master-data.md`](specs/2026-10-master-data.md) — НСИ завода и номер серии (набросок).
+   [`specs/2026-10-master-data.md`](specs/2026-10-master-data.md) — НСИ завода и номер серии (набросок);
+   [`specs/2026-10-vertical-slice.md`](specs/2026-10-vertical-slice.md) — этап Б, вертикальный срез: части и Б1.
 8. [`07-roadmap.md`](07-roadmap.md) — этапы, планки качества и решения владельца.
 9. [`09-market.md`](09-market.md) — фармацевтические игры в Steam и ориентиры жанра: единственное
    место, где названы чужие игры.

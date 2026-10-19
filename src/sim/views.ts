@@ -15,6 +15,7 @@ import { type InvQuery, type InvView, invView } from './inv';
 import { type ChartQuery, type ChartView, chartView, type LabQuery, type LabView, labView } from './lab';
 import { type EqState, eqStateOf } from './pack';
 import { type GanttQuery, type GanttView, type GhostQuery, type GhostView, ganttView, ghostView } from './plan';
+import { type RefQuery, type RefView, refView } from './ref';
 import { type CashQuery, type CashView, cashView, type MorningQuery, type MorningView, morningView, type TopQuery, type TopView, topView } from './report';
 
 /** Вещь на полу — теми же номерами, что в срезе: паллета, помещение и оборудование — по порядку плана, машина — линия и место. */
@@ -46,7 +47,7 @@ export interface CardQuery {
   thing: Thing;
 }
 
-export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery);
+export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery);
 
 /** Место паллеты: место плана (номер по порядку), помещение (номер по порядку), фура. */
 export type PlaceRef = { k: 'slot'; i: number } | { k: 'room'; i: number } | { k: 'truck'; n: number; customer: boolean };
@@ -124,7 +125,7 @@ export interface LotInfo {
 }
 
 export type CardData =
-  | { kind: 'unit'; unit: number; tag: Tag; containers: number; where: PlaceRef; lot?: LotInfo; why: Why[]; history: Hist[] }
+  | { kind: 'unit'; unit: number; tag: Tag; containers: number; holds?: Holds; where: PlaceRef; lot?: LotInfo; why: Why[]; history: Hist[] }
   | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; batch?: string; stage?: string; why: Why[] }
   | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; parts: PartInfo[]; why: Why[]; history: Hist[] }
   | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; sku?: Id; parts: PartInfo[]; why: Why[]; history: Hist[] }
@@ -133,6 +134,16 @@ export type CardData =
   | { kind: 'truck'; truck: number; customer?: Id; supplier?: Id; po?: string; docked: boolean; open: boolean; units: number; arrived: number }
   /** вещи больше нет на заводе: паллету отгрузили, фура уехала */
   | { kind: 'gone' };
+
+/**
+ * Что лежит на паллете (Б1а): вид тары и сколько в ней по учёту — мг или шт., тары с одинаковым количеством вместе, от
+ * большего; у готовой продукции — сколько пачек в полном ящике по позиции.
+ */
+export interface Holds {
+  container: Id;
+  by: { qty: number; n: number }[];
+  full?: number;
+}
 
 /** Узел машины: вид в записи, наработка с установки (запас до отказа знает только движок), исправен ли. */
 export interface PartInfo {
@@ -152,7 +163,7 @@ export interface CardView {
   card: CardData;
 }
 
-export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView;
+export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView;
 
 const num = (id: string) => Number(id.slice(1));
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
@@ -312,6 +323,19 @@ function lotHistory(s: PlantState, lot: Lot): Hist[] {
   return out.map((h, i) => ({ h, i })).sort((a, b) => (a.h.t ?? Number.MAX_SAFE_INTEGER) - (b.h.t ?? Number.MAX_SAFE_INTEGER) || a.i - b.i).map(x => x.h);
 }
 
+function holdsOf(db: ContentDb, s: PlantState, u: Unit): Holds {
+  const list = u.items.map(id => s.containers[id]);
+  const by = new Map<number, number>();
+  for (const c of list) by.set(c.qty, (by.get(c.qty) ?? 0) + 1);
+  const lot = s.lots[list[0].lot];
+  const sku = Object.values(db.skus).find(k => k.fg === lot.material);
+  return {
+    container: list[0].type,
+    by: [...by].map(([qty, n]) => ({ qty, n })).sort((a, b) => b.qty - a.qty),
+    ...(sku ? { full: sku.case.per } : {}),
+  };
+}
+
 function partsOfMachine(db: ContentDb, s: PlantState, machine: string): PartInfo[] {
   return Object.values(s.parts)
     .filter(p => p.machine === machine)
@@ -342,6 +366,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         unit: thing.n,
         tag: u.tag,
         containers: u.items.length,
+        ...(first ? { holds: holdsOf(db, s, u) } : {}),
         where: placeOf(db, s, u),
         ...(lot ? { lot: lotInfo(s, lot, left) } : {}),
         why: [...tasks.map(taskWhy), ...(lot ? lotWhy(s, lot) : [])],
@@ -464,6 +489,8 @@ export function viewOf(db: ContentDb, s: PlantState, q: ViewQuery): ViewData {
       return ghostView(db, s, q);
     case 'inv':
       return invView(db, s, q);
+    case 'ref':
+      return refView(db, s);
   }
 }
 

@@ -633,8 +633,9 @@ try {
     if (await page.evaluate(() => !!document.querySelector('#inv'))) fail('расследование: Esc не закрыл');
   }
 
-  // справочник завода (Б1а): F1 — «Как должно быть и как есть»; у карты прототипа шесть стадий — по карте и по факту
-  // сделанных серий; у позиции — 120 пачек в ящике; Esc закрывает
+  // справочник завода (Б1а, Б1в): F1 — «Что и как делает завод, на чём, кем и с кем»; у карты прототипа шесть стадий — по
+  // карте и по факту сделанных серий; столбец «По карте» упорядочивается в обе стороны; у позиции — 120 пачек в ящике;
+  // поиск сужает таблицы вкладки, а цифры в поле поиска — текст, не скорость; Esc закрывает
   {
     await page.keyboard.press('F1');
     await page.waitForFunction(() => !!window.__game.store.get().ref.view, null, { timeout: 20_000 });
@@ -647,11 +648,46 @@ try {
     if (rec.rows !== 6 || rec.plan !== 6 || rec.fact !== 6) fail(`справочник: стадий ${rec.rows}, по карте ${rec.plan}, по факту ${rec.fact}`);
     else ok(`справочник: шесть стадий по карте и по факту — «${rec.first}»`);
     await page.screenshot({ path: join(out, 'e2e-ref.png') });
+    // порядок: «По карте» — короткие стадии вверху, ещё раз — длинные; первая строка — та, что по числу крайняя
+    const firstStage = () => page.evaluate(() => document.querySelector('[data-test=ref-stages] tbody tr td:nth-child(2)')?.innerText.split('\n')[0] ?? '');
+    const planSort = '[data-test=ref-stages] thead th:nth-child(6) [data-test=ref-sort]';
+    const plans = await page.evaluate(() => {
+      const v = window.__game.store.get().ref.view.recipes[0].stages;
+      const by = [...v].sort((a, b) => a.nominal - b.nominal);
+      return { shortest: by[0].id, longest: by[by.length - 1].id };
+    });
+    await page.click(planSort);
+    await frames(1);
+    const up = await firstStage();
+    await page.click(planSort);
+    await frames(1);
+    const down = await firstStage();
+    // названия стадий — как в окне: русские строки игры
+    const ru = { dispense: 'Отвешивание', granulate: 'Грануляция', dry: 'Сушка', mill: 'Калибровка', blend: 'Опудривание', compress: 'Таблетирование' };
+    const want = [ru[plans.shortest], ru[plans.longest]];
+    if (up !== want[0] || down !== want[1]) fail(`справочник: по карте вверх — «${up}» (ждём «${want[0]}»), вниз — «${down}» (ждём «${want[1]}»)`);
+    else ok(`справочник: по карте — короткая «${up}» вверху, ещё раз — длинная «${down}»`);
     await page.click('[data-test=ref-tab][data-tab=products]');
     await frames(2);
     const skus = await page.evaluate(() => [...document.querySelectorAll('[data-test=ref-skus] tbody tr')].map(r => r.children[3]?.textContent ?? ''));
     if (!skus.includes('120 пачек')) fail(`справочник: пачек в ящике — ${skus.join(', ')}`);
     else ok(`справочник: пачек в ящике — ${skus.join(', ')}; снимок ${join(out, 'e2e-ref.png')}`);
+    // поиск: «№20» — одна позиция; цифры в поле — текст, скорость та же
+    const speed0 = await page.evaluate(() => window.__game.speed);
+    await page.fill('[data-test=ref-search]', '');
+    await page.click('[data-test=ref-search]');
+    await page.keyboard.type('№20');
+    await frames(1);
+    const found = await page.evaluate(() => ({ rows: [...document.querySelectorAll('[data-test=ref-skus] tbody tr')].map(r => r.innerText.split('\t')[0]), speed: window.__game.speed }));
+    if (found.rows.length !== 1 || !/№20/.test(found.rows[0]) || found.speed !== speed0) fail(`справочник: поиск «№20» — строк ${found.rows.length} (${found.rows.join(' | ')}), скорость ${speed0} → ${found.speed}`);
+    else ok(`справочник: поиск «№20» — одна позиция «${found.rows[0]}», скорость не тронута`);
+    await page.fill('[data-test=ref-search]', 'пресс');
+    await page.click('[data-test=ref-tab][data-tab=equipment]');
+    await frames(1);
+    const press = await page.evaluate(() => [...document.querySelectorAll('[data-test=ref-equipment] tbody tr')].map(r => r.innerText.split('\t')[0]));
+    if (press.length !== 1 || !/пресс/i.test(press[0])) fail(`справочник: поиск «пресс» в оборудовании — ${press.join(' | ')}`);
+    else ok(`справочник: поиск «пресс» — «${press[0]}»`);
+    await page.fill('[data-test=ref-search]', '');
     for (const tab of ['equipment', 'lab', 'people', 'partners']) {
       await page.click(`[data-test=ref-tab][data-tab=${tab}]`);
       await frames(1);

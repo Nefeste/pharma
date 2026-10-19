@@ -850,6 +850,8 @@ export class Game {
         if (k === 'Escape') this.actions.closeSeats();
         return;
       }
+      // в поле ввода — поиск справочника — клавиши пишут текст, а не командуют миром; Esc закрывает окно, как всегда
+      if (k !== 'Escape' && (e.target as HTMLElement | null)?.closest?.('input, textarea, select')) return;
       // в окне расписания стрелки двигают задание, а не камеру (Gantt.tsx)
       if ((e.target as HTMLElement | null)?.closest?.('.gantt') && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(k)) return;
       if (k === 'Space') {

@@ -464,6 +464,39 @@ try {
   if (packing.lamps.every(l => l === 'off') || packing.items < 1) fail(`линия: лампы ${packing.lamps.join(', ')}, штук на лентах ${packing.items}`);
   else ok(`линия в ${packing.hour.toFixed(1)} ч: лампы ${packing.lamps.join(', ')}, штук на лентах и в накопителях ${packing.items}`);
 
+  // «Сейчас» (Б1б): N — работы по разделам; у упаковки — пачки и скорость. «Смотреть» — камера к линии, её карточка с той же
+  // кнопкой, ×1 и «Смотрите: …» в полосе; «Перестать» — прежняя скорость, пауза; Esc закрывает карточку и панель
+  {
+    await page.keyboard.press('KeyN');
+    await page.waitForFunction(() => (window.__game.store.get().now.view?.rows.length ?? 0) > 0, null, { timeout: 20_000 });
+    await frames(2);
+    const rows = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-test=now-row]')].map(r => ({ key: r.getAttribute('data-key'), kind: r.getAttribute('data-kind'), text: r.innerText.replace(/\s+/g, ' ').trim() })),
+    );
+    const pack = rows.find(r => r.kind === 'pack');
+    if (!pack || !/пачек/.test(pack.text)) fail(`«Сейчас»: строк ${rows.length}, упаковки ${pack ? `«${pack.text}»` : 'нет'}`);
+    else ok(`«Сейчас»: строк ${rows.length} (${rows.map(r => r.kind).join(', ')}); упаковка — «${pack.text}»`);
+    await page.screenshot({ path: join(out, 'e2e-now.png') });
+    if (pack) {
+      await page.click(`[data-test=now-row][data-key="${pack.key}"] [data-test=now-watch]`);
+      await page.waitForFunction(() => window.__game.speed === 1 && !!window.__game.store.get().watch, null, { timeout: 10_000 });
+      await frames(2);
+      const w = await page.evaluate(() => ({
+        text: document.querySelector('[data-test=watching]')?.textContent ?? '',
+        sel: window.__game.selected,
+        card: !!document.querySelector('[data-test=card-watch]'),
+      }));
+      if (!/Смотрите/.test(w.text) || w.sel?.kind !== 'machine' || !w.card) fail(`«Смотреть»: полоса «${w.text}», выбрано ${JSON.stringify(w.sel)}, «Смотреть» в карточке ${w.card ? 'есть' : 'нет'}`);
+      else ok(`«Смотреть»: ×1, камера и карточка у линии, в полосе «${w.text}»`);
+      await page.click('[data-test=unwatch]');
+      await page.waitForFunction(() => window.__game.speed === 0 && !window.__game.store.get().watch, null, { timeout: 10_000 });
+      ok('«Перестать»: прежняя скорость — пауза');
+    }
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    if (await page.evaluate(() => !!document.querySelector('#now') || !!document.querySelector('[data-test=card]'))) fail('«Сейчас»: Esc не закрыл карточку и панель');
+  }
+
   // посты (3а): свободные ждут на постах своих ролей, а не у входа
   const posts = await page.evaluate(() => {
     const g = window.__game;
@@ -496,14 +529,19 @@ try {
   // крупность показа (2г): с высоты участка — стрелки перевозок и линии, люди и техника скрыты; с высоты цеха — по одному
   await camAt(null);
   await settle(3);
-  const site = await page.evaluate(() => ({ people: window.__game.stage.peopleShown, vehicles: window.__game.stage.vehiclesShown, arrows: window.__game.stage.overlay.arrowsShown }));
-  if (site.people || site.vehicles || site.arrows < 1) fail(`участок: людей ${site.people}, техники ${site.vehicles}, стрелок ${site.arrows}`);
-  else ok(`участок: стрелок ${site.arrows}, люди и техника скрыты`);
+  const site = await page.evaluate(() => ({ people: window.__game.stage.peopleShown, vehicles: window.__game.stage.vehiclesShown, arrows: window.__game.stage.overlay.arrowsShown, badges: window.__game.stage.badges.mesh.count }));
+  if (site.people || site.vehicles || site.arrows < 1 || site.badges) fail(`участок: людей ${site.people}, техники ${site.vehicles}, стрелок ${site.arrows}, значков работ ${site.badges}`);
+  else ok(`участок: стрелок ${site.arrows}, люди, техника и значки работ скрыты`);
   await camAt(HALL);
   await settle(1);
-  const hall = await page.evaluate(() => ({ people: window.__game.stage.peopleShown, layer: window.__game.stage.overlay.group.visible }));
-  if (hall.people < 1 || hall.layer) fail(`цех: людей ${hall.people}, слой участка ${hall.layer ? 'виден' : 'скрыт'}`);
-  else ok(`цех: по одному — людей ${hall.people}, слой участка скрыт`);
+  const hall = await page.evaluate(() => ({
+    people: window.__game.stage.peopleShown,
+    layer: window.__game.stage.overlay.group.visible,
+    badges: window.__game.stage.badges.mesh.count,
+    busy: window.__game.view.people.filter(p => p.present && p.task >= 0).length,
+  }));
+  if (hall.people < 1 || hall.layer || hall.badges < 1 || hall.badges > hall.busy) fail(`цех: людей ${hall.people}, слой участка ${hall.layer ? 'виден' : 'скрыт'}, значков работ ${hall.badges} при занятых ${hall.busy}`);
+  else ok(`цех: по одному — людей ${hall.people}, значков работ ${hall.badges} (занятых ${hall.busy}), слой участка скрыт`);
 
   // контактный лист (13-art.md, §17): три высоты камеры днём (час упаковки) и ночью на трёх пресетах
   const heights = [
@@ -603,7 +641,7 @@ try {
     await frames(2);
     const rec = await page.evaluate(() => {
       const rows = [...document.querySelectorAll('[data-test=ref-stages] tbody tr')];
-      const cell = (r, i) => r.children[i]?.textContent ?? '';
+      const cell = (r, i) => (r.children[i]?.innerText ?? '').replace(/\s+/g, ' ').trim();
       return { rows: rows.length, plan: rows.filter(r => /\d/.test(cell(r, 5))).length, fact: rows.filter(r => /последняя/.test(cell(r, 6))).length, first: rows[0] ? `${cell(rows[0], 1)}: ${cell(rows[0], 5)}; ${cell(rows[0], 6)}` : '' };
     });
     if (rec.rows !== 6 || rec.plan !== 6 || rec.fact !== 6) fail(`справочник: стадий ${rec.rows}, по карте ${rec.plan}, по факту ${rec.fact}`);
@@ -623,6 +661,27 @@ try {
     await page.keyboard.press('Escape');
     if (await page.evaluate(() => !!document.querySelector('#ref'))) fail('справочник: Esc не закрыл');
     else ok('справочник: во всех вкладках есть строки, Esc закрыл');
+  }
+
+  // стартовый пресет (Б1б): первый запуск без пресета в адресе — средний, через пять секунд замер; кадр программной
+  // отрисовки дольше 33 мс — низкий, и он запомнился: при новом открытии — сразу низкий
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const fresh = await ctx.newPage();
+    fresh.on('pageerror', e => errors.push(e.message));
+    await fresh.goto(`http://127.0.0.1:${port}/index.html?lang=ru`);
+    // кадр программной отрисовки на среднем — секунда и больше: замер может кончиться раньше, чем сценарий успеет
+    // спросить пресет, поэтому что мерили — из записи замера (main.tsx, `__preset`)
+    await fresh.waitForFunction(() => localStorage.getItem('pharma.quality') !== null, null, { timeout: 90_000 });
+    const picked = await fresh.evaluate(() => ({ quality: window.__game.store.get().quality, kept: localStorage.getItem('pharma.quality'), m: window.__preset }));
+    await fresh.reload();
+    await fresh.waitForFunction(() => window.__ready === true, null, { timeout: 60_000 });
+    const again = await fresh.evaluate(() => ({ quality: window.__game.store.get().quality, m: window.__preset }));
+    const m = picked.m;
+    if (m?.from !== 'medium' || m.to !== 'low' || picked.quality !== 'low' || picked.kept !== 'low' || again.quality !== 'low' || again.m)
+      fail(`стартовый пресет: замер ${JSON.stringify(m)}, после замера ${picked.quality} (запомнен ${picked.kept}), при новом открытии ${again.quality}${again.m ? ', и снова замер' : ''}`);
+    else ok(`стартовый пресет: замер на среднем — ${m.frames} кадров, медиана ${m.median} мс — низкий, запомнен; при новом открытии — сразу низкий, без замера`);
+    await ctx.close();
   }
 
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);

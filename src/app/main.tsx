@@ -7,6 +7,7 @@ import type { Quality } from '../render/view';
 import { App } from '../ui/App';
 import { type Actions, Store } from '../ui/store';
 import { Game, PLANT, SCENARIO } from './game';
+import { kept, medianFrame, PRESET, pickPreset, keep as remember, windowKeep } from './preset';
 
 declare const __VERSION__: string;
 
@@ -24,6 +25,7 @@ const actions: Actions = {
   setSpeed: later('setSpeed'),
   untilMorning: later('untilMorning'),
   setQuality: later('setQuality'),
+  pickQuality: later('pickQuality'),
   setWalls: later('setWalls'),
   toggleDebug: later('toggleDebug'),
   bench: later('bench'),
@@ -38,6 +40,9 @@ const actions: Actions = {
   toggleCash: later('toggleCash'),
   setCashPage: later('setCashPage'),
   toggleLab: later('toggleLab'),
+  toggleNow: later('toggleNow'),
+  watch: later('watch'),
+  unwatch: later('unwatch'),
   setLabTab: later('setLabTab'),
   rush: later('rush'),
   toggleGantt: later('toggleGantt'),
@@ -63,7 +68,46 @@ const actions: Actions = {
 };
 createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} plant={PLANT} scenario={SCENARIO} />);
 
-const quality = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q')) ?? 'medium';
+const asked = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q'));
+// пресет: из адреса (проверки) — как есть; иначе запомненный; первый запуск — средний, замер решит (preset.ts)
+const quality = asked ?? kept(windowKeep()) ?? 'medium';
+
+/** Промежутки между кадрами за `ms` мс; окно скрывали — `undefined`: замер не в счёт. */
+function frameIntervals(ms: number): Promise<number[] | undefined> {
+  return new Promise(done => {
+    const out: number[] = [];
+    let last = 0;
+    let first = 0;
+    let hid = false;
+    const hide = () => {
+      if (document.visibilityState !== 'visible') hid = true;
+    };
+    document.addEventListener('visibilitychange', hide);
+    const step = (ts: number) => {
+      if (last) out.push(ts - last);
+      else first = ts;
+      last = ts;
+      if (ts - first < ms) requestAnimationFrame(step);
+      else {
+        document.removeEventListener('visibilitychange', hide);
+        done(hid ? undefined : out);
+      }
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+/** Первый запуск: кадр на среднем пресете дольше 33 мс — низкий; итог запоминается. Игрок успел выбрать сам — его выбор. */
+async function firstPreset(g: Game) {
+  await new Promise(r => setTimeout(r, PRESET.warm));
+  if (document.visibilityState !== 'visible') return;
+  const iv = await frameIntervals(PRESET.measure);
+  const pick = iv && pickPreset(iv);
+  if (!iv || !pick || kept(windowKeep())) return;
+  window.__preset = { from: g.stage.quality, frames: iv.length, median: Math.round(medianFrame(iv) ?? 0), to: pick };
+  if (pick !== g.stage.quality) g.actions.setQuality(pick);
+  remember(windowKeep(), pick);
+}
 
 Game.create(document.getElementById('view')!, store, quality)
   .then(async g => {
@@ -80,7 +124,7 @@ Game.create(document.getElementById('view')!, store, quality)
       const num = (k: string) => (val(k) ? Number(val(k)) : undefined);
       const qs = val('qualities')?.split(',') as Quality[] | undefined;
       await runBench(g, { secs: num('secs'), warm: num('warm'), qualities: qs, shots: val('shots') !== '0' });
-    }
+    } else if (!asked && !kept(windowKeep())) void firstPreset(g);
   })
   .catch(e => {
     store.set({ error: String(e) });

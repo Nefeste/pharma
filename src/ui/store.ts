@@ -12,6 +12,7 @@ import type { WallMode } from '../render/world';
 import type { InvView } from '../sim/inv';
 import type { ChartView, LabView } from '../sim/lab';
 import type { BatchLabel, GanttView, GhostView } from '../sim/plan';
+import type { NowRow, NowView } from '../sim/now';
 import type { RefView } from '../sim/ref';
 import type { CashView, MorningView, TopView } from '../sim/report';
 import type { CardView, StockQuery, StockView, Thing } from '../sim/views';
@@ -59,6 +60,10 @@ export interface Hud {
   top?: TopView;
   /** панель лаборатории (3г): открыта ли, вкладка; очередь и контрольная карта средней массы */
   lab: { open: boolean; tab: 'queue' | 'chart'; view?: LabView; chart?: ChartView };
+  /** «Сейчас» (Б1б): открыта ли панель; вид — и при закрытой, пока открыта карточка или игрок смотрит работу */
+  now: { open: boolean; view?: NowView };
+  /** «Смотреть»: какую работу — строка «Сейчас» в мгновение, когда начали смотреть */
+  watch?: NowRow;
   /**
    * расписание (3д): открыто ли; окно времени — с какого мгновения (нет — от полуночи, вслед за часами) и сколько суток;
    * вид; задание, которое тянут, и куда, — и его призрак; черновик (часть 5) — новые сроки заданий, ещё не команды: он
@@ -146,6 +151,7 @@ export const initial: Hud = {
   morningPause: true,
   cash: { open: false, page: 0 },
   lab: { open: false, tab: 'queue' },
+  now: { open: false },
   gantt: { open: false, days: 3, draft: [] },
   plan: NO_RUN,
   inv: { open: false },
@@ -157,6 +163,8 @@ export interface Actions {
   setSpeed(s: Speed): void;
   untilMorning(): void;
   setQuality(q: Quality): void;
+  /** пресет, выбранный игроком: применить и запомнить (src/app/preset.ts) */
+  pickQuality(q: Quality): void;
   setWalls(m: WallMode): void;
   toggleDebug(): void;
   /** авто-бенч; без vsync — перезапуск оболочки с ключом `--uncapped` */
@@ -179,6 +187,11 @@ export interface Actions {
   setCashPage(page: number): void;
   /** панель лаборатории: открыть или закрыть; вкладка; поднять пробу партии — команда `rush` */
   toggleLab(): void;
+  /** «Сейчас»: открыть или закрыть (N) */
+  toggleNow(): void;
+  /** «Смотреть» работу по ключу строки «Сейчас»: камера к месту, ×1, пока работа не кончится; затем — прежняя скорость */
+  watch(key: string): void;
+  unwatch(): void;
   setLabTab(tab: 'queue' | 'chart'): void;
   rush(lot: string): void;
   /**

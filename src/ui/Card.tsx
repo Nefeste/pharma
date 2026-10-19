@@ -5,9 +5,10 @@ import type { ReactNode } from 'react';
 import type { PartType } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
 import { dayText, named, num, qtyText, T, whenText } from '../i18n';
+import type { NowRow } from '../sim/now';
 import type { CardView, Hist, Holds, Why } from '../sim/views';
 import { db } from './db';
-import { StatusIcon } from './icons';
+import { StatusIcon, TaskIcon } from './icons';
 import { placeText, supplierText } from './Stock';
 import type { Actions } from './store';
 
@@ -113,8 +114,8 @@ function History({ list, start, unit, parts = [] }: { list: Hist[]; start: Ymd; 
   );
 }
 
-/** `beside` — открыта панель склада: карточка уже, чтобы не заходить под панель справа. */
-export function Card({ v, start, plant, actions, beside }: { v: CardView; start: Ymd; plant: string; actions: Actions; beside?: boolean }) {
+/** `beside` — открыта панель справа: карточка уже, чтобы не заходить под неё; `watch` — работа вещи в «Сейчас» (Б1б). */
+export function Card({ v, start, plant, actions, beside, watch }: { v: CardView; start: Ymd; plant: string; actions: Actions; beside?: boolean; watch?: NowRow }) {
   const c = v.card;
   let title: ReactNode = '';
   let body: ReactNode = null;
@@ -217,7 +218,19 @@ export function Card({ v, start, plant, actions, beside }: { v: CardView; start:
       body = (
         <dl>
           <Row k={T.card.state}>
-            {c.doing.k === 'task' ? T.why.taskBusy(T.tasks[c.doing.task] ?? c.doing.task) : c.doing.k === 'walk' ? (c.doing.exit ? T.card.doing.exit : T.card.doing.walk) : T.card.doing[c.doing.k]}
+            {c.doing.k === 'task' ? (
+              <>
+                <TaskIcon kind={c.doing.task} /> {T.why.taskBusy(T.tasks[c.doing.task] ?? c.doing.task)}
+              </>
+            ) : c.doing.k === 'walk' ? (
+              c.doing.exit ? (
+                T.card.doing.exit
+              ) : (
+                T.card.doing.walk
+              )
+            ) : (
+              T.card.doing[c.doing.k]
+            )}
           </Row>
           <Row k={T.card.shift}>{named(db?.shifts[c.shift]?.name, c.shift)}</Row>
         </dl>
@@ -227,7 +240,15 @@ export function Card({ v, start, plant, actions, beside }: { v: CardView; start:
       title = named(db?.vehicles[c.type]?.name, c.type);
       body = (
         <dl>
-          <Row k={T.card.state}>{c.task ? T.why.taskBusy(T.tasks[c.task] ?? c.task) : T.card.free}</Row>
+          <Row k={T.card.state}>
+            {c.task ? (
+              <>
+                <TaskIcon kind={c.task} /> {T.why.taskBusy(T.tasks[c.task] ?? c.task)}
+              </>
+            ) : (
+              T.card.free
+            )}
+          </Row>
         </dl>
       );
       break;
@@ -254,6 +275,13 @@ export function Card({ v, start, plant, actions, beside }: { v: CardView; start:
         </button>
       </div>
       {body}
+      {watch ? (
+        <div className="cwatch">
+          <button type="button" onClick={() => actions.watch(watch.key)} title={T.now.watchHint} data-test="card-watch">
+            {T.now.watch}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

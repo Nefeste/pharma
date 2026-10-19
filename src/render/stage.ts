@@ -10,6 +10,7 @@ import type { ContentDb } from '../content/types';
 import type { TruckPose } from '../app/yard';
 import type { EquipmentRow, LineRow, RoomRow } from '../sim/pack';
 import type { Arrow, Fill } from '../app/flows';
+import { type Badge, Badges } from './badges';
 import type { People } from './bake';
 import { dressOf, lookOf, skinOf } from './cast';
 import { AT, shownOf, type Weights } from './detail';
@@ -24,6 +25,7 @@ import { type Body, IDLE, PeopleView, WALK } from './people';
 import { Post } from './post';
 import { type Outline, Selection } from './select';
 import { Signs } from './signs';
+import type { IconKind } from './taskicons';
 import type { FloorKind, FloorTex } from './textures';
 import { Trucks } from './trucks';
 import { Fleet } from './vehicles';
@@ -72,6 +74,9 @@ export class Stage {
   /** паллеты, которые везут: на вилах и только что поставленные */
   readonly carried = new Loads(16);
   readonly signs: Signs;
+  /** значки работ над головами (Б1б) */
+  readonly badges = new Badges(MAX_PEOPLE);
+  private badgeList: Badge[] = [];
   private people?: PeopleView;
   private looks: string[] = [];
   private shown: Shown[] = [];
@@ -131,6 +136,7 @@ export class Stage {
     this.signs = new Signs(layout, init.db);
     this.scene.add(this.signs.group);
     this.scene.add(this.selection.line);
+    this.scene.add(this.badges.mesh);
     this.applyQuality(init.quality);
     this.walls.setMode(this.wallMode);
   }
@@ -206,9 +212,10 @@ export class Stage {
 
   /**
    * Люди и техника кадра (`src/app/movers.ts`) и паллеты на вилах. Водитель ричтрака стоит в нём, рохлю толкают сзади;
-   * `clock` — секунды жизни окна для шага анимации: шаг идёт с обычной скоростью и на ×4.
+   * `clock` — секунды жизни окна для шага анимации: шаг идёт с обычной скоростью и на ×4. `icons` — значок работы человека
+   * (Б1б): он висит над тем местом, где человек нарисован, и над водителем — тоже.
    */
-  setMovers(mv: Movers, carried: readonly PalletView[], clock: number) {
+  setMovers(mv: Movers, carried: readonly PalletView[], clock: number, icons?: ReadonlyMap<number, IconKind>) {
     const roles = Object.keys(this.init.db.roles);
     const types = Object.keys(this.init.db.vehicles);
     const k = this.shownD.movers;
@@ -218,6 +225,7 @@ export class Stage {
     this.carried.set(k > 0.5 ? carried : []);
     const shown: Shown[] = [];
     const near: { x: number; z: number }[] = [];
+    const badges: Badge[] = [];
     for (const f of mv.people) {
       let { x, z, heading } = f;
       let y = 0;
@@ -235,7 +243,10 @@ export class Stage {
       const role = roles[f.role];
       shown.push({ x, y, z, heading, look: lookOf(this.looks, role, f.person), clip, clipTime: clock + (f.person % 7) * 0.31, loop: true, lie: 0, role, person: f.person });
       near.push({ x, z });
+      const icon = icons?.get(f.person);
+      if (icon) badges.push({ x, y, z, icon });
     }
+    this.badgeList = badges;
     for (const v of mv.vehicles) near.push({ x: v.x, z: v.z });
     this.shown = shown;
     this.near = near;
@@ -312,6 +323,8 @@ export class Stage {
       this.people.scale = this.shownD.movers;
       this.people.update(this.shown, b => this.paintOf(b), cam.target, 1000, cam.half < FULL_NEAR);
     }
+    // значки работ — пока видны люди: цех и машина; на плане участка их нет вместе с людьми
+    this.badges.set(this.people ? this.badgeList : [], this.shownD.movers, cam.half, this.renderer.domElement.clientHeight);
     this.machines.update(dt, this.gameRate, this.lineRows, this.eqRows, this.shownD);
     this.signs.update(u, cam.half);
     this.draw();

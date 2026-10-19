@@ -4,6 +4,7 @@
 // формой, и словом.
 import type { LotStatus, Tag } from '../engine/types';
 import { TAG_COLOR } from '../render/loads';
+import { ICON_FILL, ICON_LINE, ICON_OF, ICON_PATH } from '../render/taskicons';
 
 const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
 
@@ -24,6 +25,16 @@ export function StatusIcon({ status, tag }: { status: LotStatus; tag: Tag }) {
     <svg className="sicon" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
       <circle cx="7" cy="7" r="6.5" fill={color} />
       <path d={path} fill="none" stroke="#10181b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Значок работы 14 × 14 (src/render/taskicons.ts): тот же, что над головой человека на крупных планах. */
+export function TaskIcon({ kind }: { kind: keyof typeof ICON_OF }) {
+  return (
+    <svg className="sicon" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" data-icon={ICON_OF[kind]}>
+      <circle cx="7" cy="7" r="6.5" fill={ICON_FILL} />
+      <path d={ICON_PATH[ICON_OF[kind]]} fill="none" stroke={ICON_LINE} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

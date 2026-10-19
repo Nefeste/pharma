@@ -188,6 +188,23 @@
     .idecide .irow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
     .idecide .label { min-width: 100px; margin-left: 0; }
     .idebrief { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 2px; }
+    /* «Сейчас» (Б1б): строки работ — что и кто, сколько прошло и по норме, «Смотреть» */
+    .nowp { width: min(560px, calc(100% - 16px)); }
+    .nsec .msec { margin-top: 4px; }
+    ul.nlist { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+    ul.nlist li { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+    ul.nlist li.on { background: rgba(47,181,201,.12); }
+    button.nmain { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; background: none; border: none; padding: 2px 4px; text-align: left; color: var(--text); cursor: pointer; min-width: 0; }
+    button.nmain:hover .ntitle { text-decoration: underline; text-decoration-color: var(--accent); }
+    button.nmain:disabled { cursor: default; }
+    .ntitle { display: flex; align-items: center; gap: 5px; }
+    .ntitle .sicon { flex: none; }
+    .ntime { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .cwatch { margin-top: 6px; }
+    /* «Смотрите: …» — текст сокращается, «Перестать» видна всегда */
+    .watching { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 45%; color: var(--accent); }
+    .watching .wtext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .watching button { flex: none; }
     /* справочник завода (Б1а) — большое окно под полосой, как доска расследования: вкладки и таблицы «как должно быть и как есть» */
     .ref { position: absolute; left: 8px; right: 8px; top: calc(var(--top-h, 48px) + 8px); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 4px; }
     .ref .phead .filters { margin-left: 12px; }

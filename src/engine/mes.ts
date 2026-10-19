@@ -8,6 +8,7 @@ import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
 import { HOUR, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
+import { incidentParams, incidentScreen } from './investigation';
 import { defect, recleaned } from './lean';
 import { blocked, consume, failPart, partsOf, partType, untilFail, wearAt } from './maint';
 import { type PlantPlan, planOf } from './plant';
@@ -651,11 +652,15 @@ function stageDone(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, notic
     roll(s, `mes/${roomId}`, rng => {
       for (const p of st.params) rec.params[p.id] = p.target + spread(Math.floor((p.sd * (6 - skill)) / 3), normal(rng));
     });
+    // происшествие сценария (часть 4): режим серии — неисправность или фон
+    incidentParams(db, s, b, st, rec);
     for (const p of st.params) {
       const v = rec.params[p.id];
       if (v < p.range[0] || v > p.range[1]) deviate(s, notices, { kind: 'param', batch: b.id, stage: st.id, param: p.id });
     }
   }
+  // сито калибратора (часть 4): замена перед калибровкой серии происшествия; сито крупнее — скрытое поле серии
+  if (st.screen !== undefined && eqs.length > 0) incidentScreen(db, s, b, st, eqs[0].id, rec.start);
   if (b.stage === 0) {
     dispense(s, b, rec);
     afterDispense(db, s, b);
@@ -712,6 +717,9 @@ function leave(db: ContentDb, s: PlantState, roomId: string, product: Id) {
   ensureCleaning(db, s, room);
 }
 
+/** Свойства серии со своей ветвью разброса (часть 4): появились позже прочих. */
+const OWN_BRANCH: readonly Attr[] = ['granule'];
+
 /**
  * Истинные показатели серии: номинал карты + разброс серии + вклады причин из каталога (content/causes/). Каждый вклад
  * записан с весом и стадией — их потом ищет расследование. Знает их только движок.
@@ -721,7 +729,8 @@ function truthOf(db: ContentDb, s: PlantState, b: Batch, attrs: Attr[], stage: s
   for (const a of attrs) {
     if (b.truth[a] !== undefined) continue;
     const [nominal, sd] = r.quality[a]!;
-    const noise = roll(s, 'mes/quality', rng => spread(sd, normal(rng)));
+    // свойство, которого не было до части 4, — своя ветвь: разброс прежних свойств не сдвигается
+    const noise = roll(s, OWN_BRANCH.includes(a) ? `mes/quality/${a}` : 'mes/quality', rng => spread(sd, normal(rng)));
     b.noise[a] = noise;
     let v = nominal + noise;
     for (const c of Object.values(db.causes)) {
@@ -784,6 +793,7 @@ function driver(db: ContentDb, s: PlantState, b: Batch, d: CauseDriver): number 
     }
     return mass > 0 ? Math.round(sum / mass) : 0;
   }
+  if ('screen' in d) return b.screen ?? 0;
   const v = b.truth[d.attr];
   return v === undefined ? 0 : v - r.quality[d.attr]![0];
 }
@@ -793,6 +803,7 @@ function causeStage(db: ContentDb, b: Batch, d: CauseDriver, stage: string): str
   if ('param' in d) return r.stages.find(st => st.params.some(p => p.id === d.param))?.id ?? stage;
   if ('potency' in d || 'lots' in d) return r.stages[0].id;
   if ('wear' in d) return b.records.find(rec => Object.keys(rec.wear ?? {}).some(k => k.endsWith(`/${d.wear}`)))?.stage ?? stage;
+  if ('screen' in d) return r.stages.find(st => st.screen !== undefined)?.id ?? stage;
   return stage;
 }
 

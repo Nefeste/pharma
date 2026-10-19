@@ -41,12 +41,14 @@ stages:
     ipc:
       - { test: test.lod, max: 2.0 }
     loss: [0.5, 0.2]
+  # калибровка: сито калибратора по карте — 1,0 мм (часть 4; гипотеза)
   - id: mill
     room: blending
     equipment: [eq.mill]
     staff: { role: role.operator, n: 1 }
     time: { setup: 15, kgPerHour: 300, spread: 5 }
     loss: [0.3, 0.1]
+    screen: 1.0
   # опудривание: магния стеарат в контейнерном смесителе
   - id: blend
     room: blending
@@ -71,8 +73,9 @@ stages:
       - { test: test.ipc.disintegration, every: 120, max: 15 }
     loss: [1.0, 0.3]
 bulk: mat.bulk.paracetamol500
-# показатели балка без причин: номинал и разброс от серии к серии; масса — доля от цели 600 мг; растворение — за 45 мин.
-# Порядок важен: показатель, от которого зависит другой (масса таблетки → содержание), считается раньше
+# показатели балка без причин: номинал и разброс от серии к серии; масса — доля от цели 600 мг; растворение — за 45 мин;
+# средний размер гранул гранулята, мкм (часть 4). Порядок важен: показатель, от которого зависит другой (масса таблетки →
+# содержание), считается раньше
 quality:
   moisture: [1.5, 0.15]
   mass: [100, 0.4]
@@ -81,6 +84,7 @@ quality:
   friability: [0.3, 0.05]
   disintegration: [6, 0.8]
   dissolution: [92, 1.5]
+  granule: [350, 25]
 yield: { expected: 98, alarm: 95 }
 source: [fda-supac-me, gmp-eaeu, ema-fdf]
 review: draft

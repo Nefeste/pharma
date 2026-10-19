@@ -1,13 +1,13 @@
 // Состояние завода и обмен с движком (docs/02-architecture.md, §1, §3, §7; docs/specs/2026-10-engine.md). Состояние —
 // обычный сериализуемый объект: сохранение — его снимок со схемой и миграциями (ADR студии 0004). Сущности — словари с
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
-import type { Attr, Dept, Id, SeatId, ZoneKind } from '../content/types';
+import type { Attr, Dept, Id, IncidentRoot, SeatId, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 13;
+export const SCHEMA = 14;
 
 // ---------------------------------------------------------------- склад
 
@@ -144,7 +144,20 @@ export interface LabTest {
   done?: number;
   /** версия: событие конца работы прибора с другой версией ничего не делает */
   v: number;
+  /** испытание шага расследования (часть 4): в решение по партии не входит */
+  inv?: string;
+  /** результат признан недействительным: расследование установило ошибку лаборатории */
+  invalid?: true;
+  /**
+   * в записи испытания (часть 4): ошибка пересчёта, исказившая результат, или описка, которая на результат не влияет; её
+   * находит проверка записей
+   */
+  mark?: 'calc' | 'typo';
 }
+
+/** Чем прибор растворения не прошёл проверку (часть 4). */
+export type InstrumentFault = 'height' | 'centering' | 'deaeration' | 'vibration' | 'overdue';
+export const INSTRUMENT_FAULTS: readonly InstrumentFault[] = ['height', 'centering', 'deaeration', 'vibration'];
 
 /** Прибор лаборатории из плана завода; занят испытанием с начала подготовки до конца своей работы. */
 export interface Instrument {
@@ -152,6 +165,12 @@ export interface Instrument {
   type: Id;
   room: string;
   test?: string;
+  /**
+   * прибор не прошёл проверку (часть 4) — её находит проверка прибора: высота лопасти, центровка вала, среда не
+   * деаэрирована, вибрация (`gf-15`, ОФС.1.4.2.0014; `fda-diss-mc`) или просрочена механическая калибровка, на результат
+   * не повлиявшая
+   */
+  check?: InstrumentFault;
 }
 
 /**
@@ -171,8 +190,66 @@ export interface Deviation {
   test?: Id;
   param?: string;
   material?: Id;
-  /** `assessed` — уполномоченное лицо оценило отклонение «без влияния на качество» и выпустило серию */
-  status: 'open' | 'assessed';
+  /**
+   * `assessed` — уполномоченное лицо оценило отклонение «без влияния на качество» и выпустило серию; `closed` —
+   * расследование решило (часть 4): его отклонение, а если серию отклонили — и другие открытые отклонения серии
+   */
+  status: 'open' | 'assessed' | 'closed';
+  /** расследование результата вне спецификации */
+  inv?: string;
+}
+
+/**
+ * Происшествие прототипа (docs/specs/2026-10-investigation.md, «Происшествие») — скрытые поля: корень, величина
+ * неисправности, что вызвало брошенные улики (корень или фон), сито крупнее карты на столько мкм, пока его не поменяли.
+ * Окно и двойник прогона плана их не знают; разбор открывает их после решения.
+ */
+export interface Incident {
+  batch: string;
+  inv: Id;
+  root: IncidentRoot;
+  size: number;
+  fired: Record<string, IncidentRoot | 'leak'>;
+  screen?: number;
+}
+
+/** Что шаг показал об улике (может быть ошибкой шага), когда; числа из записей для слов — в единицах движка. */
+export interface InvObs {
+  f: string;
+  step: string;
+  shown: boolean;
+  t: number;
+  data?: number[];
+}
+
+/** Шаг расследования: с и по; задача или испытание; кто попросил. */
+export interface InvRun {
+  step: string;
+  from: number;
+  to?: number;
+  task?: string;
+  test?: string;
+  by: string;
+}
+
+/**
+ * Расследование результата вне спецификации (часть 4): модель, отклонение, серия, партия, испытание; шаги и улики;
+ * решение — причина и судьба серии. `truth` — скрытое: корень, что вызвало брошенные улики и была ли улика на самом деле,
+ * когда шаг на неё смотрел; окно видит его только в разборе.
+ */
+export interface Investigation {
+  id: string;
+  model: Id;
+  deviation: string;
+  batch: string;
+  lot: string;
+  test: string;
+  opened: number;
+  runs: InvRun[];
+  obs: InvObs[];
+  status: 'open' | 'closed';
+  conclusion?: { cause: string; fate: 'reject' | 'release'; by: string; t: number };
+  truth: { root: string; fired: Record<string, string>; present?: Record<string, boolean> };
 }
 
 // ---------------------------------------------------------------- производство
@@ -437,6 +514,8 @@ export interface Batch {
   /** разброс серии без причин */
   noise: Partial<Record<Attr, number>>;
   causes: CauseHit[];
+  /** сито калибратора крупнее карты на столько мкм на калибровке этой серии (часть 4) — скрытое: в записи — сито по карте */
+  screen?: number;
   /** балк: партия полупродукта и сколько таблеток */
   bulk?: string;
   units?: number;
@@ -562,7 +641,10 @@ export type TaskKind =
   | 'casePick'
   | 'load'
   | 'repair'
-  | 'truckCheck';
+  | 'truckCheck'
+  /** шаг расследования (часть 4); замена сита калибратора по решению расследования */
+  | 'invStep'
+  | 'invFix';
 
 /**
  * Почему задача ждёт (1ж): люди её ролей в смене, но заняты; людей её ролей нет в смене; нет свободной техники; нет
@@ -611,6 +693,9 @@ export interface Task {
   /** узел, который чинят или меняют; замена по плану, а не после отказа */
   part?: string;
   planned?: boolean;
+  /** расследование и его шаг (часть 4) */
+  inv?: string;
+  step?: string;
   /** когда люди дошли и начали работу — событие `begin` (стадия с узлами под износом) */
   begin?: boolean;
   /** открытая задача: чего ждёт по последнему проходу раздатчика и с какого момента (1ж) */
@@ -895,6 +980,9 @@ export interface PlantState {
   samples: Record<string, Sample>;
   tests: Record<string, LabTest>;
   deviations: Record<string, Deviation>;
+  /** расследования результатов вне спецификации (часть 4); происшествие сценария — скрытое */
+  investigations: Record<string, Investigation>;
+  incident?: Incident;
   /** помещения и оборудование по именам из плана */
   rooms: Record<string, Room>;
   equipment: Record<string, Equipment>;
@@ -946,10 +1034,38 @@ export type Command =
   /** новый срок «не раньше» задания на серию, которое ещё не начало комплектовку (3д): игровые секунды */
   | { kind: 'shift'; batch: string; notBefore: number; by?: string }
   /** места игрока (3е): набор целиком */
-  | { kind: 'seat'; seats: SeatId[] };
+  | { kind: 'seat'; seats: SeatId[] }
+  /** шаг расследования (часть 4) */
+  | { kind: 'investigate'; inv: string; step: string; by?: string }
+  /** решение расследования: причина — версия модели; судьба серии */
+  | { kind: 'conclude'; inv: string; cause: string; fate: 'reject' | 'release'; by?: string };
 
 /** Почему команда не выполнена — для окна. */
-export type Refusal = 'noSupplier' | 'notSold' | 'belowMoq' | 'empty' | 'noRecipe' | 'noBatch' | 'notBulk' | 'noSku' | 'notReady' | 'noPart' | 'busy' | 'noSpare' | 'noLot' | 'notLab' | 'already' | 'started' | 'notYours' | 'noSeat';
+export type Refusal =
+  | 'noSupplier'
+  | 'notSold'
+  | 'belowMoq'
+  | 'empty'
+  | 'noRecipe'
+  | 'noBatch'
+  | 'notBulk'
+  | 'noSku'
+  | 'notReady'
+  | 'noPart'
+  | 'busy'
+  | 'noSpare'
+  | 'noLot'
+  | 'notLab'
+  | 'already'
+  | 'started'
+  | 'notYours'
+  | 'noSeat'
+  /** расследования нет; оно уже решено; такого шага или версии нет; «выпустить» без лабораторной причины и повтора в пределах */
+  | 'noInv'
+  | 'closed'
+  | 'noStep'
+  | 'noCause'
+  | 'notProven';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
@@ -983,4 +1099,8 @@ export type Notice =
   | { kind: 'failure'; machine: string; part: string }
   | { kind: 'repaired'; machine: string; part: string; planned: boolean }
   /** команда не выполнена */
-  | { kind: 'refused'; cmd: Command['kind']; why: Refusal; detail?: string };
+  | { kind: 'refused'; cmd: Command['kind']; why: Refusal; detail?: string }
+  /** результат вне спецификации — расследование открыто; шаг расследования сделан; расследование решено */
+  | { kind: 'investigation'; id: string; batch: string; lot: string }
+  | { kind: 'invStep'; id: string; step: string }
+  | { kind: 'concluded'; id: string; cause: string; fate: 'reject' | 'release' };

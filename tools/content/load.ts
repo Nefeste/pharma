@@ -20,7 +20,10 @@ import {
   type ContentDb,
   type Customer,
   type EquipmentType,
+  type FindingRead,
+  type IncidentDef,
   type InstrumentType,
+  type InvModel,
   type Machine,
   type ModelPart,
   type Material,
@@ -122,6 +125,7 @@ export interface Built {
 }
 
 type Raw = { [K in Kind]: Record<string, z.infer<(typeof KINDS)[K]['schema']>> };
+type RawScenario = z.infer<(typeof KINDS)['scenarios']['schema']>;
 
 export function buildDb(): Built {
   const errors: string[] = [];
@@ -387,6 +391,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         params: st.params.map(p => ({ id: p.id, unit: p.unit, target: sc(p.unit, p.target), range: [sc(p.unit, p.range[0]), sc(p.unit, p.range[1])] as [number, number], sd: sc(p.unit, p.sd) })),
         ipc,
         loss: [share(st.loss[0]), share(st.loss[1])] as [number, number],
+        // сито калибратора по карте: мм → мкм
+        ...(st.screen !== undefined ? { screen: Math.round(st.screen * 1000) } : {}),
       };
     });
     // показатели балка: всё, что испытывает его спецификация, — с номиналом
@@ -425,6 +431,10 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     else if ('wear' in d) {
       need(Object.values(raw.equipment).some(e => e.parts.some(p => p.id === d.wear)), `${where}: узла ${d.wear} нет ни у одного оборудования`);
       per = 100;
+    } else if ('screen' in d) {
+      need(Object.values(raw.recipes).some(r => r.stages.some(st => st.screen !== undefined)), `${where}: сита нет ни в одной карте`);
+      // коэффициент — на мм сита крупнее карты, отход в движке — мкм
+      per = 1000;
     } else per = scaleOf(d.attr);
     for (const e of c.effects) need(!qual(e.attr), `${where}: ${e.attr} — качественное свойство`);
     causes[c.id] = { ...c, effects: c.effects.map(e => ({ attr: e.attr, coef: (e.coef * scaleOf(e.attr)) / per })) };
@@ -548,6 +558,80 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       if (inst) need(p.instruments.some(i => i.type === inst), `план ${p.id}: нет прибора ${inst} для ${tid}`);
     }
   }
+  // модели расследования: доли — 1/10 000, минуты — секунды; версии, улики, шаги и их ссылки — сверены
+  const investigations: Record<string, InvModel> = {};
+  for (const m of Object.values(raw.investigations)) {
+    const where = `расследование ${m.id}`;
+    need(tests[m.test], `${where}: нет методики ${m.test}`);
+    const ids = new Set(m.candidates.map(c => c.id));
+    need(ids.size === m.candidates.length, `${where}: версии повторяются`);
+    for (const c of m.candidates) if (c.cause) need(causes[c.cause], `${where}: нет причины ${c.cause}`);
+    const fids = new Set(m.findings.map(f => f.id));
+    need(fids.size === m.findings.length, `${where}: улики повторяются`);
+    for (const f of m.findings) {
+      for (const c of Object.keys(f.by)) need(ids.has(c), `${where}: улика ${f.id} — нет версии ${c}`);
+      const r = f.read;
+      if ('ipc' in r) need(tests[r.ipc], `${where}: улика ${f.id} — нет методики ${r.ipc}`);
+      if ('param' in r) need(paramUnits[r.param], `${where}: улика ${f.id} — режима ${r.param} нет ни в одной карте`);
+    }
+    need(new Set(m.steps.map(st => st.id)).size === m.steps.length, `${where}: шаги повторяются`);
+    for (const st of m.steps) {
+      const at = `${where}, шаг ${st.id}`;
+      need((st.test !== undefined) !== (st.role !== undefined && st.work !== undefined), `${at}: шаг — либо испытание, либо работа роли с её временем`);
+      if (st.role) need(roles[st.role], `${at}: нет роли ${st.role}`);
+      if (st.test) need(tests[st.test], `${at}: нет методики ${st.test}`);
+      if (st.retest) need(st.test === m.test, `${at}: повторное испытание — той же методикой, что открыла расследование`);
+      if (st.at) need(raw.equipment[st.at], `${at}: нет оборудования ${st.at}`);
+      for (const c of st.checks) need(fids.has(c.f), `${at}: нет улики ${c.f}`);
+    }
+    // пределы улик — в единицах движка свойства или методики МОК
+    const findings = m.findings.map(f => {
+      const r = f.read;
+      const read: FindingRead =
+        'ipc' in r
+          ? { ipc: r.ipc, ...(r.below !== undefined ? { below: attrVal(tests[r.ipc].attr, r.below) } : {}), ...(r.above !== undefined ? { above: attrVal(tests[r.ipc].attr, r.above) } : {}) }
+          : 'coa' in r
+            ? { coa: r.coa, above: attrVal(r.coa, r.above) }
+            : 'measure' in r
+              ? { measure: r.measure, above: attrVal(r.measure, r.above) }
+              : r;
+      return { id: f.id, name: f.name, leak: share(f.leak), by: Object.fromEntries(Object.entries(f.by).map(([c, v]) => [c, share(v)])), read };
+    });
+    investigations[m.id] = {
+      id: m.id,
+      name: m.name,
+      test: m.test,
+      threshold: share(m.threshold),
+      minGain: m.minGain,
+      candidates: m.candidates.map(c => ({ id: c.id, name: c.name, ...(c.cause ? { cause: c.cause } : {}), prior: share(c.prior) })),
+      findings,
+      steps: m.steps.map(st => ({
+        id: st.id,
+        name: st.name,
+        ...(st.role ? { role: st.role } : {}),
+        ...(st.work !== undefined ? { work: sec(st.work) } : {}),
+        ...(st.at ? { at: st.at } : {}),
+        ...(st.test ? { test: st.test } : {}),
+        ...(st.retest ? { retest: true as const } : {}),
+        checks: st.checks.map(c => ({ f: c.f, sens: share(c.sens), spec: share(c.spec) })),
+      })),
+      source: m.source,
+      review: m.review,
+    };
+  }
+  /** Происшествие: номер задания — в пределах сценария; величины — в единицы движка. */
+  const incidentOf = (x: NonNullable<RawScenario['incident']>, batches: number, where: string): IncidentDef => {
+    need(investigations[x.inv], `${where}: нет модели расследования ${x.inv}`);
+    need(x.batch <= batches, `${where}: в сценарии нет задания на серию ${x.batch}`);
+    const range = ([a, b]: [number, number], k: number): [number, number] => [Math.round(a * k), Math.round(b * k)];
+    for (const [k, [a, b]] of Object.entries(x.sizes)) need(a <= b, `${where}: величина ${k} — «от» больше «до»`);
+    return {
+      batch: x.batch,
+      inv: x.inv,
+      roots: Object.fromEntries(Object.entries(x.roots).map(([k, v]) => [k, share(v)])),
+      sizes: { lab: range(x.sizes.lab, 100), lube: range(x.sizes.lube, PARAM_SCALE.min), force: range(x.sizes.force, PARAM_SCALE.kN), screen: range(x.sizes.screen, 1000) },
+    };
+  };
   const scenarios: Record<string, Scenario> = {};
   for (const s of Object.values(raw.scenarios)) {
     const where = `сценарий ${s.id}`;
@@ -602,6 +686,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       wear: Object.fromEntries(Object.entries(s.wear).map(([k, v]) => [k, share(v)])),
       maint: Object.fromEntries(Object.entries(s.maint).map(([k, v]) => [k, share(v)])),
       norm: share(s.norm),
+      ...(s.incident ? { incident: incidentOf(s.incident, s.batches.length, where) } : {}),
     };
   }
   const profiles: Record<string, Profile> = {};
@@ -634,6 +719,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   return {
     profiles,
     scenarios,
+    investigations,
     units: raw.units as Record<string, UnitType>,
     materials,
     containers,

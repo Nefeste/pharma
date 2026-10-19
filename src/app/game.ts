@@ -297,6 +297,9 @@ export class Game {
       : n.kind === 'cashLow' ? T.notices.cashLow
       : n.kind === 'failure' ? T.notices.failure
       : n.kind === 'repaired' ? T.notices.repaired
+      : n.kind === 'investigation' ? T.notices.investigation
+      : n.kind === 'invStep' ? T.notices.invStep
+      : n.kind === 'concluded' ? T.notices.concluded(n.fate)
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;

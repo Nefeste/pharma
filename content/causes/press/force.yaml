@@ -4,11 +4,12 @@ id: cause.press.force
 name: { ru: Сила прессования не по цели, en: Compression force off target }
 driver: { param: force }
 # на каждый кН сверх цели: прочнее, меньше истираемость, дольше распадаемость; растворение — чуть медленнее (парацетамол
-# растворим хорошо, влияние мало)
+# растворим хорошо, влияние мало: в обычном разбросе силы — доли процента; сбитая на 10 кН уставка — уже вне
+# спецификации, часть 4)
 effects:
   - { attr: hardness, coef: 6 }
   - { attr: friability, coef: -0.03 }
   - { attr: disintegration, coef: 0.6 }
-  - { attr: dissolution, coef: -1 }
+  - { attr: dissolution, coef: -1.5 }
 source: [adeleye-2019, fda-qbd-ir]
 review: draft

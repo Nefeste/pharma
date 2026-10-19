@@ -143,7 +143,11 @@ export function check(db: ContentDb, s: PlantState): string[] {
     if (!q || q.inst !== i.id || (q.state !== 'prep' && q.state !== 'run')) bad.push(`прибор ${i.id}: занят испытанием ${i.test}, которое на нём не идёт`);
   }
   for (const q of Object.values(s.tests)) {
-    if (!s.samples[q.sample]?.tests.includes(q.id)) bad.push(`испытание ${q.id}: пробы ${q.sample} его не знают`);
+    // испытание шага расследования (часть 4) — той же пробы, но в решение по партии не входит: его знает расследование
+    if (q.inv) {
+      if (!s.samples[q.sample]) bad.push(`испытание ${q.id}: пробы ${q.sample} нет`);
+      if (!s.investigations[q.inv]?.runs.some(r => r.test === q.id)) bad.push(`испытание ${q.id}: расследование ${q.inv} его не знает`);
+    } else if (!s.samples[q.sample]?.tests.includes(q.id)) bad.push(`испытание ${q.id}: пробы ${q.sample} его не знают`);
     if (q.inst && (q.state === 'prep' || q.state === 'run') && s.instruments[q.inst]?.test !== q.id) bad.push(`испытание ${q.id}: прибор ${q.inst} занят другим`);
     if (q.state === 'run' && !q.inst) bad.push(`испытание ${q.id}: прибор работает, а прибора нет`);
     if ((q.state === 'review' || q.state === 'done') && q.result === undefined) bad.push(`испытание ${q.id}: ${q.state} без результата`);

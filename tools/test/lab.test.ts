@@ -242,9 +242,10 @@ describe('ни одна партия не уходит дальше карант
         const lot = s.lots[n.lot];
         if (lot.po) decided++;
         const tests = s.samples[lot.sample!].tests.map(id => s.tests[id]);
-        const failed = tests.filter(q => !q.pass).map(q => q.id);
+        // результат вне спецификации, который расследование признало ошибкой лаборатории (часть 4), не в счёт
+        const failed = tests.filter(q => !q.pass && !q.invalid).map(q => q.id);
         if (n.kind === 'lotReleased') expect(failed).toEqual([]);
-        else expect(s.deviations[n.deviation].tests).toEqual(failed);
+        else expect(s.deviations[n.deviation].tests).toEqual(tests.filter(q => !q.pass).map(q => q.id));
         // брак: паспорт не сходится с истиной — сдвиг далеко за пределами, его ловят всегда; у балка паспорта нет
         if (lot.po && JSON.stringify(lot.truth) !== JSON.stringify(lot.coa)) {
           bad++;

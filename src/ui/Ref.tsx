@@ -1,138 +1,109 @@
-// Справочник завода (этап Б, Б1а; docs/specs/2026-10-vertical-slice.md): большое окно поверх карты, как доска
-// расследования, по F1 и кнопке. Вопрос окна — «Как должно быть и как есть»: слева в каждой таблице — НСИ из базы, справа —
-// что на заводе по факту и сейчас. Вид собирает поток расчёта (src/sim/ref.ts) — без скрытых параметров модели; здесь —
-// слова и таблицы. Сколько идёт работа сейчас, окно считает по своим часам от мгновения её начала.
-import type { ReactNode } from 'react';
-import { durText, money, named, num, pctText, priceText, qtyText, T } from '../i18n';
-import type { RefLine, RefPart, RefRecipe, RefView } from '../sim/ref';
+// Справочник завода (этап Б, Б1а и Б1в; docs/specs/2026-10-vertical-slice.md): большое окно поверх карты, как доска
+// расследования, по F1 и кнопке. Вопрос окна — «Что и как делает завод, на чём, кем и с кем»: в каждой таблице слева — НСИ
+// из базы, справа — что на заводе по факту и сейчас. Вид собирает поток расчёта (src/sim/ref.ts) — без скрытых параметров
+// модели; здесь — слова и таблицы. Любую таблицу можно упорядочить по столбцу и сузить поиском по вкладке. Сколько идёт
+// работа сейчас, окно считает по своим часам от мгновения её начала.
+import { type ReactNode, useState } from 'react';
+import { durText, lang, money, named, num, pctText, priceText, qtyText, T } from '../i18n';
+import type { RefCustomer, RefEquipment, RefInstrument, RefLine, RefMachine, RefMethod, RefPart, RefRecipe, RefRole, RefShift, RefSku, RefStage, RefSupplier, RefView } from '../sim/ref';
 import { db } from './db';
 import { type Actions, type Hud, REF_TABS } from './store';
 import { attrNum, attrText, paramNum, paramText } from './units';
 
-function Table({ cols, rows, test }: { cols: string[]; rows: ReactNode[][]; test?: string }) {
+/**
+ * Столбец таблицы: заголовок; текст ячейки — по нему ищет поиск и, если нет числа, упорядочивает столбец; что показать
+ * вместо текста; число — порядок по числу (длительности, цены, штуки).
+ */
+export interface Col<X> {
+  name: string;
+  text: (x: X) => string;
+  show?: (x: X) => ReactNode;
+  num?: (x: X) => number;
+}
+
+/** Порядок таблицы: столбец и направление; нет — как в виде. */
+export type By = { col: number; dir: 1 | -1 } | null;
+
+/**
+ * Строки таблицы по поиску и порядку: остаются строки, где набранное есть в тексте хоть одного столбца (без учёта
+ * регистра); порядок — по числу столбца или по алфавиту языка, равные — как были.
+ */
+export function pickRows<X>(items: readonly X[], cols: readonly Col<X>[], q: string, by: By): X[] {
+  const needle = q.trim().toLocaleLowerCase(lang);
+  let rows = items.map((x, i) => ({ x, i }));
+  if (needle) rows = rows.filter(({ x }) => cols.some(c => c.text(x).toLocaleLowerCase(lang).includes(needle)));
+  if (by) {
+    const c = cols[by.col];
+    rows = [...rows].sort((a, b) => by.dir * (c.num ? c.num(a.x) - c.num(b.x) : c.text(a.x).localeCompare(c.text(b.x), lang)) || a.i - b.i);
+  }
+  return rows.map(r => r.x);
+}
+
+/** Таблица справочника: щелчок по заголовку — по возрастанию, ещё раз — по убыванию, третий — как было. */
+function Table<X>({ cols, items, keyOf, q, test }: { cols: Col<X>[]; items: readonly X[]; keyOf: (x: X) => string; q: string; test?: string }) {
+  const [by, setBy] = useState<By>(null);
+  const rows = pickRows(items, cols, q, by);
+  const click = (k: number) => setBy(p => (p?.col !== k ? { col: k, dir: 1 } : p.dir === 1 ? { col: k, dir: -1 } : null));
   return (
     <table className="rtable" data-test={test}>
       <thead>
         <tr>
-          {cols.map((c, i) => (
-            <th key={`${i}-${c}`}>{c}</th>
+          {cols.map((c, k) => (
+            <th key={`${k}-${c.name}`} aria-sort={by?.col === k ? (by.dir === 1 ? 'ascending' : 'descending') : 'none'}>
+              <button type="button" className={`sortbtn${by?.col === k ? ' on' : ''}`} onClick={() => click(k)} title={T.ref.sortHint} data-test="ref-sort">
+                {c.name}
+                {by?.col === k ? (by.dir === 1 ? ' ▲' : ' ▼') : ''}
+              </button>
+            </th>
           ))}
         </tr>
       </thead>
       <tbody>
-        {rows.map((r, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: строки таблицы не переставляются
-          <tr key={i}>
-            {r.map((c, k) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: столбцы постоянны
-              <td key={k}>{c}</td>
+        {rows.map(x => (
+          <tr key={keyOf(x)}>
+            {cols.map((c, k) => (
+              <td key={`${k}-${c.name}`}>{c.show ? c.show(x) : c.text(x)}</td>
             ))}
           </tr>
         ))}
+        {rows.length === 0 ? (
+          <tr className="none">
+            <td colSpan={cols.length} className="muted">
+              {T.ref.notFound}
+            </td>
+          </tr>
+        ) : null}
       </tbody>
     </table>
   );
 }
 
-const dash = T.ref.idle;
+const dash = () => T.ref.idle;
 const unitOf = (material: string) => db?.materials[material]?.unit ?? 'mass';
 
-function Products({ v }: { v: RefView }) {
+function Products({ v, q }: { v: RefView; q: string }) {
   const c = T.ref.skuCols;
+  const cols: Col<RefSku>[] = [
+    { name: c.sku, text: k => named(db?.skus[k.id]?.name, k.id) },
+    { name: c.blister, text: k => T.ref.tablets(k.perBlister), num: k => k.perBlister },
+    { name: c.blisters, text: k => num(k.blisters), num: k => k.blisters },
+    { name: c.perCase, text: k => T.card.packs(k.perCase), show: k => <b>{T.card.packs(k.perCase)}</b>, num: k => k.perCase },
+    { name: c.cases, text: k => num(k.cases), num: k => k.cases },
+    { name: c.packs, text: k => num(k.perCase * k.cases), num: k => k.perCase * k.cases },
+    { name: c.shelf, text: k => T.ref.months(k.shelf), num: k => k.shelf },
+    { name: c.price, text: k => priceText(k.price), num: k => k.price },
+    { name: c.regPrice, text: k => (k.regPrice !== undefined ? priceText(k.regPrice) : dash()), num: k => k.regPrice ?? -1 },
+  ];
   return (
     <>
       {v.products.map(p => (
         <section key={p.id} className="rsec">
           <div className="msec">{named(db?.products[p.id]?.name, p.id)}</div>
           <div className="muted">{T.ref.product(T.ref.forms[p.form] ?? p.form, p.code)}</div>
-          <Table
-            test="ref-skus"
-            cols={[c.sku, c.blister, c.blisters, c.perCase, c.cases, c.packs, c.shelf, c.price, c.regPrice]}
-            rows={p.skus.map(k => [
-              named(db?.skus[k.id]?.name, k.id),
-              T.ref.tablets(k.perBlister),
-              num(k.blisters),
-              <b key="case">{T.card.packs(k.perCase)}</b>,
-              num(k.cases),
-              num(k.perCase * k.cases),
-              T.ref.months(k.shelf),
-              priceText(k.price),
-              k.regPrice !== undefined ? priceText(k.regPrice) : dash,
-            ])}
-          />
+          <Table test="ref-skus" cols={cols} items={p.skus} keyOf={k => k.id} q={q} />
         </section>
       ))}
     </>
-  );
-}
-
-function Recipe({ r, t }: { r: RefRecipe; t: number }) {
-  const c = T.ref.stageCols;
-  const b = T.ref.bomCols;
-  return (
-    <section className="rsec">
-      <div className="msec">{named(db?.recipes[r.id]?.name, r.id)}</div>
-      <div className="muted">{T.ref.batch(qtyText(r.mass, 'mass'), T.ref.tablets(r.units))}</div>
-      <Table
-        cols={[b.material, b.qty, b.how]}
-        rows={r.bom.map(l => [named(db?.materials[l.material]?.name, l.material), qtyText(l.qty, unitOf(l.material)), [l.potency ? T.ref.potency : '', l.qs ? T.ref.qs : ''].filter(Boolean).join(', ')])}
-      />
-      <Table
-        test="ref-stages"
-        cols={[c.n, c.stage, c.room, c.equipment, c.staff, c.plan, c.fact, c.now, c.params, c.ipc]}
-        rows={r.stages.map((st, i) => [
-          num(i + 1),
-          <>
-            {T.stages[st.id] ?? st.id}
-            {st.mix ? <div className="muted small">{T.ref.mix}</div> : null}
-          </>,
-          T.roomTypes[st.room] ?? st.room,
-          st.equipment.map(e => named(db?.equipment[e]?.name, e)).join(', '),
-          T.ref.staff(named(db?.roles[st.staff.role]?.name, st.staff.role), st.staff.n),
-          <b key="plan" className="nw">
-            {durText(st.nominal)}
-          </b>,
-          st.done > 0 && st.last !== undefined && st.mean !== undefined ? (
-            <>
-              <div className="nw">{T.ref.last(durText(st.last))}</div>
-              <div className="nw muted">{T.ref.mean(durText(st.mean), st.done)}</div>
-            </>
-          ) : (
-            <span className="muted">{T.ref.none}</span>
-          ),
-          st.now ? (
-            <>
-              <b>{st.now.batch}</b>
-              <div className="nw">{T.ref.now(durText(Math.max(0, t - st.now.from)), durText(st.now.nominal))}</div>
-            </>
-          ) : (
-            dash
-          ),
-          st.params.length ? (
-            <>
-              {st.params.map(p => (
-                <div key={p.id}>
-                  {T.ref.params[p.id] ?? p.id}: <span className="nw">{T.ref.range(paramText(p.unit, p.target), paramNum(p.unit, p.range[0]), paramText(p.unit, p.range[1]))}</span>
-                </div>
-              ))}
-            </>
-          ) : (
-            dash
-          ),
-          st.ipc.length ? (
-            <>
-              {st.ipc.map(q => (
-                <div key={q.test}>
-                  {named(db?.tests[q.test]?.name, q.test)}: <span className="nw">{ipcText(q)}</span>
-                </div>
-              ))}
-            </>
-          ) : (
-            dash
-          ),
-        ])}
-      />
-    </section>
   );
 }
 
@@ -144,175 +115,281 @@ function ipcText(q: { test: string; min?: number; max?: number }): string {
   return q.min !== undefined ? `≥ ${attrText(attr, q.min)}` : q.max !== undefined ? `≤ ${attrText(attr, q.max)}` : '';
 }
 
+const rangeOf = (p: RefStage['params'][number]) => T.ref.range(paramText(p.unit, p.target), paramNum(p.unit, p.range[0]), paramText(p.unit, p.range[1]));
+const paramLine = (p: RefStage['params'][number]) => `${T.ref.params[p.id] ?? p.id}: ${rangeOf(p)}`;
+const ipcLine = (c: RefStage['ipc'][number]) => `${named(db?.tests[c.test]?.name, c.test)}: ${ipcText(c)}`;
+const hasFact = (st: RefStage) => st.done > 0 && st.last !== undefined && st.mean !== undefined;
+
+function Recipe({ r, t, q }: { r: RefRecipe; t: number; q: string }) {
+  const c = T.ref.stageCols;
+  const b = T.ref.bomCols;
+  const order = new Map(r.stages.map((st, i) => [st.id, i + 1]));
+  const gone = (st: RefStage) => (st.now ? T.ref.now(durText(Math.max(0, t - st.now.from)), durText(st.now.nominal)) : '');
+  const bom: Col<RefRecipe['bom'][number]>[] = [
+    { name: b.material, text: l => named(db?.materials[l.material]?.name, l.material) },
+    { name: b.qty, text: l => qtyText(l.qty, unitOf(l.material)), num: l => l.qty },
+    { name: b.how, text: l => [l.potency ? T.ref.potency : '', l.qs ? T.ref.qs : ''].filter(Boolean).join(', ') },
+  ];
+  const stages: Col<RefStage>[] = [
+    { name: c.n, text: st => num(order.get(st.id) ?? 0), num: st => order.get(st.id) ?? 0 },
+    {
+      name: c.stage,
+      text: st => `${T.stages[st.id] ?? st.id}${st.mix ? ` ${T.ref.mix}` : ''}`,
+      show: st => (
+        <>
+          {T.stages[st.id] ?? st.id}
+          {st.mix ? <div className="muted small">{T.ref.mix}</div> : null}
+        </>
+      ),
+    },
+    { name: c.room, text: st => T.roomTypes[st.room] ?? st.room },
+    { name: c.equipment, text: st => st.equipment.map(e => named(db?.equipment[e]?.name, e)).join(', ') },
+    { name: c.staff, text: st => T.ref.staff(named(db?.roles[st.staff.role]?.name, st.staff.role), st.staff.n) },
+    { name: c.plan, text: st => durText(st.nominal), show: st => <b className="nw">{durText(st.nominal)}</b>, num: st => st.nominal },
+    {
+      name: c.fact,
+      text: st => (hasFact(st) ? `${T.ref.last(durText(st.last!))} ${T.ref.mean(durText(st.mean!), st.done)}` : T.ref.none),
+      show: st =>
+        hasFact(st) ? (
+          <>
+            <div className="nw">{T.ref.last(durText(st.last!))}</div>
+            <div className="nw muted">{T.ref.mean(durText(st.mean!), st.done)}</div>
+          </>
+        ) : (
+          <span className="muted">{T.ref.none}</span>
+        ),
+      num: st => st.mean ?? -1,
+    },
+    {
+      name: c.now,
+      text: st => (st.now ? `${st.now.batch} ${gone(st)}` : dash()),
+      show: st =>
+        st.now ? (
+          <>
+            <b>{st.now.batch}</b>
+            <div className="nw">{gone(st)}</div>
+          </>
+        ) : (
+          dash()
+        ),
+    },
+    {
+      name: c.params,
+      text: st => st.params.map(paramLine).join('; ') || dash(),
+      show: st =>
+        st.params.length
+          ? st.params.map(p => (
+              <div key={p.id}>
+                {T.ref.params[p.id] ?? p.id}: <span className="nw">{rangeOf(p)}</span>
+              </div>
+            ))
+          : dash(),
+    },
+    {
+      name: c.ipc,
+      text: st => st.ipc.map(ipcLine).join('; ') || dash(),
+      show: st =>
+        st.ipc.length
+          ? st.ipc.map(x => (
+              <div key={x.test}>
+                {named(db?.tests[x.test]?.name, x.test)}: <span className="nw">{ipcText(x)}</span>
+              </div>
+            ))
+          : dash(),
+    },
+  ];
+  return (
+    <section className="rsec">
+      <div className="msec">{named(db?.recipes[r.id]?.name, r.id)}</div>
+      <div className="muted">{T.ref.batch(qtyText(r.mass, 'mass'), T.ref.tablets(r.units))}</div>
+      <Table cols={bom} items={r.bom} keyOf={l => l.material} q={q} />
+      <Table test="ref-stages" cols={stages} items={r.stages} keyOf={st => st.id} q={q} />
+    </section>
+  );
+}
+
 function partsText(of: string, parts: RefPart[], item: string): string {
   const rec = db?.equipment[of] ?? db?.machines[of];
   return (
     parts
       .map(p => T.ref.part(named(rec?.parts.find(x => x.id === p.type)?.name, p.type), pctText(p.wear), T.ref.life(num(p.life), T.ref.lifeItems[item] ?? '')) + (p.failed ? `, ${T.card.failed}` : ''))
-      .join('; ') || dash
+      .join('; ') || dash()
   );
 }
 
-function Line({ l, n }: { l: RefLine; n: number }) {
+/** Наибольший износ узлов — порядок столбца узлов: самые изношенные вверху или внизу. */
+const worst = (parts: RefPart[]) => parts.reduce((m, p) => Math.max(m, p.wear), -1);
+
+function Line({ l, n, q }: { l: RefLine; n: number; q: string }) {
   const c = T.ref.machineCols;
+  const item = (m: RefMachine) => db?.machines[m.type]?.item ?? 'carton';
+  const items = (m: RefMachine) => T.ref.items[item(m)] ?? '';
+  const order = new Map(l.machines.map((m, i) => [m.id, i]));
+  const cols: Col<RefMachine>[] = [
+    { name: c.name, text: m => named(db?.machines[m.type]?.name, m.type), num: m => order.get(m.id) ?? 0 },
+    { name: c.nominal, text: m => T.ref.perMin(num(m.nominal), items(m)), show: m => <b>{T.ref.perMin(num(m.nominal), items(m))}</b>, num: m => m.nominal },
+    { name: c.buffer, text: m => (m.buffer !== undefined ? T.ref.buffer(num(m.buffer), items(m)) : dash()), num: m => m.buffer ?? -1 },
+    { name: c.now, text: m => `${T.machine[m.state] ?? m.state}${m.rate > 0 ? ` · ${T.ref.perMin(num(m.rate), items(m))}` : ''}`, num: m => m.rate },
+    { name: c.parts, text: m => partsText(m.type, m.parts, item(m)), num: m => worst(m.parts) },
+  ];
   return (
     <section className="rsec">
       <div className="msec">{T.gantt.line(n)}</div>
       <div className="muted">{l.batch && l.sku ? T.ref.lineNow(l.batch, named(db?.skus[l.sku]?.name, l.sku)) : T.ref.lineIdle}</div>
-      <Table
-        test="ref-line"
-        cols={[c.name, c.nominal, c.buffer, c.now, c.parts]}
-        rows={l.machines.map(m => {
-          const item = db?.machines[m.type]?.item ?? 'carton';
-          const items = T.ref.items[item] ?? '';
-          return [
-            named(db?.machines[m.type]?.name, m.type),
-            <b key="nom">{T.ref.perMin(num(m.nominal), items)}</b>,
-            m.buffer !== undefined ? T.ref.buffer(num(m.buffer), items) : dash,
-            `${T.machine[m.state] ?? m.state}${m.rate > 0 ? ` · ${T.ref.perMin(num(m.rate), items)}` : ''}`,
-            partsText(m.type, m.parts, item),
-          ];
-        })}
-      />
+      <Table test="ref-line" cols={cols} items={l.machines} keyOf={m => m.id} q={q} />
     </section>
   );
 }
 
-function Equipment({ v }: { v: RefView }) {
+function Equipment({ v, q }: { v: RefView; q: string }) {
   const c = T.ref.eqCols;
+  const cols: Col<RefEquipment>[] = [
+    {
+      name: c.name,
+      text: e => `${named(db?.equipment[e.type]?.name, e.type)} ${e.id}`,
+      show: e => (
+        <>
+          {named(db?.equipment[e.type]?.name, e.type)} <span className="muted mono">{e.id}</span>
+        </>
+      ),
+    },
+    { name: c.room, text: e => T.roomTypes[e.room] ?? e.room },
+    { name: c.cleaning, text: e => `${durText(e.cleaning.minor)} · ${durText(e.cleaning.major)}`, num: e => e.cleaning.major },
+    { name: c.parts, text: e => partsText(e.type, e.parts, 'equipment'), num: e => worst(e.parts) },
+    { name: c.now, text: e => `${T.equipment[e.state]}${e.batch ? ` · ${T.ref.of(e.batch)}` : ''}` },
+  ];
   return (
     <>
       <section className="rsec">
-        <Table
-          test="ref-equipment"
-          cols={[c.name, c.room, c.cleaning, c.parts, c.now]}
-          rows={v.equipment.map(e => [
-            <>
-              {named(db?.equipment[e.type]?.name, e.type)} <span className="muted mono">{e.id}</span>
-            </>,
-            T.roomTypes[e.room] ?? e.room,
-            `${durText(e.cleaning.minor)} · ${durText(e.cleaning.major)}`,
-            partsText(e.type, e.parts, 'equipment'),
-            `${T.equipment[e.state]}${e.batch ? ` · ${T.ref.of(e.batch)}` : ''}`,
-          ])}
-        />
+        <Table test="ref-equipment" cols={cols} items={v.equipment} keyOf={e => e.id} q={q} />
       </section>
       {v.lines.map((l, i) => (
-        <Line key={l.id} l={l} n={i + 1} />
+        <Line key={l.id} l={l} n={i + 1} q={q} />
       ))}
     </>
   );
 }
 
-function Lab({ v }: { v: RefView }) {
+function Lab({ v, q }: { v: RefView; q: string }) {
   const i = T.ref.instCols;
   const m = T.ref.methodCols;
+  const inst: Col<RefInstrument>[] = [
+    {
+      name: i.name,
+      text: x => `${named(db?.instruments[x.type]?.name, x.type)} ${x.id}`,
+      show: x => (
+        <>
+          {named(db?.instruments[x.type]?.name, x.type)} <span className="muted mono">{x.id}</span>
+        </>
+      ),
+    },
+    { name: i.room, text: x => T.roomTypes[x.room] ?? x.room },
+    {
+      name: i.now,
+      text: x => (x.method ? named(db?.tests[x.method]?.name, x.method) : T.ref.instFree),
+      show: x => (x.method ? named(db?.tests[x.method]?.name, x.method) : <span className="muted">{T.ref.instFree}</span>),
+    },
+  ];
+  const methods: Col<RefMethod>[] = [
+    { name: m.name, text: x => named(db?.tests[x.id]?.name, x.id) },
+    {
+      name: m.inst,
+      text: x => (x.inst ? named(db?.instruments[x.inst]?.name, x.inst) : T.ref.noInst),
+      show: x => (x.inst ? named(db?.instruments[x.inst]?.name, x.inst) : <span className="muted">{T.ref.noInst}</span>),
+    },
+    { name: m.prep, text: x => durText(x.prep), num: x => x.prep },
+    { name: m.run, text: x => (x.run > 0 ? durText(x.run) : dash()), num: x => x.run },
+    { name: m.alone, text: x => (x.unattended ? T.ref.yes : T.ref.no) },
+    { name: m.queued, text: x => num(x.queued), num: x => x.queued },
+    { name: m.running, text: x => num(x.running), num: x => x.running },
+    { name: m.done, text: x => num(x.done), num: x => x.done },
+  ];
   return (
     <>
       <section className="rsec">
-        <Table
-          test="ref-instruments"
-          cols={[i.name, i.room, i.now]}
-          rows={v.instruments.map(x => [
-            <>
-              {named(db?.instruments[x.type]?.name, x.type)} <span className="muted mono">{x.id}</span>
-            </>,
-            T.roomTypes[x.room] ?? x.room,
-            x.method ? named(db?.tests[x.method]?.name, x.method) : <span className="muted">{T.ref.instFree}</span>,
-          ])}
-        />
+        <Table test="ref-instruments" cols={inst} items={v.instruments} keyOf={x => x.id} q={q} />
       </section>
       <section className="rsec">
-        <Table
-          test="ref-methods"
-          cols={[m.name, m.inst, m.prep, m.run, m.alone, m.queued, m.running, m.done]}
-          rows={v.methods.map(x => [
-            named(db?.tests[x.id]?.name, x.id),
-            x.inst ? named(db?.instruments[x.inst]?.name, x.inst) : <span className="muted">{T.ref.noInst}</span>,
-            durText(x.prep),
-            x.run > 0 ? durText(x.run) : dash,
-            x.unattended ? T.ref.yes : T.ref.no,
-            num(x.queued),
-            num(x.running),
-            num(x.done),
-          ])}
-        />
+        <Table test="ref-methods" cols={methods} items={v.methods} keyOf={x => x.id} q={q} />
       </section>
     </>
   );
 }
 
-function People({ v }: { v: RefView }) {
+function People({ v, q }: { v: RefView; q: string }) {
   const r = T.ref.roleCols;
   const s = T.ref.shiftCols;
+  const headcount = (x: RefRole) => x.shifts.reduce((n, sh) => n + sh.n, 0);
+  const roles: Col<RefRole>[] = [
+    { name: r.name, text: x => named(db?.roles[x.id]?.name, x.id) },
+    { name: r.dept, text: x => T.morning.depts[x.dept] ?? x.dept },
+    { name: r.salary, text: x => money(x.salary), num: x => x.salary },
+    { name: r.shifts, text: x => x.shifts.map(sh => `${named(db?.shifts[sh.shift]?.name, sh.shift)} × ${sh.n}`).join('; '), num: headcount },
+    { name: r.present, text: x => num(x.present), num: x => x.present },
+    { name: r.busy, text: x => num(x.busy), num: x => x.busy },
+  ];
+  const shifts: Col<RefShift>[] = [
+    { name: s.name, text: x => named(db?.shifts[x.id]?.name, x.id) },
+    { name: s.days, text: x => x.days.map(d => T.date.weekdays[d]).join(', '), num: x => x.days.length },
+    { name: s.hours, text: x => T.ref.hours(x.from, x.to), num: x => x.from },
+  ];
   return (
     <>
       <section className="rsec">
-        <Table
-          test="ref-roles"
-          cols={[r.name, r.dept, r.salary, r.shifts, r.present, r.busy]}
-          rows={v.roles
-            .filter(x => x.shifts.length > 0)
-            .map(x => [
-              named(db?.roles[x.id]?.name, x.id),
-              T.morning.depts[x.dept] ?? x.dept,
-              money(x.salary),
-              x.shifts.map(sh => `${named(db?.shifts[sh.shift]?.name, sh.shift)} × ${sh.n}`).join('; '),
-              num(x.present),
-              num(x.busy),
-            ])}
-        />
+        <Table test="ref-roles" cols={roles} items={v.roles.filter(x => x.shifts.length > 0)} keyOf={x => x.id} q={q} />
       </section>
       <section className="rsec">
-        <Table
-          cols={[s.name, s.days, s.hours]}
-          rows={v.shifts.map(x => [named(db?.shifts[x.id]?.name, x.id), x.days.map(d => T.date.weekdays[d]).join(', '), T.ref.hours(x.from, x.to)])}
-        />
+        <Table cols={shifts} items={v.shifts} keyOf={x => x.id} q={q} />
       </section>
     </>
   );
 }
 
-function Partners({ v }: { v: RefView }) {
+function Partners({ v, q }: { v: RefView; q: string }) {
   const s = T.ref.supCols;
   const c = T.ref.cusCols;
+  const itemLine = (it: RefSupplier['items'][number]) => {
+    const unit = unitOf(it.material);
+    const price = unit === 'mass' ? T.ref.perKg(priceText(it.price)) : T.ref.perPcs(priceText(it.price));
+    return `${named(db?.materials[it.material]?.name, it.material)}: ${price} · ${qtyText(it.moq, unit)}`;
+  };
+  const spareLine = (sp: RefSupplier['spares'][number]) => T.ref.spare(named(db?.spares[sp.spare]?.name, sp.spare), priceText(sp.price), T.ref.dayRange(sp.lead[0], sp.lead[1]));
+  const suppliers: Col<RefSupplier>[] = [
+    { name: s.name, text: x => named(db?.suppliers[x.id]?.name, x.id) },
+    {
+      name: s.items,
+      text: x => [...x.items.map(itemLine), ...x.spares.map(spareLine)].join('; '),
+      show: x => (
+        <>
+          {x.items.map(it => (
+            <div key={it.material}>{itemLine(it)}</div>
+          ))}
+          {x.spares.map(sp => (
+            <div key={sp.spare}>{spareLine(sp)}</div>
+          ))}
+        </>
+      ),
+      num: x => x.items.length + x.spares.length,
+    },
+    { name: s.lead, text: x => T.ref.dayRange(x.lead[0], x.lead[1]), num: x => x.lead[1] },
+    { name: s.prepay, text: x => pctText(x.prepay), num: x => x.prepay },
+    { name: s.pay, text: x => T.ref.days(x.payDays), num: x => x.payDays },
+    { name: s.approved, text: x => (x.approved ? T.ref.yes : T.ref.no) },
+  ];
+  const customers: Col<RefCustomer>[] = [
+    { name: c.name, text: x => named(db?.customers[x.id]?.name, x.id) },
+    { name: c.pay, text: x => T.ref.days(x.payDays), num: x => x.payDays },
+    { name: c.orders, text: x => T.ref.orders(x.days.map(d => T.date.weekdays[d]).join(', '), x.hour), num: x => x.days.length },
+    { name: c.lead, text: x => T.ref.dayRange(x.lead[0], x.lead[1]), num: x => x.lead[1] },
+    { name: c.shelf, text: x => pctText(x.minShelf), num: x => x.minShelf },
+  ];
   return (
     <>
       <section className="rsec">
-        <Table
-          test="ref-suppliers"
-          cols={[s.name, s.items, s.lead, s.prepay, s.pay, s.approved]}
-          rows={v.suppliers.map(x => [
-            named(db?.suppliers[x.id]?.name, x.id),
-            <>
-              {x.items.map(it => {
-                const unit = unitOf(it.material);
-                const price = unit === 'mass' ? T.ref.perKg(priceText(it.price)) : T.ref.perPcs(priceText(it.price));
-                return <div key={it.material}>{`${named(db?.materials[it.material]?.name, it.material)}: ${price} · ${qtyText(it.moq, unit)}`}</div>;
-              })}
-              {x.spares.map(sp => (
-                <div key={sp.spare}>{T.ref.spare(named(db?.spares[sp.spare]?.name, sp.spare), priceText(sp.price), T.ref.dayRange(sp.lead[0], sp.lead[1]))}</div>
-              ))}
-            </>,
-            T.ref.dayRange(x.lead[0], x.lead[1]),
-            pctText(x.prepay),
-            T.ref.days(x.payDays),
-            x.approved ? T.ref.yes : T.ref.no,
-          ])}
-        />
+        <Table test="ref-suppliers" cols={suppliers} items={v.suppliers} keyOf={x => x.id} q={q} />
       </section>
       <section className="rsec">
-        <Table
-          test="ref-customers"
-          cols={[c.name, c.pay, c.orders, c.lead, c.shelf]}
-          rows={v.customers.map(x => [
-            named(db?.customers[x.id]?.name, x.id),
-            T.ref.days(x.payDays),
-            T.ref.orders(x.days.map(d => T.date.weekdays[d]).join(', '), x.hour),
-            T.ref.dayRange(x.lead[0], x.lead[1]),
-            pctText(x.minShelf),
-          ])}
-        />
+        <Table test="ref-customers" cols={customers} items={v.customers} keyOf={x => x.id} q={q} />
       </section>
     </>
   );
@@ -321,6 +398,8 @@ function Partners({ v }: { v: RefView }) {
 export function Ref({ hud, actions }: { hud: Hud; actions: Actions }) {
   const v = hud.ref.view;
   const tab = hud.ref.tab;
+  // поиск — по всем таблицам вкладки; живёт, пока окно открыто
+  const [q, setQ] = useState('');
   return (
     <div className="ref panel" id="ref" role="dialog" aria-labelledby="ref-title" data-test="ref">
       <div className="phead">
@@ -333,6 +412,7 @@ export function Ref({ hud, actions }: { hud: Hud; actions: Actions }) {
             </button>
           ))}
         </span>
+        <input type="search" className="rsearch" value={q} onChange={e => setQ(e.target.value)} placeholder={T.ref.search} aria-label={T.ref.search} data-test="ref-search" />
         <button type="button" className="close" onClick={() => actions.toggleRef()} title={T.card.closeHint}>
           ✕
         </button>
@@ -340,19 +420,19 @@ export function Ref({ hud, actions }: { hud: Hud; actions: Actions }) {
       {!v ? <div className="muted">{T.app.loading}</div> : null}
       {v ? (
         <div className="rbody" data-test="ref-body" data-tab={tab}>
-          {tab === 'products' ? <Products v={v} /> : null}
+          {tab === 'products' ? <Products v={v} q={q} /> : null}
           {tab === 'recipes' ? (
             <>
               {v.recipes.map(r => (
-                <Recipe key={r.id} r={r} t={hud.t} />
+                <Recipe key={r.id} r={r} t={hud.t} q={q} />
               ))}
               <div className="muted small">{T.ref.planNote}</div>
             </>
           ) : null}
-          {tab === 'equipment' ? <Equipment v={v} /> : null}
-          {tab === 'lab' ? <Lab v={v} /> : null}
-          {tab === 'people' ? <People v={v} /> : null}
-          {tab === 'partners' ? <Partners v={v} /> : null}
+          {tab === 'equipment' ? <Equipment v={v} q={q} /> : null}
+          {tab === 'lab' ? <Lab v={v} q={q} /> : null}
+          {tab === 'people' ? <People v={v} q={q} /> : null}
+          {tab === 'partners' ? <Partners v={v} q={q} /> : null}
           <div className="muted small">{T.ref.noHidden}</div>
         </div>
       ) : null}

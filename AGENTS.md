@@ -143,7 +143,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   `lineRedraw`), `qa.ts` (QA check of finished goods with
   retention samples, the qualified person's decision, FG shelf life), `market.ts` (customers and their orders, FG into
   circulation after the regulator publishes the batch, FEFO allocation with the residual shelf life, whole pallets and
-  case picking, the customer's truck at 15:00, shipments with codes), `cash.ts` (kopecks and ledger entries, dues by
+  case picking, the customer's truck at 15:00, shipments with codes; orders at risk — one rule for the meeting and the
+  hourly alert, `orderRisks`), `cash.ts` (kopecks and ledger entries, dues by
   date, suppliers, wages twice a month, contributions, energy, VAT by quarter, the credit line), `maint.ts` (machine
   parts, wear by work done, failure by the hazard table of wear, repairs and planned replacement by the mechanic with a
   spare from the workshop, spares replenished by level, the maintenance policy, `maintain`), `lean.ts` (losses per day
@@ -157,10 +158,15 @@ first, or copy the working code of Bolnitsa on the same versions.
   whose each command is, the `seat` command, the log of places; a player's command of another's post is refused),
   `batchno.ts` (the batch number `PPNNNMMYY`: the short `PPNNN` when the batch record is issued, month and year when the
   first mixing starts; a count per product code from 1 January and after 999 again from 001, skipping numbers still held,
-  so a full number never repeats; one integer in the slice), `invariants.ts`.
+  so a full number never repeats; one integer in the slice), `alerts.ts` (the hourly alerts — a supplier truck still not
+  unloaded 2 hours after arrival, a batch order still waiting for material at its not-before time and a packing job short
+  of it at once, a new customer order at risk by the meeting's rule; one notice per thing in the hour its threshold
+  falls, no state of their own), `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
-- `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`, format 6: rooms, trucks
+- `src/sim/` — the calculation thread: protocol, host (`createSim`; a `tick` carries the notice kinds of the player's
+  autopauses, and the thread stops right after such an event — the plant's clock on its minute, the rest of the game
+  clock dropped), packed slice (`pack.ts`, format 6: rooms, trucks
   with their open body, changed pallets, tasks in progress, people with their walk to a post, vehicles, lines with their
   machines, equipment; no truth fields — not the next micro-stop, not a part's budget), views for panels — the warehouse
   and the card of a thing with what a pallet holds, built here on request and sent with the slice only when they changed,
@@ -184,7 +190,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   and vehicles are now — a pure function of the tasks in the slice and the clock, on the plan's routes and with the
   engine's travel times, free people on their way to a post too, and the work icon of each busy person (`movers.ts`);
   the start preset — the frame measured on medium at first run, low if slower than 33 ms, the result and the player's
-  choice kept in the window (`preset.ts`); which «Сейчас» row is the work of a thing in the card (`watch.ts`); trucks in the yard — backing in, waiting,
+  choice kept in the window (`preset.ts`); the autopauses — which notices stop the world, whose post each is, the ones
+  switched off kept in the window, where a click on a notice leads (`pauses.ts`); which «Сейчас» row is the work of a
+  thing in the card (`watch.ts`); trucks in the yard — backing in, waiting,
   driving off, a picture only (`yard.ts`); what is under the cursor — people by their point on screen, pallets, machines
   and trucks by the camera ray, the room by the floor (`pick.ts`); pallet moves between zones seen from the slice, their
   rates, arrows and the fill of warehouse places (`flows.ts`); the scene bench, a copy of Bolnitsa's (`bench.ts`,
@@ -202,7 +210,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   icons above heads, one instanced draw call (`badges.ts`), people
   — Bolnitsa's crowd on the GPU (`bake.ts`, `people.ts`, copies) with looks and clothes by role (`cast.ts`), the
   composition (`stage.ts`).
-- `src/ui/` — panels (React) and their store: the top bar (`App.tsx`), the warehouse (`Stock.tsx`), the card of a
+- `src/ui/` — panels (React) and their store: the top bar with «До утра», «До события» and the latest notice — the one
+  the world stopped on marked «❚❚», a click leads to its place (`App.tsx`), the autopause menu (`Pauses.tsx`), the
+  warehouse (`Stock.tsx`), the card of a
   thing — what it is, state, why, what can be done, history (`Card.tsx`), the plant reference with its tabs, sortable columns and search (`Ref.tsx`,
   F1), quality attribute and process parameter values in words (`units.ts`), what is going on now with «Смотреть»
   (`Now.tsx`, N), the 08:00 meeting (`Morning.tsx`), the cash

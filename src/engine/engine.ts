@@ -3,8 +3,10 @@
 //
 // Устройство хода времени — как в «Больнице» (её src/engine/shift/engine.ts, `later` и `catchUp`): команда со временем
 // ставит `until`, а `catchUp` проживает события по порядку, пока бюджет кадра `more()` позволяет. Недожитое
-// доживается в следующих кадрах; любая следующая команда сначала доживает всё.
+// доживается в следующих кадрах; любая следующая команда сначала доживает всё. `more` спрашивают после каждого события, и он
+// видит извещения, уже данные этим доживанием: так поток расчёта встаёт ровно на событии автопаузы (Б2а).
 import type { ContentDb, Id } from '../content/types';
+import { alertsHour } from './alerts';
 import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
@@ -131,14 +133,17 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   return s;
 }
 
-export function apply(db: ContentDb, s: PlantState, cmd: Command, more?: () => boolean): Notice[] {
+/** Жить ли дальше после события: бюджет кадра и извещения, уже данные этим доживанием (автопауза, Б2а). */
+export type More = (notices: readonly Notice[]) => boolean;
+
+export function apply(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notice[] {
   // время прошлой команды, ещё не прожитое, — сначала всё: команда видит завод таким же, как игрок
   const before = catchUp(db, s);
   const out = command(db, s, cmd, more);
   return before.length > 0 ? [...before, ...out] : out;
 }
 
-function command(db: ContentDb, s: PlantState, cmd: Command, more?: () => boolean): Notice[] {
+function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notice[] {
   // своё и чужое (3е): команда игрока чужого поста — отказ с местом, чья она
   const own = foreign(s, cmd);
   if (own) return [{ kind: 'refused', cmd: cmd.kind, why: 'notYours', detail: own }];
@@ -235,20 +240,22 @@ function steps(db: ContentDb, s: PlantState, notices: Notice[]) {
 }
 
 /**
- * Дожить время команды: события по порядку, пока `more()` перед каждым, — остальное в следующий раз; без `more` — всё.
+ * Дожить время команды: события по порядку, после каждого — `more(извещения)`; нельзя — часы стоят на этом событии,
+ * остальное в следующий раз. Без `more` — всё. Спрашивают после события, а не перед следующим: так и последнее событие до
+ * цели может остановить доживание — извещение автопаузы держит часы ровно на своём событии (Б2а).
  * В конце часы стоят на том часе, до которого жили. Нечего доживать — ничего.
  */
-export function catchUp(db: ContentDb, s: PlantState, more?: () => boolean): Notice[] {
+export function catchUp(db: ContentDb, s: PlantState, more?: More): Notice[] {
   const notices: Notice[] = [];
   const target = s.until;
   if (target === undefined) return notices;
   for (;;) {
     const next = nextTime(s.agenda);
     if (next === undefined || next > target) break;
-    if (more && !more()) return notices;
     const due = popDue(s.agenda, target)!;
     s.t = Math.max(s.t, due.t);
     handle(db, s, due.e, notices);
+    if (more && !more(notices)) return notices;
   }
   s.t = target;
   delete s.until;
@@ -278,6 +285,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       qaStep(db, s);
       marketStep(db, s, notices);
       settle(db, s);
+      // тревоги часа (Б2а) — по заводу, каким его оставил час
+      alertsHour(db, s, notices);
       return;
     case 'truck':
       truckArrives(db, s, ev.po, notices);

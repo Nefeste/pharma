@@ -19,9 +19,10 @@ export type ToSim =
   | { kind: 'command'; cmd: Command }
   /**
    * кадр: часам игры прибавилось `seconds` игровых секунд (пауза — 0); движку — `budgetMs` мс. Не успел — часы завода
-   * отстают и догоняют в следующих кадрах
+   * отстают и догоняют в следующих кадрах. `stop` — виды извещений автопауз игрока (Б2а): на таком извещении поток встаёт
+   * сразу за его событием, а недожитое время пропадает
    */
-  | { kind: 'tick'; seconds: number; budgetMs: number }
+  | { kind: 'tick'; seconds: number; budgetMs: number; stop?: Notice['kind'][] }
   /** сохранить: вернуть снимок */
   | { kind: 'save' }
   /** открытые виды панелей — весь набор (docs/specs/2026-10-panels.md, 3б): собрать и прислать со срезом */
@@ -30,9 +31,10 @@ export type ToSim =
 export type FromSim =
   /**
    * после каждого `tick`, `command` и `views`: срез, извещения, на сколько часы завода отстают от часов игры (игровые
-   * секунды); виды панелей, которые изменились; `tick` — это ответ на `tick` (клиент держит в пути не больше одного)
+   * секунды); виды панелей, которые изменились; `tick` — это ответ на `tick` (клиент держит в пути не больше одного);
+   * `stopped` — `tick` встал на извещении автопаузы: часы завода — на его событии, отставания нет
    */
-  | { kind: 'slice'; buf: Int32Array; notices: Notice[]; lag: number; views?: ViewOut[]; tick?: true }
+  | { kind: 'slice'; buf: Int32Array; notices: Notice[]; lag: number; views?: ViewOut[]; tick?: true; stopped?: true }
   /** ответ на `save`: снимок состояния строкой */
   | { kind: 'saved'; json: string }
   | { kind: 'error'; message: string };

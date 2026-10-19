@@ -15,9 +15,11 @@
 // (часть 5): отпустили — задание в черновике, срок прежний; «Прогнать план» — итог «как сейчас» и черновика на пяти зёрнах,
 // часы завода в это время идут; «Утвердить» — срок задания сменился; Esc закрывает. «Кем вы будете» (3е): экран открыт с начала, мир стоит; взяли «Производство» —
 // часы пошли; на планёрке — «Ваше место»; «Поднять» без поста качества погашено, кнопкой «Место» добавили его — мир на
-// паузе, после «Взять» поднять можно. Расследование (часть 4б): «До утра», пока растворение второй серии не выйдет за
-// спецификацию, — извещение ставит мир на паузу и открывает доску; три шага, решение, разбор; Esc закрывает. Ошибок в
-// консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
+// паузе, после «Взять» поднять можно. Автопаузы (Б2а): меню — семь автопауз, две — не места игрока; планёрку отключили —
+// окно это помнит, и «До события» (клавиша 6) встаёт не в 08:00, а на первом событии автопаузы, с извещением со знаком
+// паузы, и часы стоят. Расследование (часть 4б): «До события», пока растворение второй серии не выйдет за спецификацию, —
+// извещение ставит мир на паузу и ведёт к доске; три шага, решение, разбор; Esc закрывает. Ошибок в консоли и запросов
+// наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -584,14 +586,61 @@ try {
   await lister.close();
   ok(`контактный лист: ${sheet.length} снимков → ${join(out, 'contact.png')}`);
 
-  // расследование (часть 4б): «До утра», пока растворение второй серии не выйдет за спецификацию. У игрока пост качества —
-  // извещение ставит мир на паузу и ведёт к доске; три шага; решение по лучшей версии; разбор; Esc закрывает
+  // автопаузы (Б2а): у производства и качества семь автопауз в меню, «фура» и «заказ» — не их; планёрку отключили — окно
+  // помнит; «До события» — мир встал не в 08:00, а на первом событии автопаузы мест игрока: извещение со знаком паузы, часы
+  // стоят, отставания нет. Планёрку включили обратно
+  {
+    await page.click('[data-test=pauses-open]');
+    await page.waitForSelector('[data-test=pauses]', { timeout: 10_000 });
+    const menu = await page.evaluate(() => ({
+      all: document.querySelectorAll('[data-test=pause]').length,
+      on: document.querySelectorAll('[data-test=pause]:checked').length,
+      notYours: [...document.querySelectorAll('[data-test=pauses] li.muted [data-test=pause]')].map(x => x.getAttribute('data-id')),
+    }));
+    await page.click('[data-test=pause][data-id=morning]');
+    const kept = await page.evaluate(() => localStorage.getItem('pharma.pauses'));
+    await page.screenshot({ path: join(out, 'e2e-pauses.png') });
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.press('Escape');
+    if (menu.all !== 7 || menu.on !== 7 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
+      fail(`автопаузы: в меню ${menu.all}, включено ${menu.on}, не ваши ${menu.notYours.join(', ')}, в окне «${kept}»`);
+    else ok(`автопаузы: в меню ${menu.all}, не ваши — ${menu.notYours.join(', ')}; планёрку отключили — в окне ${kept}; Esc закрыл меню`);
+    const t0 = await gameT();
+    await page.keyboard.press('Digit6');
+    const ran = await page.evaluate(() => window.__game.ff && window.__game.ffTo === 'event');
+    await page.waitForFunction(() => !window.__game.ff, null, { timeout: 120_000 });
+    await frames(3);
+    const st = await page.evaluate(() => ({
+      speed: window.__game.speed,
+      lag: window.__game.lag,
+      t: window.__game.t,
+      morning: window.__game.store.get().morning.open,
+      top: window.__game.store.get().notices[0],
+      cls: document.querySelector('.top .notice')?.className ?? '',
+      text: document.querySelector('.top .notice')?.textContent ?? '',
+    }));
+    await page.waitForTimeout(500);
+    const t1 = await gameT();
+    if (!ran || st.speed !== 0 || st.lag !== 0 || !st.top?.stop || !/stop/.test(st.cls) || !st.text.startsWith('❚❚') || /Планёрка/.test(st.text) || t1 !== st.t || st.t <= t0)
+      fail(`«До события»: промотка ${ran}, скорость ${st.speed}, отставание ${st.lag}, извещение «${st.text}» (${st.cls}), часы ${t0} → ${st.t} → ${t1}`);
+    else ok(`«До события»: мир встал через ${((st.t - t0) / 3600).toFixed(1)} ч на «${st.text}» — часы стоят`);
+    // без автопаузы планёрка открывается сама, но мир не ждёт: закрыть
+    if (st.morning) await page.keyboard.press('Escape');
+    await page.click('[data-test=pauses-open]');
+    await page.click('[data-test=pause][data-id=morning]');
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.press('Escape');
+    if ((await page.evaluate(() => localStorage.getItem('pharma.pauses'))) !== '[]') fail('автопаузы: планёрку не включили обратно');
+  }
+
+  // расследование (часть 4б): «До события», пока растворение второй серии не выйдет за спецификацию. У игрока пост качества —
+  // извещение ставит мир на паузу и ведёт к доске; на планёрке и других автопаузах — дальше; три шага; решение по лучшей
+  // версии; разбор; Esc закрывает
   {
     const open = () => page.evaluate(() => (window.__game.store.get().top?.inv ?? 0) > 0);
-    for (let i = 0; i < 12 && !(await open()); i++) {
-      const day = await page.evaluate(() => window.__game.day);
-      await page.keyboard.press('Digit5');
-      await page.waitForFunction(d => (window.__game.day > d && !window.__game.ff && window.__game.store.get().morning.open) || (window.__game.store.get().top?.inv ?? 0) > 0, day, { timeout: 90_000 });
+    for (let i = 0; i < 24 && !(await open()); i++) {
+      await page.keyboard.press('Digit6');
+      await page.waitForFunction(() => !window.__game.ff, null, { timeout: 120_000 });
       if (await page.evaluate(() => window.__game.store.get().morning.open)) await page.keyboard.press('Escape');
     }
     const stop = await page.evaluate(() => ({ inv: window.__game.store.get().top?.inv ?? 0, speed: window.__game.speed, ff: window.__game.ff, notice: document.querySelector('[data-test=notice-inv]')?.textContent ?? '' }));

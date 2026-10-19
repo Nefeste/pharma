@@ -1,8 +1,9 @@
-// Панели (геймдизайн, §18): верхняя полоса — дата и часы завода, сутки, скорости, «До утра», стены, склад, планёрка,
-// касса с изменением за сутки, извещение; панель склада и карточка выбранной вещи (docs/specs/2026-10-panels.md, 3б);
-// планёрка и панель кассы (3в); лаборатория (3г); расписание (3д); экран «Кем вы будете» и кнопка «Место» (3е); доска
-// расследования (часть 4б) — кнопка со счётом идущих, извещение о расследовании ведёт к ней; полоса отладки; состояние
-// загрузки и ошибки. Панели только читают хранилище и зовут действия игры.
+// Панели (геймдизайн, §18): верхняя полоса — дата и часы завода, сутки, скорости, «До утра» и «До события» с меню
+// автопауз (Б2а), стены, склад, планёрка, касса с изменением за сутки, извещение — на котором мир встал, помечено, и щелчок
+// по нему ведёт на место; панель склада и карточка выбранной вещи (docs/specs/2026-10-panels.md, 3б); планёрка и панель
+// кассы (3в); лаборатория (3г); расписание (3д); экран «Кем вы будете» и кнопка «Место» (3е); доска расследования (часть
+// 4б) — кнопка со счётом идущих; полоса отладки; состояние загрузки и ошибки. Панели только читают хранилище и зовут
+// действия игры.
 import { useLayoutEffect, useRef } from 'react';
 import { momentOf } from '../engine/core/calendar';
 import { clock, dateText, money, T } from '../i18n';
@@ -15,11 +16,12 @@ import { Inv } from './Inv';
 import { Lab } from './Lab';
 import { Morning } from './Morning';
 import { Now, rowTitle } from './Now';
+import { Pauses } from './Pauses';
 import { Ref } from './Ref';
 import { Seats } from './Seats';
 import { Stock } from './Stock';
 import { watchFor } from '../app/watch';
-import { type Actions, LIVE, type Speed, type Store, useHud } from './store';
+import { type Actions, type Hud, LIVE, type Speed, type Store, useHud } from './store';
 
 const SPEEDS: Speed[] = [1, 2, 3, 4];
 const WALLS: WallMode[] = ['full', 'cut', 'down'];
@@ -66,8 +68,14 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
               {T.top.speed(k)}
             </button>
           ))}
-          <button className={s.ff ? 'on' : ''} onClick={() => actions.untilMorning()} title={T.top.morningHint}>
+          <button className={s.ff && s.ffTo === 'morning' ? 'on' : ''} onClick={() => actions.untilMorning()} title={T.top.morningHint}>
             {T.top.morning}
+          </button>
+          <button className={s.ff && s.ffTo === 'event' ? 'on' : ''} onClick={() => actions.untilEvent()} title={T.top.eventHint} data-test="until-event">
+            {T.top.event}
+          </button>
+          <button type="button" className={s.pauses.open ? 'on' : ''} onClick={() => actions.togglePauses()} title={T.pauses.hint} data-test="pauses-open">
+            {T.pauses.button}
           </button>
         </span>
         <span className="group" data-test="walls">
@@ -125,19 +133,14 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
             </button>
           </span>
         ) : null}
-        {s.notices[0]?.inv ? (
-          <button type="button" className="notice link" onClick={() => actions.openInv(s.notices[0].inv!)} title={T.inv.hint} data-test="notice-inv">
-            {s.notices[0].text}
-          </button>
-        ) : (
-          <span className="notice">{s.notices[0]?.text ?? T.app.stage}</span>
-        )}
+        <NoticeLine n={s.notices[0]} actions={actions} />
       </div>
+      {s.pauses.open && <Pauses hud={s} actions={actions} />}
       {s.stock.open && <Stock hud={s} actions={actions} plant={plant} />}
       {s.cash.open && <Cash hud={s} actions={actions} />}
       {s.lab.open && <Lab hud={s} actions={actions} />}
       {s.now.open && <Now hud={s} actions={actions} />}
-      {s.morning.open && s.morning.day !== undefined && <Morning v={s.morning.view} day={s.morning.day} start={s.start} plant={plant} pause={s.morningPause} actions={actions} />}
+      {s.morning.open && s.morning.day !== undefined && <Morning v={s.morning.view} day={s.morning.day} start={s.start} plant={plant} pause={!s.pauses.off.includes('morning')} actions={actions} />}
       {s.gantt.open && <Gantt hud={s} actions={actions} plant={plant} />}
       {s.inv.open && <Inv hud={s} actions={actions} />}
       {s.ref.open && <Ref hud={s} actions={actions} />}
@@ -175,5 +178,22 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Последнее извещение: на котором мир встал (автопауза, Б2а), — со знаком паузы, не только цветом (13-art.md, §14); щелчок
+ * ведёт на место. Извещение о расследовании ведёт к его доске.
+ */
+function NoticeLine({ n, actions }: { n: Hud['notices'][number] | undefined; actions: Actions }) {
+  if (!n) return <span className="notice">{T.app.stage}</span>;
+  const text = n.stop ? `❚❚ ${n.text}` : n.text;
+  const cls = `notice${n.stop ? ' stop' : ''}`;
+  if (!n.go) return <span className={cls} data-test="notice">{text}</span>;
+  const go = n.go;
+  return (
+    <button type="button" className={`${cls} link`} onClick={() => actions.go(go)} title={'inv' in go ? T.inv.hint : text} data-test={'inv' in go ? 'notice-inv' : 'notice-go'}>
+      {text}
+    </button>
   );
 }

@@ -2,6 +2,7 @@
 // Хранилище панелей: игра пишет сюда не чаще 10 раз в секунду, панели читают через `useSyncExternalStore`. Снимок
 // неизменяемый: каждое `set` — новый объект.
 import { useSyncExternalStore } from 'react';
+import type { Go, Pause } from '../app/pauses';
 import type { SeatId } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
 import type { RunSum } from '../engine/plan/run';
@@ -31,12 +32,15 @@ export interface Hud {
   t: number;
   day: number;
   speed: Speed;
-  /** промотка «До утра» */
+  /** промотка: «До утра» или «До события» (Б2а) */
   ff: boolean;
+  ffTo: 'morning' | 'event';
   /** на сколько игровых минут расчёт отстаёт */
   lag: number;
-  /** извещения; у извещения о расследовании — его номер: щелчок ведёт к доске */
-  notices: { t: number; text: string; inv?: string }[];
+  /**
+   * извещения; `stop` — на нём мир встал (автопауза, Б2а); `go` — куда ведёт щелчок: вещь, окно или доска расследования
+   */
+  notices: { t: number; text: string; stop?: true; go?: Go }[];
   debug: boolean;
   quality: Quality;
   /** стены: целые, срез у камеры, вниз */
@@ -51,9 +55,10 @@ export interface Hud {
   /** выбранная вещь и её карточка (3б) */
   selected?: Thing;
   card?: CardView;
-  /** планёрка (3в): открыта ли, на какие сутки, вид; пауза на планёрке — до перезапуска игры */
+  /** планёрка (3в): открыта ли, на какие сутки, вид */
   morning: { open: boolean; day?: number; view?: MorningView };
-  morningPause: boolean;
+  /** автопаузы (Б2а): открыто ли меню; какие отключены — запоминается в окне (src/app/pauses.ts) */
+  pauses: { open: boolean; off: Pause[] };
   /** панель кассы (3в): открыта ли, страница календаря, вид */
   cash: { open: boolean; page: number; view?: CashView };
   /** касса верхней полосы */
@@ -137,6 +142,7 @@ export const initial: Hud = {
   day: 0,
   speed: 1,
   ff: false,
+  ffTo: 'morning',
   lag: 0,
   notices: [],
   debug: false,
@@ -148,7 +154,7 @@ export const initial: Hud = {
   status: '',
   stock: { open: false, query: STOCK },
   morning: { open: false },
-  morningPause: true,
+  pauses: { open: false, off: [] },
   cash: { open: false, page: 0 },
   lab: { open: false, tab: 'queue' },
   now: { open: false },
@@ -161,7 +167,14 @@ export const initial: Hud = {
 
 export interface Actions {
   setSpeed(s: Speed): void;
+  /** промотка до 08:00 (5); до первого события автопаузы (6, Б2а) */
   untilMorning(): void;
+  untilEvent(): void;
+  /** меню автопауз: открыть или закрыть; включить или отключить автопаузу — запоминается в окне */
+  togglePauses(): void;
+  setPause(p: Pause, on: boolean): void;
+  /** щелчок по извещению: к вещи, в окно или на доску расследования */
+  go(g: Go): void;
   setQuality(q: Quality): void;
   /** пресет, выбранный игроком: применить и запомнить (src/app/preset.ts) */
   pickQuality(q: Quality): void;
@@ -176,12 +189,11 @@ export interface Actions {
   select(t: Thing | undefined): void;
   /** камера — к паллете, паллета — выбрана */
   showUnit(n: number): void;
-  /** камера — к вещи (паллета, машина, оборудование), вещь — выбрана */
+  /** камера — к вещи (паллета, машина, оборудование, фура во дворе), вещь — выбрана */
   show(t: Thing): void;
-  /** планёрка: открыть последнюю; закрыть — и включить скорость, что была до паузы планёрки; пауза на планёрке */
+  /** планёрка: открыть последнюю; закрыть — и включить скорость, что была до паузы планёрки */
   openMorning(): void;
   closeMorning(resume: boolean): void;
-  setMorningPause(on: boolean): void;
   /** панель кассы: открыть или закрыть; страница календаря */
   toggleCash(): void;
   setCashPage(page: number): void;

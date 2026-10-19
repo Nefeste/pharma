@@ -313,7 +313,7 @@ export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningV
       )}
       <div className="mfoot">
         <label title={T.morning.pauseHint}>
-          <input type="checkbox" checked={pause} onChange={e => actions.setMorningPause(e.currentTarget.checked)} /> {T.morning.pause}
+          <input type="checkbox" checked={pause} onChange={e => actions.setPause('morning', e.currentTarget.checked)} /> {T.morning.pause}
         </label>
         <span className="grow" />
         <button type="button" onClick={() => actions.closeMorning(true)} data-test="morning-resume">

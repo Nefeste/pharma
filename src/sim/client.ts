@@ -2,7 +2,8 @@
 // на сколько часы окна ушли вперёд среза («живое время», docs/specs/2026-10-view.md, 2в); виды панелей (3б). Исправлено
 // (перенести в «Больницу»): `tick` в пути освобождает только ответ на `tick` — ответ на команду его не освобождает.
 // Исправлено (перенести в «Больницу»): счёт `roundTripsTaken` — память времён обрезана, и отметка начала прогона бенча
-// длиной массива давала пустую выборку со второго прогона.
+// длиной массива давала пустую выборку со второго прогона. Автопауза (Б2а): `tick` несёт виды извещений, на которых встать
+// (`stop`); срез, вставший на таком, помечен `stopped`, и окно сбрасывает долг (`drop`).
 // Сторона потока отрисовки: Web Worker с движком, ход часов кадрами, последний срез. В пути — не больше одного `tick`:
 // пока ответ не пришёл, игровые секунды копятся, и поток не захлёбывается кадрами, если не успевает.
 import type { Command, Notice } from '../engine/types';
@@ -15,6 +16,8 @@ export interface Slice {
   lag: number;
   /** виды панелей, которые изменились (3б) */
   views?: ViewOut[];
+  /** поток встал на извещении автопаузы (Б2а): часы завода — на его событии */
+  stopped?: true;
 }
 
 export class SimClient {
@@ -56,7 +59,7 @@ export class SimClient {
       this.roundTripsTaken++;
       if (this.roundTrips.length > 2000) this.roundTrips.splice(0, 1000);
     }
-    this.onSlice({ buf: msg.buf, notices: msg.notices, lag: msg.lag, ...(msg.views ? { views: msg.views } : {}) });
+    this.onSlice({ buf: msg.buf, notices: msg.notices, lag: msg.lag, ...(msg.views ? { views: msg.views } : {}), ...(msg.stopped ? { stopped: true as const } : {}) });
   }
 
   start(msg: Extract<ToSim, { kind: 'start' }>) {
@@ -78,8 +81,11 @@ export class SimClient {
     return this.ticking;
   }
 
-  /** Кадр: часам прибавилось `gameSeconds` (с дробью); поток получает целые секунды и бюджет. */
-  frame(gameSeconds: number, budgetMs: number) {
+  /**
+   * Кадр: часам прибавилось `gameSeconds` (с дробью); поток получает целые секунды и бюджет — и виды извещений, на которых
+   * встать (Б2а).
+   */
+  frame(gameSeconds: number, budgetMs: number, stop?: readonly Notice['kind'][]) {
     this.owed += gameSeconds;
     if (this.ticking) return;
     const seconds = Math.floor(this.owed);
@@ -87,7 +93,12 @@ export class SimClient {
     this.sent = seconds;
     this.ticking = true;
     this.sentAt = performance.now();
-    this.post({ kind: 'tick', seconds, budgetMs });
+    this.post({ kind: 'tick', seconds, budgetMs, ...(stop && stop.length > 0 ? { stop: [...stop] } : {}) });
+  }
+
+  /** Поток встал на автопаузе (Б2а): секунды, которые часы окна набрали сверх, не отправлять. */
+  drop() {
+    this.owed = 0;
   }
 
   /** На сколько игровых секунд часы окна ушли вперёд последнего среза: `tick` в пути и долг с дробью. */

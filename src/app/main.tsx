@@ -24,6 +24,10 @@ const later = <K extends keyof Actions>(k: K) => ((...a: unknown[]) => (game?.ac
 const actions: Actions = {
   setSpeed: later('setSpeed'),
   untilMorning: later('untilMorning'),
+  untilEvent: later('untilEvent'),
+  togglePauses: later('togglePauses'),
+  setPause: later('setPause'),
+  go: later('go'),
   setQuality: later('setQuality'),
   pickQuality: later('pickQuality'),
   setWalls: later('setWalls'),
@@ -36,7 +40,6 @@ const actions: Actions = {
   show: later('show'),
   openMorning: later('openMorning'),
   closeMorning: later('closeMorning'),
-  setMorningPause: later('setMorningPause'),
   toggleCash: later('toggleCash'),
   setCashPage: later('setCashPage'),
   toggleLab: later('toggleLab'),

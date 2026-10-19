@@ -9,7 +9,7 @@ import { DAY, momentOf } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
 import { planOf } from '../engine/plant';
 import type { Command, Notice } from '../engine/types';
-import { named, T } from '../i18n';
+import { dayText, named, qtyText, T } from '../i18n';
 import { bakeLook, lodOf, packPeople } from '../render/bake';
 import { AT, camDetail, type Detail, ease, speedDetail, type Weights } from '../render/detail';
 import { type Layout, layoutOf, levelY } from '../render/layout';
@@ -28,6 +28,7 @@ import { commandsOf, prune, upsert } from '../ui/draft';
 import { type Actions, holds, type Hud, LIVE, NO_RUN, PLAN_RUN, type Speed, type Store } from '../ui/store';
 import { fillsOf, Flows, lineArrows, moveArrows, movesOf } from './flows';
 import { type Movers, moversAt, taskIcons } from './movers';
+import { EVENT_CAP, type Go, goOf, keepOff, keptOff, stopKinds } from './pauses';
 import { keep, windowKeep } from './preset';
 import { type Box, machineBoxes, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
 import { carriedOf, dockFront, palletsOf, SceneState } from './scene';
@@ -40,7 +41,7 @@ export const PLANT = 'plant.proto';
 /** Игровых секунд в секунду на каждой скорости (геймдизайн, §2). */
 export const RATE: Record<Speed, number> = { 0: 0, 1: 60, 2: 300, 3: 1200, 4: 7200, 5: 1 };
 
-/** «До утра»: кусок игровых секунд на кадр и предел отставания, при котором поток получает новый кусок. */
+/** Промотка: кусок игровых секунд на кадр и предел отставания, при котором поток получает новый кусок. */
 const FF_CHUNK = 1800;
 const FF_LAG = 900;
 
@@ -126,8 +127,12 @@ export class Game {
   onFrame: ((ts: number) => void) | null = null;
   extra: PalletView[] = [];
   speed: Speed = 1;
-  /** промотка «До утра» — до ближайших 08:00; `ffLeft` — сколько игровых секунд ещё отправить */
+  /**
+   * промотка: «До утра» — до ближайших 08:00, «До события» (Б2а) — до первого извещения автопаузы, не дольше `EVENT_CAP`;
+   * `ffLeft` — сколько игровых секунд ещё отправить
+   */
   ff = false;
+  ffTo: 'morning' | 'event' = 'morning';
   private ffLeft = 0;
   /** часы завода из последнего среза */
   t = 0;
@@ -178,7 +183,7 @@ export class Game {
     await g.firstSlice;
     new ResizeObserver(() => g.stage.resize()).observe(host);
     g.bindInput();
-    store.set({ ready: true, start: sc.start.date, quality, walls: g.stage.wallMode });
+    store.set({ ready: true, start: sc.start.date, quality, walls: g.stage.wallMode, pauses: { open: false, off: keptOff(windowKeep()) } });
     // игра начинается с экрана «Кем вы будете» (3е): мир стоит, пока место не выбрано; «Взять» пустит его на ×1
     g.speed = 0;
     g.resume = 1;
@@ -234,42 +239,61 @@ export class Game {
         if (g.drag?.batch === d.batch && g.drag.notBefore === d.notBefore) this.store.set({ gantt: { ...g, ghost: d } });
       } else this.store.set({ top: d });
     }
-    for (const n of s.notices) this.notice(n);
+    // извещения автопауз игрока — вес «стоп» (13-art.md, §11): на таком поток встал; в полосе — оно, а не то, что пришло с
+    // ним позже
+    const stops = new Set(this.stops());
+    for (const n of s.notices) if (!stops.has(n.kind)) this.notice(n, false);
+    for (const n of s.notices) if (stops.has(n.kind)) this.notice(n, true);
     if (s.notices.some(n => n.kind === 'morning')) this.morning(sl.t);
-    // результат вне спецификации — извещение «стоп» для того, кто держит пост качества (13-art.md, §11–12): мир на паузе,
-    // промотка кончилась; без поста расследование ведёт коллега — извещение без паузы
-    if (s.notices.some(n => n.kind === 'investigation') && holds(this.store.get(), 'quality')) {
-      if (this.speed !== 0) this.resume = this.speed;
-      this.speed = 0;
-      this.ff = false;
-      this.ffLeft = 0;
-      this.hud();
-    }
+    if (s.stopped) this.autopause();
     this.gotSlice();
   }
 
   /**
-   * Планёрка в 08:00 (3в): открывается сама; «До утра» и пауза на планёрке (по умолчанию) ставят мир на паузу — игрок видит
-   * итог суток (геймдизайн, §2). Срез мог уйти дальше 08:00 только без паузы: планёрка — последних 08:00 до среза.
+   * Планёрка в 08:00 (3в): открывается сама; «До утра» кончается на ней паузой, а автопауза планёрки (по умолчанию) ставит
+   * мир на паузу при любой скорости — поток встаёт ровно на 08:00 (геймдизайн, §2). Без автопаузы срез мог уйти дальше
+   * 08:00: планёрка — последних 08:00 до среза.
    */
   private morning(t: number) {
     const at = Math.floor((t - MORNING) / DAY) * DAY + MORNING;
     this.morningSeen = at;
-    if (this.ff || this.store.get().morningPause) {
+    if (this.ff && this.ffTo === 'morning') {
       if (this.speed !== 0) this.resume = this.speed;
       this.speed = 0;
+      this.ff = false;
     }
-    this.ff = false;
     this.store.set({ morning: { open: true, day: momentOf(this.scenario.start.date, at).day } });
     this.sendViews();
     this.hud();
   }
 
-  /** Ближайшие 08:00 не раньше `now`, планёрку которых окно ещё не видело: до них часы идут, пока на планёрке пауза. */
-  private nextMorning(now: number): number {
-    let m = Math.floor((now - MORNING) / DAY) * DAY + MORNING;
-    if (m < now || m <= this.morningSeen) m += DAY;
-    return m;
+  /**
+   * Автопауза (Б2а): поток встал на извещении автопаузы игрока — мир на паузе, промотка и «Смотреть» кончились, секунды,
+   * которые часы окна набрали сверх, не уходят в поток.
+   */
+  private autopause() {
+    if (this.speed !== 0) this.resume = this.speed;
+    this.speed = 0;
+    this.ff = false;
+    this.ffLeft = 0;
+    this.client.drop();
+    this.stopWatching();
+    this.hud();
+  }
+
+  /** «До события» прожило `EVENT_CAP` и не встало: события автопаузы не было — пауза и извещение об этом. */
+  private noEvent() {
+    if (this.speed !== 0) this.resume = this.speed;
+    this.speed = 0;
+    this.ff = false;
+    this.notices.unshift({ t: this.t, text: T.pauses.none(Math.round(EVENT_CAP / DAY)) });
+    this.hud();
+  }
+
+  /** Виды извещений, на которых мир встаёт: включённые автопаузы мест игрока (pauses.ts). */
+  private stops() {
+    const h = this.store.get();
+    return stopKinds(h.pauses.off, h.top?.seats);
   }
 
   /** Паллеты на местах — когда изменился учёт или то, какие паллеты сейчас везут. */
@@ -301,7 +325,7 @@ export class Game {
     this.stage.setSelection(this.outline());
   }
 
-  private notice(n: Notice) {
+  private notice(n: Notice, stop: boolean) {
     const text =
       n.kind === 'morning' ? T.notices.morning(n.day)
       : n.kind === 'ordered' ? T.notices.ordered
@@ -313,22 +337,43 @@ export class Game {
       : n.kind === 'batchReleased' ? T.notices.batchReleased
       : n.kind === 'batchRejected' ? T.notices.batchRejected
       : n.kind === 'batchHeld' ? T.notices.batchHeld
-      : n.kind === 'deviation' ? T.notices.deviation
+      : n.kind === 'deviation' ? T.notices.deviation(T.morning.devKinds[n.what], n.code ? T.gantt.batch(n.code) : '')
       : n.kind === 'shipped' ? T.notices.shipped
       : n.kind === 'lateOrder' ? T.notices.lateOrder
       : n.kind === 'cashLow' ? T.notices.cashLow
-      : n.kind === 'failure' ? T.notices.failure
+      : n.kind === 'failure' ? T.notices.failure(...this.machineNames(n.machine, n.part))
       : n.kind === 'repaired' ? T.notices.repaired
+      : n.kind === 'truckWait' ? T.notices.truckWait(named(this.db.suppliers[n.supplier]?.name, n.supplier))
+      : n.kind === 'orderRisk'
+        ? T.notices.orderRisk(named(this.db.customers[n.customer]?.name, n.customer), dayText(momentOf(this.scenario.start.date, n.due).day), n.missing)
+      : n.kind === 'materialLate' ? this.lateText(n)
       : n.kind === 'investigation' ? T.notices.investigation(named(this.db.tests[n.method]?.name, n.method), n.code)
       : n.kind === 'invStep' ? T.notices.invStep
       : n.kind === 'concluded' ? T.notices.concluded(n.fate)
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;
-    // извещение о расследовании ведёт к его доске
-    const inv = n.kind === 'investigation' || n.kind === 'invStep' || n.kind === 'concluded' ? n.id : undefined;
-    this.notices.unshift({ t: this.t, text, ...(inv ? { inv } : {}) });
+    // щелчок ведёт на место: к машине, к фуре, в окно или на доску расследования
+    const go = goOf(this.layout.plan.plant, n);
+    this.notices.unshift({ t: this.t, text, ...(stop ? { stop: true as const } : {}), ...(go ? { go } : {}) });
     if (this.notices.length > 30) this.notices.length = 30;
+  }
+
+  /** Машина и узел — словами: машина линии или оборудование участка по имени в плане. */
+  private machineNames(id: string, part: string): [string, string] {
+    const plant = this.layout.plan.plant;
+    const type = plant.lines.flatMap(l => l.machines).find(m => m.id === id)?.type ?? plant.equipment.find(e => e.id === id)?.type ?? id;
+    const rec = this.db.machines[type] ?? this.db.equipment[type];
+    return [named(rec?.name, type), named(rec?.parts.find(p => p.id === part)?.name, part)];
+  }
+
+  /** Материал не пришёл (Б2а): серия или задание, первый материал, которого не хватает, и сколько. */
+  private lateText(n: Extract<Notice, { kind: 'materialLate' }>): string {
+    const who = n.code ? T.gantt.batch(n.code) : T.gantt.order(Number(n.batch.slice(1)));
+    const first = n.short[0];
+    const mat = first ? this.db.materials[first.material] : undefined;
+    const what = first ? `${named(mat?.name, first.material)}, ${mat ? qtyText(first.qty, mat.unit) : String(first.qty)}` : '';
+    return T.notices.materialLate(who, what, n.pack === true, n.short.length);
   }
 
   // ---------------------------------------------------------------- кадр
@@ -338,20 +383,18 @@ export class Game {
     const dt = this.last ? Math.min(0.1, (ts - this.last) / 1000) : 0;
     if (this.last) this.push(this.frames.interval, ts - this.last);
     this.last = ts;
-    // «До утра»: столько, сколько поток успевает, — новый кусок, только когда прежний почти досчитан, и не дальше 08:00
+    // промотка: столько, сколько поток успевает, — новый кусок, только когда прежний почти досчитан; «До утра» — не дальше
+    // 08:00, «До события» — пока поток не встанет на автопаузе
     let game = RATE[this.speed] * dt;
     if (this.ff) {
       game = 0;
       if (!this.client.busy && this.lag < FF_LAG && this.ffLeft > 0) {
         game = Math.min(FF_CHUNK, this.ffLeft);
         this.ffLeft -= game;
-      }
-    } else if (game > 0 && this.store.get().morningPause) {
-      // пауза на планёрке: часы не уходят за 08:00, пока не пришло её извещение
-      const now = this.t + this.lag;
-      game = Math.min(game, this.nextMorning(now) - now);
+      } else if (this.ffTo === 'event' && this.ffLeft <= 0 && !this.client.busy && this.lag === 0) this.noEvent();
     }
-    if (!this.manual) this.client.frame(game, this.ff ? 14 : 8);
+    // автопаузы игрока — с каждым кадром: поток встанет ровно на событии (Б2а)
+    if (!this.manual) this.client.frame(game, this.ff ? 14 : 8, this.stops());
     this.onFrame?.(ts);
     this.edgePan(dt);
     // крупность показа — по скорости и высоте камеры; веса доходят до нового уровня за 0,4 с
@@ -392,6 +435,7 @@ export class Game {
       day: this.day,
       speed: this.speed,
       ff: this.ff,
+      ffTo: this.ffTo,
       lag: Math.floor(this.lag / 60),
       notices: [...this.notices],
       fps: Math.round(1000 / (mean || 1)),
@@ -426,7 +470,35 @@ export class Game {
       const target = now < day + MORNING ? day + MORNING : day + 86400 + MORNING;
       this.ffLeft = target - now;
       this.ff = this.ffLeft > 0;
+      this.ffTo = 'morning';
       this.hud();
+    },
+    untilEvent: () => {
+      if (this.store.get().seats.open) return;
+      this.stopWatching();
+      this.ffLeft = EVENT_CAP;
+      this.ff = true;
+      this.ffTo = 'event';
+      this.hud();
+    },
+    togglePauses: () => {
+      const p = this.store.get().pauses;
+      this.store.set({ pauses: { ...p, open: !p.open } });
+    },
+    setPause: (id, on) => {
+      const p = this.store.get().pauses;
+      const off = on ? p.off.filter(x => x !== id) : p.off.includes(id) ? p.off : [...p.off, id];
+      this.store.set({ pauses: { ...p, off } });
+      keepOff(windowKeep(), off);
+    },
+    go: (g: Go) => {
+      if ('inv' in g) this.actions.openInv(g.inv);
+      else if ('thing' in g) this.actions.show(g.thing);
+      else if (g.panel === 'gantt') {
+        if (!this.store.get().gantt.open) this.actions.toggleGantt();
+      } else if (g.panel === 'lab') {
+        if (!this.store.get().lab.open) this.actions.toggleLab();
+      } else this.actions.openMorning();
     },
     setQuality: (q: Quality) => {
       this.stage.applyQuality(q);
@@ -594,7 +666,6 @@ export class Game {
       if (resume && this.speed === 0) this.actions.setSpeed(this.resume);
       this.sendViews();
     },
-    setMorningPause: on => this.store.set({ morningPause: on }),
     toggleCash: () => {
       const c = this.store.get().cash;
       this.store.set({ cash: { ...c, open: !c.open }, ...this.rightClosed('cash') });
@@ -641,7 +712,9 @@ export class Game {
           ? palletBoxes([...this.pallets, ...this.carriedNow]).find(x => same(x.thing, t))
           : t.kind === 'machine' || t.kind === 'equipment'
             ? this.machineBoxes.find(x => same(x.thing, t))
-            : r
+            : t.kind === 'truck'
+              ? truckBoxes(this.trucksNow).find(x => same(x.thing, t))
+              : r
               ? { min: [r.x, 0, r.z] as V3, max: [r.x + r.w, 0, r.z + r.d] as V3 }
               : undefined;
       if (b) {
@@ -843,7 +916,6 @@ export class Game {
       this.mouse.keys.clear();
     });
     window.addEventListener('keydown', e => {
-      if ((e.target as HTMLElement | null)?.tagName === 'INPUT') return;
       const k = e.code;
       // экран «Кем вы будете» — поверх всего: клавиши мира молчат, Esc закрывает его, если место уже выбрано
       if (this.store.get().seats.open) {
@@ -863,6 +935,7 @@ export class Game {
       else if (k === 'Digit3') this.actions.setSpeed(3);
       else if (k === 'Digit4') this.actions.setSpeed(4);
       else if (k === 'Digit5') this.actions.untilMorning();
+      else if (k === 'Digit6') this.actions.untilEvent();
       else if (k === 'KeyQ') this.stage.cam.rotate(-1);
       else if (k === 'KeyE') this.stage.cam.rotate(1);
       else if (k === 'Backquote') this.actions.toggleDebug();
@@ -876,10 +949,11 @@ export class Game {
         e.preventDefault();
         this.actions.toggleStock();
       } else if (k === 'Escape') {
-        // Esc: сначала то, что тянут в расписании, потом выбор, потом верхнее окно — расписание (оно поверх планёрки),
-        // планёрка, затем панель справа
+        // Esc: сначала то, что тянут в расписании, потом меню автопауз, выбор, верхнее окно — расписание (оно поверх
+        // планёрки), планёрка, затем панель справа
         const h = this.store.get();
         if (h.gantt.drag) this.actions.cancelDrag();
+        else if (h.pauses.open) this.actions.togglePauses();
         else if (this.selected) this.actions.select(undefined);
         else if (h.gantt.open) this.actions.toggleGantt();
         else if (h.inv.open) this.actions.toggleInv();

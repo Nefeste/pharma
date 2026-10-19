@@ -51,6 +51,8 @@ const actions: Actions = {
   runPlan: later('runPlan'),
   stopPlan: later('stopPlan'),
   toggleInv: later('toggleInv'),
+  toggleRef: later('toggleRef'),
+  setRefTab: later('setRefTab'),
   openInv: later('openInv'),
   investigate: later('investigate'),
   conclude: later('conclude'),

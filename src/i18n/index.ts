@@ -41,9 +41,9 @@ export function num(n: number, digits = 0): string {
   return new Intl.NumberFormat(lang === 'en' ? 'en-GB' : 'ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
 }
 
-/** Количество в единице материала: масса — мг в килограммах, штуки — штуками; единица — рядом. */
-export function qtyText(value: number, unit: 'mass' | 'pcs'): string {
-  return unit === 'mass' ? `${num(value / 1e6, 1)}\u00a0${T.units.kg}` : `${num(value)}\u00a0${T.units.pcs}`;
+/** Количество в единице материала: масса — мг в килограммах (`digits` знаков после запятой), штуки — штуками; единица — рядом. */
+export function qtyText(value: number, unit: 'mass' | 'pcs', digits = 1): string {
+  return unit === 'mass' ? `${num(value / 1e6, digits)}\u00a0${T.units.kg}` : `${num(value)}\u00a0${T.units.pcs}`;
 }
 
 /** День от 1970-01-01 — короткой датой: «14.09.2027». */
@@ -63,6 +63,11 @@ export function money(kop: number, sign = false): string {
   const rub = Math.round(kop / 100);
   const s = `${num(Math.abs(rub))} ₽`;
   return rub < 0 ? `−${s}` : sign && rub > 0 ? `+${s}` : s;
+}
+
+/** Цена — копейки рублями, с копейками, если рублей не целое число: «38 ₽», «0,40 ₽». */
+export function priceText(kop: number): string {
+  return kop % 100 === 0 ? money(kop) : `${num(kop / 100, 2)} ₽`;
 }
 
 /** Длительность: «3 ч 20 мин», «46 мин». */

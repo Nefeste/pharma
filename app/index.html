@@ -188,6 +188,15 @@
     .idecide .irow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
     .idecide .label { min-width: 100px; margin-left: 0; }
     .idebrief { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 2px; }
+    /* справочник завода (Б1а) — большое окно под полосой, как доска расследования: вкладки и таблицы «как должно быть и как есть» */
+    .ref { position: absolute; left: 8px; right: 8px; top: calc(var(--top-h, 48px) + 8px); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 4px; }
+    .ref .phead .filters { margin-left: 12px; }
+    .rbody { display: flex; flex-direction: column; gap: 6px; }
+    .rsec { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    table.rtable { border-collapse: collapse; width: 100%; font-size: 12px; margin: 2px 0 4px; }
+    table.rtable th { text-align: left; color: var(--muted); font-weight: 500; padding: 3px 6px; border-bottom: 1px solid var(--line); vertical-align: bottom; }
+    table.rtable td { padding: 3px 6px; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: top; }
+    .nw { white-space: nowrap; }
     .badge { color: var(--yellow); font-weight: 600; }
     button.notice.link { background: none; border: none; padding: 0; color: var(--yellow); cursor: pointer; }
     button.notice.link:hover { text-decoration: underline; text-decoration-color: var(--accent); }

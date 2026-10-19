@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import type { PartType } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
 import { dayText, named, num, qtyText, T, whenText } from '../i18n';
-import type { CardView, Hist, Why } from '../sim/views';
+import type { CardView, Hist, Holds, Why } from '../sim/views';
 import { db } from './db';
 import { StatusIcon } from './icons';
 import { placeText, supplierText } from './Stock';
@@ -40,6 +40,19 @@ function whyText(w: Why, start: Ymd): string {
     case 'start':
       return T.why.start;
   }
+}
+
+/**
+ * Что лежит на паллете: тара по виду и сколько в ней — по учёту; у готовой продукции — пачки и сколько в полном ящике.
+ * Масса — с таким числом знаков, чтобы разная тара не читалась одинаковой: 25,00 и 24,98 кг, а не дважды 25,0.
+ */
+function holdsText(h: Holds, n: number, unit: 'mass' | 'pcs' | undefined): string {
+  const kind = db?.containers[h.container]?.kind ?? '';
+  let digits = 1;
+  const per = (q: number) => (h.full !== undefined ? T.card.packs(q) : unit ? qtyText(q, unit, digits) : num(q));
+  while (digits < 6 && new Set(h.by.map(g => per(g.qty))).size < h.by.length) digits++;
+  const text = h.by.length === 1 ? T.card.holds(n, kind, per(h.by[0].qty)) : T.card.holdsBy(n, kind, h.by.map(g => T.card.holdsGroup(g.n, per(g.qty))));
+  return h.full !== undefined && h.by[0].qty !== h.full ? `${text}; ${T.card.full(per(h.full))}` : text;
 }
 
 function histText(h: Hist, unit: 'mass' | 'pcs' | undefined, parts: readonly PartType[]): string {
@@ -139,8 +152,10 @@ export function Card({ v, start, plant, actions, beside }: { v: CardView; start:
               )}
             </Row>
             <Row k={T.card.where}>
-              {placeText(c.where, plant)} · {T.card.containers(c.containers)}
+              {placeText(c.where, plant)}
+              {c.holds ? '' : ` · ${T.card.containers(c.containers)}`}
             </Row>
+            {c.holds ? <Row k={T.card.holdsLabel}>{holdsText(c.holds, c.containers, mat?.unit)}</Row> : null}
             {lot && mat ? (
               <>
                 <Row k={T.card.left}>

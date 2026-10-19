@@ -163,8 +163,11 @@ first, or copy the working code of Bolnitsa on the same versions.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`, format 6: rooms, trucks
   with their open body, changed pallets, tasks in progress, people with their walk to a post, vehicles, lines with their
   machines, equipment; no truth fields — not the next micro-stop, not a part's budget), views for panels — the warehouse
-  and the card of a thing, built here on request and sent with the slice only when they changed, without truth fields
-  (`views.ts`); the 08:00 meeting — the player's places over their tenure, yesterday by calendar day, events of the 24
+  and the card of a thing with what a pallet holds, built here on request and sent with the slice only when they changed,
+  without truth fields (`views.ts`); the plant reference — how it should be by master data and how it is: products and
+  SKUs, recipes with stages by plan and by the stage records, equipment and the line, instruments and methods, roles and
+  shifts, suppliers and customers, without the model's hidden parameters, start moments of running work as numbers
+  (`ref.ts`); the 08:00 meeting — the player's places over their tenure, yesterday by calendar day, events of the 24
   hours before it, what waits now — the cash panel and the top-bar cash with the player's places (`report.ts`); the lab queue and the X–Rm control chart of the in-process average
   tablet mass with its limits and special-cause signs, a lot under investigation and its steps' tests (`lab.ts`); the
   investigation board — what happened, participants, steps, findings, versions from the findings only, whether release
@@ -196,7 +199,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   — Bolnitsa's crowd on the GPU (`bake.ts`, `people.ts`, copies) with looks and clothes by role (`cast.ts`), the
   composition (`stage.ts`).
 - `src/ui/` — panels (React) and their store: the top bar (`App.tsx`), the warehouse (`Stock.tsx`), the card of a
-  thing — what it is, state, why, what can be done, history (`Card.tsx`), the 08:00 meeting (`Morning.tsx`), the cash
+  thing — what it is, state, why, what can be done, history (`Card.tsx`), the plant reference with its tabs (`Ref.tsx`,
+  F1), quality attribute and process parameter values in words (`units.ts`), the 08:00 meeting (`Morning.tsx`), the cash
   panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), the schedule window with dragging, the draft, «Прогнать
   план» and the run's outcome per variant (`Gantt.tsx`), the draft's pure rules — a row per batch order, gone once kitting
   starts, `shift` commands on approval (`draft.ts`), the «Кем вы будете» screen of places (`Seats.tsx`), the

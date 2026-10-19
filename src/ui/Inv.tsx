@@ -3,7 +3,7 @@
 // со столбиками вероятностей; снизу — решение, после решения — разбор. Шаг и решение — команды поста качества: без него
 // кнопки погашены, с причиной словами (3е). Вид собирает поток расчёта (src/sim/inv.ts); здесь — слова и рисунок.
 import { useEffect, useRef, useState } from 'react';
-import { type Attr, ATTR_SCALE, ATTRS, type InvFinding, type InvModel, type InvStep, PARAM_SCALE, type ParamUnit } from '../content/types';
+import type { InvFinding, InvModel, InvStep } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
 import type { InvObs } from '../engine/types';
 import { durText, named, num, pctText, T, whenText } from '../i18n';
@@ -11,20 +11,7 @@ import type { InvBoard } from '../sim/inv';
 import type { TaskNow } from '../sim/lab';
 import { db } from './db';
 import { type Actions, type Hud, holds } from './store';
-
-/** Значение свойства в единицах движка — словами с единицей: «71,8 %», «62 Н», «612 мкм». */
-function attrText(a: Attr, v: number): string {
-  const unit = ATTRS[a].unit;
-  if (unit === 'qual') return num(v);
-  const digits = unit === 'pct' || unit === 'min' ? 1 : 0;
-  return `${num(v / ATTR_SCALE[unit], digits)} ${T.units[unit]}`;
-}
-
-/** Режим стадии в единицах движка — словами с единицей: «17,7 мин», «13,0 кН». */
-function paramText(unit: ParamUnit, v: number): string {
-  const digits = unit === 'min' || unit === 'kN' ? 1 : 0;
-  return `${num(v / PARAM_SCALE[unit], digits)} ${T.units[unit]}`;
-}
+import { attrText, paramText } from './units';
 
 /** Вклад причины в показатель — процентными пунктами со знаком: «−19,0 п. п.». */
 const ppText = (delta: number) => `${delta < 0 ? '−' : '+'}${num(Math.abs(delta) / 100, 1)} ${T.units.pp}`;

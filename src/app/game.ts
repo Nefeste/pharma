@@ -217,6 +217,8 @@ export class Game {
         if (draft !== g.draft) this.sendViews();
       } else if (d.view === 'inv') {
         if (hud.inv.open) this.store.set({ inv: { ...this.store.get().inv, view: d } });
+      } else if (d.view === 'ref') {
+        if (hud.ref.open) this.store.set({ ref: { ...this.store.get().ref, view: d } });
       } else if (d.view === 'ghost') {
         // призрак того, что тянут сейчас; прежний запрос — не показываем
         const g = this.store.get().gantt;
@@ -437,7 +439,7 @@ export class Game {
       const g = this.store.get().gantt;
       // большое окно поверх карты во всю ширину: панели справа закрываются; закрыли — то, что тянули, отменено
       const open = !g.open;
-      this.store.set({ gantt: { open, days: g.days, draft: g.draft, ...(g.from !== undefined ? { from: g.from } : {}) }, ...(open ? { ...this.rightClosed(), inv: { open: false } } : {}) });
+      this.store.set({ gantt: { open, days: g.days, draft: g.draft, ...(g.from !== undefined ? { from: g.from } : {}) }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false } } : {}) });
       this.sendViews();
     },
     setGanttDays: days => {
@@ -508,15 +510,23 @@ export class Game {
       this.store.set({ plan: NO_RUN });
     },
     toggleInv: () => {
-      // большое окно поверх карты, как расписание: панели справа и расписание закрываются
+      // большое окно поверх карты, как расписание: панели справа, расписание и справочник закрываются
       const open = !this.store.get().inv.open;
-      this.store.set({ inv: { open }, ...(open ? this.rightClosed() : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ inv: { open }, ...(open ? { ...this.rightClosed(), ref: { ...this.store.get().ref, open: false } } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     openInv: id => {
-      this.store.set({ inv: { open: true, id }, ...this.rightClosed(), ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ inv: { open: true, id }, ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
+    toggleRef: () => {
+      // справочник — большое окно поверх карты, как доска расследования
+      const r = this.store.get().ref;
+      const open = !r.open;
+      this.store.set({ ref: { ...r, open }, ...(open ? { ...this.rightClosed(), inv: { open: false } } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.sendViews();
+    },
+    setRefTab: tab => this.store.set({ ref: { ...this.store.get().ref, tab } }),
     investigate: (inv, step) => this.client.command({ kind: 'investigate', inv, step, by: 'player' }),
     conclude: (inv, cause, fate) => this.client.command({ kind: 'conclude', inv, cause, fate, by: 'player' }),
     openSeats: () => {
@@ -658,6 +668,7 @@ export class Game {
     if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days), ...draft });
     if (h.gantt.open && h.gantt.drag) list.push({ id: 'ghost', view: 'ghost', ...h.gantt.drag, ...draft });
     if (h.inv.open) list.push({ id: 'inv', view: 'inv', ...(h.inv.id ? { inv: h.inv.id } : {}) });
+    if (h.ref.open) list.push({ id: 'ref', view: 'ref' });
     const key = JSON.stringify(list);
     if (key === this.viewsSent) return;
     this.viewsSent = key;
@@ -808,7 +819,10 @@ export class Game {
       else if (k === 'Backquote') this.actions.toggleDebug();
       else if (k === 'KeyG') this.actions.toggleGantt();
       else if (k === 'KeyI') this.actions.toggleInv();
-      else if (k === 'F2') {
+      else if (k === 'F1') {
+        e.preventDefault();
+        this.actions.toggleRef();
+      } else if (k === 'F2') {
         e.preventDefault();
         this.actions.toggleStock();
       } else if (k === 'Escape') {
@@ -819,6 +833,7 @@ export class Game {
         else if (this.selected) this.actions.select(undefined);
         else if (h.gantt.open) this.actions.toggleGantt();
         else if (h.inv.open) this.actions.toggleInv();
+        else if (h.ref.open) this.actions.toggleRef();
         else if (h.morning.open) this.actions.closeMorning(false);
         else if (h.cash.open) this.actions.toggleCash();
         else if (h.lab.open) this.actions.toggleLab();

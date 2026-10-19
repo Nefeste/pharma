@@ -179,7 +179,13 @@ try {
     const unit = Number(await page.getAttribute('[data-test=stock-row]', 'data-unit'));
     await page.click('[data-test=stock-row]');
     await page.waitForSelector('[data-test=card]', { timeout: 20_000 });
-    const card = await page.evaluate(() => ({ title: document.querySelector('#card-title')?.textContent ?? '', selected: window.__game.selected, history: document.querySelectorAll('[data-test=card-history] li').length }));
+    const card = await page.evaluate(() => ({
+      title: document.querySelector('#card-title')?.textContent ?? '',
+      selected: window.__game.selected,
+      history: document.querySelectorAll('[data-test=card-history] li').length,
+      // что лежит (Б1а): тара по виду и сколько в ней
+      holds: [...document.querySelectorAll('[data-test=card] dt')].find(d => d.textContent === 'Что лежит')?.nextElementSibling?.textContent ?? '',
+    }));
     // камера привела паллету на экран, и её не закрывает панель склада справа; кадр с новой камерой — нарисован
     await frames(2);
     const seen = await page.evaluate(u => {
@@ -188,9 +194,9 @@ try {
       const sp = p && g.stage.screen(p.x, p.y + 0.5, p.z);
       return !!sp && document.elementFromPoint(sp.x, sp.y) === g.stage.renderer.domElement;
     }, unit);
-    if (rows < 1 || card.selected?.n !== unit || !/П-\d{4}-\d{4}/.test(card.title) || card.history < 1 || !seen)
-      fail(`склад: строк ${rows}, выбрано ${JSON.stringify(card.selected)}, карточка «${card.title}», записей истории ${card.history}, паллета ${seen ? 'видна' : 'не видна'}`);
-    else ok(`склад: строк ${rows}; строка — паллета ${unit} на экране мимо панели, карточка «${card.title}», записей истории ${card.history}`);
+    if (rows < 1 || card.selected?.n !== unit || !/П-\d{4}-\d{4}/.test(card.title) || card.history < 1 || !seen || !/^\d+ \S+ (по|:)/.test(card.holds))
+      fail(`склад: строк ${rows}, выбрано ${JSON.stringify(card.selected)}, карточка «${card.title}», записей истории ${card.history}, паллета ${seen ? 'видна' : 'не видна'}, лежит «${card.holds}»`);
+    else ok(`склад: строк ${rows}; строка — паллета ${unit} на экране мимо панели, карточка «${card.title}» — «${card.holds}», записей истории ${card.history}`);
     await page.keyboard.press('Escape');
     await frames(2);
     // щелчок мышью по паллете на экране — та же паллета: точка её груза, не заслонённая соседями и панелями
@@ -587,6 +593,36 @@ try {
     else ok(`разбор: на самом деле — ${deb.root}; причина ${deb.cause === '1' ? 'верна' : 'неверна'}, судьба серии ${deb.fate === '1' ? 'верна' : 'неверна'}; снимок ${join(out, 'e2e-inv.png')}`);
     await page.keyboard.press('Escape');
     if (await page.evaluate(() => !!document.querySelector('#inv'))) fail('расследование: Esc не закрыл');
+  }
+
+  // справочник завода (Б1а): F1 — «Как должно быть и как есть»; у карты прототипа шесть стадий — по карте и по факту
+  // сделанных серий; у позиции — 120 пачек в ящике; Esc закрывает
+  {
+    await page.keyboard.press('F1');
+    await page.waitForFunction(() => !!window.__game.store.get().ref.view, null, { timeout: 20_000 });
+    await frames(2);
+    const rec = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('[data-test=ref-stages] tbody tr')];
+      const cell = (r, i) => r.children[i]?.textContent ?? '';
+      return { rows: rows.length, plan: rows.filter(r => /\d/.test(cell(r, 5))).length, fact: rows.filter(r => /последняя/.test(cell(r, 6))).length, first: rows[0] ? `${cell(rows[0], 1)}: ${cell(rows[0], 5)}; ${cell(rows[0], 6)}` : '' };
+    });
+    if (rec.rows !== 6 || rec.plan !== 6 || rec.fact !== 6) fail(`справочник: стадий ${rec.rows}, по карте ${rec.plan}, по факту ${rec.fact}`);
+    else ok(`справочник: шесть стадий по карте и по факту — «${rec.first}»`);
+    await page.screenshot({ path: join(out, 'e2e-ref.png') });
+    await page.click('[data-test=ref-tab][data-tab=products]');
+    await frames(2);
+    const skus = await page.evaluate(() => [...document.querySelectorAll('[data-test=ref-skus] tbody tr')].map(r => r.children[3]?.textContent ?? ''));
+    if (!skus.includes('120 пачек')) fail(`справочник: пачек в ящике — ${skus.join(', ')}`);
+    else ok(`справочник: пачек в ящике — ${skus.join(', ')}; снимок ${join(out, 'e2e-ref.png')}`);
+    for (const tab of ['equipment', 'lab', 'people', 'partners']) {
+      await page.click(`[data-test=ref-tab][data-tab=${tab}]`);
+      await frames(1);
+      const n = await page.evaluate(() => document.querySelectorAll('[data-test=ref-body] table.rtable tbody tr').length);
+      if (n < 1) fail(`справочник: во вкладке ${tab} нет строк`);
+    }
+    await page.keyboard.press('Escape');
+    if (await page.evaluate(() => !!document.querySelector('#ref'))) fail('справочник: Esc не закрыл');
+    else ok('справочник: во всех вкладках есть строки, Esc закрыл');
   }
 
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);

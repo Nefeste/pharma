@@ -1,0 +1,198 @@
+// Б1а: вид справочника завода (docs/specs/2026-10-vertical-slice.md). Как должно быть — из базы, и только то, что завод
+// знает по своим документам: базы и заводы, у которых различаются лишь скрытые параметры модели и истина, дают один и тот
+// же вид, а ключей сверх описанных в src/sim/ref.ts в нём нет. По карте — та же функция, что у движка и прогона расписания;
+// по факту — записи стадий серий; люди по ролям и сменам — как в состоянии. Карточка паллеты: тара и сколько в ней — по учёту.
+import { describe, expect, test } from 'bun:test';
+import { db } from '../../src/content';
+import type { Attr, ContentDb } from '../../src/content/types';
+import { apply } from '../../src/engine/engine';
+import { nominal } from '../../src/engine/mes';
+import { fromSave } from '../../src/engine/save';
+import type { PlantState } from '../../src/engine/types';
+import { ru } from '../../src/i18n/ru';
+import { type RefStage, refView } from '../../src/sim/ref';
+import { cardView } from '../../src/sim/views';
+
+/** Образец дня 15: две серии прошли все стадии, третья комплектуется (tools/test/make-save-fixture.ts). */
+const s = fromSave(db, await Bun.file(new URL('./fixtures/save-v15.json', import.meta.url)).text());
+const v = refView(db, s);
+
+/** База, в которой другим всё, чего настоящий завод по своим документам не знает. */
+function mangleDb(d: ContentDb): ContentDb {
+  const o: ContentDb = structuredClone(d);
+  for (const su of Object.values(o.suppliers)) su.defects += 777;
+  for (const c of Object.values(o.customers)) for (const k of Object.keys(c.demand)) c.demand[k] += 777;
+  for (const m of Object.values(o.tests)) m.sd += 7;
+  for (const r of Object.values(o.recipes)) {
+    for (const k of Object.keys(r.quality) as Attr[]) r.quality[k] = [r.quality[k]![0] + 7, r.quality[k]![1] + 7];
+    r.yield = { expected: r.yield.expected - 7, alarm: r.yield.alarm - 7 };
+    for (const st of r.stages) {
+      st.time.spread += 77;
+      st.loss = [st.loss[0] + 7, st.loss[1] + 7];
+      for (const p of st.params) p.sd += 7;
+    }
+  }
+  for (const rec of [...Object.values(o.equipment), ...Object.values(o.machines)])
+    for (const p of rec.parts) {
+      p.hazard = p.hazard.map(([w, h]) => [w, h + 777] as [number, number]);
+      if (p.scatter) for (const k of Object.keys(p.scatter) as Attr[]) p.scatter[k] = (p.scatter[k] ?? 0) + 7;
+      if (p.micro !== undefined) p.micro += 7;
+    }
+  for (const m of Object.values(o.machines)) {
+    m.reject += 7;
+    if (m.micro) m.micro = { every: m.micro.every + 7, duration: m.micro.duration + 7 };
+    if (m.jam) m.jam = { cartons: m.jam.cartons + 1, uncounted: m.jam.uncounted + 7 };
+  }
+  return o;
+}
+
+/** Завод, в котором другим всё, чего завод не знает: истинные свойства, причины, запас узлов до отказа, происшествие. */
+function mangleState(s: PlantState): PlantState {
+  const o: PlantState = structuredClone(s);
+  for (const lot of Object.values(o.lots)) for (const k of Object.keys(lot.truth) as (keyof typeof lot.truth)[]) lot.truth[k] = (lot.truth[k] ?? 0) + 777;
+  for (const b of Object.values(o.batches)) {
+    for (const k of Object.keys(b.truth) as (keyof typeof b.truth)[]) b.truth[k] = (b.truth[k] ?? 0) + 777;
+    b.causes = [{ cause: 'cause.mill.screen', attr: 'dissolution', delta: -999, stage: 'mill' }];
+  }
+  for (const p of Object.values(o.parts)) p.budget += 12_345;
+  if (o.incident) o.incident = { ...o.incident, root: o.incident.root === 'screen' ? 'lube' : 'screen', size: o.incident.size + 77 };
+  return o;
+}
+
+/** Все ключи объектов вида, на любой глубине. */
+function keysOf(v: unknown, out = new Set<string>()): Set<string> {
+  if (Array.isArray(v)) for (const x of v) keysOf(x, out);
+  else if (v && typeof v === 'object')
+    for (const [k, x] of Object.entries(v)) {
+      out.add(k);
+      keysOf(x, out);
+    }
+  return out;
+}
+
+/** Поля вида по src/sim/ref.ts: новое поле — сначала сюда, с вопросом, знает ли его завод по своим документам. */
+const ALLOWED = new Set(
+  (
+    'view products recipes equipment lines methods instruments roles shifts suppliers customers ' +
+    'id code form skus perBlister blisters perCase cases shelf price regPrice ' +
+    'product mass units bom material qty potency qs stages room staff role n nominal params unit target range ipc test min max mix done last mean now batch from ' +
+    'type cleaning minor major parts life wear failed state machines buffer rate sku ' +
+    'inst prep run unattended queued running method ' +
+    'dept salary shift present busy days to hour lead prepay payDays approved items moq spares spare minShelf'
+  ).split(' '),
+);
+
+describe('справочник: только то, что завод знает', () => {
+
+  test('ключи вида — только описанные', () => {
+    expect([...keysOf(v)].filter(k => !ALLOWED.has(k))).toEqual([]);
+  });
+
+  test('скрытые параметры базы не меняют вид', () => {
+    expect(refView(mangleDb(db), s)).toEqual(v);
+  });
+
+  test('истина завода не меняет вид', () => {
+    expect(refView(db, mangleState(s))).toEqual(v);
+  });
+});
+
+describe('справочник: как должно быть и как есть', () => {
+
+  test('по карте — длительность стадии движка и прогона расписания, на размер серии', () => {
+    for (const r of v.recipes) {
+      const rec = db.recipes[r.id];
+      expect(r.stages.map(x => x.id)).toEqual(rec.stages.map(x => x.id));
+      for (const [i, st] of r.stages.entries()) expect(st.nominal).toBe(nominal(db, r.id, rec.stages[i], rec.batch.mass));
+      expect(r.stages.filter(x => x.mix).map(x => x.id)).toEqual(rec.stages.filter(x => x.mix).map(x => x.id));
+    }
+  });
+
+  test('по факту — записи стадий сделанных серий: число, последняя, средняя', () => {
+    let seen = 0;
+    for (const r of v.recipes)
+      for (const st of r.stages) {
+        const recs = Object.values(s.batches)
+          .filter(b => b.recipe === r.id)
+          .flatMap(b => b.records.filter(x => x.stage === st.id))
+          .sort((a, b) => a.end - b.end);
+        expect(st.done).toBe(recs.length);
+        if (!recs.length) continue;
+        seen++;
+        expect(st.last).toBe(recs[recs.length - 1].end - recs[recs.length - 1].start);
+        expect(st.mean).toBe(Math.round(recs.reduce((n, x) => n + x.end - x.start, 0) / recs.length));
+      }
+    // в образце дня 15 две серии прошли все шесть стадий
+    expect(seen).toBe(6);
+  });
+
+  test('сейчас на стадии — серия с идущей задачей, от её начала и по карте на её массу', () => {
+    const t = structuredClone(s);
+    // дожить до работы на стадии
+    let st: RefStage | undefined;
+    for (let i = 0; i < 200 && !st; i++) {
+      apply(db, t, { kind: 'advance', seconds: 600 });
+      st = refView(db, t).recipes.flatMap(r => r.stages).find(x => x.now);
+    }
+    expect(st?.now).toBeDefined();
+    const b = Object.values(t.batches).find(x => x.code.n > 0 && st!.now!.batch.startsWith(`${x.code.pp}${String(x.code.n).padStart(3, '0')}`))!;
+    const rec = db.recipes[b.recipe];
+    expect(st!.now!.from).toBeLessThanOrEqual(t.t);
+    expect(st!.now!.nominal).toBe(nominal(db, b.recipe, rec.stages.find(x => x.id === st!.id)!, b.mass));
+  });
+
+  test('люди по ролям и сменам — как в состоянии', () => {
+    const people = Object.values(s.people);
+    for (const r of v.roles) {
+      const mine = people.filter(p => p.role === r.id);
+      expect(r.shifts.reduce((n, x) => n + x.n, 0)).toBe(mine.length);
+      expect(r.busy).toBe(mine.filter(p => p.task !== undefined).length);
+      expect(r.present).toBeGreaterThanOrEqual(r.busy);
+      expect(r.present).toBeLessThanOrEqual(mine.length);
+    }
+  });
+
+  test('приборы и методики — испытания по учёту лаборатории', () => {
+    const tests = Object.values(s.tests);
+    for (const m of v.methods) expect(m.queued + m.running + m.done).toBe(tests.filter(q => q.method === m.id).length);
+    for (const i of v.instruments) {
+      const q = s.instruments[i.id]?.test;
+      expect(i.method).toBe(q ? s.tests[q].method : undefined);
+    }
+  });
+
+  test('позиция — 120 пачек в ящике у № 20, 40 ящиков на паллете', () => {
+    const k = v.products.flatMap(p => p.skus).find(x => x.id === 'sku.paracetamol500.n20')!;
+    expect([k.perBlister, k.blisters, k.perCase, k.cases]).toEqual([10, 2, 120, 40]);
+  });
+});
+
+describe('карточка паллеты: что лежит', () => {
+
+  test('тара по виду и сколько в ней — по учёту; у готовой продукции — полный ящик позиции', () => {
+    let fg = 0;
+    for (const u of Object.values(s.units)) {
+      const c = cardView(db, s, { kind: 'unit', n: Number(u.id.slice(1)) }).card;
+      if (c.kind !== 'unit') continue;
+      if (!u.items.length) {
+        expect(c.holds).toBeUndefined();
+        continue;
+      }
+      const list = u.items.map(id => s.containers[id]);
+      expect(c.holds!.container).toBe(list[0].type);
+      expect(c.holds!.by.reduce((n, g) => n + g.n, 0)).toBe(list.length);
+      expect(c.holds!.by.reduce((n, g) => n + g.n * g.qty, 0)).toBe(list.reduce((n, x) => n + x.qty, 0));
+      expect(c.holds!.by.map(g => g.qty)).toEqual([...new Set(list.map(x => x.qty))].sort((a, b) => b - a));
+      const sku = Object.values(db.skus).find(k => k.fg === s.lots[list[0].lot].material);
+      expect(c.holds!.full).toBe(sku?.case.per);
+      if (sku) fg++;
+    }
+    expect(fg).toBeGreaterThan(0);
+  });
+
+  test('слова: «40 гофроящиков по 120 пачек», «4 бочки: 3 по 50 кг, 1 по 12 кг»', () => {
+    expect(ru.card.holds(40, 'case', ru.card.packs(120))).toBe('40 гофроящиков по 120 пачек');
+    expect(ru.card.holds(1, 'bag', '25 кг')).toBe('1 мешок по 25 кг');
+    expect(ru.card.holdsBy(4, 'drum', [ru.card.holdsGroup(3, '50 кг'), ru.card.holdsGroup(1, '12 кг')])).toBe('4 бочки: 3 по 50 кг, 1 по 12 кг');
+  });
+});

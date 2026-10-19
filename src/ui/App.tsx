@@ -14,6 +14,7 @@ import { Gantt } from './Gantt';
 import { Inv } from './Inv';
 import { Lab } from './Lab';
 import { Morning } from './Morning';
+import { Ref } from './Ref';
 import { Seats } from './Seats';
 import { Stock } from './Stock';
 import { type Actions, LIVE, type Speed, type Store, useHud } from './store';
@@ -98,6 +99,9 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
             {T.inv.button}
             {s.top && s.top.inv > 0 ? <span className="badge"> {s.top.inv}</span> : null}
           </button>
+          <button type="button" className={s.ref.open ? 'on' : ''} onClick={() => actions.toggleRef()} title={T.ref.hint} data-test="ref-open">
+            {T.ref.button}
+          </button>
         </span>
         {s.top ? (
           <span className="stat" data-test="top-cash" title={T.cash.day}>
@@ -120,6 +124,7 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
       {s.morning.open && s.morning.day !== undefined && <Morning v={s.morning.view} day={s.morning.day} start={s.start} plant={plant} pause={s.morningPause} actions={actions} />}
       {s.gantt.open && <Gantt hud={s} actions={actions} plant={plant} />}
       {s.inv.open && <Inv hud={s} actions={actions} />}
+      {s.ref.open && <Ref hud={s} actions={actions} />}
       {s.seats.open && <Seats hud={s} actions={actions} scenario={scenario} />}
       {s.selected && s.card && <Card v={s.card} start={s.start} plant={plant} actions={actions} beside={s.stock.open || s.cash.open || s.lab.open} />}
       {s.debug && (

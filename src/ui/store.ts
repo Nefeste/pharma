@@ -12,6 +12,7 @@ import type { WallMode } from '../render/world';
 import type { InvView } from '../sim/inv';
 import type { ChartView, LabView } from '../sim/lab';
 import type { BatchLabel, GanttView, GhostView } from '../sim/plan';
+import type { RefView } from '../sim/ref';
 import type { CashView, MorningView, TopView } from '../sim/report';
 import type { CardView, StockQuery, StockView, Thing } from '../sim/views';
 
@@ -78,7 +79,13 @@ export interface Hud {
   inv: { open: boolean; id?: string; view?: InvView };
   /** экран «Кем вы будете» (3е): открыт ли, что отмечено */
   seats: { open: boolean; pick: SeatId[] };
+  /** справочник завода (этап Б, Б1а): открыт ли, вкладка, вид */
+  ref: { open: boolean; tab: RefTab; view?: RefView };
 }
+
+/** Вкладки справочника завода: продукты, карты, оборудование, лаборатория, люди, контрагенты. */
+export const REF_TABS = ['products', 'recipes', 'equipment', 'lab', 'people', 'partners'] as const;
+export type RefTab = (typeof REF_TABS)[number];
 
 /**
  * Держит ли игрок место, чьи команды нужны: места не выбраны — всё можно, как до 3е; директор в прототипе отвечает за
@@ -143,6 +150,7 @@ export const initial: Hud = {
   plan: NO_RUN,
   inv: { open: false },
   seats: { open: false, pick: [] },
+  ref: { open: false, tab: 'recipes' },
 };
 
 export interface Actions {
@@ -194,6 +202,9 @@ export interface Actions {
    */
   toggleInv(): void;
   openInv(id: string): void;
+  /** справочник завода: открыть или закрыть (F1), вкладка */
+  toggleRef(): void;
+  setRefTab(tab: RefTab): void;
   investigate(inv: string, step: string): void;
   conclude(inv: string, cause: string, fate: 'reject' | 'release'): void;
   /** экран «Кем вы будете»: открыть — мир на паузе; отметить место; взять отмеченные — команда `seat`; закрыть без смены */

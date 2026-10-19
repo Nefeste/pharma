@@ -157,6 +157,8 @@ export interface Actions {
   setSpeed(s: Speed): void;
   untilMorning(): void;
   setQuality(q: Quality): void;
+  /** пресет, выбранный игроком: применить и запомнить (src/app/preset.ts) */
+  pickQuality(q: Quality): void;
   setWalls(m: WallMode): void;
   toggleDebug(): void;
   /** авто-бенч; без vsync — перезапуск оболочки с ключом `--uncapped` */

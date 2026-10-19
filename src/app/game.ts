@@ -28,6 +28,7 @@ import { commandsOf, prune, upsert } from '../ui/draft';
 import { type Actions, holds, type Hud, LIVE, NO_RUN, PLAN_RUN, type Speed, type Store } from '../ui/store';
 import { fillsOf, Flows, lineArrows, moveArrows, movesOf } from './flows';
 import { type Movers, moversAt } from './movers';
+import { keep, windowKeep } from './preset';
 import { type Box, machineBoxes, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
 import { carriedOf, dockFront, palletsOf, SceneState } from './scene';
 import { type TruckPose, Yard } from './yard';
@@ -419,6 +420,11 @@ export class Game {
     setQuality: (q: Quality) => {
       this.stage.applyQuality(q);
       this.store.set({ quality: q });
+    },
+    pickQuality: (q: Quality) => {
+      // выбор игрока — запоминается, стартовый замер его больше не трогает (preset.ts)
+      this.actions.setQuality(q);
+      keep(windowKeep(), q);
     },
     setWalls: (m: WallMode) => {
       this.stage.setWalls(m);

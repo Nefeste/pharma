@@ -137,7 +137,7 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
           <span className="group">
             <span className="label">{T.debug.quality}</span>
             {QUALITIES.map(q => (
-              <button key={q} className={s.quality === q ? 'on' : ''} onClick={() => actions.setQuality(q)}>
+              <button key={q} className={s.quality === q ? 'on' : ''} onClick={() => actions.pickQuality(q)}>
                 {T.debug.qualities[q]}
               </button>
             ))}

@@ -1,12 +1,13 @@
 // Упакованный срез для отрисовки (docs/02-architecture.md, §10; docs/specs/2026-10-view.md, «Срез 2а», «Срез 2б»,
 // «Срез 2в»; docs/specs/2026-10-panels.md, «Срез 3а»): `Int32Array` уходит из потока расчёта без копии (transferList).
-// Формат 5: заголовок, помещения, фуры, изменённые и ушедшие паллеты, задачи в работе, люди, техника, линии и
+// Формат 6: заголовок, помещения, фуры, изменённые и ушедшие паллеты, задачи в работе, люди, техника, линии и
 // оборудование. Строк в срезе нет: номера мест и помещений — по порядку плана, который окно строит само из той же базы
-// (`planOf`). Истины здесь нет (§9): упаковка читает только номер, место, ярлык, вид и число тары паллеты, статус и серию
+// (`planOf`); номер серии `PPNNNMMYY` — одним целым (`packNo`, src/engine/batchno.ts). Истины здесь нет (§9): упаковка читает только номер, место, ярлык, вид и число тары паллеты, статус и серию
 // помещения, рампу фуры и открыт ли её кузов, вид и времена задачи, где человек и техника и откуда человек идёт на пост,
 // состояние машины, её скорость, сколько штук прошло и сколько в накопителе, — то, что завод видит глазами. Позиция
 // следующей микроостановки и запас узла до отказа в срез не идут.
 import type { ContentDb } from '../content/types';
+import { packNo } from '../engine/batchno';
 import { flowAt, geo, SIXTY } from '../engine/line';
 import { partsOf } from '../engine/maint';
 import { planOf } from '../engine/plant';
@@ -14,11 +15,11 @@ import { shiftEnd } from '../engine/staff';
 import { destOf, pointOf } from '../engine/tasks';
 import type { Line, MachineState, PlantState, Tag, Task, TaskKind, Unit } from '../engine/types';
 
-export const FORMAT = 5;
+export const FORMAT = 6;
 
 /** Поля заголовка: формат, часы, сутки, отставание; сколько записей в каждом разделе. */
 export const H = { format: 0, t: 1, day: 2, lag: 3, rooms: 4, trucks: 5, units: 6, gone: 7, tasks: 8, people: 9, vehicles: 10, lines: 11, equipment: 12, size: 13 } as const;
-/** Помещение: номер в плане, статус, серия (`270901`; −1 — нет), карта и стадия серии (номера в базе; −1 — нет). */
+/** Помещение: номер в плане, статус, номер серии (`packNo`; −1 — нет), карта и стадия серии (номера в базе; −1 — нет). */
 export const R = { room: 0, status: 1, batch: 2, recipe: 3, stage: 4, size: 5 } as const;
 /** Фура: номер (`K12` → 12), рампа (номер в плане), встала ли, покупатель ли, открыт ли кузов (3а). */
 export const K = { truck: 0, dock: 1, docked: 2, customer: 3, open: 4, size: 5 } as const;
@@ -40,7 +41,7 @@ export const P = { person: 0, role: 1, present: 2, x: 3, z: 4, task: 5, wx: 6, w
 export const V = { vehicle: 0, type: 1, x: 2, z: 3, task: 4, size: 5 } as const;
 
 /**
- * Линия (2в): номер в плане, серия (`270901`; −1 — нет), позиция (номер в базе; −1 — нет), флаги, сколько машин; затем по
+ * Линия (2в): номер в плане, номер серии (`packNo`; −1 — нет), позиция (номер в базе; −1 — нет), флаги, сколько машин; затем по
  * машине — `M.size` чисел.
  */
 export const L = { line: 0, batch: 1, sku: 2, flags: 3, machines: 4, size: 5 } as const;
@@ -239,7 +240,7 @@ function lineRow(db: ContentDb, s: PlantState, ix: Index, i: number, line: Line)
   const pos = flowAt(db, s, line, s.t);
   const busy = (kind: Task['kind']) => Object.values(s.tasks).some(t => t.kind === kind && t.line === line.id && t.state === 'busy');
   const flags = (line.clear ? LINE_FLAG.clear : 0) | (busy('changeover') ? LINE_FLAG.changeover : 0) | (busy('clearance') ? LINE_FLAG.clearance : 0);
-  const row = [i, b ? b.code.y * 10000 + b.code.m * 100 + b.code.n : -1, job ? ix.sku.get(job.sku)! : -1, flags, line.machines.length];
+  const row = [i, b ? packNo(b.code) : -1, job ? ix.sku.get(job.sku)! : -1, flags, line.machines.length];
   line.machines.forEach((mc, k) => {
     const per = (g ? g.unit[k] : 1) * SIXTY;
     const next = line.machines[k + 1];
@@ -286,7 +287,7 @@ export class Packer {
     const rooms: number[][] = plan.plant.rooms.map((r, i) => {
       const room = s.rooms[r.id];
       const b = room?.batch ? s.batches[room.batch] : undefined;
-      const code = b ? b.code.y * 10000 + b.code.m * 100 + b.code.n : -1;
+      const code = b ? packNo(b.code) : -1;
       return [i, room ? ROOM_STATUS.indexOf(room.status) : 0, code, b ? ix.recipe.get(b.recipe)! : -1, b && room?.status === 'busy' ? b.stage : -1];
     });
     const trucks: number[][] = Object.values(s.trucks).map(t => [num(t.id), ix.dock.get(t.dock)!, t.docked ? 1 : 0, t.customer ? 1 : 0, t.open ? 1 : 0]);

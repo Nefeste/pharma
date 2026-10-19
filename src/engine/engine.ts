@@ -66,6 +66,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     tests: {},
     deviations: {},
     investigations: {},
+    batchNos: {},
     rooms: {},
     equipment: {},
     batches: {},

@@ -4,6 +4,7 @@
 // стадии.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
+import { batchNo } from '../../src/engine/batchno';
 import type { ContentDb } from '../../src/content/types';
 import { DAY, HOUR } from '../../src/engine/core/calendar';
 import { fingerprint } from '../../src/engine/core/hash';
@@ -169,7 +170,9 @@ describe('серия от комплекта до балка', () => {
     expect(out.find(n => n.kind === 'batchBulk')).toEqual({ kind: 'batchBulk', batch: b.id, lot: bulk.id });
     expect(bulk.material).toBe(recipe.bulk);
     expect(bulk.qty).toBe(b.units!);
-    expect(bulk.vendorLot).toBe(`${String(b.code.y).padStart(2, '0')}${String(b.code.m).padStart(2, '0')}${String(b.code.n).padStart(2, '0')}`);
+    // номер изготовителя балка — полный номер серии: смешивание уже было
+    expect(bulk.vendorLot).toBe(batchNo(b.code));
+    expect(bulk.vendorLot).toMatch(/^PA\d{7}$/);
     expect(['quarantine', 'sampled', 'testing', 'released', 'rejected']).toContain(bulk.status);
     for (const c of Object.values(s.containers).filter(c => c.lot === bulk.id)) expect(s.units[c.unit].where).toEqual({ kind: 'room', id: 'bulk' });
     // выход: таблеток столько, сколько массы на среднюю массу таблетки

@@ -36,7 +36,7 @@ function whyText(w: Why, start: Ymd): string {
     case 'decided':
       return w.status === 'released' ? T.why.released(when(start, w.t)) : T.why.rejected(when(start, w.t));
     case 'batch':
-      return T.why.batch(T.batchCode(...w.code));
+      return T.why.batch(w.code);
     case 'start':
       return T.why.start;
   }
@@ -51,7 +51,7 @@ function histText(h: Hist, unit: 'mass' | 'pcs' | undefined, parts: readonly Par
     case 'reserved':
       return T.hist.reserved(h.orders, unit ? qtyText(h.qty, unit) : num(h.qty));
     case 'made':
-      return T.hist.made(T.batchCode(...h.batch));
+      return T.hist.made(h.batch);
     case 'sampled':
       return T.hist.sampled(h.containers);
     case 'test':
@@ -59,7 +59,7 @@ function histText(h: Hist, unit: 'mass' | 'pcs' | undefined, parts: readonly Par
     case 'decided':
       return T.hist.decided(T.status[h.status]);
     case 'kit':
-      return T.hist.kit(T.batchCode(...h.batch), unit ? qtyText(h.qty, unit) : num(h.qty));
+      return T.hist.kit(h.batch, unit ? qtyText(h.qty, unit) : num(h.qty));
     case 'shipped':
       return T.hist.shipped(named(db?.customers[h.customer]?.name, h.customer), unit ? qtyText(h.qty, unit) : num(h.qty));
     case 'maint':
@@ -166,7 +166,7 @@ export function Card({ v, start, plant, actions, beside }: { v: CardView; start:
             <Row k={T.card.state}>
               {T.room.status[c.status]} <span className="muted">{T.card.since(whenText(start, c.since))}</span>
             </Row>
-            {c.batch ? <Row k={T.card.batch}>{T.batchCode(...c.batch)}</Row> : null}
+            {c.batch ? <Row k={T.card.batch}>{c.batch}</Row> : null}
             {c.stage ? <Row k={T.card.stage}>{T.stages[c.stage] ?? c.stage}</Row> : null}
           </dl>
           <Why list={c.why} start={start} />
@@ -181,7 +181,7 @@ export function Card({ v, start, plant, actions, beside }: { v: CardView; start:
         <>
           <dl>
             <Row k={T.card.state}>{c.kind === 'equipment' ? T.equipment[c.state] : T.machine[c.state]}</Row>
-            {c.batch ? <Row k={T.card.batch}>{T.batchCode(...c.batch)}</Row> : null}
+            {c.batch ? <Row k={T.card.batch}>{c.batch}</Row> : null}
             {c.kind === 'machine' && c.sku ? <Row k={T.card.sku}>{named(db?.skus[c.sku]?.name, c.sku)}</Row> : null}
             {c.parts.length ? (
               <Row k={T.card.parts}>

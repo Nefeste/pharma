@@ -83,7 +83,7 @@ function What({ b, start }: { b: InvBoard; start: Ymd }) {
         {w.min !== undefined && attr ? T.inv.result(method, value, attrText(attr, w.min)) : w.max !== undefined && attr ? T.inv.resultMax(method, value, attrText(attr, w.max)) : `${method}: ${value}`}
       </div>
       <div>{T.inv.lot(T.lotCode(...w.lot), named(db?.materials[w.material]?.name, w.material))}</div>
-      <div>{T.inv.batch(T.batchCode(...w.batch), named(db?.recipes[w.recipe]?.name, w.recipe))}</div>
+      <div>{T.inv.batch(w.batch, named(db?.recipes[w.recipe]?.name, w.recipe))}</div>
       <div className="muted">
         {w.t !== undefined ? `${T.inv.checked(whenText(start, w.t))}; ` : ''}
         {T.inv.opened(whenText(start, b.opened))}
@@ -305,7 +305,7 @@ export function Inv({ hud, actions }: { hud: Hud; actions: Actions }) {
           <span className="filters">
             {v.list.map(x => (
               <button key={x.id} type="button" className={b?.id === x.id ? 'on' : ''} onClick={() => actions.openInv(x.id)} data-test="inv-tab">
-                {T.inv.tab(T.batchCode(...x.batch), x.status === 'open')}
+                {T.inv.tab(x.batch, x.status === 'open')}
               </button>
             ))}
           </span>

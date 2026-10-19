@@ -13,7 +13,8 @@
 // посреди суток: у прошлых суток — записи линии, у нынешних запись копится. С схемы 12 — поднятая партия посреди
 // лаборатории: у её открытых задач приоритет выше. С схемы 13 — журнал мест: директор в первые сутки, потом производство
 // и качество — одна запись закрыта, две открыты. С схемы 14 — посреди расследования: у второй серии происшествие,
-// расследование открыто, игрок на посту качества сделал один шаг, другой идёт.
+// расследование открыто, игрок на посту качества сделал один шаг, другой идёт. С схемы 15 — номер серии при открытом
+// расследовании: у одной серии номер короткий (досье выдано, смешивания ещё не было), у других — полный.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { DAY, MIN } from '../../src/engine/core/calendar';
@@ -35,8 +36,9 @@ const rushed = () => Object.values(s.lots).some(l => l.rush) && Object.values(s.
 const lineDays = () => s.losses.filter(d => Object.keys(d.lines).length > 0).length >= 2 && Object.values(s.lines).some(l => l.batch && s.batches[l.batch].pack?.state === 'running');
 const seated = () => !!s.seats?.some(x => x.to !== undefined) && s.seats.filter(x => x.to === undefined).length === 2;
 const investigating = () => Object.values(s.investigations ?? {}).some(i => i.status === 'open' && i.obs.length > 0 && i.runs.some(r => r.to === undefined));
+const numbered = () => Object.values(s.batches).some(b => b.code.n > 0 && b.code.m === 0) && Object.values(s.batches).some(b => b.code.m > 0);
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : seated() && investigating();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : seated() && numbered() && Object.values(s.investigations).some(i => i.status === 'open' && i.obs.length > 0);
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 if (SCHEMA >= 13) apply(db, s, { kind: 'seat', seats: ['director'] });

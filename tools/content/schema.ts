@@ -311,6 +311,11 @@ export const product = z.strictObject({
   name: text,
   /** МНН латиницей */
   inn: z.string().regex(/^[a-z][a-z-]*$/),
+  /**
+   * код в номере серии `PPNNNMMYY` (docs/specs/2026-10-master-data.md, «Номер серии»): две заглавные латинские буквы или
+   * цифры — в наборе знаков GS1 нет кириллицы; у каждого продукта свой, и его не меняют — по нему записаны номера серий
+   */
+  code: z.string().regex(/^[A-Z0-9]{2}$/),
   form: z.enum(['tablet']),
   /** в перечне ЖНВЛП: цена позиции — не выше зарегистрированной */
   jnvlp: z.boolean().default(false),
@@ -436,6 +441,8 @@ export const recipe = z
           loss: z.tuple([percent, percent]).default([0, 0]),
           /** ячейка сита калибратора по карте, мм */
           screen: z.number().positive().optional(),
+          /** первое смешивание субстанции с другими ингредиентами: дата производства и месяц и год в номере серии */
+          mix: z.literal(true).optional(),
         }),
       )
       .min(1),

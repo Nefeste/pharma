@@ -1,6 +1,7 @@
 // Сохранение — снимок состояния со схемой и цепочкой миграций (ADR студии 0004; docs/02-architecture.md, §13). Забытая
 // миграция стирает игру человека, поэтому каждый шаг закреплён образцом в tools/test/fixtures/.
 import type { ContentDb } from '../content/types';
+import { batchNo } from './batchno';
 import { type Agenda, schedule } from './core/agenda';
 import { HOUR, momentOf } from './core/calendar';
 import { newCash } from './cash';
@@ -158,6 +159,38 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   // 13 → 14 (часть 4): расследования результатов вне спецификации и происшествие сценария. В прежних сохранениях
   // расследований не было, а результат вне спецификации уже отклонил партию; происшествия у прежней партии нет.
   13: raw => ({ ...raw, investigations: {} }),
+  // 14 → 15 (номер серии PPNNNMMYY, решения владельца #50, #51): у выданных досье — код продукта и прежний порядковый
+  // номер; месяц и год — начала первого смешивания, если оно уже было (запись стадии или назначенные на неё аппаратчики),
+  // иначе номер короткий. У партий балка и ГП серии — тот же номер изготовителя. Счёт кода — с наибольшего прежнего
+  // номера, год — миграции; прежний общий счётчик номеров уходит. Момента выдачи досье у прежних серий нет.
+  14: (raw, db) => {
+    const start = raw.start as Ymd;
+    const year = momentOf(start, raw.t as number).date.y;
+    const tasks = Object.values(raw.tasks as Record<string, Raw>);
+    const lots = raw.lots as Record<string, Raw>;
+    const nos: Record<string, { year: number; n: number }> = {};
+    for (const b of Object.values(raw.batches as Record<string, Raw>)) {
+      const old = b.code as { y: number; m: number; n: number };
+      if (old.n === 0) {
+        b.code = { pp: '', n: 0, m: 0, y: 0 };
+        continue;
+      }
+      const pp = db.products[b.product as string].code;
+      const stages = db.recipes[b.recipe as string].stages;
+      const mix = stages.find(st => st.mix)!;
+      const rec = (b.records as { stage: string; start: number }[]).find(r => r.stage === mix.id);
+      const busy = b.stage === stages.indexOf(mix) ? tasks.find(t => t.kind === 'stage' && t.batch === b.id && t.state === 'busy') : undefined;
+      const when = rec?.start ?? (busy ? (busy.times as number[])[1] : undefined);
+      const at = when === undefined ? undefined : momentOf(start, when).date;
+      const code = { pp, n: old.n, m: at ? at.m : 0, y: at ? at.y % 100 : 0 };
+      b.code = code;
+      for (const id of [b.bulk, (b.pack as Raw | undefined)?.fg]) if (typeof id === 'string' && lots[id]) lots[id].vendorLot = batchNo(code);
+      nos[pp] = { year, n: Math.max(nos[pp]?.n ?? 0, old.n) };
+    }
+    const next = { ...(raw.next as Record<string, number>) };
+    delete next.batchCode;
+    return { ...raw, next, batchNos: nos };
+  },
 };
 
 export function toSave(s: PlantState): string {

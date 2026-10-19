@@ -2,6 +2,9 @@
 id: prd.paracetamol500
 name: { ru: "Парацетамол, таблетки 500 мг", en: "Paracetamol 500 mg tablets" }
 inn: paracetamol
+# код в номере серии PPNNNMMYY (docs/specs/2026-10-master-data.md, «Номер серии»): вымышленный; не менять — по нему
+# записаны номера серий
+code: PA
 form: tablet
 # в перечне ЖНВЛП: твёрдые формы для приёма внутрь с обычным высвобождением (распоряжение № 3867-р)
 jnvlp: true

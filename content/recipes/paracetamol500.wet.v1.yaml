@@ -20,7 +20,10 @@ stages:
     equipment: [eq.scale]
     staff: { role: role.operator, n: 2 }
     time: { setup: 20, perComponent: 15, spread: 10 }
+  # грануляция: первое смешивание субстанции с другими ингредиентами — дата производства и месяц и год в номере серии
+  # (docs/10-domain.md, §3: отвешивание — не смешивание, вывод, сверить)
   - id: granulate
+    mix: true
     room: granulation
     equipment: [eq.hsm]
     staff: { role: role.operator, n: 1 }

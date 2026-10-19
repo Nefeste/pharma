@@ -3,6 +3,7 @@
 // 24 часа до неё и о том, что ждёт сейчас. Данные — без слов и без истины: время машин, счётчики линии, ожидания задач,
 // записи отклонений, журнал оборудования, решения, заказы и проводки — то, что завод мог узнать.
 import type { ContentDb, Dept, Id, SeatId } from '../content/types';
+import { batchNo } from '../engine/batchno';
 import { DAY, momentOf } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
 import { P_ONE } from '../engine/core/rng';
@@ -65,7 +66,8 @@ export interface DevRow {
   t: number;
   kind: Deviation['kind'];
   lot?: Code;
-  batch?: Code;
+  /** номер серии строкой (src/engine/batchno.ts) */
+  batch?: string;
   material?: Id;
   /** расследование отклонения (часть 4): к его доске ведёт строка */
   inv?: string;
@@ -76,7 +78,7 @@ export interface DecisionRow {
   lot: Code;
   material: Id;
   status: 'released' | 'rejected';
-  batch?: Code;
+  batch?: string;
 }
 
 export interface MaintRow {
@@ -281,7 +283,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
       t: d.opened,
       kind: d.kind,
       ...(d.lot && s.lots[d.lot] ? { lot: code(s.lots[d.lot].code), material: s.lots[d.lot].material } : {}),
-      ...(d.batch && s.batches[d.batch] ? { batch: code(s.batches[d.batch].code) } : {}),
+      ...(d.batch && s.batches[d.batch] ? { batch: batchNo(s.batches[d.batch].code) } : {}),
       ...(d.inv ? { inv: d.inv } : {}),
     }));
   const decisions: DecisionRow[] = Object.values(s.lots)
@@ -291,7 +293,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
       lot: code(l.code),
       material: l.material,
       status: l.status as 'released' | 'rejected',
-      ...(l.batch && s.batches[l.batch] ? { batch: code(s.batches[l.batch].code) } : {}),
+      ...(l.batch && s.batches[l.batch] ? { batch: batchNo(s.batches[l.batch].code) } : {}),
     }))
     .sort((a, b) => a.t - b.t);
   const maint: MaintRow[] = s.maintLog.filter(e => inW(e.t)).map(e => ({ t: e.t, ...thingOf(db, s, e.machine), part: e.part, what: e.what, wear: e.wear }));
@@ -509,7 +511,7 @@ export type CashWhy =
   | { k: 'shipment'; customer: Id }
   | { k: 'month'; y: number; m: number; half?: 1 | 2 }
   | { k: 'quarter'; y: number; q: number }
-  | { k: 'batch'; code: Code };
+  | { k: 'batch'; code: string };
 
 export interface CashRow {
   t: number;
@@ -546,7 +548,7 @@ function whyOf(s: PlantState, item: CashItem, ref: string | undefined): CashWhy 
   if (s.pos[ref]) return { k: 'po', po: ref, supplier: s.pos[ref].supplier };
   if (s.spareOrders[ref]) return { k: 'spare', order: ref, spare: s.spareOrders[ref].spare };
   if (s.shipments[ref]) return { k: 'shipment', customer: s.shipments[ref].customer };
-  if (item === 'codes' && s.batches[ref]) return { k: 'batch', code: code(s.batches[ref].code) };
+  if (item === 'codes' && s.batches[ref]) return { k: 'batch', code: batchNo(s.batches[ref].code) };
   const q = /^(\d+)-q(\d)$/.exec(ref);
   if (q) return { k: 'quarter', y: Number(q[1]), q: Number(q[2]) };
   const m = /^(\d+)-(\d+)([ab]?)$/.exec(ref);

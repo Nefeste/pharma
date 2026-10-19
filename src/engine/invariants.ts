@@ -2,6 +2,7 @@
 // проверка состояния: список нарушений, пустой — всё в порядке. Её зовут тесты и «виртуальный директор» на каждом шаге
 // проверки.
 import type { Attr, ContentDb } from '../content/types';
+import { batchNo } from './batchno';
 import { geo, good, SIXTY } from './line';
 import { partsOf, partType } from './maint';
 import { orderReserved } from './market';
@@ -161,6 +162,22 @@ export function check(db: ContentDb, s: PlantState): string[] {
   market(db, s, bad);
   maint(db, s, bad);
   lean(s, bad);
+  // номер серии (batchno.ts): досье выдано — номер есть; смешивание начато — номер полный; полный номер не повторяется,
+  // короткий — среди серий до смешивания
+  const full = new Map<string, string>();
+  const short = new Map<string, string>();
+  for (const b of Object.values(s.batches)) {
+    const c = b.code;
+    if (b.status !== 'waiting' && b.status !== 'reserved' && c.n === 0) bad.push(`серия ${b.id}: досье выдано без номера`);
+    if (c.n === 0) continue;
+    if (c.pp !== db.products[b.product].code) bad.push(`серия ${b.id}: код ${c.pp} — не код продукта`);
+    const mix = db.recipes[b.recipe].stages.findIndex(st => st.mix);
+    if (b.stage > mix && c.m === 0) bad.push(`серия ${b.id}: смешивание было, номер короткий`);
+    const no = batchNo(c);
+    const seen = c.m === 0 ? short : full;
+    if (seen.has(no)) bad.push(`номер серии ${no} — у ${seen.get(no)} и ${b.id}`);
+    seen.set(no, b.id);
+  }
   return bad;
 }
 

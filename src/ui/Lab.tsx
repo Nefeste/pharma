@@ -131,7 +131,7 @@ function Chart({ v, start }: { v: ChartView; start: Ymd }) {
         <polyline className="trace" points={mrs.map((m, i) => (m === undefined ? '' : `${x(i)},${ym(m)}`)).filter(Boolean).join(' ')} />
         {pts.map((p, i) => {
           const bad = p.signals.some(s => s !== 'mr');
-          const tip = `${T.card.batch} ${T.batchCode(...p.batch)} · ${whenText(start, p.t)} · ${pct(p.v)}`;
+          const tip = `${T.card.batch} ${p.batch} · ${whenText(start, p.t)} · ${pct(p.v)}`;
           return bad ? (
             <rect key={i} className="pt bad" x={x(i) - 4} y={y(p.v) - 4} width={8} height={8} transform={`rotate(45 ${x(i)} ${y(p.v)})`}>
               <title>{tip}</title>
@@ -158,7 +158,7 @@ function Chart({ v, start }: { v: ChartView; start: Ymd }) {
         <ul className="mlist" data-test="lab-signals">
           {flagged.slice(-8).map(({ p, i }) => (
             <li key={i} className="bad">
-              {T.lab.point(i + 1, T.batchCode(...p.batch), whenText(start, p.t))}: {p.signals.map((s: Signal) => T.lab.signal[s]).join(', ')}
+              {T.lab.point(i + 1, p.batch, whenText(start, p.t))}: {p.signals.map((s: Signal) => T.lab.signal[s]).join(', ')}
             </li>
           ))}
         </ul>

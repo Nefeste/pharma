@@ -5,6 +5,7 @@
 // партии, задачу и чего она ждёт, журнал оборудования. Что окно уже получило, помнит `ViewDesk` — как «стол врача»
 // «Больницы» (её src/sim/doctor.ts, `DoctorDesk`): вид уходит, только когда изменился.
 import type { ContentDb, Id, MaterialKind } from '../content/types';
+import { batchNo } from '../engine/batchno';
 import { partType, wearAt } from '../engine/maint';
 import { planOf } from '../engine/plant';
 import { shiftEnd } from '../engine/staff';
@@ -88,7 +89,7 @@ export type Why =
   | { k: 'plan' }
   | { k: 'tests'; done: number; all: number }
   | { k: 'decided'; status: 'released' | 'rejected'; t?: number }
-  | { k: 'batch'; code: [number, number, number] }
+  | { k: 'batch'; code: string }
   | { k: 'start' };
 
 /**
@@ -98,12 +99,12 @@ export type Why =
 export type Hist =
   | { k: 'arrived'; t: number; po?: string }
   | { k: 'start'; t: number }
-  | { k: 'made'; t: number; batch: [number, number, number] }
+  | { k: 'made'; t: number; batch: string }
   | { k: 'reserved'; orders: number; qty: number; t?: undefined }
   | { k: 'sampled'; t: number; containers: number }
   | { k: 'test'; t?: number; method: Id; result: number; pass: boolean }
   | { k: 'decided'; t?: number; status: LotStatus }
-  | { k: 'kit'; t?: number; batch: [number, number, number]; qty: number }
+  | { k: 'kit'; t?: number; batch: string; qty: number }
   | { k: 'shipped'; t: number; customer: Id; qty: number }
   | { k: 'maint'; t: number; part: string; what: 'failure' | 'repair' | 'replace'; wear: number };
 
@@ -124,9 +125,9 @@ export interface LotInfo {
 
 export type CardData =
   | { kind: 'unit'; unit: number; tag: Tag; containers: number; where: PlaceRef; lot?: LotInfo; why: Why[]; history: Hist[] }
-  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; batch?: [number, number, number]; stage?: string; why: Why[] }
-  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: [number, number, number]; parts: PartInfo[]; why: Why[]; history: Hist[] }
-  | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: [number, number, number]; sku?: Id; parts: PartInfo[]; why: Why[]; history: Hist[] }
+  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; batch?: string; stage?: string; why: Why[] }
+  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; parts: PartInfo[]; why: Why[]; history: Hist[] }
+  | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; sku?: Id; parts: PartInfo[]; why: Why[]; history: Hist[] }
   | { kind: 'person'; person: number; role: Id; shift: Id; doing: Doing }
   | { kind: 'vehicle'; vehicle: number; type: Id; task?: TaskKind }
   | { kind: 'truck'; truck: number; customer?: Id; supplier?: Id; po?: string; docked: boolean; open: boolean; units: number; arrived: number }
@@ -266,7 +267,7 @@ function lotWhy(s: PlantState, lot: Lot): Why[] {
   const out: Why[] = [];
   if (lot.batch && (lot.status === 'quarantine' || lot.status === 'testing' || lot.status === 'sampled')) {
     const b = s.batches[lot.batch];
-    if (b) out.push({ k: 'batch', code: codeOf(b.code) });
+    if (b) out.push({ k: 'batch', code: batchNo(b.code) });
   }
   const sm = lot.sample ? s.samples[lot.sample] : undefined;
   if (lot.status === 'quarantine' && !sm && !lot.batch) out.push({ k: 'plan' });
@@ -281,7 +282,7 @@ function lotWhy(s: PlantState, lot: Lot): Why[] {
 /** История партии: приход или выпуск, пробы, испытания, решение, выдачи на серии, отгрузки — по времени. */
 function lotHistory(s: PlantState, lot: Lot): Hist[] {
   const out: Hist[] = [];
-  if (lot.batch && s.batches[lot.batch]) out.push({ k: 'made', t: lot.received, batch: codeOf(s.batches[lot.batch].code) });
+  if (lot.batch && s.batches[lot.batch]) out.push({ k: 'made', t: lot.received, batch: batchNo(s.batches[lot.batch].code) });
   else if (lot.supplier === 'start') out.push({ k: 'start', t: lot.received });
   else out.push({ k: 'arrived', t: lot.received, ...(lot.po ? { po: lot.po } : {}) });
   const sm = lot.sample ? s.samples[lot.sample] : undefined;
@@ -300,7 +301,7 @@ function lotHistory(s: PlantState, lot: Lot): Hist[] {
     if (b.status === 'waiting' || b.status === 'reserved') {
       reserved.orders++;
       reserved.qty += qty;
-    } else out.push({ k: 'kit', ...(b.records[0] ? { t: b.records[0].start } : {}), batch: codeOf(b.code), qty });
+    } else out.push({ k: 'kit', ...(b.records[0] ? { t: b.records[0].start } : {}), batch: batchNo(b.code), qty });
   }
   if (reserved.orders > 0) out.push({ k: 'reserved', ...reserved });
   for (const sh of Object.values(s.shipments)) {
@@ -360,7 +361,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         grade: def.grade,
         status: r.status,
         since: r.since,
-        ...(b ? { batch: codeOf(b.code) } : {}),
+        ...(b ? { batch: batchNo(b.code) } : {}),
         ...(b && r.status === 'busy' ? { stage: db.recipes[b.recipe].stages[b.stage]?.id } : {}),
         why: clean.map(taskWhy),
       };
@@ -377,7 +378,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         type: def.type,
         room: plan.plant.rooms.findIndex(r => r.id === def.room),
         state: eqStateOf(s, def.id),
-        ...(b ? { batch: codeOf(b.code) } : {}),
+        ...(b ? { batch: batchNo(b.code) } : {}),
         parts: partsOfMachine(db, s, def.id),
         why: repairs.map(taskWhy),
         history: maintHistory(s, def.id),
@@ -397,7 +398,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         k: thing.k,
         type: def.type,
         state: mc.state,
-        ...(b ? { batch: codeOf(b.code) } : {}),
+        ...(b ? { batch: batchNo(b.code) } : {}),
         ...(b?.pack ? { sku: b.pack.sku } : {}),
         parts: partsOfMachine(db, s, def.id),
         why: repairs.map(taskWhy),

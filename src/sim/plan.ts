@@ -4,6 +4,7 @@
 // станет, если черновик утвердить, а прежние полосы сдвинутых серий — рядом. Без истины: прогон и записи — сроки, учёт и
 // задачи; истинных свойств и причин тут нет.
 import type { ContentDb } from '../content/types';
+import { batchNo } from '../engine/batchno';
 import { HOUR } from '../engine/core/calendar';
 import { cleanWork, MES } from '../engine/mes';
 import { type Bar, type Change, forecast, type Why } from '../engine/plan/schedule';
@@ -36,11 +37,9 @@ export interface GanttRow {
   type?: string;
 }
 
-type Code = [number, number, number];
-
-/** Серия для подписи: номер серии, если уже выдан (с комплектовки), иначе — номер задания. */
+/** Серия для подписи: номер серии строкой, если уже выдан (с комплектовки: короткий, со смешивания — полный), иначе — номер задания. */
 export interface BatchLabel {
-  code?: Code;
+  code?: string;
   n: number;
   status: BatchStatus;
   notBefore: number;
@@ -137,7 +136,7 @@ export function labels(s: PlantState, ids: Iterable<string>): Record<string, Bat
   for (const id of ids) {
     const b = s.batches[id];
     if (!b || out[id]) continue;
-    out[id] = { ...(b.code.n > 0 ? { code: [b.code.y, b.code.m, b.code.n] as Code } : {}), n: Number(id.slice(1)), status: b.status, notBefore: b.notBefore };
+    out[id] = { ...(b.code.n > 0 ? { code: batchNo(b.code) } : {}), n: Number(id.slice(1)), status: b.status, notBefore: b.notBefore };
   }
   return out;
 }

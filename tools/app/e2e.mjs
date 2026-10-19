@@ -670,15 +670,17 @@ try {
     const fresh = await ctx.newPage();
     fresh.on('pageerror', e => errors.push(e.message));
     await fresh.goto(`http://127.0.0.1:${port}/index.html?lang=ru`);
-    await fresh.waitForFunction(() => window.__ready === true, null, { timeout: 60_000 });
-    const first = await fresh.evaluate(() => window.__game.store.get().quality);
-    await fresh.waitForFunction(() => localStorage.getItem('pharma.quality') !== null, null, { timeout: 60_000 });
-    const picked = await fresh.evaluate(() => ({ quality: window.__game.store.get().quality, kept: localStorage.getItem('pharma.quality') }));
+    // кадр программной отрисовки на среднем — секунда и больше: замер может кончиться раньше, чем сценарий успеет
+    // спросить пресет, поэтому что мерили — из записи замера (main.tsx, `__preset`)
+    await fresh.waitForFunction(() => localStorage.getItem('pharma.quality') !== null, null, { timeout: 90_000 });
+    const picked = await fresh.evaluate(() => ({ quality: window.__game.store.get().quality, kept: localStorage.getItem('pharma.quality'), m: window.__preset }));
     await fresh.reload();
     await fresh.waitForFunction(() => window.__ready === true, null, { timeout: 60_000 });
-    const again = await fresh.evaluate(() => window.__game.store.get().quality);
-    if (first !== 'medium' || picked.quality !== 'low' || picked.kept !== 'low' || again !== 'low') fail(`стартовый пресет: сначала ${first}, после замера ${picked.quality} (запомнен ${picked.kept}), при новом открытии ${again}`);
-    else ok('стартовый пресет: сначала средний, замер — кадр дольше 33 мс — низкий, запомнен; при новом открытии — сразу низкий');
+    const again = await fresh.evaluate(() => ({ quality: window.__game.store.get().quality, m: window.__preset }));
+    const m = picked.m;
+    if (m?.from !== 'medium' || m.to !== 'low' || picked.quality !== 'low' || picked.kept !== 'low' || again.quality !== 'low' || again.m)
+      fail(`стартовый пресет: замер ${JSON.stringify(m)}, после замера ${picked.quality} (запомнен ${picked.kept}), при новом открытии ${again.quality}${again.m ? ', и снова замер' : ''}`);
+    else ok(`стартовый пресет: замер на среднем — ${m.frames} кадров, медиана ${m.median} мс — низкий, запомнен; при новом открытии — сразу низкий, без замера`);
     await ctx.close();
   }
 

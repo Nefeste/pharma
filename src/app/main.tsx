@@ -7,7 +7,7 @@ import type { Quality } from '../render/view';
 import { App } from '../ui/App';
 import { type Actions, Store } from '../ui/store';
 import { Game, PLANT, SCENARIO } from './game';
-import { kept, PRESET, pickPreset, keep as remember, windowKeep } from './preset';
+import { kept, medianFrame, PRESET, pickPreset, keep as remember, windowKeep } from './preset';
 
 declare const __VERSION__: string;
 
@@ -103,7 +103,8 @@ async function firstPreset(g: Game) {
   if (document.visibilityState !== 'visible') return;
   const iv = await frameIntervals(PRESET.measure);
   const pick = iv && pickPreset(iv);
-  if (!pick || kept(windowKeep())) return;
+  if (!iv || !pick || kept(windowKeep())) return;
+  window.__preset = { from: g.stage.quality, frames: iv.length, median: Math.round(medianFrame(iv) ?? 0), to: pick };
   if (pick !== g.stage.quality) g.actions.setQuality(pick);
   remember(windowKeep(), pick);
 }

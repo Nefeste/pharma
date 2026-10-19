@@ -64,6 +64,8 @@ declare global {
     __benchResult?: unknown;
     __benchError?: string;
     __shots?: { name: string; dataUrl: string }[];
+    /** стартовый замер кадра (preset.ts): на каком пресете мерили, сколько кадров, медиана, что выбрали — для сценария */
+    __preset?: { from: string; frames: number; median: number; to: string };
   }
 }
 

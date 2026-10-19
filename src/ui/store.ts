@@ -4,11 +4,13 @@
 import { useSyncExternalStore } from 'react';
 import type { SeatId } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
+import type { RunSum } from '../engine/plan/run';
+import type { Change } from '../engine/plan/schedule';
 import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import type { ChartView, LabView } from '../sim/lab';
-import type { GanttView, GhostView } from '../sim/plan';
+import type { BatchLabel, GanttView, GhostView } from '../sim/plan';
 import type { CashView, MorningView, TopView } from '../sim/report';
 import type { CardView, StockQuery, StockView, Thing } from '../sim/views';
 
@@ -56,9 +58,20 @@ export interface Hud {
   lab: { open: boolean; tab: 'queue' | 'chart'; view?: LabView; chart?: ChartView };
   /**
    * расписание (3д): открыто ли; окно времени — с какого мгновения (нет — от полуночи, вслед за часами) и сколько суток;
-   * вид; задание, которое тянут, и куда, — и его призрак
+   * вид; задание, которое тянут, и куда, — и его призрак; черновик (часть 5) — новые сроки заданий, ещё не команды: он
+   * живёт и при закрытом окне
    */
-  gantt: { open: boolean; from?: number; days: GanttDays; view?: GanttView; drag?: { batch: string; notBefore: number }; ghost?: GhostView };
+  gantt: {
+    open: boolean;
+    from?: number;
+    days: GanttDays;
+    view?: GanttView;
+    drag?: { batch: string; notBefore: number };
+    ghost?: GhostView;
+    draft: readonly Change[];
+  };
+  /** прогон плана (часть 5) */
+  plan: PlanRun;
   /** экран «Кем вы будете» (3е): открыт ли, что отмечено */
   seats: { open: boolean; pick: SeatId[] };
 }
@@ -71,6 +84,27 @@ export function holds(h: Hud, seat: SeatId): boolean {
   const mine = h.top?.seats;
   return !mine || mine.includes('director') || mine.includes(seat);
 }
+
+/**
+ * Прогон плана в окне (docs/specs/2026-10-plan-run.md): идёт ли; сколько вариантов — «как сейчас» и, если был черновик,
+ * «черновик»; черновик, с которым прогнали, строкой — изменился с тех пор, и итог говорит о прежнем; мгновение снимка; итоги
+ * вариантов по порядку; подписи серий снимка; сколько миллисекунд считал поток; ошибка.
+ */
+export interface PlanRun {
+  running: boolean;
+  variants: number;
+  key?: string;
+  at?: number;
+  sums: (RunSum | undefined)[];
+  batches: Record<string, BatchLabel>;
+  ms?: number;
+  error?: string;
+}
+
+export const NO_RUN: PlanRun = { running: false, variants: 0, sums: [], batches: {} };
+
+/** Прогон плана в прототипе: 14 суток × 5 зёрен (спецификация прототипа, часть 5; геймдизайн, §9.5). */
+export const PLAN_RUN = { days: 14, seeds: 5 };
 
 /** Окно расписания, суток: сегодня; вчера, сегодня и завтра; вчера, сегодня и неделя вперёд. */
 export type GanttDays = 1 | 3 | 9;
@@ -101,7 +135,8 @@ export const initial: Hud = {
   morningPause: true,
   cash: { open: false, page: 0 },
   lab: { open: false, tab: 'queue' },
-  gantt: { open: false, days: 3 },
+  gantt: { open: false, days: 3, draft: [] },
+  plan: NO_RUN,
   seats: { open: false, pick: [] },
 };
 
@@ -135,7 +170,7 @@ export interface Actions {
   rush(lot: string): void;
   /**
    * расписание: открыть или закрыть; окно — сутки, трое, неделя; на сутки назад, вперёд, к сегодня (0); тянуть задание —
-   * призрак с новым сроком; отпустить — команда `shift`; отменить
+   * призрак с новым сроком; отпустить — строка черновика; отменить; утвердить черновик — команды `shift`; сбросить его
    */
   toggleGantt(): void;
   setGanttDays(days: GanttDays): void;
@@ -143,6 +178,11 @@ export interface Actions {
   drag(batch: string, notBefore: number): void;
   drop(): void;
   cancelDrag(): void;
+  approveDraft(): void;
+  resetDraft(): void;
+  /** прогон плана: «как сейчас» и черновик, если он есть, — во втором потоке; прервать */
+  runPlan(): void;
+  stopPlan(): void;
   /** экран «Кем вы будете»: открыть — мир на паузе; отметить место; взять отмеченные — команда `seat`; закрыть без смены */
   openSeats(): void;
   pickSeat(seat: SeatId): void;

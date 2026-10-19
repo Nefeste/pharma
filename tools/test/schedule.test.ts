@@ -2,7 +2,9 @@
 // его функциями: прошлое — ровно записи стадий; в помещении полосы не перекрываются, между сериями — уборка; стадии
 // начинаются в смене, не позже чем за 15 минут до её конца; комплектовка одна; состояние не меняется; прогон с начала
 // партии близок к тому, как серии потом прошли на деле. Сдвиг меняет срок только у задания, не начавшего комплектовку.
-// Призрак называет, почему не там, куда тянут.
+// Призрак называет, почему не там, куда тянут. Черновик (часть 5, docs/specs/2026-10-plan-run.md): отпустили — строка
+// черновика, команды нет; план — с черновиком, прежние полосы сдвинутых серий — рядом; «Утвердить» — сроки как в
+// черновике и план как показан; «Сбросить» — ничего не изменилось; начатое задание из черновика уходит.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { DAY, HOUR, MIN } from '../../src/engine/core/calendar';
@@ -13,6 +15,7 @@ import { planOf } from '../../src/engine/plant';
 import { takesAt } from '../../src/engine/staff';
 import type { Notice, PlantState } from '../../src/engine/types';
 import { ganttView, ghostView, pastBars } from '../../src/sim/plan';
+import { commandsOf, prune, upsert } from '../../src/ui/draft';
 
 const SC = 'scn.proto';
 const at = (day: number, hour: number) => day * DAY + hour * HOUR;
@@ -265,5 +268,74 @@ describe('вид расписания', () => {
     expect(JSON.stringify(ganttView(db, b, q))).toBe(JSON.stringify(ganttView(db, a, q)));
     const gq = { view: 'ghost' as const, batch: 'B3', notBefore: at(10, 9) };
     expect(JSON.stringify(ghostView(db, b, gq))).toBe(JSON.stringify(ghostView(db, a, gq)));
+  });
+});
+
+describe('черновик', () => {
+  test('строки: новая, та же — сменилась, на утверждённый срок — ушла; уходит начатое; команды — по порядку', () => {
+    const a = upsert([], { batch: 'B2', notBefore: 100 }, 50);
+    expect(a).toEqual([{ batch: 'B2', notBefore: 100 }]);
+    const b = upsert(a, { batch: 'B3', notBefore: 200 }, 300);
+    const c = upsert(b, { batch: 'B2', notBefore: 120 }, 50);
+    expect(c).toEqual([{ batch: 'B2', notBefore: 120 }, { batch: 'B3', notBefore: 200 }]);
+    expect(upsert(c, { batch: 'B2', notBefore: 50 }, 50)).toEqual([{ batch: 'B3', notBefore: 200 }]);
+    expect(prune(c, [])).toBe(c);
+    expect(prune(c, ['B9'])).toBe(c);
+    expect(prune(c, ['B2'])).toEqual([{ batch: 'B3', notBefore: 200 }]);
+    expect(commandsOf(c)).toEqual([
+      { kind: 'shift', batch: 'B2', notBefore: 120, by: 'player' },
+      { kind: 'shift', batch: 'B3', notBefore: 200, by: 'player' },
+    ]);
+  });
+
+  test('вид с черновиком: команды нет, план — с черновиком, прежние полосы — рядом; утвердить — план как показан', () => {
+    const s = fresh();
+    live(s, at(1, 9));
+    const q = { view: 'gantt' as const, from: at(0, 0), to: at(14, 0) };
+    const plain = ganttView(db, s, q);
+    expect(plain.moved).toEqual([]);
+    expect(plain.was).toEqual([]);
+    const want = s.batches.B2.notBefore + DAY;
+    const draft = [{ batch: 'B2', notBefore: want }];
+    const before = JSON.stringify(s);
+    const v = ganttView(db, s, { ...q, draft });
+    // черновик — не команда: завод тот же
+    expect(JSON.stringify(s)).toBe(before);
+    expect(v.moved).toContain('B2');
+    expect(v.gone).toEqual([]);
+    const kit = v.bars.find(b => b.batch === 'B2' && b.kind === 'kit')!;
+    expect(kit.from).toBeGreaterThanOrEqual(want);
+    // прежние полосы — по утверждённому плану, только у сдвинутых серий
+    expect(v.was.length).toBeGreaterThan(0);
+    expect(v.was.every(b => v.moved.includes(b.batch!) && b.when === 'plan')).toBe(true);
+    expect(JSON.stringify(v.was.filter(b => b.batch === 'B2'))).toBe(JSON.stringify(plain.bars.filter(b => b.batch === 'B2' && b.when === 'plan')));
+    // призрак тянет B3 поверх черновика: его основа — план с черновиком
+    const g = ghostView(db, s, { view: 'ghost', batch: 'B3', notBefore: s.batches.B3.notBefore, draft });
+    expect(g.moved).toEqual([]);
+    // утвердили — сроки как в черновике, а план — как показал вид с черновиком
+    for (const cmd of commandsOf(draft)) apply(db, s, cmd);
+    expect(s.batches.B2.notBefore).toBe(want);
+    const after = ganttView(db, s, q);
+    expect(JSON.stringify(after.bars)).toBe(JSON.stringify(v.bars));
+    expect(after.moved).toEqual([]);
+  });
+
+  test('сбросить — ничего не изменилось; начатое задание из черновика уходит само', () => {
+    const s = fresh();
+    live(s, at(1, 6));
+    const q = { view: 'gantt' as const, from: at(0, 0), to: at(9, 0) };
+    const plain = ganttView(db, s, q);
+    // «Сбросить» — пустой черновик: тот же вид, что без него
+    expect(JSON.stringify(ganttView(db, s, { ...q, draft: [] }))).toBe(JSON.stringify(plain));
+    // первую серию положили в черновик до того, как она начала комплектовку; началась — тянуть нельзя
+    const draft = [{ batch: 'B1', notBefore: s.batches.B1.notBefore + DAY }];
+    expect(ganttView(db, s, { ...q, draft }).gone).toEqual([]);
+    live(s, at(1, 9));
+    expect(s.batches.B1.status).not.toBe('waiting');
+    expect(s.batches.B1.status).not.toBe('reserved');
+    const v = ganttView(db, s, { ...q, draft });
+    expect(v.gone).toEqual(['B1']);
+    expect(prune(draft, v.gone)).toEqual([]);
+    expect(ganttView(db, s, { ...q, draft: [...prune(draft, v.gone)] }).moved).toEqual([]);
   });
 });

@@ -61,7 +61,7 @@ export interface Forecast {
   stuck: string[];
 }
 
-/** Новый срок «не раньше» у одного задания — для призрака. */
+/** Новый срок «не раньше» у задания — черновик и призрак. */
 export interface Change {
   batch: string;
   notBefore: number;
@@ -127,7 +127,8 @@ interface Proj {
  * перекладки). Стадия — когда кончилась прошлая, помещение свободно, убрано и готово (`readyFor`) и в смене есть люди
  * её роли. Ушла серия из помещения — уборка, как только аппаратчик в смене; большая — если грязно дольше суток.
  */
-export function forecast(db: ContentDb, s: PlantState, change?: Change): Forecast {
+export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[] = []): Forecast {
+  const asked = new Map(changes.map(c => [c.batch, c.notBefore]));
   const plan = planOf(db, s.plant);
   const now = s.t;
   const crew = crewOf(s);
@@ -331,9 +332,9 @@ export function forecast(db: ContentDb, s: PlantState, change?: Change): Forecas
   for (const b of order) {
     if (b.status === 'packing' && b.pack?.state === 'reserved') queue.push({ b, at: now, pallets: palletsOf(s, b.pack.kit, b.pack.kitUnit), pack: true, material: false });
     if (b.status !== 'waiting' && b.status !== 'reserved') continue;
-    const asked = change?.batch === b.id ? change.notBefore : b.notBefore;
-    if (asked < now && change?.batch === b.id) note(b.id, { why: 'past', bar: 'kit' });
-    let at = Math.max(now, asked);
+    const want = asked.get(b.id) ?? b.notBefore;
+    if (asked.has(b.id) && want < now) note(b.id, { why: 'past', bar: 'kit' });
+    let at = Math.max(now, want);
     if (b.status === 'waiting') {
       const m = materialAt(b);
       if (m === undefined) {

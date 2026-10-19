@@ -8,7 +8,7 @@ import type { ContentDb, Scenario } from '../content/types';
 import { DAY, momentOf } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
 import { planOf } from '../engine/plant';
-import type { Notice } from '../engine/types';
+import type { Command, Notice } from '../engine/types';
 import { T } from '../i18n';
 import { bakeLook, lodOf, packPeople } from '../render/bake';
 import { AT, camDetail, type Detail, ease, speedDetail, type Weights } from '../render/detail';
@@ -21,9 +21,11 @@ import type { WallMode } from '../render/world';
 import type { Outline } from '../render/select';
 import { type Slice, SimClient } from '../sim/client';
 import { unpack } from '../sim/pack';
+import { PlanClient } from '../sim/planClient';
 import type { Thing, ViewQuery } from '../sim/views';
 import { useDb } from '../ui/db';
-import { type Actions, type Hud, LIVE, type Speed, type Store } from '../ui/store';
+import { commandsOf, prune, upsert } from '../ui/draft';
+import { type Actions, holds, type Hud, LIVE, NO_RUN, PLAN_RUN, type Speed, type Store } from '../ui/store';
 import { fillsOf, Flows, lineArrows, moveArrows, movesOf } from './flows';
 import { type Movers, moversAt } from './movers';
 import { type Box, machineBoxes, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
@@ -82,6 +84,9 @@ async function loadPeople() {
 export class Game {
   stage!: Stage;
   client!: SimClient;
+  /** поток прогона плана (часть 5): заводится к первому прогону; номер последнего «Прогнать план» */
+  readonly planner = new PlanClient('./plan.js');
+  private planSeq = 0;
   scenario!: Scenario;
   layout!: Layout;
   /** что видно на полу: паллеты, фуры, помещения — из срезов */
@@ -157,6 +162,14 @@ export class Game {
     g.client.onSlice = s => g.receive(s);
     g.client.onError = m => store.set({ error: m });
     g.client.start({ kind: 'start', scenario: SCENARIO });
+    g.planner.onVariant = m => {
+      const p = store.get().plan;
+      const sums = [...p.sums];
+      sums[m.index] = m.sum;
+      store.set({ plan: { ...p, at: m.at, sums, batches: { ...p.batches, ...m.batches } } });
+    };
+    g.planner.onDone = m => store.set({ plan: { ...store.get().plan, running: false, ms: m.ms } });
+    g.planner.onError = message => store.set({ plan: { ...store.get().plan, running: false, error: message } });
     await g.firstSlice;
     new ResizeObserver(() => g.stage.resize()).observe(host);
     g.bindInput();
@@ -197,7 +210,11 @@ export class Game {
       } else if (d.view === 'chart') {
         if (hud.lab.open) this.store.set({ lab: { ...this.store.get().lab, chart: d } });
       } else if (d.view === 'gantt') {
-        if (hud.gantt.open) this.store.set({ gantt: { ...this.store.get().gantt, view: d } });
+        // задания, которые тянуть уже нельзя, уходят из черновика сами
+        const g = this.store.get().gantt;
+        const draft = prune(g.draft, d.gone);
+        if (g.open || draft !== g.draft) this.store.set({ gantt: { ...g, ...(g.open ? { view: d } : {}), draft } });
+        if (draft !== g.draft) this.sendViews();
       } else if (d.view === 'ghost') {
         // призрак того, что тянут сейчас; прежний запрос — не показываем
         const g = this.store.get().gantt;
@@ -404,7 +421,7 @@ export class Game {
       const g = this.store.get().gantt;
       // большое окно поверх карты во всю ширину: панели справа закрываются; закрыли — то, что тянули, отменено
       const open = !g.open;
-      this.store.set({ gantt: { open, days: g.days, ...(g.from !== undefined ? { from: g.from } : {}) }, ...(open ? this.rightClosed() : {}) });
+      this.store.set({ gantt: { open, days: g.days, draft: g.draft, ...(g.from !== undefined ? { from: g.from } : {}) }, ...(open ? this.rightClosed() : {}) });
       this.sendViews();
     },
     setGanttDays: days => {
@@ -428,10 +445,11 @@ export class Game {
       this.sendViews();
     },
     drop: () => {
+      // отпустили — строка черновика, не команда (часть 5); на утверждённый срок — строки нет
       const g = this.store.get().gantt;
       if (!g.drag) return;
-      this.client.command({ kind: 'shift', batch: g.drag.batch, notBefore: g.drag.notBefore, by: 'player' });
-      this.store.set({ gantt: { ...g, drag: undefined, ghost: undefined } });
+      const draft = upsert(g.draft, g.drag, g.view?.batches[g.drag.batch]?.notBefore);
+      this.store.set({ gantt: { ...g, drag: undefined, ghost: undefined, draft } });
       this.sendViews();
     },
     cancelDrag: () => {
@@ -439,6 +457,39 @@ export class Game {
       if (!g.drag) return;
       this.store.set({ gantt: { ...g, drag: undefined, ghost: undefined } });
       this.sendViews();
+    },
+    approveDraft: () => {
+      // утвердить — команды `shift` по строкам по порядку; черновик пуст. Расписание — команда производства (3е)
+      const h = this.store.get();
+      if (h.gantt.draft.length === 0 || !holds(h, 'production')) return;
+      for (const cmd of commandsOf(h.gantt.draft)) this.client.command(cmd);
+      this.store.set({ gantt: { ...h.gantt, draft: [] } });
+      this.sendViews();
+    },
+    resetDraft: () => {
+      const g = this.store.get().gantt;
+      if (g.draft.length === 0) return;
+      this.store.set({ gantt: { ...g, draft: [] } });
+      this.sendViews();
+    },
+    runPlan: () => {
+      // «как сейчас» и черновик, если он есть, — на одних и тех же зёрнах; снимок — строкой от потока расчёта
+      const h = this.store.get();
+      if (h.plan.running) return;
+      const draft = h.gantt.draft;
+      const variants: Command[][] = [[], ...(draft.length > 0 ? [commandsOf(draft)] : [])];
+      this.store.set({ plan: { ...NO_RUN, running: true, variants: variants.length, key: JSON.stringify(draft) } });
+      const seq = ++this.planSeq;
+      void this.client.save().then(json => {
+        // прервали или прогнали заново, пока снимок шёл, — этого прогона нет
+        if (seq === this.planSeq && this.store.get().plan.running) this.planner.run(json, variants, PLAN_RUN.days, PLAN_RUN.seeds);
+      });
+    },
+    stopPlan: () => {
+      if (!this.store.get().plan.running) return;
+      this.planSeq++;
+      this.planner.stop();
+      this.store.set({ plan: NO_RUN });
     },
     openSeats: () => {
       // сменить место — на паузе; «Взять» пустит мир с прежней скоростью
@@ -546,7 +597,7 @@ export class Game {
       ...(keep !== 'stock' ? { stock: { ...h.stock, open: false } } : {}),
       ...(keep !== 'cash' ? { cash: { ...h.cash, open: false } } : {}),
       ...(keep !== 'lab' ? { lab: { ...h.lab, open: false } } : {}),
-      ...(keep && h.gantt.open ? { gantt: { open: false, days: h.gantt.days, ...(h.gantt.from !== undefined ? { from: h.gantt.from } : {}) } } : {}),
+      ...(keep && h.gantt.open ? { gantt: { open: false, days: h.gantt.days, draft: h.gantt.draft, ...(h.gantt.from !== undefined ? { from: h.gantt.from } : {}) } } : {}),
     };
   }
 
@@ -558,7 +609,7 @@ export class Game {
 
   /**
    * Открытые виды панелей — потоку, если набор изменился: касса полосы — всегда; склад, карточка, планёрка, касса,
-   * лаборатория, расписание и призрак того, что тянут.
+   * лаборатория, расписание и призрак того, что тянут, — оба с черновиком.
    */
   private sendViews() {
     const h = this.store.get();
@@ -569,8 +620,9 @@ export class Game {
     if (h.morning.open && h.morning.day !== undefined) list.push({ id: 'morning', view: 'morning', day: h.morning.day });
     if (h.cash.open) list.push({ id: 'cash', view: 'cash', page: h.cash.page });
     if (h.lab.open) list.push(h.lab.tab === 'queue' ? { id: 'lab', view: 'lab' } : { id: 'chart', view: 'chart', test: 'test.ipc.mass' });
-    if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days) });
-    if (h.gantt.open && h.gantt.drag) list.push({ id: 'ghost', view: 'ghost', ...h.gantt.drag });
+    const draft = h.gantt.draft.length > 0 ? { draft: [...h.gantt.draft] } : {};
+    if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days), ...draft });
+    if (h.gantt.open && h.gantt.drag) list.push({ id: 'ghost', view: 'ghost', ...h.gantt.drag, ...draft });
     const key = JSON.stringify(list);
     if (key === this.viewsSent) return;
     this.viewsSent = key;

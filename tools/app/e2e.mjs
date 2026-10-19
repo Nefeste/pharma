@@ -11,8 +11,9 @@
 // мимо панели и карточка партии; щелчок мышью по паллете — её карточка; Esc закрывает. Планёрка и касса (3в): ×4 встают
 // ровно в 08:00 — планёрка открылась сама, мир на паузе, Esc закрывает; «До утра» тоже открывает планёрку; касса — остаток
 // как в полосе. Лаборатория (3г): на шестые сутки — очередь, «Поднять» доходит до движка, на карте средней массы точки и
-// границы. Расписание (3д): G открывает окно, на нём полосы; задание тянут мышью — виден призрак с причинами, отпустили —
-// срок задания сменился; Esc закрывает. «Кем вы будете» (3е): экран открыт с начала, мир стоит; взяли «Производство» —
+// границы. Расписание (3д): G открывает окно, на нём полосы; задание тянут мышью — виден призрак с причинами. Прогон плана
+// (часть 5): отпустили — задание в черновике, срок прежний; «Прогнать план» — итог «как сейчас» и черновика на пяти зёрнах,
+// часы завода в это время идут; «Утвердить» — срок задания сменился; Esc закрывает. «Кем вы будете» (3е): экран открыт с начала, мир стоит; взяли «Производство» —
 // часы пошли; на планёрке — «Ваше место»; «Поднять» без поста качества погашено, кнопкой «Место» добавили его — мир на
 // паузе, после «Взять» поднять можно. Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
@@ -223,9 +224,11 @@ try {
     else ok('касса: Esc закрыл');
   }
 
-  // расписание (3д): G открывает окно; на неделе — строки и полосы; задание на серию, не начавшее комплектовку, тянут мышью
-  // на сутки раньше — виден призрак и причины у курсора; отпустили — срок задания сменился (команда `shift` дошла до
-  // движка и вернулась в вид); Esc закрывает. Вторая серия и на сутки раньше — после последних суток сценария
+  // расписание (3д, часть 5): G открывает окно; на неделе — строки и полосы; задание на серию, не начавшее комплектовку,
+  // тянут мышью на сутки раньше — виден призрак и причины у курсора; отпустили — задание в черновике: команды нет, срок
+  // прежний, полосы черновика — белым пунктиром, прежние — бледнее. «Прогнать план» на ×1 — итог двух вариантов на пяти
+  // зёрнах, а часы завода шли: игра не замерла. «Утвердить» — срок задания сменился (команда `shift` дошла до движка и
+  // вернулась в вид), черновик пуст; Esc закрывает. Вторая серия и на сутки раньше — после последних суток сценария
   {
     await page.keyboard.press('KeyG');
     await page.waitForFunction(() => !!window.__game.store.get().gantt.view, null, { timeout: 20_000 });
@@ -255,15 +258,80 @@ try {
       const tip = ((await page.innerText('[data-test=gtip]').catch(() => '')) ?? '').replace(/\s*\n\s*/g, ' · ');
       await page.screenshot({ path: join(out, 'e2e-gantt.png') });
       await page.mouse.up();
+      // отпустили — черновик: полосы задания белым пунктиром, прежние — бледнее; срок задания прежний
+      const drafted = await page
+        .waitForFunction(b => {
+          const g = window.__game.store.get().gantt;
+          return g.draft.length === 1 && g.draft[0].batch === b && document.querySelectorAll(`[data-test=gbar][data-draft="1"][data-batch="${b}"]`).length > 0;
+        }, batch, { timeout: 20_000 })
+        .then(() => true, () => false);
+      const kept = await page.evaluate(b => window.__game.store.get().gantt.view?.batches[b]?.notBefore, batch);
+      await frames(2);
+      await page.screenshot({ path: join(out, 'e2e-draft.png') });
+      const marks = await page.evaluate(() => ({ draft: document.querySelectorAll('[data-test=gbar][data-draft="1"]').length, was: document.querySelectorAll('[data-test=was]').length, list: document.querySelector('[data-test=draft-list]')?.textContent ?? '' }));
+      if (!ghost || !drafted || kept !== before || marks.was < 1)
+        fail(`расписание: призрак ${ghost ? 'виден' : 'не виден'}; черновик ${drafted ? 'есть' : 'нет'}, срок задания ${batch}: ${before} → ${kept}, прежних полос ${marks.was}`);
+      else
+        ok(`расписание: строк ${rows}, полос ${bars}; задание ${batch} протянули на сутки раньше — призрак, у курсора «${tip.slice(0, 90)}…»; отпустили — «${marks.list}», срок прежний; полос черновика ${marks.draft}, прежних ${marks.was}`);
+
+      // «Прервать» сразу после «Прогнать план» — прогона и итога нет
+      const stopped = await page.evaluate(async () => {
+        const g = window.__game;
+        g.actions.runPlan();
+        g.actions.stopPlan();
+        await new Promise(r => setTimeout(r, 1500));
+        const p = g.store.get().plan;
+        return !p.running && p.sums.length === 0 && !document.querySelector('[data-test=plan]');
+      });
+      if (!stopped) fail('прогон плана: «Прервать» не остановил прогон');
+      else ok('прогон плана: «Прервать» — прогона и итога нет');
+
+      // прогон плана: на ×1 часы завода идут, пока второй поток считает «как сейчас» и черновик на пяти зёрнах
+      await page.keyboard.press('Digit1');
+      const r0 = await gameT();
+      await page.click('[data-test=plan-run]');
+      const started = await page.waitForFunction(() => window.__game.store.get().plan.running, null, { timeout: 5_000 }).then(() => true, () => false);
+      const done = await page
+        .waitForFunction(() => {
+          const p = window.__game.store.get().plan;
+          return !p.running && (p.sums.filter(Boolean).length === 2 || !!p.error);
+        }, null, { timeout: 90_000 })
+        .then(() => true, () => false);
+      const r1 = await gameT();
+      await page.keyboard.press('Space');
+      await page.waitForFunction(() => window.__game.speed === 0, null, { timeout: 5_000 });
+      await frames(2);
+      const plan = await page.evaluate(() => {
+        const p = window.__game.store.get().plan;
+        return {
+          seeds: p.sums.map(x => x?.seeds).join(),
+          cols: document.querySelectorAll('[data-test=plan-sum] thead th').length,
+          orders: document.querySelectorAll('[data-test=plan-order]').length,
+          batches: document.querySelectorAll('[data-test=plan-batch]').length,
+          cash: document.querySelector('[data-test=plan-cash]')?.textContent ?? '',
+          ms: p.ms,
+          error: p.error,
+        };
+      });
+      await page.evaluate(() => document.querySelector('[data-test=plan]')?.scrollIntoView());
+      await frames(2);
+      await page.screenshot({ path: join(out, 'e2e-plan.png') });
+      if (!started || !done || plan.error || plan.cols !== 3 || plan.seeds !== '5,5' || plan.batches < 1 || r1 <= r0)
+        fail(`прогон плана: начат ${started}, готов ${done}, ошибка ${plan.error ?? 'нет'}, столбцов ${plan.cols}, зёрен ${plan.seeds}, серий ${plan.batches}, часы ${r0} → ${r1}`);
+      else
+        ok(`прогон плана: «как сейчас» и черновик на 5 зёрнах за ${plan.ms} мс; заказов ${plan.orders}, серий ${plan.batches}, «${plan.cash.slice(0, 80)}»; часы завода прошли ${r1 - r0} с — игра не замерла`);
+
+      // «Утвердить» — команды `shift`: срок задания сменился, черновик пуст
+      await page.click('[data-test=draft-approve]');
       const moved = await page
         .waitForFunction(([b, t]) => {
-          const v = window.__game.store.get().gantt.view;
-          return !!v?.batches[b] && v.batches[b].notBefore !== t;
+          const g = window.__game.store.get().gantt;
+          return g.draft.length === 0 && !!g.view?.batches[b] && g.view.batches[b].notBefore !== t;
         }, [batch, before], { timeout: 20_000 })
         .then(() => true, () => false);
       const after = await page.evaluate(b => window.__game.store.get().gantt.view?.batches[b]?.notBefore, batch);
-      if (!ghost || !moved) fail(`расписание: призрак ${ghost ? 'виден' : 'не виден'}, срок задания ${batch}: ${before} → ${after}`);
-      else ok(`расписание: строк ${rows}, полос ${bars}; задание ${batch} протянули на сутки раньше — призрак, у курсора «${tip.slice(0, 90)}…»; срок раньше на ${Math.round((before - after) / 3600)} ч`);
+      if (!moved) fail(`«Утвердить»: срок задания ${batch}: ${before} → ${after}`);
+      else ok(`«Утвердить»: срок задания ${batch} раньше на ${Math.round((before - after) / 3600)} ч, черновик пуст`);
     }
     await page.keyboard.press('Escape');
     if (await page.evaluate(() => !!document.querySelector('#gantt'))) fail('расписание: Esc не закрыл');

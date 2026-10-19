@@ -92,13 +92,13 @@ npm ci                             # dependencies, Electron included (ELECTRON_S
 npm run content                    # build and validate content/ → src/content/generated/bundle.json (not in git)
 npm run typecheck                  # content + tsc --noEmit (src incl. .tsx, tools)
 npm test                           # content + bun test tools/test
-npm run build                      # content + page and worker (esbuild) → dist/ (not in git)
+npm run build                      # content + page and its two workers (esbuild) → dist/ (not in git)
 npm run e2e                        # after build: the game in headless Chromium; tools/app/out/e2e*.png and contact.png
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zip → release/ (from Linux, no wine) — the release file
 bun tools/test/make-save-fixture.ts  # only when SCHEMA changes: a new save sample (old ones stay)
-npm run bench                      # engine without a window: a year of scn.proto (--days, --step, --seed); compare before/after engine changes
+npm run bench                      # engine without a window: a year of scn.proto (--days, --step, --seed; --plan — also a plan run); compare before/after engine changes
 ```
 
 The browser scenario needs Chromium: `PLAYWRIGHT_BROWSERS_PATH` (default `/opt/pw-browsers`) or `CHROMIUM_PATH`.
@@ -122,12 +122,18 @@ first, or copy the working code of Bolnitsa on the same versions.
   kitting through the airlock, stages in rooms with equipment and people, cleaning, process parameters, true batch
   quality with causes, IPC, the bulk lot; the packing job and its packaging kit; a stage stopped by a part failure and
   resumed after the repair; a new not-before time of a batch order from the player — `shift`; room readiness, nominal
-  stage time and cleaning time shared with the schedule run), `plan/schedule.ts` (the schedule run — a pure function:
-  running tasks to their end, then kitting, stages and cleaning by the engine's rules and its own functions; bars and
-  the reasons why not earlier), `line.ts` (the packaging line as flow between events: machines, buffers, micro-stops,
+  stage time and cleaning time shared with the schedule run; new part budgets of a running stage for the plan run's
+  twin — `stageRedraw`), `plan/schedule.ts` (the schedule run — a pure function: running tasks to their end, then
+  kitting, stages and cleaning by the engine's rules and its own functions, with the player's draft changes; bars and
+  the reasons why not earlier), `plan/twin.ts` (the plan run's twin: on a copy, forget what the plant does not know —
+  true lot and batch properties, causes, part budgets, unrecorded jams, results before review — and redraw it from what
+  was measured; branches anew from the run seed), `plan/run.ts` (the plan run — a pure function: per seed a copy, the
+  twin, the variant's commands, the horizon, the outcome — orders, batches, cash, OEE, load; per variant — lowest,
+  median and highest over seeds), `line.ts` (the packaging line as flow between events: machines, buffers, micro-stops,
   camera rejects by count, codes in cases, FG pallets, changeover and line clearance, the crew, the end of a batch with
   reconciliation, machine times for OEE, a machine part failing at a flow boundary, jams of the cartoner; the flow at a
-  moment between events without writing the state — `flowAt`, for the slice), `qa.ts` (QA check of finished goods with
+  moment between events without writing the state — `flowAt`, for the slice; new part budgets for the twin —
+  `lineRedraw`), `qa.ts` (QA check of finished goods with
   retention samples, the qualified person's decision, FG shelf life), `market.ts` (customers and their orders, FG into
   circulation after the regulator publishes the batch, FEFO allocation with the residual shelf life, whole pallets and
   case picking, the customer's truck at 15:00, shipments with codes), `cash.ts` (kopecks and ledger entries, dues by
@@ -152,10 +158,12 @@ first, or copy the working code of Bolnitsa on the same versions.
   (`views.ts`); the 08:00 meeting — the player's places over their tenure, yesterday by calendar day, events of the 24
   hours before it, what waits now — the cash panel and the top-bar cash with the player's places (`report.ts`); the lab queue and the X–Rm control chart of the in-process average
   tablet mass with its limits and special-cause signs (`lab.ts`); the schedule — the Gantt of the past, the running and
-  the schedule run, and the ghost of a dragged batch order (`plan.ts`), Web Worker (`worker.ts`) and its client in the
-  window (`client.ts`; how far the window's clock ran ahead of the last slice; at most one `tick` in flight). The window
-  never runs the engine. Saves cross the thread boundary as a string: the window never parses the state with the true
-  lot properties.
+  the schedule run with the player's draft, the old bars of what the draft moves, and the ghost of a dragged batch order
+  (`plan.ts`), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how far the window's clock ran ahead
+  of the last slice; at most one `tick` in flight); the plan run's own thread — a second Web Worker over the same engine
+  (`planHost.ts`, `planWorker.ts` → `dist/plan.js`) and its client in the window (`planClient.ts`; a stop terminates
+  the thread). The window never runs the engine. Saves cross the thread boundary as a string: the window never parses
+  the state with the true lot properties — the plan run gets the same string.
 - `src/app/` — the game in the window: content, stage, clock and speeds with live time 1:1, input, panels (`game.ts`,
   `main.tsx`); what the slice puts on the floor — pallets, trucks, rooms, pallets on forks (`scene.ts`); where people
   and vehicles are now — a pure function of the tasks in the slice and the clock, on the plan's routes and with the
@@ -178,8 +186,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   composition (`stage.ts`).
 - `src/ui/` — panels (React) and their store: the top bar (`App.tsx`), the warehouse (`Stock.tsx`), the card of a
   thing — what it is, state, why, what can be done, history (`Card.tsx`), the 08:00 meeting (`Morning.tsx`), the cash
-  panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), the schedule window with dragging (`Gantt.tsx`), the
-  «Кем вы будете» screen of places (`Seats.tsx`), status icons (`icons.tsx`), the content base for names (`db.ts`); `src/i18n/` — every player-facing string, Russian
+  panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), the schedule window with dragging, the draft, «Прогнать
+  план» and the run's outcome per variant (`Gantt.tsx`), the draft's pure rules — a row per batch order, gone once kitting
+  starts, `shift` commands on approval (`draft.ts`), the «Кем вы будете» screen of places (`Seats.tsx`), status icons
+  (`icons.tsx`), the content base for names (`db.ts`); `src/i18n/` — every player-facing string, Russian
   and English, and number, quantity, money, duration and date formats.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML;
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
@@ -189,5 +199,6 @@ first, or copy the working code of Bolnitsa on the same versions.
 - `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
 - `assets/` — CC0 people models (copies of Bolnitsa's, byte for byte) and `LICENSES.md` (sources, licenses, SHA-256);
   never add a model without its line there and in `assets/models/sources.json`.
-- `tools/app/` — page build, local server, browser scenario with the contact sheet, the headless scene bench
-  (`bench.mjs`); `tools/test/` — Bun tests and save samples.
+- `tools/app/` — page build (the page, the calculation thread and the plan run's thread), local server, browser scenario
+  with the contact sheet, the headless scene bench (`bench.mjs`); `tools/test/` — Bun tests and save samples;
+  `tools/bench/` — the engine bench, with `--plan` also the plan run.

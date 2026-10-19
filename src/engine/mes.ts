@@ -417,14 +417,45 @@ export function stageBegin(db: ContentDb, s: PlantState, id: string, v: number) 
   delete run.rest;
   const end = t.times![4];
   run.from = Math.min(end, s.t + (first ? st.time.setup : 0));
-  const span = end - run.from;
+  armFails(db, s, b, end);
+}
+
+/** События отказа узлов идущего отрезка стадии: на какой таблетке кончится запас каждого узла, если раньше конца отрезка. */
+function armFails(db: ContentDb, s: PlantState, b: Batch, end: number) {
+  const run = b.run!;
+  const span = end - run.from!;
   if (span <= 0 || run.left === 0) return;
   for (const pt of stageParts(db, s, b)) {
     const n = untilFail(partType(db, pt), pt.done, pt.budget);
     if (n >= run.left) continue;
-    const at = run.from + Math.ceil((n * span) / run.left);
+    const at = run.from! + Math.ceil((n * span) / run.left);
     if (at < end) schedule(s.agenda, at, { kind: 'fail', part: pt.id, v: pt.v, n });
   }
+}
+
+/**
+ * Двойник прогона плана (docs/specs/2026-10-plan-run.md): запас до отказа исправных узлов оборудования — от `redraw`.
+ * У идущего отрезка стадии запас — остаток после уже спрессованного (наработка отрезка учитывается в его конце), события
+ * отказа, поставленные по старому запасу, устаревают, новые — по новому.
+ */
+export function stageRedraw(db: ContentDb, s: PlantState, redraw: (pt: Part) => number) {
+  const armed = new Set<string>();
+  for (const b of Object.values(s.batches)) {
+    const t = Object.values(s.tasks).find(x => x.kind === 'stage' && x.batch === b.id && x.state === 'busy');
+    const run = b.run;
+    if (!t || !run || run.from === undefined || run.from < t.times![1] || run.rest !== undefined) continue;
+    const end = t.times![4];
+    const span = end - run.from;
+    const pressed = span > 0 ? Math.min(run.left, Math.floor(((Math.max(s.t, run.from) - run.from) * run.left) / span)) : 0;
+    for (const pt of stageParts(db, s, b)) {
+      armed.add(pt.id);
+      if (pt.state !== 'ok') continue;
+      pt.budget = redraw(pt) + consume(partType(db, pt), pt.done, pressed);
+      pt.v++;
+    }
+    armFails(db, s, b, end);
+  }
+  for (const pt of Object.values(s.parts)) if (!pt.line && pt.state === 'ok' && !armed.has(pt.id)) pt.budget = redraw(pt);
 }
 
 /**

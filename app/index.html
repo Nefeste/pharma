@@ -6,7 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:">
   <link rel="icon" href="data:,">
   <title>Farmzavod</title>
-  <!-- из bolnitsa: app/index.html @ e0a3491 — изменено: полоса сверху, отладка и состояние (часть 0); карточка вещи — её стиль `.card`, панель склада — своя (3б); планёрка и касса — свои (3в); лаборатория (3г), расписание (3д) и «Кем вы будете» (3е) — свои -->
+  <!-- из bolnitsa: app/index.html @ e0a3491 — изменено: полоса сверху, отладка и состояние (часть 0); карточка вещи — её стиль `.card`, панель склада — своя (3б); планёрка и касса — свои (3в); лаборатория (3г), расписание (3д), «Кем вы будете» (3е) и прогон плана (часть 5) — свои -->
   <style>
     :root {
       --panel: rgba(22, 30, 34, 0.86);
@@ -139,6 +139,19 @@
     .glegend .gbar { position: static; display: inline-block; padding: 0 6px; line-height: 18px; cursor: default; }
     .goff-key { display: inline-block; padding: 0 6px; line-height: 18px; background: rgba(0,0,0,.35); border-radius: 3px; color: var(--muted); }
     .gtip { position: fixed; z-index: 10; max-width: 380px; padding: 6px 10px; font-size: 12px; pointer-events: none; }
+    /* черновик и прогон плана (часть 5): полосы черновика — в белой рамке, прежние — бледнее; итог — таблица по вариантам */
+    .gbar.draft { border: 1px solid #fff; background: color-mix(in srgb, var(--c) 55%, transparent); }
+    .gbar.was { opacity: .3; pointer-events: none; }
+    .gdraft { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 4px 0 6px; font-size: 12px; }
+    .gplan { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+    .gplan .warn { color: var(--yellow); font-size: 12px; }
+    table.gsum { font-size: 12px; }
+    table.gsum th { cursor: default; }
+    table.gsum tbody tr { cursor: default; }
+    table.gsum tbody tr:hover { background: none; }
+    table.gsum tr.sec td { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding-top: 8px; border-bottom-color: var(--line); }
+    .gnote { font-size: 12px; }
+    .gsum .delta { color: var(--accent); }
     /* «Кем вы будете» (3е) — посередине поверх всего: пять плиток мест */
     .seats { position: absolute; left: 50%; top: calc(var(--top-h, 48px) + 16px); transform: translateX(-50%); width: min(1100px, calc(100% - 16px)); max-height: calc(100% - var(--top-h, 48px) - 32px); overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; z-index: 5; background: rgba(22, 30, 34, 0.97); box-shadow: 0 6px 30px rgba(0,0,0,.5); }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }

@@ -4,6 +4,8 @@
 // - запись проходит строгую схему (schema.ts);
 // - ссылки между записями разрешаются;
 // - ключи источников есть в таблице docs/10-domain.md, §9;
+// - коды материалов и документов уникальны и по формату, у редакций документа — разные дни введения, и на начало
+//   сценария действует всё, что ему нужно (Б3а);
 // - числа переводятся в единицы движка (docs/04-data-model.md, §2): кг → мг, г → мг, ₽ → копейки, м → см, % → доли
 //   1/10 000, минуты → секунды.
 // Ошибка любой записи останавливает сборку: база с битой ссылкой в игру не попадает.
@@ -19,6 +21,7 @@ import {
   type ContainerType,
   type ContentDb,
   type Customer,
+  type DocHead,
   type EquipmentType,
   type FindingRead,
   type IncidentDef,
@@ -48,7 +51,9 @@ import {
   type UnitType,
   type VehicleType,
 } from '../../src/content/types';
+import { civilFromDays, daysFromCivil } from '../../src/engine/core/calendar';
 import { fnv1a, stableJson } from '../../src/engine/core/hash';
+import { DOC_KINDS, type DocKind, headOf, inForce, revisions } from '../../src/engine/docs';
 import { KINDS, type Kind } from './schema';
 import { planErrors } from './plan';
 
@@ -65,6 +70,15 @@ const at2 = (p: [number, number]): [number, number] => [cm(p[0]), cm(p[1])];
 const sec = (min: number) => Math.round(min * 60);
 const watt = (kw: number) => Math.round(kw * 1000);
 const qual = (a: Attr) => QUALITATIVE.includes(a);
+/** Номер дня от 1970-01-01 по дате `ГГГГ-ММ-ДД`; такой даты нет в календаре — −1. */
+function dayOf(text: string): number {
+  const [y, m, d] = text.split('-').map(Number);
+  const z = daysFromCivil({ y, m, d });
+  const back = civilFromDays(z);
+  return back.y === y && back.m === m && back.d === d ? z : -1;
+}
+/** Первая цифра внутреннего кода материала — его вид (Б3а); у запчасти — 6. */
+const CODE_KIND: Record<Material['kind'] | 'spare', string> = { api: '1', excipient: '2', packaging: '3', bulk: '4', fg: '5', spare: '6' };
 /** Значение свойства в единицах движка (src/content/types.ts, `ATTRS`). */
 const scaleOf = (a: Attr) => ATTR_SCALE[ATTRS[a].unit];
 const attrVal = (a: Attr, v: number) => Math.round(v * scaleOf(a));
@@ -127,7 +141,8 @@ export interface Built {
 type Raw = { [K in Kind]: Record<string, z.infer<(typeof KINDS)[K]['schema']>> };
 type RawScenario = z.infer<(typeof KINDS)['scenarios']['schema']>;
 
-export function buildDb(): Built {
+/** Сборка из `content/` — или из другой папки того же устройства: так тесты проверяют ошибки на испорченной копии. */
+export function buildDb(content = CONTENT): Built {
   const errors: string[] = [];
   const known = sourceKeys();
   const raw = Object.fromEntries(Object.keys(KINDS).map(k => [k, {}])) as Raw;
@@ -135,7 +150,7 @@ export function buildDb(): Built {
 
   for (const kind of Object.keys(KINDS) as Kind[]) {
     const { prefix, schema } = KINDS[kind];
-    const dir = join(CONTENT, kind);
+    const dir = join(content, kind);
     let list: string[] = [];
     try {
       list = files(dir);
@@ -191,13 +206,20 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   const need = (ok: unknown, msg: string) => {
     if (!ok) errors.push(msg);
   };
+  /** Шапка документа: день введения — номером дня; утвердил — роль из базы. */
+  const headDoc = (d: { code: string; rev: number; from: string; approved: string }, where: string): DocHead => {
+    const from = dayOf(d.from);
+    need(from >= 0, `${where}: даты ${d.from} нет в календаре`);
+    need(raw.roles[d.approved], `${where}: утвердил ${d.approved} — нет такой роли`);
+    return { code: d.code, rev: d.rev, from, approved: d.approved };
+  };
   const instruments: Record<string, InstrumentType> = { ...raw.instruments };
   const tests: Record<string, TestMethod> = {};
   for (const t of Object.values(raw.tests)) {
     if (t.inst) need(raw.instruments[t.inst], `методика ${t.id}: нет прибора ${t.inst}`);
     need(!t.unattended || t.inst, `методика ${t.id}: без прибора сама не работает`);
     need(!qual(t.attr) || t.sd === 0, `методика ${t.id}: ${t.attr} — качественное свойство, погрешности у него нет`);
-    tests[t.id] = { ...t, prep: sec(t.prep), run: sec(t.run), sd: attrVal(t.attr, t.sd) };
+    tests[t.id] = { ...t, doc: headDoc(t.doc, `методика ${t.id}`), prep: sec(t.prep), run: sec(t.run), sd: attrVal(t.attr, t.sd) };
   }
   const specs: Record<string, Spec> = {};
   for (const sp of Object.values(raw.specs)) {
@@ -212,7 +234,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       lines.push({ test: l.test, ...(l.min !== undefined ? { min: attrVal(t.attr, l.min) } : {}), ...(l.max !== undefined ? { max: attrVal(t.attr, l.max) } : {}) });
     }
     need(new Set(sp.tests.map(l => l.test)).size === sp.tests.length, `спецификация ${sp.id}: методика повторяется`);
-    specs[sp.id] = { ...sp, tests: lines };
+    specs[sp.id] = { ...sp, doc: headDoc(sp.doc, `спецификация ${sp.id}`), tests: lines };
   }
   const materials: Record<string, Material> = {};
   /** методики, которые нужны входному контролю: под них в плане завода должны быть приборы */
@@ -276,7 +298,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     need(sh.from < sh.to, `график ${sh.id}: смена кончается раньше, чем начинается`);
     shifts[sh.id] = { ...sh, days: [...new Set(sh.days)].sort().map(d => d - 1) };
   }
-  const products: Record<string, Product> = { ...raw.products };
+  const products: Record<string, Product> = Object.fromEntries(Object.values(raw.products).map(pr => [pr.id, { ...pr, strength: pr.strength.mg }]));
   for (const pr of Object.values(raw.products)) if (pr.jnvlp) need(pr.source, `продукт ${pr.id}: «в перечне ЖНВЛП» — факт, нужен источник`);
   // код продукта в номере серии — у каждого свой: иначе номера двух продуктов совпадут
   const codes = new Map<string, string>();
@@ -419,6 +441,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     recipes[r.id] = {
       id: r.id,
       name: r.name,
+      doc: headDoc(r.doc, where),
       product: r.product,
       batch: { mass: mg(r.batch.kg), units: r.batch.units },
       bom: r.bom.map(l => ({ material: l.material, qty: mg(l.kg), ...(l.potency ? { potency: true } : {}), ...(l.qs ? { qs: true } : {}) })),
@@ -499,6 +522,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     if (k.regPrice !== undefined) need(k.price <= k.regPrice, `${where}: цена ${k.price} ₽ выше зарегистрированной ${k.regPrice} ₽`);
     skus[k.id] = {
       ...k,
+      doc: headDoc(k.doc, where),
       blister: k.blister.map(l => ({ material: l.material, qty: Math.round(l.g * 1000) })),
       carton: k.carton.map(l => ({ material: l.material, qty: l.n })),
       price: kop(k.price),
@@ -744,6 +768,44 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   for (const c of Object.values(raw.customers)) {
     for (const sku of Object.keys(c.demand)) need(skus[sku], `покупатель ${c.id}: нет позиции ${sku}`);
     customers[c.id] = { ...c, order: { ...c.order, days: [...new Set(c.order.days)].sort().map(d => d - 1) }, minShelf: share(c.minShelf) };
+  }
+  // коды (Б3а): у материала и запчасти — внутренний, первая цифра — вид; у каждого свой
+  const matCodes = new Map<string, string>();
+  const coded = [...Object.values(materials).map(m => ({ id: m.id, code: m.code, kind: m.kind as keyof typeof CODE_KIND })), ...Object.values(spares).map(sp => ({ id: sp.id, code: sp.code, kind: 'spare' as const }))];
+  for (const x of coded) {
+    need(x.code[0] === CODE_KIND[x.kind], `${x.id}: код ${x.code} — первая цифра у вида ${x.kind} — ${CODE_KIND[x.kind]}`);
+    const other = matCodes.get(x.code);
+    need(!other, `${x.id}: код ${x.code} уже у ${other}`);
+    matCodes.set(x.code, x.id);
+  }
+  // документы: у редакций одного кода — разные дни введения и номер растёт с днём, поэтому в любой день действует не
+  // больше одной; у редакций карты — один продукт; инструкция по упаковке — у каждой позиции своя, пока она часть позиции
+  const docDb = { specs, tests, recipes, skus };
+  for (const kind of DOC_KINDS) {
+    const byCode = new Map<string, string[]>();
+    for (const [id, r] of Object.entries(docDb[kind] as Record<string, { doc: DocHead }>)) byCode.set(r.doc.code, [...(byCode.get(r.doc.code) ?? []), id]);
+    for (const [code, ids] of byCode) {
+      const heads = ids.map(id => ({ id, h: headOf(docDb, kind, id)! })).sort((a, b) => a.h.from - b.h.from);
+      need(new Set(heads.map(x => x.h.from)).size === heads.length, `документ ${code}: у редакций ${ids.join(', ')} один день введения`);
+      need(new Set(heads.map(x => x.h.rev)).size === heads.length, `документ ${code}: у редакций ${ids.join(', ')} номер повторяется`);
+      heads.forEach((x, i) => {
+        if (i > 0 && x.h.rev !== heads[i - 1].h.rev) need(x.h.rev > heads[i - 1].h.rev, `документ ${code}: редакция ${x.h.rev} (${x.id}) введена позже редакции ${heads[i - 1].h.rev}`);
+      });
+      if (kind === 'recipes') need(new Set(ids.map(id => recipes[id].product)).size === 1, `карта ${code}: редакции ${ids.join(', ')} — разных продуктов`);
+      if (kind === 'skus') need(ids.length === 1, `инструкция по упаковке ${code}: одна у позиций ${ids.join(', ')}, а у каждой — своя`);
+    }
+  }
+  // на начало сценария действует всё, что ему нужно: спецификация каждого материала — по ней примут первую партию; карты
+  // его заданий и плана; инструкции по упаковке его позиций
+  for (const sc of Object.values(scenarios)) {
+    const where = `сценарий ${sc.id}`;
+    const day = daysFromCivil(sc.start.date);
+    const date = raw.scenarios[sc.id].start.date;
+    const active = (kind: DocKind, id: string) => headOf(docDb, kind, inForce(docDb, kind, id, day))!.from <= day;
+    for (const m of Object.values(materials)) if (specs[m.spec]) need(active('specs', m.spec), `${where}: у материала ${m.id} на ${date} нет действующей спецификации`);
+    for (const r of [...sc.batches.map(b => b.recipe), ...(sc.plan?.items.map(it => it.recipe) ?? [])]) if (recipes[r]) need(active('recipes', r), `${where}: у карты ${r} на ${date} нет действующей редакции`);
+    const used = [...sc.batches.flatMap(b => (b.sku ? [b.sku] : [])), ...(sc.plan?.items.map(it => it.sku) ?? []), ...sc.customers.flatMap(c => Object.keys(customers[c]?.demand ?? {}))];
+    for (const k of new Set(used)) if (skus[k]) need(active('skus', k), `${where}: инструкция по упаковке позиции ${k} на ${date} ещё не действует`);
   }
   return {
     profiles,

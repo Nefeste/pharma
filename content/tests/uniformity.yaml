@@ -2,6 +2,7 @@
 # (jp-602). Времена и погрешность — гипотезы; настоящие — по НД и валидации методики.
 id: test.uniformity
 name: { ru: Однородность дозирования (ВЭЖХ), en: Uniformity of dosage units (HPLC) }
+doc: { code: TM-0011, rev: 1, from: 2027-03-01, approved: role.qc-head }
 attr: uniformity
 inst: inst.hplc
 prep: 120

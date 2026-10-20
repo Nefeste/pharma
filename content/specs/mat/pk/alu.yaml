@@ -1,3 +1,5 @@
 id: spec.mat.pk.alu
+name: { ru: "Фольга алюминиевая", en: "Aluminium foil" }
+doc: { code: SP-0007, rev: 1, from: 2026-02-16, approved: role.qc-head }
 tests:
   - { test: test.visual }

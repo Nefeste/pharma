@@ -15,7 +15,8 @@
 // и качество — одна запись закрыта, две открыты. С схемы 14 — посреди расследования: у второй серии происшествие,
 // расследование открыто, игрок на посту качества сделал один шаг, другой идёт. С схемы 15 — номер серии при открытом
 // расследовании: у одной серии номер короткий (досье выдано, смешивания ещё не было), у других — полный. С схемы 16 — в
-// сутках потерь уже есть генеральная уборка и переналадка линии.
+// сутках потерь уже есть генеральная уборка и переналадка линии. С схемы 17 — у испытаний, и готовых, и идущих, —
+// редакция спецификации.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { DAY, MIN } from '../../src/engine/core/calendar';
@@ -40,8 +41,9 @@ const investigating = () => Object.values(s.investigations ?? {}).some(i => i.st
 const numbered = () => Object.values(s.batches).some(b => b.code.n > 0 && b.code.m === 0) && Object.values(s.batches).some(b => b.code.m > 0);
 const opened = () => Object.values(s.investigations).some(i => i.status === 'open' && i.obs.length > 0);
 const switched = () => s.losses.some(d => d.cleans.major > 0) && s.losses.some(d => d.changes.n > 0);
+const specced = () => Object.values(s.tests).some(q => q.spec && q.state === 'done') && Object.values(s.tests).some(q => q.spec && q.state !== 'done');
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : seated() && numbered() && opened() && (SCHEMA < 16 || switched());
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced());
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 if (SCHEMA >= 13) apply(db, s, { kind: 'seat', seats: ['director'] });

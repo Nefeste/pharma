@@ -3,6 +3,8 @@
 # можно не проводить; прочность и истираемость — испытания стадии производства (МОК). Пределы содержания и влажности —
 # гипотезы до НД продукта.
 id: spec.bulk.paracetamol500
+name: { ru: "Таблетки парацетамола 500 мг в балке", en: "Paracetamol 500 mg tablets in bulk" }
+doc: { code: SP-0011, rev: 1, from: 2026-03-02, approved: role.qc-head }
 tests:
   - { test: test.hplc-assay, min: 95, max: 105 }
   - { test: test.dissolution, min: 80 }

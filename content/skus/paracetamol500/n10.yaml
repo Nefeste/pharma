@@ -2,6 +2,8 @@
 # Числа — гипотезы.
 id: sku.paracetamol500.n10
 name: { ru: "Парацетамол, таблетки 500 мг, №10", en: "Paracetamol 500 mg tablets, 10" }
+# шапка инструкции по упаковке (Б3а): блистер, пачка, ящик, паллета и отходы на наладку ниже — её содержание
+doc: { code: PI-0002, rev: 1, from: 2026-06-01, approved: role.production-head }
 product: prd.paracetamol500
 fg: mat.fg.paracetamol500-n10
 format: n10

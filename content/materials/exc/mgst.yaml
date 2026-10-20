@@ -1,5 +1,6 @@
 id: mat.exc.mgst
 kind: excipient
+code: 200004
 name: { ru: Магния стеарат, en: Magnesium stearate }
 unit: kg
 container: cnt.bag.20

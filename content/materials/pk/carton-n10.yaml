@@ -1,6 +1,7 @@
 # Печатная пачка своей позиции: новая редакция текста делает старый запас ненужным (геймдизайн, §4.1).
 id: mat.pk.carton-n10
 kind: packaging
+code: 300006
 name: { ru: Пачка «Парацетамол 500 мг №10», en: Carton «Paracetamol 500 mg No. 10» }
 unit: pcs
 container: cnt.box.cartons

@@ -1,5 +1,6 @@
 id: mat.pk.case
 kind: packaging
+code: 300005
 name: { ru: Гофроящик 40 × 30 × 25, en: Shipping carton 40 × 30 × 25 }
 unit: pcs
 container: cnt.bundle.cases

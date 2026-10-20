@@ -2,6 +2,7 @@
 # изготовителя и НД, сверить с консультантом.
 id: mat.api.paracetamol
 kind: api
+code: 100001
 name: { ru: Парацетамол, en: Paracetamol }
 unit: kg
 container: cnt.drum.fibre50

@@ -5,6 +5,7 @@ import { batchNo } from './batchno';
 import { type Agenda, schedule } from './core/agenda';
 import { HOUR, momentOf } from './core/calendar';
 import { newCash } from './cash';
+import { inForce } from './docs';
 import { leanStep, newLoss } from './lean';
 import { newLines } from './line';
 import { newParts } from './maint';
@@ -197,6 +198,20 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     for (const d of (raw.losses as Raw[] | undefined) ?? []) {
       d.cleans ??= { major: 0, majorSec: 0, minor: 0, minorSec: 0 };
       d.changes ??= { n: 0, sec: 0 };
+    }
+    return raw;
+  },
+  // 16 → 17 (Б3а): испытание помнит редакцию спецификации. Прежним — редакция, действовавшая при отборе пробы (в базе
+  // прототипа она одна); у испытания шага расследования — только у повторного: у него пределы той же спецификации.
+  16: (raw, db) => {
+    const start = raw.start as Ymd;
+    const samples = raw.samples as Record<string, Raw>;
+    const lots = raw.lots as Record<string, Raw>;
+    for (const q of Object.values(raw.tests as Record<string, Raw>)) {
+      if (q.spec !== undefined || (q.inv !== undefined && q.min === undefined && q.max === undefined)) continue;
+      const sm = samples[q.sample as string];
+      const spec = db.materials[lots[sm?.lot as string]?.material as string]?.spec;
+      if (spec) q.spec = inForce(db, 'specs', spec, momentOf(start, (sm.taken as number | undefined) ?? (raw.t as number)).day);
     }
     return raw;
   },

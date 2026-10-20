@@ -1,3 +1,5 @@
 id: spec.mat.pk.carton-n20
+name: { ru: "Пачка «Парацетамол 500 мг №20»", en: "Carton «Paracetamol 500 mg No. 20»" }
+doc: { code: SP-0008, rev: 1, from: 2026-02-16, approved: role.qc-head }
 tests:
   - { test: test.visual }

@@ -1,4 +1,6 @@
 id: spec.mat.exc.lactose
+name: { ru: "Лактозы моногидрат", en: "Lactose monohydrate" }
+doc: { code: SP-0015, rev: 1, from: 2027-03-01, approved: role.qc-head }
 tests:
   - { test: test.ir }
   - { test: test.lod, max: 6 }

@@ -2,6 +2,7 @@
 # 2–30 °C в двойном мешке в бочке (meb-loratadine-2022). Тара, истинные свойства партии и брак — гипотезы.
 id: mat.api.loratadine
 kind: api
+code: 100002
 name: { ru: Лоратадин, en: Loratadine }
 unit: kg
 container: cnt.drum.fibre50

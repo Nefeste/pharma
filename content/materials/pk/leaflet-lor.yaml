@@ -1,6 +1,7 @@
 # Инструкция — своя у каждого продукта (геймдизайн, §4.1).
 id: mat.pk.leaflet-lor
 kind: packaging
+code: 300009
 name: { ru: Инструкция «Лоратадин 10 мг», en: Leaflet «Loratadine 10 mg» }
 unit: pcs
 container: cnt.box.leaflets

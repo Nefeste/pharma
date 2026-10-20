@@ -40,9 +40,26 @@ export interface Profile {
   energy: { advances: [number, number][]; final: number };
   /** ключевая ставка, доли 1/10 000 */
   key: number;
+  /** коды единиц по ОКЕИ (Б3а) — для справочника и обмена с другими системами; движок считает в своих целых */
+  okei: Record<OkeiUnit, number>;
   /** ключи источников из docs/10-domain.md, §9 */
   source: string[];
   review: Review;
+}
+
+/** Единицы с кодом ОКЕИ: миллиграмм, грамм, килограмм, штука, упаковка (пачка готовой продукции). */
+export type OkeiUnit = 'mg' | 'g' | 'kg' | 'pcs' | 'pack';
+
+/**
+ * Шапка регламентирующего документа (Б3а; GMP ЕАЭС, ч. I, пп. 4.3, 4.5): код — вид и номер (`SP-0001`), редакция, день
+ * введения в действие — номер дня от 1970-01-01 — и роль того, кто утвердил. Редакции одного документа — записи с одним
+ * кодом; какая действует — по дате завода (src/engine/docs.ts).
+ */
+export interface DocHead {
+  code: string;
+  rev: number;
+  from: number;
+  approved: Id;
 }
 
 /** Строка штата сценария: столько-то людей роли на графике. */
@@ -220,6 +237,8 @@ export const QUALITATIVE: readonly Attr[] = ['identity', 'appearance'];
 export interface Material {
   id: Id;
   kind: MaterialKind;
+  /** внутренний код (Б3а): шесть цифр, первая — вид; у готовой продукции — код позиции в документах и на ярлыках */
+  code: string;
   name: Text;
   /** `mass` — количество в миллиграммах; `pcs` — в штуках */
   unit: 'mass' | 'pcs';
@@ -371,6 +390,7 @@ export interface InstrumentType {
 export interface TestMethod {
   id: Id;
   name: Text;
+  doc: DocHead;
   attr: Attr;
   /** вид прибора; нет — испытание без прибора */
   inst?: Id;
@@ -392,14 +412,17 @@ export interface SpecLine {
   max?: number;
 }
 
+/** Спецификация: что она описывает, шапка документа, испытания с пределами. */
 export interface Spec {
   id: Id;
+  name: Text;
+  doc: DocHead;
   tests: SpecLine[];
   source?: string[];
   review?: Review;
 }
 
-/** Продукт: лекарство по МНН и форма. */
+/** Продукт: лекарство по МНН, форма и дозировка. */
 export interface Product {
   id: Id;
   name: Text;
@@ -407,6 +430,8 @@ export interface Product {
   /** код в номере серии: две заглавные латинские буквы или цифры, у каждого продукта свой */
   code: string;
   form: 'tablet';
+  /** дозировка (Б3а): действующего вещества в единице формы, мг */
+  strength: number;
   /** в перечне ЖНВЛП: цена позиции — не выше зарегистрированной */
   jnvlp: boolean;
   source?: string[];
@@ -516,6 +541,7 @@ export interface RecipeStage {
 export interface Recipe {
   id: Id;
   name: Text;
+  doc: DocHead;
   product: Id;
   batch: { mass: number; units: number };
   /** состав на серию, мг: `potency` — с пересчётом на содержание партии; `qs` — добирает массу серии */
@@ -644,6 +670,8 @@ export interface Machine {
 export interface Sku {
   id: Id;
   name: Text;
+  /** шапка инструкции по упаковке (Б3а): блистер, пачка, ящик, паллета и отходы на наладку — её содержание */
+  doc: DocHead;
   product: Id;
   /** готовая продукция — материал вида `fg` */
   fg: Id;
@@ -678,6 +706,8 @@ export interface Customer {
 /** Запасная часть (docs/specs/2026-10-engine.md, 1е): цена — копейки без НДС; срок поставки — дни; уровни ЗИП — штуки. */
 export interface Spare {
   id: Id;
+  /** внутренний код (Б3а): шесть цифр, первая — 6 */
+  code: string;
   name: Text;
   supplier: Id;
   price: number;

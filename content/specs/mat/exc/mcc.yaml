@@ -1,4 +1,6 @@
 id: spec.mat.exc.mcc
+name: { ru: "Целлюлоза микрокристаллическая", en: "Microcrystalline cellulose" }
+doc: { code: SP-0004, rev: 1, from: 2026-02-02, approved: role.qc-head }
 tests:
   - { test: test.ir }
   - { test: test.lod, max: 7 }

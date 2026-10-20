@@ -7,7 +7,7 @@ import type { Ymd } from '../engine/core/calendar';
 import { dayText, named, num, qtyText, T, whenText } from '../i18n';
 import type { NowRow } from '../sim/now';
 import type { CardView, Hist, Holds, Why } from '../sim/views';
-import { db } from './db';
+import { db, docText } from './db';
 import { StatusIcon, TaskIcon } from './icons';
 import { placeText, supplierText } from './Stock';
 import type { Actions } from './store';
@@ -163,6 +163,18 @@ export function Card({ v, start, plant, actions, beside, watch }: { v: CardView;
                   {qtyText(lot.left, mat.unit)} <span className="muted">/ {qtyText(lot.qty, mat.unit)}</span>
                 </Row>
                 <Row k={T.card.expiry}>{dayText(lot.expiry)}</Row>
+                {lot.recipe ? (
+                  <Row k={T.card.recipe}>
+                    <span className="mono" data-test="card-recipe">
+                      {docText('recipes', lot.recipe)}
+                    </span>
+                  </Row>
+                ) : null}
+                {lot.sku ? (
+                  <Row k={T.card.packing}>
+                    <span className="mono">{docText('skus', lot.sku)}</span>
+                  </Row>
+                ) : null}
               </>
             ) : null}
           </dl>
@@ -182,7 +194,17 @@ export function Card({ v, start, plant, actions, beside, watch }: { v: CardView;
             <Row k={T.card.state}>
               {T.room.status[c.status]} <span className="muted">{T.card.since(whenText(start, c.since))}</span>
             </Row>
-            {c.batch ? <Row k={T.card.batch}>{c.batch}</Row> : null}
+            {c.batch ? (
+              <Row k={T.card.batch}>
+                {c.batch}
+                {c.recipe ? (
+                  <span className="muted" data-test="card-recipe">
+                    {' '}
+                    · {T.card.recipeOf(docText('recipes', c.recipe))}
+                  </span>
+                ) : null}
+              </Row>
+            ) : null}
             {c.stage ? <Row k={T.card.stage}>{T.stages[c.stage] ?? c.stage}</Row> : null}
           </dl>
           <Why list={c.why} start={start} />
@@ -197,8 +219,23 @@ export function Card({ v, start, plant, actions, beside, watch }: { v: CardView;
         <>
           <dl>
             <Row k={T.card.state}>{c.kind === 'equipment' ? T.equipment[c.state] : T.machine[c.state]}</Row>
-            {c.batch ? <Row k={T.card.batch}>{c.batch}</Row> : null}
-            {c.kind === 'machine' && c.sku ? <Row k={T.card.sku}>{named(db?.skus[c.sku]?.name, c.sku)}</Row> : null}
+            {c.batch ? (
+              <Row k={T.card.batch}>
+                {c.batch}
+                {c.kind === 'equipment' && c.recipe ? (
+                  <span className="muted" data-test="card-recipe">
+                    {' '}
+                    · {T.card.recipeOf(docText('recipes', c.recipe))}
+                  </span>
+                ) : null}
+              </Row>
+            ) : null}
+            {c.kind === 'machine' && c.sku ? (
+              <Row k={T.card.sku}>
+                {named(db?.skus[c.sku]?.name, c.sku)}
+                <span className="muted"> · {T.card.packingOf(docText('skus', c.sku))}</span>
+              </Row>
+            ) : null}
             {c.parts.length ? (
               <Row k={T.card.parts}>
                 {c.parts

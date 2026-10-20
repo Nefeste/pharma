@@ -4,7 +4,7 @@
 import type { Ymd } from '../engine/core/calendar';
 import { named, num, T, whenText } from '../i18n';
 import type { ChartView, LabLotRow, Limits, Signal, TaskNow } from '../sim/lab';
-import { db } from './db';
+import { db, docText } from './db';
 import { type Actions, type Hud, holds } from './store';
 
 function nowText(n: TaskNow | undefined, start: Ymd): string {
@@ -45,6 +45,12 @@ function LotRows({ r, start, actions, mine }: { r: LabLotRow; start: Ymd; action
         <td>
           {r.rush ? <span className="rush" title={T.lab.rushed}>▲ </span> : null}
           <span className="mono">{T.lotCode(...r.code)}</span> {named(db?.materials[r.material]?.name, r.material)}
+          {r.spec ? (
+            <span className="muted" data-test="lab-spec">
+              {' '}
+              · {T.lab.bySpec(docText('specs', r.spec))}
+            </span>
+          ) : null}
         </td>
         <td>{r.stage === 'tests' ? T.lab.stageTests(r.done, r.all) : T.lab.stage[r.stage]}</td>
         <td className="muted">{nowText(r.now, start)}</td>

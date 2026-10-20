@@ -94,7 +94,7 @@ export interface Hud {
 }
 
 /** Вкладки справочника завода: продукты, карты, оборудование, лаборатория, люди, контрагенты. */
-export const REF_TABS = ['products', 'recipes', 'equipment', 'lab', 'people', 'partners'] as const;
+export const REF_TABS = ['products', 'materials', 'recipes', 'equipment', 'lab', 'people', 'partners', 'docs'] as const;
 export type RefTab = (typeof REF_TABS)[number];
 
 /**

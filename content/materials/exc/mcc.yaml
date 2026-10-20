@@ -1,5 +1,6 @@
 id: mat.exc.mcc
 kind: excipient
+code: 200003
 name: { ru: Целлюлоза микрокристаллическая, en: Microcrystalline cellulose }
 unit: kg
 container: cnt.bag.20

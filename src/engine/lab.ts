@@ -6,7 +6,8 @@
 // испытанию аналитика и прибор.
 import type { ContentDb } from '../content/types';
 import { schedule } from './core/agenda';
-import { MIN } from './core/calendar';
+import { MIN, momentOf } from './core/calendar';
+import { inForce } from './docs';
 import { incidentMeasured, invTestDone, modelFor, openInvestigation } from './investigation';
 import { defect } from './lean';
 import { type PlantPlan, planOf } from './plant';
@@ -170,13 +171,15 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       return true;
     }
     case 'handover': {
-      // пробы приняты в лаборатории: испытания по спецификации — в очередь, по времени отбора
+      // пробы приняты в лаборатории: испытания по спецификации, действующей при отборе пробы (Б3а), — в очередь, по
+      // времени отбора; испытание помнит её редакцию
       const lot = s.lots[t.lot!];
       const sm = sampleOf(s, lot.id);
       setLotStatus(s, lot, 'testing');
-      for (const line of db.specs[db.materials[lot.material].spec].tests) {
+      const spec = inForce(db, 'specs', db.materials[lot.material].spec, momentOf(s.start, sm.taken ?? s.t).day);
+      for (const line of db.specs[spec].tests) {
         const m = db.tests[line.test];
-        const q: LabTest = { id: nextId(s, 'Q'), sample: sm.id, method: m.id, state: 'queued', v: 0 };
+        const q: LabTest = { id: nextId(s, 'Q'), sample: sm.id, method: m.id, spec, state: 'queued', v: 0 };
         if (line.min !== undefined) q.min = line.min;
         if (line.max !== undefined) q.max = line.max;
         s.tests[q.id] = q;

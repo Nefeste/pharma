@@ -2,6 +2,7 @@
 # лаборатории. Средний размер гранул, мкм. Времена и погрешность — гипотезы; настоящие — по валидации методики.
 id: test.sieve
 name: { ru: Гранулометрический состав гранулята, en: Granule size distribution }
+doc: { code: TM-0010, rev: 1, from: 2026-01-19, approved: role.qc-head }
 attr: granule
 prep: 30
 run: 20

@@ -17,6 +17,14 @@ const attr = z.enum(['identity', 'assay', 'moisture', 'appearance', 'particle', 
 /** Источник и review пишутся вместе: запись с фактом — с источником; выбор геймдизайна — без. */
 const paired = <T extends { source?: unknown; review?: unknown }>(o: T) => (o.source === undefined) === (o.review === undefined);
 const pairedMsg = { message: 'источник и review пишутся вместе' };
+/** код единицы по ОКЕИ — три цифры */
+const okeiCode = z.number().int().min(1).max(999);
+/**
+ * Внутренний код материала (Б3а; GMP ЕАЭС, ч. I, п. 4.14): шесть цифр, первая — вид (1 — АФС, 2 — вспомогательное
+ * вещество, 3 — упаковочный материал, 4 — балк, 5 — готовая продукция, 6 — запчасть), дальше — номер по порядку. В YAML —
+ * числом; в базе — строкой. Коды вымышленные; вид и уникальность сверяет load.ts.
+ */
+const matCode = z.coerce.string().regex(/^[1-6]\d{5}$/, 'внутренний код — шесть цифр, первая — вид материала');
 
 export const profile = z.strictObject({
   id: z.string(),
@@ -39,11 +47,26 @@ export const profile = z.strictObject({
   energy: z.strictObject({ advances: z.array(z.tuple([day, percent])), final: day }),
   /** ключевая ставка Банка России, % */
   key: percent,
+  /** коды единиц по ОКЕИ (Б3а): миллиграмм, грамм, килограмм, штука, упаковка — для справочника и обмена */
+  okei: z.strictObject({ mg: okeiCode, g: okeiCode, kg: okeiCode, pcs: okeiCode, pack: okeiCode }),
   source: sources,
   review,
 });
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'дата пишется как ГГГГ-ММ-ДД');
+/**
+ * Шапка регламентирующего документа (Б3а; GMP ЕАЭС, ч. I, пп. 4.3, 4.5): код — вид и номер латиницей (`SP` —
+ * спецификация, `TM` — методика испытания, `MF` — технологическая карта, `PI` — инструкция по упаковке), номер редакции,
+ * дата введения в действие и кто утвердил — роль. Редакции одного документа — записи с одним кодом; статус — по дате
+ * завода (src/engine/docs.ts).
+ */
+const doc = (kind: 'SP' | 'TM' | 'MF' | 'PI') =>
+  z.strictObject({
+    code: z.string().regex(new RegExp(`^${kind}-\\d{4}$`), `код документа — ${kind}-NNNN`),
+    rev: z.number().int().min(1).max(99),
+    from: date,
+    approved: id,
+  });
 /** Количество в единице материала: кг или штуки — load.ts сверяет с материалом. */
 const qty = z.number().positive();
 
@@ -144,6 +167,7 @@ export const material = z
     id: z.string(),
     /** `bulk` — свой полупродукт: таблетки после производства, до упаковки; `fg` — готовая продукция, пачки в ящиках */
     kind: z.enum(['api', 'excipient', 'packaging', 'bulk', 'fg']),
+    code: matCode,
     name: text,
     unit: z.enum(['kg', 'pcs']),
     container: id,
@@ -230,6 +254,7 @@ export const test = z
   .strictObject({
     id: z.string(),
     name: text,
+    doc: doc('TM'),
     attr,
     /** вид прибора; нет — без прибора */
     inst: id.optional(),
@@ -245,10 +270,15 @@ export const test = z
   })
   .refine(paired, pairedMsg);
 
-/** Спецификация: испытания и пределы в единицах свойства. У качественного свойства пределов нет: «соответствует» или нет. */
+/**
+ * Спецификация: что она описывает, шапка документа, испытания и пределы в единицах свойства. У качественного свойства
+ * пределов нет: «соответствует» или нет.
+ */
 export const spec = z
   .strictObject({
     id: z.string(),
+    name: text,
+    doc: doc('SP'),
     tests: z.array(z.strictObject({ test: id, min: z.number().optional(), max: z.number().optional() })).min(1),
     source: sources.optional(),
     review: review.optional(),
@@ -325,7 +355,7 @@ export const plant = z.strictObject({
   energy: z.strictObject({ hvac: z.strictObject({ D: z.number().min(0), cnc: z.number().min(0) }), base: z.number().min(0) }),
 });
 
-/** Продукт: лекарство по МНН и форма; дозировка — в имени. */
+/** Продукт: лекарство по МНН, форма и дозировка. */
 export const product = z.strictObject({
   id: z.string(),
   name: text,
@@ -337,6 +367,8 @@ export const product = z.strictObject({
    */
   code: z.string().regex(/^[A-Z0-9]{2}$/),
   form: z.enum(['tablet']),
+  /** дозировка (Б3а): действующего вещества в единице формы, мг */
+  strength: z.strictObject({ mg: z.number().positive() }),
   /** в перечне ЖНВЛП: цена позиции — не выше зарегистрированной */
   jnvlp: z.boolean().default(false),
   source: sources.optional(),
@@ -416,6 +448,7 @@ export const recipe = z
   .strictObject({
     id: z.string(),
     name: text,
+    doc: doc('MF'),
     product: id,
     /** размер серии: кг и штук */
     batch: z.strictObject({ kg: z.number().positive(), units: z.number().int().positive() }),
@@ -546,6 +579,8 @@ export const machine = z
 export const sku = z.strictObject({
   id: z.string(),
   name: text,
+  /** шапка инструкции по упаковке (Б3а): блистер, пачка, ящик, паллета и отходы на наладку — её содержание */
+  doc: doc('PI'),
   product: id,
   /** готовая продукция — материал вида fg */
   fg: id,
@@ -600,6 +635,7 @@ export const customer = z
 export const spare = z
   .strictObject({
     id: z.string(),
+    code: matCode,
     name: text,
     supplier: id,
     price: z.number().positive(),

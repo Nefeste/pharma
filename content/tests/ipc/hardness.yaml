@@ -1,5 +1,6 @@
 id: test.ipc.hardness
 name: { ru: Прочность на раздавливание (МОК), en: Crushing strength (IPC) }
+doc: { code: TM-0007, rev: 1, from: 2026-01-19, approved: role.qc-head }
 attr: hardness
 inst: inst.hardness
 prep: 5

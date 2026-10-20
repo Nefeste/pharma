@@ -1,5 +1,6 @@
 id: mat.pk.pvc
 kind: packaging
+code: 300001
 name: { ru: Плёнка ПВХ для блистеров, en: PVC blister film }
 unit: kg
 container: cnt.roll.pvc

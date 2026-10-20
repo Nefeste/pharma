@@ -1,5 +1,6 @@
 id: test.visual
 name: { ru: "Внешний вид, размеры, текст", en: "Appearance, dimensions, text" }
+doc: { code: TM-0004, rev: 1, from: 2026-01-19, approved: role.qc-head }
 attr: appearance
 prep: 30
 run: 0

@@ -4,7 +4,8 @@
 // по факту — записи стадий серий; люди по ролям и сменам — как в состоянии. Карточка паллеты: тара и сколько в ней — по учёту.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
-import type { Attr, ContentDb } from '../../src/content/types';
+import type { Attr, ContentDb, Recipe } from '../../src/content/types';
+import { momentOf } from '../../src/engine/core/calendar';
 import { apply } from '../../src/engine/engine';
 import { nominal } from '../../src/engine/mes';
 import { fromSave } from '../../src/engine/save';
@@ -78,7 +79,9 @@ const ALLOWED = new Set(
     'product mass units bom material qty potency qs stages room staff role n nominal params unit target range ipc test min max mix done last mean now batch from ' +
     'type cleaning minor major parts life wear failed state machines buffer rate sku ' +
     'inst prep run unattended queued running method ' +
-    'dept salary shift present busy days to hour lead prepay payDays approved items moq spares spare minShelf'
+    'dept salary shift present busy days to hour lead prepay payDays approved items moq spares spare minShelf ' +
+    // Б3а: номенклатура и регламентирующие документы — по НСИ и дате завода
+    'materials docs kind okei spec status'
   ).split(' '),
 );
 
@@ -164,6 +167,59 @@ describe('справочник: как должно быть и как есть'
   test('позиция — 120 пачек в ящике у № 20, 40 ящиков на паллете', () => {
     const k = v.products.flatMap(p => p.skus).find(x => x.id === 'sku.paracetamol500.n20')!;
     expect([k.perBlister, k.blisters, k.perCase, k.cases]).toEqual([10, 2, 120, 40]);
+  });
+});
+
+describe('справочник: номенклатура и документы (Б3а)', () => {
+  const today = momentOf(s.start, s.t).day;
+
+  test('материалы и запчасти — единица учёта с кодом ОКЕИ, спецификация на сегодня', () => {
+    expect(v.materials.map(m => m.id)).toEqual([...Object.keys(db.materials), ...Object.keys(db.spares)]);
+    const by = Object.fromEntries(v.materials.map(m => [m.id, m]));
+    expect(by['mat.api.paracetamol']).toEqual({ id: 'mat.api.paracetamol', kind: 'api', unit: 'kg', okei: 166, spec: 'spec.mat.api.paracetamol' });
+    expect(by['mat.pk.carton-n20']).toMatchObject({ unit: 'pcs', okei: 796 });
+    expect(by['mat.fg.paracetamol500-n20']).toMatchObject({ kind: 'fg', unit: 'pack', okei: 778 });
+    expect(by['spare.punches']).toEqual({ id: 'spare.punches', kind: 'spare', unit: 'pcs', okei: 796 });
+  });
+
+  test('документы — все редакции базы; в прототипе каждая действует', () => {
+    const all = (['specs', 'tests', 'recipes', 'skus'] as const).flatMap(kind => Object.keys(db[kind]).map(id => `${kind}/${id}`));
+    expect(v.docs.map(d => `${d.kind}/${d.id}`)).toEqual(all);
+    expect(new Set(v.docs.map(d => d.status))).toEqual(new Set(['active']));
+  });
+
+  test('новая редакция карты: до своего дня — проект, карты — прежняя; с него — действует, прежняя — в архиве', () => {
+    const V1 = 'rcp.paracetamol500.wet.v1';
+    const at = (from: number): ContentDb => {
+      const r2: Recipe = { ...structuredClone(db.recipes[V1]), id: 'rcp.paracetamol500.wet.v2', doc: { ...db.recipes[V1].doc, rev: 2, from } };
+      return { ...db, recipes: { ...db.recipes, [r2.id]: r2 } };
+    };
+    const status = (x: ReturnType<typeof refView>, id: string) => x.docs.find(d => d.kind === 'recipes' && d.id === id)?.status;
+    const later = refView(at(today + 1), s);
+    expect([status(later, V1), status(later, 'rcp.paracetamol500.wet.v2')]).toEqual(['active', 'draft']);
+    expect(later.recipes.map(r => r.id)).toEqual(v.recipes.map(r => r.id));
+    const now = refView(at(today), s);
+    expect([status(now, V1), status(now, 'rcp.paracetamol500.wet.v2')]).toEqual(['archive', 'active']);
+    expect(now.recipes.map(r => r.id)).toEqual(v.recipes.map(r => (r.id === V1 ? 'rcp.paracetamol500.wet.v2' : r.id)));
+  });
+
+  test('карточки: серия в помещении и на оборудовании — с редакцией карты; своя продукция — с картой и инструкцией по упаковке', async () => {
+    // образец схемы 17 — посреди работы: стадии идут, балк и ГП уже есть
+    const w = fromSave(db, await Bun.file(new URL('./fixtures/save-v17.json', import.meta.url)).text());
+    const rooms = db.plants[w.plant].rooms.map((_, i) => cardView(db, w, { kind: 'room', i }).card).filter(c => c.kind === 'room' && c.batch);
+    const eqs = db.plants[w.plant].equipment.map((_, i) => cardView(db, w, { kind: 'equipment', i }).card).filter(c => c.kind === 'equipment' && c.batch);
+    expect(rooms.length + eqs.length).toBeGreaterThan(0);
+    for (const c of [...rooms, ...eqs]) if (c.kind === 'room' || c.kind === 'equipment') expect(db.recipes[c.recipe!]?.doc.code).toMatch(/^MF-/);
+    let own = 0;
+    for (const u of Object.values(w.units)) {
+      const c = cardView(db, w, { kind: 'unit', n: Number(u.id.slice(1)) }).card;
+      if (c.kind !== 'unit' || !c.lot) continue;
+      const lot = w.lots[c.lot.id];
+      expect(c.lot.recipe).toBe(lot.batch ? w.batches[lot.batch].recipe : undefined);
+      if (c.lot.sku) expect(w.batches[lot.batch!].pack?.fg).toBe(lot.id);
+      if (lot.batch) own++;
+    }
+    expect(own).toBeGreaterThan(0);
   });
 });
 

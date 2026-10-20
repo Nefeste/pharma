@@ -4,7 +4,9 @@
 # потери и показатели балка — гипотезы геймдизайна, не чей-то настоящий регламент. Вода очищенная для грануляции —
 # инженерная среда: её количество — режим стадии, в учёте склада она не ведётся.
 id: rcp.paracetamol500.wet.v1
-name: { ru: "Парацетамол 500 мг, влажная грануляция, ред. 1", en: "Paracetamol 500 mg, wet granulation, rev. 1" }
+name: { ru: "Парацетамол 500 мг, влажная грануляция", en: "Paracetamol 500 mg, wet granulation" }
+# редакция — в шапке документа (Б3а); id с «v1» вечный — по нему записаны серии
+doc: { code: MF-0001, rev: 1, from: 2026-03-02, approved: role.production-head }
 product: prd.paracetamol500
 batch: { kg: 120, units: 200000 }
 bom:

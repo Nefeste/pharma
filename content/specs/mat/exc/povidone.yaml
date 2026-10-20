@@ -1,4 +1,6 @@
 id: spec.mat.exc.povidone
+name: { ru: "Повидон", en: "Povidone" }
+doc: { code: SP-0003, rev: 1, from: 2026-02-02, approved: role.qc-head }
 tests:
   - { test: test.ir }
   - { test: test.lod, max: 5 }

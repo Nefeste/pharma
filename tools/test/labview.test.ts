@@ -84,6 +84,8 @@ describe('очередь', () => {
       const tests = lot.sample ? st.samples[lot.sample].tests.map(id => st.tests[id]) : [];
       expect(r.tests.map(q => [q.method, q.state])).toEqual(tests.map(q => [q.method, q.state]));
       for (const q of r.tests) if (q.result !== undefined) expect(q.state).toBe('done');
+      // Б3а: партию испытывают по спецификации, действующей при отборе пробы, — её редакция у строки
+      expect(r.spec).toBe(tests.length ? db.materials[lot.material].spec : undefined);
     }
     const lastLot = v.rows[v.rows.length - 1].lot;
     apply(db, st, { kind: 'rush', lot: lastLot, by: 'player' });

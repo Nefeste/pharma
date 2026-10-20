@@ -1,5 +1,6 @@
 id: test.hplc-assay
 name: { ru: Количественное определение (ВЭЖХ), en: Assay (HPLC) }
+doc: { code: TM-0002, rev: 1, from: 2026-01-19, approved: role.qc-head }
 attr: assay
 inst: inst.hplc
 prep: 150

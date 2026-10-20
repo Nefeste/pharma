@@ -338,6 +338,11 @@ export const en: Strings = {
       fail: (m: string, t: string) => `${m}: breakdown ${t}`,
       micro: (m: string, t: string) => `${m}: minor stops ${t}`,
     },
+    cleansTitle: 'Cleanings and changeovers',
+    cleanMajor: (n: number, t: string) => `General room cleanings: ${n} — ${t}`,
+    cleanMinor: (n: number, t: string) => `Minor cleanings: ${n} — ${t}`,
+    changes: (n: number, t: string) => `Line changeovers to another format: ${n} — ${t}`,
+    noCleans: 'No cleanings or changeovers',
     mainTitle: 'Main loss of the day',
     noMain: 'No losses: a day without work',
     first: 'The plant has no yesterday: the game began today at 07:00.',
@@ -404,6 +409,7 @@ export const en: Strings = {
       oee: (line: string, oee: string) => `${line}: OEE ${oee}`,
       noOee: (line: string) => `${line}: no job`,
       recleans: (n: number) => `Repeat cleanings after an expired clean hold: ${n}`,
+      switches: (major: number, mt: string, changes: number, ct: string) => `General cleanings: ${major} — ${mt}; line changeovers: ${changes} — ${ct}`,
     },
     qual: {
       devs: (n: number, open: number) => `Deviations: ${n}, ${open} still open`,
@@ -792,6 +798,13 @@ export const en: Strings = {
     cash: 'Cash at the end of the horizon',
     oee: (n: number) => `OEE of packaging line ${n}`,
     bottleneck: 'Bottleneck — busiest of all',
+    major: 'General room cleanings',
+    changes: 'Line changeovers to another format',
+    switchDelta: (what: 'major' | 'changes', fewer: boolean, n: number, d: string) => {
+      const noun = what === 'major' ? (n === 1 ? 'cleaning' : 'cleanings') : n === 1 ? 'changeover' : 'changeovers';
+      const parts = [...(n > 0 ? [`${n} ${fewer ? 'fewer' : 'more'} ${noun}`] : []), ...(d ? [`${d} ${fewer ? 'less' : 'more'}`] : [])];
+      return parts.join(', ');
+    },
     earlier: (d: string) => `${d} earlier`,
     laterBy: (d: string) => `${d} later`,
     same: 'Both variants see the same failures and chance: the difference comes from the plan alone',

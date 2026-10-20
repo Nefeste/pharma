@@ -77,6 +77,7 @@ export const scenario = z.strictObject({
       items: z.array(z.strictObject({ recipe: id, sku: id })).min(1),
       cover: z.number().int().min(1).max(365),
       window: z.number().int().min(7).max(365),
+      urgent: z.number().int().min(0).max(365).optional(),
     })
     .optional(),
   /** снабжение (Б2в): страховой запас и заказ — в сутках расхода, входной контроль — в сутках */

@@ -367,6 +367,11 @@ export const ru = {
       fail: (m: string, t: string) => `${m}: авария ${t}`,
       micro: (m: string, t: string) => `${m}: микроостановки ${t}`,
     },
+    cleansTitle: 'Уборки и переналадки',
+    cleanMajor: (n: number, t: string) => `Генеральные уборки помещений: ${n} — ${t}`,
+    cleanMinor: (n: number, t: string) => `Малые уборки: ${n} — ${t}`,
+    changes: (n: number, t: string) => `Переналадки линий на другой формат: ${n} — ${t}`,
+    noCleans: 'Уборок и переналадок не было',
     mainTitle: 'Главная потеря суток',
     noMain: 'Потерь не было: сутки без работы',
     first: 'Вчерашних суток у завода нет: игра началась сегодня в 07:00.',
@@ -434,6 +439,7 @@ export const ru = {
       oee: (line: string, oee: string) => `${line}: OEE ${oee}`,
       noOee: (line: string) => `${line}: без задания`,
       recleans: (n: number) => `Повторные уборки после просроченной чистоты: ${n}`,
+      switches: (major: number, mt: string, changes: number, ct: string) => `Генеральные уборки: ${major} — ${mt}; переналадки линий: ${changes} — ${ct}`,
     },
     qual: {
       devs: (n: number, open: number) => `Отклонений: ${n}, из них открыто ${open}`,
@@ -837,6 +843,14 @@ export const ru = {
     cash: 'Касса на конец горизонта',
     oee: (n: number) => `OEE упаковочной линии ${n}`,
     bottleneck: 'Узкое место — больше всех под работой',
+    major: 'Генеральные уборки помещений',
+    changes: 'Переналадки линий на другой формат',
+    /** на сколько меньше или больше «как сейчас»: число (0 — не писать) и часы (пусто — не писать) */
+    switchDelta: (what: 'major' | 'changes', fewer: boolean, n: number, d: string) => {
+      const noun = what === 'major' ? pluralRu(n, 'уборку', 'уборки', 'уборок') : pluralRu(n, 'переналадку', 'переналадки', 'переналадок');
+      const parts = [...(n > 0 ? [`${n}\u00a0${noun}`] : []), ...(d ? [d] : [])];
+      return `на ${parts.join(' и ')} ${fewer ? 'меньше' : 'больше'}`;
+    },
     earlier: (d: string) => `на ${d} раньше`,
     laterBy: (d: string) => `на ${d} позже`,
     same: 'У обоих вариантов одни и те же поломки и случайности: разница — только от плана',

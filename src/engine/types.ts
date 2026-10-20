@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 15;
+export const SCHEMA = 16;
 
 // ---------------------------------------------------------------- склад
 
@@ -878,6 +878,10 @@ export interface DayLoss {
   walk: Partial<Record<Dept, { cm: number; sec: number }>>;
   defects: { blisters: number; cartons: number; deviations: number; lots: number; batches: number };
   recleans: number;
+  /** уборки помещений, кончившиеся за сутки (Б2г): генеральные и малые — сколько и их работа, с */
+  cleans: { major: number; majorSec: number; minor: number; minorSec: number };
+  /** переналадки линий на формат другой позиции, кончившиеся за сутки (Б2г): сколько и их работа, с */
+  changes: { n: number; sec: number };
   /** по линиям: только те, у которых в эти сутки было задание */
   lines: Record<string, LineDay>;
 }

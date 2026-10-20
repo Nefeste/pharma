@@ -2,16 +2,18 @@
 // истинные поля, дают один и тот же прогон; измеренное он оставляет рядом с результатом, запас узлов разыгрывает заново.
 // Прогон не меняет состояние; одно зерно без двойника и без команд — тот же отпечаток, что обычный ход времени; тот же
 // вызов — тот же итог; разные зёрна — разные исходы; одинаковые варианты — одинаковый итог; сдвиг задания двигает его
-// серию, а заказы покупателей остаются теми же. Поток прогона даёт тот же итог, что функция в основном потоке.
+// серию, а заказы покупателей остаются теми же; генеральные уборки и переналадки — кончившиеся в горизонте, и задание,
+// поставленное к своему продукту, их убавляет (Б2г). Поток прогона даёт тот же итог, что функция в основном потоке.
 import { describe, expect, test } from 'bun:test';
 import { Worker } from 'node:worker_threads';
 import { db as game } from '../../src/content';
 import type { ContentDb } from '../../src/content/types';
 import { legacy as db } from './legacy';
-import { DAY, HOUR } from '../../src/engine/core/calendar';
+import { DAY, HOUR, momentOf } from '../../src/engine/core/calendar';
 import { fingerprint } from '../../src/engine/core/hash';
 import { apply, newPlant } from '../../src/engine/engine';
 import { check } from '../../src/engine/invariants';
+import { switchesOf } from '../../src/engine/lean';
 import { range, runPlan, runSeed, type SeedOut, summarize } from '../../src/engine/plan/run';
 import { blind } from '../../src/engine/plan/twin';
 import { toSave } from '../../src/engine/save';
@@ -169,6 +171,34 @@ describe('прогон', () => {
       expect(r.share[0]).toBeGreaterThanOrEqual(0);
       expect(r.share[2]).toBeLessThanOrEqual(10000);
     }
+  });
+
+  test('генеральные уборки и переналадки — кончившиеся в горизонте; задание к своему продукту — уборок меньше (Б2г)', () => {
+    // завод с двумя продуктами: на 45-е сутки в замороженных двух неделях задания обоих
+    const g = plantAt(at(45, 9), game);
+    const day = momentOf(g.start, g.t).day;
+    const o = { days: 14, seeds: 2 };
+    const outs = runPlan(game, g, [], o);
+    // в горизонте — то, что в сутках копии, без сделанного в сутки снимка до него
+    const before = switchesOf(g.losses.filter(d => d.day === day));
+    outs.forEach((out, k) => {
+      const all = switchesOf(runSeed(game, g, [], o, k).losses.filter(d => d.day >= day));
+      expect(out.switches).toEqual({ major: all.major - before.major, majorSec: all.majorSec - before.majorSec, changes: all.changes - before.changes, changeSec: all.changeSec - before.changeSec });
+    });
+    expect(Math.min(...outs.map(x => x.switches.major))).toBeGreaterThan(0);
+    // задание одного продукта между двумя заданиями другого — к следующему заданию своего продукта: генеральных уборок
+    // меньше и часов меньше
+    const wait = Object.values(g.batches)
+      .filter(b => b.status === 'waiting' || b.status === 'reserved')
+      .sort((a, b) => a.notBefore - b.notBefore);
+    const i = wait.findIndex((b, i) => i > 0 && i + 1 < wait.length && wait[i - 1].product === wait[i + 1].product && b.product !== wait[i - 1].product && wait.slice(i + 1).some(x => x.product === b.product));
+    expect(i).toBeGreaterThan(0);
+    const next = wait.slice(i + 1).find(x => x.product === wait[i].product)!;
+    const draft = [{ kind: 'shift' as const, batch: wait[i].id, notBefore: next.notBefore - 60, by: 'player' }];
+    const a = summarize(outs, 14).switches;
+    const b = summarize(runPlan(game, g, draft, o), 14).switches;
+    expect(b.major[1]).toBeLessThan(a.major[1]);
+    expect(b.majorSec[1]).toBeLessThan(a.majorSec[1]);
   });
 });
 

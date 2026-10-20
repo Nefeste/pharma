@@ -10,7 +10,7 @@ import { schedule } from './core/agenda';
 import { HOUR, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { incidentParams, incidentScreen } from './investigation';
-import { defect, recleaned } from './lean';
+import { cleaned, defect, recleaned } from './lean';
 import { blocked, consume, failPart, partsOf, partType, untilFail, wearAt } from './maint';
 import { type PlantPlan, planOf } from './plant';
 import { measure, within } from './quality';
@@ -592,6 +592,7 @@ export function mesDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
     }
     case 'clean': {
       const room = s.rooms[t.room!];
+      cleaned(s, !!room.major, t.work);
       room.status = 'clean';
       room.since = s.t;
       if (room.major) delete room.cleanFor;

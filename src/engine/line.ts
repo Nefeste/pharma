@@ -14,7 +14,7 @@ import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
 import { civilFromDays, daysFromCivil, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
-import { defect, lineDay, NO_TIMES } from './lean';
+import { changedOver, defect, lineDay, NO_TIMES } from './lean';
 import { blocked, consume, failPart, partsOf, partType, pending, untilFail, wearAt } from './maint';
 import { deviate, returnTask } from './mes';
 import { type PlantPlan, planOf, type Point } from './plant';
@@ -765,6 +765,7 @@ export function lineDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[
     }
     case 'changeover':
       line!.format = db.skus[s.batches[t.batch!].pack!.sku].format;
+      changedOver(s, t.work);
       return true;
     case 'clearance':
       addTask(s, { kind: 'clearCheck', roles: [...LINE.checkers], from: t.from, work: CHECK_WORK, prio: LINE_PRIO.clearCheck, batch: t.batch, line: t.line });

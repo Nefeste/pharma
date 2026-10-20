@@ -162,6 +162,15 @@ try {
   else if (morning.speed !== 0) fail(`после «До утра» скорость ${morning.speed}, а не пауза`);
   else if (!morning.open) fail('после «До утра» планёрка не открылась');
   else ok('«До утра»: планёрка в 08:00, пауза');
+  // вчерашние уборки и переналадки (Б2г): строки с числом и часами — или «не было»
+  {
+    const cleans = await page
+      .waitForSelector('[data-test=morning-cleans]', { timeout: 20_000 })
+      .then(e => e.innerText(), () => '');
+    // заголовок блока — прописными (CSS), innerText отдаёт его так же
+    if (!/уборки и переналадки/i.test(cleans) || !/(уборки[^:]*|формат): \d+ — \d|не было/.test(cleans)) fail(`планёрка: уборки вчера — «${cleans.replace(/\s*\n\s*/g, ' · ')}»`);
+    else ok(`планёрка: ${cleans.replace(/\s*\n\s*/g, ' · ').slice(0, 120)}`);
+  }
   // «Ваше место» (3е): итог производства за время на месте — с начала партии
   {
     const seat = await page
@@ -326,6 +335,9 @@ try {
           orders: document.querySelectorAll('[data-test=plan-order]').length,
           batches: document.querySelectorAll('[data-test=plan-batch]').length,
           cash: document.querySelector('[data-test=plan-cash]')?.textContent ?? '',
+          // генеральные уборки и переналадки в горизонте (Б2г): у обоих столбцов — число и часы
+          major: [...document.querySelectorAll('[data-test=plan-major] td')].slice(1).map(td => td.textContent ?? ''),
+          changes: [...document.querySelectorAll('[data-test=plan-changes] td')].slice(1).map(td => td.textContent ?? ''),
           ms: p.ms,
           error: p.error,
         };
@@ -333,10 +345,15 @@ try {
       await page.evaluate(() => document.querySelector('[data-test=plan]')?.scrollIntoView());
       await frames(2);
       await page.screenshot({ path: join(out, 'e2e-plan.png') });
-      if (!started || !done || plan.error || plan.cols !== 3 || plan.seeds !== '5,5' || plan.batches < 1 || r1 <= r0)
-        fail(`прогон плана: начат ${started}, готов ${done}, ошибка ${plan.error ?? 'нет'}, столбцов ${plan.cols}, зёрен ${plan.seeds}, серий ${plan.batches}, часы ${r0} → ${r1}`);
+      // низ итога — «Завод»: касса, OEE, генеральные уборки и переналадки (Б2г)
+      await page.evaluate(() => document.querySelector('[data-test=plan-changes]')?.scrollIntoView({ block: 'end' }));
+      await frames(2);
+      await page.screenshot({ path: join(out, 'e2e-plan-plant.png') });
+      const hours = xs => xs.length === 2 && xs.every(x => /^\d+( \(\d+–\d+\))? — \d/.test(x));
+      if (!started || !done || plan.error || plan.cols !== 3 || plan.seeds !== '5,5' || plan.batches < 1 || r1 <= r0 || !hours(plan.major) || !hours(plan.changes))
+        fail(`прогон плана: начат ${started}, готов ${done}, ошибка ${plan.error ?? 'нет'}, столбцов ${plan.cols}, зёрен ${plan.seeds}, серий ${plan.batches}, часы ${r0} → ${r1}, генеральные уборки «${plan.major.join(' | ')}», переналадки «${plan.changes.join(' | ')}»`);
       else
-        ok(`прогон плана: «как сейчас» и черновик на 5 зёрнах за ${plan.ms} мс; заказов ${plan.orders}, серий ${plan.batches}, «${plan.cash.slice(0, 80)}»; часы завода прошли ${r1 - r0} с — игра не замерла`);
+        ok(`прогон плана: «как сейчас» и черновик на 5 зёрнах за ${plan.ms} мс; заказов ${plan.orders}, серий ${plan.batches}, «${plan.cash.slice(0, 80)}»; генеральные уборки «${plan.major.join(' | ')}», переналадки «${plan.changes.join(' | ')}»; часы завода прошли ${r1 - r0} с — игра не замерла`);
 
       // «Утвердить» — команды `shift`: срок задания сменился, черновик пуст
       await page.click('[data-test=draft-approve]');

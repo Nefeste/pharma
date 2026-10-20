@@ -72,13 +72,17 @@ describe('коллега планирования', () => {
   });
 
   test('спрос виден — серия позиции, которой хватит меньше всего; хватает обеим — задания нет', () => {
-    const s = newPlant(db, { scenario: SC });
-    until(s, 20, BATCH_HOUR - HOUR);
-    const pos = sc.plan!.items.map(it => positionOf(db, s, it.sku, sc.plan!.window));
+    // правило без кампаний (Б2в): каждый раз — позиция, которой хватит меньше всего
+    const sc0 = structuredClone(db);
+    delete sc0.scenarios[SC].plan!.urgent;
+    const s = newPlant(sc0, { scenario: SC });
+    const pass = (sec: number) => apply(sc0, s, { kind: 'advance', seconds: Math.floor(s.t / DAY) * DAY + 20 * DAY + sec - s.t });
+    pass(BATCH_HOUR - HOUR);
+    const pos = sc.plan!.items.map(it => positionOf(sc0, s, it.sku, sc.plan!.window));
     expect(pos.every(p => p.span > 0)).toBe(true);
     const need = pos.filter(p => p.cases * p.span < p.ordered * (AHEAD + sc.plan!.cover) * DAY);
     const before = Object.keys(s.batches).length;
-    until(s, 0, BATCH_HOUR);
+    apply(sc0, s, { kind: 'advance', seconds: HOUR });
     const added = Object.values(s.batches).slice(before);
     if (!isWorkday(dayOf(s)) || need.length === 0) expect(added).toHaveLength(0);
     else {
@@ -87,6 +91,49 @@ describe('коллега планирования', () => {
       expect(added.map(b => b.sku)).toEqual([want]);
     }
   });
+
+  test('кампании: продукт последнего задания идёт дальше, пока его позициям нужна серия, а другому продукту не срочно', () => {
+    // Б2г: за 120 суток каждое задание коллеги — по правилу кампаний; правило проверено в обе стороны: кампания шла,
+    // хотя меньше всего хватало позиции другого продукта, и кампанию прервала срочная позиция другого продукта
+    const s = newPlant(db, { scenario: SC });
+    const p = sc.plan!;
+    const productOf = (sku: string) => db.recipes[p.items.find(it => it.sku === sku)!.recipe].product;
+    const seen = { kept: 0, hurried: 0, checked: 0 };
+    const end = s.t + 120 * DAY;
+    while (s.t < end) {
+      // секунда до задания коллеги
+      until(s, s.t % DAY < BATCH_HOUR ? 0 : 1, BATCH_HOUR - 1);
+      const at = s.t + 1 + AHEAD * DAY;
+      const pos = p.items.map(it => positionOf(db, s, it.sku, p.window));
+      const busy = Object.values(s.batches).some(b => dayOf(s, b.notBefore) === dayOf(s, at));
+      const before = Object.keys(s.batches).length;
+      apply(db, s, { kind: 'advance', seconds: 1 });
+      const added = Object.values(s.batches).slice(before);
+      if (!isWorkday(dayOf(s)) || busy || pos.some(x => x.span === 0)) continue;
+      seen.checked++;
+      const need = pos.filter(x => x.cases * x.span < x.ordered * (AHEAD + p.cover) * DAY);
+      if (need.length === 0) {
+        expect(added).toHaveLength(0);
+        continue;
+      }
+      const days = (x: (typeof pos)[number]) => x.cases / x.ordered;
+      const neediest = (xs: typeof pos) => xs.reduce((a, b) => (days(b) < days(a) ? b : a)).sku;
+      // продукт кампании — у задания, которое пойдёт последним перед новым
+      const prev = Object.values(s.batches)
+        .filter(b => b.notBefore < at && !added.includes(b))
+        .sort((a, b) => a.notBefore - b.notBefore || Number(a.id.slice(1)) - Number(b.id.slice(1)))
+        .at(-1)!;
+      const mine = need.filter(x => productOf(x.sku) === prev.product);
+      const hurry = need.some(x => productOf(x.sku) !== prev.product && x.cases * x.span < x.ordered * (AHEAD + p.urgent!) * DAY);
+      const want = mine.length > 0 && !hurry ? neediest(mine) : neediest(need);
+      expect(added.map(b => b.sku)).toEqual([want]);
+      if (mine.length > 0 && !hurry && productOf(neediest(need)) !== prev.product) seen.kept++;
+      if (mine.length > 0 && hurry && productOf(want) !== prev.product) seen.hurried++;
+    }
+    expect(seen.checked).toBeGreaterThan(50);
+    expect(seen.kept).toBeGreaterThan(0);
+    expect(seen.hurried).toBeGreaterThan(0);
+  }, 60_000);
 });
 
 describe('коллега снабжения', () => {

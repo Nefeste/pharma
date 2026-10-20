@@ -63,7 +63,7 @@ describe('сохранение', () => {
     expect(fingerprint(copy)).toBe(fingerprint(s));
   });
 
-  test.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])('образец схемы %d читается и живёт дальше (tools/test/fixtures/)', async v => {
+  test.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])('образец схемы %d читается и живёт дальше (tools/test/fixtures/)', async v => {
     const json = await Bun.file(new URL(`./fixtures/save-v${v}.json`, import.meta.url)).text();
     const s = fromSave(db, json);
     expect(s.schema).toBe(SCHEMA);
@@ -85,6 +85,18 @@ describe('сохранение', () => {
       expect(check(db, s)).toEqual([]);
     }
     for (const lot of Object.values(s.lots)) expect(['released', 'rejected']).toContain(lot.status);
+  });
+
+  test('образец схемы 15: в прежних сутках потерь уборки и переналадки — нули; новые сутки их копят (Б2г)', async () => {
+    const json = await Bun.file(new URL('./fixtures/save-v15.json', import.meta.url)).text();
+    const raw = JSON.parse(json) as { losses: { day: number }[] };
+    const s = fromSave(db, json);
+    for (const d of s.losses) expect([d.day, d.cleans, d.changes]).toEqual([d.day, { major: 0, majorSec: 0, minor: 0, minorSec: 0 }, { n: 0, sec: 0 }]);
+    // прежняя партия дожила свои серии; первые серии коллеги планирования — через две недели после загрузки
+    const n = raw.losses.length;
+    apply(db, s, { kind: 'advance', seconds: 30 * DAY });
+    expect(s.losses.slice(n - 1).some(d => d.cleans.minor + d.cleans.major > 0)).toBe(true);
+    expect(check(db, s)).toEqual([]);
   });
 
   test('сохранение новее игры не открывается молча', () => {

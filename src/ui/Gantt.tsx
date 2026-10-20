@@ -416,6 +416,29 @@ function shiftOf(a: number | undefined, b: number | undefined): React.ReactNode 
 const BULK_DONE = ['bulk', 'packing', 'fg'];
 
 /**
+ * Генеральные уборки или переналадки по зёрнам: сколько и часы работы — середина; у черновика — на сколько меньше или
+ * больше, чем «как сейчас» (геймдизайн, §9.4). Направление — по часам, а если они те же — по числу; число против
+ * направления не пишем.
+ */
+function switchCell(what: 'major' | 'changes', n: Range, sec: Range, was?: { n: Range; sec: Range }): React.ReactNode {
+  const text = `${countOf(n)} — ${durText(sec[1])}`;
+  if (!was) return text;
+  const dn = n[1] - was.n[1];
+  const ds = sec[1] - was.sec[1];
+  // меньше минуты — часы те же
+  const hours = Math.abs(ds) >= 60;
+  const dir = Math.sign(hours ? ds : dn);
+  if (dir === 0) return text;
+  const k = Math.sign(dn) === dir ? Math.abs(dn) : 0;
+  return (
+    <>
+      {text}
+      <span className="delta"> · {T.plan.switchDelta(what, dir < 0, k, hours ? durText(Math.abs(ds)) : '')}</span>
+    </>
+  );
+}
+
+/**
  * Итог прогона (docs/specs/2026-10-plan-run.md, «Окно прогона»): по столбцу на вариант — заказы со сроком в горизонте, в
  * скольких зёрнах сорвутся; серии — балк и выпуск, середина и разброс; касса, OEE, узкое место. Подписан мгновением снимка.
  */
@@ -573,6 +596,14 @@ function PlanSum({ p, start, stale, rowName, lineNo }: { p: PlanRun; start: Ymd;
                 })}
               </tr>
             ))}
+            <tr data-test="plan-major">
+              <td>{T.plan.major}</td>
+              {cells((s, i) => switchCell('major', s.switches.major, s.switches.majorSec, i > 0 && base ? { n: base.switches.major, sec: base.switches.majorSec } : undefined))}
+            </tr>
+            <tr data-test="plan-changes">
+              <td>{T.plan.changes}</td>
+              {cells((s, i) => switchCell('changes', s.switches.changes, s.switches.changeSec, i > 0 && base ? { n: base.switches.changes, sec: base.switches.changeSec } : undefined))}
+            </tr>
             <tr>
               <td>{T.plan.bottleneck}</td>
               {cells(s => {

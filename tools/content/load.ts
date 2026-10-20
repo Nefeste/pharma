@@ -674,6 +674,24 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         need(pl && pl.lines.length > 0, `${where}: в плане нет упаковочной линии для ${b.sku}`);
       }
     }
+    // план выпуска: карта — та же проверка помещений и оборудования, позиция — того же продукта; у каждого материала
+    // карты и упаковки позиции — одобренный поставщик, иначе коллеге снабжения не у кого заказать
+    for (const it of s.plan?.items ?? []) {
+      const r = raw.recipes[it.recipe];
+      const k = raw.skus[it.sku];
+      need(r, `${where}: в плане нет карты ${it.recipe}`);
+      need(k, `${where}: в плане нет товарной позиции ${it.sku}`);
+      if (k && r) need(k.product === r.product, `${where}: в плане позиция ${it.sku} — не того продукта, что карта ${it.recipe}`);
+      for (const st of r?.stages ?? []) {
+        const room = pl?.rooms.find(x => x.type === st.room);
+        need(room, `${where}: для стадии ${st.id} нет помещения «${st.room}»`);
+        for (const e of st.equipment) need(room && pl.equipment.some(x => x.room === room.id && x.type === e), `${where}: в помещении «${st.room}» нет ${e}`);
+      }
+      if (s.supply) {
+        const mats = [...(r?.bom ?? []).map(l => l.material), ...(k ? [...k.blister, ...k.carton].map(l => l.material) : []), ...(k ? [k.case.material] : [])];
+        for (const m of mats) need(Object.values(raw.suppliers).some(x => x.approved && x.items[m]), `${where}: ${m} никто из одобренных поставщиков не продаёт`);
+      }
+    }
     for (const o of s.orders) {
       const sup = suppliers[o.supplier];
       need(sup, `${where}: нет поставщика ${o.supplier}`);

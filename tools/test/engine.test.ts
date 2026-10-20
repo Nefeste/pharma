@@ -1,7 +1,7 @@
 // Движок завода части 0 (docs/02-architecture.md, §3–4): часы, планёрка в 08:00, ход времени срезами — то же, что одним
 // куском; сохранение — снимок со схемой и миграциями (образцы всех схем); ветви зерна не зависят друг от друга.
 import { describe, expect, test } from 'bun:test';
-import { db } from '../../src/content';
+import { legacy as db } from './legacy';
 import { DAY, HOUR } from '../../src/engine/core/calendar';
 import { fingerprint } from '../../src/engine/core/hash';
 import { apply, MORNING, newPlant } from '../../src/engine/engine';

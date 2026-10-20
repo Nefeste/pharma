@@ -3,7 +3,7 @@
 // лабораторию; ВЭЖХ работает ночью сама; проверка вторым лицом; брак ловится, отклонённое — в зону отклонённого; ни одна
 // партия не уходит дальше карантина до решения; сохранение посреди испытания.
 import { describe, expect, test } from 'bun:test';
-import { db } from '../../src/content';
+import { legacy as db } from './legacy';
 import type { ContentDb, SpecLine } from '../../src/content/types';
 import { DAY, HOUR, MIN, momentOf } from '../../src/engine/core/calendar';
 import { fingerprint } from '../../src/engine/core/hash';
@@ -227,7 +227,8 @@ describe('ни одна партия не уходит дальше карант
         for (const u of Object.values(s.units)) {
           // пластиковые паллеты в помещениях — комплект серии и балк: там до решения стоит только балк
           const lot = u.items.length > 0 ? s.lots[s.containers[u.items[0]].lot] : undefined;
-          if (!lot || lot.status === 'released' || lot.status === 'rejected') continue;
+          // заблокированная ГП — решение «держать» уже есть (Б2в): она ждёт нового на стеллаже хранения
+          if (!lot || lot.status === 'released' || lot.status === 'rejected' || lot.status === 'blocked') continue;
           if (u.where.kind === 'room') {
             expect(db.materials[lot.material].kind).toBe('bulk');
             continue;

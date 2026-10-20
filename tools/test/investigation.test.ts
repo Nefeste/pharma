@@ -6,7 +6,7 @@
 // названо — следующая серия снова вне спецификации. Коллега без поста качества решает сам, с постом — ждёт. Сохранение
 // посреди расследования; двойник не знает корня.
 import { describe, expect, test } from 'bun:test';
-import { db } from '../../src/content';
+import { legacy as db } from './legacy';
 import type { IncidentRoot } from '../../src/content/types';
 import { DAY, HOUR, MIN } from '../../src/engine/core/calendar';
 import { fingerprint } from '../../src/engine/core/hash';

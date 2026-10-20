@@ -64,11 +64,18 @@ const gameT = () => page.evaluate(() => window.__game.t + window.__game.lag);
 /** Дождаться `n` кадров: программная отрисовка даёт несколько кадров в секунду, а камера и сцена меняются в кадре. */
 const frames = n => page.evaluate(k => new Promise(r => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
 
-/** «До утра» — до планёрки в 08:00; планёрку (3в) закрыть, чтобы она не заслоняла завод, — если не просят оставить. */
+/**
+ * «До утра» — до планёрки в 08:00; планёрку (3в) закрыть, чтобы она не заслоняла завод, — если не просят оставить. Встала
+ * перемотка раньше, на автопаузе места игрока (Б2а), — «До утра» ещё раз.
+ */
 const untilMorning = async (keep = false) => {
   const day = await page.evaluate(() => window.__game.day);
-  await page.keyboard.press('Digit5');
-  await page.waitForFunction(d => window.__game.day > d && !window.__game.ff && window.__game.store.get().morning.open, day, { timeout: 60_000 });
+  for (let i = 0; i < 6; i++) {
+    await page.keyboard.press('Digit5');
+    await page.waitForFunction(() => !window.__game.ff, null, { timeout: 60_000 });
+    if (await page.evaluate(d => window.__game.day > d && window.__game.store.get().morning.open, day)) break;
+  }
+  await page.waitForFunction(d => window.__game.day > d && window.__game.store.get().morning.open, day, { timeout: 5_000 });
   if (!keep) await page.keyboard.press('Escape');
 };
 

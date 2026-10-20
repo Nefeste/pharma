@@ -2,7 +2,7 @@
 // дважды в месяц с ночными часами; взносы; энергия — база и авансы; НДС квартала тремя долями; проценты по кредитной
 // линии и извещение ниже предела. «Касса = начальная + проводки» проверяют инварианты на каждом шаге.
 import { describe, expect, test } from 'bun:test';
-import { db } from '../../src/content';
+import { legacy as db } from './legacy';
 import type { ContentDb } from '../../src/content/types';
 import { baseLoad, part } from '../../src/engine/cash';
 import { DAY, daysFromCivil, HOUR, lastOfMonth, momentOf, weekday, workdayOnOrAfter, workdayOnOrBefore, workdaysIn } from '../../src/engine/core/calendar';

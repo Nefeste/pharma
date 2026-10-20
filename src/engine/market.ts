@@ -114,8 +114,31 @@ export function marketStep(db: ContentDb, s: PlantState, notices: Notice[]) {
   }
   for (const tr of Object.values(s.trucks)) {
     if (!tr.customer || !tr.docked) continue;
+    crossDock(db, s, tr);
     loadReady(db, s, tr);
     depart(db, s, tr, notices);
+  }
+}
+
+/**
+ * Свободного места в экспедиции нет, а фура у рампы ждёт своих паллет (Б2в): их места заняли паллеты следующей фуры,
+ * которая встанет к рампе, только когда уйдёт эта. Тогда паллету заказа грузят в фуру прямо со стеллажа, а отобранные
+ * ящики кладут на паллету заказа уже в кузове — задачи, ещё не начатые и ждущие места, едут к фуре.
+ */
+function crossDock(db: ContentDb, s: PlantState, tr: Truck) {
+  const plan = planOf(db, s.plant);
+  const dock = plan.dock[outDock(db, s)];
+  if (findSlot(s, plan, 'shipping', dock, 0)) return;
+  const mine = new Set(truckOrders(s, tr).map(o => o.id));
+  for (const t of Object.values(s.tasks)) {
+    if (t.state !== 'open' || !t.order || !mine.has(t.order) || t.toKind !== 'shipping') continue;
+    if (t.kind === 'ship') {
+      t.kind = 'load';
+      t.prio = MARKET_PRIO.load;
+    }
+    delete t.toKind;
+    delete t.near;
+    t.truck = tr.id;
   }
 }
 
@@ -186,7 +209,13 @@ export function marketDone(db: ContentDb, s: PlantState, t: Task, notices: Notic
       const src = s.units[t.unit!];
       const o = s.orders[t.order!];
       let dest = t.dest ? s.units[t.dest] : undefined;
-      if (!dest) {
+      if (!dest && t.truck) {
+        // места в экспедиции не было — паллета заказа собирается прямо в кузове фуры у рампы
+        dest = { id: nextId(s, 'U'), type: 'unit.pallet.euro', where: { kind: 'truck', id: t.truck }, items: [], tag: 'released', order: o.id };
+        s.units[dest.id] = dest;
+        s.trucks[t.truck].units.push(dest.id);
+        o.units.push(dest.id);
+      } else if (!dest) {
         dest = { id: nextId(s, 'U'), type: 'unit.pallet.euro', where: { kind: 'slot', id: t.to! }, items: [], tag: 'released', order: o.id };
         s.units[dest.id] = dest;
         putUnit(s, dest, t.to!);
@@ -203,11 +232,18 @@ export function marketDone(db: ContentDb, s: PlantState, t: Task, notices: Notic
         delete s.units[src.id];
       }
       stockChanged(s);
+      if (dest.where.kind === 'truck') depart(db, s, s.trucks[dest.where.id], notices);
       return true;
     }
     case 'load': {
       const u = s.units[t.unit!];
       const tr = s.trucks[t.truck!];
+      // паллета прямо со стеллажа (места в экспедиции не было) — паллета заказа с этой минуты
+      if (u.order !== t.order) {
+        u.order = t.order!;
+        s.orders[t.order!].units.push(u.id);
+        stockChanged(s);
+      }
       if (u.where.kind === 'slot') delete s.slots[u.where.id].unit;
       u.where = { kind: 'truck', id: tr.id };
       tr.units.push(u.id);

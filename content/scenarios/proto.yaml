@@ -13,54 +13,54 @@ cash: 30000000
 credit: { limit: 20000000, spread: 4 }
 energy: { price: 9.5 }
 customers: [cus.national, cus.regional]
+# штат — под загрузку плана (Б2в): серия в рабочий день отвешивается в первую смену вдвоём, во вторую стадии ведёт один
+# аппаратчик; линия упаковывает серию за 3–4 часа — её смена только первая; при прежнем штате люди были заняты задачами
+# пятую часть смены (замер Б2в). Гипотезы
 staff:
-  - { role: role.storekeeper, shift: shift.day, skill: 3, n: 2 }
-  - { role: role.driver, shift: shift.day, skill: 3, n: 2 }
+  - { role: role.storekeeper, shift: shift.day, skill: 3, n: 1 }
+  - { role: role.driver, shift: shift.day, skill: 3, n: 1 }
   - { role: role.sampler, shift: shift.day, skill: 3, n: 1 }
-  - { role: role.analyst, shift: shift.day, skill: 3, n: 3 }
+  - { role: role.analyst, shift: shift.day, skill: 3, n: 2 }
   - { role: role.qc-head, shift: shift.day, skill: 4, n: 1 }
   - { role: role.qa, shift: shift.day, skill: 3, n: 1 }
   - { role: role.qp, shift: shift.day, skill: 4, n: 1 }
-  - { role: role.operator, shift: shift.a, skill: 3, n: 3 }
-  - { role: role.operator, shift: shift.b, skill: 3, n: 3 }
+  - { role: role.operator, shift: shift.a, skill: 3, n: 2 }
+  - { role: role.operator, shift: shift.b, skill: 3, n: 1 }
   - { role: role.master, shift: shift.a, skill: 4, n: 1 }
   - { role: role.master, shift: shift.b, skill: 3, n: 1 }
   - { role: role.line-operator, shift: shift.a, skill: 3, n: 2 }
-  - { role: role.line-operator, shift: shift.b, skill: 3, n: 2 }
   - { role: role.packer, shift: shift.a, skill: 3, n: 2 }
-  - { role: role.packer, shift: shift.b, skill: 3, n: 2 }
   - { role: role.mechanic, shift: shift.a, skill: 3, n: 1 }
   - { role: role.mechanic, shift: shift.b, skill: 3, n: 1 }
   - { role: role.setter, shift: shift.day, skill: 3, n: 1 }
 vehicles:
   - { type: veh.jack, n: 2 }
   - { type: veh.reach, n: 1 }
-# заказы поставщикам в первую секунду партии: упаковка и вспомогательные приходят в первый месяц, АФС — позже
-orders:
-  - supplier: sup.exc
-    lines:
-      - { material: mat.exc.starch, qty: 500 }
-      - { material: mat.exc.mcc, qty: 200 }
-  - supplier: sup.pack
-    lines:
-      - { material: mat.pk.carton-n20, qty: 40000 }
-      - { material: mat.pk.carton-n10, qty: 20000 }
-      - { material: mat.pk.leaflet, qty: 100000 }
-      - { material: mat.pk.case, qty: 500 }
-  - supplier: sup.api
-    lines:
-      - { material: mat.api.paracetamol, qty: 1000 }
-# задания на серию: раз в неделю, день — от начала партии, и позиция, в которую упаковать балк. АФС на складе хватит на
-# пять серий, дальше — из заказа; №10 и №20 чередуются, чтобы линия переналаживалась
+# задания на серию первых двух недель — по серии в рабочий день, день — от начала партии, и позиция, в которую упаковать
+# балк; №20 — две серии из трёх, как в спросе. Дальше задания ставит коллега планирования (plan). Гипотезы
 batches:
   - { recipe: rcp.paracetamol500.wet.v1, day: 1, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 2, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 5, sku: sku.paracetamol500.n10 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 6, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 7, sku: sku.paracetamol500.n20 }
   - { recipe: rcp.paracetamol500.wet.v1, day: 8, sku: sku.paracetamol500.n10 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 15, sku: sku.paracetamol500.n20 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 22, sku: sku.paracetamol500.n20 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 29, sku: sku.paracetamol500.n10 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 36, sku: sku.paracetamol500.n20 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 43, sku: sku.paracetamol500.n10 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 50, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 9, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 12, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 13, sku: sku.paracetamol500.n10 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 14, sku: sku.paracetamol500.n20 }
+# план выпуска (Б2в, src/engine/planner.ts): после заданий сценария их ставит коллега планирования — на тот же день через
+# две недели, если ГП позиции с сериями в работе меньше спроса на эти две недели и ещё 14 суток; спрос — по заказам за 28
+# последних суток. Гипотезы
+plan:
+  items:
+    - { recipe: rcp.paracetamol500.wet.v1, sku: sku.paracetamol500.n20 }
+    - { recipe: rcp.paracetamol500.wet.v1, sku: sku.paracetamol500.n10 }
+  cover: 14
+  window: 28
+# снабжение (Б2в, src/engine/supply.ts): коллега снабжения заказывает, когда запас с заказанным в пути меньше расхода плана
+# на наибольший срок поставки, входной контроль 7 суток и страховой запас 7 суток; заказ — ещё на 28 суток. Гипотезы
+supply: { safety: 7, every: 28, qc: 7 }
 # завод не новый: износ узлов на старте, %. Техслужба меняет пуансоны по наработке — при износе 100 %, как только пресс
 # свободен; плиту запайки — по отказу (docs/specs/2026-10-engine.md, 1е). Гипотезы
 wear: { press-1/punches: 94, blister-1/sealplate: 85 }
@@ -69,7 +69,8 @@ maint: { press-1/punches: 100 }
 # норма выработки старой линии)
 norm: 70
 # места игрока (docs/specs/2026-10-panels.md, 3е; решение владельца по #30): директор, производство, качество и
-# технология; снабжение и склад и коммерцию ведёт сценарий — заказы поставщикам и покупателей пишет он
+# технология; снабжение и склад и коммерцию ведут коллеги и сценарий — заказы поставщикам пишет коллега снабжения (Б2в),
+# заказы покупателей — сценарий
 seats: [director, production, quality]
 # происшествие (docs/specs/2026-10-investigation.md, часть 4): у второго задания на серию — неисправность по жребию зерна;
 # веса корней, % и величины — гипотезы: ошибка лаборатории — на 16–20 % ниже истинного, опудривание — на 11–14 мин дольше
@@ -80,16 +81,17 @@ incident:
   inv: inv.dissolution
   roots: { lab: 30, lube: 25, force: 15, screen: 30 }
   sizes: { lab: [16, 20], lube: [11, 14], force: [11, 13], screen: [1, 1] }
-# запас на старте — разрешённые партии на стеллажах: хватает на первые серии
+# запас на старте — разрешённые партии на стеллажах: АФС — на срок его поставки и входной контроль при серии в рабочий
+# день, остальное — на шесть недель. Гипотезы
 stock:
-  - { material: mat.api.paracetamol, qty: 600 }
-  - { material: mat.exc.starch, qty: 250 }
-  - { material: mat.exc.povidone, qty: 75 }
-  - { material: mat.exc.mcc, qty: 100 }
-  - { material: mat.exc.mgst, qty: 20 }
-  - { material: mat.pk.pvc, qty: 250 }
-  - { material: mat.pk.alu, qty: 200 }
-  - { material: mat.pk.carton-n10, qty: 40000 }
-  - { material: mat.pk.carton-n20, qty: 20000 }
-  - { material: mat.pk.leaflet, qty: 50000 }
-  - { material: mat.pk.case, qty: 500 }
+  - { material: mat.api.paracetamol, qty: 6000 }
+  - { material: mat.exc.starch, qty: 400 }
+  - { material: mat.exc.povidone, qty: 100 }
+  - { material: mat.exc.mcc, qty: 140 }
+  - { material: mat.exc.mgst, qty: 40 }
+  - { material: mat.pk.pvc, qty: 600 }
+  - { material: mat.pk.alu, qty: 300 }
+  - { material: mat.pk.carton-n10, qty: 320000 }
+  - { material: mat.pk.carton-n20, qty: 160000 }
+  - { material: mat.pk.leaflet, qty: 480000 }
+  - { material: mat.pk.case, qty: 2700 }

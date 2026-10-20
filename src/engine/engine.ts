@@ -17,12 +17,13 @@ import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from '.
 import { maintainCommand, maintDone, maintStep, newParts, spareArrives } from './maint';
 import { marketDone, marketHour, marketStep, newCustomers, rznPublished } from './market';
 import { BATCH_HOUR, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
+import { planHour } from './planner';
 import { planOf } from './plant';
 import { qaDone, qaStep, releaseCommand } from './qa';
 import { foreign, seatCommand } from './seats';
 import { goHome, LAST_CALL, postArrive, toPosts } from './staff';
 import { createLot, findSlot } from './stock';
-import { placePo } from './supply';
+import { placePo, supplyDay } from './supply';
 import { dispatch, release } from './tasks';
 import { type Command, type Notice, type PlantEvent, type PlantState, SCHEMA } from './types';
 import { truckArrives, wmsDone } from './wms';
@@ -281,6 +282,9 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       lineHour(db, s, notices);
       leanHour(db, s);
       marketHour(db, s, notices);
+      // коллеги планирования и снабжения (Б2в): задание через две недели, заказы поставщикам по расходу плана
+      planHour(db, s, notices);
+      supplyDay(db, s, notices);
       lineStep(db, s, notices);
       qaStep(db, s);
       marketStep(db, s, notices);

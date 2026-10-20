@@ -68,6 +68,25 @@ export const scenario = z.strictObject({
   orders: z.array(z.strictObject({ supplier: id, lines: z.array(z.strictObject({ material: id, qty })).min(1) })).default([]),
   /** задания на серию: карта, день «не раньше» от начала партии и товарная позиция, в которую упаковать балк */
   batches: z.array(z.strictObject({ recipe: id, day: z.number().int().min(0).max(3650), sku: id.optional() })).default([]),
+  /**
+   * план выпуска (Б2в): что может поставить коллега планирования — карта и позиция; запас позиции в сутках спроса сверх
+   * двух замороженных недель; за сколько суток считать средний спрос
+   */
+  plan: z
+    .strictObject({
+      items: z.array(z.strictObject({ recipe: id, sku: id })).min(1),
+      cover: z.number().int().min(1).max(365),
+      window: z.number().int().min(7).max(365),
+    })
+    .optional(),
+  /** снабжение (Б2в): страховой запас и заказ — в сутках расхода, входной контроль — в сутках */
+  supply: z
+    .strictObject({
+      safety: z.number().int().min(0).max(365),
+      every: z.number().int().min(1).max(365),
+      qc: z.number().int().min(0).max(60),
+    })
+    .optional(),
   stock: z.array(z.strictObject({ material: id, qty })).default([]),
   /** износ узлов на старте, %: `<машина>/<узел>` → износ; завод не новый */
   wear: z.record(z.string(), z.number().min(0).max(300)).default({}),

@@ -18,6 +18,7 @@ import type { PlantState } from '../../src/engine/types';
 const SC = 'scn.proto';
 const N20 = 'sku.paracetamol500.n20';
 const N10 = 'sku.paracetamol500.n10';
+const L10 = 'sku.loratadine10.n10';
 const RCP = 'rcp.paracetamol500.wet.v1';
 const sc = db.scenarios[SC];
 const plan = planOf(db, sc.plant);
@@ -46,10 +47,11 @@ describe('коллега планирования', () => {
     const b = added[0];
     expect(b.by).toBe('head:plan');
     expect(b.notBefore).toBe(s.t + AHEAD * DAY);
-    // последнее задание №10 сценария — раньше последнего №20: очередь №10
+    // последние задания сценария по позициям: №10 парацетамола — шестое, №10 лоратадина — седьмое, дальше №30 и №20:
+    // очередь — от самого давнего
     expect(b.sku).toBe(N10);
     until(s, 1, BATCH_HOUR);
-    expect(Object.values(s.batches).at(-1)!.sku).toBe(N20);
+    expect(Object.values(s.batches).at(-1)!.sku).toBe(L10);
   });
 
   test('в выходной и на день, где задание уже есть, — ничего', () => {
@@ -72,7 +74,7 @@ describe('коллега планирования', () => {
   test('спрос виден — серия позиции, которой хватит меньше всего; хватает обеим — задания нет', () => {
     const s = newPlant(db, { scenario: SC });
     until(s, 20, BATCH_HOUR - HOUR);
-    const pos = [N20, N10].map(k => positionOf(db, s, k, sc.plan!.window));
+    const pos = sc.plan!.items.map(it => positionOf(db, s, it.sku, sc.plan!.window));
     expect(pos.every(p => p.span > 0)).toBe(true);
     const need = pos.filter(p => p.cases * p.span < p.ordered * (AHEAD + sc.plan!.cover) * DAY);
     const before = Object.keys(s.batches).length;
@@ -101,17 +103,27 @@ describe('коллега снабжения', () => {
     until(s, 0, SUPPLY_HOUR);
     const pos = Object.values(s.pos);
     expect(pos.every(p => p.by === 'head:supply')).toBe(true);
-    // поставщик — один заказ; в заказе — ровно материалы ниже точки
+    // поставщик — один заказ; в заказе — только материалы ниже точки, а не попавший в заказ — тот, чьей наименьшей партии
+    // уже нет места в половине карантина
     expect(new Set(pos.map(p => p.supplier)).size).toBe(pos.length);
-    expect(new Set(pos.flatMap(p => p.lines.map(l => l.material)))).toEqual(below);
+    const ordered = new Set(pos.flatMap(p => p.lines.map(l => l.material)));
+    for (const m of ordered) expect(below.has(m)).toBe(true);
     const room = Math.floor(plan.byKind.quarantine.length / 2);
+    const palletsOf = (m: string, qty: number) => {
+      const c = db.containers[db.materials[m].container];
+      return Math.ceil(qty / (c.capacity * c.perPallet));
+    };
     for (const p of pos) {
-      const pallets = p.lines.reduce((n, l) => {
-        const c = db.containers[db.materials[l.material].container];
-        return n + Math.ceil(l.qty / (c.capacity * c.perPallet));
-      }, 0);
+      const pallets = p.lines.reduce((n, l) => n + palletsOf(l.material, l.qty), 0);
       expect(pallets).toBeLessThanOrEqual(room);
       for (const l of p.lines) expect(l.qty).toBeGreaterThanOrEqual(db.suppliers[p.supplier].items[l.material].moq);
+    }
+    for (const m of below) {
+      if (ordered.has(m)) continue;
+      const sup = Object.values(db.suppliers).find(x => x.approved && x.items[m])!;
+      const p = pos.find(x => x.supplier === sup.id)!;
+      const taken = p.lines.reduce((n, l) => n + palletsOf(l.material, l.qty), 0);
+      expect([m, taken + palletsOf(m, sup.items[m].moq) > room]).toEqual([m, true]);
     }
     // заказанное — в пути и в положении: назавтра то же самое не заказывают, если запаса хватает
     until(s, 1, SUPPLY_HOUR);

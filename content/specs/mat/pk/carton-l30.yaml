@@ -1,0 +1,3 @@
+id: spec.mat.pk.carton-l30
+tests:
+  - { test: test.visual }

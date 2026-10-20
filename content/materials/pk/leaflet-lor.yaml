@@ -1,0 +1,12 @@
+# Инструкция — своя у каждого продукта (геймдизайн, §4.1).
+id: mat.pk.leaflet-lor
+kind: packaging
+name: { ru: Инструкция «Лоратадин 10 мг», en: Leaflet «Loratadine 10 mg» }
+unit: pcs
+container: cnt.box.leaflets
+storage: room
+shelf: 60
+spec: spec.mat.pk.leaflet-lor
+bad: { attr: appearance }
+# проба с тары: граммы или штуки
+sample: 10

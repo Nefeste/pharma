@@ -37,26 +37,30 @@ vehicles:
   - { type: veh.jack, n: 2 }
   - { type: veh.reach, n: 1 }
 # задания на серию первых двух недель — по серии в рабочий день, день — от начала партии, и позиция, в которую упаковать
-# балк; №20 — две серии из трёх, как в спросе. Дальше задания ставит коллега планирования (plan). Гипотезы
+# балк; три из десяти — лоратадин (Б2б), вторая — парацетамол: на ней происшествие. Дальше задания ставит коллега
+# планирования (plan). Гипотезы
 batches:
   - { recipe: rcp.paracetamol500.wet.v1, day: 1, sku: sku.paracetamol500.n20 }
   - { recipe: rcp.paracetamol500.wet.v1, day: 2, sku: sku.paracetamol500.n20 }
   - { recipe: rcp.paracetamol500.wet.v1, day: 5, sku: sku.paracetamol500.n10 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 6, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.loratadine10.wet.v1, day: 6, sku: sku.loratadine10.n30 }
   - { recipe: rcp.paracetamol500.wet.v1, day: 7, sku: sku.paracetamol500.n20 }
   - { recipe: rcp.paracetamol500.wet.v1, day: 8, sku: sku.paracetamol500.n10 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 9, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.loratadine10.wet.v1, day: 9, sku: sku.loratadine10.n10 }
   - { recipe: rcp.paracetamol500.wet.v1, day: 12, sku: sku.paracetamol500.n20 }
-  - { recipe: rcp.paracetamol500.wet.v1, day: 13, sku: sku.paracetamol500.n10 }
+  - { recipe: rcp.loratadine10.wet.v1, day: 13, sku: sku.loratadine10.n30 }
   - { recipe: rcp.paracetamol500.wet.v1, day: 14, sku: sku.paracetamol500.n20 }
 # план выпуска (Б2в, src/engine/planner.ts): после заданий сценария их ставит коллега планирования — на тот же день через
-# две недели, если ГП позиции с сериями в работе меньше спроса на эти две недели и ещё 14 суток; спрос — по заказам за 28
-# последних суток. Гипотезы
+# две недели, если ГП позиции с сериями в работе меньше спроса на эти две недели и ещё 21 суток; спрос — по заказам за 28
+# последних суток. С двумя продуктами серия позиции покрывает до двух недель спроса, и запаса на 14 суток не хватало (Б2б).
+# Гипотезы
 plan:
   items:
     - { recipe: rcp.paracetamol500.wet.v1, sku: sku.paracetamol500.n20 }
     - { recipe: rcp.paracetamol500.wet.v1, sku: sku.paracetamol500.n10 }
-  cover: 14
+    - { recipe: rcp.loratadine10.wet.v1, sku: sku.loratadine10.n10 }
+    - { recipe: rcp.loratadine10.wet.v1, sku: sku.loratadine10.n30 }
+  cover: 21
   window: 28
 # снабжение (Б2в, src/engine/supply.ts): коллега снабжения заказывает, когда запас с заказанным в пути меньше расхода плана
 # на наибольший срок поставки, входной контроль 7 суток и страховой запас 7 суток; заказ — ещё на 28 суток. Гипотезы
@@ -95,3 +99,9 @@ stock:
   - { material: mat.pk.carton-n20, qty: 160000 }
   - { material: mat.pk.leaflet, qty: 480000 }
   - { material: mat.pk.case, qty: 2700 }
+  # лоратадин (Б2б): субстанция — на срок её поставки и входной контроль при трети серий, остальное — на шесть недель
+  - { material: mat.api.loratadine, qty: 50 }
+  - { material: mat.exc.lactose, qty: 400 }
+  - { material: mat.pk.carton-l10, qty: 100000 }
+  - { material: mat.pk.carton-l30, qty: 50000 }
+  - { material: mat.pk.leaflet-lor, qty: 150000 }

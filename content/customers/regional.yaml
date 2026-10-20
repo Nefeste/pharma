@@ -4,9 +4,11 @@ name: { ru: Региональный дистрибьютор, en: Regional dist
 payDays: 45
 order: { days: [2, 4], hour: 11, lead: [3, 5] }
 minShelf: 60
-# спрос — под мощность завода вместе с национальным (Б2в)
+# спрос — под мощность завода вместе с национальным (Б2в, Б2б)
 demand:
-  sku.paracetamol500.n20: 1300
-  sku.paracetamol500.n10: 900
+  sku.paracetamol500.n20: 870
+  sku.paracetamol500.n10: 600
+  sku.loratadine10.n10: 710
+  sku.loratadine10.n30: 355
 source: [gdp-eaeu, gk-rf]
 review: draft

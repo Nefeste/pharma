@@ -1,0 +1,15 @@
+# Лактозы моногидрат — наполнитель таблеток лоратадина (meb-loratadine-2022, ru-loratadine). Тара, свойства партии и
+# брак — гипотезы.
+id: mat.exc.lactose
+kind: excipient
+name: { ru: Лактозы моногидрат, en: Lactose monohydrate }
+unit: kg
+container: cnt.bag.25
+storage: room
+shelf: 36
+spec: spec.mat.exc.lactose
+# истинные свойства партии: среднее и разброс, %; партия брака — сдвиг (гипотезы)
+props: { moisture: [5.2, 0.2] }
+bad: { attr: moisture, shift: 2 }
+# проба с тары: граммы или штуки
+sample: 20

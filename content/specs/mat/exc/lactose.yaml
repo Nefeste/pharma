@@ -1,0 +1,4 @@
+id: spec.mat.exc.lactose
+tests:
+  - { test: test.ir }
+  - { test: test.lod, max: 6 }

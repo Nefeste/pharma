@@ -1,0 +1,11 @@
+id: mat.pk.carton-l10
+kind: packaging
+name: { ru: Пачка «Лоратадин 10 мг №10», en: Carton «Loratadine 10 mg No. 10» }
+unit: pcs
+container: cnt.box.cartons
+storage: room
+shelf: 60
+spec: spec.mat.pk.carton-l10
+bad: { attr: appearance }
+# проба с тары: граммы или штуки
+sample: 10

@@ -1,0 +1,19 @@
+# АФС лоратадина: микронизированная, практически нерастворима в воде; срок повторных испытаний 5 лет, хранение
+# 2–30 °C в двойном мешке в бочке (meb-loratadine-2022). Тара, истинные свойства партии и брак — гипотезы.
+id: mat.api.loratadine
+kind: api
+name: { ru: Лоратадин, en: Loratadine }
+unit: kg
+container: cnt.drum.fibre50
+storage: room
+shelf: 60
+potency: true
+spec: spec.mat.api.loratadine
+# истинные свойства партии: среднее и разброс (содержание и влажность — %, размер частиц d50 — мкм, микронизирована);
+# партия брака — сдвиг (гипотезы)
+props: { assay: [99.6, 0.15], moisture: [0.2, 0.05], particle: [5, 1] }
+bad: { attr: assay, shift: -3 }
+# проба с тары: граммы или штуки
+sample: 10
+source: [meb-loratadine-2022]
+review: draft

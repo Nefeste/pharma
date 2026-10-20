@@ -12,4 +12,7 @@ items:
   mat.pk.carton-n10: { price: 2.1, moq: 20000 }
   mat.pk.carton-n20: { price: 2.4, moq: 20000 }
   mat.pk.leaflet: { price: 0.45, moq: 50000 }
+  mat.pk.carton-l10: { price: 1.9, moq: 20000 }
+  mat.pk.carton-l30: { price: 2.3, moq: 20000 }
+  mat.pk.leaflet-lor: { price: 0.4, moq: 50000 }
   mat.pk.case: { price: 38, moq: 500 }

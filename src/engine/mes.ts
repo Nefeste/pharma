@@ -718,8 +718,8 @@ function leave(db: ContentDb, s: PlantState, roomId: string, product: Id) {
   ensureCleaning(db, s, room);
 }
 
-/** Свойства серии со своей ветвью разброса (часть 4): появились позже прочих. */
-const OWN_BRANCH: readonly Attr[] = ['granule'];
+/** Свойства серии со своей ветвью разброса (часть 4, Б2б): появились позже прочих. */
+const OWN_BRANCH: readonly Attr[] = ['granule', 'uniformity'];
 
 /**
  * Истинные показатели серии: номинал карты + разброс серии + вклады причин из каталога (content/causes/). Каждый вклад

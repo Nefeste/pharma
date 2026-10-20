@@ -1,0 +1,12 @@
+# Балк лоратадина 10 мг — таблетки после производства, до упаковки, партия своего полупродукта с номером серии. Срок
+# хранения балка до упаковки — гипотеза.
+id: mat.bulk.loratadine10
+kind: bulk
+name: { ru: Таблетки лоратадина 10 мг в балке, en: Loratadine 10 mg tablets in bulk }
+unit: pcs
+container: cnt.bin.tablets
+storage: room
+shelf: 6
+spec: spec.bulk.loratadine10
+# проба с контейнера, таблеток: на однородность дозирования нужно не меньше 30 (jp-602)
+sample: 40

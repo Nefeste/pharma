@@ -1,6 +1,6 @@
 // Часть 1в: серия (docs/specs/2026-10-engine.md, 1в). Резерв по FEFO с пересчётом АФС; нехватка и ожидание; комплект
 // через шлюз и возврат остатков; стадии по карте в своих помещениях; стадия не стартует на грязном или занятом; малая и
-// большая уборка; масса по стадиям; причины записаны; МОК; балк в карантине и его испытания; отказ; сохранение посреди
+// генеральная уборка; масса по стадиям; причины записаны; МОК; балк в карантине и его испытания; отказ; сохранение посреди
 // стадии.
 import { describe, expect, test } from 'bun:test';
 import { legacy as db } from './legacy';
@@ -228,7 +228,7 @@ describe('помещения и чистота', () => {
     }
   });
 
-  test('уборка: та же продукция — малая; грязное дольше суток — большая', () => {
+  test('уборка: та же продукция — малая; грязное дольше суток — генеральная', () => {
     const s = newPlant(bare, { scenario: SC });
     const room = s.rooms[plan.roomOf.granulation];
     const minor = Object.values(s.equipment).filter(e => e.room === room.id).reduce((n, e) => n + bare.equipment[e.type].cleaning.minor, 0);
@@ -238,7 +238,7 @@ describe('помещения и чистота', () => {
     apply(bare, s, { kind: 'advance', seconds: HOUR });
     const t1 = Object.values(s.tasks).find(t => t.kind === 'clean' && t.room === room.id)!;
     expect(t1.work).toBe(minor);
-    // ночь и выходные: убирать некому, через сутки уборка становится большой
+    // ночь и выходные: убирать некому, через сутки уборка становится генеральной
     const s2 = newPlant(bare, { scenario: SC });
     const room2 = s2.rooms[plan.roomOf.granulation];
     // пятница, 23:00 — смена «b» кончилась

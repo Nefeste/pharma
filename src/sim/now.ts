@@ -43,7 +43,7 @@ export interface NowRow {
   sku?: Id;
   supplier?: Id;
   customer?: Id;
-  /** уборка большая */
+  /** уборка генеральная */
   major?: boolean;
   /** замена узла по плану, а не ремонт после отказа */
   planned?: boolean;

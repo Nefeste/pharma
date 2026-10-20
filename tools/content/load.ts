@@ -328,7 +328,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   };
   const equipment: Record<string, EquipmentType> = {};
   for (const e of Object.values(raw.equipment)) {
-    need(e.cleaning.minor <= e.cleaning.major, `оборудование ${e.id}: малая уборка дольше большой`);
+    need(e.cleaning.minor <= e.cleaning.major, `оборудование ${e.id}: малая уборка дольше генеральной`);
     equipment[e.id] = {
       id: e.id,
       name: e.name,

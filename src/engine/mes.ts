@@ -26,7 +26,7 @@ export const MES = { operators: ['role.operator'] } as const;
 /** Перекладка в шлюзе: с деревянной паллеты на пластиковую и обратно (спецификация 1в). */
 export const TRANSFER_WORK = 10 * MIN;
 
-/** Сроки чистоты (геймдизайн, §5.5): чистое ждёт не дольше 72 часов, грязное убирают в течение 24 — иначе большая уборка. */
+/** Сроки чистоты (геймдизайн, §5.5): чистое ждёт не дольше 72 часов, грязное убирают в течение 24 — иначе генеральная уборка. */
 export const CLEAN_HOLD = 72 * HOUR;
 export const DIRTY_HOLD = 24 * HOUR;
 
@@ -286,7 +286,7 @@ function holderOf(b: Batch): { kit: KitLine[]; kitUnit?: string } {
   return b.status === 'packing' ? b.pack! : b;
 }
 
-/** Каждый час: грязное дольше суток — к большой уборке; грязное без уборки — убрать. */
+/** Каждый час: грязное дольше суток — к генеральной уборке; грязное без уборки — убрать. */
 export function mesHour(db: ContentDb, s: PlantState) {
   for (const t of s.open.map(id => s.tasks[id])) {
     if (t.kind !== 'clean') continue;
@@ -365,7 +365,7 @@ function tryStart(db: ContentDb, s: PlantState, b: Batch) {
   if (room.batch !== b.id) {
     if (room.batch || room.status === 'dirty') return ensureCleaning(db, s, room);
     if (!readyFor(room, b.product, s.t)) {
-      // чистота просрочена — убрать снова, малой уборкой; чисто только для другого продукта — большой. Повторная уборка
+      // чистота просрочена — убрать снова, малой уборкой; чисто только для другого продукта — генеральной. Повторная уборка
       // после просрочки — лишняя обработка (1ж)
       if (s.t - room.since > CLEAN_HOLD) recleaned(s);
       room.status = 'dirty';
@@ -515,7 +515,7 @@ function duration(db: ContentDb, s: PlantState, b: Batch, st: RecipeStage, roomI
   return Math.max(MIN, sec + roll(s, `mes/${roomId}`, rng => spread(Math.floor((sec * t.spread) / P_ONE), normal(rng))));
 }
 
-/** Уборка грязного помещения, если её ещё нет: малая — та же продукция, большая — если помечено или грязно дольше суток. */
+/** Уборка грязного помещения, если её ещё нет: малая — та же продукция, генеральная — если помечено или грязно дольше суток. */
 function ensureCleaning(db: ContentDb, s: PlantState, room: Room) {
   if (room.status !== 'dirty' || Object.values(s.tasks).some(t => t.kind === 'clean' && t.room === room.id)) return;
   if (s.t - room.since > DIRTY_HOLD) room.major = true;
@@ -528,7 +528,7 @@ function cleanTime(db: ContentDb, s: PlantState, room: Room): number {
   return cleanWork(db, s, room.id, !!room.major);
 }
 
-/** Время уборки помещения малой или большой уборкой — для движка и прогона расписания (3д). */
+/** Время уборки помещения малой или генеральной уборкой — для движка и прогона расписания (3д). */
 export function cleanWork(db: ContentDb, s: PlantState, roomId: string, major: boolean): number {
   let sec = 0;
   for (const e of Object.values(s.equipment)) if (e.room === roomId) sec += db.equipment[e.type].cleaning[major ? 'major' : 'minor'];

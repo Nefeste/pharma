@@ -1,7 +1,8 @@
-# из bolnitsa: .github/workflows/build.yml @ e0a3491 — изменено: имя игры и файла.
+# из bolnitsa: .github/workflows/build.yml @ e0a3491 — изменено: имя игры и файла; архив обновления — один app.asar.
 # Сборка ПК-версии — только на тег версии vX.Y.Z (ADR студии 0019): слияние в main её не запускает, ручного запуска нет.
-# Тег ставит владелец. Пока — только Windows x64, одним zip, из Linux, без wine (как у «Больницы», решение владельца
-# №95). Файлы уходят в релиз на этот тег; версии 0.x — пре-релизы. Репозиторий закрыт: релиз видят только участники.
+# Тег ставит владелец. Пока — только Windows x64, из Linux, без wine (как у «Больницы», решение владельца №95): полный
+# zip и рядом — архив обновления с одним resources/app.asar (docs/05-process.md). Файлы уходят в релиз на этот тег;
+# версии 0.x — пре-релизы. Репозиторий закрыт: релиз видят только участники.
 name: Сборка ПК
 
 on:
@@ -57,18 +58,24 @@ jobs:
         run: node tools/app/build.mjs
       - name: Windows x64
         run: npx electron-builder --win --publish never
+      # между выпусками меняется один файл — resources/app.asar: остальной корень — архив Electron той же версии
+      - name: Обновление — один resources/app.asar
+        run: node tools/app/update-zip.mjs
       - run: ls -la release
 
       - name: Описание релиза
         run: |
+          E=$(node -p "require('electron/package.json').version")
           {
             echo "«Фармзавод» — прототип: что в этой версии — STATUS.md и docs/07-roadmap.md на этом теге."
             echo
             echo "**Windows x64:** \`*-win-x64.zip\` — распаковать в любую папку и запустить \`Farmzavod.exe\`."
             echo
+            echo "**Обновление:** \`*-win-x64-update.zip\` — в нём только \`resources/app.asar\`. Распаковать в папку игры с заменой файла. Подходит к установке любого выпуска на Electron $E; у выпуска на другом Electron — ставить полный архив."
+            echo
             echo "Сборка не подписана: Windows может спросить «Запустить всё равно?»."
             echo
-            echo "Собрано из коммита ${{ github.sha }}, сборка ${{ github.run_number }}."
+            echo "Electron $E. Собрано из коммита ${{ github.sha }}, сборка ${{ github.run_number }}."
           } > release.md
 
       - name: Релиз ${{ github.ref_name }}
@@ -81,3 +88,4 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             release/Farmzavod-*-win-x64.zip
+            release/Farmzavod-*-win-x64-update.zip

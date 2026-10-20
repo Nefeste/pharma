@@ -96,7 +96,7 @@ npm run build                      # content + page and its two workers (esbuild
 npm run e2e                        # after build: the game in headless Chromium; tools/app/out/e2e*.png and contact.png
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
-npm run dist:win                   # build + Windows x64 zip → release/ (from Linux, no wine) — the release file
+npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
 bun tools/test/make-save-fixture.ts  # only when SCHEMA changes: a new save sample (old ones stay)
 npm run bench                      # engine without a window: a year of scn.proto (--days, --step, --seed; --plan — also a plan run); compare before/after engine changes
 ```
@@ -243,6 +243,7 @@ first, or copy the working code of Bolnitsa on the same versions.
 - `assets/` — CC0 people models (copies of Bolnitsa's, byte for byte) and `LICENSES.md` (sources, licenses, SHA-256);
   never add a model without its line there and in `assets/models/sources.json`.
 - `tools/app/` — page build (the page, the calculation thread and the plan run's thread), local server, browser scenario
-  with the contact sheet, the headless scene bench (`bench.mjs`); `tools/test/` — Bun tests and save samples; engine
+  with the contact sheet, the headless scene bench (`bench.mjs`), the release update archive — one `resources/app.asar`
+  (`update-zip.mjs`); `tools/test/` — Bun tests and save samples; engine
   mechanics tests run on the scenario as it was before Б2в (`legacy.ts`), the golden run — on the game's scenario;
   `tools/bench/` — the engine bench, with `--plan` also the plan run.

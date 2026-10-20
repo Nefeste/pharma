@@ -125,7 +125,7 @@ interface Proj {
  * берёт первое по порядку создания задание, чей срок настал, а нет такого — чей настанет раньше; работа — в смене
  * кладовщиков: по паллетам комплекта, кладовщики перекладывают параллельно (гипотеза: перевозки к шлюзу быстрее
  * перекладки). Стадия — когда кончилась прошлая, помещение свободно, убрано и готово (`readyFor`) и в смене есть люди
- * её роли. Ушла серия из помещения — уборка, как только аппаратчик в смене; большая — если грязно дольше суток.
+ * её роли. Ушла серия из помещения — уборка, как только аппаратчик в смене; генеральная — если грязно дольше суток.
  */
 export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[] = []): Forecast {
   const asked = new Map(changes.map(c => [c.batch, c.notBefore]));
@@ -145,7 +145,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
   const rooms = new Map<string, Proj>();
   for (const r of Object.values(s.rooms)) rooms.set(r.id, { room: { ...r }, free: now, work: 0, major: false });
 
-  /** Уборка помещения с `from`: полоса; помещение чистое — для продукта прошлой серии или, после большой, для любого. */
+  /** Уборка помещения с `from`: полоса; помещение чистое — для продукта прошлой серии или, после генеральной, для любого. */
   const clean = (p: Proj, from: number, work: number, major: boolean, when: Bar['when'], batch?: string) => {
     out.bars.push({ row: p.room.id, kind: 'clean', ...(batch ? { batch } : {}), from, to: from + work, when, ...(major ? { major: true as const } : {}) });
     const r = p.room;
@@ -174,7 +174,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
       p.free = Number.POSITIVE_INFINITY;
       return;
     }
-    // грязное ждёт уборки дольше суток — большая (mesHour)
+    // грязное ждёт уборки дольше суток — генеральная (mesHour)
     const major = !!r.major || c.t - at > DIRTY_HOLD;
     clean(p, c.t, cleanWork(db, s, roomId, major), major, 'plan', b.id);
   };
@@ -217,7 +217,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
           t = p.free;
         }
         if (!readyFor(p.room, b.product, t)) {
-          // чисто только для другого продукта — большая уборка; чистота просрочена — убрать снова (tryStart)
+          // чисто только для другого продукта — генеральная уборка; чистота просрочена — убрать снова (tryStart)
           const cause = p.room.cleanFor !== undefined && p.room.cleanFor !== b.product ? 'product' : 'expired';
           const c = take(MES.operators, 1, t);
           if (!c) return;

@@ -1096,8 +1096,8 @@ export type Notice =
   | { kind: 'lotRejected'; lot: string; deviation: string }
   /** серия сделана: балк в карантине */
   | { kind: 'batchBulk'; batch: string; lot: string }
-  /** открыто отклонение производства: МОК, режим, выход, сверка */
-  | { kind: 'deviation'; id: string }
+  /** открыто отклонение производства: МОК, режим, выход, сверка; номер серии — для слов извещения */
+  | { kind: 'deviation'; id: string; what: Deviation['kind']; code: string }
   /** серия упакована: ГП в карантине */
   | { kind: 'batchPacked'; batch: string; lot: string }
   /** решение уполномоченного лица: выпущена, отклонена, держать */
@@ -1112,6 +1112,13 @@ export type Notice =
   | { kind: 'cashLow'; balance: number }
   /** отказ узла машины; узел починили или заменили по плану */
   | { kind: 'failure'; machine: string; part: string }
+  /**
+   * тревоги часа (Б2а, alerts.ts): фура поставщика ждёт разгрузки дольше 2 часов; новому заказу покупателя не хватит ГП;
+   * материал не пришёл к серии из расписания (`pack` — к её упаковке); номер серии — для слов извещения
+   */
+  | { kind: 'truckWait'; truck: string; po: string; supplier: Id }
+  | { kind: 'orderRisk'; order: string; customer: Id; due: number; missing: number; pending: number }
+  | { kind: 'materialLate'; batch: string; code: string; pack?: true; short: { material: Id; qty: number }[] }
   | { kind: 'repaired'; machine: string; part: string; planned: boolean }
   /** команда не выполнена */
   | { kind: 'refused'; cmd: Command['kind']; why: Refusal; detail?: string }

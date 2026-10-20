@@ -2,7 +2,7 @@
 // расписанию; выпущенная серия попадает в оборот, когда Росздравнадзор опубликует сведения о ней; в день отгрузки отдел
 // продаж резервирует ящики по FEFO с условием остаточного срока, склад собирает паллеты заказа в экспедиции, в 15:00 к
 // рампе встаёт фура покупателя. Ушла фура — отгрузка: ящики с отрезками кодов — в запись отгрузки, счёт — в кассу.
-import type { ContentDb, Customer, Scenario } from '../content/types';
+import type { ContentDb, Customer, Id, Scenario } from '../content/types';
 import { schedule } from './core/agenda';
 import type { Rng } from './core/rng';
 import { addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf, workdayOnOrAfter } from './core/calendar';
@@ -373,6 +373,54 @@ export function rznPublished(s: PlantState, lot: string) {
   if (!l || l.circulation !== undefined) return;
   l.circulation = s.t;
   stockChanged(s);
+}
+
+/** Заказ под угрозой: сколько ящиков не хватит и сколько ящиков позиции ещё ждут решения или ввода в оборот. */
+export interface OrderRisk {
+  order: string;
+  customer: Id;
+  due: number;
+  missing: number;
+  pending: number;
+}
+
+/**
+ * Заказы под угрозой — для планёрки (3в) и тревоги часа (Б2а, alerts.ts): открытые заказы по сроку разбирают свободные
+ * ящики выпущенной ГП в обороте с остаточным сроком на день срока — FEFO, как `allocate`, без записи. Кому не хватило —
+ * под угрозой.
+ */
+export function orderRisks(db: ContentDb, s: PlantState): OrderRisk[] {
+  const free = new Map<string, number>();
+  for (const c of Object.values(s.containers)) if (!c.reserved) free.set(c.lot, (free.get(c.lot) ?? 0) + 1);
+  const out: OrderRisk[] = [];
+  const orders = Object.values(s.orders)
+    .filter(o => o.status === 'open')
+    .sort((a, b) => a.due - b.due || idNum(a.id) - idNum(b.id));
+  for (const o of orders) {
+    const day = dueDay(s, o);
+    let missing = 0;
+    let pending = 0;
+    for (const line of o.lines) {
+      let need = line.cases - line.reserved;
+      if (need <= 0) continue;
+      const sku = db.skus[line.sku];
+      const full = Math.floor((db.materials[sku.fg].shelf * 36525) / 1200);
+      const lots = Object.values(s.lots).filter(l => l.material === sku.fg);
+      const ready = lots
+        .filter(l => l.status === 'released' && l.circulation !== undefined && (l.expiry - day) * P >= o.minShelf * full)
+        .sort((a, b) => a.expiry - b.expiry || idNum(a.id) - idNum(b.id));
+      for (const l of ready) {
+        const take = Math.min(need, free.get(l.id) ?? 0);
+        free.set(l.id, (free.get(l.id) ?? 0) - take);
+        need -= take;
+      }
+      missing += need;
+      if (need > 0)
+        for (const l of lots) if (l.status !== 'rejected' && (l.status !== 'released' || l.circulation === undefined)) pending += free.get(l.id) ?? 0;
+    }
+    if (missing > 0) out.push({ order: o.id, customer: o.customer, due: o.due, missing, pending });
+  }
+  return out;
 }
 
 /** Тара заказа — для инвариантов: какие ящики и на сколько зарезервированы под открытые заказы. */

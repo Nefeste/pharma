@@ -539,7 +539,7 @@ export function deviate(s: PlantState, notices: Notice[], d: Omit<Deviation, 'id
   const dev: Deviation = { id: nextId(s, 'D'), opened: s.t, status: 'open', ...d };
   s.deviations[dev.id] = dev;
   defect(s, 'deviations');
-  notices.push({ kind: 'deviation', id: dev.id });
+  notices.push({ kind: 'deviation', id: dev.id, what: dev.kind, code: dev.batch ? batchNo(s.batches[dev.batch].code) : '' });
 }
 
 /** Что сделала задача производства, когда кончилась. Не задача производства — `false`. */

@@ -6,8 +6,8 @@ import type { ContentDb, Dept, Id, SeatId } from '../content/types';
 import { batchNo } from '../engine/batchno';
 import { DAY, momentOf } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
-import { P_ONE } from '../engine/core/rng';
 import { AREA, type Oee, oee, rhythm, shiftsOfDay } from '../engine/lean';
+import { orderRisks, type OrderRisk } from '../engine/market';
 import { planOf } from '../engine/plant';
 import type { Batch, CashItem, DayLoss, Deviation, LineDay, MachineTimes, PlantState, TaskKind, WaitCause } from '../engine/types';
 import type { Thing } from './views';
@@ -121,15 +121,8 @@ export interface BrokenRow {
   repair: 'busy' | 'open' | 'spare';
 }
 
-export interface RiskRow {
-  order: string;
-  customer: Id;
-  due: number;
-  /** ящиков не хватит */
-  missing: number;
-  /** ящиков ГП этой позиции, которые ещё ждут решения или ввода в оборот */
-  pending: number;
-}
+/** Заказ под угрозой — по правилу движка (`orderRisks`, market.ts): его же разбирает тревога часа (Б2а). */
+export type RiskRow = OrderRisk;
 
 export interface MorningView {
   view: 'morning';
@@ -218,42 +211,6 @@ export function mainLoss(d: DayLoss | undefined, lines: LineSum[]): MainLoss | u
   all.push({ k: 'walk', sec: wk.reduce((n, x) => n + (x?.sec ?? 0), 0), cm: wk.reduce((n, x) => n + (x?.cm ?? 0), 0) });
   const best = all.reduce<MainLoss | undefined>((a, b) => (b.sec > (a?.sec ?? 0) ? b : a), undefined);
   return best;
-}
-
-/** Заказы под угрозой: открытые по сроку разбирают свободные ящики разрешённой ГП в обороте — FEFO, как в движке, без записи. */
-function risks(db: ContentDb, s: PlantState): RiskRow[] {
-  const day0 = momentOf(s.start, 0).day;
-  const free = new Map<string, number>();
-  for (const c of Object.values(s.containers)) if (!c.reserved) free.set(c.lot, (free.get(c.lot) ?? 0) + 1);
-  const out: RiskRow[] = [];
-  const orders = Object.values(s.orders)
-    .filter(o => o.status === 'open')
-    .sort((a, b) => a.due - b.due || num(a.id) - num(b.id));
-  for (const o of orders) {
-    const dueDay = day0 + Math.floor(o.due / DAY);
-    let missing = 0;
-    let pending = 0;
-    for (const line of o.lines) {
-      let need = line.cases - line.reserved;
-      if (need <= 0) continue;
-      const sku = db.skus[line.sku];
-      const full = Math.floor((db.materials[sku.fg].shelf * 36525) / 1200);
-      const lots = Object.values(s.lots).filter(l => l.material === sku.fg);
-      const ready = lots
-        .filter(l => l.status === 'released' && l.circulation !== undefined && (l.expiry - dueDay) * P_ONE >= o.minShelf * full)
-        .sort((a, b) => a.expiry - b.expiry || num(a.id) - num(b.id));
-      for (const l of ready) {
-        const take = Math.min(need, free.get(l.id) ?? 0);
-        free.set(l.id, (free.get(l.id) ?? 0) - take);
-        need -= take;
-      }
-      missing += need;
-      if (need > 0)
-        for (const l of lots) if (l.status !== 'rejected' && (l.status !== 'released' || l.circulation === undefined)) pending += free.get(l.id) ?? 0;
-    }
-    if (missing > 0) out.push({ order: o.id, customer: o.customer, due: o.due, missing, pending });
-  }
-  return out;
 }
 
 /** Изменение кассы за 24 часа до `t`: проводки идут по времени — с конца, пока не старше суток. */
@@ -364,7 +321,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     lab,
     short,
     broken,
-    risk: risks(db, s),
+    risk: orderRisks(db, s),
     cash: { balance: s.cash.balance, day: dayChange(s, s.t), ...(next ? { next: { due: next.due, item: next.item, sum: next.sum } } : {}) },
     seats: seatSums(db, s),
   };

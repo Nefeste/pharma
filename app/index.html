@@ -223,6 +223,11 @@
     button.sortbtn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
     .badge { color: var(--yellow); font-weight: 600; }
     button.notice.link { background: none; border: none; padding: 0; color: var(--yellow); cursor: pointer; }
+    .top .notice.stop { color: var(--text); font-weight: 600; }
+    button.notice.link.stop { color: var(--yellow); }
+    .pauses { position: absolute; left: 8px; top: calc(var(--top-h, 48px) + 8px); padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; max-width: calc(100% - 16px); z-index: 4; }
+    .pauses ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+    .pauses li.muted label { color: var(--muted); }
     button.notice.link:hover { text-decoration: underline; text-decoration-color: var(--accent); }
   </style>
 </head>

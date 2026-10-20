@@ -66,3 +66,7 @@ legacy.customers['cus.national'].demand = { [N20]: 600, [N10]: 300 };
 legacy.customers['cus.regional'].demand = { [N20]: 300, [N10]: 200 };
 // неснижаемый запас пуансонов — прежний, до второго продукта (Б2б): резерва нет, заказ — когда кончились
 legacy.spares['spare.punches'].stock = { min: 0, max: 1 };
+// обучения в прежней жизни завода нет (Б3б): записи на старте свежие — сроки кончатся через год, — новой редакции уборки
+// нет; механику обучения проверяют свои тесты на базе игры
+sc.training = { ...sc.training, spread: 0 };
+delete legacy.sops['sop.cleaning-r2'];

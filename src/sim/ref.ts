@@ -15,6 +15,7 @@ import { planOf } from '../engine/plant';
 import { shiftEnd } from '../engine/staff';
 import type { MachineState, PlantState } from '../engine/types';
 import { type EqState, eqStateOf } from './pack';
+import { type Admission, admissionOf, type Matrix, matrix } from './people';
 
 export interface RefQuery {
   view: 'ref';
@@ -134,6 +135,16 @@ export interface RefRole {
   busy: number;
 }
 
+/** Человек (Б3б): номер для карточки, табельный номер, роль, график, навык, допуск сегодня. */
+export interface RefPerson {
+  person: number;
+  tab: number;
+  role: Id;
+  shift: Id;
+  skill: number;
+  adm: Admission;
+}
+
 export interface RefShift {
   id: Id;
   /** дни недели 0–6, с понедельника; часы с и до */
@@ -197,6 +208,9 @@ export interface RefView {
   instruments: RefInstrument[];
   roles: RefRole[];
   shifts: RefShift[];
+  /** люди и матрица обучения (Б3б) */
+  people: RefPerson[];
+  matrix: Matrix;
   suppliers: RefSupplier[];
   customers: RefCustomer[];
 }
@@ -347,6 +361,7 @@ export function refView(db: ContentDb, s: PlantState): RefView {
     };
   });
   const shifts = Object.values(db.shifts).map(sh => ({ id: sh.id, days: [...sh.days], from: sh.from, to: sh.to }));
+  const staff = people.map(p => ({ person: Number(p.id.slice(1)), tab: p.tab, role: p.role, shift: p.shift, skill: p.skill, adm: admissionOf(db, s, p) }));
   const suppliers = Object.values(db.suppliers).map(su => ({
     id: su.id,
     lead: [...su.lead] as [number, number],
@@ -359,5 +374,5 @@ export function refView(db: ContentDb, s: PlantState): RefView {
       .map(sp => ({ spare: sp.id, price: sp.price, lead: [...sp.lead] as [number, number] })),
   }));
   const customers = Object.values(db.customers).map(c => ({ id: c.id, payDays: c.payDays, days: [...c.order.days], hour: c.order.hour, lead: [...c.order.lead] as [number, number], minShelf: c.minShelf }));
-  return { view: 'ref', products, materials, docs, recipes, equipment, lines, methods, instruments, roles, shifts, suppliers, customers };
+  return { view: 'ref', products, materials, docs, recipes, equipment, lines, methods, instruments, roles, shifts, people: staff, matrix: matrix(db, s), suppliers, customers };
 }

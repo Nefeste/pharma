@@ -61,6 +61,7 @@ export const ru = {
       truckWait: 'Фура ждёт разгрузки дольше 2\u00a0часов',
       orderRisk: 'Заказ покупателя под угрозой',
       materialLate: 'Материал не пришёл к серии',
+      qualLost: 'Сотрудник потерял допуск',
       morning: 'Планёрка в 08:00',
     } as Record<string, string>,
     all: 'у всех',
@@ -90,6 +91,7 @@ export const ru = {
     materialLate: (who: string, what: string, pack: boolean, n: number) =>
       `${pack ? 'Упаковке не хватает материала' : 'Материал не пришёл к серии'}: ${who} — ${what}${n > 1 ? `, и ещё ${n - 1}` : ''}`,
     investigation: (method: string, batch: string): string => `${method} вне спецификации: серия ${batch} — расследование`,
+    qualLost: (role: string, tab: number, doc: string) => `${role}, таб. №\u00a0${tab}: с сегодня не допущен — ${doc}`,
     invStep: 'Шаг расследования сделан',
     concluded: (fate: 'reject' | 'release'): string => (fate === 'release' ? 'Расследование решено: ошибка лаборатории доказана, партия разрешена' : 'Расследование решено: серия отклонена'),
     refused: 'Команда не выполнена',
@@ -256,9 +258,11 @@ export const ru = {
     truckCheck: 'Проверка фуры',
     invStep: 'Шаг расследования',
     invFix: 'Замена сита калибратора',
+    train: 'Обучение',
+    trainCheck: 'Проверка знаний',
   } as Record<string, string>,
   /** почему задача ждёт */
-  wait: { people: 'люди заняты', shift: 'людей нет в смене', vehicle: 'техника занята', instrument: 'прибор занят', place: 'нет свободного места', dock: 'рампа занята' },
+  wait: { people: 'люди заняты', shift: 'людей нет в смене', vehicle: 'техника занята', instrument: 'прибор занят', place: 'нет свободного места', dock: 'рампа занята', qual: 'нет допуска' },
   machine: { run: 'Работает', slow: 'Работает медленно', micro: 'Микроостановка', fail: 'Авария', wait: 'Ждёт', setup: 'Переналадка', off: 'Выключена', idle: 'Без дела' },
   equipment: { idle: 'Свободно', run: 'Работает', clean: 'Уборка', fail: 'Авария' },
   /** карточка вещи (docs/specs/2026-10-panels.md, 3б): что это → состояние → почему так → что можно сделать → история */
@@ -305,6 +309,14 @@ export const ru = {
     packingOf: (doc: string) => `инструкция по упаковке ${doc}`,
     role: 'Роль',
     shift: 'График',
+    /** человек (Б3б): табельный номер, навык, допуск, обучение */
+    person: (role: string, tab: number) => `${role} · таб. №\u00a0${tab}`,
+    skill: 'Навык',
+    admission: 'Допуск',
+    training: 'Обучение',
+    learning: (doc: string) => `изучает ${doc}`,
+    trained: (doc: string, day: string, until: string) => `${doc}: ${day}, до ${until}`,
+    untrained: (doc: string) => `${doc}: не обучен`,
     doing: { walk: 'Идёт на пост', exit: 'Идёт к выходу', post: 'Ждёт на посту', off: 'Вне смены' },
     free: 'Свободна',
     truck: (customer: boolean): string => (customer ? 'Фура покупателя' : 'Фура поставщика'),
@@ -318,6 +330,8 @@ export const ru = {
     taskBusy: (task: string) => `${task}: идёт`,
     taskWait: (task: string, cause: string, since: string) => `${task}: ждёт — ${cause}, с ${since}`,
     taskOpen: (task: string) => `${task}: ждёт`,
+    /** «нет допуска» с документом (Б3б) */
+    lack: (doc: string) => `нет допуска: ${doc}`,
     plan: 'В карантине: ждёт плана отбора проб — его составляют раз в час',
     tests: (done: number, all: number) => `Испытания: готово ${done} из ${all}`,
     released: (t: string) => `Разрешено ОКК ${t}`,
@@ -388,6 +402,7 @@ export const ru = {
     hintTitle: 'Подсказка',
     hints: {
       people: 'Людей в смене меньше, чем работы: задачи ждут в очереди.',
+      qual: 'Люди в смене были, но без допуска: обучение не успели провести или кончился срок записи. Матрица обучения — в справочнике, вкладка «Люди».',
       shift: 'Работа пришла, когда смены отдела нет на заводе, и ждала её прихода.',
       vehicle: 'Техники меньше, чем перевозок: паллеты ждут рохлю или ричтрак.',
       instrument: 'Прибор — узкое место лаборатории: испытания ждут, пока он освободится.',
@@ -430,6 +445,10 @@ export const ru = {
     broken: (machine: string, part: string, since: string) => `${machine}: ${part} — отказ с ${since}`,
     repair: { busy: 'ремонт идёт', open: 'ремонт ждёт слесаря', spare: 'ждёт запчасть' },
     riskTitle: 'Заказы под угрозой',
+    /** допуски сейчас (Б3б) */
+    trainTitle: 'Допуски',
+    trainNo: (who: string, doc: string) => `Не допущен: ${who} — ${doc}`,
+    trainSoon: (who: string, doc: string, last: string) => `Допуск кончается ${last}: ${who} — ${doc}`,
     risk: (customer: string, due: string, n: number) => `${customer}, срок ${due}: не хватит ${n} ${pluralRu(n, 'ящика', 'ящиков', 'ящиков')}`,
     pending: (n: number) => `ещё ждут решения или ввода в оборот — ${n}`,
     cashTitle: 'Касса',
@@ -662,6 +681,16 @@ export const ru = {
     no: 'нет',
     roleCols: { name: 'Роль', dept: 'Отдел', salary: 'Зарплата в месяц', shifts: 'По сменам', present: 'На заводе сейчас', busy: 'Заняты задачей' },
     shiftCols: { name: 'Смена', days: 'Дни', hours: 'Часы' },
+    /** люди и матрица обучения (Б3б) */
+    personCols: { tab: 'Таб. №', role: 'Роль', shift: 'График', skill: 'Навык', adm: 'Допуск' },
+    adm: {
+      ok: 'допущен',
+      soon: (last: string, doc: string) => `до ${last} — ${doc}`,
+      no: (doc: string) => `не допущен — ${doc}`,
+    },
+    matrixCols: { doc: 'Документ', name: 'Название' },
+    cell: (ok: number, all: number) => `${ok} из ${all}`,
+    matrixNote: 'Матрица обучения: кого чему учат и сколько людей роли допущено сейчас. Без записи об обучении на действующую редакцию или с истёкшим сроком человек работу не берёт — она ждёт «нет допуска». Новой редакции учат до её дня, повторно — по сроку документа.',
     hours: (from: number, to: number) => `${String(from).padStart(2, '0')}:00–${String(to).padStart(2, '0')}:00`,
     supCols: { name: 'Поставщик', items: 'Материалы: цена · наименьшая партия', lead: 'Срок поставки', prepay: 'Предоплата', pay: 'Остаток — через', approved: 'Одобрен' },
     perKg: (price: string) => `${price}/кг`,
@@ -680,9 +709,9 @@ export const ru = {
     unitNames: { mg: 'мг', g: 'г', kg: 'кг', pcs: 'шт.', pack: 'уп.' } as Record<string, string>,
     okei: (unit: string, code: number) => `${unit} · ${code}`,
     docCols: { code: 'Код', name: 'Документ', kind: 'Вид', rev: 'Редакция', from: 'Действует с', approved: 'Утвердил', status: 'Статус на сегодня' },
-    docKinds: { specs: 'Спецификация', tests: 'Методика испытания', recipes: 'Технологическая карта', skus: 'Инструкция по упаковке' } as Record<string, string>,
+    docKinds: { specs: 'Спецификация', tests: 'Методика испытания', recipes: 'Технологическая карта', skus: 'Инструкция по упаковке', sops: 'Процедура (СОП)' } as Record<string, string>,
     docStatus: { draft: 'проект', active: 'действует', archive: 'в архиве' } as Record<string, string>,
-    docsNote: 'Документ утверждают по должности: спецификации и методики — начальник ОКК, карты и инструкции по упаковке — начальник производства. Действует редакция, введённая последней; прежние — в архиве.',
+    docsNote: 'Документ утверждают по должности: спецификации и методики — начальник ОКК, карты и инструкции по упаковке — начальник производства, процедуры — руководитель их отдела. Действует редакция, введённая последней; прежние — в архиве.',
   },
   /** «Сейчас» и «Смотреть» (этап Б, Б1б) */
   now: {

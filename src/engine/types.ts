@@ -1,13 +1,13 @@
 // Состояние завода и обмен с движком (docs/02-architecture.md, §1, §3, §7; docs/specs/2026-10-engine.md). Состояние —
 // обычный сериализуемый объект: сохранение — его снимок со схемой и миграциями (ADR студии 0004). Сущности — словари с
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
-import type { Attr, Dept, Id, IncidentRoot, SeatId, ZoneKind } from '../content/types';
+import type { Attr, Dept, Id, IncidentRoot, SeatId, TaskKind, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 17;
+export const SCHEMA = 18;
 
 // ---------------------------------------------------------------- склад
 
@@ -603,6 +603,10 @@ export interface Person {
   shift: Id;
   /** навык 1–5 */
   skill: number;
+  /** табельный номер (Б3б): по порядку приёма с номера сценария, к другому человеку не переходит */
+  tab: number;
+  /** записи обучения (Б3б): по коду документа — последняя */
+  train: Record<string, TrainRecord>;
   /** где сейчас, см; в пути на пост или к выходу — куда идёт */
   x: number;
   z: number;
@@ -614,6 +618,16 @@ export interface Person {
   walk?: { x: number; z: number; t: number };
 }
 
+/**
+ * Запись обучения (Б3б; модель персонала ISA-95 — результат с датой, «годен» и сроком): какую редакцию изучил — id записи
+ * базы; день проверки знаний и последний день, когда запись действует, — номера дней от 1970-01-01.
+ */
+export interface TrainRecord {
+  rev: Id;
+  day: number;
+  until: number;
+}
+
 export interface Vehicle {
   id: string;
   type: Id;
@@ -622,54 +636,15 @@ export interface Vehicle {
   task?: string;
 }
 
-/**
- * Виды задач. Склад: проверка фуры у рампы, разгрузка, приёмка, размещение (в карантин или на стеллаж), перемещение (в
- * зону отклонённого).
- * Лаборатория: паллета в пробоотборную и обратно, отбор проб, передача проб в лабораторию, испытание, проверка
- * результата, решение по партии. Производство: паллета с комплектом серии к шлюзу, перекладка в шлюзе, возврат
- * остатков, стадия серии, уборка помещения. Линия: смена у линии, переналадка, очистка линии и её проверка, балк к
- * линии. Качество: проверка ГП и досье, решение уполномоченного лица. Отгрузка: паллета в экспедицию, отбор ящиков на
- * паллету заказа, погрузка в фуру покупателя. Техслужба: ремонт после отказа или замена узла по плану.
- */
-export type TaskKind =
-  | 'unload'
-  | 'receive'
-  | 'putaway'
-  | 'move'
-  | 'toSampling'
-  | 'sample'
-  | 'fromSampling'
-  | 'handover'
-  | 'prep'
-  | 'review'
-  | 'decide'
-  | 'pick'
-  | 'transfer'
-  | 'return'
-  | 'stage'
-  | 'clean'
-  | 'crew'
-  | 'changeover'
-  | 'clearance'
-  | 'clearCheck'
-  | 'feed'
-  | 'fgCheck'
-  | 'qpDecide'
-  | 'ship'
-  | 'casePick'
-  | 'load'
-  | 'repair'
-  | 'truckCheck'
-  /** шаг расследования (часть 4); замена сита калибратора по решению расследования */
-  | 'invStep'
-  | 'invFix';
+/** Виды задач — список и что значит каждый — в src/content/types.ts (`TASK_KINDS`): их называют и записи базы (Б3б). */
+export type { TaskKind } from '../content/types';
 
 /**
  * Почему задача ждёт (1ж): люди её ролей в смене, но заняты; людей её ролей нет в смене; нет свободной техники; нет
- * свободного прибора; нет свободного места назначения. В потерях суток есть ещё ожидание фуры: рампа занята (3а) — это
- * ждёт не задача, а фура во дворе.
+ * свободного прибора; нет свободного места назначения; люди её ролей в смене есть, но ни один не допущен (Б3б). В потерях
+ * суток есть ещё ожидание фуры: рампа занята (3а) — это ждёт не задача, а фура во дворе.
  */
-export type WaitCause = 'people' | 'shift' | 'vehicle' | 'instrument' | 'place' | 'dock';
+export type WaitCause = 'people' | 'shift' | 'vehicle' | 'instrument' | 'place' | 'dock' | 'qual';
 
 /** Место задачи: место паллеты, рампа с фурой или точка. */
 export type Place = { kind: 'slot'; id: string } | { kind: 'truck'; id: string } | { kind: 'point'; x: number; z: number };
@@ -716,9 +691,14 @@ export interface Task {
   step?: string;
   /** когда люди дошли и начали работу — событие `begin` (стадия с узлами под износом) */
   begin?: boolean;
+  /** обучение (Б3б): чьё и какой редакции документа — id записи базы; изучает только он, знания проверяет не он */
+  trainee?: string;
+  doc?: Id;
   /** открытая задача: чего ждёт по последнему проходу раздатчика и с какого момента (1ж) */
   why?: WaitCause;
   since?: number;
+  /** ждёт «нет допуска» (Б3б): код документа, которого не хватает */
+  lack?: string;
   /** работа на месте, с */
   work: number;
   /** больше — раньше */
@@ -1129,6 +1109,8 @@ export type Notice =
   | { kind: 'orderRisk'; order: string; customer: Id; due: number; missing: number; pending: number }
   | { kind: 'materialLate'; batch: string; code: string; pack?: true; short: { material: Id; qty: number }[] }
   | { kind: 'repaired'; machine: string; part: string; planned: boolean }
+  /** потерял допуск (Б3б): срок записи кончился или ввели редакцию, которой его не учили; роль и номер — для слов */
+  | { kind: 'qualLost'; person: string; role: Id; tab: number; doc: string }
   /** команда не выполнена */
   | { kind: 'refused'; cmd: Command['kind']; why: Refusal; detail?: string }
   /** результат вне спецификации — расследование открыто; шаг расследования сделан; расследование решено */

@@ -90,6 +90,84 @@ export interface StartStock {
 export const SEATS = ['director', 'production', 'quality', 'supply', 'commerce'] as const;
 export type SeatId = (typeof SEATS)[number];
 
+/**
+ * Виды задач движка (src/engine/types.ts, `TaskKind`): записи базы называют их в требованиях процедур (Б3б, `for.tasks`).
+ * Склад: проверка фуры у рампы, разгрузка, приёмка, размещение (в карантин или на стеллаж), перемещение (в зону
+ * отклонённого). Лаборатория: паллета в пробоотборную и обратно, отбор проб, передача проб в лабораторию, испытание,
+ * проверка результата, решение по партии. Производство: паллета с комплектом серии к шлюзу, перекладка в шлюзе, возврат
+ * остатков, стадия серии, уборка помещения. Линия: смена у линии, переналадка, очистка линии и её проверка, балк к линии.
+ * Качество: проверка ГП и досье, решение уполномоченного лица. Отгрузка: паллета в экспедицию, отбор ящиков на паллету
+ * заказа, погрузка в фуру покупателя. Техслужба: ремонт после отказа или замена узла по плану. Расследование (часть 4):
+ * шаг и замена сита калибратора по решению. Обучение (Б3б): изучить документ и проверка знаний.
+ */
+export const TASK_KINDS = [
+  'unload',
+  'receive',
+  'putaway',
+  'move',
+  'toSampling',
+  'sample',
+  'fromSampling',
+  'handover',
+  'prep',
+  'review',
+  'decide',
+  'pick',
+  'transfer',
+  'return',
+  'stage',
+  'clean',
+  'crew',
+  'changeover',
+  'clearance',
+  'clearCheck',
+  'feed',
+  'fgCheck',
+  'qpDecide',
+  'ship',
+  'casePick',
+  'load',
+  'repair',
+  'truckCheck',
+  'invStep',
+  'invFix',
+  'train',
+  'trainCheck',
+] as const;
+export type TaskKind = (typeof TASK_KINDS)[number];
+
+/**
+ * Обучение по документу (Б3б): роли, которые по нему учатся, — строка матрицы обучения (геймдизайн, §6.4); сколько
+ * изучать, с; через сколько месяцев учиться снова — непрерывное обучение (GMP ЕАЭС, ч. I, п. 2.11).
+ */
+export interface Learn {
+  roles: Id[];
+  study: number;
+  every: number;
+}
+
+/**
+ * Каким работам нужна процедура (Б3б): видам задач, стадиям на этих классах оборудования, работам у линии с этими
+ * машинами, работе на этой технике; `any` — любой работе, кроме самого обучения.
+ */
+export interface SopFor {
+  any?: true;
+  tasks?: TaskKind[];
+  equipment?: Id[];
+  machines?: Id[];
+  vehicles?: Id[];
+}
+
+/** Процедура (СОП, Б3б): регламентирующий документ с шапкой Б3а; чему и кого она учит и каким работам нужна. */
+export interface Sop extends Learn {
+  id: Id;
+  name: Text;
+  doc: DocHead;
+  for: SopFor;
+  source?: string[];
+  review?: Review;
+}
+
 export interface Scenario {
   id: Id;
   name: Text;
@@ -127,6 +205,11 @@ export interface Scenario {
   norm: number;
   /** какие места игрок может взять (3е); остальные ведёт сценарий */
   seats: SeatId[];
+  /**
+   * обучение (Б3б): за сколько суток до введения новой редакции или конца срока записи — задача обучения; проверка
+   * знаний, с; на старте дни обучения — до `spread` суток назад; табельные номера — по порядку приёма с `tab`
+   */
+  training: { ahead: number; check: number; spread: number; tab: number };
   /** происшествие прототипа (часть 4): у задания на серию — неисправность по жребию зерна */
   incident?: IncidentDef;
 }
@@ -308,8 +391,6 @@ export interface Role {
   dept: Dept;
   /** копейки в месяц */
   salary: number;
-  /** допуски роли: `forklift` — водить ричтрак */
-  permits: string[];
 }
 
 /** Техника склада (геймдизайн, §4.4). */
@@ -324,8 +405,6 @@ export interface VehicleType {
   /** поднять или опустить паллету на полу, с; на ярус — ещё `liftPerLevel` за каждый ярус */
   liftBase: number;
   liftPerLevel: number;
-  /** какой допуск нужен водителю */
-  permit?: string;
 }
 
 /** График: дни недели (0 — понедельник) и часы смены. */
@@ -386,8 +465,8 @@ export interface InstrumentType {
   name: Text;
 }
 
-/** Методика испытания (геймдизайн, §6.2). */
-export interface TestMethod {
+/** Методика испытания (геймдизайн, §6.2); по ней учатся, как по процедуре (Б3б). */
+export interface TestMethod extends Learn {
   id: Id;
   name: Text;
   doc: DocHead;
@@ -743,4 +822,5 @@ export interface ContentDb {
   skus: Record<Id, Sku>;
   customers: Record<Id, Customer>;
   spares: Record<Id, Spare>;
+  sops: Record<Id, Sop>;
 }

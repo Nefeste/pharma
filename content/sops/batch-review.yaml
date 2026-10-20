@@ -1,0 +1,11 @@
+# Проверка готовой продукции и досье серии специалистом ООК (геймдизайн, §6.4): оценка ГП включает обзор документации по
+# упаковке и проверку окончательной упаковки (GMP ЕАЭС, ч. I, п. 6.3).
+id: sop.batch-review
+name: { ru: Проверка досье серии и готовой продукции, en: Batch record and finished goods review }
+doc: { code: SOP-0020, rev: 1, from: 2026-01-19, approved: role.qa-head }
+roles: [role.qa]
+for: { tasks: [fgCheck] }
+hours: 2
+every: 12
+source: [gmp-eaeu]
+review: draft

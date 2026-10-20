@@ -6,6 +6,7 @@ import type { PartType } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
 import { dayText, named, num, qtyText, T, whenText } from '../i18n';
 import type { NowRow } from '../sim/now';
+import type { Admission, DocNow } from '../sim/people';
 import type { CardView, Hist, Holds, Why } from '../sim/views';
 import { db, docText } from './db';
 import { StatusIcon, TaskIcon } from './icons';
@@ -23,12 +24,20 @@ function Row({ k, children }: { k: string; children: ReactNode }) {
 
 const when = (start: Ymd, t: number | undefined) => (t === undefined ? T.card.noTime : whenText(start, t));
 
+const docName = (d: DocNow) => T.ref.doc(d.code, d.rev);
+
+/** Допуск словами (Б3б): допущен; до какого дня и по чему; не допущен — по чему. */
+export function admText(a: Admission): string {
+  return a.k === 'ok' ? T.ref.adm.ok : a.k === 'soon' ? T.ref.adm.soon(dayText(a.last), docName(a.doc)) : T.ref.adm.no(docName(a.doc));
+}
+
 function whyText(w: Why, start: Ymd): string {
   switch (w.k) {
     case 'task': {
       const task = T.tasks[w.task] ?? w.task;
       if (w.busy) return T.why.taskBusy(task);
-      return w.wait && w.since !== undefined ? T.why.taskWait(task, T.wait[w.wait], whenText(start, w.since)) : T.why.taskOpen(task);
+      const cause = w.wait === 'qual' && w.lack ? T.why.lack(docName(w.lack)) : w.wait ? T.wait[w.wait] : '';
+      return w.wait && w.since !== undefined ? T.why.taskWait(task, cause, whenText(start, w.since)) : T.why.taskOpen(task);
     }
     case 'plan':
       return T.why.plan;
@@ -251,26 +260,43 @@ export function Card({ v, start, plant, actions, beside, watch }: { v: CardView;
       break;
     }
     case 'person':
-      title = named(db?.roles[c.role]?.name, c.role);
+      title = T.card.person(named(db?.roles[c.role]?.name, c.role), c.tab);
       body = (
-        <dl>
-          <Row k={T.card.state}>
-            {c.doing.k === 'task' ? (
-              <>
-                <TaskIcon kind={c.doing.task} /> {T.why.taskBusy(T.tasks[c.doing.task] ?? c.doing.task)}
-              </>
-            ) : c.doing.k === 'walk' ? (
-              c.doing.exit ? (
-                T.card.doing.exit
+        <>
+          <dl>
+            <Row k={T.card.state}>
+              {c.doing.k === 'task' ? (
+                <>
+                  <TaskIcon kind={c.doing.task} /> {T.why.taskBusy(T.tasks[c.doing.task] ?? c.doing.task)}
+                  {c.learning ? <span data-test="card-learning"> — {T.card.learning(docName(c.learning))}</span> : null}
+                </>
+              ) : c.doing.k === 'walk' ? (
+                c.doing.exit ? (
+                  T.card.doing.exit
+                ) : (
+                  T.card.doing.walk
+                )
               ) : (
-                T.card.doing.walk
-              )
-            ) : (
-              T.card.doing[c.doing.k]
-            )}
-          </Row>
-          <Row k={T.card.shift}>{named(db?.shifts[c.shift]?.name, c.shift)}</Row>
-        </dl>
+                T.card.doing[c.doing.k]
+              )}
+            </Row>
+            <Row k={T.card.shift}>{named(db?.shifts[c.shift]?.name, c.shift)}</Row>
+            <Row k={T.card.skill}>{num(c.skill)}</Row>
+            <Row k={T.card.admission}>
+              <span className={c.adm.k === 'no' ? 'bad' : ''} data-test="card-adm">
+                {admText(c.adm)}
+              </span>
+            </Row>
+          </dl>
+          <div className="csec">{T.card.training}</div>
+          <ol className="hist" data-test="card-train">
+            {c.train.map(r => (
+              <li key={r.doc.code} className={r.ok ? '' : 'bad'}>
+                {r.rec ? T.card.trained(T.ref.doc(r.doc.code, r.rec.rev), dayText(r.rec.day), dayText(r.rec.until)) : T.card.untrained(docName(r.doc))}
+              </li>
+            ))}
+          </ol>
+        </>
       );
       break;
     case 'vehicle':

@@ -10,6 +10,7 @@ import { AREA, type Oee, oee, rhythm, shiftsOfDay, type Switches, switchesOf } f
 import { orderRisks, type OrderRisk } from '../engine/market';
 import { planOf } from '../engine/plant';
 import type { Batch, CashItem, DayLoss, Deviation, LineDay, MachineTimes, PlantState, TaskKind, WaitCause } from '../engine/types';
+import { type TrainSum, trainSum } from './people';
 import type { Thing } from './views';
 
 /** Планёрка в 08:00 суток `day` (номер дня от 1970-01-01). */
@@ -145,6 +146,8 @@ export interface MorningView {
   short: ShortRow[];
   broken: BrokenRow[];
   risk: RiskRow[];
+  /** допуски сейчас (Б3б): кто потеряет допуск в срок предупреждения и кто уже не допущен */
+  training: TrainSum;
   cash: { balance: number; day: number; next?: { due: number; item: CashItem; sum: number } };
   /** ваше место (3е): итог каждого взятого места за время на нём */
   seats: SeatSum[];
@@ -325,6 +328,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     short,
     broken,
     risk: orderRisks(db, s),
+    training: trainSum(db, s),
     cash: { balance: s.cash.balance, day: dayChange(s, s.t), ...(next ? { next: { due: next.due, item: next.item, sum: next.sum } } : {}) },
     seats: seatSums(db, s),
   };

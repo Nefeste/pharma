@@ -83,6 +83,18 @@ export function addWorkdays(z: number, n: number): number {
   return d;
 }
 
+/**
+ * Через `n` месяцев после дня `z`: то же число месяца, а если его в том месяце нет — последний день месяца (срок записи
+ * обучения, Б3б).
+ */
+export function addMonths(z: number, n: number): number {
+  const { y, m, d } = civilFromDays(z);
+  const k = y * 12 + (m - 1) + n;
+  const yy = Math.floor(k / 12);
+  const mm = k - yy * 12 + 1;
+  return Math.min(daysFromCivil({ y: yy, m: mm, d }), lastOfMonth(yy, mm));
+}
+
 /** Номер последнего дня месяца. */
 export function lastOfMonth(y: number, m: number): number {
   return daysFromCivil(m === 12 ? { y: y + 1, m: 1, d: 1 } : { y, m: m + 1, d: 1 }) - 1;

@@ -12,8 +12,9 @@ import { newParts } from './maint';
 import { newCustomers } from './market';
 import { planOf } from './plant';
 import { nominal } from './quality';
+import { seedTraining } from './train';
 import type { Ymd } from './core/calendar';
-import { type PlantEvent, type PlantState, SCHEMA } from './types';
+import { type Person, type PlantEvent, type PlantState, SCHEMA } from './types';
 
 type Raw = Record<string, unknown>;
 
@@ -212,6 +213,19 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
       const sm = samples[q.sample as string];
       const spec = db.materials[lots[sm?.lot as string]?.material as string]?.spec;
       if (spec) q.spec = inForce(db, 'specs', spec, momentOf(start, (sm.taken as number | undefined) ?? (raw.t as number)).day);
+    }
+    return raw;
+  },
+  // 17 → 18 (Б3б): у человека — табельный номер по порядку приёма и записи обучения. Записи — по правилу начала партии,
+  // но от дня сохранения: при загрузке никто не теряет допуск.
+  17: (raw, db) => {
+    const sc = db.scenarios[raw.scenario as string];
+    if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
+    const day = momentOf(raw.start as Ymd, raw.t as number).day;
+    for (const p of Object.values(raw.people as Record<string, Person>)) {
+      p.tab = sc.training.tab + Number(p.id.slice(1)) - 1;
+      p.train = {};
+      seedTraining(db, sc, p, day);
     }
     return raw;
   },

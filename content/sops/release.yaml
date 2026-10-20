@@ -1,0 +1,10 @@
+# Выпуск серии уполномоченным лицом — письменная процедура выпуска и отклонения продукции (GMP ЕАЭС, ч. I, п. 4.27).
+id: sop.release
+name: { ru: Выпуск серии, en: Batch release }
+doc: { code: SOP-0021, rev: 1, from: 2026-01-19, approved: role.qa-head }
+roles: [role.qp]
+for: { tasks: [qpDecide] }
+hours: 2
+every: 12
+source: [gmp-eaeu]
+review: draft

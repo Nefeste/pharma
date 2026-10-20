@@ -1,0 +1,11 @@
+# Хранение и перемещение паллет: размещение, перемещение, отбор, комплектация, отгрузка (процедуры на маркировку,
+# карантин и хранение — GMP ЕАЭС, ч. I, п. 4.24).
+id: sop.storage
+name: { ru: Хранение и перемещение паллет, en: Storage and pallet handling }
+doc: { code: SOP-0004, rev: 1, from: 2026-01-19, approved: role.production-head }
+roles: [role.storekeeper, role.driver]
+for: { tasks: [putaway, move, pick, transfer, return, toSampling, fromSampling, ship, casePick, load] }
+hours: 2
+every: 12
+source: [gmp-eaeu]
+review: draft

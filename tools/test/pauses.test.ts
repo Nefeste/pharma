@@ -34,10 +34,10 @@ describe('автопаузы', () => {
     expect(pauseOf('lotReleased')).toBeUndefined();
   });
 
-  test('чьё дело: производство — поломка, OOS, материал, планёрка; качество — OOS, отклонение, планёрка', () => {
+  test('чьё дело: производство — поломка, OOS, материал, планёрка; качество — OOS, отклонение, потеря допуска, планёрка', () => {
     const sorted = (k: readonly string[]) => [...k].sort();
     expect(sorted(stopKinds([], ['production']))).toEqual(sorted(['failure', 'investigation', 'lotRejected', 'materialLate', 'morning']));
-    expect(sorted(stopKinds([], ['quality']))).toEqual(sorted(['deviation', 'investigation', 'lotRejected', 'morning']));
+    expect(sorted(stopKinds([], ['quality']))).toEqual(sorted(['deviation', 'investigation', 'lotRejected', 'qualLost', 'morning']));
     expect(stopKinds([], ['commerce'])).toEqual(['orderRisk', 'morning']);
     expect(sorted(stopKinds([], ['supply']))).toEqual(sorted(['materialLate', 'morning', 'truckWait']));
     // директор и «место не выбрано» — всё
@@ -49,7 +49,7 @@ describe('автопаузы', () => {
   });
 
   test('отключённая автопауза не ставит мир на паузу', () => {
-    expect(stopKinds(['morning', 'oos'], ['quality'])).toEqual(['deviation']);
+    expect(stopKinds(['morning', 'oos'], ['quality'])).toEqual(['deviation', 'qualLost']);
     expect(stopKinds([...PAUSES], ['director'])).toEqual([]);
   });
 
@@ -92,6 +92,7 @@ describe('извещение ведёт на место', () => {
     expect(goOf(plant, { kind: 'orderRisk', order: 'O1', customer: 'cus.national', due: 0, missing: 1, pending: 0 })).toEqual({ panel: 'morning' });
     expect(goOf(plant, { kind: 'lotRejected', lot: 'L1', deviation: 'D1' })).toEqual({ panel: 'lab' });
     expect(goOf(plant, { kind: 'investigation', id: 'I1', batch: 'B2', lot: 'L1', method: 'test.dissolution', code: 'PA002' })).toEqual({ inv: 'I1' });
+    expect(goOf(plant, { kind: 'qualLost', person: 'E9', role: 'role.operator', tab: 1009, doc: 'SOP-0015' })).toEqual({ thing: { kind: 'person', n: 9 } });
     expect(goOf(plant, { kind: 'morning', day: 1 })).toBeUndefined();
   });
 });

@@ -163,8 +163,16 @@ first, or copy the working code of Bolnitsa on the same versions.
   cleanings — general and minor — and line changeovers with their work; a line's
   day — machine times, rated output over loading and working time, good tablets — and `oee()`; a batch's time by state;
   the line master's shift task and the rhythm coefficient), `tasks.ts` (tasks and the dispatcher: people,
-  vehicles, instruments; why a task waits; a person walking to a post is free and measured from where they are),
-  `staff.ts` (shifts; whether a person of a shift may take a task at a moment — shared with the schedule run; a free
+  vehicles, instruments; why a task waits; a person walking to a post is free and measured from where they are; only a
+  person admitted to everything the work and the vehicle need takes it, otherwise the task waits «нет допуска» with the
+  document), `quals.ts` (admissions: the training matrix — the roles of each procedure and test method, the same for all
+  revisions of a code; what a work needs to know — procedures of its task kind and of any work, the equipment and IPC
+  methods of a stage, the machines of a line, the method of a test, a vehicle's procedure; a person knows a document on a
+  day — a record on the revision in force or newer, not expired; which revision to learn and when — `ahead` days before a
+  new revision or the end of a record), `train.ts` (training: start records spread by a hash of person and code up to
+  `spread` days back; at midnight — a notice for an admission lost and a task to study at the person's post; the
+  knowledge check by the QA specialist or the QC head, never the trainee; the record with the check's day), `staff.ts`
+  (shifts; whether a person of a shift may take a task at a moment — shared with the schedule run; a free
   person walks to the post of their role, and to the exit 15 minutes before the end of the shift; where they are on the
   way; off-shift people leave through the entrance), `seats.ts` (the player's places — the director and four posts:
   whose each command is, the `seat` command, the log of places; a player's command of another's post is refused),
@@ -192,7 +200,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   top-bar cash with the player's places (`report.ts`); the lab queue and the X–Rm control chart of the in-process average
   tablet mass with its limits and special-cause signs, a lot under investigation and its steps' tests (`lab.ts`); the
   investigation board — what happened, participants, steps, findings, versions from the findings only, whether release
-  is proven, the debrief only once concluded (`inv.ts`); the schedule — the Gantt of the past, the running and
+  is proven, the debrief only once concluded (`inv.ts`); people and admissions — a person's admission today and what
+  they are losing within the warning period, training rows of the card, the training matrix of the reference with how
+  many people of a role are admitted, the meeting's summary — records are the plant's knowledge, not truth
+  (`people.ts`); the schedule — the Gantt of the past, the running and
   the schedule run with the player's draft, the old bars of what the draft moves, and the ghost of a dragged batch order
   (`plan.ts`), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how far the window's clock ran ahead
   of the last slice; at most one `tick` in flight); the plan run's own thread — a second Web Worker over the same engine
@@ -238,10 +249,12 @@ first, or copy the working code of Bolnitsa on the same versions.
   (`icons.tsx`), the content base for names (`db.ts`); `src/i18n/` — every player-facing string, Russian
   and English, and number, quantity, money, duration and date formats.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML (with part 4 —
-  `investigations/`: the investigation model — candidates, findings, steps);
+  `investigations/`: the investigation model — candidates, findings, steps; with Б3б — `sops/`: procedures with the
+  document header, the works they are needed for, the roles that learn them, hours to study and the term in months);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
-  plan rules in `plan.ts`: doors on walls, docks on outer walls, class D only through airlocks, reachability, posts on
+  the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
+  code share roles and works, start records younger than the shortest term; plan rules in `plan.ts`: doors on walls, docks on outer walls, class D only through airlocks, reachability, posts on
   walkable floor; models in
   code — parts inside the footprint, round cylinders, upright hoppers, items only on belts: `modelErrors` in `load.ts`).
 - `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.

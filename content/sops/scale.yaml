@@ -1,0 +1,11 @@
+# Работа на оборудовании стадии — четкие инструкции по эксплуатации основного оборудования (GMP ЕАЭС, ч. I, п. 4.30): по
+# процедуре на класс оборудования, нужна стадиям карты на нём.
+id: sop.scale
+name: { ru: Работа на весах с ламинарным боксом, en: Scales and laminar-flow booth operation }
+doc: { code: SOP-0009, rev: 1, from: 2026-01-19, approved: role.production-head }
+roles: [role.operator]
+for: { equipment: [eq.scale] }
+hours: 2
+every: 12
+source: [gmp-eaeu]
+review: draft

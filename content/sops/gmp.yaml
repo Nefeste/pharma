@@ -1,0 +1,15 @@
+# Процедуры (СОП, Б3б; docs/specs/2026-10-vertical-slice.md): регламентирующие документы с шапкой Б3а. У процедуры — роли,
+# которые по ней учатся (строка матрицы обучения), работы, которым она нужна (`for`: виды задач, классы оборудования
+# стадий, машины линии, техника; `any` — любая работа, кроме самого обучения), часы на изучение и срок, через который
+# учатся снова, — месяцы. Учить всех, кто бывает в производстве, на складе и в лаборатории, первично и непрерывно, с
+# записями; необученных в зоны производства и контроля не допускают (GMP ЕАЭС, ч. I, пп. 2.10–2.13). Названия, часы и сроки
+# — гипотезы.
+id: sop.gmp
+name: { ru: Основы GMP и гигиена персонала, en: GMP basics and personal hygiene }
+doc: { code: SOP-0001, rev: 1, from: 2026-01-19, approved: role.qa-head }
+roles: [role.storekeeper, role.driver, role.sampler, role.analyst, role.qc-head, role.qa, role.qp, role.operator, role.master, role.line-operator, role.packer, role.mechanic, role.setter]
+for: { any: true }
+hours: 4
+every: 12
+source: [gmp-eaeu]
+review: draft

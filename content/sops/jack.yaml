@@ -1,0 +1,10 @@
+# Работа с рохлей: учат по обязанностям (GMP ЕАЭС, ч. I, п. 2.11); что работа на технике — своя процедура, — гипотеза.
+id: sop.jack
+name: { ru: Работа с рохлей, en: Hand pallet truck operation }
+doc: { code: SOP-0006, rev: 1, from: 2026-01-19, approved: role.production-head }
+roles: [role.storekeeper, role.driver]
+for: { vehicles: [veh.jack] }
+hours: 1
+every: 12
+source: [gmp-eaeu]
+review: draft

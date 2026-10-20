@@ -1,0 +1,9 @@
+id: sop.blender
+name: { ru: Работа на контейнерном смесителе, en: Bin blender operation }
+doc: { code: SOP-0013, rev: 1, from: 2026-01-19, approved: role.production-head }
+roles: [role.operator]
+for: { equipment: [eq.blender] }
+hours: 2
+every: 12
+source: [gmp-eaeu]
+review: draft

@@ -17,9 +17,21 @@
   сборка и валидатор базы, типы, тесты, сборка страницы — те же команды, что в `AGENTS.md` («Commands»). Electron там не
   скачивается. Bun в CI — 1.3.11, как у «Больницы»; тесты проходят и на нём, и на 1.4.
 - Сборка для ПК — только на тег версии `vX.Y.Z` ([`.github/workflows/build.yml`](../.github/workflows/build.yml)):
-  Windows x64 одним zip, из Linux, без wine, как у «Больницы». Тег ставит владелец; тег сверяется с версией в
-  `package.json`. Файл релиза — `Farmzavod-<версия>-win-x64.zip`; `Farmzavod` — рабочее имя файлов, марку решит
-  владелец.
+  Windows x64, из Linux, без wine, как у «Больницы». Тег ставит владелец; тег сверяется с версией в `package.json`.
+  `Farmzavod` — рабочее имя файлов, марку решит владелец. В релизе два файла:
+  - `Farmzavod-<версия>-win-x64.zip` — полная сборка, около 145 МБ: распаковать в любую папку;
+  - `Farmzavod-<версия>-win-x64-update.zip` — обновление, около 3,5 МБ: один `resources/app.asar`, распаковать в папку
+    игры с заменой файла. Между выпусками меняется только он: остальной корень — архив Electron той же версии байт в
+    байт. Сумму asar в exe не пишем (`disableAsarIntegrity` в `package.json`): проверку целостности asar в Electron
+    включает fuse `EnableEmbeddedAsarIntegrityValidation`
+    ([ASAR Integrity](https://electronjs.org/docs/latest/tutorial/asar-integrity)), у нас он выключен, и сумма лишь
+    меняла бы exe на 61 байт с каждой версией. Поэтому обновление подходит к установке любого выпуска на той же версии
+    Electron — она в описании релиза; все выпуски 0.0.1–0.0.31 — на Electron 44.5.1. Сменили Electron — ставить полный
+    архив. Включим проверку целостности — exe снова будет меняться с каждой версией, а один он сжимается до 106 МБ:
+    тогда обновление одним файлом теряет смысл.
+
+  Через Steam обновления и так придут разницей: SteamPipe делит файлы на куски около 1 МБ и качает только изменившиеся
+  ([Uploading to Steam](https://partner.steamgames.com/doc/sdk/uploading)).
 
 ## Сборка у себя
 
@@ -27,7 +39,7 @@
 npm ci                 # с Electron; для одних проверок — ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
 npm run build          # база + страница и поток расчёта → dist/
 npm run electron       # окно игры
-npm run dist:win       # zip для Windows x64 → release/ (из Linux, без wine) — то же, что в релизе
+npm run dist:win       # оба zip для Windows x64 → release/ (из Linux, без wine) — то же, что в релизе
 ```
 
 `dist/`, `release/` и `src/content/generated/` в репозиторий не попадают.

@@ -16,7 +16,7 @@
     "e2e": "node tools/app/e2e.mjs",
     "bench:headless": "node tools/app/bench.mjs",
     "dist:linux": "npm run build && electron-builder --linux --publish never",
-    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:win": "npm run build && electron-builder --win --publish never && node tools/app/update-zip.mjs",
     "bench": "bun tools/bench/bench.ts"
   },
   "devDependencies": {
@@ -48,6 +48,7 @@
       "package.json"
     ],
     "asar": true,
+    "disableAsarIntegrity": true,
     "electronLanguages": [
       "ru",
       "en-US"

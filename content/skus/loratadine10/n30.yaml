@@ -1,0 +1,22 @@
+# Товарная позиция: 30 таблеток — три блистера по 10 в пачке с инструкцией. Пачек в ящике, ящиков на паллете, плёнки и
+# фольги на блистер, брак на наладку и цены — гипотезы.
+id: sku.loratadine10.n30
+name: { ru: "Лоратадин, таблетки 10 мг, №30", en: "Loratadine 10 mg tablets, 30" }
+product: prd.loratadine10
+fg: mat.fg.loratadine10-n30
+format: l30
+perBlister: 10
+blisters: 3
+blister:
+  - { material: mat.pk.pvc, g: 0.6 }
+  - { material: mat.pk.alu, g: 0.3 }
+carton:
+  - { material: mat.pk.carton-l30, n: 1 }
+  - { material: mat.pk.leaflet-lor, n: 1 }
+case: { material: mat.pk.case, per: 120 }
+pallet: { cases: 40 }
+# на наладку: блистеров и пачек; пачек в запас на заминки картонажной
+waste: { blisters: 50, cartons: 20, jams: 40 }
+# цена завода за пачку и зарегистрированная предельная цена, ₽ без НДС (гипотезы)
+price: 46
+regPrice: 49

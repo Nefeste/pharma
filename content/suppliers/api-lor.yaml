@@ -1,0 +1,11 @@
+# Поставщик АФС лоратадина — вымышленный (ADR 0004). Цены, сроки и условия — гипотезы геймдизайна, рубли без НДС.
+id: sup.api-lor
+name: { ru: Поставщик лоратадина, en: Loratadine API supplier }
+lead: [50, 80]
+prepay: 50
+payDays: 30
+approved: true
+# доля партий с браком, %: их ловит входной контроль (гипотеза)
+defects: 4
+items:
+  mat.api.loratadine: { price: 14000, moq: 25 }

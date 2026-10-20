@@ -180,14 +180,15 @@ export type Attr =
   | 'friability'
   | 'disintegration'
   | 'dissolution'
-  | 'granule';
+  | 'granule'
+  | 'uniformity';
 
 /**
  * Единицы свойства в записях и в движке. Проценты — в долях 1/10 000 (99,8 % — 9 980); ньютоны — в сотых; минуты — в
  * секундах; микрометры — целыми; качественное — 10 000 «соответствует» или 0 «нет». `whole` — доля от целого: истинное
  * значение не выходит за 0–100 %.
  */
-export const ATTRS: Record<Attr, { unit: 'qual' | 'pct' | 'N' | 'min' | 'um'; whole?: true }> = {
+export const ATTRS: Record<Attr, { unit: 'qual' | 'pct' | 'N' | 'min' | 'um' | 'av'; whole?: true }> = {
   identity: { unit: 'qual' },
   appearance: { unit: 'qual' },
   assay: { unit: 'pct', whole: true },
@@ -200,10 +201,12 @@ export const ATTRS: Record<Attr, { unit: 'qual' | 'pct' | 'N' | 'min' | 'um'; wh
   particle: { unit: 'um' },
   /** средний размер гранул гранулята (часть 4): его меряет ситовой анализ архивного гранулята */
   granule: { unit: 'um' },
+  /** однородность дозирования (Б2б): приемлемое значение AV по 10 таблеткам — число без единицы, годно до 15,0 */
+  uniformity: { unit: 'av' },
 };
 
-/** Во сколько раз значение в движке больше записанного: % → доли 1/10 000, Н → сотые, мин → с, мкм → мкм. */
-export const ATTR_SCALE = { qual: 1, pct: 100, N: 100, min: 60, um: 1 } as const;
+/** Во сколько раз значение в движке больше записанного: % → доли 1/10 000, Н → сотые, мин → с, мкм → мкм, AV → сотые. */
+export const ATTR_SCALE = { qual: 1, pct: 100, N: 100, min: 60, um: 1, av: 100 } as const;
 
 /** Качественные свойства: в спецификации у них нет пределов. */
 export const QUALITATIVE: readonly Attr[] = ['identity', 'appearance'];

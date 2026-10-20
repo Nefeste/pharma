@@ -135,6 +135,11 @@ export function supplyDay(db: ContentDb, s: PlantState, notices: Notice[]) {
   const byLot = containersByLot(s);
   const per = planUse(db, s, 1000, byLot);
   const lines = new Map<Id, { material: Id; qty: number }[]>();
+  // паллет под количество материала — по его таре: у строк одного заказа тара разная
+  const palletsOf = (m: Id, qty: number) => {
+    const k = db.containers[db.materials[m].container];
+    return Math.ceil(qty / (k.perPallet * k.capacity));
+  };
   for (const material of per.keys()) {
     const sup = Object.values(db.suppliers)
       .filter(x => x.approved && x.items[material])
@@ -148,7 +153,7 @@ export function supplyDay(db: ContentDb, s: PlantState, notices: Notice[]) {
     // паллет в заказе этого поставщика — не больше половины зоны карантина на весь заказ
     const c = db.containers[db.materials[material].container];
     const pallet = c.perPallet * c.capacity;
-    const taken = (lines.get(sup.id) ?? []).reduce((n, l) => n + Math.ceil(l.qty / pallet), 0);
+    const taken = (lines.get(sup.id) ?? []).reduce((n, l) => n + palletsOf(l.material, l.qty), 0);
     const qty = Math.min(Math.max(sup.items[material].moq, point + use(every) - have), (room - taken) * pallet);
     if (qty < sup.items[material].moq) continue;
     lines.set(sup.id, [...(lines.get(sup.id) ?? []), { material, qty }]);

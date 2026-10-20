@@ -2,10 +2,12 @@
 import { type Attr, ATTR_SCALE, ATTRS, PARAM_SCALE, type ParamUnit } from '../content/types';
 import { num, T } from '../i18n';
 
-/** Значение свойства в единицах движка — словами с единицей: «71,8 %», «62 Н», «612 мкм». */
+/** Значение свойства в единицах движка — словами с единицей: «71,8 %», «62 Н», «612 мкм»; AV — без единицы. */
 export function attrText(a: Attr, v: number): string {
   const unit = ATTRS[a].unit;
   if (unit === 'qual') return num(v);
+  // приемлемое значение однородности дозирования — число без единицы: «4,2»
+  if (unit === 'av') return attrNum(a, v);
   return `${attrNum(a, v)} ${T.units[unit]}`;
 }
 
@@ -13,7 +15,7 @@ export function attrText(a: Attr, v: number): string {
 export function attrNum(a: Attr, v: number): string {
   const unit = ATTRS[a].unit;
   if (unit === 'qual') return num(v);
-  return num(v / ATTR_SCALE[unit], unit === 'pct' || unit === 'min' ? 1 : 0);
+  return num(v / ATTR_SCALE[unit], unit === 'pct' || unit === 'min' || unit === 'av' ? 1 : 0);
 }
 
 /** Режим стадии в единицах движка — словами с единицей: «17,7 мин», «13,0 кН». */

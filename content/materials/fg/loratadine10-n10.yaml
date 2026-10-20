@@ -1,0 +1,14 @@
+# Готовая продукция — пачки в гофроящиках на паллете. Срок годности — 2 года, как у таблеток в публичном отчёте
+# (meb-loratadine-2022); число архивных образцов — гипотеза.
+id: mat.fg.loratadine10-n10
+kind: fg
+name: { ru: "Лоратадин, таблетки 10 мг, №10", en: "Loratadine 10 mg tablets, 10" }
+unit: pcs
+container: cnt.case.fg
+storage: room
+shelf: 24
+spec: spec.fg.loratadine10
+# архивные образцы серии, пачек
+sample: 6
+source: [meb-loratadine-2022]
+review: draft

@@ -689,20 +689,24 @@ try {
     if (await page.evaluate(() => !!document.querySelector('#inv'))) fail('расследование: Esc не закрыл');
   }
 
-  // справочник завода (Б1а, Б1в): F1 — «Что и как делает завод, на чём, кем и с кем»; у карты прототипа шесть стадий — по
+  // справочник завода (Б1а, Б1в): F1 — «Что и как делает завод, на чём, кем и с кем»; у каждой карты шесть стадий — по
   // карте и по факту сделанных серий; столбец «По карте» упорядочивается в обе стороны; у позиции — 120 пачек в ящике;
   // поиск сужает таблицы вкладки, а цифры в поле поиска — текст, не скорость; Esc закрывает
   {
     await page.keyboard.press('F1');
     await page.waitForFunction(() => !!window.__game.store.get().ref.view, null, { timeout: 20_000 });
     await frames(2);
-    const rec = await page.evaluate(() => {
-      const rows = [...document.querySelectorAll('[data-test=ref-stages] tbody tr')];
-      const cell = (r, i) => (r.children[i]?.innerText ?? '').replace(/\s+/g, ' ').trim();
-      return { rows: rows.length, plan: rows.filter(r => /\d/.test(cell(r, 5))).length, fact: rows.filter(r => /последняя/.test(cell(r, 6))).length, first: rows[0] ? `${cell(rows[0], 1)}: ${cell(rows[0], 5)}; ${cell(rows[0], 6)}` : '' };
-    });
-    if (rec.rows !== 6 || rec.plan !== 6 || rec.fact !== 6) fail(`справочник: стадий ${rec.rows}, по карте ${rec.plan}, по факту ${rec.fact}`);
-    else ok(`справочник: шесть стадий по карте и по факту — «${rec.first}»`);
+    // карт две (Б2б): у каждой шесть стадий по карте; по факту — у той, чьи серии уже сделаны
+    const recs = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-test=ref-stages]')].map(t => {
+        const rows = [...t.querySelectorAll('tbody tr')];
+        const cell = (r, i) => (r.children[i]?.innerText ?? '').replace(/\s+/g, ' ').trim();
+        return { rows: rows.length, plan: rows.filter(r => /\d/.test(cell(r, 5))).length, fact: rows.filter(r => /последняя/.test(cell(r, 6))).length, first: rows[0] ? `${cell(rows[0], 1)}: ${cell(rows[0], 5)}; ${cell(rows[0], 6)}` : '' };
+      }),
+    );
+    const done = recs.find(r => r.fact === 6);
+    if (recs.length !== 2 || recs.some(r => r.rows !== 6 || r.plan !== 6) || !done) fail(`справочник: карты — ${recs.map(r => `стадий ${r.rows}, по карте ${r.plan}, по факту ${r.fact}`).join('; ')}`);
+    else ok(`справочник: две карты по шесть стадий, по факту — «${done.first}»`);
     await page.screenshot({ path: join(out, 'e2e-ref.png') });
     // порядок: «По карте» — короткие стадии вверху, ещё раз — длинные; первая строка — та, что по числу крайняя
     const firstStage = () => page.evaluate(() => document.querySelector('[data-test=ref-stages] tbody tr td:nth-child(2)')?.innerText.split('\n')[0] ?? '');
@@ -734,7 +738,11 @@ try {
     await page.click('[data-test=ref-search]');
     await page.keyboard.type('№20');
     await frames(1);
-    const found = await page.evaluate(() => ({ rows: [...document.querySelectorAll('[data-test=ref-skus] tbody tr')].map(r => r.innerText.split('\t')[0]), speed: window.__game.speed }));
+    // позиции — таблицей на продукт: у лоратадина «№20» нет, там строка «Ничего не нашлось»
+    const found = await page.evaluate(() => ({
+      rows: [...document.querySelectorAll('[data-test=ref-skus] tbody tr')].map(r => r.innerText.split('\t')[0]).filter(t => t.trim() !== 'Ничего не нашлось'),
+      speed: window.__game.speed,
+    }));
     if (found.rows.length !== 1 || !/№20/.test(found.rows[0]) || found.speed !== speed0) fail(`справочник: поиск «№20» — строк ${found.rows.length} (${found.rows.join(' | ')}), скорость ${speed0} → ${found.speed}`);
     else ok(`справочник: поиск «№20» — одна позиция «${found.rows[0]}», скорость не тронута`);
     await page.fill('[data-test=ref-search]', 'пресс');

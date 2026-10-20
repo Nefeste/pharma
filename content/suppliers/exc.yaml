@@ -11,3 +11,4 @@ items:
   mat.exc.povidone: { price: 900, moq: 50 }
   mat.exc.mcc: { price: 320, moq: 100 }
   mat.exc.mgst: { price: 600, moq: 20 }
+  mat.exc.lactose: { price: 260, moq: 250 }

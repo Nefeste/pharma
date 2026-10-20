@@ -1,0 +1,12 @@
+# Однородность дозирования (Б2б): десять таблеток — каждая по отдельности на ВЭЖХ, приемлемое значение AV = |M − X̄| + k·s
+# (jp-602). Времена и погрешность — гипотезы; настоящие — по НД и валидации методики.
+id: test.uniformity
+name: { ru: Однородность дозирования (ВЭЖХ), en: Uniformity of dosage units (HPLC) }
+attr: uniformity
+inst: inst.hplc
+prep: 120
+run: 300
+unattended: true
+sd: 0.6
+source: [jp-602]
+review: draft

@@ -1,0 +1,94 @@
+# Технологическая карта лоратадина 10 мг (Б2б): тот же путь, что у парацетамола, на том же оборудовании. В публичном
+# отчёте — просеивание сырья, грануляция, калибровка, опудривание, смешивание, прессование (meb-loratadine-2022); сушка там
+# не названа — карта сушит, как при влажной грануляции (сверить). Состав — лактоза, МКЦ, крахмал, магния стеарат, как у
+# зарегистрированных таблеток (ru-loratadine); количества, размер серии, времена, режимы, разбросы, потери и показатели
+# балка — гипотезы геймдизайна, не чей-то настоящий регламент.
+id: rcp.loratadine10.wet.v1
+name: { ru: "Лоратадин 10 мг, влажная грануляция, ред. 1", en: "Loratadine 10 mg, wet granulation, rev. 1" }
+product: prd.loratadine10
+# 300 000 таблеток по 200 мг
+batch: { kg: 60, units: 300000 }
+bom:
+  - { material: mat.api.loratadine, kg: 3, potency: true }
+  - { material: mat.exc.lactose, kg: 41.4 }
+  - { material: mat.exc.starch, kg: 4.2 }
+  - { material: mat.exc.mcc, kg: 10.8, qs: true }
+  - { material: mat.exc.mgst, kg: 0.6 }
+stages:
+  # отвешивание: взвешивает один, проверяет второй
+  - id: dispense
+    room: dispensing
+    equipment: [eq.scale]
+    staff: { role: role.operator, n: 2 }
+    time: { setup: 20, perComponent: 15, spread: 10 }
+  # грануляция: первое смешивание субстанции с другими ингредиентами — дата производства, месяц и год в номере серии
+  - id: granulate
+    mix: true
+    room: granulation
+    equipment: [eq.hsm]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 15, perLoad: 30, loads: 1, spread: 5 }
+    params:
+      - { id: impeller, unit: rpm, target: 150, range: [120, 180], sd: 8 }
+      - { id: wetMassing, unit: min, target: 3, range: [2, 5], sd: 0.3 }
+      # вода очищенная на серию
+      - { id: water, unit: kg, target: 12, range: [10.5, 13.5], sd: 0.3 }
+    loss: [0.5, 0.2]
+  - id: dry
+    room: granulation
+    equipment: [eq.fbd]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 10, perLoad: 70, loads: 1, spread: 5 }
+    params:
+      - { id: inletTemp, unit: C, target: 55, range: [50, 60], sd: 1.5 }
+    ipc:
+      - { test: test.lod, max: 3.0 }
+    loss: [0.5, 0.2]
+  # калибровка: сито калибратора — 0,8 мм (гипотеза)
+  - id: mill
+    room: blending
+    equipment: [eq.mill]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 15, kgPerHour: 300, spread: 5 }
+    loss: [0.3, 0.1]
+    screen: 0.8
+  # опудривание: магния стеарат в контейнерном смесителе
+  - id: blend
+    room: blending
+    equipment: [eq.blender]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 10, perLoad: 15, loads: 1, spread: 5 }
+    params:
+      - { id: lubeTime, unit: min, target: 4, range: [3, 6], sd: 0.4 }
+    loss: [0.1, 0.05]
+  # таблетирование: таблетка меньше и легче, пресс идёт быстрее, сила — меньше
+  - id: compress
+    room: compression
+    equipment: [eq.press, eq.deduster]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 30, unitsPerHour: 120000, spread: 5 }
+    params:
+      - { id: force, unit: kN, target: 8, range: [6, 10], sd: 0.4 }
+    ipc:
+      - { test: test.ipc.mass, every: 30, min: 97, max: 103 }
+      - { test: test.ipc.hardness, every: 30, min: 40, max: 90 }
+      - { test: test.ipc.friability, every: 60, max: 1 }
+      - { test: test.ipc.disintegration, every: 120, max: 15 }
+    loss: [1.0, 0.3]
+bulk: mat.bulk.loratadine10
+# показатели балка без причин: номинал и разброс от серии к серии; масса — доля от цели 200 мг; растворение — за 45 мин
+# (в отчёте — больше 85 % за 15 мин); однородность дозирования — приемлемое значение AV по 10 таблеткам; средний размер
+# гранул, мкм. Порядок важен: показатель, от которого зависит другой (масса таблетки → содержание), считается раньше
+quality:
+  moisture: [2.2, 0.2]
+  mass: [100, 0.4]
+  assay: [100, 0.8]
+  hardness: [60, 4]
+  friability: [0.4, 0.05]
+  disintegration: [4, 0.6]
+  dissolution: [96, 1.2]
+  granule: [250, 25]
+  uniformity: [4.5, 1.0]
+yield: { expected: 98, alarm: 95 }
+source: [meb-loratadine-2022, ru-loratadine, fda-supac-me, gmp-eaeu, ema-fdf]
+review: draft

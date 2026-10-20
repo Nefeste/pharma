@@ -5,9 +5,12 @@ name: { ru: Национальный дистрибьютор, en: National dist
 payDays: 60
 order: { days: [1, 3, 5], hour: 10, lead: [3, 5] }
 minShelf: 70
-# спрос — под мощность завода: вместе с региональным около трёх четвертей серии в рабочий день (Б2в)
+# спрос — под мощность завода: вместе с региональным около трёх четвертей серии в рабочий день (Б2в); с лоратадином
+# (Б2б) — две трети серий на парацетамол, треть на лоратадин
 demand:
-  sku.paracetamol500.n20: 2600
-  sku.paracetamol500.n10: 1800
+  sku.paracetamol500.n20: 1730
+  sku.paracetamol500.n10: 1200
+  sku.loratadine10.n10: 1430
+  sku.loratadine10.n30: 715
 source: [gdp-eaeu, gk-rf]
 review: draft

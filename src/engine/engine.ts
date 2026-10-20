@@ -25,6 +25,7 @@ import { goHome, LAST_CALL, postArrive, toPosts } from './staff';
 import { createLot, findSlot } from './stock';
 import { placePo, supplyDay } from './supply';
 import { dispatch, release } from './tasks';
+import { seedTraining, trainDay, trainDone } from './train';
 import { type Command, type Notice, type PlantEvent, type PlantState, SCHEMA } from './types';
 import { truckArrives, wmsDone } from './wms';
 
@@ -85,11 +86,14 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     shiftTasks: [],
   };
   s.losses.push(newLoss(momentOf(s.start, s.t).day));
-  // люди — у входа, техника — на стоянке, приборы — в лаборатории по плану
+  // люди — у входа, с табельными номерами по порядку приёма и записями обучения (Б3б); техника — на стоянке, приборы — в
+  // лаборатории по плану
+  const startDay = momentOf(s.start, s.t).day;
   for (const row of sc.staff) {
     for (let i = 0; i < row.n; i++) {
-      const id = `E${(s.next.E = (s.next.E ?? 0) + 1)}`;
-      s.people[id] = { id, role: row.role, shift: row.shift, skill: row.skill, x: plan.entrance.x, z: plan.entrance.z };
+      const n = (s.next.E = (s.next.E ?? 0) + 1);
+      const p = (s.people[`E${n}`] = { id: `E${n}`, role: row.role, shift: row.shift, skill: row.skill, tab: sc.training.tab + n - 1, train: {}, x: plan.entrance.x, z: plan.entrance.z });
+      seedTraining(db, sc, p, startDay);
     }
   }
   for (const row of sc.vehicles) {
@@ -130,6 +134,8 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   for (const b of sc.batches) placeOrder(db, s, { kind: 'order', recipe: b.recipe, notBefore: today + b.day * DAY + BATCH_HOUR, by: 'scenario', ...(b.sku ? { sku: b.sku } : {}) }, out);
   // происшествие сценария (часть 4): корень по жребию зерна — скрытое
   newIncident(db, s);
+  // кому пора учиться уже на старте (Б3б)
+  trainDay(db, s, out);
   settle(db, s);
   return s;
 }
@@ -275,6 +281,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       schedule(s.agenda, s.t + HOUR, { kind: 'hour' });
       schedule(s.agenda, s.t + HOUR - LAST_CALL, { kind: 'leave' });
       for (const p of Object.values(s.people)) goHome(db, s, p);
+      // полночь: кто потерял допуск, кому пора учиться (Б3б)
+      if (momentOf(s.start, s.t).sec === 0) trainDay(db, s, notices);
       startSampling(db, s);
       cashHour(db, s, notices);
       maintStep(db, s);
@@ -300,7 +308,7 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       const t = s.tasks[ev.id];
       if (!t || t.v !== ev.v || t.state !== 'busy') return;
       release(db, s, t);
-      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices) && !maintDone(db, s, t, notices) && !invDone(db, s, t, notices)) wmsDone(db, s, t, notices);
+      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices) && !maintDone(db, s, t, notices) && !invDone(db, s, t, notices) && !trainDone(db, s, t)) wmsDone(db, s, t, notices);
       // паллета ГП уехала с места паллетирования — у линии освободилось место; машину линии починили — она снова в работе
       if ((t.kind === 'putaway' || t.kind === 'repair') && t.line) lineUpdate(db, s, s.lines[t.line], notices);
       if (t.kind === 'putaway' || t.kind === 'stage') startSampling(db, s);

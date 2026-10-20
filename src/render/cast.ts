@@ -70,6 +70,7 @@ export const ROLE_DRESS: Record<Id, { use: Use; color: number }> = {
   'role.qa': { use: 'coat', color: 0xf2f4f4 },
   'role.qc-head': { use: 'office', color: 0xffffff },
   'role.production-head': { use: 'office', color: 0xffffff },
+  'role.qa-head': { use: 'office', color: 0xffffff },
   'role.qp': { use: 'office', color: 0xffffff },
 };
 /** Кого нет в таблице — белый халат. */

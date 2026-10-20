@@ -1,0 +1,9 @@
+id: sop.fbd
+name: { ru: Работа на сушилке с псевдоожиженным слоем, en: Fluid-bed dryer operation }
+doc: { code: SOP-0011, rev: 1, from: 2026-01-19, approved: role.production-head }
+roles: [role.operator]
+for: { equipment: [eq.fbd] }
+hours: 3
+every: 12
+source: [gmp-eaeu]
+review: draft

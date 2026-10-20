@@ -6,6 +6,8 @@
 // - ключи источников есть в таблице docs/10-domain.md, §9;
 // - коды материалов и документов уникальны и по формату, у редакций документа — разные дни введения, и на начало
 //   сценария действует всё, что ему нужно (Б3а);
+// - кто делает работу, тот и учится по её процедурам и методикам: каждая роль, которой движок даёт работу с требованием,
+//   есть в матрице обучения документа (Б3б);
 // - числа переводятся в единицы движка (docs/04-data-model.md, §2): кг → мг, г → мг, ₽ → копейки, м → см, % → доли
 //   1/10 000, минуты → секунды.
 // Ошибка любой записи останавливает сборку: база с битой ссылкой в игру не попадает.
@@ -43,10 +45,12 @@ import {
   type Scenario,
   type Shift,
   type Sku,
+  type Sop,
   type Spare,
   type Spec,
   type SpecLine,
   type Supplier,
+  type TaskKind,
   type TestMethod,
   type UnitType,
   type VehicleType,
@@ -54,7 +58,14 @@ import {
 import { civilFromDays, daysFromCivil } from '../../src/engine/core/calendar';
 import { fnv1a, stableJson } from '../../src/engine/core/hash';
 import { DOC_KINDS, type DocKind, headOf, inForce, revisions } from '../../src/engine/docs';
-import { KINDS, type Kind } from './schema';
+import { QC } from '../../src/engine/lab';
+import { LINE } from '../../src/engine/line';
+import { MAINT } from '../../src/engine/maint';
+import { MES } from '../../src/engine/mes';
+import { QA } from '../../src/engine/qa';
+import { CHECKERS } from '../../src/engine/train';
+import { WMS } from '../../src/engine/wms';
+import { KINDS, type Kind, WORKS } from './schema';
 import { planErrors } from './plan';
 
 const ROOT = join(import.meta.dir, '../..');
@@ -219,7 +230,9 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     if (t.inst) need(raw.instruments[t.inst], `методика ${t.id}: нет прибора ${t.inst}`);
     need(!t.unattended || t.inst, `методика ${t.id}: без прибора сама не работает`);
     need(!qual(t.attr) || t.sd === 0, `методика ${t.id}: ${t.attr} — качественное свойство, погрешности у него нет`);
-    tests[t.id] = { ...t, doc: headDoc(t.doc, `методика ${t.id}`), prep: sec(t.prep), run: sec(t.run), sd: attrVal(t.attr, t.sd) };
+    const { hours, ...rest } = t;
+    for (const r of t.roles) need(raw.roles[r], `методика ${t.id}: учится роль ${r} — нет такой роли`);
+    tests[t.id] = { ...rest, doc: headDoc(t.doc, `методика ${t.id}`), prep: sec(t.prep), run: sec(t.run), sd: attrVal(t.attr, t.sd), study: sec(hours * 60) };
   }
   const specs: Record<string, Spec> = {};
   for (const sp of Object.values(raw.specs)) {
@@ -739,6 +752,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       wear: Object.fromEntries(Object.entries(s.wear).map(([k, v]) => [k, share(v)])),
       maint: Object.fromEntries(Object.entries(s.maint).map(([k, v]) => [k, share(v)])),
       norm: share(s.norm),
+      training: { ...s.training, check: sec(s.training.check) },
       ...(s.incident ? { incident: incidentOf(s.incident, s.batches.length, where) } : {}),
     };
   }
@@ -769,6 +783,18 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     for (const sku of Object.keys(c.demand)) need(skus[sku], `покупатель ${c.id}: нет позиции ${sku}`);
     customers[c.id] = { ...c, order: { ...c.order, days: [...new Set(c.order.days)].sort().map(d => d - 1) }, minShelf: share(c.minShelf) };
   }
+  // процедуры (Б3б): шапка документа, роли матрицы и работы — из базы; часы — в секунды
+  const sops: Record<string, Sop> = {};
+  for (const x of Object.values(raw.sops)) {
+    const where = `процедура ${x.id}`;
+    for (const r of x.roles) need(roles[r], `${where}: учится роль ${r} — нет такой роли`);
+    for (const e of x.for.equipment ?? []) need(equipment[e], `${where}: нет оборудования ${e}`);
+    for (const m of x.for.machines ?? []) need(machines[m], `${where}: нет машины ${m}`);
+    for (const v of x.for.vehicles ?? []) need(vehicles[v], `${where}: нет техники ${v}`);
+    const { hours, ...rest } = x;
+    sops[x.id] = { ...rest, doc: headDoc(x.doc, where), study: sec(hours * 60) };
+  }
+  learnErrors(raw, sops, tests, need);
   // коды (Б3а): у материала и запчасти — внутренний, первая цифра — вид; у каждого свой
   const matCodes = new Map<string, string>();
   const coded = [...Object.values(materials).map(m => ({ id: m.id, code: m.code, kind: m.kind as keyof typeof CODE_KIND })), ...Object.values(spares).map(sp => ({ id: sp.id, code: sp.code, kind: 'spare' as const }))];
@@ -780,7 +806,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   }
   // документы: у редакций одного кода — разные дни введения и номер растёт с днём, поэтому в любой день действует не
   // больше одной; у редакций карты — один продукт; инструкция по упаковке — у каждой позиции своя, пока она часть позиции
-  const docDb = { specs, tests, recipes, skus };
+  const docDb = { specs, tests, recipes, skus, sops };
   for (const kind of DOC_KINDS) {
     const byCode = new Map<string, string[]>();
     for (const [id, r] of Object.entries(docDb[kind] as Record<string, { doc: DocHead }>)) byCode.set(r.doc.code, [...(byCode.get(r.doc.code) ?? []), id]);
@@ -793,6 +819,14 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       });
       if (kind === 'recipes') need(new Set(ids.map(id => recipes[id].product)).size === 1, `карта ${code}: редакции ${ids.join(', ')} — разных продуктов`);
       if (kind === 'skus') need(ids.length === 1, `инструкция по упаковке ${code}: одна у позиций ${ids.join(', ')}, а у каждой — своя`);
+      // матрица обучения и требования — у документа, а не у редакции (Б3б)
+      if (kind === 'sops' || kind === 'tests') {
+        const scope = (id: string) => {
+          const r = (docDb[kind] as Record<string, Sop | TestMethod>)[id];
+          return stableJson({ roles: [...r.roles].sort(), for: 'for' in r ? r.for : null });
+        };
+        need(new Set(ids.map(scope)).size === 1, `документ ${code}: у редакций ${ids.join(', ')} разные роли или работы — матрица обучения у документа одна`);
+      }
     }
   }
   // на начало сценария действует всё, что ему нужно: спецификация каждого материала — по ней примут первую партию; карты
@@ -830,5 +864,79 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     skus,
     customers,
     spares,
+    sops,
   };
+}
+
+/**
+ * Кто делает работу, тот по ней и учится (Б3б): каждая роль сценария, которой движок даёт работу с требованием процедуры
+ * или методики, есть в матрице обучения этого документа — иначе её никто не учит, и работа ждёт «нет допуска» всегда.
+ * Роли работ — по правилам модулей движка: новая задача — строка `DOERS`. Техника — исключение: на ней ездят только роли
+ * из матрицы её процедуры, остальные берут другую технику. Ещё: дни обучения на старте моложе самого короткого срока.
+ */
+function learnErrors(raw: Raw, sops: Record<string, Sop>, tests: Record<string, TestMethod>, need: (ok: unknown, msg: string) => void) {
+  const staffed = new Set(Object.values(raw.scenarios).flatMap(sc => sc.staff.map(r => r.role)));
+  const uniq = (list: string[]) => [...new Set(list)];
+  const stageRoles = (pick: (st: (typeof raw.recipes)[string]['stages'][number]) => boolean) =>
+    uniq(Object.values(raw.recipes).flatMap(r => r.stages.filter(pick).map(st => st.staff.role)));
+  const crewOf = (ids: string[]) => uniq(ids.flatMap(m => (raw.machines[m]?.crew ? [raw.machines[m].crew.role] : [])));
+  const DOERS: Record<TaskKind, readonly string[]> = {
+    unload: WMS.movers,
+    receive: WMS.keepers,
+    putaway: WMS.movers,
+    move: WMS.movers,
+    toSampling: WMS.movers,
+    sample: QC.samplers,
+    fromSampling: WMS.movers,
+    handover: QC.samplers,
+    prep: QC.analysts,
+    review: QC.reviewers,
+    decide: QC.heads,
+    pick: WMS.movers,
+    transfer: WMS.keepers,
+    return: WMS.keepers,
+    stage: stageRoles(() => true),
+    clean: MES.operators,
+    crew: crewOf(Object.keys(raw.machines)),
+    changeover: LINE.setters,
+    clearance: LINE.cleaners,
+    clearCheck: LINE.checkers,
+    feed: LINE.feeders,
+    fgCheck: QA.specialists,
+    qpDecide: QA.qps,
+    ship: WMS.movers,
+    casePick: WMS.movers,
+    load: WMS.movers,
+    repair: MAINT.mechanics,
+    truckCheck: WMS.keepers,
+    invStep: uniq(Object.values(raw.investigations).flatMap(m => m.steps.flatMap(st => (st.role ? [st.role] : [])))),
+    invFix: MAINT.mechanics,
+    train: [],
+    trainCheck: CHECKERS,
+  };
+  const LINE_WORK: TaskKind[] = ['crew', 'feed', 'changeover', 'clearance', 'clearCheck'];
+  const check = (where: string, has: string[], doers: Iterable<string>) => {
+    for (const r of doers) if (staffed.has(r)) need(has.includes(r), `${where}: нужна работе роли ${r}, а в матрице обучения её нет`);
+  };
+  for (const x of Object.values(sops)) {
+    const kinds = x.for.any ? WORKS : (x.for.tasks ?? []);
+    const doers = new Set(kinds.flatMap(k => DOERS[k]));
+    const eqs = x.for.equipment ?? [];
+    if (eqs.length > 0) for (const r of stageRoles(st => st.equipment.some(e => eqs.includes(e)))) doers.add(r);
+    if (x.for.machines) {
+      for (const r of crewOf(x.for.machines)) doers.add(r);
+      for (const k of LINE_WORK) for (const r of DOERS[k]) doers.add(r);
+    }
+    check(`процедура ${x.id}`, x.roles, doers);
+  }
+  // методики: испытание и его проверка — лаборатория, если по методике испытывают по спецификации или в расследовании; МОК
+  // — кто ведёт стадию с этой методикой
+  const lab = new Set([...Object.values(raw.specs).flatMap(sp => sp.tests.map(l => l.test)), ...Object.values(raw.investigations).flatMap(m => [m.test, ...m.steps.flatMap(st => (st.test ? [st.test] : []))])]);
+  for (const t of Object.values(tests)) {
+    const doers = new Set<string>(lab.has(t.id) ? [...QC.analysts, ...QC.reviewers] : []);
+    for (const r of stageRoles(st => st.ipc.some(c => c.test === t.id))) doers.add(r);
+    check(`методика ${t.id}`, t.roles, doers);
+  }
+  const shortest = Math.min(...[...Object.values(sops), ...Object.values(tests)].map(x => x.every));
+  for (const sc of Object.values(raw.scenarios)) need(sc.training.spread < shortest * 28, `сценарий ${sc.id}: training.spread — на старте записи старше самого короткого срока обучения, ${shortest} мес.`);
 }

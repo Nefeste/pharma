@@ -1,0 +1,11 @@
+# Работа на ричтраке: водит только тот, кто в матрице этой процедуры (Б3б: прежний допуск роли водителя погрузчика).
+# Учат по обязанностям (GMP ЕАЭС, ч. I, п. 2.11); что работа на технике — своя процедура, — гипотеза.
+id: sop.reach
+name: { ru: Работа на ричтраке, en: Reach truck operation }
+doc: { code: SOP-0005, rev: 1, from: 2026-01-19, approved: role.production-head }
+roles: [role.driver]
+for: { vehicles: [veh.reach] }
+hours: 3
+every: 12
+source: [gmp-eaeu]
+review: draft

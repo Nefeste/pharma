@@ -1,0 +1,10 @@
+# Отбор проб: процедуру отбора проб утверждает руководитель ОКК (GMP ЕАЭС, ч. I, пп. 2.8 iii, 4.25).
+id: sop.sampling
+name: { ru: Отбор проб, en: Sampling }
+doc: { code: SOP-0007, rev: 1, from: 2026-01-19, approved: role.qc-head }
+roles: [role.sampler]
+for: { tasks: [sample, handover] }
+hours: 3
+every: 12
+source: [gmp-eaeu]
+review: draft

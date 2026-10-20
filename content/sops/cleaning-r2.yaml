@@ -1,0 +1,12 @@
+# Редакция 2 процедуры уборки (Б3б): сценарий кладёт её в базу с днём введения в будущем — до него аппаратчики учатся,
+# с него работают по ней (docs/specs/2026-10-vertical-slice.md, «Б3б»). Что в ней поменялось, игра не говорит: изменение
+# — дело управления изменениями (§6.4), его ещё нет.
+id: sop.cleaning-r2
+name: { ru: Уборка помещений и оборудования, en: Cleaning of rooms and equipment }
+doc: { code: SOP-0015, rev: 2, from: 2027-09-20, approved: role.production-head }
+roles: [role.operator]
+for: { tasks: [clean] }
+hours: 2
+every: 12
+source: [gmp-eaeu]
+review: draft

@@ -1,13 +1,16 @@
 // Прогон расписания (docs/specs/2026-10-panels.md, 3д; docs/02-architecture.md, §8): что, где и когда будет делаться, —
 // чистая функция из состояния; состояние не меняется. Правила — те же, что у движка, и из тех же его функций: готово ли
 // помещение для продукта (`readyFor`), номинальная длительность стадии (`nominal`), время уборки (`cleanWork`), может ли
-// человек смены взять задачу (`takesAt`). Разброса нет: жизнь отличается от прогона на разброс длительностей, на людей,
-// занятых другим, на отказы и ремонты и на комплекты упаковки, которые появятся позже, — их прогон не предсказывает.
+// человек смены взять задачу (`takesAt`); людей считают только допущенных к работе сейчас (Б3б, `admitted`) — обучение,
+// которое завод ещё проведёт, прогон не предсказывает. Разброса нет: жизнь отличается от прогона на разброс
+// длительностей, на людей, занятых другим, на отказы и ремонты и на комплекты упаковки, которые появятся позже, — их
+// прогон не предсказывает.
 import type { ContentDb, Id } from '../../content/types';
-import { DAY, HOUR } from '../core/calendar';
+import { DAY, HOUR, momentOf } from '../core/calendar';
 import { blocked } from '../maint';
 import { cleanWork, DIRTY_HOLD, MES, nominal, readyFor, TRANSFER_WORK } from '../mes';
 import { planOf } from '../plant';
+import { admitted, needFor } from '../quals';
 import { takesAt } from '../staff';
 import type { Batch, KitLine, PlantState, Room, Task } from '../types';
 import { WMS } from '../wms';
@@ -75,9 +78,12 @@ const idNum = (id: string) => Number(id.slice(1));
 /** Люди по ролям и графикам: роль → график → сколько человек. */
 type Crew = Map<Id, Map<Id, number>>;
 
-function crewOf(s: PlantState): Crew {
+/** Люди, допущенные сейчас к работе с документами `need`. */
+function crewOf(db: ContentDb, s: PlantState, need: readonly string[]): Crew {
+  const day = momentOf(s.start, s.t).day;
   const c: Crew = new Map();
   for (const p of Object.values(s.people)) {
+    if (!admitted(db, p, need, day)) continue;
     const m = c.get(p.role) ?? new Map<Id, number>();
     m.set(p.shift, (m.get(p.shift) ?? 0) + 1);
     c.set(p.role, m);
@@ -131,10 +137,17 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
   const asked = new Map(changes.map(c => [c.batch, c.notBefore]));
   const plan = planOf(db, s.plant);
   const now = s.t;
-  const crew = crewOf(s);
+  const crews = new Map<string, Crew>();
   const out: Forecast = { bars: [], why: {}, stuck: [] };
   const note = (b: string, w: Why) => (out.why[b] ??= []).push(w);
-  const take = (roles: readonly Id[], n: number, t: number) => firstTake(db, s, crew, roles, n, t);
+  const take = (roles: readonly Id[], n: number, t: number, need: readonly string[]) => {
+    const key = need.join(' ');
+    let crew = crews.get(key);
+    if (!crew) crews.set(key, (crew = crewOf(db, s, need)));
+    return firstTake(db, s, crew, roles, n, t);
+  };
+  const cleanNeed = needFor(db, 'clean');
+  const kitNeed = needFor(db, 'transfer');
   const taskOf = (f: (t: Task) => boolean) => Object.values(s.tasks).find(f);
   const order = Object.values(s.batches);
 
@@ -169,7 +182,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     r.product = b.product;
     p.last = b.id;
     p.left = at;
-    const c = take(MES.operators, 1, at);
+    const c = take(MES.operators, 1, at, cleanNeed);
     if (!c) {
       p.free = Number.POSITIVE_INFINITY;
       return;
@@ -191,7 +204,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
       clean(p, t.times![1], t.times![4] - t.times![1], !!r.major, 'now', p.last);
       continue;
     }
-    const c = take(MES.operators, 1, now);
+    const c = take(MES.operators, 1, now, cleanNeed);
     if (!c) {
       p.free = Number.POSITIVE_INFINITY;
       continue;
@@ -219,7 +232,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
         if (!readyFor(p.room, b.product, t)) {
           // чисто только для другого продукта — генеральная уборка; чистота просрочена — убрать снова (tryStart)
           const cause = p.room.cleanFor !== undefined && p.room.cleanFor !== b.product ? 'product' : 'expired';
-          const c = take(MES.operators, 1, t);
+          const c = take(MES.operators, 1, t, cleanNeed);
           if (!c) return;
           const major = cause === 'product' || c.t - t > DIRTY_HOLD;
           const work = cleanWork(db, s, roomId, major);
@@ -232,7 +245,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
       }
       const repair = Object.values(s.equipment).some(e => e.room === roomId && st.equipment.includes(e.type) && blocked(s, e.id));
       if (repair) note(b.id, { why: 'repair', bar: st.id, room: roomId });
-      const c = take([st.staff.role], st.staff.n, t);
+      const c = take([st.staff.role], st.staff.n, t, needFor(db, 'stage', { stage: st }));
       if (!c) return;
       if (c.t > t) note(b.id, { why: 'shift', bar: st.id, role: st.staff.role, at: c.t });
       const work = nominal(db, b.recipe, st, b.mass > 0 ? b.mass : r.batch.mass);
@@ -258,7 +271,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
       const work = t ? t.work : b.run!.rest!;
       const repair = !t;
       if (repair) note(b.id, { why: 'repair', bar: st.id, room: roomId });
-      const c = take([st.staff.role], st.staff.n, now);
+      const c = take([st.staff.role], st.staff.n, now, needFor(db, 'stage', { stage: st }));
       if (!c) return;
       if (c.t > now) note(b.id, { why: 'shift', bar: st.id, role: st.staff.role, at: c.t });
       out.bars.push({ row: roomId, kind: 'stage', batch: b.id, stage: st.id, from: c.t, to: c.t + work, when: 'plan', ...(repair ? { repair: true as const } : {}) });
@@ -272,7 +285,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
   /** Работа комплектовки с `from`: паллеты — по кладовщикам смены, по перекладке на каждую. */
   const kitWork = (batch: string | undefined, pallets: number, from: number): number | undefined => {
     if (pallets === 0) return from;
-    const c = take(WMS.keepers, 1, from);
+    const c = take(WMS.keepers, 1, from, kitNeed);
     if (!c) return undefined;
     if (batch && c.t > from) note(batch, { why: 'shift', bar: 'kit', role: WMS.keepers[0], at: c.t });
     return c.t + Math.ceil(pallets / c.n) * TRANSFER_WORK;

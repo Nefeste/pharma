@@ -4,9 +4,12 @@
 // рядом в панели и в карточке, на полу — в карточке по щелчку. Пути — в синтаксисе SVG: их рисует и SVG, и холст (Path2D).
 import type { TaskKind } from '../engine/types';
 
-export type IconKind = 'move' | 'check' | 'sample' | 'lab' | 'decide' | 'process' | 'clean' | 'line' | 'repair' | 'inv' | 'truck';
+export type IconKind = 'move' | 'check' | 'sample' | 'lab' | 'decide' | 'process' | 'clean' | 'line' | 'repair' | 'inv' | 'truck' | 'learn';
 
-/** Значок каждого вида работы: перевозка, проверка, пробы, испытание, решение, стадия, уборка, линия, ремонт, расследование, фура. */
+/**
+ * Значок каждого вида работы: перевозка, проверка, пробы, испытание, решение, стадия, уборка, линия, ремонт, расследование,
+ * фура, обучение (Б3б).
+ */
 export const ICON_OF: Record<TaskKind | 'pack' | 'test' | 'truck', IconKind> = {
   unload: 'move',
   receive: 'check',
@@ -41,6 +44,8 @@ export const ICON_OF: Record<TaskKind | 'pack' | 'test' | 'truck', IconKind> = {
   truck: 'truck',
   invStep: 'inv',
   invFix: 'repair',
+  train: 'learn',
+  trainCheck: 'check',
 };
 
 /** Пути значков в сетке 14 × 14: тёмная линия 1,5 на светлом кружке радиуса 6,5. */
@@ -67,6 +72,8 @@ export const ICON_PATH: Record<IconKind, string> = {
   inv: 'M8.2 8.2l2.3 2.3M6.2 8.6a2.4 2.4 0 1 0 0-4.8a2.4 2.4 0 0 0 0 4.8z',
   // фура
   truck: 'M3.2 5.2h5v4h-5zM8.2 6.4h1.6l1 1.3v1.5H8.2M5 10.3v.2M9.4 10.3v.2',
+  // раскрытая книга — изучает документ
+  learn: 'M7 4.6C5.9 3.9 4.7 3.6 3.5 3.6v6.3c1.2 0 2.4.3 3.5 1 1.1-.7 2.3-1 3.5-1V3.6c-1.2 0-2.4.3-3.5 1zM7 4.6v6.3',
 };
 
 export const ICON_KINDS = Object.keys(ICON_PATH) as IconKind[];

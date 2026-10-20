@@ -58,10 +58,6 @@ export function goHome(db: ContentDb, s: PlantState, p: Person) {
   p.z = e.z;
 }
 
-export function hasPermit(db: ContentDb, p: Person, permit: string | undefined): boolean {
-  return !permit || db.roles[p.role].permits.includes(permit);
-}
-
 /** Пост роли человека: там он ждёт задачи. Поста нет (сборка базы этого не пропустит) — вход. */
 export function postOf(plan: PlantPlan, p: Person): Point {
   return plan.posts[p.role] ?? plan.entrance;

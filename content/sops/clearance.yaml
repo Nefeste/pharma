@@ -1,0 +1,11 @@
+# Очистка линии перед новой серией и её проверка — от смешения (геймдизайн, §5.6): перед упаковкой зону и линию
+# проверяют, очистку линии проводят по процедуре (GMP ЕАЭС, ч. I, п. 5.50).
+id: sop.clearance
+name: { ru: Очистка линии и её проверка, en: Line clearance and its check }
+doc: { code: SOP-0018, rev: 1, from: 2026-01-19, approved: role.production-head }
+roles: [role.packer, role.master]
+for: { tasks: [clearance, clearCheck] }
+hours: 1
+every: 12
+source: [gmp-eaeu]
+review: draft

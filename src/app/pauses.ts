@@ -8,8 +8,11 @@ import type { Notice } from '../engine/types';
 import type { Thing } from '../sim/views';
 import type { Keep } from './preset';
 
-/** Автопаузы прототипа — по порядку меню. Сотрудника, жалобы, совещания S&OP и инспекции в прототипе нет. */
-export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'morning'] as const;
+/**
+ * Автопаузы прототипа — по порядку меню. Из событий сотрудника есть только потеря допуска (Б3б); жалобы, совещания S&OP и
+ * инспекции в прототипе нет.
+ */
+export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'morning'] as const;
 export type Pause = (typeof PAUSES)[number];
 
 /**
@@ -23,12 +26,14 @@ export const PAUSE_NOTICES: Record<Pause, readonly Notice['kind'][]> = {
   truckWait: ['truckWait'],
   orderRisk: ['orderRisk'],
   materialLate: ['materialLate'],
+  qualLost: ['qualLost'],
   morning: ['morning'],
 };
 
 /**
- * Чьё это дело (геймдизайн, §29.2): производство отвечает на поломку, OOS и опоздавшее сырьё; качество — на OOS и
- * отклонения; снабжение меряют тревогами «материал не пришёл к серии»; коммерцию — заказами в срок. Планёрка — у всех.
+ * Чьё это дело (геймдизайн, §29.2): производство отвечает на поломку, OOS и опоздавшее сырьё; качество — на OOS,
+ * отклонения и потерю допуска: обучение ведёт ООК (Б3б); снабжение меряют тревогами «материал не пришёл к серии»;
+ * коммерцию — заказами в срок. Планёрка — у всех.
  */
 export const PAUSE_SEATS: Record<Pause, readonly SeatId[] | 'all'> = {
   failure: ['production'],
@@ -37,6 +42,7 @@ export const PAUSE_SEATS: Record<Pause, readonly SeatId[] | 'all'> = {
   truckWait: ['supply'],
   orderRisk: ['commerce'],
   materialLate: ['supply', 'production'],
+  qualLost: ['quality'],
   morning: 'all',
 };
 
@@ -96,7 +102,8 @@ export function machineThing(plant: Plant, id: string): Thing | undefined {
 
 /**
  * Куда ведёт извещение (13-art.md, §11: «щелчок ведёт на место»): отказ — к машине, фура — к фуре, материал — к
- * расписанию, заказ — к планёрке с заказами под угрозой, отклонённая партия — к лаборатории, расследование — к доске.
+ * расписанию, заказ — к планёрке с заказами под угрозой, отклонённая партия — к лаборатории, расследование — к доске,
+ * потеря допуска — к человеку.
  */
 export function goOf(plant: Plant, n: Notice): Go | undefined {
   switch (n.kind) {
@@ -116,6 +123,8 @@ export function goOf(plant: Plant, n: Notice): Go | undefined {
     case 'invStep':
     case 'concluded':
       return { inv: n.id };
+    case 'qualLost':
+      return { thing: { kind: 'person', n: Number(n.person.slice(1)) } };
     default:
       return undefined;
   }

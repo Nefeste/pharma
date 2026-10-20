@@ -40,7 +40,13 @@ export const AREA: Record<TaskKind, Dept> = {
   truckCheck: 'wms',
   invStep: 'qa',
   invFix: 'maint',
+  // обучение (Б3б) ведёт ООК; путь к посту, где учатся, — на участок того, кто учится (`moved`)
+  train: 'qa',
+  trainCheck: 'qa',
 };
+
+/** Ожидание обучения в задержки не идёт: его ставят заранее, за срок предупреждения, и оно ждёт свободного часа. */
+const PLANNED: ReadonlySet<TaskKind> = new Set(['train', 'trainCheck']);
 
 export function newLoss(day: number): DayLoss {
   return {
@@ -98,18 +104,17 @@ export function waitEnd(s: PlantState, t: Task) {
 }
 
 function addWait(d: DayLoss, kind: TaskKind, why: WaitCause, sec: number) {
-  if (sec <= 0) return;
+  if (sec <= 0 || PLANNED.has(kind)) return;
   const w = (d.wait[AREA[kind]] ??= {});
   w[why] = (w[why] ?? 0) + sec;
 }
 
 /**
  * Путь задачи, когда её назначили: пешком без груза — перемещения; техника с грузом и порожняком и груз на руках —
- * транспортировка. См и с.
+ * транспортировка. См и с — на участок `a`, по умолчанию — участок вида задачи.
  */
-export function moved(s: PlantState, kind: TaskKind, walk: number, walkSec: number, empty: number, loaded: number, driveSec: number) {
+export function moved(s: PlantState, kind: TaskKind, walk: number, walkSec: number, empty: number, loaded: number, driveSec: number, a: Dept = AREA[kind]) {
   const d = today(s);
-  const a = AREA[kind];
   if (walk > 0 || walkSec > 0) {
     const w = (d.walk[a] ??= { cm: 0, sec: 0 });
     w.cm += walk;

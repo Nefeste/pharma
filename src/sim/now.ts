@@ -85,6 +85,9 @@ const DEPT: Partial<Record<TaskKind, NowDept>> = {
   fgCheck: 'qa',
   qpDecide: 'qa',
   invStep: 'inv',
+  // обучение (Б3б) ведёт ООК
+  train: 'qa',
+  trainCheck: 'qa',
 };
 
 /** Задачи, которые идут в своих строках: смена у линии — в строке упаковки, подготовка и проверка — в строке испытания, фура — в строке фуры. */

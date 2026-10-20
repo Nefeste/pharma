@@ -1,0 +1,10 @@
+# Работа на упаковочной линии: смена у линии, подача балка, переналадка, очистка линии и её проверка (п. 4.30).
+id: sop.line
+name: { ru: Работа на упаковочной линии, en: Packaging line operation }
+doc: { code: SOP-0016, rev: 1, from: 2026-01-19, approved: role.production-head }
+roles: [role.line-operator, role.packer, role.setter, role.master]
+for: { machines: [mach.blister, mach.cartoner, mach.casepack] }
+hours: 4
+every: 12
+source: [gmp-eaeu]
+review: draft

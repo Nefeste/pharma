@@ -2,7 +2,7 @@
 // ошибка сборки, а не молча пропущенное поле. Числа в записях — в единицах автора (килограммы, рубли, метры, проценты);
 // в единицы движка их переводит load.ts.
 import { z } from 'zod';
-import { SEATS } from '../../src/content/types';
+import { SEATS, TASK_KINDS } from '../../src/content/types';
 
 const text = z.strictObject({ ru: z.string().min(1), en: z.string().min(1).optional() });
 const review = z.enum(['draft', 'checked']);
@@ -56,11 +56,11 @@ export const profile = z.strictObject({
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'дата пишется как ГГГГ-ММ-ДД');
 /**
  * Шапка регламентирующего документа (Б3а; GMP ЕАЭС, ч. I, пп. 4.3, 4.5): код — вид и номер латиницей (`SP` —
- * спецификация, `TM` — методика испытания, `MF` — технологическая карта, `PI` — инструкция по упаковке), номер редакции,
- * дата введения в действие и кто утвердил — роль. Редакции одного документа — записи с одним кодом; статус — по дате
- * завода (src/engine/docs.ts).
+ * спецификация, `TM` — методика испытания, `MF` — технологическая карта, `PI` — инструкция по упаковке, `SOP` —
+ * процедура, с Б3б), номер редакции, дата введения в действие и кто утвердил — роль. Редакции одного документа — записи с
+ * одним кодом; статус — по дате завода (src/engine/docs.ts).
  */
-const doc = (kind: 'SP' | 'TM' | 'MF' | 'PI') =>
+const doc = (kind: 'SP' | 'TM' | 'MF' | 'PI' | 'SOP') =>
   z.strictObject({
     code: z.string().regex(new RegExp(`^${kind}-\\d{4}$`), `код документа — ${kind}-NNNN`),
     rev: z.number().int().min(1).max(99),
@@ -69,6 +69,15 @@ const doc = (kind: 'SP' | 'TM' | 'MF' | 'PI') =>
   });
 /** Количество в единице материала: кг или штуки — load.ts сверяет с материалом. */
 const qty = z.number().positive();
+/**
+ * Обучение по документу (Б3б): роли, которые по нему учатся, — строка матрицы обучения; часы на изучение; через сколько
+ * месяцев учиться снова.
+ */
+const learn = {
+  roles: z.array(id).min(1),
+  hours: z.number().positive().max(40),
+  every: z.number().int().min(1).max(60),
+};
 
 export const scenario = z.strictObject({
   id: z.string(),
@@ -123,6 +132,16 @@ export const scenario = z.strictObject({
   norm: percent.default(100),
   /** места, которые игрок может взять (геймдизайн, §29.5); остальные ведёт сценарий; нет — все */
   seats: z.array(z.enum(SEATS)).min(1).default([...SEATS]),
+  /**
+   * обучение (Б3б): за сколько суток до введения новой редакции или конца срока записи — задача обучения; проверка
+   * знаний, минуты; на старте дни обучения — до стольких суток назад; табельные номера — с этого номера
+   */
+  training: z.strictObject({
+    ahead: z.number().int().min(1).max(90),
+    check: z.number().int().min(1).max(240),
+    spread: z.number().int().min(0).max(3650),
+    tab: z.number().int().min(1).max(9000),
+  }),
   /**
    * происшествие прототипа (docs/specs/2026-10-investigation.md): задание на серию по номеру с 1, модель расследования,
    * веса корней, %, и величина неисправности — от и до: ошибка лаборатории — % ниже истинного, опудривание — мин сверх
@@ -218,7 +237,6 @@ export const role = z.strictObject({
   dept: z.enum(['wms', 'qc', 'qa', 'mes', 'line', 'maint']),
   /** ₽ в месяц */
   salary: z.number().int().positive(),
-  permits: z.array(z.enum(['forklift'])).default([]),
 });
 
 export const vehicle = z.strictObject({
@@ -231,7 +249,6 @@ export const vehicle = z.strictObject({
   /** с */
   liftBase: z.number().int().min(0),
   liftPerLevel: z.number().int().min(0),
-  permit: z.enum(['forklift']).optional(),
 });
 
 export const shift = z.strictObject({
@@ -265,6 +282,34 @@ export const test = z
     unattended: z.boolean(),
     /** погрешность — СКО, в единицах свойства */
     sd: z.number().min(0),
+    ...learn,
+    source: sources.optional(),
+    review: review.optional(),
+  })
+  .refine(paired, pairedMsg);
+
+/** Работы, которым нужны процедуры: все виды задач, кроме самого обучения — оно допуска не требует. */
+export const WORKS = TASK_KINDS.filter(k => k !== 'train' && k !== 'trainCheck');
+
+/**
+ * Процедура (СОП, Б3б): шапка документа, обучение и каким работам она нужна — видам задач, стадиям на классах
+ * оборудования, работам у линии с этими машинами, работе на технике; `any` — любой работе, кроме обучения.
+ */
+export const sop = z
+  .strictObject({
+    id: z.string(),
+    name: text,
+    doc: doc('SOP'),
+    ...learn,
+    for: z
+      .strictObject({
+        any: z.literal(true).optional(),
+        tasks: z.array(z.enum(WORKS)).min(1).optional(),
+        equipment: z.array(id).min(1).optional(),
+        machines: z.array(id).min(1).optional(),
+        vehicles: z.array(id).min(1).optional(),
+      })
+      .refine(f => Object.keys(f).length > 0, { message: 'процедура нужна хоть одной работе' }),
     source: sources.optional(),
     review: review.optional(),
   })
@@ -725,6 +770,7 @@ export const KINDS = {
   skus: { prefix: 'sku', schema: sku },
   customers: { prefix: 'cus', schema: customer },
   spares: { prefix: 'spare', schema: spare },
+  sops: { prefix: 'sop', schema: sop },
 } as const;
 
 export type Kind = keyof typeof KINDS;

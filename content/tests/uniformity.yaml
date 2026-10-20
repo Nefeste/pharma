@@ -9,5 +9,9 @@ prep: 120
 run: 300
 unattended: true
 sd: 0.6
+# обучение по методике (Б3б): кто учится — аналитики и проверяющие, МОК — кто ведёт стадию; часы и срок — гипотезы
+roles: [role.analyst, role.qc-head]
+hours: 3
+every: 12
 source: [jp-602]
 review: draft

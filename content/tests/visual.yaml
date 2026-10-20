@@ -6,3 +6,7 @@ prep: 30
 run: 0
 unattended: false
 sd: 0
+# обучение по методике (Б3б): кто учится — аналитики и проверяющие, МОК — кто ведёт стадию; часы и срок — гипотезы
+roles: [role.analyst, role.qc-head]
+hours: 1
+every: 12

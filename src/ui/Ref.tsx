@@ -7,7 +7,9 @@
 import { type ReactNode, useState } from 'react';
 import type { DocKind } from '../engine/docs';
 import { dayText, durText, lang, money, named, num, pctText, priceText, qtyText, T } from '../i18n';
-import type { RefCustomer, RefDoc, RefEquipment, RefInstrument, RefLine, RefMachine, RefMaterial, RefMethod, RefPart, RefRecipe, RefRole, RefShift, RefSku, RefStage, RefSupplier, RefView } from '../sim/ref';
+import type { DocNow } from '../sim/people';
+import type { RefCustomer, RefDoc, RefEquipment, RefInstrument, RefLine, RefMachine, RefMaterial, RefMethod, RefPart, RefPerson, RefRecipe, RefRole, RefShift, RefSku, RefStage, RefSupplier, RefView } from '../sim/ref';
+import { admText } from './Card';
 import { db, docText, headOf } from './db';
 import { type Actions, type Hud, REF_TABS } from './store';
 import { attrNum, attrText, paramNum, paramText } from './units';
@@ -346,14 +348,50 @@ function People({ v, q }: { v: RefView; q: string }) {
     { name: s.days, text: x => x.days.map(d => T.date.weekdays[d]).join(', '), num: x => x.days.length },
     { name: s.hours, text: x => T.ref.hours(x.from, x.to), num: x => x.from },
   ];
+  // люди с допуском и матрица обучения (Б3б)
+  const pc = T.ref.personCols;
+  const admClass = (x: RefPerson) => (x.adm.k === 'no' ? 'bad' : x.adm.k === 'soon' ? 'warn' : '');
+  const people: Col<RefPerson>[] = [
+    { name: pc.tab, text: x => String(x.tab), show: x => <span className="mono">{x.tab}</span>, num: x => x.tab },
+    { name: pc.role, text: x => named(db?.roles[x.role]?.name, x.role) },
+    { name: pc.shift, text: x => named(db?.shifts[x.shift]?.name, x.shift) },
+    { name: pc.skill, text: x => num(x.skill), num: x => x.skill },
+    { name: pc.adm, text: x => admText(x.adm), show: x => <span className={admClass(x)}>{admText(x.adm)}</span> },
+  ];
+  type Doc = { i: number; d: DocNow };
+  const mc = T.ref.matrixCols;
+  const cell = (x: Doc, j: number) => v.matrix.cells[x.i][j];
+  const matrix: Col<Doc>[] = [
+    { name: mc.doc, text: x => T.ref.doc(x.d.code, x.d.rev), show: x => <span className="mono">{T.ref.doc(x.d.code, x.d.rev)}</span> },
+    { name: mc.name, text: x => docName(x.d.kind, x.d.id) },
+    ...v.matrix.roles.map((r, j) => ({
+      name: named(db?.roles[r]?.name, r),
+      text: (x: Doc) => {
+        const c = cell(x, j);
+        return c ? T.ref.cell(c.ok, c.all) : '—';
+      },
+      show: (x: Doc) => {
+        const c = cell(x, j);
+        return c ? <span className={c.ok < c.all ? 'bad' : ''}>{T.ref.cell(c.ok, c.all)}</span> : <span className="muted">—</span>;
+      },
+      num: (x: Doc) => cell(x, j)?.ok ?? -1,
+    })),
+  ];
   return (
     <>
       <section className="rsec">
         <Table test="ref-roles" cols={roles} items={v.roles.filter(x => x.shifts.length > 0)} keyOf={x => x.id} q={q} />
       </section>
       <section className="rsec">
+        <Table test="ref-people" cols={people} items={v.people} keyOf={x => String(x.person)} q={q} />
+      </section>
+      <section className="rsec">
         <Table cols={shifts} items={v.shifts} keyOf={x => x.id} q={q} />
       </section>
+      <section className="rsec">
+        <Table test="ref-matrix" cols={matrix} items={v.matrix.docs.map((d, i) => ({ i, d }))} keyOf={x => x.d.code} q={q} />
+      </section>
+      <div className="muted small">{T.ref.matrixNote}</div>
     </>
   );
 }

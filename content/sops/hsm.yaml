@@ -1,0 +1,9 @@
+id: sop.hsm
+name: { ru: Работа на смесителе-грануляторе, en: High-shear mixer granulator operation }
+doc: { code: SOP-0010, rev: 1, from: 2026-01-19, approved: role.production-head }
+roles: [role.operator]
+for: { equipment: [eq.hsm] }
+hours: 3
+every: 12
+source: [gmp-eaeu]
+review: draft

@@ -81,7 +81,9 @@ const ALLOWED = new Set(
     'inst prep run unattended queued running method ' +
     'dept salary shift present busy days to hour lead prepay payDays approved items moq spares spare minShelf ' +
     // Б3а: номенклатура и регламентирующие документы — по НСИ и дате завода
-    'materials docs kind okei spec status'
+    'materials docs kind okei spec status ' +
+    // Б3б: люди с табельными номерами и допуском, матрица обучения — записи завода
+    'people person tab skill adm k doc rev matrix cells ok all'
   ).split(' '),
 );
 
@@ -182,10 +184,11 @@ describe('справочник: номенклатура и документы (
     expect(by['spare.punches']).toEqual({ id: 'spare.punches', kind: 'spare', unit: 'pcs', okei: 796 });
   });
 
-  test('документы — все редакции базы; в прототипе каждая действует', () => {
-    const all = (['specs', 'tests', 'recipes', 'skus'] as const).flatMap(kind => Object.keys(db[kind]).map(id => `${kind}/${id}`));
+  test('документы — все редакции базы; в прототипе каждая действует, кроме новой редакции уборки до её дня (Б3б)', () => {
+    const all = (['specs', 'tests', 'recipes', 'skus', 'sops'] as const).flatMap(kind => Object.keys(db[kind]).map(id => `${kind}/${id}`));
     expect(v.docs.map(d => `${d.kind}/${d.id}`)).toEqual(all);
-    expect(new Set(v.docs.map(d => d.status))).toEqual(new Set(['active']));
+    const draft = v.docs.filter(d => d.status !== 'active').map(d => `${d.kind}/${d.id}:${d.status}`);
+    expect(draft).toEqual(today < db.sops['sop.cleaning-r2'].doc.from ? ['sops/sop.cleaning-r2:draft'] : ['sops/sop.cleaning:archive']);
   });
 
   test('новая редакция карты: до своего дня — проект, карты — прежняя; с него — действует, прежняя — в архиве', () => {

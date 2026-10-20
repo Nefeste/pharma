@@ -323,6 +323,21 @@ export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningV
                 </li>
               ))}
             />
+            <Rows
+              title={T.morning.trainTitle}
+              rows={[
+                ...v.training.no.map(x => (
+                  <li key={`no${x.person}`} className="go bad" onClick={go({ kind: 'person', n: x.person })} data-test="morning-train">
+                    {T.morning.trainNo(T.card.person(named(db?.roles[x.role]?.name, x.role), x.tab), T.ref.doc(x.doc.code, x.doc.rev))}
+                  </li>
+                )),
+                ...v.training.soon.map(x => (
+                  <li key={`soon${x.person}`} className="go" onClick={go({ kind: 'person', n: x.person })} data-test="morning-train">
+                    {T.morning.trainSoon(T.card.person(named(db?.roles[x.role]?.name, x.role), x.tab), T.ref.doc(x.doc.code, x.doc.rev), dayText(x.last))}
+                  </li>
+                )),
+              ]}
+            />
             <div className="mblock">
               <div className="mhead">{T.morning.cashTitle}</div>
               <div>{T.morning.cash(money(v.cash.balance), money(v.cash.day, true))}</div>

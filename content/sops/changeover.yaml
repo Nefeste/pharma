@@ -1,0 +1,11 @@
+# Переналадка линии на формат позиции: учат по обязанностям (GMP ЕАЭС, ч. I, п. 2.11); что переналадка — своя
+# процедура, — гипотеза.
+id: sop.changeover
+name: { ru: Переналадка упаковочной линии, en: Packaging line changeover }
+doc: { code: SOP-0017, rev: 1, from: 2026-01-19, approved: role.production-head }
+roles: [role.setter]
+for: { tasks: [changeover] }
+hours: 3
+every: 12
+source: [gmp-eaeu]
+review: draft

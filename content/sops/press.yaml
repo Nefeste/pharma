@@ -1,0 +1,9 @@
+id: sop.press
+name: { ru: Работа на таблеточном прессе и обеспыливателе, en: Tablet press and deduster operation }
+doc: { code: SOP-0014, rev: 1, from: 2026-01-19, approved: role.production-head }
+roles: [role.operator]
+for: { equipment: [eq.press, eq.deduster] }
+hours: 4
+every: 12
+source: [gmp-eaeu]
+review: draft

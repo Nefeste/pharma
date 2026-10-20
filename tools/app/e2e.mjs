@@ -15,11 +15,13 @@
 // (часть 5): отпустили — задание в черновике, срок прежний; «Прогнать план» — итог «как сейчас» и черновика на пяти зёрнах,
 // часы завода в это время идут; «Утвердить» — срок задания сменился; Esc закрывает. «Кем вы будете» (3е): экран открыт с начала, мир стоит; взяли «Производство» —
 // часы пошли; на планёрке — «Ваше место»; «Поднять» без поста качества погашено, кнопкой «Место» добавили его — мир на
-// паузе, после «Взять» поднять можно. Автопаузы (Б2а): меню — семь автопауз, две — не места игрока; планёрку отключили —
-// окно это помнит, и «До события» (клавиша 6) встаёт не в 08:00, а на первом событии автопаузы, с извещением со знаком
-// паузы, и часы стоят. Расследование (часть 4б): «До события», пока растворение второй серии не выйдет за спецификацию, —
-// извещение ставит мир на паузу и ведёт к доске; три шага, решение, разбор; Esc закрывает. Ошибок в консоли и запросов
-// наружу нет. Снимки — tools/app/out/e2e*.png.
+// паузе, после «Взять» поднять можно. Автопаузы (Б2а): меню — восемь автопауз, две — не места игрока; планёрку
+// отключили — окно это помнит, и «До события» (клавиша 6) встаёт не в 08:00, а на первом событии автопаузы, с извещением со
+// знаком паузы, и часы стоят. Расследование (часть 4б): «До события», пока растворение второй серии не выйдет за
+// спецификацию, — извещение ставит мир на паузу и ведёт к доске; три шага, решение, разбор; Esc закрывает. Люди и допуски
+// (Б3б): в справочнике — табельные номера и допуск, матрица обучения без недопущенных; карточка человека — табельный
+// номер, допуск и строка обучения на каждый документ его роли. Ошибок в консоли и запросов наружу нет. Снимки —
+// tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -610,7 +612,8 @@ try {
   await lister.close();
   ok(`контактный лист: ${sheet.length} снимков → ${join(out, 'contact.png')}`);
 
-  // автопаузы (Б2а): у производства и качества семь автопауз в меню, «фура» и «заказ» — не их; планёрку отключили — окно
+  // автопаузы (Б2а): у производства и качества восемь автопауз в меню (с Б3б — «потерял допуск»), «фура» и «заказ» — не
+  // их; планёрку отключили — окно
   // помнит; «До события» — мир встал не в 08:00, а на первом событии автопаузы мест игрока: извещение со знаком паузы, часы
   // стоят, отставания нет. Планёрку включили обратно
   {
@@ -626,7 +629,7 @@ try {
     await page.screenshot({ path: join(out, 'e2e-pauses.png') });
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('Escape');
-    if (menu.all !== 7 || menu.on !== 7 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
+    if (menu.all !== 8 || menu.on !== 8 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
       fail(`автопаузы: в меню ${menu.all}, включено ${menu.on}, не ваши ${menu.notYours.join(', ')}, в окне «${kept}»`);
     else ok(`автопаузы: в меню ${menu.all}, не ваши — ${menu.notYours.join(', ')}; планёрку отключили — в окне ${kept}; Esc закрыл меню`);
     const t0 = await gameT();
@@ -775,7 +778,7 @@ try {
     await frames(1);
     const docRows = () => page.evaluate(() => [...document.querySelectorAll('[data-test=ref-docs] tbody tr')].map(r => [...r.children].map(c => c.innerText.trim())));
     const docs = await docRows();
-    const all = await page.evaluate(() => ['specs', 'tests', 'recipes', 'skus'].reduce((n, k) => n + Object.keys(window.__game.db[k]).length, 0));
+    const all = await page.evaluate(() => ['specs', 'tests', 'recipes', 'skus', 'sops'].reduce((n, k) => n + Object.keys(window.__game.db[k]).length, 0));
     const mf = docs.find(r => r[0] === 'MF-0001');
     if (docs.length !== all || mf?.[6] !== 'действует') fail(`документы: строк ${docs.length} из ${all}, MF-0001 — ${mf ? mf.join(' | ') : 'нет'}`);
     else ok(`документы: ${docs.length} строк; ${mf.join(' · ')}`);
@@ -793,6 +796,25 @@ try {
     const api = mats.find(r => r[0] === '100001');
     if (mats.length < 20 || api?.[3] !== 'кг · 166') fail(`материалы: строк ${mats.length}, 100001 — ${api ? api.join(' | ') : 'нет'}`);
     else ok(`материалы: ${mats.length} строк; ${api.join(' · ')}`);
+    // люди (Б3б): у каждого — табельный номер и допуск, «не допущен» — ни у кого; в матрице — каждый документ, по которому
+    // учат, и недопущенных нет
+    await page.click('[data-test=ref-tab][data-tab=people]');
+    await frames(1);
+    const staff = await page.evaluate(() => {
+      const v = window.__game.store.get().ref.view;
+      return {
+        rows: [...document.querySelectorAll('[data-test=ref-people] tbody tr')].map(r => [...r.children].map(c => c.innerText.trim())),
+        people: v.people.length,
+        bad: document.querySelectorAll('[data-test=ref-people] .bad, [data-test=ref-matrix] .bad').length,
+        docs: document.querySelectorAll('[data-test=ref-matrix] tbody tr').length,
+        want: v.matrix.docs.length,
+      };
+    });
+    const first = staff.rows[0] ?? [];
+    await page.screenshot({ path: join(out, 'e2e-people.png') });
+    if (staff.rows.length !== staff.people || first[0] !== '1001' || staff.bad > 0 || staff.docs !== staff.want)
+      fail(`люди: строк ${staff.rows.length} из ${staff.people}, первая — ${first.join(' | ')}, не допущено ${staff.bad}, документов в матрице ${staff.docs} из ${staff.want}`);
+    else ok(`люди: ${staff.rows.length} человек, первый — ${first.join(' · ')}; документов в матрице — ${staff.docs}, недопущенных нет`);
     for (const tab of ['equipment', 'lab', 'people', 'partners']) {
       await page.click(`[data-test=ref-tab][data-tab=${tab}]`);
       await frames(1);
@@ -844,6 +866,31 @@ try {
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
     if (await page.evaluate(() => !!document.querySelector('#stock') || !!document.querySelector('[data-test=card]'))) fail('карточка серии: Esc не закрыл карточку и склад');
+  }
+
+  // карточка человека (Б3б): табельный номер в заголовке, допуск и обучение — строка на каждый документ матрицы его роли;
+  // новой редакции уборки аппаратчик научился в первую неделю — запись на ред. 2 появилась в партии
+  {
+    const who = { kind: 'person', n: 9 };
+    await page.evaluate(x => window.__game.actions.select(x), who);
+    await page.waitForFunction(x => JSON.stringify(window.__game.store.get().card?.thing) === JSON.stringify(x), who, { timeout: 20_000 });
+    await frames(1);
+    const c = await page.evaluate(() => ({
+      title: document.querySelector('#card-title')?.textContent ?? '',
+      adm: document.querySelector('[data-test=card-adm]')?.textContent ?? '',
+      rows: [...document.querySelectorAll('[data-test=card-train] li')].map(li => li.textContent ?? ''),
+      bad: document.querySelectorAll('[data-test=card-train] li.bad').length,
+      want: (() => {
+        const db = window.__game.db;
+        return [...Object.values(db.sops), ...Object.values(db.tests)].filter((x, i, all) => x.roles.includes('role.operator') && all.findIndex(y => y.doc.code === x.doc.code) === i).length;
+      })(),
+    }));
+    const fresh = c.rows.find(r => /^SOP-0015, ред\.\u00a02: /.test(r));
+    if (!/таб\. №\u00a01009/.test(c.title) || !c.adm || c.rows.length !== c.want || c.bad > 0 || !c.rows.every(r => /^(SOP|TM)-\d{4}, ред\.\u00a0\d+: /.test(r)) || !fresh)
+      fail(`карточка человека: «${c.title}», допуск «${c.adm}», строк обучения ${c.rows.length} из ${c.want}, без записи ${c.bad}: ${c.rows.slice(0, 2).join(' | ')}`);
+    else ok(`карточка человека: «${c.title}» — ${c.adm}; строк обучения — ${c.rows.length}, новая запись — «${fresh}»`);
+    await page.screenshot({ path: join(out, 'e2e-person.png') });
+    await page.keyboard.press('Escape');
   }
 
   // стартовый пресет (Б1б): первый запуск без пресета в адресе — средний, через пять секунд замер; кадр программной

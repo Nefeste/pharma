@@ -1,0 +1,10 @@
+# Техническое обслуживание и ремонт оборудования (GMP ЕАЭС, ч. I, п. 4.29).
+id: sop.maintenance
+name: { ru: Техническое обслуживание и ремонт оборудования, en: Equipment maintenance and repair }
+doc: { code: SOP-0019, rev: 1, from: 2026-01-19, approved: role.production-head }
+roles: [role.mechanic]
+for: { tasks: [repair, invFix] }
+hours: 3
+every: 12
+source: [gmp-eaeu]
+review: draft

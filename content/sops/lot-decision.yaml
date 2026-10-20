@@ -1,0 +1,11 @@
+# Решение по партии: одобрение или отклонение материалов и продукции — у руководителя ОКК, порядок — письменной
+# процедурой (GMP ЕАЭС, ч. I, пп. 2.8 i, 4.27).
+id: sop.lot-decision
+name: { ru: Решение по партии, en: Lot disposition }
+doc: { code: SOP-0008, rev: 1, from: 2026-01-19, approved: role.qc-head }
+roles: [role.qc-head]
+for: { tasks: [decide] }
+hours: 2
+every: 12
+source: [gmp-eaeu]
+review: draft

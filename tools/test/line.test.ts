@@ -3,7 +3,7 @@
 // уполномоченное лицо держит серию с отклонением; команды и отказы; сохранение посреди упаковки; срезами — то же;
 // срок годности ГП по Рекомендации ЕЭК № 2. Таблетки, коды, OEE и сверку проверяют инварианты на каждом шаге.
 import { describe, expect, test } from 'bun:test';
-import { db } from '../../src/content';
+import { legacy as db } from './legacy';
 import type { ContentDb } from '../../src/content/types';
 import { DAY, daysFromCivil, HOUR, MIN } from '../../src/engine/core/calendar';
 import { fingerprint } from '../../src/engine/core/hash';
@@ -207,14 +207,17 @@ describe('места для паллет кончились — линия ст�
 });
 
 describe('уполномоченное лицо', () => {
-  test('открытое отклонение серии — держать; решение игрока «выпустить» — отклонение оценено, серия выпущена', () => {
+  test('открытое отклонение серии — держать: ГП заблокирована и ждёт на стеллаже (Б2в); решение игрока «выпустить» — отклонение оценено, серия выпущена', () => {
     const s = newPlant(bare, { scenario: SC });
     const b = order(s, N20);
     live(s, 10, undefined, () => b.status === 'fg');
     s.deviations.D900 = { id: 'D900', opened: s.t, kind: 'ipc', batch: b.id, stage: 'compress', test: 'test.ipc.mass', status: 'open' };
     const out = live(s, 5, undefined, () => b.held === true);
     expect(out.some(n => n.kind === 'batchHeld' && n.batch === b.id)).toBe(true);
-    expect(s.lots[b.pack!.fg!].status).toBe('quarantine');
+    expect(s.lots[b.pack!.fg!].status).toBe('blocked');
+    // зона карантина ГП свободна для следующих серий: удержанные паллеты уехали на стеллажи хранения
+    live(s, 1, undefined, () => !Object.values(s.tasks).some(t => t.lot === b.pack!.fg));
+    for (const c of containersByLot(s).get(b.pack!.fg!)!) expect(plan.slot[(s.units[c.unit].where as { id: string }).id].kind).toBe('storage');
     expect(apply(bare, s, { kind: 'release', batch: b.id, decision: 'release' })).toEqual([]);
     live(s, 3, undefined, () => b.status === 'released');
     expect(b.status).toBe('released');

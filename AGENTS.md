@@ -116,7 +116,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   footprints, where people may walk and vehicles may drive, access cells, distance fields cached per plan, route length
   and the route polyline shared with the window, a point along it in whole centimetres), `plant.ts` (slots, docks, rooms,
   the lab, work points, posts of roles and distances along the plan's routes), `stock.ts` (lots, containers, pallets,
-  slots, the lot status table), `supply.ts` (purchase orders), `wms.ts` (truck, its check at the dock before unloading,
+  slots, the lot status table), `supply.ts` (purchase orders; the supply colleague — at 09:00 on a workday, every material
+  below its reorder point: plan use over the longest lead time, incoming control and safety stock, one order per approved
+  supplier, at most half the quarantine zone in pallets), `planner.ts` (the planning colleague — at 07:00 on a workday, a
+  batch order for the same weekday two weeks on, for the SKU that runs out first by FG and work in progress against
+  demand seen in customer orders; SKUs in turn until demand is seen), `wms.ts` (truck, its check at the dock before unloading,
   unloading, receiving, putaway), `quality.ts` (true lot properties, the lab result, spec limits), `lab.ts` (sampling,
   lab tests, the lot decision, a lot raised by the player), `infer.ts` (the inference — a copy of Anamnez's: noisy-OR
   findings, the posterior over candidates, entropy and the expected gain of a step), `investigation.ts` (the scenario's
@@ -141,10 +145,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   reconciliation, machine times for OEE, a machine part failing at a flow boundary, jams of the cartoner; the flow at a
   moment between events without writing the state — `flowAt`, for the slice; new part budgets for the twin —
   `lineRedraw`), `qa.ts` (QA check of finished goods with
-  retention samples, the qualified person's decision, FG shelf life), `market.ts` (customers and their orders, FG into
-  circulation after the regulator publishes the batch, FEFO allocation with the residual shelf life, whole pallets and
-  case picking, the customer's truck at 15:00, shipments with codes; orders at risk — one rule for the meeting and the
-  hourly alert, `orderRisks`), `cash.ts` (kopecks and ledger entries, dues by
+  retention samples, the qualified person's decision — «hold» blocks the FG and puts it on the racks, FG shelf life),
+  `market.ts` (customers and their orders, FG into circulation after the regulator publishes the batch, FEFO allocation
+  with the residual shelf life, whole pallets and case picking, the customer's truck at 15:00, shipments with codes; with
+  no free staging place, the docked truck is loaded straight from the racks; orders at risk — one rule for the meeting
+  and the hourly alert, `orderRisks`), `cash.ts` (kopecks and ledger entries, dues by
   date, suppliers, wages twice a month, contributions, energy, VAT by quarter, the credit line), `maint.ts` (machine
   parts, wear by work done, failure by the hazard table of wear, repairs and planned replacement by the mechanic with a
   spare from the workshop, spares replenished by level, the maintenance policy, `maintain`), `lean.ts` (losses per day
@@ -233,5 +238,6 @@ first, or copy the working code of Bolnitsa on the same versions.
 - `assets/` — CC0 people models (copies of Bolnitsa's, byte for byte) and `LICENSES.md` (sources, licenses, SHA-256);
   never add a model without its line there and in `assets/models/sources.json`.
 - `tools/app/` — page build (the page, the calculation thread and the plan run's thread), local server, browser scenario
-  with the contact sheet, the headless scene bench (`bench.mjs`); `tools/test/` — Bun tests and save samples;
+  with the contact sheet, the headless scene bench (`bench.mjs`); `tools/test/` — Bun tests and save samples; engine
+  mechanics tests run on the scenario as it was before Б2в (`legacy.ts`), the golden run — on the game's scenario;
   `tools/bench/` — the engine bench, with `--plan` also the plan run.

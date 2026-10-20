@@ -3,7 +3,7 @@
 // нет. Остановка ровно на событии (`more` после каждого события, `stop` у `tick` потока расчёта) — и дальше та же жизнь,
 // что без остановки.
 import { describe, expect, test } from 'bun:test';
-import { db } from '../../src/content';
+import { legacy as db } from './legacy';
 import { alertsHour, TRUCK_WAIT } from '../../src/engine/alerts';
 import { DAY, HOUR, momentOf } from '../../src/engine/core/calendar';
 import { fingerprint } from '../../src/engine/core/hash';

@@ -6,7 +6,7 @@
 // черновика, команды нет; план — с черновиком, прежние полосы сдвинутых серий — рядом; «Утвердить» — сроки как в
 // черновике и план как показан; «Сбросить» — ничего не изменилось; начатое задание из черновика уходит.
 import { describe, expect, test } from 'bun:test';
-import { db } from '../../src/content';
+import { legacy as db } from './legacy';
 import { DAY, HOUR, MIN } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
 import { readyFor, TRANSFER_WORK } from '../../src/engine/mes';

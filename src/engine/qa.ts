@@ -115,6 +115,10 @@ function decide(db: ContentDb, s: PlantState, b: Batch, notices: Notice[]) {
   delete b.decision;
   if (decision === 'hold') {
     b.held = true;
+    // удержанная ГП ждёт нового решения на стеллаже, заблокированной (Б2в): иначе три удержанные серии займут всю зону
+    // карантина ГП, и линии некуда будет ставить новые паллеты
+    if (lot.status === 'quarantine') setLotStatus(s, lot, 'blocked', FG_FLOW);
+    for (const u of unitsOfLot(s, lot.id)) settle(db, s, lot, u);
     notices.push({ kind: 'batchHeld', batch: b.id });
     return;
   }
@@ -153,13 +157,16 @@ function codesFee(db: ContentDb, s: PlantState, b: Batch) {
   post(s, -(net + tax), 'codes', b.id);
 }
 
-/** Паллета решённой ГП: выпущенная — на стеллаж ближе к экспедиции, отклонённая — в зону отклонённого. */
+/**
+ * Паллета решённой ГП: выпущенная — на стеллаж ближе к экспедиции, удержанная (заблокированная) — тоже на стеллаж, ждать
+ * нового решения; отклонённая — в зону отклонённого.
+ */
 export function settle(db: ContentDb, s: PlantState, lot: Lot, u: Unit) {
   if (u.where.kind !== 'slot' || busy(s, u.id)) return;
   const plan = planOf(db, s.plant);
   const at = plan.slot[u.where.id];
   const from = { kind: 'slot' as const, id: at.id };
-  if (lot.status === 'released' && at.kind !== 'storage') {
+  if ((lot.status === 'released' || lot.status === 'blocked') && at.kind !== 'storage') {
     const ship = plan.byKind.shipping?.[0] ?? at;
     addTask(s, { kind: 'putaway', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from, toKind: 'storage', near: { x: ship.x, z: ship.z }, work: 0, prio: PRIO.putaway, lot: lot.id });
   } else if (lot.status === 'rejected' && at.kind !== 'rejected') {

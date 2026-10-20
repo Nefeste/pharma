@@ -5,7 +5,9 @@
 // серию, а заказы покупателей остаются теми же. Поток прогона даёт тот же итог, что функция в основном потоке.
 import { describe, expect, test } from 'bun:test';
 import { Worker } from 'node:worker_threads';
-import { db } from '../../src/content';
+import { db as game } from '../../src/content';
+import type { ContentDb } from '../../src/content/types';
+import { legacy as db } from './legacy';
 import { DAY, HOUR } from '../../src/engine/core/calendar';
 import { fingerprint } from '../../src/engine/core/hash';
 import { apply, newPlant } from '../../src/engine/engine';
@@ -18,9 +20,9 @@ import type { FromPlan, ToPlan } from '../../src/sim/protocol';
 
 const SC = 'scn.proto';
 const at = (day: number, hour: number) => day * DAY + hour * HOUR;
-const plantAt = (t: number): PlantState => {
-  const s = newPlant(db, { scenario: SC });
-  apply(db, s, { kind: 'advance', seconds: t - s.t });
+const plantAt = (t: number, base: ContentDb = db): PlantState => {
+  const s = newPlant(base, { scenario: SC });
+  apply(base, s, { kind: 'advance', seconds: t - s.t });
   return s;
 };
 
@@ -172,7 +174,8 @@ describe('прогон', () => {
 
 describe('поток прогона', () => {
   test('снимок строкой через границу потоков; итог каждого варианта — как у функции в основном потоке', async () => {
-    const s = plantAt(at(2, 9));
+    // поток прогона читает базу игры — и функция в основном потоке считает на ней же
+    const s = plantAt(at(2, 9), game);
     const variants = [[], [{ kind: 'shift' as const, batch: 'B2', notBefore: s.batches.B2.notBefore + DAY, by: 'player' }]];
     const w = new Worker(new URL('./plan-worker.ts', import.meta.url));
     try {
@@ -190,7 +193,7 @@ describe('поток прогона', () => {
         const m = got[i] as Extract<FromPlan, { kind: 'variant' }>;
         expect(m.id).toBe(7);
         expect(m.index).toBe(i);
-        expect(JSON.stringify(m.sum)).toBe(JSON.stringify(summarize(runPlan(db, s, v, { days: 14, seeds: 3 }), 14)));
+        expect(JSON.stringify(m.sum)).toBe(JSON.stringify(summarize(runPlan(game, s, v, { days: 14, seeds: 3 }), 14)));
       });
     } finally {
       await w.terminate();

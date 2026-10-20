@@ -2,7 +2,7 @@
 // разгрузка, приёмка, размещение; смены и допуски; инварианты на каждом часе; ход срезами — то же, что куском. Что
 // бывает с партией после карантина, — tools/test/lab.test.ts.
 import { describe, expect, test } from 'bun:test';
-import { db } from '../../src/content';
+import { legacy as db } from './legacy';
 import { DAY, HOUR, momentOf } from '../../src/engine/core/calendar';
 import { fingerprint } from '../../src/engine/core/hash';
 import { apply, newPlant } from '../../src/engine/engine';

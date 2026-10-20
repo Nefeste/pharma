@@ -26,10 +26,11 @@ export const LOT_FLOW: Record<LotStatus, LotStatus[]> = {
 
 /**
  * Переходы статуса готовой продукции: её не испытывают в лаборатории (показатели серии испытаны на балке), а проверяет
- * ООК; решение уполномоченного лица — прямо из карантина (docs/specs/2026-10-engine.md, 1г).
+ * ООК; решение уполномоченного лица — прямо из карантина (docs/specs/2026-10-engine.md, 1г). «Держать» — заблокирована до
+ * нового решения (Б2в): карантин — статус, а не место (`gmp-eaeu`, ч. I, словарь), и удержанная ГП ждёт на стеллаже.
  */
 export const FG_FLOW: Record<LotStatus, LotStatus[]> = {
-  quarantine: ['released', 'rejected'],
+  quarantine: ['released', 'rejected', 'blocked'],
   sampled: [],
   testing: [],
   released: ['blocked'],

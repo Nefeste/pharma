@@ -2,7 +2,7 @@
 // 19.10.2026, #50, #51): строка и целое среза; счёт продукта — с 1 января и после 999 снова с 001, занятые номера
 // пропускаются; короткий номер с выдачи досье, полный — с начала смешивания; миграция схемы 14.
 import { describe, expect, test } from 'bun:test';
-import { db } from '../../src/content';
+import { legacy as db } from './legacy';
 import { batchNo, freeNo, issueNo, NNN_MAX, packNo, unpackNo } from '../../src/engine/batchno';
 import { DAY, daysFromCivil, HOUR, MIN, momentOf, type Ymd } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';

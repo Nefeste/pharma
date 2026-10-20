@@ -3,7 +3,7 @@
 // ящиков; фура, отгрузка, счёт и НДС; недопоставка; сохранение посреди отбора. Кассу, резерв и паллеты заказа проверяют
 // инварианты на каждом шаге.
 import { describe, expect, test } from 'bun:test';
-import { db } from '../../src/content';
+import { legacy as db } from './legacy';
 import type { ContentDb } from '../../src/content/types';
 import { DAY, daysFromCivil, HOUR, momentOf, workdayOnOrAfter } from '../../src/engine/core/calendar';
 import { fingerprint } from '../../src/engine/core/hash';

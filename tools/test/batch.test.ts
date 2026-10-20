@@ -3,7 +3,7 @@
 // большая уборка; масса по стадиям; причины записаны; МОК; балк в карантине и его испытания; отказ; сохранение посреди
 // стадии.
 import { describe, expect, test } from 'bun:test';
-import { db } from '../../src/content';
+import { legacy as db } from './legacy';
 import { batchNo } from '../../src/engine/batchno';
 import type { ContentDb } from '../../src/content/types';
 import { DAY, HOUR } from '../../src/engine/core/calendar';

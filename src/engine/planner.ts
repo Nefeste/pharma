@@ -3,7 +3,8 @@
 // недели (§9.3: первые 2 недели заморожены) и, если на него задания ещё нет, ставит одно: позиции, которой хватит меньше
 // всего, — когда ГП с сериями в работе меньше спроса на эти две недели и ещё `cover` суток. Спрос — по заказам покупателей
 // за `window` последних суток: это завод знает, а настоящий спрос покупателя — нет. Пока заказы идут меньше недели —
-// позиции по очереди. Своего состояния у коллеги нет: всё — из заводских заданий, партий и заказов. Счёт — в целых.
+// позиции по очереди. С Б2г — кампании (§9.4): продукт последнего задания идёт дальше, пока его позициям нужна серия, а
+// другому продукту не срочно. Своего состояния у коллеги нет: всё — из заводских заданий, партий и заказов. Счёт — в целых.
 import type { ContentDb, Id, Recipe, Sku } from '../content/types';
 import { DAY, isWorkday, momentOf } from './core/calendar';
 import { BATCH_HOUR, placeOrder } from './mes';
@@ -65,16 +66,18 @@ export function planHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   const at = s.t + AHEAD * DAY;
   const day = momentOf(s.start, at).day;
   if (Object.values(s.batches).some(b => momentOf(s.start, b.notBefore).day === day)) return;
-  const it = pick(db, s, plan.items, plan.cover, plan.window);
+  const it = pick(db, s, plan.items, plan.cover, plan.window, plan.urgent, at);
   if (it) placeOrder(db, s, { kind: 'order', recipe: it.recipe, notBefore: at, by: 'head:plan', sku: it.sku }, notices);
 }
 
 /**
  * Какую серию ставить: из позиций, у которых запас меньше спроса на две недели и ещё `cover` суток, — с наименьшим запасом
  * в сутках спроса (запас × заказано у другой против запаса другой × заказано у этой — в целых); спроса не видно — позицию,
- * чьё последнее задание старше; поровну — первую в плане. Нужной нет — никакую.
+ * чьё последнее задание старше; поровну — первую в плане. Нужной нет — никакую. С `urgent` — кампании (Б2г, геймдизайн,
+ * §9.4): продукт последнего задания до `at` идёт дальше, пока его позициям нужна серия, а ни одной позиции другого продукта
+ * не хватит меньше чем на две недели и ещё `urgent` суток, — генеральных уборок меньше.
  */
-function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], cover: number, window: number) {
+function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], cover: number, window: number, urgent: number | undefined, at: number) {
   const byLot = containersByLot(s);
   const pos = items.map(it => ({ it, p: positionOf(db, s, it.sku, window, byLot) }));
   if (pos.some(x => x.p.span === 0)) {
@@ -86,5 +89,14 @@ function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], co
   if (need.length === 0) return undefined;
   // у кого запаса меньше суток спроса: cases_a / ordered_a < cases_b / ordered_b; без заказов позиция — последней
   const less = (a: SkuPosition, b: SkuPosition) => (a.ordered === 0 ? false : b.ordered === 0 ? true : a.cases * b.ordered < b.cases * a.ordered);
-  return need.reduce((a, b) => (less(b.p, a.p) ? b : a)).it;
+  const neediest = (xs: typeof need) => xs.reduce((a, b) => (less(b.p, a.p) ? b : a)).it;
+  if (urgent === undefined) return neediest(need);
+  // продукт кампании — у задания, которое пойдёт последним перед этим
+  const prev = Object.values(s.batches)
+    .filter(b => b.notBefore < at)
+    .reduce<(typeof s.batches)[string] | undefined>((a, b) => (!a || b.notBefore > a.notBefore || (b.notBefore === a.notBefore && idNum(b.id) > idNum(a.id)) ? b : a), undefined);
+  const product = (x: (typeof need)[number]) => db.recipes[x.it.recipe].product;
+  const mine = need.filter(x => product(x) === prev?.product);
+  const hurry = need.some(x => product(x) !== prev?.product && x.p.cases * x.p.span < x.p.ordered * (AHEAD + urgent) * DAY);
+  return mine.length > 0 && !hurry ? neediest(mine) : neediest(need);
 }

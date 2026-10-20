@@ -1,7 +1,7 @@
 // Часть 3в: планёрка и касса (docs/specs/2026-10-panels.md, 3в). Вчера — сменные задания, ритм и OEE суток линии, главная
-// потеря — наибольшая; с прошлой планёрки — ровно события за 24 часа до 08:00; сейчас — нехватка как у заданий, сломанное,
-// лаборатория, заказы под угрозой без записи в состояние; касса — счета по сроку с остатком после каждого, проводки за
-// сутки, низшая точка; виды не читают истины.
+// потеря — наибольшая, уборки и переналадки (Б2г); с прошлой планёрки — ровно события за 24 часа до 08:00; сейчас —
+// нехватка как у заданий, сломанное, лаборатория, заказы под угрозой без записи в состояние; касса — счета по сроку с
+// остатком после каждого, проводки за сутки, низшая точка; виды не читают истины.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { DAY, HOUR, momentOf } from '../../src/engine/core/calendar';
@@ -75,6 +75,17 @@ describe('планёрка: вчера', () => {
     expect(sum.loss).toEqual({ what: 'wait', sec: 900 });
     expect(sum.neighbour).toEqual({ k: 0, what: 'micro', sec: 1200 });
     expect(lineSum(0, undefined)).toEqual({ line: 0 });
+  });
+
+  test('уборки и переналадки — вчерашние, из суток потерь (Б2г)', () => {
+    let seen = 0;
+    for (let day = day0 + 1; day <= today; day++) {
+      const v = morningView(db, s, { view: 'morning', day });
+      const yest = s.losses.find(d => d.day === day - 1)!;
+      expect([day, v.cleans, v.changes]).toEqual([day, yest.cleans, yest.changes]);
+      if (yest.cleans.major > 0 && yest.changes.n > 0) seen++;
+    }
+    expect(seen).toBeGreaterThan(0);
   });
 
   test('первая планёрка игры — без вчера: вчерашних суток у завода нет', () => {

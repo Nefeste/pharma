@@ -191,6 +191,15 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     delete next.batchCode;
     return { ...raw, next, batchNos: nos };
   },
+  // 15 → 16 (Б2г): уборки помещений и переналадки линий в сутках потерь. Прежние сутки их не записывали — там нули, как
+  // будто уборок не было; нынешние сутки копят с этой минуты.
+  15: raw => {
+    for (const d of (raw.losses as Raw[] | undefined) ?? []) {
+      d.cleans ??= { major: 0, majorSec: 0, minor: 0, minorSec: 0 };
+      d.changes ??= { n: 0, sec: 0 };
+    }
+    return raw;
+  },
 };
 
 export function toSave(s: PlantState): string {

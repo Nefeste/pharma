@@ -5,7 +5,7 @@ import type { ContentDb, Id } from '../../content/types';
 import { DAY, momentOf } from '../core/calendar';
 import { P_ONE } from '../core/rng';
 import { apply } from '../engine';
-import { oee } from '../lean';
+import { oee, type Switches, switchesOf } from '../lean';
 import { planOf } from '../plant';
 import type { Command, LineDay, PlantState } from '../types';
 import { blind } from './twin';
@@ -33,6 +33,8 @@ export interface SeedOut {
   lines: { line: string; oee?: number }[];
   /** доля горизонта под стадиями — по помещениям, под упаковкой — по линиям, доли 1/10 000 */
   busy: { row: string; share: number }[];
+  /** генеральные уборки помещений и переналадки линий, кончившиеся в горизонте (Б2г): сколько и их работа, с */
+  switches: Switches;
 }
 
 /** Сутки линии за горизонт — суммой; OEE ключевой машины (с наименьшим выпуском по номиналу). */
@@ -57,8 +59,11 @@ function share(spans: [number, number][], from: number, to: number): number {
   return Math.floor((sum * P_ONE) / (to - from));
 }
 
-/** Итог зерна на копии `c` после хода времени с `from` по `to`; `open` — серии, ещё не решённые к снимку; `known` — заказы снимка. */
-function measure(db: ContentDb, c: PlantState, from: number, to: number, seed: number, open: string[], known: Set<string>): SeedOut {
+/**
+ * Итог зерна на копии `c` после хода времени с `from` по `to`; `open` — серии, ещё не решённые к снимку; `known` — заказы
+ * снимка; `before` — уборки и переналадки суток снимка до него: их в горизонт не считать.
+ */
+function measure(db: ContentDb, c: PlantState, from: number, to: number, seed: number, open: string[], known: Set<string>, before: Switches): SeedOut {
   const plan = planOf(db, c.plant);
   const orders = Object.values(c.orders)
     .filter(o => o.due >= from && o.due < to)
@@ -84,6 +89,7 @@ function measure(db: ContentDb, c: PlantState, from: number, to: number, seed: n
     if (b.pack?.start !== undefined) packSpans.set(b.pack.line, [...(packSpans.get(b.pack.line) ?? []), [b.pack.start, b.pack.end ?? to]]);
   }
   const rooms = new Set(Object.values(db.recipes).flatMap(r => r.stages.map(st => plan.roomOf[st.room])));
+  const all = switchesOf(days);
   return {
     seed,
     orders,
@@ -97,6 +103,7 @@ function measure(db: ContentDb, c: PlantState, from: number, to: number, seed: n
       ...plan.plant.rooms.filter(r => rooms.has(r.id)).map(r => ({ row: r.id, share: share(stageSpans.get(r.id) ?? [], from, to) })),
       ...plan.plant.lines.map(l => ({ row: l.id, share: share(packSpans.get(l.id) ?? [], from, to) })),
     ],
+    switches: { major: all.major - before.major, majorSec: all.majorSec - before.majorSec, changes: all.changes - before.changes, changeSec: all.changeSec - before.changeSec },
   };
 }
 
@@ -115,11 +122,13 @@ export function runPlan(db: ContentDb, s: PlantState, variant: Command[], o: Run
     .filter(b => b.status !== 'released' && b.status !== 'rejected')
     .map(b => b.id);
   const known = new Set(Object.keys(s.orders));
+  const day = momentOf(s.start, s.t).day;
+  const before = switchesOf(s.losses.filter(d => d.day === day));
   const out: SeedOut[] = [];
   for (let k = 0; k < o.seeds; k++) {
     const c = runSeed(db, s, variant, o, k);
     const to = c.t;
-    out.push(measure(db, c, to - o.days * DAY, to, k, open, known));
+    out.push(measure(db, c, to - o.days * DAY, to, k, open, known, before));
   }
   return out;
 }
@@ -148,6 +157,8 @@ export interface RunSum {
   lines: { line: string; oee?: Range }[];
   /** узкое место — строка с наибольшей медианой доли горизонта под работой */
   busy: { row: string; share: Range }[];
+  /** генеральные уборки и переналадки в горизонте (Б2г): сколько и их работа, с, — по зёрнам */
+  switches: Record<keyof Switches, Range>;
 }
 
 export function summarize(outs: SeedOut[], days: number): RunSum {
@@ -192,5 +203,11 @@ export function summarize(outs: SeedOut[], days: number): RunSum {
       return { line, ...(r ? { oee: r } : {}) };
     }),
     busy: (first?.busy ?? []).map(({ row }) => ({ row, share: range(outs.map(o => o.busy.find(x => x.row === row)!.share))! })),
+    switches: {
+      major: range(outs.map(o => o.switches.major)) ?? [0, 0, 0],
+      majorSec: range(outs.map(o => o.switches.majorSec)) ?? [0, 0, 0],
+      changes: range(outs.map(o => o.switches.changes)) ?? [0, 0, 0],
+      changeSec: range(outs.map(o => o.switches.changeSec)) ?? [0, 0, 0],
+    },
   };
 }

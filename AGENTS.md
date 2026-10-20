@@ -120,8 +120,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   below its reorder point: plan use over the longest lead time, incoming control and safety stock, one order per approved
   supplier, at most half the quarantine zone in pallets), `planner.ts` (the planning colleague — at 07:00 on a workday, a
   batch order for the same weekday two weeks on, for the SKU that runs out first by FG and work in progress against
-  demand seen in customer orders; SKUs in turn until demand is seen), `wms.ts` (truck, its check at the dock before unloading,
-  unloading, receiving, putaway), `quality.ts` (true lot properties, the lab result, spec limits), `lab.ts` (sampling,
+  demand seen in customer orders; SKUs in turn until demand is seen; campaigns — the product of the last batch order goes
+  on while its SKUs need a batch and no SKU of the other product is urgent), `wms.ts` (truck, its check at the dock
+  before unloading, unloading, receiving, putaway), `quality.ts` (true lot properties, the lab result, spec limits),
+  `lab.ts` (sampling,
   lab tests, the lot decision, a lot raised by the player), `infer.ts` (the inference — a copy of Anamnez's: noisy-OR
   findings, the posterior over candidates, entropy and the expected gain of a step), `investigation.ts` (the scenario's
   incident — root and size by the seed, its traces in parameters, the mill screen and the lab test; an out-of-spec
@@ -139,9 +141,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   true lot and batch properties, causes, part budgets, unrecorded jams, results before review, the incident not yet
   seen, marks no step has looked for — and redraw it from what was measured, the root of an open investigation from its
   versions; branches anew from the run seed), `plan/run.ts` (the plan run — a pure function: per seed a copy, the
-  twin, the variant's commands, the horizon, the outcome — orders, batches, cash, OEE, load; per variant — lowest,
-  median and highest over seeds), `line.ts` (the packaging line as flow between events: machines, buffers, micro-stops,
-  camera rejects by count, codes in cases, FG pallets, changeover and line clearance, the crew, the end of a batch with
+  twin, the variant's commands, the horizon, the outcome — orders, batches, cash, OEE, load, general cleanings and line
+  changeovers with their hours; per variant — lowest, median and highest over seeds), `line.ts` (the packaging line as
+  flow between events: machines, buffers, micro-stops, camera rejects by count, codes in cases, FG pallets, changeover
+  and line clearance, the crew, the end of a batch with
   reconciliation, machine times for OEE, a machine part failing at a flow boundary, jams of the cartoner; the flow at a
   moment between events without writing the state — `flowAt`, for the slice; new part budgets for the twin —
   `lineRedraw`), `qa.ts` (QA check of finished goods with
@@ -153,7 +156,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   date, suppliers, wages twice a month, contributions, energy, VAT by quarter, the credit line), `maint.ts` (machine
   parts, wear by work done, failure by the hazard table of wear, repairs and planned replacement by the mechanic with a
   spare from the workshop, spares replenished by level, the maintenance policy, `maintain`), `lean.ts` (losses per day
-  by kind and department: waiting tasks by cause, a truck waiting for the dock, transport and walking, defects; a line's
+  by kind and department: waiting tasks by cause, a truck waiting for the dock, transport and walking, defects, room
+  cleanings — general and minor — and line changeovers with their work; a line's
   day — machine times, rated output over loading and working time, good tablets — and `oee()`; a batch's time by state;
   the line master's shift task and the rhythm coefficient), `tasks.ts` (tasks and the dispatcher: people,
   vehicles, instruments; why a task waits; a person walking to a post is free and measured from where they are),
@@ -179,8 +183,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   SKUs, recipes with stages by plan and by the stage records, equipment and the line, instruments and methods, roles and
   shifts, suppliers and customers, without the model's hidden parameters, start moments of running work as numbers
   (`ref.ts`); what is going on now — running work by department, one row per work, with the plant's norm and never the
-  engine's drawn duration (`now.ts`); the 08:00 meeting — the player's places over their tenure, yesterday by calendar day, events of the 24
-  hours before it, what waits now — the cash panel and the top-bar cash with the player's places (`report.ts`); the lab queue and the X–Rm control chart of the in-process average
+  engine's drawn duration (`now.ts`); the 08:00 meeting — the player's places over their tenure, yesterday by calendar
+  day with its cleanings and changeovers, events of the 24 hours before it, what waits now — the cash panel and the
+  top-bar cash with the player's places (`report.ts`); the lab queue and the X–Rm control chart of the in-process average
   tablet mass with its limits and special-cause signs, a lot under investigation and its steps' tests (`lab.ts`); the
   investigation board — what happened, participants, steps, findings, versions from the findings only, whether release
   is proven, the debrief only once concluded (`inv.ts`); the schedule — the Gantt of the past, the running and

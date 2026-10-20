@@ -58,6 +58,15 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+/** Вчерашние уборки и переналадки (Б2г): генеральные, малые, переналадки линий — каких не было, тех строк нет. */
+function cleanRows(v: MorningView): string[] {
+  const rows: string[] = [];
+  if (v.cleans?.major) rows.push(T.morning.cleanMajor(v.cleans.major, durText(v.cleans.majorSec)));
+  if (v.cleans?.minor) rows.push(T.morning.cleanMinor(v.cleans.minor, durText(v.cleans.minorSec)));
+  if (v.changes?.n) rows.push(T.morning.changes(v.changes.n, durText(v.changes.sec)));
+  return rows;
+}
+
 /** Список строк; пустой не показываем — страницу читают минуту. */
 function Rows({ title, rows }: { title: string; rows: ReactNode[] }) {
   if (rows.length === 0) return null;
@@ -79,6 +88,7 @@ function SeatBlock({ x, start }: { x: SeatSum; start: Ymd }) {
       if (x.rhythm !== undefined) rows.push(T.morning.prod.rhythm(pctText(x.rhythm)));
       for (const l of x.lines) rows.push(l.oee ? T.morning.prod.oee(T.morning.line(l.line + 1), pctText(Math.min(l.oee.oee, 10000))) : T.morning.prod.noOee(T.morning.line(l.line + 1)));
       rows.push(T.morning.prod.recleans(x.recleans));
+      rows.push(T.morning.prod.switches(x.switches.major, durText(x.switches.majorSec), x.switches.changes, durText(x.switches.changeSec)));
       break;
     }
     case 'quality':
@@ -183,6 +193,18 @@ export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningV
                       );
                     })}
                   </ul>
+                </div>
+                <div className="mblock" data-test="morning-cleans">
+                  <div className="mhead">{T.morning.cleansTitle}</div>
+                  {cleanRows(v).length === 0 ? (
+                    <div className="muted">{T.morning.noCleans}</div>
+                  ) : (
+                    <ul className="mlist">
+                      {cleanRows(v).map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 <div className="mblock main" data-test="morning-main">
                   <div className="mhead">{T.morning.mainTitle}</div>

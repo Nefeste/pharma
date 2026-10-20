@@ -168,7 +168,7 @@ describe('итог поста', () => {
     expect(morningView(db, s, { view: 'morning', day }).seats).toEqual(sums);
   });
 
-  test('производство: сменные задания и ритм — по кончившимся сменам; OEE — по суткам линии; повторные уборки', () => {
+  test('производство: сменные задания и ритм — по кончившимся сменам; OEE — по суткам линии; уборки и переналадки', () => {
     const p = of('production');
     const tasks = s.shiftTasks.filter(t => t.plan > 0 && t.fact !== undefined);
     expect(p.shifts).toBe(tasks.length);
@@ -183,6 +183,14 @@ describe('итог поста', () => {
     expect(p.lines).toEqual([{ line: 0, oee: want! }]);
     expect(p.recleans).toBe(s.losses.reduce((n, d) => n + d.recleans, 0));
     expect(p.recleans).toBeGreaterThan(0);
+    // генеральные уборки и переналадки (Б2г) — суммой суток на посту
+    expect(p.switches).toEqual({
+      major: s.losses.reduce((n, d) => n + d.cleans.major, 0),
+      majorSec: s.losses.reduce((n, d) => n + d.cleans.majorSec, 0),
+      changes: s.losses.reduce((n, d) => n + d.changes.n, 0),
+      changeSec: s.losses.reduce((n, d) => n + d.changes.sec, 0),
+    });
+    expect(p.switches.major).toBeGreaterThan(0);
   });
 
   test('качество: отклонения и решения уполномоченного лица — только с мгновения, когда место взяли снова', () => {

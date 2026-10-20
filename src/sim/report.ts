@@ -6,7 +6,7 @@ import type { ContentDb, Dept, Id, SeatId } from '../content/types';
 import { batchNo } from '../engine/batchno';
 import { DAY, momentOf } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
-import { AREA, type Oee, oee, rhythm, shiftsOfDay } from '../engine/lean';
+import { AREA, type Oee, oee, rhythm, shiftsOfDay, type Switches, switchesOf } from '../engine/lean';
 import { orderRisks, type OrderRisk } from '../engine/market';
 import { planOf } from '../engine/plant';
 import type { Batch, CashItem, DayLoss, Deviation, LineDay, MachineTimes, PlantState, TaskKind, WaitCause } from '../engine/types';
@@ -133,6 +133,9 @@ export interface MorningView {
   rhythm?: number;
   lines: LineSum[];
   main?: MainLoss;
+  /** вчера (Б2г): уборки помещений — генеральные и малые — и переналадки линий, сколько и их работа */
+  cleans?: DayLoss['cleans'];
+  changes?: DayLoss['changes'];
   deviations: DevRow[];
   decisions: DecisionRow[];
   maint: MaintRow[];
@@ -312,7 +315,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     shifts: tasks.map(t => ({ line: t.line, shift: t.shift, plan: t.plan, ...(t.fact !== undefined ? { fact: t.fact } : {}) })),
     ...(r !== undefined ? { rhythm: r } : {}),
     lines,
-    ...(yest ? { main: mainLoss(yest, lines) } : {}),
+    ...(yest ? { main: mainLoss(yest, lines), cleans: yest.cleans, changes: yest.changes } : {}),
     deviations,
     decisions,
     maint,
@@ -341,6 +344,8 @@ export type SeatSum =
       rhythm?: number;
       lines: { line: number; oee?: Oee }[];
       recleans: number;
+      /** генеральные уборки и переналадки линий (Б2г) */
+      switches: Switches;
     }
   | {
       seat: 'quality';
@@ -398,7 +403,7 @@ function rejectedAt(s: PlantState, b: Batch): number | undefined {
 }
 
 /**
- * Итог каждого места, которое игрок держит сейчас, — за время на нём. Сменные задания, сутки линии и повторные уборки
+ * Итог каждого места, которое игрок держит сейчас, — за время на нём. Сменные задания, сутки линии, уборки и переналадки
  * движок ведёт по календарным суткам: сутки, в которые место взяли, — целиком. Остальное — с мгновения, когда взяли.
  */
 export function seatSums(db: ContentDb, s: PlantState): SeatSum[] {
@@ -424,6 +429,7 @@ function seatSum(db: ContentDb, s: PlantState, seat: SeatId, from: number): Seat
           return { line: n, ...(o ? { oee: o } : {}) };
         }),
         recleans: days.reduce((n, d) => n + d.recleans, 0),
+        switches: switchesOf(days),
       };
     }
     case 'quality': {

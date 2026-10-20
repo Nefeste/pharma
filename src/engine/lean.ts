@@ -43,7 +43,17 @@ export const AREA: Record<TaskKind, Dept> = {
 };
 
 export function newLoss(day: number): DayLoss {
-  return { day, wait: {}, move: {}, walk: {}, defects: { blisters: 0, cartons: 0, deviations: 0, lots: 0, batches: 0 }, recleans: 0, lines: {} };
+  return {
+    day,
+    wait: {},
+    move: {},
+    walk: {},
+    defects: { blisters: 0, cartons: 0, deviations: 0, lots: 0, batches: 0 },
+    recleans: 0,
+    cleans: { major: 0, majorSec: 0, minor: 0, minorSec: 0 },
+    changes: { n: 0, sec: 0 },
+    lines: {},
+  };
 }
 
 /** Время машины по состояниям — пустое: у задания и у суток линии. */
@@ -136,6 +146,45 @@ export function defect(s: PlantState, kind: keyof DayLoss['defects'], n = 1) {
 /** Лишняя обработка: уборка после просроченной чистоты. */
 export function recleaned(s: PlantState) {
   today(s).recleans++;
+}
+
+/** Уборка помещения кончилась (Б2г): генеральная или малая и её работа, с, — в нынешние сутки. */
+export function cleaned(s: PlantState, major: boolean, sec: number) {
+  const c = today(s).cleans;
+  if (major) {
+    c.major++;
+    c.majorSec += sec;
+  } else {
+    c.minor++;
+    c.minorSec += sec;
+  }
+}
+
+/** Переналадка линии на формат другой позиции кончилась (Б2г): её работа, с, — в нынешние сутки. */
+export function changedOver(s: PlantState, sec: number) {
+  const c = today(s).changes;
+  c.n++;
+  c.sec += sec;
+}
+
+/** Генеральные уборки и переналадки: сколько и их работа, с. */
+export interface Switches {
+  major: number;
+  majorSec: number;
+  changes: number;
+  changeSec: number;
+}
+
+/** Генеральные уборки и переналадки суток — суммой: для прогона плана и итога поста производства (Б2г). */
+export function switchesOf(days: DayLoss[]): Switches {
+  const x: Switches = { major: 0, majorSec: 0, changes: 0, changeSec: 0 };
+  for (const d of days) {
+    x.major += d.cleans.major;
+    x.majorSec += d.cleans.majorSec;
+    x.changes += d.changes.n;
+    x.changeSec += d.changes.sec;
+  }
+  return x;
 }
 
 /**

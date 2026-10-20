@@ -2,6 +2,7 @@
 # — от серии (технологическая карта), а не от поставщика. Срок хранения балка до упаковки — гипотеза.
 id: mat.bulk.paracetamol500
 kind: bulk
+code: 400001
 name: { ru: Таблетки парацетамола 500 мг в балке, en: Paracetamol 500 mg tablets in bulk }
 unit: pcs
 container: cnt.bin.tablets

@@ -2,6 +2,7 @@
 # (meb-loratadine-2022); число архивных образцов — гипотеза.
 id: mat.fg.loratadine10-n30
 kind: fg
+code: 500004
 name: { ru: "Лоратадин, таблетки 10 мг, №30", en: "Loratadine 10 mg tablets, 30" }
 unit: pcs
 container: cnt.case.fg

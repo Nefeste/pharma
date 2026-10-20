@@ -2,6 +2,7 @@
 # занимают отдельной задачи; погрешность — гипотеза.
 id: test.ipc.mass
 name: { ru: Средняя масса таблетки (МОК), en: Average tablet mass (IPC) }
+doc: { code: TM-0006, rev: 1, from: 2026-01-19, approved: role.qc-head }
 attr: mass
 inst: inst.balance
 prep: 5

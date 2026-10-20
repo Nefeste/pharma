@@ -2,6 +2,7 @@
 # хранения балка до упаковки — гипотеза.
 id: mat.bulk.loratadine10
 kind: bulk
+code: 400002
 name: { ru: Таблетки лоратадина 10 мг в балке, en: Loratadine 10 mg tablets in bulk }
 unit: pcs
 container: cnt.bin.tablets

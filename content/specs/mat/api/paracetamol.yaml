@@ -1,6 +1,8 @@
 # Спецификация входного контроля: испытания и пределы. Пределы — гипотезы прототипа; настоящие — по НД изготовителя и
 # фармакопейной статье, сверить с консультантом. Подлинность в прототипе — по объединённой пробе.
 id: spec.mat.api.paracetamol
+name: { ru: "Парацетамол, субстанция", en: "Paracetamol, active substance" }
+doc: { code: SP-0001, rev: 1, from: 2026-02-02, approved: role.qc-head }
 tests:
   - { test: test.ir }
   - { test: test.hplc-assay, min: 98.5, max: 101.5 }

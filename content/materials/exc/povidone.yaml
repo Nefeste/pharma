@@ -1,5 +1,6 @@
 id: mat.exc.povidone
 kind: excipient
+code: 200002
 name: { ru: Повидон, en: Povidone }
 unit: kg
 container: cnt.bag.25

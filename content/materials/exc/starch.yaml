@@ -1,5 +1,6 @@
 id: mat.exc.starch
 kind: excipient
+code: 200001
 name: { ru: Крахмал картофельный, en: Potato starch }
 unit: kg
 container: cnt.bag.25

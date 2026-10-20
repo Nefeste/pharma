@@ -1,5 +1,6 @@
 id: test.ipc.disintegration
 name: { ru: Распадаемость (МОК), en: Disintegration (IPC) }
+doc: { code: TM-0009, rev: 1, from: 2026-01-19, approved: role.qc-head }
 attr: disintegration
 inst: inst.disintegration
 prep: 10

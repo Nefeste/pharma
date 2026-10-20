@@ -1,4 +1,6 @@
 id: spec.mat.exc.starch
+name: { ru: "Крахмал картофельный", en: "Potato starch" }
+doc: { code: SP-0002, rev: 1, from: 2026-02-02, approved: role.qc-head }
 tests:
   - { test: test.ir }
   - { test: test.lod, max: 20 }

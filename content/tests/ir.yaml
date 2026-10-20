@@ -2,6 +2,7 @@
 # Времена и погрешности — гипотезы; настоящие — по НД и валидации методик, сверить с консультантом.
 id: test.ir
 name: { ru: Подлинность (ИК-спектроскопия), en: Identity (IR) }
+doc: { code: TM-0001, rev: 1, from: 2026-01-19, approved: role.qc-head }
 attr: identity
 inst: inst.ir
 prep: 30

@@ -3,6 +3,8 @@
 # ich-q4b-a6). Растворение — по ОФС «Растворение» ГФ XV: первая ступень, каждая из 6 таблеток не меньше Q + 5 % = 80 % за
 # 45 мин, движок сравнивает среднее. Пределы содержания и влажности — гипотезы до НД продукта.
 id: spec.bulk.loratadine10
+name: { ru: "Таблетки лоратадина 10 мг в балке", en: "Loratadine 10 mg tablets in bulk" }
+doc: { code: SP-0019, rev: 1, from: 2027-04-01, approved: role.qc-head }
 tests:
   - { test: test.hplc-assay, min: 95, max: 105 }
   - { test: test.uniformity, max: 15 }

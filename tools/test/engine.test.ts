@@ -63,7 +63,7 @@ describe('сохранение', () => {
     expect(fingerprint(copy)).toBe(fingerprint(s));
   });
 
-  test.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])('образец схемы %d читается и живёт дальше (tools/test/fixtures/)', async v => {
+  test.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])('образец схемы %d читается и живёт дальше (tools/test/fixtures/)', async v => {
     const json = await Bun.file(new URL(`./fixtures/save-v${v}.json`, import.meta.url)).text();
     const s = fromSave(db, json);
     expect(s.schema).toBe(SCHEMA);
@@ -96,6 +96,26 @@ describe('сохранение', () => {
     const n = raw.losses.length;
     apply(db, s, { kind: 'advance', seconds: 30 * DAY });
     expect(s.losses.slice(n - 1).some(d => d.cleans.minor + d.cleans.major > 0)).toBe(true);
+    expect(check(db, s)).toEqual([]);
+  });
+
+  test('образец схемы 16: у испытаний — редакция спецификации, действовавшей при отборе пробы; у шага расследования — только у повторного (Б3а)', async () => {
+    const json = await Bun.file(new URL('./fixtures/save-v16.json', import.meta.url)).text();
+    const raw = JSON.parse(json) as { tests: Record<string, { spec?: string }> };
+    expect(Object.values(raw.tests).some(q => q.spec)).toBe(false);
+    const s = fromSave(db, json);
+    const tests = Object.values(s.tests);
+    expect(tests.length).toBeGreaterThan(0);
+    for (const q of tests) {
+      const lot = s.lots[s.samples[q.sample].lot];
+      if (q.inv && q.min === undefined && q.max === undefined) expect(q.spec).toBeUndefined();
+      else expect(q.spec).toBe(db.materials[lot.material].spec);
+    }
+    // новые испытания помнят свою редакцию сами
+    apply(db, s, { kind: 'advance', seconds: 10 * DAY });
+    const fresh = Object.values(s.tests).filter(q => !raw.tests[q.id] && !q.inv);
+    expect(fresh.length).toBeGreaterThan(0);
+    for (const q of fresh) expect(q.spec).toBe(db.materials[s.lots[s.samples[q.sample].lot].material].spec);
     expect(check(db, s)).toEqual([]);
   });
 

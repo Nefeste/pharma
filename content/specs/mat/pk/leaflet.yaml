@@ -1,3 +1,5 @@
 id: spec.mat.pk.leaflet
+name: { ru: "Инструкция «Парацетамол 500 мг»", en: "Leaflet «Paracetamol 500 mg»" }
+doc: { code: SP-0009, rev: 1, from: 2026-02-16, approved: role.qc-head }
 tests:
   - { test: test.visual }

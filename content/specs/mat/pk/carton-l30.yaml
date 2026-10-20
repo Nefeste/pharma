@@ -1,3 +1,5 @@
 id: spec.mat.pk.carton-l30
+name: { ru: "Пачка «Лоратадин 10 мг №30»", en: "Carton «Loratadine 10 mg No. 30»" }
+doc: { code: SP-0017, rev: 1, from: 2027-03-15, approved: role.qc-head }
 tests:
   - { test: test.visual }

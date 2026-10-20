@@ -123,12 +123,15 @@ export interface LotInfo {
   qty: number;
   left: number;
   expiry: number;
+  /** своя продукция (Б3а): редакция карты серии; у готовой продукции — и позиция, чья инструкция по упаковке */
+  recipe?: Id;
+  sku?: Id;
 }
 
 export type CardData =
   | { kind: 'unit'; unit: number; tag: Tag; containers: number; holds?: Holds; where: PlaceRef; lot?: LotInfo; why: Why[]; history: Hist[] }
-  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; batch?: string; stage?: string; why: Why[] }
-  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; parts: PartInfo[]; why: Why[]; history: Hist[] }
+  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; batch?: string; recipe?: Id; stage?: string; why: Why[] }
+  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; recipe?: Id; parts: PartInfo[]; why: Why[]; history: Hist[] }
   | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; sku?: Id; parts: PartInfo[]; why: Why[]; history: Hist[] }
   | { kind: 'person'; person: number; role: Id; shift: Id; doing: Doing }
   | { kind: 'vehicle'; vehicle: number; type: Id; task?: TaskKind }
@@ -259,6 +262,7 @@ function taskWhy(t: Task): Why {
 }
 
 function lotInfo(s: PlantState, lot: Lot, left: number): LotInfo {
+  const b = lot.batch ? s.batches[lot.batch] : undefined;
   return {
     id: lot.id,
     code: codeOf(lot.code),
@@ -271,6 +275,8 @@ function lotInfo(s: PlantState, lot: Lot, left: number): LotInfo {
     qty: lot.qty,
     left,
     expiry: lot.expiry,
+    ...(b ? { recipe: b.recipe } : {}),
+    ...(b?.pack && lot.id === b.pack.fg ? { sku: b.pack.sku } : {}),
   };
 }
 
@@ -387,7 +393,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         grade: def.grade,
         status: r.status,
         since: r.since,
-        ...(b ? { batch: batchNo(b.code) } : {}),
+        ...(b ? { batch: batchNo(b.code), recipe: b.recipe } : {}),
         ...(b && r.status === 'busy' ? { stage: db.recipes[b.recipe].stages[b.stage]?.id } : {}),
         why: clean.map(taskWhy),
       };
@@ -404,7 +410,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         type: def.type,
         room: plan.plant.rooms.findIndex(r => r.id === def.room),
         state: eqStateOf(s, def.id),
-        ...(b ? { batch: batchNo(b.code) } : {}),
+        ...(b ? { batch: batchNo(b.code), recipe: b.recipe } : {}),
         parts: partsOfMachine(db, s, def.id),
         why: repairs.map(taskWhy),
         history: maintHistory(s, def.id),

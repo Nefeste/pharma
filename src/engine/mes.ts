@@ -9,6 +9,7 @@ import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
 import { HOUR, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
+import { inForce } from './docs';
 import { incidentParams, incidentScreen } from './investigation';
 import { cleaned, defect, recleaned } from './lean';
 import { blocked, consume, failPart, partsOf, partType, untilFail, wearAt } from './maint';
@@ -40,19 +41,23 @@ const idNum = (id: string) => Number(id.slice(1));
 const busyUnit = (s: PlantState, uid: string) => Object.values(s.tasks).some(t => t.unit === uid);
 const roomPlace = (plan: PlantPlan, roomId: string): Place => ({ kind: 'point', x: plan.room[roomId].x, z: plan.room[roomId].z });
 
-/** Задание на серию: серия ждёт резерва и своей даты. Нет карты — отказ. */
+/**
+ * Задание на серию: серия ждёт резерва и своей даты. Нет карты — отказ. Карта — редакция, действующая в день «не раньше»
+ * (Б3а): задание держит её до конца — ни новая редакция, ни сдвиг срока её не меняют.
+ */
 export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'order' }>, notices: Notice[]) {
-  const r = db.recipes[cmd.recipe];
-  if (!r) {
+  if (!db.recipes[cmd.recipe]) {
     notices.push({ kind: 'refused', cmd: 'order', why: 'noRecipe', detail: cmd.recipe });
     return;
   }
+  const notBefore = Math.max(s.t, cmd.notBefore ?? s.t);
+  const r = db.recipes[inForce(db, 'recipes', cmd.recipe, momentOf(s.start, notBefore).day)];
   const b: Batch = {
     id: nextId(s, 'B'),
     code: { pp: '', n: 0, m: 0, y: 0 },
     recipe: r.id,
     product: r.product,
-    notBefore: Math.max(s.t, cmd.notBefore ?? s.t),
+    notBefore,
     ordered: s.t,
     by: cmd.by ?? 'player',
     status: 'waiting',

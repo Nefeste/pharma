@@ -746,7 +746,7 @@ try {
     else ok(`справочник: по карте — короткая «${up}» вверху, ещё раз — длинная «${down}»`);
     await page.click('[data-test=ref-tab][data-tab=products]');
     await frames(2);
-    const skus = await page.evaluate(() => [...document.querySelectorAll('[data-test=ref-skus] tbody tr')].map(r => r.children[3]?.textContent ?? ''));
+    const skus = await page.evaluate(() => [...document.querySelectorAll('[data-test=ref-skus] tbody tr')].map(r => r.children[4]?.textContent ?? ''));
     if (!skus.includes('120 пачек')) fail(`справочник: пачек в ящике — ${skus.join(', ')}`);
     else ok(`справочник: пачек в ящике — ${skus.join(', ')}; снимок ${join(out, 'e2e-ref.png')}`);
     // поиск: «№20» — одна позиция; цифры в поле — текст, скорость та же
@@ -769,6 +769,30 @@ try {
     if (press.length !== 1 || !/пресс/i.test(press[0])) fail(`справочник: поиск «пресс» в оборудовании — ${press.join(' | ')}`);
     else ok(`справочник: поиск «пресс» — «${press[0]}»`);
     await page.fill('[data-test=ref-search]', '');
+    // документы (Б3а): все регламентирующие документы базы, у карты прототипа — «действует»; поиск по коду находит документ;
+    // материалы — с кодом и единицей с кодом ОКЕИ
+    await page.click('[data-test=ref-tab][data-tab=docs]');
+    await frames(1);
+    const docRows = () => page.evaluate(() => [...document.querySelectorAll('[data-test=ref-docs] tbody tr')].map(r => [...r.children].map(c => c.innerText.trim())));
+    const docs = await docRows();
+    const all = await page.evaluate(() => ['specs', 'tests', 'recipes', 'skus'].reduce((n, k) => n + Object.keys(window.__game.db[k]).length, 0));
+    const mf = docs.find(r => r[0] === 'MF-0001');
+    if (docs.length !== all || mf?.[6] !== 'действует') fail(`документы: строк ${docs.length} из ${all}, MF-0001 — ${mf ? mf.join(' | ') : 'нет'}`);
+    else ok(`документы: ${docs.length} строк; ${mf.join(' · ')}`);
+    await page.click('[data-test=ref-search]');
+    await page.keyboard.type('MF-0002');
+    await frames(1);
+    const byCode = await docRows();
+    if (byCode.length !== 1 || byCode[0][0] !== 'MF-0002') fail(`документы: поиск «MF-0002» — ${byCode.map(r => r.join(' ')).join(' | ')}`);
+    else ok(`документы: поиск по коду «MF-0002» — «${byCode[0][1]}»`);
+    await page.screenshot({ path: join(out, 'e2e-docs.png') });
+    await page.fill('[data-test=ref-search]', '');
+    await page.click('[data-test=ref-tab][data-tab=materials]');
+    await frames(1);
+    const mats = await page.evaluate(() => [...document.querySelectorAll('[data-test=ref-materials] tbody tr')].map(r => [...r.children].map(c => c.innerText.trim())));
+    const api = mats.find(r => r[0] === '100001');
+    if (mats.length < 20 || api?.[3] !== 'кг · 166') fail(`материалы: строк ${mats.length}, 100001 — ${api ? api.join(' | ') : 'нет'}`);
+    else ok(`материалы: ${mats.length} строк; ${api.join(' · ')}`);
     for (const tab of ['equipment', 'lab', 'people', 'partners']) {
       await page.click(`[data-test=ref-tab][data-tab=${tab}]`);
       await frames(1);
@@ -778,6 +802,48 @@ try {
     await page.keyboard.press('Escape');
     if (await page.evaluate(() => !!document.querySelector('#ref'))) fail('справочник: Esc не закрыл');
     else ok('справочник: во всех вкладках есть строки, Esc закрыл');
+  }
+
+  // карточка серии (Б3а): у оборудования и помещения с серией — редакция её карты; нет таких сейчас — у паллеты своей
+  // продукции, балка или ГП: её берём со склада, где показаны только они
+  {
+    let seen = '';
+    let tried = 0;
+    const look = async list => {
+      for (const t of list) {
+        tried++;
+        await page.evaluate(x => window.__game.actions.select(x), t);
+        await page.waitForFunction(x => JSON.stringify(window.__game.store.get().card?.thing) === JSON.stringify(x), t, { timeout: 20_000 });
+        await frames(1);
+        seen = await page.evaluate(() => document.querySelector('[data-test=card-recipe]')?.textContent?.trim() ?? '');
+        if (seen) return;
+      }
+    };
+    await look(
+      await page.evaluate(() => {
+        const plant = window.__game.db.plants[window.__game.db.scenarios['scn.proto'].plant];
+        return [...plant.equipment.map((_, i) => ({ kind: 'equipment', i })), ...plant.rooms.map((_, i) => ({ kind: 'room', i }))];
+      }),
+    );
+    if (!seen) {
+      await page.click('[data-test=stock]');
+      await page.evaluate(() => window.__game.actions.setStock({ kinds: ['bulk', 'fg'], page: 0 }));
+      await page.waitForFunction(
+        () => {
+          const v = window.__game.store.get().stock.view;
+          return !!v && v.rows.length > 0 && v.rows.every(r => ['bulk', 'fg'].includes(window.__game.db.materials[r.material].kind));
+        },
+        null,
+        { timeout: 20_000 },
+      );
+      await look(await page.evaluate(() => window.__game.store.get().stock.view.rows.slice(0, 10).map(r => ({ kind: 'unit', n: r.unit }))));
+      await page.evaluate(() => window.__game.actions.setStock({ kinds: [], page: 0 }));
+    }
+    if (!/MF-000\d, ред\.\u00a0\d/.test(seen)) fail(`карточка серии: редакции карты нет (${tried} вещей)`);
+    else ok(`карточка серии: «${seen}»`);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    if (await page.evaluate(() => !!document.querySelector('#stock') || !!document.querySelector('[data-test=card]'))) fail('карточка серии: Esc не закрыл карточку и склад');
   }
 
   // стартовый пресет (Б1б): первый запуск без пресета в адресе — средний, через пять секунд замер; кадр программной

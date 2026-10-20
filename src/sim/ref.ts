@@ -2,9 +2,12 @@
 // состояния завода. Только то, что знает настоящий завод по своим документам: параметров модели, которых он не знает, —
 // истинных свойств партий и их разброса, доли брака у поставщика, спроса покупателя, таблиц отказов и разброса МОК, разброса
 // режимов и длительностей, причин, моделей расследования, происшествия — в виде нет. Мгновения начала работ — числами:
-// сколько прошло, окно считает по своим часам, и вид не меняется каждую секунду.
-import type { ContentDb, Dept, Id, ParamUnit } from '../content/types';
+// сколько прошло, окно считает по своим часам, и вид не меняется каждую секунду. Документы и редакции (Б3а) — по дате
+// завода: что действует сегодня, что в проекте и что в архиве.
+import type { ContentDb, Dept, Id, MaterialKind, OkeiUnit, ParamUnit } from '../content/types';
 import { batchNo } from '../engine/batchno';
+import { momentOf } from '../engine/core/calendar';
+import { DOC_KINDS, type DocKind, type DocStatus, inForce, statusOf } from '../engine/docs';
 import { geo, SIXTY } from '../engine/line';
 import { partType, wearAt } from '../engine/maint';
 import { nominal } from '../engine/mes';
@@ -163,9 +166,30 @@ export interface RefCustomer {
   minShelf: number;
 }
 
+/**
+ * Материал или запчасть (Б3а): единица учёта — с кодом ОКЕИ из регуляторного профиля; спецификация — редакция, действующая
+ * сегодня (у запчасти её нет). Код и имя окно берёт из базы.
+ */
+export interface RefMaterial {
+  id: Id;
+  kind: MaterialKind | 'spare';
+  unit: OkeiUnit;
+  okei: number;
+  spec?: Id;
+}
+
+/** Регламентирующий документ (Б3а): запись редакции и её статус на сегодня по дате завода. Шапку окно берёт из базы. */
+export interface RefDoc {
+  kind: DocKind;
+  id: Id;
+  status: DocStatus;
+}
+
 export interface RefView {
   view: 'ref';
   products: RefProduct[];
+  materials: RefMaterial[];
+  docs: RefDoc[];
   recipes: RefRecipe[];
   equipment: RefEquipment[];
   lines: RefLine[];
@@ -211,8 +235,15 @@ function stagesOf(db: ContentDb, s: PlantState, id: Id): RefStage[] {
   });
 }
 
+/** Единица учёта материала с кодом ОКЕИ: готовая продукция — пачками, остальное — килограммами или штуками. */
+function unitOf(kind: MaterialKind | 'spare', unit: 'mass' | 'pcs'): OkeiUnit {
+  return kind === 'fg' ? 'pack' : unit === 'mass' ? 'kg' : 'pcs';
+}
+
 export function refView(db: ContentDb, s: PlantState): RefView {
   const plan = planOf(db, s.plant);
+  const today = momentOf(s.start, s.t).day;
+  const okei = db.profiles[db.scenarios[s.scenario].profile].okei;
   const roomType = (id: string) => plan.plant.rooms.find(r => r.id === id)?.type ?? id;
   const products = Object.values(db.products).map(pr => ({
     id: pr.id,
@@ -231,7 +262,18 @@ export function refView(db: ContentDb, s: PlantState): RefView {
         ...(k.regPrice !== undefined ? { regPrice: k.regPrice } : {}),
       })),
   }));
-  const recipes = Object.values(db.recipes).map(r => ({
+  const materials: RefMaterial[] = [
+    ...Object.values(db.materials).map(m => {
+      const unit = unitOf(m.kind, m.unit);
+      return { id: m.id, kind: m.kind, unit, okei: okei[unit], spec: inForce(db, 'specs', m.spec, today) };
+    }),
+    ...Object.values(db.spares).map(sp => ({ id: sp.id, kind: 'spare' as const, unit: 'pcs' as const, okei: okei.pcs })),
+  ];
+  const docs = DOC_KINDS.flatMap(kind => Object.keys(db[kind]).map(id => ({ kind, id, status: statusOf(db, kind, id, today) })));
+  // карты — действующие сегодня редакции; все редакции — во вкладке документов
+  const recipes = Object.values(db.recipes)
+    .filter(r => statusOf(db, 'recipes', r.id, today) === 'active')
+    .map(r => ({
     id: r.id,
     product: r.product,
     mass: r.batch.mass,
@@ -317,5 +359,5 @@ export function refView(db: ContentDb, s: PlantState): RefView {
       .map(sp => ({ spare: sp.id, price: sp.price, lead: [...sp.lead] as [number, number] })),
   }));
   const customers = Object.values(db.customers).map(c => ({ id: c.id, payDays: c.payDays, days: [...c.order.days], hour: c.order.hour, lead: [...c.order.lead] as [number, number], minShelf: c.minShelf }));
-  return { view: 'ref', products, recipes, equipment, lines, methods, instruments, roles, shifts, suppliers, customers };
+  return { view: 'ref', products, materials, docs, recipes, equipment, lines, methods, instruments, roles, shifts, suppliers, customers };
 }

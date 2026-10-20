@@ -57,6 +57,8 @@ export interface LabLotRow {
   all: number;
   /** задача партии: отбор, перевозка, передача, решение */
   now?: TaskNow;
+  /** редакция спецификации, по которой её испытывают (Б3а): действующая при отборе пробы */
+  spec?: Id;
   tests: LabTestRow[];
 }
 
@@ -117,7 +119,8 @@ export function labView(db: ContentDb, s: PlantState): LabView {
     // место в очереди — первая открытая задача партии или её испытаний
     const all = [...(byLot.get(lot.id) ?? []), ...[...tests, ...more].flatMap(q => byTest.get(q.id) ?? [])];
     const pos = Math.min(Number.MAX_SAFE_INTEGER, ...all.map(t => order.get(t.id) ?? Number.MAX_SAFE_INTEGER));
-    rows.push({ lot: lot.id, code: code(lot.code), material: lot.material, rush: !!lot.rush, stage, done, all: tests.length, ...(own ? { now: nowOf(s, own) } : {}), tests: testRows, pos });
+    const spec = tests.find(q => q.spec)?.spec;
+    rows.push({ lot: lot.id, code: code(lot.code), material: lot.material, rush: !!lot.rush, stage, done, all: tests.length, ...(own ? { now: nowOf(s, own) } : {}), ...(spec ? { spec } : {}), tests: testRows, pos });
   }
   rows.sort((a, b) => Number(b.rush) - Number(a.rush) || a.pos - b.pos || Number(a.lot.slice(1)) - Number(b.lot.slice(1)));
   return {

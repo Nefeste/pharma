@@ -3,16 +3,20 @@
 // методики × нормальная величина. Значения — доли 1/10 000 (src/content/types.ts, `Attr`).
 import { type Attr, type ContentDb, type Id, QUALITATIVE, type SpecLine } from '../content/types';
 import { P_ONE } from './core/rng';
+import { revisions } from './docs';
 import { normal, roll, spread } from './random';
 import type { PlantState } from './types';
 
 export type Props = Partial<Record<Attr, number>>;
 
-/** Какие свойства есть у партии материала: испытываемые спецификацией и заданные средним. */
+/**
+ * Какие свойства есть у партии материала: испытываемые спецификацией — любой её редакцией (Б3а): партия, принятая по
+ * одной, живёт и при следующей, — и заданные средним.
+ */
 export function attrsOf(db: ContentDb, material: Id): Attr[] {
   const m = db.materials[material];
   const out = new Set<Attr>();
-  for (const line of db.specs[m.spec].tests) out.add(db.tests[line.test].attr);
+  for (const sp of revisions(db, 'specs', m.spec)) for (const line of db.specs[sp].tests) out.add(db.tests[line.test].attr);
   for (const a of Object.keys(m.props) as Attr[]) out.add(a);
   return [...out];
 }

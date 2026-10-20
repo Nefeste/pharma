@@ -6,6 +6,7 @@ import type { ContentDb, Id } from '../content/types';
 import { schedule } from './core/agenda';
 import { DAY, HOUR, isWorkday, MIN, momentOf } from './core/calendar';
 import { part, post, vatRate } from './cash';
+import { inForce } from './docs';
 import { packNeeds } from './mes';
 import { casesOf, positionOf } from './planner';
 import { planOf } from './plant';
@@ -92,8 +93,10 @@ export function planUse(db: ContentDb, s: PlantState, days: number, byLot = cont
   if (!plan) return out;
   const pos = plan.items.map(it => positionOf(db, s, it.sku, plan.window, byLot));
   const blind = pos.some(p => p.span === 0);
+  const today = momentOf(s.start, s.t).day;
   plan.items.forEach((it, i) => {
-    const r = db.recipes[it.recipe];
+    // карта — редакция, действующая сегодня (Б3а)
+    const r = db.recipes[inForce(db, 'recipes', it.recipe, today)];
     const p = pos[i];
     // тысячных серии в сутки: вслепую — 5/7 серии на все позиции; по спросу — ящики в сутки / ящики с серии
     const milli = blind ? Math.floor(5000 / (7 * plan.items.length)) : Math.floor((p.ordered * DAY * 1000) / (p.span * casesOf(r, db.skus[it.sku])));

@@ -1,6 +1,8 @@
 # Проверка готовой продукции перед выпуском: внешний вид упаковки и маркировка (GMP ЕАЭС, ч. I, пп. 5.59, 6.3). Остальные
 # показатели серии испытаны на балке (docs/10-domain.md, §7).
 id: spec.fg.loratadine10
+name: { ru: "Лоратадин, таблетки 10 мг — готовая продукция", en: "Loratadine 10 mg tablets — finished product" }
+doc: { code: SP-0020, rev: 1, from: 2027-04-01, approved: role.qc-head }
 tests:
   - { test: test.visual }
 source: [gmp-eaeu]

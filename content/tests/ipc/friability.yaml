@@ -2,6 +2,7 @@
 # таблетировании. Погрешность — гипотеза.
 id: test.ipc.friability
 name: { ru: Истираемость (МОК), en: Friability (IPC) }
+doc: { code: TM-0008, rev: 1, from: 2026-01-19, approved: role.qc-head }
 attr: friability
 inst: inst.friabilator
 prep: 10

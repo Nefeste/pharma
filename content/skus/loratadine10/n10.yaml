@@ -3,6 +3,8 @@
 # ящиков на паллете, плёнки и фольги на блистер, брак на наладку и цены — гипотезы.
 id: sku.loratadine10.n10
 name: { ru: "Лоратадин, таблетки 10 мг, №10", en: "Loratadine 10 mg tablets, 10" }
+# шапка инструкции по упаковке (Б3а): блистер, пачка, ящик, паллета и отходы на наладку ниже — её содержание
+doc: { code: PI-0003, rev: 1, from: 2027-04-01, approved: role.production-head }
 product: prd.loratadine10
 fg: mat.fg.loratadine10-n10
 format: l10

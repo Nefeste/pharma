@@ -2,6 +2,7 @@
 # брак — гипотезы.
 id: mat.exc.lactose
 kind: excipient
+code: 200005
 name: { ru: Лактозы моногидрат, en: Lactose monohydrate }
 unit: kg
 container: cnt.bag.25

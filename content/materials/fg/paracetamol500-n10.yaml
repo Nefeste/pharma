@@ -2,6 +2,7 @@
 # и число архивных образцов — гипотезы.
 id: mat.fg.paracetamol500-n10
 kind: fg
+code: 500002
 name: { ru: "Парацетамол, таблетки 500 мг, №10", en: "Paracetamol 500 mg tablets, 10" }
 unit: pcs
 container: cnt.case.fg

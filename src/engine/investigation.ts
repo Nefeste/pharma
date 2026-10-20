@@ -228,6 +228,7 @@ function startStep(db: ContentDb, s: PlantState, inv: Investigation, st: InvStep
       inv: inv.id,
       ...(st.retest && first.min !== undefined ? { min: first.min } : {}),
       ...(st.retest && first.max !== undefined ? { max: first.max } : {}),
+      ...(st.retest && first.spec ? { spec: first.spec } : {}),
     };
     s.tests[q.id] = q;
     const plan = planOf(db, s.plant);

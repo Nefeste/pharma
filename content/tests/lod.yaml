@@ -1,5 +1,6 @@
 id: test.lod
 name: { ru: Потеря в массе при высушивании, en: Loss on drying }
+doc: { code: TM-0003, rev: 1, from: 2026-01-19, approved: role.qc-head }
 attr: moisture
 inst: inst.lod
 prep: 20

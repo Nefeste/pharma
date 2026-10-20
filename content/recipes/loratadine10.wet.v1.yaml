@@ -4,7 +4,9 @@
 # зарегистрированных таблеток (ru-loratadine); количества, размер серии, времена, режимы, разбросы, потери и показатели
 # балка — гипотезы геймдизайна, не чей-то настоящий регламент.
 id: rcp.loratadine10.wet.v1
-name: { ru: "Лоратадин 10 мг, влажная грануляция, ред. 1", en: "Loratadine 10 mg, wet granulation, rev. 1" }
+name: { ru: "Лоратадин 10 мг, влажная грануляция", en: "Loratadine 10 mg, wet granulation" }
+# редакция — в шапке документа (Б3а); id с «v1» вечный — по нему записаны серии
+doc: { code: MF-0002, rev: 1, from: 2027-04-01, approved: role.production-head }
 product: prd.loratadine10
 # 300 000 таблеток по 200 мг
 batch: { kg: 60, units: 300000 }

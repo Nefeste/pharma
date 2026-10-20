@@ -124,14 +124,17 @@ first, or copy the working code of Bolnitsa on the same versions.
   on while its SKUs need a batch and no SKU of the other product is urgent), `wms.ts` (truck, its check at the dock
   before unloading, unloading, receiving, putaway), `quality.ts` (true lot properties, the lab result, spec limits),
   `lab.ts` (sampling,
-  lab tests, the lot decision, a lot raised by the player), `infer.ts` (the inference — a copy of Anamnez's: noisy-OR
+  lab tests by the spec revision in force when the sample was taken, the lot decision, a lot raised by the player),
+  `docs.ts` (regulatory documents — specs, test methods, recipes, packaging instructions: revisions of one code, the one
+  in force on a plant day, draft, in force or archived), `infer.ts` (the inference — a copy of Anamnez's: noisy-OR
   findings, the posterior over candidates, entropy and the expected gain of a step), `investigation.ts` (the scenario's
   incident — root and size by the seed, its traces in parameters, the mill screen and the lab test; an out-of-spec
   dissolution opens a deviation and an investigation, the lot waits; steps as tasks of their roles or lab tests — the
   retest of the same sample by another analyst; findings read from the plant's state; the conclusion — cause and fate,
   release only with a proven lab error; the quality colleague — lab first, then gain per hour — while the player does
-  not hold the quality post; the debrief after the decision — `debrief`), `mes.ts` (batch orders, FEFO reservation with potency,
-  kitting through the airlock, stages in rooms with equipment and people, cleaning, process parameters, true batch
+  not hold the quality post; the debrief after the decision — `debrief`), `mes.ts` (batch orders on the recipe revision
+  in force at their not-before, FEFO reservation with potency, kitting through the airlock, stages in rooms with
+  equipment and people, cleaning, process parameters, true batch
   quality with causes, IPC, the bulk lot; the packing job and its packaging kit; a stage stopped by a part failure and
   resumed after the repair; a new not-before time of a batch order from the player — `shift`; room readiness, nominal
   stage time and cleaning time shared with the schedule run; new part budgets of a running stage for the plan run's
@@ -181,7 +184,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   and the card of a thing with what a pallet holds, built here on request and sent with the slice only when they changed,
   without truth fields (`views.ts`); the plant reference — how it should be by master data and how it is: products and
   SKUs, recipes with stages by plan and by the stage records, equipment and the line, instruments and methods, roles and
-  shifts, suppliers and customers, without the model's hidden parameters, start moments of running work as numbers
+  shifts, suppliers and customers, materials with their OKEI unit codes and the spec in force, every document revision
+  with its status by the plant date, without the model's hidden parameters, start moments of running work as numbers
   (`ref.ts`); what is going on now — running work by department, one row per work, with the plant's norm and never the
   engine's drawn duration (`now.ts`); the 08:00 meeting — the player's places over their tenure, yesterday by calendar
   day with its cleanings and changeovers, events of the 24 hours before it, what waits now — the cash panel and the
@@ -236,6 +240,7 @@ first, or copy the working code of Bolnitsa on the same versions.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML (with part 4 —
   `investigations/`: the investigation model — candidates, findings, steps);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
+  material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   plan rules in `plan.ts`: doors on walls, docks on outer walls, class D only through airlocks, reachability, posts on
   walkable floor; models in
   code — parts inside the footprint, round cylinders, upright hoppers, items only on belts: `modelErrors` in `load.ts`).

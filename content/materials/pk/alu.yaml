@@ -1,5 +1,6 @@
 id: mat.pk.alu
 kind: packaging
+code: 300002
 name: { ru: Фольга алюминиевая, en: Aluminium foil }
 unit: kg
 container: cnt.roll.alu

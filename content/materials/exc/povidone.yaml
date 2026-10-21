@@ -4,7 +4,7 @@ code: 200002
 name: { ru: Повидон, en: Povidone }
 unit: kg
 container: cnt.bag.25
-storage: room
+storage: reg.ccrt
 shelf: 36
 spec: spec.mat.exc.povidone
 # истинные свойства партии: среднее и разброс, %; партия брака — сдвиг (гипотезы)

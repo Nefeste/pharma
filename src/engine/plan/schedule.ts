@@ -2,13 +2,16 @@
 // чистая функция из состояния; состояние не меняется. Правила — те же, что у движка, и из тех же его функций: готово ли
 // помещение для продукта (`readyFor`), номинальная длительность стадии (`nominal`), время уборки (`cleanWork`), может ли
 // человек смены взять задачу (`takesAt`); людей считают только допущенных к работе сейчас (Б3б, `admitted`) — обучение,
-// которое завод ещё проведёт, прогон не предсказывает. Разброса нет: жизнь отличается от прогона на разброс
-// длительностей, на людей, занятых другим, на отказы и ремонты и на комплекты упаковки, которые появятся позже, — их
-// прогон не предсказывает.
+// которое завод ещё проведёт, прогон не предсказывает. Назначенные визиты подрядчика (Б3в) прогон знает: с их часа актив
+// новых работ не берёт, идущая работа доходит до конца, подрядчик работает в свои часы; визиты, которые коллега
+// техслужбы ещё не назначил, — нет. Разброса нет: жизнь отличается от прогона на разброс длительностей, на людей, занятых
+// другим, на отказы и ремонты и на комплекты упаковки, которые появятся позже, — их прогон не предсказывает.
 import type { ContentDb, Id } from '../../content/types';
-import { DAY, HOUR, momentOf } from '../core/calendar';
+import { stageMeters, unfit } from '../assets';
+import { DAY, HOUR, isWorkday, momentOf } from '../core/calendar';
 import { blocked } from '../maint';
 import { cleanWork, DIRTY_HOLD, MES, nominal, readyFor, TRANSFER_WORK } from '../mes';
+import { classOf, placesOf } from '../places';
 import { planOf } from '../plant';
 import { admitted, needFor } from '../quals';
 import { takesAt } from '../staff';
@@ -18,7 +21,7 @@ import { WMS } from '../wms';
 /** Полоса Ганта: строка — `kit` (комплектовка у шлюза для материалов), помещение или линия плана. */
 export interface Bar {
   row: string;
-  kind: 'kit' | 'stage' | 'clean' | 'setup' | 'pack';
+  kind: 'kit' | 'stage' | 'clean' | 'setup' | 'pack' | 'visit';
   /** чья: серия стадии и комплектовки; у уборки — серия, после которой или перед которой убирают, если она известна */
   batch?: string;
   stage?: Id;
@@ -33,6 +36,9 @@ export interface Bar {
   material?: true;
   /** оборудование стадии ждёт ремонта: когда он кончится, прогон не знает */
   repair?: true;
+  /** визит подрядчика (Б3в): у какого актива и какая работа */
+  asset?: string;
+  work?: 'qual' | 'cal';
 }
 
 /** Полоса, к которой относится причина: комплектовка или стадия карты. */
@@ -53,7 +59,11 @@ export type Why =
   /** помещение убирают: после серии, чистота просрочена, чисто только для другого продукта */
   | { why: 'clean'; bar: Id; room: string; work: number; major: boolean; cause: 'after' | 'expired' | 'product'; batch?: string }
   /** оборудование стадии ждёт ремонта */
-  | { why: 'repair'; bar: Id; room: string };
+  | { why: 'repair'; bar: Id; room: string }
+  /** у оборудования или прибора МОК стадии — визит подрядчика до `until` (Б3в) */
+  | { why: 'visit'; bar: Id; room: string; asset: string; work: 'qual' | 'cal'; until: number }
+  /** у оборудования или прибора МОК стадии вышел срок, а визит не назначен: когда он будет, прогон не знает (Б3в) */
+  | { why: 'unfit'; bar: Id; room: string; asset: string; work: 'qual' | 'cal' };
 
 export interface Forecast {
   /** полосы сейчас и по плану; прошлое — у вида (src/sim/plan.ts) */
@@ -148,6 +158,45 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
   };
   const cleanNeed = needFor(db, 'clean');
   const kitNeed = needFor(db, 'transfer');
+
+  // визиты подрядчика (Б3в): у начатого — его часы; у назначенного — с какого мгновения актив новых работ не берёт; окно
+  // работы встаёт, когда прогон знает, чем актив занят до неё. Работу, которую уже ждут с приёмкой, прогон не держит
+  const hours = db.scenarios[s.scenario].assets.hours;
+  const places = placesOf(plan.plant);
+  interface Vis {
+    asset: string;
+    work: 'qual' | 'cal';
+    at: number;
+    len: number;
+    from?: number;
+    to?: number;
+    now: boolean;
+  }
+  const visits = new Map<string, Vis>();
+  for (const a of Object.values(s.assets)) {
+    const v = a.visit;
+    if (!v || v.task !== undefined) continue;
+    const len = classOf(db, a)[v.work]?.work ?? 0;
+    visits.set(a.id, { asset: a.id, work: v.work, at: v.at, len, ...(v.from !== undefined ? { from: v.from, to: v.to, now: true } : { now: false }) });
+  }
+  /** Первое мгновение не раньше `t`, когда подрядчик может начать работу длиной `len`: рабочий день, его часы. */
+  const contractorAt = (t: number, len: number): number => {
+    for (let at = t, i = 0; i < 400; i++) {
+      const m = momentOf(s.start, at);
+      const day = at - m.sec;
+      if (isWorkday(m.day) && m.sec <= hours[1] - len) return Math.max(at, day + hours[0]);
+      at = day + DAY + hours[0];
+    }
+    return t;
+  };
+  /** Окно визита, если работа подрядчика может начаться не раньше `free`. */
+  const fix = (v: Vis, free: number) => {
+    if (v.from !== undefined) return;
+    v.from = contractorAt(Math.max(v.at, now, free), v.len);
+    v.to = v.from + v.len;
+  };
+  // актив занят идущей стадией — подрядчик после её конца
+  const held = new Map<string, number>();
   const taskOf = (f: (t: Task) => boolean) => Object.values(s.tasks).find(f);
   const order = Object.values(s.batches);
 
@@ -245,16 +294,52 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
       }
       const repair = Object.values(s.equipment).some(e => e.room === roomId && st.equipment.includes(e.type) && blocked(s, e.id));
       if (repair) note(b.id, { why: 'repair', bar: st.id, room: roomId });
-      const c = take([st.staff.role], st.staff.n, t, needFor(db, 'stage', { stage: st }));
-      if (!c) return;
-      if (c.t > t) note(b.id, { why: 'shift', bar: st.id, role: st.staff.role, at: c.t });
       const work = nominal(db, b.recipe, st, b.mass > 0 ? b.mass : r.batch.mass);
+      // активы стадии (Б3в): срок вышел, а визита нет — дальше не предсказать; с часа визита — после его конца
+      const mine = assetsOf(st, roomId);
+      // срок вышел сейчас: стадия — только после визита, когда бы он ни был назначен
+      const expired = new Set(mine.filter(id => (unfit(db, s, id) ?? 'visit') !== 'visit'));
+      const dead = [...expired].find(id => !visits.has(id));
+      if (dead) {
+        note(b.id, { why: 'unfit', bar: st.id, room: roomId, asset: dead, work: unfit(db, s, dead) as 'qual' | 'cal' });
+        return;
+      }
+      let c = take([st.staff.role], st.staff.n, t, needFor(db, 'stage', { stage: st }));
+      if (!c) return;
+      for (let i = 0; i < 8; i++) {
+        let at = c.t;
+        for (const id of mine) {
+          const v = visits.get(id);
+          if (!v || (at < v.at && !expired.has(id))) continue;
+          fix(v, held.get(id) ?? now);
+          if (at < v.to! && at + work > v.from!) {
+            note(b.id, { why: 'visit', bar: st.id, room: roomId, asset: id, work: v.work, until: v.to! });
+            at = v.to!;
+          }
+        }
+        if (at === c.t) break;
+        c = take([st.staff.role], st.staff.n, at, needFor(db, 'stage', { stage: st }));
+        if (!c) return;
+      }
+      if (c.t > t && !(out.why[b.id] ?? []).some(w => w.why === 'visit' && w.bar === st.id)) note(b.id, { why: 'shift', bar: st.id, role: st.staff.role, at: c.t });
       out.bars.push({ row: roomId, kind: 'stage', batch: b.id, stage: st.id, from: c.t, to: c.t + work, when: 'plan', ...flags, ...(repair ? { repair: true as const } : {}) });
+      // визит, чей час ещё не настал: подрядчик — после этой стадии
+      for (const id of mine) {
+        held.set(id, Math.max(held.get(id) ?? now, c.t + work));
+        const v = visits.get(id);
+        if (v && v.from === undefined && c.t < v.at) fix(v, c.t + work);
+      }
       t = c.t + work;
       const next = r.stages[k + 1];
       if (!next || plan.roomOf[next.room] !== roomId) leave(roomId, b, t);
     }
   };
+
+  /** Активы стадии в её помещении: оборудование её видов и приборы её МОК (Б3в). */
+  const assetsOf = (st: (typeof db.recipes)[string]['stages'][number], roomId: string): string[] => [
+    ...Object.values(s.equipment).filter(e => e.room === roomId && st.equipment.includes(e.type)).map(e => e.id),
+    ...stageMeters(db, s, st, roomId),
+  ];
 
   /** Серия на стадиях: идущая стадия — до конца задачи; ждущая людей — когда они в смене; после отказа — остаток работы. */
   const inProcess = (b: Batch) => {
@@ -267,6 +352,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     if (t?.state === 'busy') {
       out.bars.push({ row: roomId, kind: 'stage', batch: b.id, stage: st.id, from: t.times![1], to: t.times![4], when: 'now' });
       end = t.times![4];
+      for (const id of assetsOf(st, roomId)) held.set(id, Math.max(held.get(id) ?? now, end));
     } else if (t || b.run?.rest !== undefined) {
       const work = t ? t.work : b.run!.rest!;
       const repair = !t;
@@ -379,6 +465,14 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     slot = end;
     holder = { batch: c.b.id, pack: c.pack };
     if (!c.pack) stages(c.b, 0, end, c.material ? { material: true } : {});
+  }
+  // полосы визитов подрядчика (Б3в): в строке помещения — у оборудования и приборов МОК, в строке линии — у её машин
+  for (const v of visits.values()) {
+    const th = places.thing[v.asset];
+    const row = th?.family === 'machine' ? th.line : th?.family === 'equipment' || th?.family === 'ipc' ? th.room : undefined;
+    if (!row) continue;
+    fix(v, held.get(v.asset) ?? now);
+    out.bars.push({ row, kind: 'visit', from: v.from!, to: v.to!, when: v.now ? 'now' : 'plan', asset: v.asset, work: v.work });
   }
   return out;
 }

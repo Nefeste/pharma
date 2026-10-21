@@ -4,7 +4,7 @@ code: 300001
 name: { ru: Плёнка ПВХ для блистеров, en: PVC blister film }
 unit: kg
 container: cnt.roll.pvc
-storage: room
+storage: reg.ccrt
 shelf: 60
 spec: spec.mat.pk.pvc
 bad: { attr: appearance }

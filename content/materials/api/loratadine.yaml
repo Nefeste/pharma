@@ -6,7 +6,7 @@ code: 100002
 name: { ru: Лоратадин, en: Loratadine }
 unit: kg
 container: cnt.drum.fibre50
-storage: room
+storage: reg.ccrt
 shelf: 60
 potency: true
 spec: spec.mat.api.loratadine

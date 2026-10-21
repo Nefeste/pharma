@@ -4,6 +4,7 @@
 // ли улика на самом деле, отметки у записи испытания и у прибора, пока их не нашёл шаг, сборщик не читает. Разбор — только
 // у решённого расследования (`debrief` движка).
 import type { ContentDb, Id } from '../content/types';
+import { recOf } from '../engine/assets';
 import { batchNo } from '../engine/batchno';
 import { posterior } from '../engine/infer';
 import { type Debrief, debrief, labProven } from '../engine/investigation';
@@ -57,6 +58,8 @@ export interface InvWho {
   lots: { code: Code; material: Id }[];
   stages: { stage: string; room: string; equipment: Id[]; roles: Id[] }[];
   inst?: Id;
+  /** запись калибровки прибора (Б3в): шаг «Проверить прибор» читает её — последний день, когда она действует */
+  instCal?: number;
 }
 
 export interface InvBoard {
@@ -125,7 +128,12 @@ function boardOf(db: ContentDb, s: PlantState, inv: Investigation): InvBoard {
       recipe: b.recipe,
       ...(first.done !== undefined ? { t: first.done } : {}),
     },
-    who: { lots, stages, ...(first.inst && s.instruments[first.inst] ? { inst: s.instruments[first.inst].type } : {}) },
+    who: {
+      lots,
+      stages,
+      ...(first.inst && s.instruments[first.inst] ? { inst: s.instruments[first.inst].type } : {}),
+      ...(first.inst && s.assets[first.inst] && recOf(s.assets[first.inst], 'cal') ? { instCal: recOf(s.assets[first.inst], 'cal')!.until } : {}),
+    },
     steps,
     obs: inv.obs.map(o => ({ ...o })),
     beliefs,

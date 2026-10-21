@@ -6,7 +6,7 @@ code: 500001
 name: { ru: "Парацетамол, таблетки 500 мг, №20", en: "Paracetamol 500 mg tablets, 20" }
 unit: pcs
 container: cnt.case.fg
-storage: room
+storage: reg.ccrt
 shelf: 36
 spec: spec.fg.paracetamol500
 # архивные образцы серии, пачек

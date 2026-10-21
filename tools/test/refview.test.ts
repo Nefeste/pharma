@@ -83,7 +83,10 @@ const ALLOWED = new Set(
     // Б3а: номенклатура и регламентирующие документы — по НСИ и дате завода
     'materials docs kind okei spec status ' +
     // Б3б: люди с табельными номерами и допуском, матрица обучения — записи завода
-    'people person tab skill adm k doc rev matrix cells ok all'
+    'people person tab skill adm k doc rev matrix cells ok all ' +
+    // Б3в: места по плану, активы с инвентарными номерами, записи квалификации и калибровки, визиты — учёт завода
+    'places site name ru en areas rooms centers regime assets inv family place critical needs verify qual cal work day until by ' +
+    'visit at accepting unfit working thing i line today vehicles common ahead closed'
   ).split(' '),
 );
 

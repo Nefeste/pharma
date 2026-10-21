@@ -8,7 +8,9 @@ import { type ReactNode, useState } from 'react';
 import type { DocKind } from '../engine/docs';
 import { dayText, durText, lang, money, named, num, pctText, priceText, qtyText, T } from '../i18n';
 import type { DocNow } from '../sim/people';
+import type { AssetInfo, PlaceArea, PlaceCenter } from '../sim/places';
 import type { RefCustomer, RefDoc, RefEquipment, RefInstrument, RefLine, RefMachine, RefMaterial, RefMethod, RefPart, RefPerson, RefRecipe, RefRole, RefShift, RefSku, RefStage, RefSupplier, RefView } from '../sim/ref';
+import { assetClass, stateKey, untilText, unfitText, workName } from './assets';
 import { admText } from './Card';
 import { db, docText, headOf } from './db';
 import { type Actions, type Hud, REF_TABS } from './store';
@@ -446,6 +448,100 @@ function Partners({ v, q }: { v: RefView; q: string }) {
   );
 }
 
+/** Режим хранения словами и числами (Б3в): «При контролируемой комнатной температуре: 15–25 °C, влажность не выше 65 %». */
+function regimeText(id: string | undefined): string {
+  const r = id ? db?.regimes[id] : undefined;
+  return r ? T.assets.regime(named(r.name, id), num(r.temp[0] / 10), num(r.temp[1] / 10), num(r.rh / 100)) : '';
+}
+
+/**
+ * Места (Б3в): площадка → участки → рабочие места → оборудование и приборы. У каждого актива — код места, инвентарный
+ * номер, класс, критическое ли, квалификация и калибровка «до», состояние; у зоны хранения — режим и поверка её датчика.
+ */
+function Places({ v, q, actions }: { v: RefView; q: string; actions: Actions }) {
+  const p = v.places;
+  const c = T.assets.cols;
+  const show = (a: AssetInfo) => (a.thing ? () => actions.show(a.thing!) : undefined);
+  const rec = (a: AssetInfo, w: 'qual' | 'cal') => (a.needs.includes(w) ? untilText(w === 'qual' ? a.qual : a.cal, a.today) : dash());
+  const cols: Col<AssetInfo>[] = [
+    { name: c.place, text: a => a.place, show: a => <span className="mono">{a.place}</span> },
+    { name: c.inv, text: a => T.assets.inv(a.inv), show: a => <span className="mono nw" data-test="places-inv">{T.assets.inv(a.inv)}</span>, num: a => a.inv },
+    {
+      name: c.what,
+      text: a => assetClass(a),
+      show: a =>
+        a.thing ? (
+          <button type="button" className="link" onClick={show(a)}>
+            {assetClass(a)}
+          </button>
+        ) : (
+          assetClass(a)
+        ),
+    },
+    { name: c.family, text: a => T.assets.families[a.family] ?? a.family },
+    { name: c.critical, text: a => (a.critical ? T.assets.critical : '') },
+    { name: c.qual, text: a => rec(a, 'qual'), num: a => a.qual?.until ?? -1 },
+    { name: c.cal, text: a => (a.needs.includes('cal') ? `${a.verify ? `${T.assets.work.verify}: ` : ''}${rec(a, 'cal')}` : dash()), num: a => a.cal?.until ?? -1 },
+    {
+      name: c.state,
+      text: a => {
+        const k = stateKey(a);
+        const visit = a.visit ? ` · ${workName(a, a.visit.work)}` : '';
+        return k === 'expired' ? `${T.assets.state.expired} — ${unfitText(a)}` : `${T.assets.state[k]}${k === 'visit' || k === 'working' || k === 'accepting' ? visit : ''}`;
+      },
+      show: a => {
+        const k = stateKey(a);
+        const visit = a.visit ? ` · ${workName(a, a.visit.work)}` : '';
+        return (
+          <span className={k === 'expired' ? 'bad' : k === 'ok' || k === 'none' ? 'muted' : ''} data-test="places-state" data-state={k}>
+            {k === 'expired' ? `${T.assets.state.expired} — ${unfitText(a)}` : `${T.assets.state[k]}${k === 'visit' || k === 'working' || k === 'accepting' ? visit : ''}`}
+          </span>
+        );
+      },
+    },
+  ];
+  const rooms = (list: string[]) => list.map(t => T.roomTypes[t] ?? t).join(', ');
+  const center = (x: PlaceCenter) => (
+    <div key={x.code} className="rsub" data-test="places-center" data-code={x.code}>
+      <div>
+        <b className="mono">{x.code}</b> · {named(x.name, x.code)} <span className="muted">— {T.assets.centers[x.kind] ?? x.kind}</span>
+      </div>
+      {x.kind === 'storage' ? (
+        <div className="muted" data-test="places-regime">
+          {regimeText(x.regime)}
+          {x.rooms.length ? ` · ${T.assets.rooms(rooms(x.rooms))}` : ''}
+          {x.closed ? <b className="bad"> · {T.assets.closed}</b> : null}
+        </div>
+      ) : null}
+      <Table test="ref-places" cols={cols} items={x.assets} keyOf={a => a.id} q={q} />
+    </div>
+  );
+  const area = (a: PlaceArea) => (
+    <section key={a.code} className="rsec" data-test="places-area" data-code={a.code}>
+      <div className="msec">
+        <span className="mono">{a.code}</span> · {named(a.name, a.code)}
+      </div>
+      {a.rooms.length ? <div className="muted">{T.assets.rooms(rooms(a.rooms))}</div> : null}
+      {a.centers.map(center)}
+      {a.vehicles.length ? (
+        <div className="rsub">
+          <div>{T.assets.vehicles}</div>
+          <Table test="ref-places" cols={cols} items={a.vehicles} keyOf={x => x.id} q={q} />
+        </div>
+      ) : null}
+    </section>
+  );
+  return (
+    <>
+      <div className="muted" data-test="places-site">
+        <b className="mono">{p.site.code}</b> · {named(p.site.name, p.site.code)} · {T.assets.ahead(p.ahead)}
+      </div>
+      {p.areas.map(area)}
+      {p.common.length ? <div className="muted small">{T.assets.common(rooms(p.common))}</div> : null}
+    </>
+  );
+}
+
 /** Номенклатура (Б3а): код, вид, единица учёта с кодом ОКЕИ, срок годности, спецификация, действующая сегодня. */
 function Materials({ v, q }: { v: RefView; q: string }) {
   const c = T.ref.matCols;
@@ -457,6 +553,8 @@ function Materials({ v, q }: { v: RefView; q: string }) {
     { name: c.kind, text: x => T.ref.matKinds[x.kind] ?? x.kind },
     { name: c.unit, text: x => T.ref.okei(T.ref.unitNames[x.unit] ?? x.unit, x.okei), num: x => x.okei },
     { name: c.shelf, text: x => (shelf(x) !== undefined ? T.ref.months(shelf(x)!) : dash()), num: x => shelf(x) ?? -1 },
+    // режим хранения, который материал требует (Б3в)
+    { name: c.storage, text: x => (db?.materials[x.id] ? named(db?.regimes[db.materials[x.id].storage]?.name, db.materials[x.id].storage) : dash()) },
     { name: c.spec, text: x => (x.spec ? docText('specs', x.spec) : dash()), show: x => (x.spec ? <span className="mono nw">{docText('specs', x.spec)}</span> : dash()) },
   ];
   return (
@@ -525,6 +623,7 @@ export function Ref({ hud, actions }: { hud: Hud; actions: Actions }) {
             </>
           ) : null}
           {tab === 'equipment' ? <Equipment v={v} q={q} /> : null}
+          {tab === 'places' ? <Places v={v} q={q} actions={actions} /> : null}
           {tab === 'lab' ? <Lab v={v} q={q} /> : null}
           {tab === 'people' ? <People v={v} q={q} /> : null}
           {tab === 'partners' ? <Partners v={v} q={q} /> : null}

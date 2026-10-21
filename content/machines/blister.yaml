@@ -36,5 +36,9 @@ parts:
     spare: spare.sealplate
     replace: 90
     repair: [120, 240]
-source: [pilchik-2000, blister-vendors, sepha-seal]
+# квалификация (Б3в; геймдизайн, §7.2): повторная — через столько месяцев, часов работы подрядчика и цена, ₽ без
+# НДС; оборудование первичной и вторичной упаковки квалифицируют (прил. 15 GMP ЕАЭС, п. 7.1). Часы и цены — гипотезы
+qual: { every: 36, hours: 8, price: 150000, name: { ru: Квалификация блистерной машины, en: Blister machine qualification } }
+critical: true
+source: [pilchik-2000, blister-vendors, sepha-seal, gmp-eaeu]
 review: draft

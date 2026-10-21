@@ -2,7 +2,8 @@
 // из состояния. Данные — плоский JSON без строк для игрока: номера, виды, числа, мгновения; слова — в окне (src/i18n/).
 // Истины здесь нет (§9): сборщики не читают истинных свойств партий и серий, причин и запаса узлов до отказа — только то,
 // что завод мог узнать: ярлык, место и тару паллеты, паспорт, результат испытания после проверки вторым лицом, решение по
-// партии, задачу и чего она ждёт, журнал оборудования. Что окно уже получило, помнит `ViewDesk` — как «стол врача»
+// партии, задачу и чего она ждёт, журнал оборудования, инвентарный номер и записи квалификации и калибровки (Б3в). Что окно
+// уже получило, помнит `ViewDesk` — как «стол врача»
 // «Больницы» (её src/sim/doctor.ts, `DoctorDesk`): вид уходит, только когда изменился.
 import type { ContentDb, Id, MaterialKind } from '../content/types';
 import { batchNo } from '../engine/batchno';
@@ -11,11 +12,12 @@ import { partType, wearAt } from '../engine/maint';
 import { planOf } from '../engine/plant';
 import { shiftEnd } from '../engine/staff';
 import { TAG } from '../engine/stock';
-import type { Lot, LotStatus, MachineState, PlantState, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
+import type { AssetRec, Lot, LotStatus, MachineState, PlantState, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
 import { type InvQuery, type InvView, invView } from './inv';
 import { type ChartQuery, type ChartView, chartView, type LabQuery, type LabView, labView } from './lab';
 import { type EqState, eqStateOf } from './pack';
 import { type Admission, admissionOf, type DocNow, docNow, docOfRev, type TrainRow, trainRows } from './people';
+import { type AssetInfo, assetInfo, assetWaits } from './places';
 import { type GanttQuery, type GanttView, type GhostQuery, type GhostView, ganttView, ghostView } from './plan';
 import { type NowQuery, type NowView, nowView } from './now';
 import { type RefQuery, type RefView, refView } from './ref';
@@ -88,11 +90,12 @@ export const PAGE = 50;
 export const PLACES = 3;
 
 /**
- * Почему так: задача и чего она ждёт — «нет допуска» с документом, которого не хватает (Б3б); план отбора проб; испытания;
- * решение; серия ждёт решения; запас на старте.
+ * Почему так: задача и чего она ждёт — «нет допуска» с документом, которого не хватает (Б3б), непригодный актив (Б3в); план
+ * отбора проб; испытания; решение; серия ждёт решения; запас на старте; серия ждёт актив — стадия или упаковка (Б3в).
  */
 export type Why =
-  | { k: 'task'; task: TaskKind; busy: boolean; wait?: WaitCause; since?: number; lack?: DocNow }
+  | { k: 'task'; task: TaskKind; busy: boolean; wait?: WaitCause; since?: number; lack?: DocNow; unfit?: AssetInfo }
+  | { k: 'asset'; batch: string; asset: AssetInfo }
   | { k: 'plan' }
   | { k: 'tests'; done: number; all: number }
   | { k: 'decided'; status: 'released' | 'rejected'; t?: number }
@@ -113,7 +116,9 @@ export type Hist =
   | { k: 'decided'; t?: number; status: LotStatus }
   | { k: 'kit'; t?: number; batch: string; qty: number }
   | { k: 'shipped'; t: number; customer: Id; qty: number }
-  | { k: 'maint'; t: number; part: string; what: 'failure' | 'repair' | 'replace'; wear: number };
+  | { k: 'maint'; t: number; part: string; what: 'failure' | 'repair' | 'replace'; wear: number }
+  /** запись квалификации или калибровки (Б3в): мгновение — начало дня записи */
+  | { k: 'rec'; t: number; work: 'qual' | 'cal'; day: number; until: number; by?: { role: Id; tab: number } };
 
 export interface LotInfo {
   id: string;
@@ -136,8 +141,8 @@ export interface LotInfo {
 export type CardData =
   | { kind: 'unit'; unit: number; tag: Tag; containers: number; holds?: Holds; where: PlaceRef; lot?: LotInfo; why: Why[]; history: Hist[] }
   | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; batch?: string; recipe?: Id; stage?: string; why: Why[] }
-  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; recipe?: Id; parts: PartInfo[]; why: Why[]; history: Hist[] }
-  | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; sku?: Id; parts: PartInfo[]; why: Why[]; history: Hist[] }
+  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; recipe?: Id; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[] }
+  | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; sku?: Id; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[] }
   /** человек (Б3б): табельный номер, навык, допуск сегодня, обучение по матрице его роли, что изучает сейчас */
   | { kind: 'person'; person: number; tab: number; role: Id; shift: Id; skill: number; doing: Doing; adm: Admission; train: TrainRow[]; learning?: DocNow }
   | { kind: 'vehicle'; vehicle: number; type: Id; task?: TaskKind }
@@ -262,10 +267,11 @@ export function stockView(db: ContentDb, s: PlantState, q: StockQuery): StockVie
   return { view: 'stock', rows: rows.slice(page * PAGE, (page + 1) * PAGE), total: rows.length, page, pages };
 }
 
-/** Задача вещи: идёт или ждёт и чего — как её видит завод (1ж). */
+/** Задача вещи: идёт или ждёт и чего — как её видит завод (1ж); ждёт актив — какой (Б3в). */
 function taskWhy(db: ContentDb, s: PlantState, t: Task): Why {
   const lack = t.why === 'qual' && t.lack ? docNow(db, t.lack, momentOf(s.start, s.t).day) : undefined;
-  return { k: 'task', task: t.kind, busy: t.state === 'busy', ...(t.why ? { wait: t.why, since: t.since } : {}), ...(lack ? { lack } : {}) };
+  const unfit = t.why === 'asset' && t.unfit ? assetInfo(db, s, t.unfit) : undefined;
+  return { k: 'task', task: t.kind, busy: t.state === 'busy', ...(t.why ? { wait: t.why, since: t.since } : {}), ...(lack ? { lack } : {}), ...(unfit ? { unfit } : {}) };
 }
 
 function lotInfo(s: PlantState, lot: Lot, left: number): LotInfo {
@@ -356,8 +362,22 @@ function partsOfMachine(db: ContentDb, s: PlantState, machine: string): PartInfo
     .map(p => ({ type: p.type, wear: wearAt(partType(db, p), p.done), failed: p.state === 'failed', repair: p.task !== undefined }));
 }
 
+/** Журнал актива (Б3в): отказы, ремонты и замены узлов и записи квалификации и калибровки — по времени. */
 function maintHistory(s: PlantState, machine: string): Hist[] {
-  return s.maintLog.filter(e => e.machine === machine).map(e => ({ k: 'maint', t: e.t, part: e.part, what: e.what, wear: e.wear }));
+  const day0 = momentOf(s.start, 0).day;
+  const recs = (s.assets[machine]?.recs ?? []).map((r: AssetRec): Hist => ({ k: 'rec', t: (r.day - day0) * 86400, work: r.work, day: r.day, until: r.until, ...(r.by && s.people[r.by] ? { by: { role: s.people[r.by].role, tab: s.people[r.by].tab } } : {}) }));
+  const log = s.maintLog.filter(e => e.machine === machine).map((e): Hist => ({ k: 'maint', t: e.t, part: e.part, what: e.what, wear: e.wear }));
+  return [...recs, ...log].sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
+}
+
+/** Серии, которые ждут актив (Б3в): у вещи — её саму, у помещения — оборудование и приборы МОК его стадий. */
+function waitsOf(db: ContentDb, s: PlantState, f: (w: ReturnType<typeof assetWaits>[number]) => boolean): Why[] {
+  return assetWaits(db, s)
+    .filter(f)
+    .flatMap(w => {
+      const asset = assetInfo(db, s, w.asset);
+      return asset ? [{ k: 'asset' as const, batch: w.batch, asset }] : [];
+    });
 }
 
 /** Карточка вещи. */
@@ -402,7 +422,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         since: r.since,
         ...(b ? { batch: batchNo(b.code), recipe: b.recipe } : {}),
         ...(b && r.status === 'busy' ? { stage: db.recipes[b.recipe].stages[b.stage]?.id } : {}),
-        why: clean.map(t => taskWhy(db, s, t)),
+        why: [...clean.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.room === def.id)],
       };
     }
     case 'equipment': {
@@ -416,10 +436,11 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         eq: thing.i,
         type: def.type,
         room: plan.plant.rooms.findIndex(r => r.id === def.room),
-        state: eqStateOf(s, def.id),
+        state: eqStateOf(db, s, def.id),
         ...(b ? { batch: batchNo(b.code), recipe: b.recipe } : {}),
         parts: partsOfMachine(db, s, def.id),
-        why: repairs.map(t => taskWhy(db, s, t)),
+        ...(s.assets[def.id] ? { asset: assetInfo(db, s, def.id)! } : {}),
+        why: [...repairs.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.asset === def.id)],
         history: maintHistory(s, def.id),
       };
     }
@@ -440,7 +461,8 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(b ? { batch: batchNo(b.code) } : {}),
         ...(b?.pack ? { sku: b.pack.sku } : {}),
         parts: partsOfMachine(db, s, def.id),
-        why: repairs.map(t => taskWhy(db, s, t)),
+        ...(s.assets[def.id] ? { asset: assetInfo(db, s, def.id)! } : {}),
+        why: [...repairs.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.asset === def.id)],
         history: maintHistory(s, def.id),
       };
     }

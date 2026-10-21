@@ -181,35 +181,44 @@ first, or copy the working code of Bolnitsa on the same versions.
   so a full number never repeats; one integer in the slice), `alerts.ts` (the hourly alerts — a supplier truck still not
   unloaded 2 hours after arrival, a batch order still waiting for material at its not-before time and a packing job short
   of it at once, a new customer order at risk by the meeting's rule; one notice per thing in the hour its threshold
-  falls, no state of their own), `invariants.ts`.
+  falls, no state of their own), `places.ts` (the places of the plan by ISA-95 — site, areas, work centers of their kinds
+  and place codes; what stands where; the storage zone of a room and its sensor; whether a zone's regime lies inside a
+  material's; racks or the cold room for a material), `assets.ts` (physical assets — inventory numbers by place order,
+  qualification and calibration records with the acceptance day and the last day in force, start records by a hash
+  within the interval less the warning period; why an asset takes no new work — no record in force or a contractor visit;
+  the techservice colleague books a visit at 09:00 on a workday for the next workday; the contractor starts in his hours
+  once the asset is free, the bill on the visit day, the acceptance by the QC head or the QA specialist; a pallet stored
+  only in a zone whose regime fits and whose sensor is fit; what holds a stage or a line), `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`; a `tick` carries the notice kinds of the player's
   autopauses, and the thread stops right after such an event — the plant's clock on its minute, the rest of the game
-  clock dropped), packed slice (`pack.ts`, format 6: rooms, trucks
-  with their open body, changed pallets, tasks in progress, people with their walk to a post, vehicles, lines with their
-  machines, equipment; no truth fields — not the next micro-stop, not a part's budget), views for panels — the warehouse
-  and the card of a thing with what a pallet holds, built here on request and sent with the slice only when they changed,
-  without truth fields (`views.ts`); the plant reference — how it should be by master data and how it is: products and
-  SKUs, recipes with stages by plan and by the stage records, equipment and the line, instruments and methods, roles and
-  shifts, suppliers and customers, materials with their OKEI unit codes and the spec in force, every document revision
-  with its status by the plant date, without the model's hidden parameters, start moments of running work as numbers
-  (`ref.ts`); what is going on now — running work by department, one row per work, with the plant's norm and never the
-  engine's drawn duration (`now.ts`); the 08:00 meeting — the player's places over their tenure, yesterday by calendar
-  day with its cleanings and changeovers, events of the 24 hours before it, what waits now — the cash panel and the
-  top-bar cash with the player's places (`report.ts`); the lab queue and the X–Rm control chart of the in-process average
-  tablet mass with its limits and special-cause signs, a lot under investigation and its steps' tests (`lab.ts`); the
-  investigation board — what happened, participants, steps, findings, versions from the findings only, whether release
-  is proven, the debrief only once concluded (`inv.ts`); people and admissions — a person's admission today and what
-  they are losing within the warning period, training rows of the card, the training matrix of the reference with how
-  many people of a role are admitted, the meeting's summary — records are the plant's knowledge, not truth
-  (`people.ts`); the schedule — the Gantt of the past, the running and
-  the schedule run with the player's draft, the old bars of what the draft moves, and the ghost of a dragged batch order
-  (`plan.ts`), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how far the window's clock ran ahead
-  of the last slice; at most one `tick` in flight); the plan run's own thread — a second Web Worker over the same engine
-  (`planHost.ts`, `planWorker.ts` → `dist/plan.js`) and its client in the window (`planClient.ts`; a stop terminates
-  the thread). The window never runs the engine. Saves cross the thread boundary as a string: the window never parses
-  the state with the true lot properties — the plan run gets the same string.
+  clock dropped), packed slice (`pack.ts`, format 7: rooms, trucks with their open body, changed pallets, tasks in
+  progress, people with their walk to a post, vehicles, lines with their machines, equipment, and whether a machine or
+  equipment is in calibration or qualification; no truth fields — not the next micro-stop, not a part's budget), views
+  for panels — the warehouse and the card of a thing with what a pallet holds, built here on request and sent with the
+  slice only when they changed, without truth fields (`views.ts`); the plant reference — how it should be by master data
+  and how it is: products and SKUs, recipes with stages by plan and by the stage records, equipment and the line,
+  instruments and methods, roles and shifts, suppliers and customers, materials with their OKEI unit codes and the spec
+  in force, every document revision with its status by the plant date, without the model's hidden parameters, start
+  moments of running work as numbers (`ref.ts`); what is going on now — running work by department, one row per work,
+  with the plant's norm and never the engine's drawn duration (`now.ts`); the 08:00 meeting — the player's places over
+  their tenure, yesterday by calendar day with its cleanings and changeovers, events of the 24 hours before it, what
+  waits now — the cash panel and the top-bar cash with the player's places (`report.ts`); the places and assets — the
+  «Места» tab, an asset in a card, the meeting's calibration and qualification, which batch waits for which asset —
+  records and visits are the plant's knowledge (`places.ts`); the lab queue and the X–Rm control chart of the in-process
+  average tablet mass with its limits and special-cause signs, a lot under investigation and its steps' tests
+  (`lab.ts`); the investigation board — what happened, participants, steps, findings, versions from the findings only,
+  whether release is proven, the debrief only once concluded (`inv.ts`); people and admissions — a person's admission
+  today and what they are losing within the warning period, training rows of the card, the training matrix of the
+  reference with how many people of a role are admitted, the meeting's summary — records are the plant's knowledge, not
+  truth (`people.ts`); the schedule — the Gantt of the past, the running and the schedule run with the player's draft,
+  the old bars of what the draft moves, and the ghost of a dragged batch order (`plan.ts`), Web Worker (`worker.ts`) and
+  its client in the window (`client.ts`; how far the window's clock ran ahead of the last slice; at most one `tick` in
+  flight); the plan run's own thread — a second Web Worker over the same engine (`planHost.ts`, `planWorker.ts` →
+  `dist/plan.js`) and its client in the window (`planClient.ts`; a stop terminates the thread). The window never runs
+  the engine. Saves cross the thread boundary as a string: the window never parses the state with the true lot
+  properties — the plan run gets the same string.
 - `src/app/` — the game in the window: content, stage, clock and speeds with live time 1:1, input, panels (`game.ts`,
   `main.tsx`); what the slice puts on the floor — pallets, trucks, rooms, pallets on forks (`scene.ts`); where people
   and vehicles are now — a pure function of the tasks in the slice and the clock, on the plan's routes and with the
@@ -246,17 +255,22 @@ first, or copy the working code of Bolnitsa on the same versions.
   starts, `shift` commands on approval (`draft.ts`), the «Кем вы будете» screen of places (`Seats.tsx`), the
   investigation board — steps, findings in words with numbers from the records, version bars, the decision, the
   debrief (`Inv.tsx`), status and work icons
-  (`icons.tsx`), the content base for names (`db.ts`); `src/i18n/` — every player-facing string, Russian
+  (`icons.tsx`), asset words — class and inventory number, the work's name, «until» and why it does not work
+  (`assets.ts`), the content base for names (`db.ts`); `src/i18n/` — every player-facing string, Russian
   and English, and number, quantity, money, duration and date formats.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML (with part 4 —
   `investigations/`: the investigation model — candidates, findings, steps; with Б3б — `sops/`: procedures with the
-  document header, the works they are needed for, the roles that learn them, hours to study and the term in months);
+  document header, the works they are needed for, the roles that learn them, hours to study and the term in months;
+  with Б3в — `regimes/`: storage regimes of the pharmacopoeia, a temperature range and the highest humidity);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
   code share roles and works, start records younger than the shortest term; plan rules in `plan.ts`: doors on walls, docks on outer walls, class D only through airlocks, reachability, posts on
   walkable floor; models in
-  code — parts inside the footprint, round cylinders, upright hoppers, items only on belts: `modelErrors` in `load.ts`).
+  code — parts inside the footprint, round cylinders, upright hoppers, items only on belts: `modelErrors` in `load.ts`;
+  places — codes by format and unique, a room in one area, a thing on a work center of its kind in its room's area, one
+  verified sensor per storage zone, an IPC instrument for each stage test in the stage room, a zone for every material by
+  its regime, contractor works within his day, the warning period shorter than the shortest interval: `placeErrors`).
 - `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
 - `assets/` — CC0 people models (copies of Bolnitsa's, byte for byte) and `LICENSES.md` (sources, licenses, SHA-256);
   never add a model without its line there and in `assets/models/sources.json`.

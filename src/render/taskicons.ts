@@ -8,9 +8,9 @@ export type IconKind = 'move' | 'check' | 'sample' | 'lab' | 'decide' | 'process
 
 /**
  * Значок каждого вида работы: перевозка, проверка, пробы, испытание, решение, стадия, уборка, линия, ремонт, расследование,
- * фура, обучение (Б3б).
+ * фура, обучение (Б3б); приёмка работы подрядчика (Б3в) — проверка.
  */
-export const ICON_OF: Record<TaskKind | 'pack' | 'test' | 'truck', IconKind> = {
+export const ICON_OF: Record<TaskKind | 'pack' | 'test' | 'truck' | 'visit', IconKind> = {
   unload: 'move',
   receive: 'check',
   putaway: 'move',
@@ -46,6 +46,9 @@ export const ICON_OF: Record<TaskKind | 'pack' | 'test' | 'truck', IconKind> = {
   invFix: 'repair',
   train: 'learn',
   trainCheck: 'check',
+  // работа подрядчика и её приёмка (Б3в) — проверка
+  accept: 'check',
+  visit: 'check',
 };
 
 /** Пути значков в сетке 14 × 14: тёмная линия 1,5 на светлом кружке радиуса 6,5. */

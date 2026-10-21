@@ -2,12 +2,13 @@
 // и DOM — их проверяют тесты в Bun; рисует machines.ts.
 import type { EqState, MachineRow } from '../sim/pack';
 
-/** Что показывает лампа над машиной: работает, ждёт, стоит, авария, переналадка, уборка, без дела. */
-export type Lamp = 'run' | 'wait' | 'stop' | 'fail' | 'setup' | 'clean' | 'off';
+/** Что показывает лампа над машиной: работает, ждёт, стоит, авария, переналадка, уборка, калибровка или квалификация, без дела. */
+export type Lamp = 'run' | 'wait' | 'stop' | 'fail' | 'setup' | 'clean' | 'check' | 'off';
 
 /**
  * Цвет лампы (`13-art.md`, §5: состояния машин — цвет и значок): зелёный — работает, синий — ждёт, жёлтый — стоит,
- * красный — авария, фиолетовый — переналадка, бирюзовый — уборка, серый — без дела. Значок — всегда рядом с цветом.
+ * красный — авария, фиолетовый — переналадка, бирюзовый — уборка, бледно-салатовый — калибровка или квалификация (Б3в),
+ * серый — без дела. Значок — всегда рядом с цветом.
  * Оттенки подобраны так, чтобы каждая пара различалась и в имитации трёх видов цветовой слепоты (геймдизайн, §23;
  * проверка — tools/test/palette.test.ts).
  */
@@ -18,15 +19,18 @@ export const LAMP_COLOR: Record<Lamp, number> = {
   fail: 0xeb2019,
   setup: 0xdc3feb,
   clean: 0x3cd9d4,
+  check: 0xd8f8c0,
   off: 0x7c7c7d,
 };
 
 /**
  * Лампа машины линии: на ходу и медленнее — работает; ждёт соседей или людей — ждёт; микроостановка — стоит; авария;
- * переналадка и очистка линии — по задачам линии; без задания — без дела.
+ * переналадка и очистка линии — по задачам линии; не на ходу и не годна к работе — калибровка или квалификация (Б3в); без
+ * задания — без дела.
  */
 export function lampOfMachine(m: MachineRow, line: { changeover: boolean; clearance: boolean }): Lamp {
   if (m.state === 'fail') return 'fail';
+  if (m.check && m.state !== 'run' && m.state !== 'slow' && m.state !== 'micro') return 'check';
   if (line.changeover) return 'setup';
   if (line.clearance) return 'clean';
   if (m.state === 'run' || m.state === 'slow') return 'run';
@@ -36,9 +40,9 @@ export function lampOfMachine(m: MachineRow, line: { changeover: boolean; cleara
   return 'off';
 }
 
-/** Лампа оборудования участка: держит стадию серии — работает; уборка помещения; авария; иначе — без дела. */
+/** Лампа оборудования участка: держит стадию серии — работает; уборка помещения; авария; калибровка или квалификация; иначе — без дела. */
 export function lampOfEquipment(s: EqState): Lamp {
-  return s === 'run' ? 'run' : s === 'clean' ? 'clean' : s === 'fail' ? 'fail' : 'off';
+  return s === 'run' ? 'run' : s === 'clean' ? 'clean' : s === 'fail' ? 'fail' : s === 'check' ? 'check' : 'off';
 }
 
 /** Шаг штук на ленте, м: блистер, пачка, гофроящик (гипотеза картинки). */

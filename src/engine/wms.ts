@@ -6,6 +6,7 @@ import type { ContentDb } from '../content/types';
 import { dueIn, owe } from './cash';
 import { MIN } from './core/calendar';
 import { dockWait } from './lean';
+import { coldOf } from './places';
 import { createLot, putUnit } from './stock';
 import { addTask } from './tasks';
 import type { Notice, PlantState, Task, Truck } from './types';
@@ -69,7 +70,7 @@ function dockNext(db: ContentDb, s: PlantState, dock: string) {
   if (!next) return;
   next.docked = true;
   dockWait(s, s.t - next.arrived);
-  const cold = next.units.some(u => db.materials[s.lots[s.containers[s.units[u].items[0]].lot].material].storage === 'cold');
+  const cold = next.units.some(u => coldOf(db, s.plant, s.lots[s.containers[s.units[u].items[0]].lot].material));
   addTask(s, { kind: 'truckCheck', roles: [...WMS.keepers], from: { kind: 'truck', id: next.id }, work: CHECK_WORK + (cold ? CHECK_COLD : 0), prio: PRIO.check });
 }
 
@@ -98,7 +99,7 @@ export function wmsDone(db: ContentDb, s: PlantState, t: Task, _notices: Notice[
     case 'receive': {
       // ярлык «Карантин» уже на паллете (createLot); холод — в холодную камеру
       const lot = s.lots[s.containers[u!.items[0]].lot];
-      const cold = db.materials[lot.material].storage === 'cold';
+      const cold = coldOf(db, s.plant, lot.material);
       addTask(s, { kind: 'putaway', roles: [...WMS.movers], veh: [...WMS.floor], unit: u!.id, from: t.from, toKind: cold ? 'cold' : 'quarantine', work: 0, prio: PRIO.putaway });
       return;
     }

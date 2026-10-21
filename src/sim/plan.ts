@@ -11,6 +11,7 @@ import { type Bar, type Change, forecast, type Why } from '../engine/plan/schedu
 import { planOf } from '../engine/plant';
 import { shiftEndAt } from '../engine/staff';
 import type { BatchStatus, PlantState } from '../engine/types';
+import { type AssetInfo, assetInfo } from './places';
 
 export interface GanttQuery {
   view: 'gantt';
@@ -66,6 +67,8 @@ export interface GanttView {
   was: Bar[];
   /** задания черновика, которые тянуть уже нельзя: начали комплектовку или их нет — окно убирает их из черновика */
   gone: string[];
+  /** активы полос визитов и причин (Б3в): название класса, номер, работа — для слов */
+  assets: Record<string, AssetInfo>;
 }
 
 export interface GhostView {
@@ -164,11 +167,20 @@ export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttVie
   const moved = draft.length > 0 ? movedOf(base.bars, f.bars) : [];
   const was = base.bars.filter(b => b.batch !== undefined && moved.includes(b.batch) && b.when === 'plan' && inWindow(b));
   const ids = new Set<string>([...bars.flatMap(b => (b.batch ? [b.batch] : [])), ...f.stuck]);
+  const assets: Record<string, AssetInfo> = {};
+  const seen = (id: string | undefined) => {
+    if (id && !assets[id]) {
+      const a = assetInfo(db, s, id);
+      if (a) assets[id] = a;
+    }
+  };
+  for (const b of bars) seen(b.asset);
   for (const [id, list] of Object.entries(f.why)) {
     ids.add(id);
     for (const w of list) {
       const x = whyBatch(w);
       if (x) ids.add(x);
+      if ('asset' in w) seen(w.asset);
     }
   }
   return {
@@ -186,6 +198,7 @@ export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttVie
     moved,
     was,
     gone: draft.filter(c => !movable(s, c.batch)).map(c => c.batch),
+    assets,
   };
 }
 

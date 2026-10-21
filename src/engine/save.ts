@@ -1,6 +1,7 @@
 // Сохранение — снимок состояния со схемой и цепочкой миграций (ADR студии 0004; docs/02-architecture.md, §13). Забытая
 // миграция стирает игру человека, поэтому каждый шаг закреплён образцом в tools/test/fixtures/.
 import type { ContentDb } from '../content/types';
+import { seedAssets } from './assets';
 import { batchNo } from './batchno';
 import { type Agenda, schedule } from './core/agenda';
 import { HOUR, momentOf } from './core/calendar';
@@ -227,6 +228,17 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
       p.train = {};
       seedTraining(db, sc, p, day);
     }
+    return raw;
+  },
+  // 18 → 19 (Б3в): физические активы — инвентарные номера по порядку мест, записи квалификации и калибровки (поверки) по
+  // правилу начала партии, но от дня сохранения: при загрузке всё в сроке. Отметка прибора «просроченная калибровка» —
+  // теперь описка в журнале прибора: просроченный прибор в работу не берут, доля фона та же.
+  18: (raw, db) => {
+    const sc = db.scenarios[raw.scenario as string];
+    if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
+    raw.assets = {};
+    seedAssets(db, sc, raw as unknown as PlantState, momentOf(raw.start as Ymd, raw.t as number).day);
+    for (const i of Object.values((raw.instruments ?? {}) as Record<string, Raw>)) if (i.check === 'overdue') i.check = 'typo';
     return raw;
   },
 };

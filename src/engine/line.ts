@@ -9,6 +9,7 @@
 // таблеток в минуту, то есть долей в секунду. Накопитель после машины — разность позиций соседей. Блистеры, пачки и
 // ящики — формулы от позиций; брак — счётом: из первых n штук годных n − ⌊n × доля⌋.
 import type { ContentDb, Id, Sku } from '../content/types';
+import { lineUnfit } from './assets';
 import { batchNo } from './batchno';
 import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
@@ -570,8 +571,9 @@ export function lineStep(db: ContentDb, s: PlantState, notices: Notice[]) {
       addTask(s, { kind: 'feed', roles: [...LINE.feeders], unit: u.id, from: { kind: 'point', x: at.x, z: at.z }, work: FEED_WORK, prio: LINE_PRIO.feed, batch: b.id, line: line.id });
     }
     if (job.state !== 'ready' || !bulk.every(u => u.where.kind === 'room' && u.where.id === room)) continue;
-    // машина в ремонте или вот-вот уйдёт в замену узла — задание ждёт (maint.ts)
-    if (line.machines.some(mc => blocked(s, mc.id) || pending(db, s, mc.id))) continue;
+    // машина в ремонте или вот-вот уйдёт в замену узла — задание ждёт (maint.ts); машина без действующей квалификации или
+    // с подрядчиком — тоже (Б3в)
+    if (line.machines.some(mc => blocked(s, mc.id) || pending(db, s, mc.id)) || lineUnfit(db, s, line.id)) continue;
     startRun(db, s, line, b, g);
     lineUpdate(db, s, line, notices);
   }

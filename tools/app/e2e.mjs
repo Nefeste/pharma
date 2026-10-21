@@ -20,8 +20,10 @@
 // знаком паузы, и часы стоят. Расследование (часть 4б): «До события», пока растворение второй серии не выйдет за
 // спецификацию, — извещение ставит мир на паузу и ведёт к доске; три шага, решение, разбор; Esc закрывает. Люди и допуски
 // (Б3б): в справочнике — табельные номера и допуск, матрица обучения без недопущенных; карточка человека — табельный
-// номер, допуск и строка обучения на каждый документ его роли. Ошибок в консоли и запросов наружу нет. Снимки —
-// tools/app/out/e2e*.png.
+// номер, допуск и строка обучения на каждый документ его роли. Места и оборудование (Б3в): в справочнике «Места» — у
+// каждого актива инвентарный номер, у зон хранения — режим; в день первого визита подрядчика к оборудованию или машине
+// лампа показывает «калибровка или квалификация», после приёмки в карточке — новая запись и кто её принял. Ошибок в
+// консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -404,7 +406,7 @@ try {
     const plant = g.db.plants[g.db.scenarios['scn.proto'].plant];
     return { shown: g.stage.machines.lamps, want: plant.equipment.length + plant.lines.reduce((n, l) => n + l.machines.length, 0) };
   });
-  const kinds = new Set(['run', 'wait', 'stop', 'fail', 'setup', 'clean', 'off']);
+  const kinds = new Set(['run', 'wait', 'stop', 'fail', 'setup', 'clean', 'check', 'off']);
   if (lamps.shown.length !== lamps.want || !lamps.shown.every(l => kinds.has(l))) fail(`лампы: ${lamps.shown.join(', ')} — ждали ${lamps.want}`);
   else ok(`лампы: ${lamps.shown.length} — ${[...new Set(lamps.shown)].join(', ')}`);
 
@@ -612,8 +614,8 @@ try {
   await lister.close();
   ok(`контактный лист: ${sheet.length} снимков → ${join(out, 'contact.png')}`);
 
-  // автопаузы (Б2а): у производства и качества восемь автопауз в меню (с Б3б — «потерял допуск»), «фура» и «заказ» — не
-  // их; планёрку отключили — окно
+  // автопаузы (Б2а): у производства и качества девять автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок вышел»),
+  // «фура» и «заказ» — не их; планёрку отключили — окно
   // помнит; «До события» — мир встал не в 08:00, а на первом событии автопаузы мест игрока: извещение со знаком паузы, часы
   // стоят, отставания нет. Планёрку включили обратно
   {
@@ -629,7 +631,7 @@ try {
     await page.screenshot({ path: join(out, 'e2e-pauses.png') });
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('Escape');
-    if (menu.all !== 8 || menu.on !== 8 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
+    if (menu.all !== 9 || menu.on !== 9 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
       fail(`автопаузы: в меню ${menu.all}, включено ${menu.on}, не ваши ${menu.notYours.join(', ')}, в окне «${kept}»`);
     else ok(`автопаузы: в меню ${menu.all}, не ваши — ${menu.notYours.join(', ')}; планёрку отключили — в окне ${kept}; Esc закрыл меню`);
     const t0 = await gameT();
@@ -815,6 +817,26 @@ try {
     if (staff.rows.length !== staff.people || first[0] !== '1001' || staff.bad > 0 || staff.docs !== staff.want)
       fail(`люди: строк ${staff.rows.length} из ${staff.people}, первая — ${first.join(' | ')}, не допущено ${staff.bad}, документов в матрице ${staff.docs} из ${staff.want}`);
     else ok(`люди: ${staff.rows.length} человек, первый — ${first.join(' · ')}; документов в матрице — ${staff.docs}, недопущенных нет`);
+    // места (Б3в): площадка, участки и рабочие места; у каждого актива — свой инвентарный номер, у зон хранения — режим
+    await page.click('[data-test=ref-tab][data-tab=places]');
+    await frames(1);
+    const places = await page.evaluate(() => {
+      const v = window.__game.store.get().ref.view.places;
+      return {
+        site: document.querySelector('[data-test=places-site]')?.textContent ?? '',
+        areas: document.querySelectorAll('[data-test=places-area]').length,
+        inv: [...document.querySelectorAll('[data-test=places-inv]')].map(x => x.textContent ?? ''),
+        assets: v.areas.reduce((n, a) => n + a.vehicles.length + a.centers.reduce((m, c) => m + c.assets.length, 0), 0),
+        regimes: [...document.querySelectorAll('[data-test=places-regime]')].map(x => x.textContent ?? ''),
+        stores: v.areas.reduce((n, a) => n + a.centers.filter(c => c.kind === 'storage').length, 0),
+        want: v.areas.length,
+      };
+    });
+    await page.screenshot({ path: join(out, 'e2e-places.png') });
+    const invs = places.inv.length === places.assets && new Set(places.inv).size === places.inv.length && places.inv.every(x => /^инв\. №\u00a0\d{8}$/.test(x));
+    if (!invs || places.areas !== places.want || places.regimes.length !== places.stores || !places.regimes.every(r => /\u00a0°C/.test(r)))
+      fail(`места: участков ${places.areas} из ${places.want}, инвентарных номеров ${places.inv.length} из ${places.assets} (${places.inv.slice(0, 2).join(', ')}), режимов ${places.regimes.length} из ${places.stores}: ${places.regimes.join(' | ')}`);
+    else ok(`места: «${places.site}»; ${places.inv.length} активов, у каждого свой номер (${places.inv[0]}…); у ${places.stores} зон хранения режим — «${places.regimes[0]}»`);
     for (const tab of ['equipment', 'lab', 'people', 'partners']) {
       await page.click(`[data-test=ref-tab][data-tab=${tab}]`);
       await frames(1);
@@ -891,6 +913,57 @@ try {
     else ok(`карточка человека: «${c.title}» — ${c.adm}; строк обучения — ${c.rows.length}, новая запись — «${fresh}»`);
     await page.screenshot({ path: join(out, 'e2e-person.png') });
     await page.keyboard.press('Escape');
+  }
+
+  // первый визит подрядчика к оборудованию или машине линии (Б3в): каждое утро — планёрка; в тот день, когда в
+  // «Калибровке и квалификации» такой визит, к его часу лампа вещи показывает «калибровка или квалификация»; работу
+  // приняли — в карточке вещи новая запись и кто её принял
+  {
+    let visit = null;
+    for (let i = 0; i < 60 && !visit; i++) {
+      await untilMorning(true);
+      await page.waitForFunction(() => {
+        const m = window.__game.store.get().morning;
+        return m.view?.day === m.day;
+      }, null, { timeout: 20_000 });
+      visit = await page.evaluate(() => window.__game.store.get().morning.view.assets.today.find(a => a.thing && (a.thing.kind === 'equipment' || a.thing.kind === 'machine')) ?? null);
+      await page.keyboard.press('Escape');
+    }
+    if (!visit) fail('первый визит: за 60 утр к оборудованию и машинам визитов не было');
+    else {
+      const ix = await page.evaluate(t => {
+        const plant = window.__game.db.plants[window.__game.db.scenarios['scn.proto'].plant];
+        return t.kind === 'equipment' ? t.i : plant.equipment.length + plant.lines.slice(0, t.line).reduce((n, l) => n + l.machines.length, 0) + t.k;
+      }, visit.thing);
+      // мир может встать на другой автопаузе — дальше
+      for (let i = 0; i < 6 && (await page.evaluate(k => window.__game.stage.machines.lamps[k] !== 'check', ix)); i++) {
+        await page.keyboard.press('Digit4');
+        await page.waitForFunction(k => window.__game.stage.machines.lamps[k] === 'check' || window.__game.speed === 0, ix, { timeout: 120_000 });
+      }
+      await page.evaluate(() => window.__game.actions.setSpeed(0));
+      const at = await page.evaluate(k => ({ t: window.__game.t, day: window.__game.day, lamp: window.__game.stage.machines.lamps[k] }), ix);
+      await page.evaluate(x => window.__game.actions.show(x), visit.thing);
+      await page.waitForFunction(x => JSON.stringify(window.__game.store.get().card?.thing) === JSON.stringify(x), visit.thing, { timeout: 20_000 });
+      await frames(2);
+      const during = await page.evaluate(() => document.querySelector('[data-test=card-visit]')?.textContent ?? '');
+      await page.screenshot({ path: join(out, 'e2e-visit.png') });
+      if (at.lamp !== 'check' || !during) fail(`первый визит: лампа ${at.lamp}, в карточке — «${during}»`);
+      else ok(`первый визит: ${((at.t % 86400) / 3600).toFixed(1)} ч суток ${at.day} — лампа «калибровка или квалификация»; в карточке — «${during}»`);
+      // приёмка: в истории карточки — запись с тем, кто принял. Мир может встать на планёрке следующего утра — её закрыть,
+      // не трогая карточку (Esc сначала снимает выбор)
+      const recs = () => page.evaluate(() => [...document.querySelectorAll('[data-test=card-history] li')].map(li => li.textContent ?? '').filter(x => /приёмка —/.test(x)));
+      let fresh = [];
+      for (let i = 0; i < 6 && fresh.length === 0; i++) {
+        await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
+        await page.keyboard.press('Digit4');
+        await page.waitForFunction(() => window.__game.speed === 0 || [...document.querySelectorAll('[data-test=card-history] li')].some(li => /приёмка —/.test(li.textContent ?? '')), null, { timeout: 120_000 });
+        fresh = await recs();
+      }
+      await page.evaluate(() => window.__game.actions.setSpeed(0));
+      if (fresh.length !== 1 || !/таб\. №\u00a0\d+/.test(fresh[0])) fail(`первый визит: новых записей в карточке ${fresh.length} — ${fresh.join(' | ')}`);
+      else ok(`первый визит: в карточке — «${fresh[0].replace(/\s+/g, ' ').trim()}»`);
+      await page.keyboard.press('Escape');
+    }
   }
 
   // стартовый пресет (Б1б): первый запуск без пресета в адресе — средний, через пять секунд замер; кадр программной

@@ -6,7 +6,7 @@ code: 100001
 name: { ru: Парацетамол, en: Paracetamol }
 unit: kg
 container: cnt.drum.fibre50
-storage: room
+storage: reg.ccrt
 shelf: 36
 potency: true
 spec: spec.mat.api.paracetamol

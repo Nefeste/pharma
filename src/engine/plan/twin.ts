@@ -117,7 +117,7 @@ function forgetIncident(db: ContentDb, s: PlantState) {
       const by = roll(s, `twin/${inv.id}/${f.id}`, r => r.chance(f.by[root] ?? 0)) ? 'root' : roll(s, `twin/${inv.id}/leak/${f.id}`, r => r.chance(f.leak)) ? 'leak' : undefined;
       if (!by) continue;
       if (mark === 'calc') first.mark = by === 'leak' ? 'typo' : 'calc';
-      else if (first.inst) s.instruments[first.inst].check = by === 'leak' ? 'overdue' : roll(s, `twin/${inv.id}/instrument`, r => r.pick(INSTRUMENT_FAULTS));
+      else if (first.inst) s.instruments[first.inst].check = by === 'leak' ? 'typo' : roll(s, `twin/${inv.id}/instrument`, r => r.pick(INSTRUMENT_FAULTS));
     }
   }
   if (coarse !== undefined && def) s.incident = { batch: `B${def.batch}`, inv: def.inv, root: 'screen', size: coarse, fired: {}, screen: coarse };

@@ -7,6 +7,7 @@
 // видит извещения, уже данные этим доживанием: так поток расчёта встаёт ровно на событии автопаузы (Б2а).
 import type { ContentDb, Id } from '../content/types';
 import { alertsHour } from './alerts';
+import { assetDone, assetHour, assetStep, seedAssets, visitDone } from './assets';
 import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
@@ -17,6 +18,7 @@ import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from '.
 import { maintainCommand, maintDone, maintStep, newParts, spareArrives } from './maint';
 import { marketDone, marketHour, marketStep, newCustomers, rznPublished } from './market';
 import { BATCH_HOUR, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
+import { coldOf } from './places';
 import { planHour } from './planner';
 import { planOf } from './plant';
 import { qaDone, qaStep, releaseCommand } from './qa';
@@ -81,6 +83,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     parts: {},
     spares: {},
     spareOrders: {},
+    assets: {},
     maintLog: [],
     losses: [],
     shiftTasks: [],
@@ -103,6 +106,8 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     }
   }
   for (const i of plan.plant.instruments) s.instruments[i.id] = { id: i.id, type: i.type, room: i.room };
+  // физические активы (Б3в): вещи плана и техника — инвентарные номера и записи квалификации и калибровки
+  seedAssets(db, sc, s, startDay);
   // помещения — чистые с начала партии; оборудование — по плану
   for (const r of plan.plant.rooms) s.rooms[r.id] = { id: r.id, type: r.type, status: 'clean', since: s.t };
   for (const e of plan.plant.equipment) s.equipment[e.id] = { id: e.id, type: e.type, room: e.room };
@@ -117,7 +122,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
       qty: st.qty,
       status: 'released',
       where: () => {
-        const sl = findSlot(s, plan, db.materials[st.material].storage === 'cold' ? 'cold' : 'storage', near, 99);
+        const sl = findSlot(s, plan, coldOf(db, sc.plant, st.material) ? 'cold' : 'storage', near, 99);
         if (!sl) throw new Error(`scenario ${sc.id}: no slot for start stock ${st.material}`);
         return { kind: 'slot', id: sl.id };
       },
@@ -233,10 +238,11 @@ function settle(db: ContentDb, s: PlantState) {
 }
 
 /**
- * После события: техслужба (раньше производства: свободную машину, которой пора в замену узла, не займёт серия),
- * производство, линии, качество, отгрузка, раздача задач.
+ * После события: подрядчик и техслужба (раньше производства: свободный актив, к которому пришёл подрядчик, и свободную
+ * машину, которой пора в замену узла, не займёт серия), производство, линии, качество, отгрузка, раздача задач.
  */
 function steps(db: ContentDb, s: PlantState, notices: Notice[]) {
+  assetStep(db, s);
   maintStep(db, s);
   mesStep(db, s);
   lineStep(db, s, notices);
@@ -285,6 +291,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       if (momentOf(s.start, s.t).sec === 0) trainDay(db, s, notices);
       startSampling(db, s);
       cashHour(db, s, notices);
+      // места и оборудование (Б3в): в полночь — у кого вышел срок; коллега техслужбы назначает визиты; подрядчик
+      assetHour(db, s, notices);
       maintStep(db, s);
       mesHour(db, s);
       lineHour(db, s, notices);
@@ -308,7 +316,7 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       const t = s.tasks[ev.id];
       if (!t || t.v !== ev.v || t.state !== 'busy') return;
       release(db, s, t);
-      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices) && !maintDone(db, s, t, notices) && !invDone(db, s, t, notices) && !trainDone(db, s, t)) wmsDone(db, s, t, notices);
+      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices) && !maintDone(db, s, t, notices) && !invDone(db, s, t, notices) && !trainDone(db, s, t) && !assetDone(db, s, t)) wmsDone(db, s, t, notices);
       // паллета ГП уехала с места паллетирования — у линии освободилось место; машину линии починили — она снова в работе
       if ((t.kind === 'putaway' || t.kind === 'repair') && t.line) lineUpdate(db, s, s.lines[t.line], notices);
       if (t.kind === 'putaway' || t.kind === 'stage') startSampling(db, s);
@@ -349,6 +357,11 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
     case 'leave':
       // последний зов перед концом смены: кому задачи не нашлось — к выходу
       settle(db, s);
+      return;
+    case 'visit':
+      // подрядчик кончил: счёт и приёмка; актив снова в работе, если его запись ещё действует
+      visitDone(db, s, ev.asset, ev.v);
+      steps(db, s, notices);
       return;
   }
 }

@@ -7,7 +7,9 @@ import type { Ymd } from '../engine/core/calendar';
 import { dayText, named, num, qtyText, T, whenText } from '../i18n';
 import type { NowRow } from '../sim/now';
 import type { Admission, DocNow } from '../sim/people';
+import type { AssetInfo } from '../sim/places';
 import type { CardView, Hist, Holds, Why } from '../sim/views';
+import { assetName, untilText, unfitText, workName } from './assets';
 import { db, docText } from './db';
 import { StatusIcon, TaskIcon } from './icons';
 import { placeText, supplierText } from './Stock';
@@ -36,9 +38,12 @@ function whyText(w: Why, start: Ymd): string {
     case 'task': {
       const task = T.tasks[w.task] ?? w.task;
       if (w.busy) return T.why.taskBusy(task);
-      const cause = w.wait === 'qual' && w.lack ? T.why.lack(docName(w.lack)) : w.wait ? T.wait[w.wait] : '';
+      // ждёт допуска — называет документ (Б3б), ждёт актив — называет его (Б3в)
+      const cause = w.wait === 'qual' && w.lack ? T.why.lack(docName(w.lack)) : w.wait === 'asset' && w.unfit ? `${unfitText(w.unfit)} — ${assetName(w.unfit)}` : w.wait ? T.wait[w.wait] : '';
       return w.wait && w.since !== undefined ? T.why.taskWait(task, cause, whenText(start, w.since)) : T.why.taskOpen(task);
     }
+    case 'asset':
+      return T.assets.waits(w.batch, unfitText(w.asset), assetName(w.asset));
     case 'plan':
       return T.why.plan;
     case 'tests':
@@ -65,7 +70,7 @@ function holdsText(h: Holds, n: number, unit: 'mass' | 'pcs' | undefined): strin
   return h.full !== undefined && h.by[0].qty !== h.full ? `${text}; ${T.card.full(per(h.full))}` : text;
 }
 
-function histText(h: Hist, unit: 'mass' | 'pcs' | undefined, parts: readonly PartType[]): string {
+function histText(h: Hist, unit: 'mass' | 'pcs' | undefined, parts: readonly PartType[], asset?: AssetInfo): string {
   switch (h.k) {
     case 'arrived':
       return T.hist.arrived(h.po);
@@ -87,7 +92,56 @@ function histText(h: Hist, unit: 'mass' | 'pcs' | undefined, parts: readonly Par
       return T.hist.shipped(named(db?.customers[h.customer]?.name, h.customer), unit ? qtyText(h.qty, unit) : num(h.qty));
     case 'maint':
       return `${T.hist.maint[h.what]} · ${named(parts.find(x => x.id === h.part)?.name, h.part)} · ${T.hist.wear(`${num(h.wear / 100)}\u00a0%`)}`;
+    case 'rec': {
+      // запись квалификации или калибровки (Б3в): на старте игры — без того, кто принял
+      const work = asset ? workName(asset, h.work) : T.assets.work[h.work];
+      if (h.by) return T.assets.recBy(work, dayText(h.day), dayText(h.until), T.card.person(named(db?.roles[h.by.role]?.name, h.by.role), h.by.tab));
+      return `${T.assets.rec(work, dayText(h.day), dayText(h.until))} · ${T.assets.startRec}`;
+    }
   }
+}
+
+/** Актив в карточке (Б3в): инвентарный номер, код места, срок каждой нужной работы, визит подрядчика, не работает ли. */
+function AssetRows({ a, start }: { a: AssetInfo; start: Ymd }) {
+  const visit = a.visit;
+  return (
+    <>
+      <Row k={T.assets.invLabel}>
+        <span className="mono" data-test="card-inv">
+          {T.assets.inv(a.inv)}
+        </span>
+        {a.critical ? <span className="muted"> · {T.assets.critical}</span> : null}
+      </Row>
+      <Row k={T.assets.place}>
+        <span className="mono">{a.place}</span>
+      </Row>
+      {a.needs.map(w => (
+        <Row key={w} k={workName(a, w)}>
+          <span data-test={`card-${w}`}>{untilText(w === 'qual' ? a.qual : a.cal, a.today)}</span>
+        </Row>
+      ))}
+      {visit ? (
+        <Row k="">
+          <span data-test="card-visit">
+            {visit.accepting
+              ? T.assets.accepting(workName(a, visit.work))
+              : a.working && visit.to !== undefined
+                ? T.assets.working(workName(a, visit.work), whenText(start, visit.to))
+                : visit.from === undefined && a.unfit === 'visit'
+                  ? T.assets.waiting(workName(a, visit.work))
+                  : T.assets.visitAt(workName(a, visit.work), whenText(start, visit.at))}
+          </span>
+        </Row>
+      ) : null}
+      {a.unfit === 'qual' || a.unfit === 'cal' ? (
+        <Row k="">
+          <b data-test="card-stopped">
+            {T.assets.stopped} — {unfitText(a)}
+          </b>
+        </Row>
+      ) : null}
+    </>
+  );
 }
 
 function Why({ list, start }: { list: Why[]; start: Ymd }) {
@@ -104,7 +158,7 @@ function Why({ list, start }: { list: Why[]; start: Ymd }) {
   );
 }
 
-function History({ list, start, unit, parts = [] }: { list: Hist[]; start: Ymd; unit?: 'mass' | 'pcs'; parts?: readonly PartType[] }) {
+function History({ list, start, unit, parts = [], asset }: { list: Hist[]; start: Ymd; unit?: 'mass' | 'pcs'; parts?: readonly PartType[]; asset?: AssetInfo }) {
   return (
     <>
       <div className="csec">{T.card.history}</div>
@@ -114,7 +168,7 @@ function History({ list, start, unit, parts = [] }: { list: Hist[]; start: Ymd; 
         <ol className="hist" data-test="card-history">
           {list.map((h, i) => (
             <li key={i}>
-              <span className="mono muted">{h.k === 'reserved' || (h.k === 'kit' && h.t === undefined) ? '' : when(start, h.t)}</span> {histText(h, unit, parts)}
+              <span className="mono muted">{h.k === 'reserved' || (h.k === 'kit' && h.t === undefined) ? '' : h.k === 'rec' ? dayText(h.day) : when(start, h.t)}</span> {histText(h, unit, parts, asset)}
             </li>
           ))}
         </ol>
@@ -252,9 +306,10 @@ export function Card({ v, start, plant, actions, beside, watch }: { v: CardView;
                   .join('; ')}
               </Row>
             ) : null}
+            {c.asset ? <AssetRows a={c.asset} start={start} /> : null}
           </dl>
           <Why list={c.why} start={start} />
-          <History list={c.history} start={start} parts={rec?.parts} />
+          <History list={c.history} start={start} parts={rec?.parts} asset={c.asset} />
         </>
       );
       break;

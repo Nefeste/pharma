@@ -7,6 +7,7 @@ import { geo, good, SIXTY } from './line';
 import { partsOf, partType } from './maint';
 import { orderReserved } from './market';
 import { clampAttr } from './mes';
+import { classOf, placesOf } from './places';
 import { planOf } from './plant';
 import { shiftEnd } from './staff';
 import { containersByLot, LOT_FLOW, TAG } from './stock';
@@ -162,6 +163,7 @@ export function check(db: ContentDb, s: PlantState): string[] {
   market(db, s, bad);
   maint(db, s, bad);
   lean(s, bad);
+  assets(db, s, bad);
   // номер серии (batchno.ts): досье выдано — номер есть; смешивание начато — номер полный; полный номер не повторяется,
   // короткий — среди серий до смешивания
   const full = new Map<string, string>();
@@ -179,6 +181,38 @@ export function check(db: ContentDb, s: PlantState): string[] {
     seen.set(no, b.id);
   }
   return bad;
+}
+
+/**
+ * Инварианты мест и оборудования (Б3в): у каждой вещи плана и техники — актив, инвентарные номера разные; записи — день не
+ * позже срока, по порядку; визит подрядчика — работа, которая нужна классу, начатый — с концом позже начала, ждущий приёмки —
+ * с её задачей; приёмка — только у актива с законченной работой.
+ */
+function assets(db: ContentDb, s: PlantState, bad: string[]) {
+  const P = placesOf(planOf(db, s.plant).plant);
+  for (const t of P.things) if (!s.assets[t.id]) bad.push(`вещь ${t.id}: нет актива`);
+  for (const v of Object.values(s.vehicles)) if (!s.assets[v.id]) bad.push(`техника ${v.id}: нет актива`);
+  const invs = new Set<number>();
+  for (const a of Object.values(s.assets)) {
+    if (invs.has(a.inv)) bad.push(`актив ${a.id}: инвентарный номер ${a.inv} повторяется`);
+    invs.add(a.inv);
+    const last: Partial<Record<string, number>> = {};
+    for (const r of a.recs) {
+      if (r.day > r.until) bad.push(`актив ${a.id}: запись ${r.work} кончается раньше, чем принята`);
+      if ((last[r.work] ?? r.day) > r.day) bad.push(`актив ${a.id}: записи ${r.work} не по порядку`);
+      last[r.work] = r.day;
+    }
+    const v = a.visit;
+    if (!v) continue;
+    if (!classOf(db, a)[v.work]) bad.push(`актив ${a.id}: визит ${v.work}, а классу она не нужна`);
+    if (v.from !== undefined && (v.to === undefined || v.to <= v.from)) bad.push(`актив ${a.id}: визит без конца работы`);
+    if (v.task !== undefined && s.tasks[v.task]?.kind !== 'accept') bad.push(`актив ${a.id}: приёмки ${v.task} нет`);
+  }
+  for (const t of Object.values(s.tasks)) {
+    if (t.kind !== 'accept') continue;
+    const a = t.asset ? s.assets[t.asset] : undefined;
+    if (!a?.visit || a.visit.task !== t.id) bad.push(`задача ${t.id}: приёмка без законченной работы подрядчика`);
+  }
 }
 
 /**

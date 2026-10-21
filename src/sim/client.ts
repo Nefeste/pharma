@@ -85,7 +85,7 @@ export class SimClient {
    * Кадр: часам прибавилось `gameSeconds` (с дробью); поток получает целые секунды и бюджет — и виды извещений, на которых
    * встать (Б2а).
    */
-  frame(gameSeconds: number, budgetMs: number, stop?: readonly Notice['kind'][]) {
+  frame(gameSeconds: number, budgetMs: number, stop?: readonly string[]) {
     this.owed += gameSeconds;
     if (this.ticking) return;
     const seconds = Math.floor(this.owed);

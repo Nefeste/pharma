@@ -5,7 +5,7 @@ code: 300009
 name: { ru: Инструкция «Лоратадин 10 мг», en: Leaflet «Loratadine 10 mg» }
 unit: pcs
 container: cnt.box.leaflets
-storage: room
+storage: reg.ccrt
 shelf: 60
 spec: spec.mat.pk.leaflet-lor
 bad: { attr: appearance }

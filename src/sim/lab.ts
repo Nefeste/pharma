@@ -2,9 +2,11 @@
 // виды для панели, чистые функции из состояния, как склад и карточка (views.ts). Без истины: результат испытания — только
 // проверенный вторым лицом, значения карты — измерения МОК, а не истинные свойства серий.
 import type { ContentDb, Id } from '../content/types';
+import { unfit } from '../engine/assets';
 import { batchNo } from '../engine/batchno';
 import { LAB_PRIO } from '../engine/lab';
-import type { LabTest, PlantState, Task, TaskKind, WaitCause } from '../engine/types';
+import { classOf } from '../engine/places';
+import type { AssetFamily, LabTest, PlantState, Task, TaskKind, WaitCause } from '../engine/types';
 
 export interface LabQuery {
   view: 'lab';
@@ -25,6 +27,8 @@ export interface TaskNow {
   busy: boolean;
   wait?: WaitCause;
   since: number;
+  /** ждёт прибор, который не годен (Б3в): род, вид, инвентарный номер и почему */
+  unfit?: { family: AssetFamily; type: Id; inv: number; work?: 'qual' | 'cal' | 'visit'; verify: boolean };
 }
 
 export interface LabTestRow {
@@ -71,12 +75,17 @@ export interface LabView {
 
 const LAB = new Set<string>(Object.keys(LAB_PRIO));
 
-export const nowOf = (s: PlantState, t: Task): TaskNow => ({
-  task: t.kind,
-  busy: t.state === 'busy',
-  ...(t.why ? { wait: t.why } : {}),
-  since: t.state === 'open' && t.since !== undefined ? t.since : t.created,
-});
+export const nowOf = (s: PlantState, t: Task, db?: ContentDb): TaskNow => {
+  const a = t.why === 'asset' && t.unfit ? s.assets[t.unfit] : undefined;
+  const why = a && db ? unfit(db, s, a.id) : undefined;
+  return {
+    task: t.kind,
+    busy: t.state === 'busy',
+    ...(t.why ? { wait: t.why } : {}),
+    since: t.state === 'open' && t.since !== undefined ? t.since : t.created,
+    ...(a ? { unfit: { family: a.family, type: a.type, inv: a.inv, ...(why ? { work: why } : {}), verify: !!(db && classOf(db, a).cal?.verify) } } : {}),
+  };
+};
 
 /** Очередь лаборатории: партии в карантине, с отобранными пробами и на испытаниях — кроме готовой продукции (её проверяет ООК). */
 export function labView(db: ContentDb, s: PlantState): LabView {
@@ -111,7 +120,7 @@ export function labView(db: ContentDb, s: PlantState): LabView {
         method: q.method,
         state: q.state,
         ...(q.inst && s.instruments[q.inst] ? { inst: s.instruments[q.inst].type } : {}),
-        ...(t ? { now: nowOf(s, t) } : {}),
+        ...(t ? { now: nowOf(s, t, db) } : {}),
         ...(q.state === 'done' && q.result !== undefined ? { result: q.result, pass: !!q.pass } : {}),
         ...(q.inv ? { inv: true as const } : {}),
       };
@@ -120,7 +129,7 @@ export function labView(db: ContentDb, s: PlantState): LabView {
     const all = [...(byLot.get(lot.id) ?? []), ...[...tests, ...more].flatMap(q => byTest.get(q.id) ?? [])];
     const pos = Math.min(Number.MAX_SAFE_INTEGER, ...all.map(t => order.get(t.id) ?? Number.MAX_SAFE_INTEGER));
     const spec = tests.find(q => q.spec)?.spec;
-    rows.push({ lot: lot.id, code: code(lot.code), material: lot.material, rush: !!lot.rush, stage, done, all: tests.length, ...(own ? { now: nowOf(s, own) } : {}), ...(spec ? { spec } : {}), tests: testRows, pos });
+    rows.push({ lot: lot.id, code: code(lot.code), material: lot.material, rush: !!lot.rush, stage, done, all: tests.length, ...(own ? { now: nowOf(s, own, db) } : {}), ...(spec ? { spec } : {}), tests: testRows, pos });
   }
   rows.sort((a, b) => Number(b.rush) - Number(a.rush) || a.pos - b.pos || Number(a.lot.slice(1)) - Number(b.lot.slice(1)));
   return {

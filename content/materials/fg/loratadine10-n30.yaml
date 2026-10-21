@@ -6,7 +6,7 @@ code: 500004
 name: { ru: "Лоратадин, таблетки 10 мг, №30", en: "Loratadine 10 mg tablets, 30" }
 unit: pcs
 container: cnt.case.fg
-storage: room
+storage: reg.ccrt
 shelf: 24
 spec: spec.fg.loratadine10
 # архивные образцы серии, пачек

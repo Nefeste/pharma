@@ -36,10 +36,13 @@ describe('автопаузы', () => {
 
   test('чьё дело: производство — поломка, OOS, материал, планёрка; качество — OOS, отклонение, потеря допуска, планёрка', () => {
     const sorted = (k: readonly string[]) => [...k].sort();
-    expect(sorted(stopKinds([], ['production']))).toEqual(sorted(['failure', 'investigation', 'lotRejected', 'materialLate', 'morning']));
-    expect(sorted(stopKinds([], ['quality']))).toEqual(sorted(['deviation', 'investigation', 'lotRejected', 'qualLost', 'morning']));
+    // срок актива (Б3в): оборудование таблеток, линия и приборы МОК — производства, лаборатория — качества, датчики склада —
+    // снабжения и склада
+    const eq = ['assetExpired/equipment', 'assetExpired/machine', 'assetExpired/ipc'];
+    expect(sorted(stopKinds([], ['production']))).toEqual(sorted(['failure', 'investigation', 'lotRejected', 'materialLate', 'morning', ...eq]));
+    expect(sorted(stopKinds([], ['quality']))).toEqual(sorted(['deviation', 'investigation', 'lotRejected', 'qualLost', 'morning', 'assetExpired/lab']));
     expect(stopKinds([], ['commerce'])).toEqual(['orderRisk', 'morning']);
-    expect(sorted(stopKinds([], ['supply']))).toEqual(sorted(['materialLate', 'morning', 'truckWait']));
+    expect(sorted(stopKinds([], ['supply']))).toEqual(sorted(['materialLate', 'morning', 'truckWait', 'assetExpired/sensor']));
     // директор и «место не выбрано» — всё
     const all = PAUSES.flatMap(p => PAUSE_NOTICES[p]);
     expect(stopKinds([], ['director'])).toEqual(all);
@@ -49,7 +52,7 @@ describe('автопаузы', () => {
   });
 
   test('отключённая автопауза не ставит мир на паузу', () => {
-    expect(stopKinds(['morning', 'oos'], ['quality'])).toEqual(['deviation', 'qualLost']);
+    expect(stopKinds(['morning', 'oos'], ['quality'])).toEqual(['deviation', 'qualLost', 'assetExpired/lab']);
     expect(stopKinds([...PAUSES], ['director'])).toEqual([]);
   });
 

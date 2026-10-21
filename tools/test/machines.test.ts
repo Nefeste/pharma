@@ -51,7 +51,7 @@ describe('модели кодом', () => {
 });
 
 describe('лампы', () => {
-  const row = (state: MachineRow['state']): MachineRow => ({ state, rate: 0, items: 0, fill: -1 });
+  const row = (state: MachineRow['state'], check = false): MachineRow => ({ state, rate: 0, items: 0, fill: -1, check });
   const plain = { changeover: false, clearance: false };
 
   test('у каждого состояния машины — своя лампа; авария видна и на переналадке', () => {
@@ -60,11 +60,13 @@ describe('лампы', () => {
       expect(lampOfMachine(row(st), plain)).toBe(want[st]);
       expect(lampOfMachine(row(st), { changeover: true, clearance: false })).toBe(st === 'fail' ? 'fail' : 'setup');
       expect(lampOfMachine(row(st), { changeover: false, clearance: true })).toBe(st === 'fail' ? 'fail' : 'clean');
+      // не годна к работе (Б3в): у подрядчика или срок вышел — «калибровка или квалификация», пока она не на ходу
+      expect(lampOfMachine(row(st, true), plain)).toBe(st === 'fail' ? 'fail' : st === 'run' || st === 'slow' ? 'run' : st === 'micro' ? 'stop' : 'check');
     }
   });
 
-  test('у оборудования участка: работает, уборка, авария, без дела; у каждой лампы свой цвет', () => {
-    expect(EQ_STATES.map(lampOfEquipment)).toEqual(['off', 'run', 'clean', 'fail']);
+  test('у оборудования участка: работает, уборка, авария, калибровка или квалификация, без дела; у каждой лампы свой цвет', () => {
+    expect(EQ_STATES.map(lampOfEquipment)).toEqual(['off', 'run', 'clean', 'fail', 'check']);
     expect(new Set(LAMPS.map(l => LAMP_COLOR[l])).size).toBe(LAMPS.length);
   });
 });

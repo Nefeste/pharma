@@ -1,2 +1,7 @@
 id: inst.friabilator
 name: { ru: Прибор для истираемости, en: Friability tester }
+# калибровка (Б3в; геймдизайн, §7.2): снова — через столько месяцев, часов работы подрядчика и цена, ₽ без НДС;
+# записи калибровки и квалификации приборов — в ОКК (GMP ЕАЭС, ч. I, пп. 3.41, 6.7 iii). Часы и цены — гипотезы
+cal: { every: 12, hours: 1, price: 4000, name: { ru: Калибровка прибора истираемости, en: Friability tester calibration } }
+source: [gmp-eaeu]
+review: draft

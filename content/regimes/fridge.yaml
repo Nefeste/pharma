@@ -1,0 +1,6 @@
+id: reg.fridge
+name: { ru: "В холодильнике, в холодном месте", en: In a refrigerator or cold place }
+temp: [2, 8]
+rh: 65
+source: [gf-15]
+review: draft

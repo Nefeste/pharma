@@ -1,0 +1,12 @@
+# Соглашение по качеству (Б3г; GMP ЕАЭС, ч. I, п. 5.28): с поставщиком — на материалы и изготовителей, что в нём
+# зафиксировано. Поставщик и изготовители вымышленные; даты редакций — выбор геймдизайна для прототипа.
+# Вторая редакция — с лактозой для лоратадина (Б2б)
+id: qag.exc-r2
+name: { ru: Соглашение по качеству с изготовителем вспомогательных веществ, en: Quality agreement with the excipient maker }
+doc: { code: QAG-0002, rev: 2, from: 2027-03-01, approved: role.qa-head }
+supplier: sup.exc
+makers: [mkr.exc]
+materials: [mat.exc.starch, mat.exc.povidone, mat.exc.mcc, mat.exc.mgst, mat.exc.lactose]
+terms: [handling, labelling, packaging, shipping, complaints, recall]
+source: [gmp-eaeu]
+review: draft

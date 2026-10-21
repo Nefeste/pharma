@@ -1,0 +1,11 @@
+# Соглашение по качеству (Б3г; GMP ЕАЭС, ч. I, п. 5.28): с поставщиком — на материалы и изготовителей, что в нём
+# зафиксировано. Поставщик и изготовители вымышленные; даты редакций — выбор геймдизайна для прототипа
+id: qag.api
+name: { ru: Соглашение по качеству с дистрибьютором АФС, en: Quality agreement with the API distributor }
+doc: { code: QAG-0001, rev: 1, from: 2026-02-02, approved: role.qa-head }
+supplier: sup.api
+makers: [mkr.api-par]
+materials: [mat.api.paracetamol]
+terms: [handling, labelling, packaging, shipping, complaints, recall]
+source: [gmp-eaeu]
+review: draft

@@ -1,9 +1,10 @@
 id: sup.exc
+# поставщик — сам изготовитель (Б3г)
+maker: mkr.exc
 name: { ru: Поставщик вспомогательных веществ, en: Excipient supplier }
 lead: [10, 20]
 prepay: 0
 payDays: 30
-approved: true
 # доля партий с браком, %: их ловит входной контроль (гипотеза)
 defects: 3
 items:

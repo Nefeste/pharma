@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 19;
+export const SCHEMA = 20;
 
 // ---------------------------------------------------------------- склад
 
@@ -18,6 +18,11 @@ export interface Lot {
   id: string;
   material: Id;
   supplier: Id;
+  /**
+   * изготовитель (Б3г): у купленной партии — изготовитель пары заказа, у запаса на старте — пары спецификации; у своей
+   * продукции его нет
+   */
+  maker?: Id;
   /** номер партии изготовителя */
   vendorLot: string;
   /** внутренний номер: год и месяц приёмки, порядковый — окно пишет его как «П-2709-0001» */
@@ -561,6 +566,11 @@ export interface PoLine {
   material: Id;
   /** мг или шт., уже до целой тары */
   qty: number;
+  /** изготовитель пары (Б3г): в команде игрока — нет, движок берёт его из записи поставщика */
+  maker?: Id;
+  /** по какому рамочному договору (Б3г); сколько из `qty` — сверх обещанного или вне договора, по прайсу */
+  contract?: string;
+  list?: number;
 }
 
 export interface Po {
@@ -705,6 +715,8 @@ export interface Task {
   /** ждёт актив (Б3в): прибор или датчик зоны, который не пригоден; у приёмки работы подрядчика — чей актив */
   unfit?: string;
   asset?: string;
+  /** оценка пары «поставщик — изготовитель» (Б3г): рассмотрение отчёта аудитора или документов — какой пары */
+  pair?: string;
   /** работа на месте, с */
   work: number;
   /** больше — раньше */
@@ -752,7 +764,9 @@ export type PlantEvent =
   /** за `LAST_CALL` до каждого часа: у кого смена кончается, новых задач уже не берёт — свободные идут к выходу (3а) */
   | { kind: 'leave' }
   /** подрядчик кончил работу у актива (Б3в) */
-  | { kind: 'visit'; asset: string; v: number };
+  | { kind: 'visit'; asset: string; v: number }
+  /** аудитор кончил аудит у изготовителя и прислал отчёт (Б3г) */
+  | { kind: 'audit'; pair: string; v: number };
 
 // ---------------------------------------------------------------- рынок и касса
 
@@ -805,7 +819,7 @@ export interface Shipment {
   vat: number;
 }
 
-export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual';
+export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract';
 
 // ---------------------------------------------------------------- техслужба
 
@@ -899,6 +913,67 @@ export interface Asset {
   place: string;
   recs: AssetRec[];
   visit?: Visit;
+}
+
+// ---------------------------------------------------------------- контрагенты и договоры (Б3г)
+
+/**
+ * Запись одобрения пары (Б3г): день оценки — рассмотрения отчёта аудитора или документов — и последний день, когда она
+ * действует, — номера дней от 1970-01-01; как оценивали; кто рассмотрел — на старте партии и в миграции не записано.
+ */
+export interface PairRec {
+  day: number;
+  until: number;
+  how: 'audit' | 'docs';
+  by?: string;
+}
+
+/**
+ * Оценка пары (Б3г): как; когда назначил коллега качества; аудит — аудитор у изготовителя с и по; рассмотрение отчёта
+ * или документов — задача специалиста ООК; версия события конца аудита.
+ */
+export interface PairEval {
+  how: 'audit' | 'docs';
+  booked: number;
+  from?: number;
+  to?: number;
+  task?: string;
+  v: number;
+}
+
+/** Пара «поставщик — изготовитель» (Б3г): записи одобрения по порядку, назначенная оценка. */
+export interface Pair {
+  id: string;
+  supplier: Id;
+  maker: Id;
+  recs: PairRec[];
+  eval?: PairEval;
+}
+
+/**
+ * Строка договора (Б3г): материал и изготовитель; цена договора — копейки за кг или штуку; обещанный объём и сколько
+ * куплено с начала договора — мг или штуки.
+ */
+export interface ContractLine {
+  material: Id;
+  maker: Id;
+  price: number;
+  volume: number;
+  bought: number;
+}
+
+/**
+ * Договор (Б3г): номер `CTR-NNNN`; с поставщиком — рамочный (ГК РФ, ст. 429.1), со строками по парам, с покупателем —
+ * поставки (ст. 506), без строк; первый и последний день — номера дней от 1970-01-01; кончился и рассчитан — закрыт.
+ */
+export interface Contract {
+  id: string;
+  party: Id;
+  kind: 'frame' | 'supply';
+  from: number;
+  to: number;
+  lines: ContractLine[];
+  closed?: true;
 }
 
 // ---------------------------------------------------------------- потери и ритм
@@ -1052,6 +1127,9 @@ export interface PlantState {
   shipments: Record<string, Shipment>;
   /** физические активы по вещи плана или технике (Б3в): инвентарные номера, записи, визиты подрядчика */
   assets: Record<string, Asset>;
+  /** пары «поставщик — изготовитель» (Б3г): одобрения и оценки; договоры с поставщиками и покупателями по номерам */
+  pairs: Record<string, Pair>;
+  contracts: Record<string, Contract>;
   /** узлы машин; склад ЗИП; заказы запчастей; журнал оборудования */
   parts: Record<string, Part>;
   spares: Record<Id, SpareStock>;
@@ -1119,6 +1197,8 @@ export type Refusal =
   | 'started'
   | 'notYours'
   | 'noSeat'
+  /** заказ не по одобренной паре «поставщик — изготовитель» действующей спецификации (Б3г) */
+  | 'pair'
   /** расследования нет; оно уже решено; такого шага или версии нет; «выпустить» без лабораторной причины и повтора в пределах */
   | 'noInv'
   | 'closed'
@@ -1168,6 +1248,8 @@ export type Notice =
   | { kind: 'qualLost'; person: string; role: Id; tab: number; doc: string }
   /** срок квалификации или калибровки (поверки) актива вышел, новой записи нет (Б3в): актив не работает; номер — для слов */
   | { kind: 'assetExpired'; asset: string; family: AssetFamily; type: Id; inv: number; work: 'qual' | 'cal' }
+  /** срок одобрения пары «поставщик — изготовитель» вышел, новой записи нет (Б3г): заказов по ней нет */
+  | { kind: 'pairSuspended'; pair: string; supplier: Id; maker: Id }
   /** команда не выполнена */
   | { kind: 'refused'; cmd: Command['kind']; why: Refusal; detail?: string }
   /** результат вне спецификации — расследование открыто; шаг расследования сделан; расследование решено */

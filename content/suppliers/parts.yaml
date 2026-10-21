@@ -5,6 +5,5 @@ name: { ru: Поставщик запчастей, en: Spare parts supplier }
 lead: [30, 90]
 prepay: 50
 payDays: 30
-approved: true
 defects: 0
 items: {}

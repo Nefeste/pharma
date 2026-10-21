@@ -1,8 +1,9 @@
 // «Сейчас» (этап Б, Б1б; docs/specs/2026-10-vertical-slice.md): панель справа — что идёт на заводе одним списком, по
 // разделам: что, где, кто, сколько прошло и сколько по норме. Щелчок по строке — камера к месту работы и её карточка;
-// «Смотреть» — туда же и ×1, пока работа не кончится. Вид собирает поток расчёта (src/sim/now.ts), сколько прошло — окно
-// по своим часам.
-import { durText, named, num, T } from '../i18n';
+// «Смотреть» — туда же и ×1, пока работа не кончится. Вид собирает поток расчёта (src/sim/now.ts), сколько прошло —
+// окно по своим часам.
+import type { Ymd } from '../engine/core/calendar';
+import { durText, named, num, T, whenText } from '../i18n';
 import { NOW_DEPTS, type NowRow } from '../sim/now';
 import { assetClass, workName } from './assets';
 import { db } from './db';
@@ -39,6 +40,14 @@ export function rowTitle(r: NowRow): string {
       const what = a && r.inv !== undefined ? T.now.visit(r.work ? workName(a, r.work) : T.tasks.accept, assetClass(a), T.assets.inv(r.inv)) : '';
       return r.kind === 'accept' ? [T.tasks.accept, what].filter(Boolean).join(' · ') : what;
     }
+    case 'audit':
+    case 'vendorReview': {
+      // оценка поставщика (Б3г): «Аудит изготовителя · Изготовитель лоратадина, Китай»; рассмотрение — отчёта или
+      // документов
+      const mk = r.maker ? db?.makers[r.maker] : undefined;
+      const who = mk ? T.now.maker(named(mk.name, r.maker), named(mk.country)) : (r.maker ?? '');
+      return r.kind === 'audit' ? [T.now.audit, who].join(' · ') : [T.tasks.vendorReview, r.how ? T.now.how[r.how] : '', who].filter(Boolean).join(' · ');
+    }
     default:
       return [T.tasks[r.kind] ?? r.kind, batch || lot, r.line ? T.now.line(r.line) : ''].filter(Boolean).join(' · ');
   }
@@ -50,15 +59,20 @@ function rowWho(r: NowRow): string {
   for (const p of r.people) roles.set(p.role, (roles.get(p.role) ?? 0) + 1);
   const who = [...roles].map(([role, n]) => `${named(db?.roles[role]?.name, role)} × ${n}`).join(', ');
   const where = r.room ? (T.roomTypes[r.room] ?? r.room) : r.inst ? named(db?.instruments[r.inst]?.name, r.inst) : '';
-  return [where, who || (r.kind === 'test' && r.phase === 'run' ? '' : r.kind === 'visit' ? T.now.contractor : T.now.nobody)].filter(Boolean).join(' · ');
+  const none = r.kind === 'test' && r.phase === 'run' ? '' : r.kind === 'visit' ? T.now.contractor : r.kind === 'audit' ? T.now.auditor : T.now.nobody;
+  return [where, who || none].filter(Boolean).join(' · ');
 }
 
-/** Сколько прошло и по норме — по часам окна; упаковка — пачки и скорость; люди ещё идут — «идут к месту работы». */
-export function rowWhen(r: NowRow, t: number): string {
+/**
+ * Сколько прошло и по норме — по часам окна; упаковка — пачки и скорость; люди ещё идут — «идут к месту работы»;
+ * аудит — когда придёт отчёт.
+ */
+export function rowWhen(r: NowRow, t: number, start?: Ymd): string {
   if (r.kind === 'pack') return `${T.now.packs(num(r.done ?? 0), num(r.target ?? 0))} · ${T.now.rate(num(r.rate ?? 0), num(r.rated ?? 0))}`;
   if (t < r.from) return T.now.onWay;
   const gone = durText(t - r.from);
   if (r.kind === 'truck') return T.now.truckSince(gone);
+  if (r.kind === 'audit' && r.until !== undefined && start) return T.now.auditUntil(gone, whenText(start, r.until));
   if (r.norm !== undefined) return T.now.gone(gone, durText(r.norm));
   if (r.range) return T.now.goneRange(gone, durText(r.range[0]), durText(r.range[1]));
   return T.now.goneOnly(gone);
@@ -92,7 +106,7 @@ export function Now({ hud, actions }: { hud: Hud; actions: Actions }) {
                         </span>
                         <span className="muted small">{rowWho(r)}</span>
                       </button>
-                      <span className="ntime small">{rowWhen(r, hud.t)}</span>
+                      <span className="ntime small">{rowWhen(r, hud.t, hud.start)}</span>
                       <button type="button" onClick={() => actions.watch(r.key)} title={T.now.watchHint} data-test="now-watch">
                         {T.now.watch}
                       </button>

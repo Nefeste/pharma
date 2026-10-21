@@ -11,6 +11,7 @@ import { leanStep, newLoss } from './lean';
 import { newLines } from './line';
 import { newParts } from './maint';
 import { newCustomers } from './market';
+import { seedContracts, seedPairs, specPairs } from './partners';
 import { planOf } from './plant';
 import { nominal } from './quality';
 import { seedTraining } from './train';
@@ -239,6 +240,30 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     raw.assets = {};
     seedAssets(db, sc, raw as unknown as PlantState, momentOf(raw.start as Ymd, raw.t as number).day);
     for (const i of Object.values((raw.instruments ?? {}) as Record<string, Raw>)) if (i.check === 'overdue') i.check = 'typo';
+    return raw;
+  },
+  // 19 → 20 (Б3г): у партии и строки заказа — изготовитель: у купленной — из записи поставщика, у запаса на старте —
+  // первой пары спецификации, у своей продукции его нет; одобрения пар — по правилу начала партии, но от дня
+  // сохранения, всё в сроке; договоры — с дня сохранения на срок сценария, купленное — ноль.
+  19: (raw, db) => {
+    const sc = db.scenarios[raw.scenario as string];
+    if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
+    const day = momentOf(raw.start as Ymd, raw.t as number).day;
+    const makerOf = (supplier: string, material: string) => (supplier === 'start' ? specPairs(db, material, day)[0]?.maker : db.suppliers[supplier]?.items[material]?.maker);
+    for (const l of Object.values(raw.lots as Record<string, Raw>)) {
+      const mk = makerOf(l.supplier as string, l.material as string);
+      if (mk) l.maker = mk;
+    }
+    for (const po of Object.values(raw.pos as Record<string, Raw>)) {
+      for (const l of po.lines as Raw[]) {
+        const mk = makerOf(po.supplier as string, l.material as string);
+        if (mk) l.maker = mk;
+      }
+    }
+    raw.pairs = {};
+    raw.contracts = {};
+    seedPairs(db, sc, raw as unknown as PlantState, day);
+    seedContracts(db, sc, raw as unknown as PlantState, day);
     return raw;
   },
 };

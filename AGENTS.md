@@ -117,7 +117,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   and the route polyline shared with the window, a point along it in whole centimetres), `plant.ts` (slots, docks, rooms,
   the lab, work points, posts of roles and distances along the plan's routes), `stock.ts` (lots, containers, pallets,
   slots, the lot status table), `supply.ts` (purchase orders; the supply colleague — at 09:00 on a workday, every material
-  below its reorder point: plan use over the longest lead time, incoming control and safety stock, one order per approved
+  below its reorder point: plan use over the longest lead time, incoming control and safety stock, through the first
+  approved supplier–maker pair, one order per
   supplier, at most half the quarantine zone in pallets), `planner.ts` (the planning colleague — at 07:00 on a workday, a
   batch order for the same weekday two weeks on, for the SKU that runs out first by FG and work in progress against
   demand seen in customer orders; SKUs in turn until demand is seen; campaigns — the product of the last batch order goes
@@ -188,7 +189,14 @@ first, or copy the working code of Bolnitsa on the same versions.
   within the interval less the warning period; why an asset takes no new work — no record in force or a contractor visit;
   the techservice colleague books a visit at 09:00 on a workday for the next workday; the contractor starts in his hours
   once the asset is free, the bill on the visit day, the acceptance by the QC head or the QA specialist; a pallet stored
-  only in a zone whose regime fits and whose sensor is fit; what holds a stage or a line), `invariants.ts`.
+  only in a zone whose regime fits and whose sensor is fit; what holds a stage or a line), `partners.ts` (makers and
+  suppliers — the maker itself or a distributor; approved supplier–maker pairs from the material spec in force; pair
+  approvals with a term, start records by a hash, not before the pair entered a spec; the quality colleague books an
+  evaluation at 09:00 on a workday — an audit at the maker by a third-party auditor, the bill with the report, or a
+  documents review — and the QA specialist reviews it; a pair whose approval lapsed is suspended, nothing is ordered
+  through it; the quality agreement in force; framework contracts — the contract price up to the promised volume, the
+  list price beyond, at the end a clawback for a pair bought below the promised share by value, and a new contract;
+  supply contracts of customers extended), `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`; a `tick` carries the notice kinds of the player's
@@ -206,7 +214,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   their tenure, yesterday by calendar day with its cleanings and changeovers, events of the 24 hours before it, what
   waits now — the cash panel and the top-bar cash with the player's places (`report.ts`); the places and assets — the
   «Места» tab, an asset in a card, the meeting's calibration and qualification, which batch waits for which asset —
-  records and visits are the plant's knowledge (`places.ts`); the lab queue and the X–Rm control chart of the in-process
+  records and visits are the plant's knowledge (`places.ts`); the partners — makers, pairs with their approval and
+  evaluation, agreements and contracts in force for the «Контрагенты» tab, the meeting's suppliers, a lot's maker and
+  contract (`partners.ts`); the lab queue and the X–Rm control chart of the in-process
   average tablet mass with its limits and special-cause signs, a lot under investigation and its steps' tests
   (`lab.ts`); the investigation board — what happened, participants, steps, findings, versions from the findings only,
   whether release is proven, the debrief only once concluded (`inv.ts`); people and admissions — a person's admission
@@ -261,7 +271,8 @@ first, or copy the working code of Bolnitsa on the same versions.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML (with part 4 —
   `investigations/`: the investigation model — candidates, findings, steps; with Б3б — `sops/`: procedures with the
   document header, the works they are needed for, the roles that learn them, hours to study and the term in months;
-  with Б3в — `regimes/`: storage regimes of the pharmacopoeia, a temperature range and the highest humidity);
+  with Б3в — `regimes/`: storage regimes of the pharmacopoeia, a temperature range and the highest humidity; with Б3г —
+  `makers/`: fictional makers in real countries, and `agreements/`: quality agreements `QAG-` with the document header);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
@@ -270,7 +281,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   code — parts inside the footprint, round cylinders, upright hoppers, items only on belts: `modelErrors` in `load.ts`;
   places — codes by format and unique, a room in one area, a thing on a work center of its kind in its room's area, one
   verified sensor per storage zone, an IPC instrument for each stage test in the stage room, a zone for every material by
-  its regime, contractor works within his day, the warning period shorter than the shortest interval: `placeErrors`).
+  its regime, contractor works within his day, the warning period shorter than the shortest interval: `placeErrors`;
+  pairs — every revision of a starting or packaging material spec has a pair its supplier sells from that maker, every
+  pair of the start has a quality agreement in force: `pairErrors`).
 - `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
 - `assets/` — CC0 people models (copies of Bolnitsa's, byte for byte) and `LICENSES.md` (sources, licenses, SHA-256);
   never add a model without its line there and in `assets/models/sources.json`.

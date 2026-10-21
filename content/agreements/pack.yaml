@@ -1,0 +1,11 @@
+# Соглашение по качеству (Б3г; GMP ЕАЭС, ч. I, п. 5.28): с поставщиком — на материалы и изготовителей, что в нём
+# зафиксировано. Поставщик и изготовители вымышленные; даты редакций — выбор геймдизайна для прототипа
+id: qag.pack
+name: { ru: Соглашение по качеству с изготовителем упаковки, en: Quality agreement with the packaging maker }
+doc: { code: QAG-0003, rev: 1, from: 2026-02-16, approved: role.qa-head }
+supplier: sup.pack
+makers: [mkr.pack]
+materials: [mat.pk.pvc, mat.pk.alu, mat.pk.carton-n20, mat.pk.leaflet, mat.pk.case]
+terms: [handling, labelling, packaging, shipping, complaints, recall]
+source: [gmp-eaeu]
+review: draft

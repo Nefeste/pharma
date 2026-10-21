@@ -1,0 +1,11 @@
+# Соглашение по качеству (Б3г; GMP ЕАЭС, ч. I, п. 5.28): с поставщиком — на материалы и изготовителей, что в нём
+# зафиксировано. Поставщик и изготовители вымышленные; даты редакций — выбор геймдизайна для прототипа
+id: qag.exc
+name: { ru: Соглашение по качеству с изготовителем вспомогательных веществ, en: Quality agreement with the excipient maker }
+doc: { code: QAG-0002, rev: 1, from: 2026-02-02, approved: role.qa-head }
+supplier: sup.exc
+makers: [mkr.exc]
+materials: [mat.exc.starch, mat.exc.povidone, mat.exc.mcc, mat.exc.mgst]
+terms: [handling, labelling, packaging, shipping, complaints, recall]
+source: [gmp-eaeu]
+review: draft

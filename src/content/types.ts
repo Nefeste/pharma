@@ -135,6 +135,7 @@ export const TASK_KINDS = [
   'train',
   'trainCheck',
   'accept',
+  'vendorReview',
 ] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];
 
@@ -217,6 +218,8 @@ export interface Scenario {
    * часы подрядчика — секунды от полуночи, с и до; приёмка его работы, с; инвентарные номера — по порядку мест с `inv`
    */
   assets: { ahead: number; hours: [number, number]; accept: number; inv: number };
+  /** контрагенты и договоры (Б3г): src/engine/partners.ts */
+  partners: ScenarioPartners;
   /** происшествие прототипа (часть 4): у задания на серию — неисправность по жребию зерна */
   incident?: IncidentDef;
 }
@@ -234,6 +237,23 @@ export interface ScenarioPlan {
    * запаса больше, чем на две замороженные недели и ещё столько суток; нет — каждый раз позиция, которой хватит меньше всего
    */
   urgent?: number;
+}
+
+/**
+ * Контрагенты и договоры (Б3г): за сколько суток до конца одобрения пары коллега качества назначает оценку; через
+ * сколько месяцев оценивать снова — по виду материала; аудит — рабочих дней у изготовителя, рассмотрение отчёта, с,
+ * цена без НДС, копейки; оценка по документам, с; прайс дороже цены договора на `markup`, обещанная доля — `share`,
+ * доли 1/10 000; договоры — на `months` месяцев; номера — по порядку с `ctr`.
+ */
+export interface ScenarioPartners {
+  ahead: number;
+  every: { api: number; excipient: number; packaging: number };
+  audit: { days: number; review: number; price: number };
+  docs: { review: number };
+  markup: number;
+  share: number;
+  months: number;
+  ctr: number;
 }
 
 /** Снабжение сценария (Б2в): страховой запас и заказ — в сутках расхода, входной контроль — сутки. */
@@ -380,27 +400,58 @@ export interface ContainerType {
   load: LoadKind;
 }
 
-/** Строка прайса поставщика: цена за килограмм или за штуку, минимальная партия. */
+/** Строка прайса поставщика: цена за килограмм или за штуку, минимальная партия, кто изготовил (Б3г). */
 export interface SupplierItem {
-  /** копейки за кг (материалы по массе) или за штуку */
+  /** копейки за кг (материалы по массе) или за штуку — цена рамочного договора; сверх обещанного — дороже на наценку */
   price: number;
   /** мг или штуки */
   moq: number;
+  /** изготовитель материала: у поставщика-изготовителя — он сам */
+  maker: Id;
 }
 
+/** Поставщик — тот, у кого завод покупает (Б3г): сам изготовитель или дистрибьютор. */
 export interface Supplier {
   id: Id;
   name: Text;
+  /** поставщик и есть изготовитель: его запись `content/makers/`; нет — дистрибьютор */
+  maker?: Id;
   /** срок поставки «от — до», дни */
   lead: [number, number];
   /** предоплата, доли 1/10 000; остаток — через `payDays` после прихода */
   prepay: number;
   payDays: number;
-  /** одобрен ли поставщик (входной контроль по плану отбора — геймдизайн, §6.3) */
-  approved: boolean;
   /** доля партий с браком, доли 1/10 000 */
   defects: number;
   items: Record<Id, SupplierItem>;
+}
+
+/** Изготовитель (Б3г): вымышленный — название и площадка; страна — настоящая; что выпускает. */
+export interface Maker {
+  id: Id;
+  name: Text;
+  country: Text;
+  site: Text;
+  makes: Id[];
+}
+
+/** Что фиксирует соглашение по качеству (GMP ЕАЭС, ч. I, п. 5.28; Б3г). */
+export type AgreementTerm = 'handling' | 'labelling' | 'packaging' | 'shipping' | 'complaints' | 'recall';
+
+/**
+ * Соглашение по качеству (Б3г): документ с шапкой Б3а, код `QAG-NNNN`; с каким поставщиком, на какие материалы и
+ * изготовителей, что в нём зафиксировано. Пара «поставщик — изготовитель» одобрена, только пока соглашение действует.
+ */
+export interface Agreement {
+  id: Id;
+  name: Text;
+  doc: DocHead;
+  supplier: Id;
+  makers: Id[];
+  materials: Id[];
+  terms: AgreementTerm[];
+  source?: string[];
+  review?: Review;
 }
 
 export type Dept = 'wms' | 'qc' | 'qa' | 'mes' | 'line' | 'maint';
@@ -566,12 +617,19 @@ export interface SpecLine {
   max?: number;
 }
 
-/** Спецификация: что она описывает, шапка документа, испытания с пределами. */
+/** Одобренная пара «поставщик — изготовитель» в спецификации исходного или упаковочного материала (Б3г; п. 4.14). */
+export interface SpecPair {
+  supplier: Id;
+  maker: Id;
+}
+
+/** Спецификация: что она описывает, шапка документа, испытания с пределами; у материала — одобренные пары (Б3г). */
 export interface Spec {
   id: Id;
   name: Text;
   doc: DocHead;
   tests: SpecLine[];
+  pairs?: SpecPair[];
   source?: string[];
   review?: Review;
 }
@@ -907,4 +965,6 @@ export interface ContentDb {
   spares: Record<Id, Spare>;
   sops: Record<Id, Sop>;
   regimes: Record<Id, Regime>;
+  makers: Record<Id, Maker>;
+  agreements: Record<Id, Agreement>;
 }

@@ -91,6 +91,8 @@ export interface NewLot {
   unitType?: Id;
   /** номер партии изготовителя; у своей продукции — номер серии */
   vendorLot?: string;
+  /** изготовитель (Б3г): номер его партии — с его кода */
+  maker?: Id;
 }
 
 /**
@@ -109,7 +111,8 @@ export function createLot(db: ContentDb, s: PlantState, o: NewLot): { lot: Lot; 
     id: nextId(s, 'L'),
     material: o.material,
     supplier: o.supplier,
-    vendorLot: o.vendorLot ?? `${o.supplier.split('.').pop()!.toUpperCase()}-${String(code.y).padStart(2, '0')}${String(code.n).padStart(4, '0')}`,
+    ...(o.maker ? { maker: o.maker } : {}),
+    vendorLot: o.vendorLot ?? `${(o.maker ?? o.supplier).split('.').pop()!.toUpperCase()}-${String(code.y).padStart(2, '0')}${String(code.n).padStart(4, '0')}`,
     code,
     qty: total,
     // срок — от дня приёмки: месяцы по 30 дней (упрощение прототипа)

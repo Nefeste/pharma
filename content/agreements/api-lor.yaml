@@ -1,0 +1,11 @@
+# Соглашение по качеству (Б3г; GMP ЕАЭС, ч. I, п. 5.28): с поставщиком — на материалы и изготовителей, что в нём
+# зафиксировано. Поставщик и изготовители вымышленные; даты редакций — выбор геймдизайна для прототипа
+id: qag.api-lor
+name: { ru: Соглашение по качеству с изготовителем лоратадина, en: Quality agreement with the loratadine maker }
+doc: { code: QAG-0004, rev: 1, from: 2027-03-01, approved: role.qa-head }
+supplier: sup.api-lor
+makers: [mkr.api-lor]
+materials: [mat.api.loratadine]
+terms: [handling, labelling, packaging, shipping, complaints, recall]
+source: [gmp-eaeu]
+review: draft

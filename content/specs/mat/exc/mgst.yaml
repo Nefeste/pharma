@@ -1,6 +1,8 @@
 id: spec.mat.exc.mgst
 name: { ru: "Магния стеарат", en: "Magnesium stearate" }
 doc: { code: SP-0005, rev: 1, from: 2026-02-02, approved: role.qc-head }
+# одобренные пары «поставщик — изготовитель» (Б3г; GMP ЕАЭС, ч. I, п. 4.14)
+pairs: [{ supplier: sup.exc, maker: mkr.exc }]
 tests:
   - { test: test.ir }
   - { test: test.lod, max: 6 }

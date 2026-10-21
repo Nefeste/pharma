@@ -19,6 +19,7 @@ import { join, relative } from 'node:path';
 import { parse } from 'yaml';
 import type { z } from 'zod';
 import {
+  type Agreement,
   ATTR_SCALE,
   ATTRS,
   type AssetWork,
@@ -34,6 +35,7 @@ import {
   type InstrumentType,
   type InvModel,
   type Machine,
+  type Maker,
   type ModelPart,
   type Material,
   PARAM_SCALE,
@@ -68,6 +70,7 @@ import { QC } from '../../src/engine/lab';
 import { LINE } from '../../src/engine/line';
 import { MAINT } from '../../src/engine/maint';
 import { MES } from '../../src/engine/mes';
+import { agreementFor, REVIEWERS, STARTING } from '../../src/engine/partners';
 import { accepts, areaCode, CENTER_OF, centerCode, classOf, coldOf, placesOf, rackStore, roomAt } from '../../src/engine/places';
 import { QA } from '../../src/engine/qa';
 import { CHECKERS } from '../../src/engine/train';
@@ -316,10 +319,25 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   for (const c of Object.values(raw.containers)) {
     containers[c.id] = { ...c, capacity: 'kg' in c.capacity ? mg(c.capacity.kg) : c.capacity.pcs };
   }
+  // изготовители (Б3г): выпускают исходные и упаковочные материалы из базы
+  const makers: Record<string, Maker> = {};
+  for (const x of Object.values(raw.makers)) {
+    for (const m of x.makes) need(STARTING.has(materials[m]?.kind), `изготовитель ${x.id}: ${m} — не исходный и не упаковочный материал из базы`);
+    makers[x.id] = { ...x };
+  }
+  // поставщики (Б3г): изготовитель материала — у поставщика-изготовителя он сам; изготовитель его выпускает
   const suppliers: Record<string, Supplier> = {};
   for (const s of Object.values(raw.suppliers)) {
+    const where = `поставщик ${s.id}`;
+    if (s.maker) need(makers[s.maker], `${where}: нет изготовителя ${s.maker}`);
     const items: Supplier['items'] = {};
-    for (const [mid, it] of Object.entries(s.items)) items[mid] = { price: kop(it.price), moq: amount(mid, it.moq, `поставщик ${s.id}`) };
+    for (const [mid, it] of Object.entries(s.items)) {
+      const mk = it.maker ?? s.maker ?? '';
+      need(mk, `${where}: у ${mid} не сказано, кто изготовил, — у дистрибьютора изготовитель у каждого материала`);
+      if (s.maker && it.maker) need(it.maker === s.maker, `${where}: поставщик-изготовитель продаёт своё, а ${mid} — от ${it.maker}`);
+      if (mk) need(makers[mk]?.makes.includes(mid), `${where}: ${mk} не выпускает ${mid}`);
+      items[mid] = { price: kop(it.price), moq: amount(mid, it.moq, where), maker: mk };
+    }
     suppliers[s.id] = { ...s, prepay: share(s.prepay), defects: share(s.defects), items };
   }
   const roles: Record<string, Role> = {};
@@ -747,7 +765,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       }
     }
     // план выпуска: карта — та же проверка помещений и оборудования, позиция — того же продукта; у каждого материала
-    // карты и упаковки позиции — одобренный поставщик, иначе коллеге снабжения не у кого заказать
+    // карты и упаковки позиции — одобренная пара в спецификации (Б3г, pairErrors), иначе коллеге снабжения не у кого
+    // заказать
     for (const it of s.plan?.items ?? []) {
       const r = raw.recipes[it.recipe];
       const k = raw.skus[it.sku];
@@ -757,13 +776,18 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       for (const st of r?.stages ?? []) stageNeeds(st);
       if (s.supply) {
         const mats = [...(r?.bom ?? []).map(l => l.material), ...(k ? [...k.blister, ...k.carton].map(l => l.material) : []), ...(k ? [k.case.material] : [])];
-        for (const m of mats) need(Object.values(raw.suppliers).some(x => x.approved && x.items[m]), `${where}: ${m} никто из одобренных поставщиков не продаёт`);
+        for (const m of mats) need(STARTING.has(materials[m]?.kind), `${where}: ${m} — не исходный и не упаковочный материал: его не купить`);
       }
     }
+    // заказы на старте (Б3г) — тоже только по одобренной паре спецификации, действующей в день начала
     for (const o of s.orders) {
       const sup = suppliers[o.supplier];
       need(sup, `${where}: нет поставщика ${o.supplier}`);
-      for (const l of o.lines) need(sup?.items[l.material], `${where}: ${o.supplier} не продаёт ${l.material}`);
+      for (const l of o.lines) {
+        need(sup?.items[l.material], `${where}: ${o.supplier} не продаёт ${l.material}`);
+        const sp = materials[l.material] && specs[inForce({ specs } as Pick<ContentDb, DocKind>, 'specs', materials[l.material].spec, dayOf(s.start.date))];
+        if (sup?.items[l.material]) need(sp?.pairs?.some(x => x.supplier === o.supplier && x.maker === sup.items[l.material].maker), `${where}: заказ на старте у ${o.supplier} — ${l.material} не по одобренной паре спецификации`);
+      }
     }
     // износ и политика техслужбы — по узлам машин плана: `<машина>/<узел>`
     const parts = new Set<string>();
@@ -800,6 +824,11 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       }
       need(s.assets.ahead + 3 < shortest * 28, `${where}: assets.ahead — срок предупреждения не короче самого короткого интервала, ${shortest} мес.`);
     }
+    // контрагенты (Б3г): срок предупреждения короче самого короткого интервала оценки — иначе на старте пара сразу ждёт
+    // оценки; аудит с рассмотрением отчёта укладывается в срок предупреждения
+    const every = Math.min(s.partners.every.api, s.partners.every.excipient, s.partners.every.packaging);
+    need(s.partners.ahead + 3 < every * 28, `${where}: partners.ahead — срок предупреждения не короче самого короткого интервала оценки, ${every} мес.`);
+    need(s.partners.audit.days + 2 < s.partners.ahead, `${where}: partners — аудит в ${s.partners.audit.days} рабочих дней не уложится в срок предупреждения`);
     const [y, m, d] = s.start.date.split('-').map(Number);
     scenarios[s.id] = {
       ...s,
@@ -814,6 +843,13 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       norm: share(s.norm),
       training: { ...s.training, check: sec(s.training.check) },
       assets: { ...s.assets, hours: [s.assets.hours[0] * 3600, s.assets.hours[1] * 3600], accept: sec(s.assets.accept) },
+      partners: {
+        ...s.partners,
+        audit: { days: s.partners.audit.days, review: sec(s.partners.audit.review * 60), price: kop(s.partners.audit.price) },
+        docs: { review: sec(s.partners.docs.review * 60) },
+        markup: share(s.partners.markup),
+        share: share(s.partners.share),
+      },
       ...(s.incident ? { incident: incidentOf(s.incident, s.batches.length, where) } : {}),
     };
   }
@@ -856,6 +892,18 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     sops[x.id] = { ...rest, doc: headDoc(x.doc, where), study: sec(hours * 60) };
   }
   learnErrors(raw, sops, tests, need);
+  // соглашения по качеству (Б3г): шапка документа; поставщик, изготовители и материалы — из базы, и поставщик продаёт
+  // эти материалы этих изготовителей
+  const agreements: Record<string, Agreement> = {};
+  for (const x of Object.values(raw.agreements)) {
+    const where = `соглашение ${x.id}`;
+    const sup = suppliers[x.supplier];
+    need(sup, `${where}: нет поставщика ${x.supplier}`);
+    for (const mk of x.makers) need(makers[mk], `${where}: нет изготовителя ${mk}`);
+    for (const m of x.materials) need(sup?.items[m] && x.makers.includes(sup.items[m].maker), `${where}: ${x.supplier} не продаёт ${m} изготовителей ${x.makers.join(', ')}`);
+    agreements[x.id] = { ...x, doc: headDoc(x.doc, where) };
+  }
+  pairErrors(materials, specs, suppliers, makers, need);
   // коды (Б3а): у материала и запчасти — внутренний, первая цифра — вид; у каждого свой
   const matCodes = new Map<string, string>();
   const coded = [...Object.values(materials).map(m => ({ id: m.id, code: m.code, kind: m.kind as keyof typeof CODE_KIND })), ...Object.values(spares).map(sp => ({ id: sp.id, code: sp.code, kind: 'spare' as const }))];
@@ -866,8 +914,9 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     matCodes.set(x.code, x.id);
   }
   // документы: у редакций одного кода — разные дни введения и номер растёт с днём, поэтому в любой день действует не
-  // больше одной; у редакций карты — один продукт; инструкция по упаковке — у каждой позиции своя, пока она часть позиции
-  const docDb = { specs, tests, recipes, skus, sops };
+  // больше одной; у редакций карты — один продукт; инструкция по упаковке — у каждой позиции своя, пока она часть
+  // позиции
+  const docDb = { specs, tests, recipes, skus, sops, agreements };
   for (const kind of DOC_KINDS) {
     const byCode = new Map<string, string[]>();
     for (const [id, r] of Object.entries(docDb[kind] as Record<string, { doc: DocHead }>)) byCode.set(r.doc.code, [...(byCode.get(r.doc.code) ?? []), id]);
@@ -901,6 +950,12 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     for (const r of [...sc.batches.map(b => b.recipe), ...(sc.plan?.items.map(it => it.recipe) ?? [])]) if (recipes[r]) need(active('recipes', r), `${where}: у карты ${r} на ${date} нет действующей редакции`);
     const used = [...sc.batches.flatMap(b => (b.sku ? [b.sku] : [])), ...(sc.plan?.items.map(it => it.sku) ?? []), ...sc.customers.flatMap(c => Object.keys(customers[c]?.demand ?? {}))];
     for (const k of new Set(used)) if (skus[k]) need(active('skus', k), `${where}: инструкция по упаковке позиции ${k} на ${date} ещё не действует`);
+    // соглашения по качеству (Б3г): у каждой пары спецификации, действующей на начало, — соглашение, действующее на
+    // начало
+    for (const m of Object.values(materials)) {
+      const sp = specs[m.spec] && specs[inForce(docDb, 'specs', m.spec, day)];
+      for (const pr of sp?.pairs ?? []) need(agreementFor(docDb, pr.supplier, pr.maker, m.id, day), `${where}: у пары ${pr.supplier} — ${pr.maker} для ${m.id} на ${date} нет действующего соглашения по качеству`);
+    }
   }
   return {
     profiles,
@@ -927,7 +982,36 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     spares,
     sops,
     regimes,
+    makers,
+    agreements,
   };
+}
+
+/**
+ * Одобренные пары (Б3г; docs/specs/2026-10-vertical-slice.md, «Проверки Б3г»): у каждой редакции спецификации исходного
+ * и упаковочного материала — хоть одна пара, и поставщик пары продаёт этот материал от этого изготовителя; у своей
+ * продукции пар нет.
+ */
+function pairErrors(materials: Record<string, Material>, specs: Record<string, Spec>, suppliers: Record<string, Supplier>, makers: Record<string, Maker>, need: (ok: unknown, msg: string) => void) {
+  for (const m of Object.values(materials)) {
+    if (!specs[m.spec]) continue;
+    for (const id of revisions({ specs } as unknown as Pick<ContentDb, DocKind>, 'specs', m.spec)) {
+      const where = `спецификация ${id} (${m.id})`;
+      const pairs = specs[id].pairs ?? [];
+      if (!STARTING.has(m.kind)) {
+        need(pairs.length === 0, `${where}: у своей продукции одобренных пар нет`);
+        continue;
+      }
+      need(pairs.length > 0, `${where}: нет одобренной пары «поставщик — изготовитель» — материал не у кого купить`);
+      need(new Set(pairs.map(x => `${x.supplier}|${x.maker}`)).size === pairs.length, `${where}: пара повторяется`);
+      for (const pr of pairs) {
+        need(makers[pr.maker], `${where}: нет изготовителя ${pr.maker}`);
+        const it = suppliers[pr.supplier]?.items[m.id];
+        need(suppliers[pr.supplier], `${where}: нет поставщика ${pr.supplier}`);
+        if (suppliers[pr.supplier]) need(it?.maker === pr.maker, `${where}: у ${pr.supplier} нет ${m.id} от ${pr.maker}`);
+      }
+    }
+  }
 }
 
 /** Зона хранения, где лежат места паллет вида `kind`: помещение зоны плана этого вида; стеллажи — `storage`. */
@@ -1052,6 +1136,7 @@ function learnErrors(raw: Raw, sops: Record<string, Sop>, tests: Record<string, 
     train: [],
     trainCheck: CHECKERS,
     accept: Object.values(ACCEPT),
+    vendorReview: REVIEWERS,
   };
   const LINE_WORK: TaskKind[] = ['crew', 'feed', 'changeover', 'clearance', 'clearCheck'];
   const check = (where: string, has: string[], doers: Iterable<string>) => {

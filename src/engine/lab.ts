@@ -10,6 +10,7 @@ import { MIN, momentOf } from './core/calendar';
 import { inForce } from './docs';
 import { incidentMeasured, invTestDone, modelFor, openInvestigation } from './investigation';
 import { defect } from './lean';
+import { approved, pairKey } from './partners';
 import { coldOf } from './places';
 import { type PlantPlan, planOf } from './plant';
 import { measure, within } from './quality';
@@ -76,11 +77,15 @@ export const DECIDE_WORK = 10 * MIN;
 const QUARANTINE = new Set(['quarantine', 'cold']);
 
 /**
- * Сколько тар из `n` отбирать (геймдизайн, §4.3): у АФС и у неодобренного поставщика — каждую; у одобренного —
- * 1 + ⌈√n⌉ (план ВОЗ, docs/10-domain.md, §5), но не больше `n`.
+ * Сколько тар из `n` отбирать (геймдизайн, §4.3; Б3г): у АФС — каждую; у пары, чьё одобрение сегодня не действует, —
+ * каждую; у вспомогательного вещества — 1 + ⌈√n⌉ (план ВОЗ, docs/10-domain.md, §5) только у пары, одобренной по аудиту,
+ * когда поставщик и есть изготовитель (прил. 8), иначе каждую; у упаковки — 1 + ⌈√n⌉ у одобренной пары. Не больше `n`.
  */
-export function sampleCount(db: ContentDb, lot: Lot, n: number): number {
-  if (db.materials[lot.material].kind === 'api' || !db.suppliers[lot.supplier]?.approved) return n;
+export function sampleCount(db: ContentDb, s: PlantState, lot: Lot, n: number): number {
+  const kind = db.materials[lot.material].kind;
+  if (kind === 'api' || !lot.maker || !approved(db, s, lot.supplier, lot.maker, lot.material, momentOf(s.start, s.t).day)) return n;
+  const last = s.pairs[pairKey(lot.supplier, lot.maker)].recs.at(-1)!;
+  if (kind === 'excipient' && (last.how !== 'audit' || db.suppliers[lot.supplier]?.maker !== lot.maker)) return n;
   let r = 0;
   while (r * r < n) r++;
   return Math.min(n, 1 + r);
@@ -107,7 +112,7 @@ export function startSampling(db: ContentDb, s: PlantState) {
     const inPlace = db.materials[lot.material].kind === 'bulk';
     if (inPlace ? !units.every(u => u.where.kind === 'room') : !units.every(u => u.where.kind === 'slot' && QUARANTINE.has(plan.slot[u.where.id].kind))) continue;
     // тара из плана — поровну по всей партии
-    const k = sampleCount(db, lot, cs.length);
+    const k = sampleCount(db, s, lot, cs.length);
     const picked = Array.from({ length: k }, (_, i) => cs[Math.floor((i * cs.length) / k)]);
     const sm: Sample = { id: nextId(s, 'S'), lot: lot.id, plan: picked.map(c => c.id), left: [...new Set(picked.map(c => c.unit))], qty: 0, tests: [] };
     s.samples[sm.id] = sm;

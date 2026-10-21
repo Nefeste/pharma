@@ -207,6 +207,8 @@ try {
       history: document.querySelectorAll('[data-test=card-history] li').length,
       // что лежит (Б1а): тара по виду и сколько в ней
       holds: [...document.querySelectorAll('[data-test=card] dt')].find(d => d.textContent === 'Что лежит')?.nextElementSibling?.textContent ?? '',
+      // изготовитель и номер его партии (Б3г)
+      maker: document.querySelector('[data-test=card-maker]')?.textContent ?? '',
     }));
     // камера привела паллету на экран, и её не закрывает панель склада справа; кадр с новой камерой — нарисован
     await frames(2);
@@ -216,9 +218,9 @@ try {
       const sp = p && g.stage.screen(p.x, p.y + 0.5, p.z);
       return !!sp && document.elementFromPoint(sp.x, sp.y) === g.stage.renderer.domElement;
     }, unit);
-    if (rows < 1 || card.selected?.n !== unit || !/П-\d{4}-\d{4}/.test(card.title) || card.history < 1 || !seen || !/^\d+ \S+ (по|:)/.test(card.holds))
-      fail(`склад: строк ${rows}, выбрано ${JSON.stringify(card.selected)}, карточка «${card.title}», записей истории ${card.history}, паллета ${seen ? 'видна' : 'не видна'}, лежит «${card.holds}»`);
-    else ok(`склад: строк ${rows}; строка — паллета ${unit} на экране мимо панели, карточка «${card.title}» — «${card.holds}», записей истории ${card.history}`);
+    if (rows < 1 || card.selected?.n !== unit || !/П-\d{4}-\d{4}/.test(card.title) || card.history < 1 || !seen || !/^\d+ \S+ (по|:)/.test(card.holds) || !/^Изготовитель .+, .+ · Номер изготовителя [A-Z-]+-\d{6}$/.test(card.maker))
+      fail(`склад: строк ${rows}, выбрано ${JSON.stringify(card.selected)}, карточка «${card.title}», записей истории ${card.history}, паллета ${seen ? 'видна' : 'не видна'}, лежит «${card.holds}», изготовитель «${card.maker}»`);
+    else ok(`склад: строк ${rows}; строка — паллета ${unit} на экране мимо панели, карточка «${card.title}» — «${card.holds}», «${card.maker}», записей истории ${card.history}`);
     await page.keyboard.press('Escape');
     await frames(2);
     // щелчок мышью по паллете на экране — та же паллета: точка её груза, не заслонённая соседями и панелями
@@ -614,10 +616,10 @@ try {
   await lister.close();
   ok(`контактный лист: ${sheet.length} снимков → ${join(out, 'contact.png')}`);
 
-  // автопаузы (Б2а): у производства и качества девять автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок вышел»),
-  // «фура» и «заказ» — не их; планёрку отключили — окно
-  // помнит; «До события» — мир встал не в 08:00, а на первом событии автопаузы мест игрока: извещение со знаком паузы, часы
-  // стоят, отставания нет. Планёрку включили обратно
+  // автопаузы (Б2а): у производства и качества десять автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок вышел»,
+  // с Б3г — «пара приостановлена»), «фура» и «заказ» — не их; планёрку отключили — окно помнит; «До события» — мир
+  // встал не в 08:00, а на первом событии автопаузы мест игрока: извещение со знаком паузы, часы стоят, отставания нет.
+  // Планёрку включили обратно
   {
     await page.click('[data-test=pauses-open]');
     await page.waitForSelector('[data-test=pauses]', { timeout: 10_000 });
@@ -631,7 +633,7 @@ try {
     await page.screenshot({ path: join(out, 'e2e-pauses.png') });
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('Escape');
-    if (menu.all !== 9 || menu.on !== 9 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
+    if (menu.all !== 10 || menu.on !== 10 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
       fail(`автопаузы: в меню ${menu.all}, включено ${menu.on}, не ваши ${menu.notYours.join(', ')}, в окне «${kept}»`);
     else ok(`автопаузы: в меню ${menu.all}, не ваши — ${menu.notYours.join(', ')}; планёрку отключили — в окне ${kept}; Esc закрыл меню`);
     const t0 = await gameT();
@@ -780,7 +782,7 @@ try {
     await frames(1);
     const docRows = () => page.evaluate(() => [...document.querySelectorAll('[data-test=ref-docs] tbody tr')].map(r => [...r.children].map(c => c.innerText.trim())));
     const docs = await docRows();
-    const all = await page.evaluate(() => ['specs', 'tests', 'recipes', 'skus', 'sops'].reduce((n, k) => n + Object.keys(window.__game.db[k]).length, 0));
+    const all = await page.evaluate(() => ['specs', 'tests', 'recipes', 'skus', 'sops', 'agreements'].reduce((n, k) => n + Object.keys(window.__game.db[k]).length, 0));
     const mf = docs.find(r => r[0] === 'MF-0001');
     if (docs.length !== all || mf?.[6] !== 'действует') fail(`документы: строк ${docs.length} из ${all}, MF-0001 — ${mf ? mf.join(' | ') : 'нет'}`);
     else ok(`документы: ${docs.length} строк; ${mf.join(' · ')}`);
@@ -837,6 +839,26 @@ try {
     if (!invs || places.areas !== places.want || places.regimes.length !== places.stores || !places.regimes.every(r => /\u00a0°C/.test(r)))
       fail(`места: участков ${places.areas} из ${places.want}, инвентарных номеров ${places.inv.length} из ${places.assets} (${places.inv.slice(0, 2).join(', ')}), режимов ${places.regimes.length} из ${places.stores}: ${places.regimes.join(' | ')}`);
     else ok(`места: «${places.site}»; ${places.inv.length} активов, у каждого свой номер (${places.inv[0]}…); у ${places.stores} зон хранения режим — «${places.regimes[0]}»`);
+    // контрагенты (Б3г): изготовители; у каждого исходного и упаковочного материала — одобренная пара и договор; пары в
+    // сроке, у каждой — соглашение по качеству
+    await page.click('[data-test=ref-tab][data-tab=partners]');
+    await frames(1);
+    const partners = await page.evaluate(() => {
+      const v = window.__game.store.get().ref.view;
+      const mats = v.materials.filter(m => ['api', 'excipient', 'packaging'].includes(m.kind));
+      return {
+        makers: document.querySelectorAll('[data-test=ref-makers] tbody tr').length,
+        pairs: [...document.querySelectorAll('[data-test=ref-pair-state]')].map(x => x.textContent ?? ''),
+        contracts: [...document.querySelectorAll('[data-test=ref-contracts] tbody tr')].map(x => x.querySelector('td')?.textContent ?? ''),
+        uncovered: mats.filter(m => !m.pairs?.length || !v.partners.contracts.some(c => c.lines.some(l => l.material === m.id))).map(m => m.id),
+        agreements: v.partners.pairs.filter(x => !x.agreement).length,
+        want: { makers: Object.keys(window.__game.db.makers).length, pairs: v.partners.pairs.length },
+      };
+    });
+    await page.screenshot({ path: join(out, 'e2e-partners.png') });
+    if (partners.makers !== partners.want.makers || partners.pairs.length !== partners.want.pairs || !partners.pairs.every(x => /^с \d\d\.\d\d\.\d{4} до /.test(x)) || partners.uncovered.length > 0 || partners.agreements > 0 || partners.contracts[0] !== 'CTR-0001')
+      fail(`контрагенты: изготовителей ${partners.makers} из ${partners.want.makers}, пар ${partners.pairs.length} из ${partners.want.pairs} (${partners.pairs.join(' | ')}), без пары или договора — ${partners.uncovered.join(', ')}, без соглашения — ${partners.agreements}, договоры ${partners.contracts.join(', ')}`);
+    else ok(`контрагенты: ${partners.makers} изготовителя, ${partners.pairs.length} пары в сроке («${partners.pairs[0]}»), у каждого материала — пара и договор; договоры ${partners.contracts.join(', ')}`);
     for (const tab of ['equipment', 'lab', 'people', 'partners']) {
       await page.click(`[data-test=ref-tab][data-tab=${tab}]`);
       await frames(1);
@@ -964,6 +986,41 @@ try {
       else ok(`первый визит: в карточке — «${fresh[0].replace(/\s+/g, ' ').trim()}»`);
       await page.keyboard.press('Escape');
     }
+  }
+
+  // первая оценка пары (Б3г): одобрение упаковки кончается 29.11 — за срок предупреждения коллега качества назначает
+  // оценку по документам; на планёрке пара в «Поставщиках», пока её рассматривают; рассмотрели — в справочнике, во
+  // вкладке «Контрагенты», у пары новое одобрение — с дня рассмотрения
+  {
+    let seen = false;
+    let done = false;
+    for (let i = 0; i < 60 && !done; i++) {
+      await untilMorning(true);
+      await page.waitForFunction(() => {
+        const m = window.__game.store.get().morning;
+        return m.view?.day === m.day;
+      }, null, { timeout: 20_000 });
+      const soon = await page.evaluate(() => window.__game.store.get().morning.view.partners.soon.some(x => x.id === 'sup.pack|mkr.pack'));
+      seen ||= soon;
+      done = seen && !soon;
+      await page.keyboard.press('Escape');
+    }
+    await page.keyboard.press('F1');
+    await page.waitForSelector('#ref', { timeout: 20_000 });
+    await page.click('[data-test=ref-tab][data-tab=partners]');
+    await page.waitForFunction(() => window.__game.store.get().ref.view?.partners, null, { timeout: 20_000 });
+    await frames(1);
+    const pack = await page.evaluate(() => {
+      const v = window.__game.store.get().ref.view.partners;
+      const i = v.pairs.findIndex(x => x.id === 'sup.pack|mkr.pack');
+      return { row: v.pairs[i], text: document.querySelectorAll('[data-test=ref-pair-state]')[i]?.textContent ?? '', start: window.__game.db.scenarios['scn.proto'].start.date };
+    });
+    await page.screenshot({ path: join(out, 'e2e-pair.png') });
+    const start = Date.UTC(pack.start.y, pack.start.m - 1, pack.start.d) / 86_400_000;
+    if (!seen || !done || !pack.row?.ok || !(pack.row.since > start) || !/^с \d\d\.\d\d\.\d{4} до /.test(pack.text))
+      fail(`первая оценка пары: на планёрке ${seen ? 'была' : 'не было'}, ${done ? 'рассмотрели' : 'не рассмотрели'}; в справочнике «${pack.text}»`);
+    else ok(`первая оценка пары: упаковку оценили по документам — в справочнике «${pack.text}»`);
+    await page.keyboard.press('Escape');
   }
 
   // стартовый пресет (Б1б): первый запуск без пресета в адресе — средний, через пять секунд замер; кадр программной

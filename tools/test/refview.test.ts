@@ -86,7 +86,9 @@ const ALLOWED = new Set(
     'people person tab skill adm k doc rev matrix cells ok all ' +
     // Б3в: места по плану, активы с инвентарными номерами, записи квалификации и калибровки, визиты — учёт завода
     'places site name ru en areas rooms centers regime assets inv family place critical needs verify qual cal work day until by ' +
-    'visit at accepting unfit working thing i line today vehicles common ahead closed'
+    'visit at accepting unfit working thing i line today vehicles common ahead closed ' +
+    // Б3г: изготовители, пары с одобрением и оценкой, соглашения, действующие договоры — записи и учёт завода
+    'partners makers makes pairs supplier maker how since agreement eval review contracts party volume bought'
   ).split(' '),
 );
 
@@ -181,17 +183,19 @@ describe('справочник: номенклатура и документы (
   test('материалы и запчасти — единица учёта с кодом ОКЕИ, спецификация на сегодня', () => {
     expect(v.materials.map(m => m.id)).toEqual([...Object.keys(db.materials), ...Object.keys(db.spares)]);
     const by = Object.fromEntries(v.materials.map(m => [m.id, m]));
-    expect(by['mat.api.paracetamol']).toEqual({ id: 'mat.api.paracetamol', kind: 'api', unit: 'kg', okei: 166, spec: 'spec.mat.api.paracetamol' });
+    expect(by['mat.api.paracetamol']).toEqual({ id: 'mat.api.paracetamol', kind: 'api', unit: 'kg', okei: 166, spec: 'spec.mat.api.paracetamol', pairs: [{ supplier: 'sup.api', maker: 'mkr.api-par' }] });
     expect(by['mat.pk.carton-n20']).toMatchObject({ unit: 'pcs', okei: 796 });
     expect(by['mat.fg.paracetamol500-n20']).toMatchObject({ kind: 'fg', unit: 'pack', okei: 778 });
     expect(by['spare.punches']).toEqual({ id: 'spare.punches', kind: 'spare', unit: 'pcs', okei: 796 });
   });
 
-  test('документы — все редакции базы; в прототипе каждая действует, кроме новой редакции уборки до её дня (Б3б)', () => {
-    const all = (['specs', 'tests', 'recipes', 'skus', 'sops'] as const).flatMap(kind => Object.keys(db[kind]).map(id => `${kind}/${id}`));
+  test('документы — все редакции базы; в прототипе каждая действует, кроме новой редакции уборки до её дня (Б3б) и прежних редакций соглашений (Б3г)', () => {
+    const all = (['specs', 'tests', 'recipes', 'skus', 'sops', 'agreements'] as const).flatMap(kind => Object.keys(db[kind]).map(id => `${kind}/${id}`));
     expect(v.docs.map(d => `${d.kind}/${d.id}`)).toEqual(all);
     const draft = v.docs.filter(d => d.status !== 'active').map(d => `${d.kind}/${d.id}:${d.status}`);
-    expect(draft).toEqual(today < db.sops['sop.cleaning-r2'].doc.from ? ['sops/sop.cleaning-r2:draft'] : ['sops/sop.cleaning:archive']);
+    // соглашения по качеству (Б3г): прежние редакции — в архиве, на начало партии действует последняя
+    const qag = ['agreements/qag.exc:archive', 'agreements/qag.pack-r2:archive', 'agreements/qag.pack:archive'];
+    expect(draft).toEqual([...(today < db.sops['sop.cleaning-r2'].doc.from ? ['sops/sop.cleaning-r2:draft'] : ['sops/sop.cleaning:archive']), ...qag]);
   });
 
   test('новая редакция карты: до своего дня — проект, карты — прежняя; с него — действует, прежняя — в архиве', () => {

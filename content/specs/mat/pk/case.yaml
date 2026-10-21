@@ -1,5 +1,7 @@
 id: spec.mat.pk.case
 name: { ru: "Гофроящик 40 × 30 × 25", en: "Shipping carton 40 × 30 × 25" }
 doc: { code: SP-0010, rev: 1, from: 2026-02-16, approved: role.qc-head }
+# одобренные пары «поставщик — изготовитель» (Б3г; GMP ЕАЭС, ч. I, п. 4.14)
+pairs: [{ supplier: sup.pack, maker: mkr.pack }]
 tests:
   - { test: test.visual }

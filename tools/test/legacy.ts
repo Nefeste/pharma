@@ -13,6 +13,8 @@ const row = (role: Id, shift: Id, n: number, skill = 3) => ({ role, shift, skill
 
 export const legacy: ContentDb = structuredClone(db);
 const sc = legacy.scenarios['scn.proto'];
+// без плана выпуска обещанного объёма в рамочных договорах нет (Б3г): прайс — как цена договора, деньги — прежние
+sc.partners = { ...sc.partners, markup: 0 };
 sc.staff = [
   row('role.storekeeper', 'shift.day', 2),
   row('role.driver', 'shift.day', 2),

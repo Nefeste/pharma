@@ -48,6 +48,7 @@ export function truckArrives(db: ContentDb, s: PlantState, poId: string, notices
     const { units } = createLot(db, s, {
       material: line.material,
       supplier: po.supplier,
+      ...(line.maker ? { maker: line.maker } : {}),
       qty: line.qty,
       status: 'quarantine',
       po: po.id,

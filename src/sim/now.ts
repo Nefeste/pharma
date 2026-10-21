@@ -27,8 +27,11 @@ export interface NowRow {
   /** по нему «Смотреть» узнаёт, что работа кончилась: задача, испытание, задание линии, фура */
   key: string;
   dept: NowDept;
-  /** вид работы: вид задачи движка; `pack` — упаковка серии, `test` — испытание, `truck` — фура у рампы, `visit` — подрядчик */
-  kind: TaskKind | 'pack' | 'test' | 'truck' | 'visit';
+  /**
+   * вид работы: вид задачи движка; `pack` — упаковка серии, `test` — испытание, `truck` — фура у рампы, `visit` —
+   * подрядчик, `audit` — аудитор у изготовителя (Б3г)
+   */
+  kind: TaskKind | 'pack' | 'test' | 'truck' | 'visit' | 'audit';
   batch?: string;
   stage?: string;
   /** партия: год, месяц, номер — как в карточке */
@@ -55,6 +58,10 @@ export interface NowRow {
   family?: AssetFamily;
   inv?: number;
   work?: 'qual' | 'cal';
+  /** оценка пары «поставщик — изготовитель» (Б3г): изготовитель, как оценивают; аудит — до какого мгновения */
+  maker?: Id;
+  how?: 'audit' | 'docs';
+  until?: number;
   /** люди: номера, как в срезе, и роли */
   people: { n: number; role: Id }[];
   /** с какого мгновения идёт, с; норма — с; у ремонта после отказа — от и до */
@@ -98,6 +105,8 @@ const DEPT: Partial<Record<TaskKind, NowDept>> = {
   trainCheck: 'qa',
   // приёмка работы подрядчика (Б3в): калибровку принимает начальник ОКК, квалификацию — специалист ООК
   accept: 'qa',
+  // оценка поставщика (Б3г): отчёт аудитора и документы рассматривает специалист ООК
+  vendorReview: 'qa',
 };
 
 /** Задачи, которые идут в своих строках: смена у линии — в строке упаковки, подготовка и проверка — в строке испытания, фура — в строке фуры. */
@@ -169,6 +178,12 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
       row.norm = t.work;
       const info = assetInfo(db, s, a.id);
       if (info?.thing) row.thing = info.thing;
+    } else if (t.kind === 'vendorReview' && t.pair && s.pairs[t.pair]) {
+      const p = s.pairs[t.pair];
+      row.supplier = p.supplier;
+      row.maker = p.maker;
+      if (p.eval) row.how = p.eval.how;
+      row.norm = t.work;
     } else {
       // норма задачи — время работы на месте; дорога до места — нет
       if (t.work > 0) row.norm = t.work;
@@ -258,6 +273,13 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
       norm: classOf(db, a)[v.work]?.work ?? 0,
       ...(info?.thing ? { thing: info.thing } : {}),
     });
+  }
+
+  // аудитор у изготовителя (Б3г): с начала аудита до отчёта; людей завода в нём нет
+  for (const p of Object.values(s.pairs)) {
+    const e = p.eval;
+    if (e?.how !== 'audit' || e.from === undefined || e.to === undefined || s.t < e.from || s.t >= e.to) continue;
+    rows.push({ key: `audit:${p.id}:${e.from}`, dept: 'qa', kind: 'audit', supplier: p.supplier, maker: p.maker, how: 'audit', people: [], from: e.from, until: e.to });
   }
 
   // фуры у рамп: с прихода; люди — проверка, разгрузка и погрузка этой фуры

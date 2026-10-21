@@ -9,6 +9,7 @@ import { DAY, HOUR, isWorkday, momentOf } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
 import { check } from '../../src/engine/invariants';
 import { BATCH_HOUR } from '../../src/engine/mes';
+import { pairsFor } from '../../src/engine/partners';
 import { AHEAD, casesOf, positionOf } from '../../src/engine/planner';
 import { planOf } from '../../src/engine/plant';
 import { takesAt } from '../../src/engine/staff';
@@ -143,7 +144,7 @@ describe('коллега снабжения', () => {
     const per = planUse(db, s, 1000);
     const below = new Set<string>();
     for (const [m, use] of per) {
-      const sup = Object.values(db.suppliers).find(x => x.approved && x.items[m])!;
+      const sup = db.suppliers[pairsFor(db, s, m, momentOf(s.start, s.t).day)[0].supplier];
       if (supplyPosition(db, s, m) < Math.ceil((use * (sup.lead[1] + sc.supply!.qc + sc.supply!.safety)) / 1000)) below.add(m);
     }
     expect(below.size).toBeGreaterThan(0);
@@ -167,7 +168,7 @@ describe('коллега снабжения', () => {
     }
     for (const m of below) {
       if (ordered.has(m)) continue;
-      const sup = Object.values(db.suppliers).find(x => x.approved && x.items[m])!;
+      const sup = db.suppliers[pairsFor(db, s, m, momentOf(s.start, s.t).day)[0].supplier];
       const p = pos.find(x => x.supplier === sup.id)!;
       const taken = p.lines.reduce((n, l) => n + palletsOf(l.material, l.qty), 0);
       expect([m, taken + palletsOf(m, sup.items[m].moq) > room]).toEqual([m, true]);

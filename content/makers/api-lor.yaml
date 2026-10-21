@@ -1,0 +1,6 @@
+# Изготовитель АФС лоратадина — вымышленный (AGENTS.md); он же и поставщик (sup.api-lor). Выбор геймдизайна (Б3г)
+id: mkr.api-lor
+name: { ru: Изготовитель лоратадина, en: Loratadine maker }
+country: { ru: Китай, en: China }
+site: { ru: Площадка 1, en: Site 1 }
+makes: [mat.api.loratadine]

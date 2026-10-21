@@ -354,6 +354,7 @@ export class Game {
       : n.kind === 'concluded' ? T.notices.concluded(n.fate)
       : n.kind === 'qualLost' ? T.notices.qualLost(named(this.db.roles[n.role]?.name, n.role), n.tab, n.doc)
       : n.kind === 'assetExpired' ? T.notices.assetExpired(workName(n, n.work), assetClass(n), T.assets.inv(n.inv))
+      : n.kind === 'pairSuspended' ? T.notices.pairSuspended(named(this.db.suppliers[n.supplier]?.name, n.supplier), named(this.db.makers[n.maker]?.name, n.maker))
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;

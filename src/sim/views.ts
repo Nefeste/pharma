@@ -16,6 +16,7 @@ import type { AssetRec, Lot, LotStatus, MachineState, PlantState, Tag, Task, Tas
 import { type InvQuery, type InvView, invView } from './inv';
 import { type ChartQuery, type ChartView, chartView, type LabQuery, type LabView, labView } from './lab';
 import { type EqState, eqStateOf } from './pack';
+import { lotDeal } from './partners';
 import { type Admission, admissionOf, type DocNow, docNow, docOfRev, type TrainRow, trainRows } from './people';
 import { type AssetInfo, assetInfo, assetWaits } from './places';
 import { type GanttQuery, type GanttView, type GhostQuery, type GhostView, ganttView, ghostView } from './plan';
@@ -126,6 +127,10 @@ export interface LotInfo {
   material: Id;
   supplier: Id;
   vendorLot: string;
+  /** изготовитель (Б3г); по какому договору куплена и сколько из строки заказа — по прайсу */
+  maker?: Id;
+  contract?: string;
+  list?: number;
   status: LotStatus;
   tag: Tag;
   since?: number;
@@ -282,6 +287,8 @@ function lotInfo(s: PlantState, lot: Lot, left: number): LotInfo {
     material: lot.material,
     supplier: lot.supplier,
     vendorLot: lot.vendorLot,
+    ...(lot.maker ? { maker: lot.maker } : {}),
+    ...lotDeal(s, lot.id),
     status: lot.status,
     tag: TAG[lot.status],
     ...(lot.since !== undefined ? { since: lot.since } : {}),

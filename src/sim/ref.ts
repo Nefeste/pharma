@@ -15,6 +15,7 @@ import { planOf } from '../engine/plant';
 import { shiftEnd } from '../engine/staff';
 import type { MachineState, PlantState } from '../engine/types';
 import { type EqState, eqStateOf } from './pack';
+import { materialPairs, type PartnersView, partnersView } from './partners';
 import { type Admission, admissionOf, type Matrix, matrix } from './people';
 import { type PlacesView, placesView } from './places';
 
@@ -163,8 +164,9 @@ export interface RefSupplier {
   lead: [number, number];
   prepay: number;
   payDays: number;
-  approved: boolean;
-  items: { material: Id; price: number; moq: number }[];
+  /** поставщик — сам изготовитель (Б3г); нет — дистрибьютор */
+  maker?: Id;
+  items: { material: Id; price: number; moq: number; maker: Id }[];
   spares: { spare: Id; price: number; lead: [number, number] }[];
 }
 
@@ -188,6 +190,8 @@ export interface RefMaterial {
   unit: OkeiUnit;
   okei: number;
   spec?: Id;
+  /** одобренные пары «поставщик — изготовитель» спецификации, действующей сегодня (Б3г) */
+  pairs?: { supplier: Id; maker: Id }[];
 }
 
 /** Регламентирующий документ (Б3а): запись редакции и её статус на сегодня по дате завода. Шапку окно берёт из базы. */
@@ -216,6 +220,8 @@ export interface RefView {
   customers: RefCustomer[];
   /** места и оборудование (Б3в): площадка, участки, рабочие места, активы с инвентарными номерами и сроками */
   places: PlacesView;
+  /** контрагенты и договоры (Б3г): изготовители, пары с одобрением, действующие договоры */
+  partners: PartnersView;
 }
 
 function partsOf(db: ContentDb, s: PlantState, machine: string): RefPart[] {
@@ -282,7 +288,8 @@ export function refView(db: ContentDb, s: PlantState): RefView {
   const materials: RefMaterial[] = [
     ...Object.values(db.materials).map(m => {
       const unit = unitOf(m.kind, m.unit);
-      return { id: m.id, kind: m.kind, unit, okei: okei[unit], spec: inForce(db, 'specs', m.spec, today) };
+      const pairs = materialPairs(db, m.id, today);
+      return { id: m.id, kind: m.kind, unit, okei: okei[unit], spec: inForce(db, 'specs', m.spec, today), ...(pairs.length ? { pairs } : {}) };
     }),
     ...Object.values(db.spares).map(sp => ({ id: sp.id, kind: 'spare' as const, unit: 'pcs' as const, okei: okei.pcs })),
   ];
@@ -370,12 +377,12 @@ export function refView(db: ContentDb, s: PlantState): RefView {
     lead: [...su.lead] as [number, number],
     prepay: su.prepay,
     payDays: su.payDays,
-    approved: su.approved,
-    items: Object.entries(su.items).map(([material, it]) => ({ material, price: it.price, moq: it.moq })),
+    ...(su.maker ? { maker: su.maker } : {}),
+    items: Object.entries(su.items).map(([material, it]) => ({ material, price: it.price, moq: it.moq, maker: it.maker })),
     spares: Object.values(db.spares)
       .filter(sp => sp.supplier === su.id)
       .map(sp => ({ spare: sp.id, price: sp.price, lead: [...sp.lead] as [number, number] })),
   }));
   const customers = Object.values(db.customers).map(c => ({ id: c.id, payDays: c.payDays, days: [...c.order.days], hour: c.order.hour, lead: [...c.order.lead] as [number, number], minShelf: c.minShelf }));
-  return { view: 'ref', products, materials, docs, recipes, equipment, lines, methods, instruments, roles, shifts, people: staff, matrix: matrix(db, s), suppliers, customers, places: placesView(db, s) };
+  return { view: 'ref', products, materials, docs, recipes, equipment, lines, methods, instruments, roles, shifts, people: staff, matrix: matrix(db, s), suppliers, customers, places: placesView(db, s), partners: partnersView(db, s) };
 }

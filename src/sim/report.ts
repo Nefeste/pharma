@@ -10,6 +10,7 @@ import { AREA, type Oee, oee, rhythm, shiftsOfDay, type Switches, switchesOf } f
 import { orderRisks, type OrderRisk } from '../engine/market';
 import { planOf } from '../engine/plant';
 import type { AssetFamily, Batch, CashItem, DayLoss, Deviation, LineDay, MachineTimes, PlantState, TaskKind, WaitCause } from '../engine/types';
+import { type PartnerSum, partnerSum } from './partners';
 import { type TrainSum, trainSum } from './people';
 import { type AssetSum, assetSum } from './places';
 import type { Thing } from './views';
@@ -151,6 +152,8 @@ export interface MorningView {
   training: TrainSum;
   /** калибровка и квалификация (Б3в): визиты подрядчика сегодня, что кончится в срок предупреждения, что просрочено */
   assets: AssetSum;
+  /** поставщики (Б3г): оценки и аудиты в срок предупреждения, приостановленные пары, договоры, недобор */
+  partners: PartnerSum;
   cash: { balance: number; day: number; next?: { due: number; item: CashItem; sum: number } };
   /** ваше место (3е): итог каждого взятого места за время на нём */
   seats: SeatSum[];
@@ -333,6 +336,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     risk: orderRisks(db, s),
     training: trainSum(db, s),
     assets: assetSum(db, s),
+    partners: partnerSum(db, s),
     cash: { balance: s.cash.balance, day: dayChange(s, s.t), ...(next ? { next: { due: next.due, item: next.item, sum: next.sum } } : {}) },
     seats: seatSums(db, s),
   };
@@ -484,7 +488,10 @@ export type CashWhy =
   | { k: 'quarter'; y: number; q: number }
   | { k: 'batch'; code: string }
   /** работа подрядчика (Б3в): актив — род, класс и инвентарный номер */
-  | { k: 'asset'; family: AssetFamily; type: Id; inv: number };
+  | { k: 'asset'; family: AssetFamily; type: Id; inv: number }
+  /** аудит изготовителя (Б3г): пара; расчёт по договору — номер и поставщик */
+  | { k: 'audit'; supplier: Id; maker: Id }
+  | { k: 'contract'; contract: string; supplier: Id };
 
 export interface CashRow {
   t: number;
@@ -523,6 +530,8 @@ function whyOf(s: PlantState, item: CashItem, ref: string | undefined): CashWhy 
   if (s.shipments[ref]) return { k: 'shipment', customer: s.shipments[ref].customer };
   if (item === 'codes' && s.batches[ref]) return { k: 'batch', code: batchNo(s.batches[ref].code) };
   if (item === 'calqual' && s.assets[ref]) return { k: 'asset', family: s.assets[ref].family, type: s.assets[ref].type, inv: s.assets[ref].inv };
+  if (item === 'audit' && s.pairs[ref]) return { k: 'audit', supplier: s.pairs[ref].supplier, maker: s.pairs[ref].maker };
+  if (item === 'contract' && s.contracts[ref]) return { k: 'contract', contract: ref, supplier: s.contracts[ref].party };
   const q = /^(\d+)-q(\d)$/.exec(ref);
   if (q) return { k: 'quarter', y: Number(q[1]), q: Number(q[2]) };
   const m = /^(\d+)-(\d+)([ab]?)$/.exec(ref);

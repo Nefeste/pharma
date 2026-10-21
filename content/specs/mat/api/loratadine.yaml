@@ -3,6 +3,8 @@
 id: spec.mat.api.loratadine
 name: { ru: "Лоратадин, субстанция", en: "Loratadine, active substance" }
 doc: { code: SP-0014, rev: 1, from: 2027-03-01, approved: role.qc-head }
+# одобренные пары «поставщик — изготовитель» (Б3г; GMP ЕАЭС, ч. I, п. 4.14)
+pairs: [{ supplier: sup.api-lor, maker: mkr.api-lor }]
 tests:
   - { test: test.ir }
   - { test: test.hplc-assay, min: 98.5, max: 101.5 }

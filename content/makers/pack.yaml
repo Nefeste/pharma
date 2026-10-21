@@ -1,0 +1,16 @@
+# Изготовитель упаковки — вымышленный (AGENTS.md); он же и поставщик (sup.pack): плёнка, фольга, пачки, инструкции и
+# гофроящики — от одного изготовителя, упрощение геймдизайна (Б3г)
+id: mkr.pack
+name: { ru: Изготовитель упаковки, en: Packaging maker }
+country: { ru: Россия, en: Russia }
+site: { ru: Площадка 1, en: Site 1 }
+makes:
+  - mat.pk.pvc
+  - mat.pk.alu
+  - mat.pk.carton-n10
+  - mat.pk.carton-n20
+  - mat.pk.leaflet
+  - mat.pk.carton-l10
+  - mat.pk.carton-l30
+  - mat.pk.leaflet-lor
+  - mat.pk.case

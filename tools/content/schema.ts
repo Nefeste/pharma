@@ -57,10 +57,10 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'дата пишется к
 /**
  * Шапка регламентирующего документа (Б3а; GMP ЕАЭС, ч. I, пп. 4.3, 4.5): код — вид и номер латиницей (`SP` —
  * спецификация, `TM` — методика испытания, `MF` — технологическая карта, `PI` — инструкция по упаковке, `SOP` —
- * процедура, с Б3б), номер редакции, дата введения в действие и кто утвердил — роль. Редакции одного документа — записи с
- * одним кодом; статус — по дате завода (src/engine/docs.ts).
+ * процедура, с Б3б, `QAG` — соглашение по качеству, с Б3г), номер редакции, дата введения в действие и кто утвердил —
+ * роль. Редакции одного документа — записи с одним кодом; статус — по дате завода (src/engine/docs.ts).
  */
-const doc = (kind: 'SP' | 'TM' | 'MF' | 'PI' | 'SOP') =>
+const doc = (kind: 'SP' | 'TM' | 'MF' | 'PI' | 'SOP' | 'QAG') =>
   z.strictObject({
     code: z.string().regex(new RegExp(`^${kind}-\\d{4}$`), `код документа — ${kind}-NNNN`),
     rev: z.number().int().min(1).max(99),
@@ -153,6 +153,22 @@ export const scenario = z.strictObject({
     inv: z.number().int().min(1).max(99_999_999),
   }),
   /**
+   * контрагенты и договоры (Б3г): за сколько суток до конца одобрения пары коллега качества назначает оценку; через
+   * сколько месяцев оценивать снова — по виду материала; аудит — рабочих дней у изготовителя, рассмотрение отчёта, ч,
+   * цена без НДС, ₽; оценка по документам, ч; прайс дороже цены договора, %; обещанная доля объёма, %; срок договора,
+   * месяцев; номера договоров — по порядку с `ctr`
+   */
+  partners: z.strictObject({
+    ahead: z.number().int().min(1).max(120),
+    every: z.strictObject({ api: z.number().int().min(1).max(60), excipient: z.number().int().min(1).max(60), packaging: z.number().int().min(1).max(60) }),
+    audit: z.strictObject({ days: z.number().int().min(1).max(10), review: z.number().positive().max(40), price: z.number().positive() }),
+    docs: z.strictObject({ review: z.number().positive().max(40) }),
+    markup: percent,
+    share: percent,
+    months: z.number().int().min(1).max(36),
+    ctr: z.number().int().min(1).max(9999),
+  }),
+  /**
    * происшествие прототипа (docs/specs/2026-10-investigation.md): задание на серию по номеру с 1, модель расследования,
    * веса корней, %, и величина неисправности — от и до: ошибка лаборатории — % ниже истинного, опудривание — мин сверх
    * цели, сила прессования — кН сверх цели, сито — мм крупнее карты
@@ -228,19 +244,52 @@ export const container = z.strictObject({
   load: z.enum(['cases', 'drums', 'bags', 'rolls']),
 });
 
+/**
+ * Поставщик (Б3г): сам изготовитель — ссылка на его запись — или дистрибьютор; у материала — цена рамочного договора, ₽
+ * за кг или за штуку, минимальная партия — кг или штуки, и изготовитель (у поставщика-изготовителя — он сам).
+ */
 export const supplier = z.strictObject({
   id: z.string(),
   name: text,
+  maker: id.optional(),
   /** дни «от — до» */
   lead: z.tuple([z.number().int().min(1), z.number().int().min(1)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }),
   prepay: percent,
   payDays: z.number().int().min(0).max(365),
-  approved: z.boolean(),
   /** доля партий с браком, % */
   defects: percent,
-  /** ₽ за кг или за штуку; минимальная партия — кг или штуки */
-  items: z.record(id, z.strictObject({ price: z.number().positive(), moq: qty })),
+  items: z.record(id, z.strictObject({ price: z.number().positive(), moq: qty, maker: id.optional() })),
 });
+
+/** Изготовитель (Б3г): вымышленный — название и площадка; страна — настоящая; что выпускает. */
+export const maker = z.strictObject({
+  id: z.string(),
+  name: text,
+  country: text,
+  site: text,
+  makes: z.array(id).min(1),
+});
+
+/** Что фиксирует соглашение по качеству (GMP ЕАЭС, ч. I, п. 5.28). */
+export const AGREEMENT_TERMS = ['handling', 'labelling', 'packaging', 'shipping', 'complaints', 'recall'] as const;
+
+/**
+ * Соглашение по качеству (Б3г): документ `QAG-NNNN` с шапкой Б3а; поставщик, изготовители и материалы, которые оно
+ * покрывает, и что в нём зафиксировано.
+ */
+export const agreement = z
+  .strictObject({
+    id: z.string(),
+    name: text,
+    doc: doc('QAG'),
+    supplier: id,
+    makers: z.array(id).min(1),
+    materials: z.array(id).min(1),
+    terms: z.array(z.enum(AGREEMENT_TERMS)).min(1),
+    source: sources.optional(),
+    review: review.optional(),
+  })
+  .refine(paired, pairedMsg);
 
 export const role = z.strictObject({
   id: z.string(),
@@ -370,6 +419,8 @@ export const spec = z
     name: text,
     doc: doc('SP'),
     tests: z.array(z.strictObject({ test: id, min: z.number().optional(), max: z.number().optional() })).min(1),
+    /** одобренные пары «поставщик — изготовитель» (Б3г; GMP ЕАЭС, ч. I, п. 4.14) — у исходного и упаковочного материала */
+    pairs: z.array(z.strictObject({ supplier: id, maker: id })).min(1).optional(),
     source: sources.optional(),
     review: review.optional(),
   })
@@ -864,6 +915,8 @@ export const KINDS = {
   spares: { prefix: 'spare', schema: spare },
   sops: { prefix: 'sop', schema: sop },
   regimes: { prefix: 'reg', schema: regime },
+  makers: { prefix: 'mkr', schema: maker },
+  agreements: { prefix: 'qag', schema: agreement },
 } as const;
 
 export type Kind = keyof typeof KINDS;

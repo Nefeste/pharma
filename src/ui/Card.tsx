@@ -202,8 +202,17 @@ export function Card({ v, start, plant, actions, beside, watch }: { v: CardView;
             {lot ? (
               <Row k={T.card.supplier}>
                 {supplierText(lot.supplier)}
-                {lot.supplier !== 'start' ? ` · ${T.card.vendorLot} ${lot.vendorLot}` : ''}
+                {lot.contract ? ` · ${lot.list ? T.card.byContractList(lot.contract) : T.card.byContract(lot.contract)}` : ''}
               </Row>
+            ) : null}
+            {lot?.maker ? (
+              <Row k={T.card.maker}>
+                <span data-test="card-maker">
+                  {T.now.maker(named(db?.makers[lot.maker]?.name, lot.maker), named(db?.makers[lot.maker]?.country))} · {T.card.vendorLot} {lot.vendorLot}
+                </span>
+              </Row>
+            ) : lot && lot.supplier !== 'start' && lot.supplier !== 'plant' ? (
+              <Row k={T.card.vendorLot}>{lot.vendorLot}</Row>
             ) : null}
             <Row k={T.card.state}>
               {lot ? (

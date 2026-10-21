@@ -3,6 +3,8 @@
 id: spec.mat.api.paracetamol
 name: { ru: "Парацетамол, субстанция", en: "Paracetamol, active substance" }
 doc: { code: SP-0001, rev: 1, from: 2026-02-02, approved: role.qc-head }
+# одобренные пары «поставщик — изготовитель» (Б3г; GMP ЕАЭС, ч. I, п. 4.14)
+pairs: [{ supplier: sup.api, maker: mkr.api-par }]
 tests:
   - { test: test.ir }
   - { test: test.hplc-assay, min: 98.5, max: 101.5 }

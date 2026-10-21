@@ -10,9 +10,9 @@ import type { Keep } from './preset';
 
 /**
  * Автопаузы прототипа — по порядку меню. Из событий сотрудника есть только потеря допуска (Б3б); срок квалификации или
- * калибровки актива (Б3в); жалобы, совещания S&OP и инспекции в прототипе нет.
+ * калибровки актива (Б3в); приостановленная пара поставщика (Б3г); жалобы, совещания S&OP и инспекции в прототипе нет.
  */
-export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'assetExpired', 'morning'] as const;
+export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'assetExpired', 'pairSuspended', 'morning'] as const;
 export type Pause = (typeof PAUSES)[number];
 
 /**
@@ -29,6 +29,7 @@ export const PAUSE_NOTICES: Record<Pause, readonly string[]> = {
   materialLate: ['materialLate'],
   qualLost: ['qualLost'],
   assetExpired: ['assetExpired/equipment', 'assetExpired/machine', 'assetExpired/ipc', 'assetExpired/lab', 'assetExpired/sensor'],
+  pairSuspended: ['pairSuspended'],
   morning: ['morning'],
 };
 
@@ -46,6 +47,8 @@ export const PAUSE_SEATS: Record<Pause, readonly SeatId[] | 'all'> = {
   materialLate: ['supply', 'production'],
   qualLost: ['quality'],
   assetExpired: ['production', 'quality', 'supply'],
+  // пара поставщика (Б3г): оценку ведёт качество, заказывает снабжение
+  pairSuspended: ['quality', 'supply'],
   morning: 'all',
 };
 
@@ -149,6 +152,9 @@ export function goOf(plant: Plant, n: Notice): Go | undefined {
       const thing = machineThing(plant, n.asset);
       return thing ? { thing } : { panel: 'ref' };
     }
+    case 'pairSuspended':
+      // к справочнику, вкладке «Контрагенты»
+      return { panel: 'ref' };
     default:
       return undefined;
   }

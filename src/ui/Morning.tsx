@@ -20,6 +20,9 @@ function machineOf(thing: Thing | undefined, type: string): { name: string; part
 
 const partName = (parts: readonly PartType[], id: string) => named(parts.find(p => p.id === id)?.name, id);
 
+/** Пара словами (Б3г): «Дистрибьютор АФС — Изготовитель парацетамола». */
+const pairName = (supplier: string, maker: string) => T.ref.pair(named(db?.suppliers[supplier]?.name, supplier), named(db?.makers[maker]?.name, maker));
+
 /** Вид машины линии по плану. */
 function lineMachine(plant: string, line: number, k: number): { thing: Thing; name: string } {
   const type = db ? (planOf(db, plant).plant.lines[line]?.machines[k]?.type ?? '') : '';
@@ -357,6 +360,38 @@ export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningV
                     {T.assets.soon(workName(x.asset, x.work), assetName(x.asset), dayText(x.until))}
                   </li>
                 )),
+              ]}
+            />
+            <Rows
+              title={T.morning.partnersTitle}
+              rows={[
+                // поставщики (Б3г): приостановленные пары, оценки в срок предупреждения и идущие, договоры, недобор
+                ...v.partners.suspended.map(x => (
+                  <li key={`ps${x.id}`} className="bad" data-test="morning-partner">
+                    {T.morning.pairOff(pairName(x.supplier, x.maker), dayText((x.until ?? 0) + 1))}
+                  </li>
+                )),
+                ...v.partners.soon.map(x => (
+                  <li key={`pn${x.id}`} data-test="morning-partner">
+                    {x.eval?.review
+                      ? T.morning.pairReview(pairName(x.supplier, x.maker))
+                      : x.eval?.how === 'audit' && x.eval.to !== undefined
+                        ? T.morning.pairAudit(pairName(x.supplier, x.maker), whenText(start, x.eval.to))
+                        : T.morning.pairSoon(pairName(x.supplier, x.maker), T.ref.how[x.how], dayText(x.until ?? 0))}
+                  </li>
+                )),
+                ...v.partners.ending.map(x => (
+                  <li key={`pe${x.id}`} data-test="morning-partner">
+                    {T.morning.ctrEnds(x.id, named(db?.suppliers[x.party]?.name ?? db?.customers[x.party]?.name, x.party), dayText(x.to))}
+                  </li>
+                )),
+                ...v.partners.short
+                  .filter(x => x.need > 0)
+                  .map(x => (
+                    <li key={`pq${x.contract}${x.maker}`} data-test="morning-partner">
+                      {T.morning.ctrShort(x.contract, pairName(x.supplier, x.maker), money(x.need), money(x.bought), money(x.volume))}
+                    </li>
+                  )),
               ]}
             />
             <div className="mblock">

@@ -6,7 +6,8 @@
 // какая редакция действует сегодня — из вида.
 import { type ReactNode, useState } from 'react';
 import type { DocKind } from '../engine/docs';
-import { dayText, durText, lang, money, named, num, pctText, priceText, qtyText, T } from '../i18n';
+import { dayText, durText, lang, money, named, num, pctText, priceText, qtyText, T, whenText } from '../i18n';
+import type { RefContract, RefMaker, RefPair } from '../sim/partners';
 import type { DocNow } from '../sim/people';
 import type { AssetInfo, PlaceArea, PlaceCenter } from '../sim/places';
 import type { RefCustomer, RefDoc, RefEquipment, RefInstrument, RefLine, RefMachine, RefMaterial, RefMethod, RefPart, RefPerson, RefRecipe, RefRole, RefShift, RefSku, RefStage, RefSupplier, RefView } from '../sim/ref';
@@ -398,9 +399,56 @@ function People({ v, q }: { v: RefView; q: string }) {
   );
 }
 
-function Partners({ v, q }: { v: RefView; q: string }) {
+/** Название материала с кодом: «100001 Парацетамол». */
+const matName = (m: string) => `${codeOf(m)} ${named(db?.materials[m]?.name, m)}`;
+const supName = (id: string) => named(db?.suppliers[id]?.name, id);
+const makerName = (id: string) => named(db?.makers[id]?.name, id);
+
+/** Состояние одобрения пары словами (Б3г): «с 30.11.2026 до 29.11.2027»; приостановлена; идёт оценка. */
+function pairState(x: RefPair, start: { y: number; m: number; d: number }): string {
+  const base = x.until === undefined ? T.ref.pairNone : x.ok ? T.ref.pairOk(dayText(x.since!), dayText(x.until)) : T.ref.pairOff(dayText(x.until));
+  const e = x.eval;
+  const ev = !e ? '' : e.review ? T.ref.pairReview : e.how === 'audit' && e.to !== undefined ? T.ref.pairAudit(whenText(start, e.to)) : '';
+  return [base, ev].filter(Boolean).join(' · ');
+}
+
+/** Строка договора: «100001 Парацетамол: 5,20 ₽/кг · обещано 13 029,6 кг · куплено 2 100,0 кг». */
+function ctrLine(l: RefContract['lines'][number]): string {
+  const unit = unitOf(l.material);
+  const price = unit === 'mass' ? T.ref.perKg(priceText(l.price)) : T.ref.perPcs(priceText(l.price));
+  return T.ref.ctrLine(matName(l.material), price, qtyText(l.volume, unit), qtyText(l.bought, unit));
+}
+
+function Partners({ v, q, start }: { v: RefView; q: string; start: { y: number; m: number; d: number } }) {
   const s = T.ref.supCols;
   const c = T.ref.cusCols;
+  const p = v.partners;
+  const mk = T.ref.makerCols;
+  const makers: Col<RefMaker>[] = [
+    { name: mk.name, text: x => makerName(x.id) },
+    { name: mk.country, text: x => named(db?.makers[x.id]?.country) },
+    { name: mk.site, text: x => named(db?.makers[x.id]?.site) },
+    { name: mk.makes, text: x => x.makes.map(matName).join('; '), show: x => <>{x.makes.map(m => <div key={m}>{matName(m)}</div>)}</>, num: x => x.makes.length },
+  ];
+  const pc = T.ref.pairCols;
+  const pairs: Col<RefPair>[] = [
+    { name: pc.supplier, text: x => supName(x.supplier) },
+    { name: pc.maker, text: x => makerName(x.maker) },
+    { name: pc.materials, text: x => x.materials.map(matName).join('; '), show: x => <>{x.materials.map(m => <div key={m}>{matName(m)}</div>)}</>, num: x => x.materials.length },
+    { name: pc.how, text: x => T.ref.how[x.how] },
+    { name: pc.until, text: x => pairState(x, start), show: x => <span className={x.ok ? '' : 'bad'} data-test="ref-pair-state">{pairState(x, start)}</span>, num: x => x.until ?? -1 },
+    { name: pc.agreement, text: x => (x.agreement ? docText('agreements', x.agreement) : T.ref.noAgreement), show: x => (x.agreement ? <span className="mono nw">{docText('agreements', x.agreement)}</span> : <span className="bad">{T.ref.noAgreement}</span>) },
+  ];
+  const cc = T.ref.ctrCols;
+  const party = (x: RefContract) => (x.kind === 'frame' ? supName(x.party) : named(db?.customers[x.party]?.name, x.party));
+  const contracts: Col<RefContract>[] = [
+    { name: cc.no, text: x => x.id, show: x => <span className="mono">{x.id}</span> },
+    { name: cc.party, text: party },
+    { name: cc.kind, text: x => T.ref.ctrKinds[x.kind] },
+    { name: cc.term, text: x => T.ref.term(dayText(x.from), dayText(x.to)), num: x => x.to },
+    { name: cc.lines, text: x => x.lines.map(ctrLine).join('; '), show: x => <>{x.lines.map(l => <div key={l.material}>{ctrLine(l)}</div>)}</>, num: x => x.lines.length },
+  ];
+  const contractOf = (party: string) => p.contracts.find(x => x.party === party);
   const itemLine = (it: RefSupplier['items'][number]) => {
     const unit = unitOf(it.material);
     const price = unit === 'mass' ? T.ref.perKg(priceText(it.price)) : T.ref.perPcs(priceText(it.price));
@@ -427,7 +475,7 @@ function Partners({ v, q }: { v: RefView; q: string }) {
     { name: s.lead, text: x => T.ref.dayRange(x.lead[0], x.lead[1]), num: x => x.lead[1] },
     { name: s.prepay, text: x => pctText(x.prepay), num: x => x.prepay },
     { name: s.pay, text: x => T.ref.days(x.payDays), num: x => x.payDays },
-    { name: s.approved, text: x => (x.approved ? T.ref.yes : T.ref.no) },
+    { name: s.maker, text: x => (x.maker ? T.ref.selfMaker : T.ref.distributor) },
   ];
   const customers: Col<RefCustomer>[] = [
     { name: c.name, text: x => named(db?.customers[x.id]?.name, x.id) },
@@ -435,15 +483,31 @@ function Partners({ v, q }: { v: RefView; q: string }) {
     { name: c.orders, text: x => T.ref.orders(x.days.map(d => T.date.weekdays[d]).join(', '), x.hour), num: x => x.days.length },
     { name: c.lead, text: x => T.ref.dayRange(x.lead[0], x.lead[1]), num: x => x.lead[1] },
     { name: c.shelf, text: x => pctText(x.minShelf), num: x => x.minShelf },
+    { name: c.contract, text: x => (contractOf(x.id) ? `${contractOf(x.id)!.id} · ${T.ref.term(dayText(contractOf(x.id)!.from), dayText(contractOf(x.id)!.to))}` : dash()) },
   ];
   return (
     <>
       <section className="rsec">
+        <div className="msec">{T.ref.partnerSecs.makers}</div>
+        <Table test="ref-makers" cols={makers} items={p.makers} keyOf={x => x.id} q={q} />
+      </section>
+      <section className="rsec">
+        <div className="msec">{T.ref.partnerSecs.suppliers}</div>
         <Table test="ref-suppliers" cols={suppliers} items={v.suppliers} keyOf={x => x.id} q={q} />
       </section>
       <section className="rsec">
+        <div className="msec">{T.ref.partnerSecs.pairs}</div>
+        <Table test="ref-pairs" cols={pairs} items={p.pairs} keyOf={x => x.id} q={q} />
+      </section>
+      <section className="rsec">
+        <div className="msec">{T.ref.partnerSecs.contracts}</div>
+        <Table test="ref-contracts" cols={contracts} items={p.contracts} keyOf={x => x.id} q={q} />
+      </section>
+      <section className="rsec">
+        <div className="msec">{T.ref.partnerSecs.customers}</div>
         <Table test="ref-customers" cols={customers} items={v.customers} keyOf={x => x.id} q={q} />
       </section>
+      <div className="muted small">{T.ref.partnersNote}</div>
     </>
   );
 }
@@ -556,6 +620,8 @@ function Materials({ v, q }: { v: RefView; q: string }) {
     // режим хранения, который материал требует (Б3в)
     { name: c.storage, text: x => (db?.materials[x.id] ? named(db?.regimes[db.materials[x.id].storage]?.name, db.materials[x.id].storage) : dash()) },
     { name: c.spec, text: x => (x.spec ? docText('specs', x.spec) : dash()), show: x => (x.spec ? <span className="mono nw">{docText('specs', x.spec)}</span> : dash()) },
+    // одобренные пары действующей спецификации (Б3г)
+    { name: c.pairs, text: x => (x.pairs ?? []).map(pr => T.ref.pair(supName(pr.supplier), makerName(pr.maker))).join('; ') || dash() },
   ];
   return (
     <section className="rsec">
@@ -626,7 +692,7 @@ export function Ref({ hud, actions }: { hud: Hud; actions: Actions }) {
           {tab === 'places' ? <Places v={v} q={q} actions={actions} /> : null}
           {tab === 'lab' ? <Lab v={v} q={q} /> : null}
           {tab === 'people' ? <People v={v} q={q} /> : null}
-          {tab === 'partners' ? <Partners v={v} q={q} /> : null}
+          {tab === 'partners' ? <Partners v={v} q={q} start={hud.start} /> : null}
           {tab === 'docs' ? <Docs v={v} q={q} /> : null}
           <div className="muted small">{T.ref.noHidden}</div>
         </div>

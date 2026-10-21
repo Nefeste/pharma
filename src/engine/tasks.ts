@@ -54,6 +54,7 @@ export interface NewTask {
   trainee?: string;
   doc?: Id;
   asset?: string;
+  pair?: string;
 }
 
 export function addTask(s: PlantState, n: NewTask): Task {

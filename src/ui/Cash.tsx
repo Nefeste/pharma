@@ -25,6 +25,10 @@ function whyText(w: CashWhy | undefined): string {
       return T.cash.why.batch(w.code);
     case 'asset':
       return T.cash.why.asset(assetClass(w), T.assets.inv(w.inv));
+    case 'audit':
+      return T.cash.why.audit(named(db?.makers[w.maker]?.name, w.maker), named(db?.suppliers[w.supplier]?.name, w.supplier));
+    case 'contract':
+      return T.cash.why.contract(w.contract, named(db?.suppliers[w.supplier]?.name, w.supplier));
   }
 }
 

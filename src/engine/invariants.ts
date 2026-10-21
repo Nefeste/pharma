@@ -7,6 +7,7 @@ import { geo, good, SIXTY } from './line';
 import { partsOf, partType } from './maint';
 import { orderReserved } from './market';
 import { clampAttr } from './mes';
+import { STARTING } from './partners';
 import { classOf, placesOf } from './places';
 import { planOf } from './plant';
 import { shiftEnd } from './staff';
@@ -164,6 +165,7 @@ export function check(db: ContentDb, s: PlantState): string[] {
   maint(db, s, bad);
   lean(s, bad);
   assets(db, s, bad);
+  partners(db, s, bad);
   // номер серии (batchno.ts): досье выдано — номер есть; смешивание начато — номер полный; полный номер не повторяется,
   // короткий — среди серий до смешивания
   const full = new Map<string, string>();
@@ -181,6 +183,47 @@ export function check(db: ContentDb, s: PlantState): string[] {
     seen.set(no, b.id);
   }
   return bad;
+}
+
+/**
+ * Инварианты контрагентов (Б3г): у пары — поставщик и изготовитель из базы, записи — день не позже срока, по порядку;
+ * оценка по документам — с задачей рассмотрения, аудит — с концом позже начала; рассмотрение — только у пары с оценкой;
+ * у партии из заказа — изготовитель, которого её поставщик продаёт; у договора — номер по формату, последний день не
+ * раньше первого, купленное не меньше нуля; у стороны не больше одного действующего договора.
+ */
+function partners(db: ContentDb, s: PlantState, bad: string[]) {
+  for (const p of Object.values(s.pairs)) {
+    if (!db.suppliers[p.supplier] || !db.makers[p.maker]) bad.push(`пара ${p.id}: поставщика или изготовителя нет в базе`);
+    let last = Number.NEGATIVE_INFINITY;
+    for (const r of p.recs) {
+      if (r.day > r.until) bad.push(`пара ${p.id}: одобрение кончается раньше, чем дано`);
+      if (r.day < last) bad.push(`пара ${p.id}: записи не по порядку`);
+      last = r.day;
+    }
+    const e = p.eval;
+    if (!e) continue;
+    if (e.how === 'audit' && (e.from === undefined || e.to === undefined || e.to <= e.from)) bad.push(`пара ${p.id}: аудит без начала и конца`);
+    if (e.how === 'docs' && e.task === undefined) bad.push(`пара ${p.id}: оценка по документам без задачи`);
+    if (e.task !== undefined && s.tasks[e.task]?.kind !== 'vendorReview') bad.push(`пара ${p.id}: рассмотрения ${e.task} нет`);
+  }
+  for (const t of Object.values(s.tasks)) {
+    if (t.kind !== 'vendorReview') continue;
+    const p = t.pair ? s.pairs[t.pair] : undefined;
+    if (!p?.eval || p.eval.task !== t.id) bad.push(`задача ${t.id}: рассмотрение без оценки пары`);
+  }
+  for (const l of Object.values(s.lots)) {
+    const sup = db.suppliers[l.supplier];
+    if (!l.po || !sup || !STARTING.has(db.materials[l.material]?.kind)) continue;
+    if (sup.items[l.material]?.maker !== l.maker) bad.push(`партия ${l.id}: изготовитель ${l.maker ?? '—'} — не тот, что у поставщика`);
+  }
+  const live = new Map<string, number>();
+  for (const c of Object.values(s.contracts)) {
+    if (!/^CTR-\d{4}$/.test(c.id)) bad.push(`договор ${c.id}: номер не по формату`);
+    if (c.to < c.from) bad.push(`договор ${c.id}: кончается раньше, чем начат`);
+    for (const l of c.lines) if (l.bought < 0 || l.volume < 0) bad.push(`договор ${c.id}: купленное или объём меньше нуля`);
+    if (!c.closed) live.set(c.party, (live.get(c.party) ?? 0) + 1);
+  }
+  for (const [party, n] of live) if (n > 1) bad.push(`у ${party} действующих договоров — ${n}`);
 }
 
 /**

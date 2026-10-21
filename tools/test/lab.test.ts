@@ -84,14 +84,15 @@ function live(s: PlantState, days: number, look?: () => void, step = HOUR, base:
 const fresh = (s: PlantState, material: string) => Object.values(s.lots).find(l => l.material === material && l.po);
 
 describe('план отбора', () => {
-  const lot = (material: string, supplier: string) => ({ material, supplier }) as Lot;
+  const lot = (material: string, supplier: string, maker: string) => ({ material, supplier, maker }) as Lot;
 
-  test('АФС — каждая тара; одобренный поставщик — 1 + ⌈√N⌉, не больше N; неодобренный — каждая', () => {
-    const exc = lot('mat.exc.starch', 'sup.exc');
-    expect([1, 2, 3, 4, 5, 9, 10, 16, 17, 20, 40].map(n => sampleCount(db, exc, n))).toEqual([1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 8]);
-    expect(sampleCount(db, lot(API, 'sup.api'), 20)).toBe(20);
-    const strict: ContentDb = { ...db, suppliers: { ...db.suppliers, 'sup.exc': { ...db.suppliers['sup.exc'], approved: false } } };
-    expect(sampleCount(strict, exc, 20)).toBe(20);
+  test('АФС — каждая тара; одобренная пара — 1 + ⌈√N⌉, не больше N; приостановленная — каждая (Б3г)', () => {
+    const s = newPlant(db, { scenario: 'scn.proto' });
+    const exc = lot('mat.exc.starch', 'sup.exc', 'mkr.exc');
+    expect([1, 2, 3, 4, 5, 9, 10, 16, 17, 20, 40].map(n => sampleCount(db, s, exc, n))).toEqual([1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 8]);
+    expect(sampleCount(db, s, lot(API, 'sup.api', 'mkr.api-par'), 20)).toBe(20);
+    s.pairs['sup.exc|mkr.exc'].recs = [];
+    expect(sampleCount(db, s, exc, 20)).toBe(20);
   });
 });
 

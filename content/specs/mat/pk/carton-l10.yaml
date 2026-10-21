@@ -1,5 +1,7 @@
 id: spec.mat.pk.carton-l10
 name: { ru: "Пачка «Лоратадин 10 мг №10»", en: "Carton «Loratadine 10 mg No. 10»" }
 doc: { code: SP-0016, rev: 1, from: 2027-03-15, approved: role.qc-head }
+# одобренные пары «поставщик — изготовитель» (Б3г; GMP ЕАЭС, ч. I, п. 4.14)
+pairs: [{ supplier: sup.pack, maker: mkr.pack }]
 tests:
   - { test: test.visual }

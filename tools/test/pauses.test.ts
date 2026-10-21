@@ -40,9 +40,9 @@ describe('автопаузы', () => {
     // снабжения и склада
     const eq = ['assetExpired/equipment', 'assetExpired/machine', 'assetExpired/ipc'];
     expect(sorted(stopKinds([], ['production']))).toEqual(sorted(['failure', 'investigation', 'lotRejected', 'materialLate', 'morning', ...eq]));
-    expect(sorted(stopKinds([], ['quality']))).toEqual(sorted(['deviation', 'investigation', 'lotRejected', 'qualLost', 'morning', 'assetExpired/lab']));
+    expect(sorted(stopKinds([], ['quality']))).toEqual(sorted(['deviation', 'investigation', 'lotRejected', 'qualLost', 'morning', 'assetExpired/lab', 'pairSuspended']));
     expect(stopKinds([], ['commerce'])).toEqual(['orderRisk', 'morning']);
-    expect(sorted(stopKinds([], ['supply']))).toEqual(sorted(['materialLate', 'morning', 'truckWait', 'assetExpired/sensor']));
+    expect(sorted(stopKinds([], ['supply']))).toEqual(sorted(['materialLate', 'morning', 'truckWait', 'assetExpired/sensor', 'pairSuspended']));
     // директор и «место не выбрано» — всё
     const all = PAUSES.flatMap(p => PAUSE_NOTICES[p]);
     expect(stopKinds([], ['director'])).toEqual(all);
@@ -52,7 +52,7 @@ describe('автопаузы', () => {
   });
 
   test('отключённая автопауза не ставит мир на паузу', () => {
-    expect(stopKinds(['morning', 'oos'], ['quality'])).toEqual(['deviation', 'qualLost', 'assetExpired/lab']);
+    expect(stopKinds(['morning', 'oos'], ['quality'])).toEqual(['deviation', 'qualLost', 'assetExpired/lab', 'pairSuspended']);
     expect(stopKinds([...PAUSES], ['director'])).toEqual([]);
   });
 

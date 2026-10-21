@@ -2,17 +2,20 @@
 // количество — вверх до целой тары, не меньше минимальной партии. Срок прихода — из ветви поставщика; фура приходит в
 // рабочий день с 09:00 до 15:00. Коллега снабжения (этап Б, Б2в; геймдизайн, §9.3, §29.3) — `supplyDay`: каждый рабочий
 // день заказывает то, чего не хватит на срок поставки, входной контроль и страховой запас при расходе по плану выпуска.
+// С Б3г заказывают только по одобренной паре «поставщик — изготовитель» действующей спецификации, по цене рамочного
+// договора, а сверх обещанного — по прайсу (partners.ts).
 import type { ContentDb, Id } from '../content/types';
 import { schedule } from './core/agenda';
 import { DAY, HOUR, isWorkday, MIN, momentOf } from './core/calendar';
 import { part, post, vatRate } from './cash';
 import { inForce } from './docs';
 import { packNeeds } from './mes';
+import { approved, pairsFor, priceLine } from './partners';
 import { casesOf, positionOf } from './planner';
 import { planOf } from './plant';
 import { roll } from './random';
 import { containersByLot, containersFor, free, nextId } from './stock';
-import type { Command, Notice, PackJob, PlantState, Po } from './types';
+import type { Command, Notice, PackJob, PlantState, Po, PoLine } from './types';
 
 /** Окно прихода фур: рабочий день, с 09:00, плюс до шести часов. */
 const ARRIVE_FROM = 9 * HOUR;
@@ -28,7 +31,8 @@ export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { ki
     notices.push({ kind: 'refused', cmd: 'po', why: 'empty' });
     return undefined;
   }
-  const lines = [];
+  const lines: PoLine[] = [];
+  const today = momentOf(s.start, s.t).day;
   for (const l of cmd.lines) {
     const item = sup.items[l.material];
     if (!item) {
@@ -39,16 +43,22 @@ export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { ki
       notices.push({ kind: 'refused', cmd: 'po', why: 'belowMoq', detail: l.material });
       return undefined;
     }
+    // только по одобренной паре действующей спецификации (Б3г): изготовитель — из записи поставщика
+    const maker = item.maker;
+    if ((l.maker !== undefined && l.maker !== maker) || !approved(db, s, sup.id, maker, l.material, today)) {
+      notices.push({ kind: 'refused', cmd: 'po', why: 'pair', detail: l.material });
+      return undefined;
+    }
     const cap = db.containers[db.materials[l.material].container].capacity;
-    lines.push({ material: l.material, qty: containersFor(db, l.material, l.qty) * cap });
+    lines.push({ material: l.material, qty: containersFor(db, l.material, l.qty) * cap, maker });
   }
   const eta = etaOf(s, sup.id, sup.lead);
   // сумма с НДС: АФС — по ставке лекарственных средств, остальное — по общей; предоплата — сейчас, остаток — после прихода
   let net = 0;
   let vat = 0;
   for (const l of lines) {
-    const price = sup.items[l.material].price;
-    const cost = db.materials[l.material].unit === 'mass' ? Math.floor((price * l.qty + 500_000) / 1_000_000) : price * l.qty;
+    // по договору — до остатка обещанного, сверх — по прайсу (Б3г)
+    const cost = priceLine(db, s, sup.id, l);
     net += cost;
     vat += part(cost, vatRate(db, s, l.material));
   }
@@ -123,10 +133,11 @@ export function supplyPosition(db: ContentDb, s: PlantState, material: Id, byLot
 }
 
 /**
- * Каждый час: в рабочий день в 09:00 — заказ у одобренного поставщика всего, что ниже точки заказа: расход на наибольший
- * срок поставки, входной контроль и страховой запас. Заказывают до точки заказа и ещё `every` суток расхода, не меньше
+ * Каждый час: в рабочий день в 09:00 — заказ по одобренной паре всего, что ниже точки заказа: расход на наибольший срок
+ * поставки, входной контроль и страховой запас. Заказывают до точки заказа и ещё `every` суток расхода, не меньше
  * минимальной партии и не больше половины зоны карантина в паллетах: отбор проб начинают, когда в карантине вся партия
- * (lab.ts), и партия больше зоны его не дождётся. Недостающее — следующими днями. У поставщика — одним заказом.
+ * (lab.ts), и партия больше зоны его не дождётся. Недостающее — следующими днями. У поставщика — одним заказом. Пара —
+ * первая из одобренных в спецификации, действующей сегодня (Б3г); нет её — материал не заказать.
  */
 export function supplyDay(db: ContentDb, s: PlantState, notices: Notice[]) {
   const sc = db.scenarios[s.scenario];
@@ -137,17 +148,16 @@ export function supplyDay(db: ContentDb, s: PlantState, notices: Notice[]) {
   // тара по партиям — один проход на весь расчёт
   const byLot = containersByLot(s);
   const per = planUse(db, s, 1000, byLot);
-  const lines = new Map<Id, { material: Id; qty: number }[]>();
+  const lines = new Map<Id, PoLine[]>();
   // паллет под количество материала — по его таре: у строк одного заказа тара разная
   const palletsOf = (m: Id, qty: number) => {
     const k = db.containers[db.materials[m].container];
     return Math.ceil(qty / (k.perPallet * k.capacity));
   };
   for (const material of per.keys()) {
-    const sup = Object.values(db.suppliers)
-      .filter(x => x.approved && x.items[material])
-      .sort((a, b) => (a.id < b.id ? -1 : 1))[0];
-    if (!sup) continue;
+    const pair = pairsFor(db, s, material, now.day)[0];
+    if (!pair) continue;
+    const sup = db.suppliers[pair.supplier];
     // расход на `d` суток из расхода на 1000 суток — вверх
     const use = (d: number) => Math.ceil((per.get(material)! * d) / 1000);
     const point = use(sup.lead[1] + qc + safety);
@@ -159,7 +169,7 @@ export function supplyDay(db: ContentDb, s: PlantState, notices: Notice[]) {
     const taken = (lines.get(sup.id) ?? []).reduce((n, l) => n + palletsOf(l.material, l.qty), 0);
     const qty = Math.min(Math.max(sup.items[material].moq, point + use(every) - have), (room - taken) * pallet);
     if (qty < sup.items[material].moq) continue;
-    lines.set(sup.id, [...(lines.get(sup.id) ?? []), { material, qty }]);
+    lines.set(sup.id, [...(lines.get(sup.id) ?? []), { material, qty, maker: pair.maker }]);
   }
   for (const [supplier, l] of lines) placePo(db, s, { kind: 'po', supplier, lines: l, by: 'head:supply' }, notices);
 }

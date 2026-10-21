@@ -1,0 +1,7 @@
+# Изготовитель вспомогательных веществ — вымышленный (AGENTS.md); он же и поставщик (sup.exc). В прототипе все пять
+# веществ — от одного изготовителя: упрощение геймдизайна (Б3г)
+id: mkr.exc
+name: { ru: Изготовитель вспомогательных веществ, en: Excipient maker }
+country: { ru: Германия, en: Germany }
+site: { ru: Площадка 1, en: Site 1 }
+makes: [mat.exc.starch, mat.exc.povidone, mat.exc.mcc, mat.exc.mgst, mat.exc.lactose]

@@ -23,6 +23,7 @@ import { runSeed } from '../../src/engine/plan/run';
 import { fromSave } from '../../src/engine/save';
 import { SUPPLY_HOUR } from '../../src/engine/supply';
 import type { Notice, PlantState } from '../../src/engine/types';
+import { calOf } from '../../src/engine/workdays';
 import { nowView } from '../../src/sim/now';
 import { refView } from '../../src/sim/ref';
 import { cashView, morningView } from '../../src/sim/report';
@@ -32,6 +33,7 @@ import { buildDb } from '../content/load';
 const SC = 'scn.proto';
 const sc = db.scenarios[SC];
 const start = daysFromCivil(sc.start.date);
+const cal = calOf(db, { start: sc.start.date, scenario: SC });
 const API = 'sup.api|mkr.api-par';
 const EXC = 'sup.exc|mkr.exc';
 const PACK = 'sup.pack|mkr.pack';
@@ -198,7 +200,7 @@ describe('движок (Б3г)', () => {
     const s = newPlant(db, { scenario: SC });
     // упаковке — 20 суток одобрения: в ближайшие 09:00 рабочего дня коллега назначит оценку
     due(s, PACK, start + 20);
-    const book = isWorkday(start) && sc.start.hour * HOUR < BOOK_HOUR ? start : addWorkdays(start, 1);
+    const book = isWorkday(cal, start) && sc.start.hour * HOUR < BOOK_HOUR ? start : addWorkdays(cal, start, 1);
     live(s, () => !!s.pairs[PACK].eval, at(book, 10));
     const e = s.pairs[PACK].eval!;
     expect([e.how, e.booked]).toEqual(['docs', at(book, 9)]);
@@ -215,10 +217,10 @@ describe('движок (Б3г)', () => {
   test('аудит: аудитор у изготовителя с 09:00 ближайшего рабочего дня, отчёт в 17:00 последнего — счёт с НДС; у пары дистрибьютора — и документы', () => {
     const s = newPlant(db, { scenario: SC });
     due(s, API, start + 20);
-    const book = isWorkday(start) && sc.start.hour * HOUR < BOOK_HOUR ? start : addWorkdays(start, 1);
+    const book = isWorkday(cal, start) && sc.start.hour * HOUR < BOOK_HOUR ? start : addWorkdays(cal, start, 1);
     live(s, () => !!s.pairs[API].eval, at(book, 10));
     const e = s.pairs[API].eval!;
-    expect([e.how, e.from, e.to]).toEqual(['audit', at(addWorkdays(book, 1), 9), at(addWorkdays(book, sc.partners.audit.days), 17)]);
+    expect([e.how, e.from, e.to]).toEqual(['audit', at(addWorkdays(cal, book, 1), 9), at(addWorkdays(cal, book, sc.partners.audit.days), 17)]);
     // во время аудита — строка «Сейчас»: аудитор у изготовителя
     live(s, () => s.t >= e.from! + HOUR, e.from! + HOUR);
     const row = nowView(db, s).rows.find(x => x.kind === 'audit')!;
@@ -254,7 +256,7 @@ describe('движок (Б3г)', () => {
     expect(pairsFor(db, s, 'mat.exc.starch', dayOf(s))).toEqual([]);
     expect(apply(db, s, { kind: 'po', supplier: 'sup.exc', lines: [{ material: 'mat.exc.mcc', qty: 200 * 1_000_000 }] })).toEqual([{ kind: 'refused', cmd: 'po', why: 'pair', detail: 'mat.exc.mcc' }]);
     // коллега снабжения в 09:00 — без заказов по приостановленной паре (в день начала она ещё действовала)
-    live(s, () => s.t >= at(addWorkdays(start, 3), 10), at(addWorkdays(start, 3), 10), HOUR);
+    live(s, () => s.t >= at(addWorkdays(cal, start, 3), 10), at(addWorkdays(cal, start, 3), 10), HOUR);
     expect(Object.values(s.pos).filter(p => p.supplier === 'sup.exc' && p.by === 'head:supply' && p.ordered >= at(start + 1, 0))).toEqual([]);
     // партия прежнего заказа — проба из каждой тары
     const id = (po as { po: string }).po;

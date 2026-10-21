@@ -3,8 +3,9 @@
 // `card`). Вид приходит из потока расчёта (src/sim/views.ts) без истины и без слов; слова — отсюда, из src/i18n/.
 import type { ReactNode } from 'react';
 import type { PartType } from '../content/types';
-import type { Ymd } from '../engine/core/calendar';
-import { dayText, named, num, qtyText, T, whenText } from '../i18n';
+import { civilFromDays, momentOf, weekday, type Ymd } from '../engine/core/calendar';
+import { clock, dayText, hText, named, num, qtyText, T, whenText } from '../i18n';
+import type { SheetView } from '../sim/hours';
 import type { NowRow } from '../sim/now';
 import type { Admission, DocNow } from '../sim/people';
 import type { AssetInfo } from '../sim/places';
@@ -14,6 +15,37 @@ import { db, docText } from './db';
 import { StatusIcon, TaskIcon } from './icons';
 import { placeText, supplierText } from './Stock';
 import type { Actions } from './store';
+
+/**
+ * Табель месяца (Б4а): по дням с 1-го по сегодня — отметки формы Т-13 и часы, сеткой по дням недели; итоги — отработано
+ * против нормы, сверхурочно за месяц и за год; работает после смены сейчас — с какого часа.
+ */
+function Sheet({ v, start }: { v: SheetView; start: Ymd }) {
+  const lead = v.rows.length > 0 ? weekday(v.rows[0].day) : 0;
+  return (
+    <>
+      <div className="csec">{T.card.sheet(T.cash.months[v.m - 1], v.y)}</div>
+      <div className="sheet" title={T.card.marksHint} data-test="card-sheet">
+        {Array.from({ length: lead }, (_, i) => (
+          <span key={`e${i}`} />
+        ))}
+        {v.rows.map(r => (
+          <span key={r.day} className={`sd${r.over + r.off > 0 ? ' over' : ''}${r.work === 0 ? ' rest' : ''}`} data-test="sheet-day">
+            <b>{civilFromDays(r.day).d}</b>
+            {r.marks.map(m => T.card.marks[m]).join(' ')}
+            {r.work > 0 ? <span className="sh">{hText(r.work)}</span> : null}
+          </span>
+        ))}
+      </div>
+      <dl>
+        <Row k={T.card.worked(hText(v.worked), hText(v.norm))}>{T.card.overMonth(hText(v.over))}</Row>
+        <Row k={T.card.overYear(hText(v.year), hText(v.limit))}>
+          {v.since !== undefined ? <span className="warn" data-test="card-overnow">{T.card.overNow(clock(momentOf(start, v.since).sec))}</span> : null}
+        </Row>
+      </dl>
+    </>
+  );
+}
 
 function Row({ k, children }: { k: string; children: ReactNode }) {
   return (
@@ -360,6 +392,7 @@ export function Card({ v, start, plant, actions, beside, watch }: { v: CardView;
               </li>
             ))}
           </ol>
+          <Sheet v={c.sheet} start={start} />
         </>
       );
       break;

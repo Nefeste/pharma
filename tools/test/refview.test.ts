@@ -88,7 +88,10 @@ const ALLOWED = new Set(
     'places site name ru en areas rooms centers regime assets inv family place critical needs verify qual cal work day until by ' +
     'visit at accepting unfit working thing i line today vehicles common ahead closed ' +
     // Б3г: изготовители, пары с одобрением и оценкой, соглашения, действующие договоры — записи и учёт завода
-    'partners makers makes pairs supplier maker how since agreement eval review contracts party volume bought'
+    'partners makers makes pairs supplier maker how since agreement eval review contracts party volume bought ' +
+    // Б4а: перерыв смены, табель людей за месяц и год, производственный календарь, политики отделов и пределы
+    // сверхурочных — учёт завода и профиль
+    'break hours worked norm over year calendar y m policy wms qc qa mes maint overtime'
   ).split(' '),
 );
 

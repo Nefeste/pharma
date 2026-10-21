@@ -166,6 +166,7 @@ export function check(db: ContentDb, s: PlantState): string[] {
   lean(s, bad);
   assets(db, s, bad);
   partners(db, s, bad);
+  hours(db, s, bad);
   // номер серии (batchno.ts): досье выдано — номер есть; смешивание начато — номер полный; полный номер не повторяется,
   // короткий — среди серий до смешивания
   const full = new Map<string, string>();
@@ -183,6 +184,25 @@ export function check(db: ContentDb, s: PlantState): string[] {
     seen.set(no, b.id);
   }
   return bad;
+}
+
+/**
+ * Инварианты рабочего времени (Б4а): сверхурочный отрезок — не длиннее предела за смену, отрезки — по порядку и не
+ * накладываются; за год — не больше предела; конец смены задачи — только у занятого.
+ */
+function hours(db: ContentDb, s: PlantState, bad: string[]) {
+  const ot = db.profiles[db.scenarios[s.scenario].profile].payroll.overtime;
+  for (const p of Object.values(s.people)) {
+    let last = -Infinity;
+    for (const [a, b] of p.ot) {
+      if (b <= a || b - a > ot.shift) bad.push(`человек ${p.id}: сверхурочно ${b - a} с за смену`);
+      if (a < last) bad.push(`человек ${p.id}: сверхурочные отрезки накладываются`);
+      last = b;
+    }
+    if (p.otYear.sec < 0 || p.otYear.sec > ot.year) bad.push(`человек ${p.id}: сверхурочно ${p.otYear.sec} с за ${p.otYear.y} год`);
+    if (p.until !== undefined && !p.task) bad.push(`человек ${p.id}: конец смены задачи без задачи`);
+    if (p.task && p.until === undefined) bad.push(`человек ${p.id}: задача ${p.task} без конца смены`);
+  }
 }
 
 /**

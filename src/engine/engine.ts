@@ -11,6 +11,7 @@ import { assetDone, assetHour, assetStep, seedAssets, visitDone } from './assets
 import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
+import { hoursHour, newPolicy, overtimeCommand } from './hours';
 import { concludeCommand, invDone, investigateCommand, invStep, newIncident } from './investigation';
 import { labDone, runDone, rushCommand, startSampling } from './lab';
 import { leanHour, leanStep, newLoss } from './lean';
@@ -87,6 +88,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     assets: {},
     pairs: {},
     contracts: {},
+    policy: newPolicy(db, sc.id),
     maintLog: [],
     losses: [],
     shiftTasks: [],
@@ -98,7 +100,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   for (const row of sc.staff) {
     for (let i = 0; i < row.n; i++) {
       const n = (s.next.E = (s.next.E ?? 0) + 1);
-      const p = (s.people[`E${n}`] = { id: `E${n}`, role: row.role, shift: row.shift, skill: row.skill, tab: sc.training.tab + n - 1, train: {}, x: plan.entrance.x, z: plan.entrance.z });
+      const p = (s.people[`E${n}`] = { id: `E${n}`, role: row.role, shift: row.shift, skill: row.skill, tab: sc.training.tab + n - 1, train: {}, x: plan.entrance.x, z: plan.entrance.z, ot: [], otYear: { y: s.start.y, sec: 0 } });
       seedTraining(db, sc, p, startDay);
     }
   }
@@ -234,6 +236,13 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       steps(db, s, notices);
       return notices;
     }
+    case 'overtime': {
+      // политика отдела (Б4а): задачи, которые ждали часов, раздаются по новой
+      const notices: Notice[] = [];
+      overtimeCommand(s, cmd, notices);
+      settle(db, s);
+      return notices;
+    }
   }
 }
 
@@ -317,8 +326,9 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       qaStep(db, s);
       marketStep(db, s, notices);
       settle(db, s);
-      // тревоги часа (Б2а) — по заводу, каким его оставил час
+      // тревоги часа (Б2а) — по заводу, каким его оставил час; сверхурочные года на исходе (Б4а)
       alertsHour(db, s, notices);
+      hoursHour(db, s, notices);
       return;
     case 'truck':
       truckArrives(db, s, ev.po, notices);

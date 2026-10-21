@@ -110,7 +110,8 @@ first, or copy the working code of Bolnitsa on the same versions.
 ## Project map
 
 - `src/engine/` — the engine (pure TypeScript; see «Hard rules»): `core/` (seeded branches, hashes, own `log2` — copies;
-  the event agenda as a heap in plain arrays and the calendar without `Date` — ours), `types.ts` (state, commands,
+  the event agenda as a heap in plain arrays and the calendar without `Date` with the production calendar — holidays,
+  transfers, short days, the month's norm — ours), `types.ts` (state, commands,
   notices, `SCHEMA`), `engine.ts` (`newPlant`, `apply`, `catchUp`, events), `random.ts` (named branches in the state,
   the integer normal draw), `save.ts` (snapshot and migrations), `nav.ts` (the plan's 1 m grid: walls, doors and
   footprints, where people may walk and vehicles may drive, access cells, distance fields cached per plan, route length
@@ -120,8 +121,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   below its reorder point: plan use over the longest lead time, incoming control and safety stock, through the first
   approved supplier–maker pair, one order per
   supplier, at most half the quarantine zone in pallets), `planner.ts` (the planning colleague — at 07:00 on a workday, a
-  batch order for the same weekday two weeks on, for the SKU that runs out first by FG and work in progress against
-  demand seen in customer orders; SKUs in turn until demand is seen; campaigns — the product of the last batch order goes
+  batch order for the workday two working weeks on, for the SKU that runs out first by FG and work in progress against
+  demand per working day seen in customer orders, over five-day weeks ahead; SKUs in turn until demand is seen;
+  campaigns — the product of the last batch order goes
   on while its SKUs need a batch and no SKU of the other product is urgent), `wms.ts` (truck, its check at the dock
   before unloading, unloading, receiving, putaway), `quality.ts` (true lot properties, the lab result, spec limits),
   `lab.ts` (sampling,
@@ -157,7 +159,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   with the residual shelf life, whole pallets and case picking, the customer's truck at 15:00, shipments with codes; with
   no free staging place, the docked truck is loaded straight from the racks; orders at risk — one rule for the meeting
   and the hourly alert, `orderRisks`), `cash.ts` (kopecks and ledger entries, dues by
-  date, suppliers, wages twice a month, contributions, energy, VAT by quarter, the credit line), `maint.ts` (machine
+  date, suppliers, wages twice a month by the time sheet — salary halves, night hours, overtime and work on a day off —,
+  contributions, energy, VAT by quarter, the credit line), `maint.ts` (machine
   parts, wear by work done, failure by the hazard table of wear, repairs and planned replacement by the mechanic with a
   spare from the workshop, spares replenished by level, the maintenance policy, `maintain`), `lean.ts` (losses per day
   by kind and department: waiting tasks by cause, a truck waiting for the dock, transport and walking, defects, room
@@ -166,14 +169,21 @@ first, or copy the working code of Bolnitsa on the same versions.
   the line master's shift task and the rhythm coefficient), `tasks.ts` (tasks and the dispatcher: people,
   vehicles, instruments; why a task waits; a person walking to a post is free and measured from where they are; only a
   person admitted to everything the work and the vehicle need takes it, otherwise the task waits «нет допуска» with the
-  document), `quals.ts` (admissions: the training matrix — the roles of each procedure and test method, the same for all
+  document; a person takes it only if, with the walk and its norm (a stage with its largest spread), it fits the rest
+  of the shift and the overtime still allowed, otherwise «нет часов»), `hours.ts` (working time by law: the time sheet
+  by days — work, night, overtime at two rates, work on a day off; overtime limits per shift and per calendar year; the
+  fit rule shared with the schedule run; the department policy «Сверхурочные», `overtime`; the notice when the year's
+  overtime runs low), `workdays.ts` (the production calendar of the scenario's profile; five-day shifts live by it, a
+  short day ends an hour earlier), `quals.ts` (admissions: the training matrix — the roles of each procedure and test
+  method, the same for all
   revisions of a code; what a work needs to know — procedures of its task kind and of any work, the equipment and IPC
   methods of a stage, the machines of a line, the method of a test, a vehicle's procedure; a person knows a document on a
   day — a record on the revision in force or newer, not expired; which revision to learn and when — `ahead` days before a
   new revision or the end of a record), `train.ts` (training: start records spread by a hash of person and code up to
   `spread` days back; at midnight — a notice for an admission lost and a task to study at the person's post; the
   knowledge check by the QA specialist or the QC head, never the trainee; the record with the check's day), `staff.ts`
-  (shifts; whether a person of a shift may take a task at a moment — shared with the schedule run; a free
+  (shifts by the production calendar; whether a person of a shift may take a task at a moment — shared with the schedule
+  run; a free
   person walks to the post of their role, and to the exit 15 minutes before the end of the shift; where they are on the
   way; off-shift people leave through the entrance), `seats.ts` (the player's places — the director and four posts:
   whose each command is, the `seat` command, the log of places; a player's command of another's post is refused),
@@ -219,7 +229,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   contract (`partners.ts`); the lab queue and the X–Rm control chart of the in-process
   average tablet mass with its limits and special-cause signs, a lot under investigation and its steps' tests
   (`lab.ts`); the investigation board — what happened, participants, steps, findings, versions from the findings only,
-  whether release is proven, the debrief only once concluded (`inv.ts`); people and admissions — a person's admission
+  whether release is proven, the debrief only once concluded (`inv.ts`); working time — the month's time sheet of a
+  person's card with its totals and the year, the calendar of twelve months, department policies, the meeting's «Рабочее
+  время» — records are the plant's knowledge (`hours.ts`); people and admissions — a person's admission
   today and what they are losing within the warning period, training rows of the card, the training matrix of the
   reference with how many people of a role are admitted, the meeting's summary — records are the plant's knowledge, not
   truth (`people.ts`); the schedule — the Gantt of the past, the running and the schedule run with the player's draft,

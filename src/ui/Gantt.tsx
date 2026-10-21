@@ -103,6 +103,8 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
       }
       case 'shift':
         return T.gantt.why.shift(T.gantt.crew[w.role] ?? T.gantt.crewAny(named(db?.roles[w.role]?.name, w.role)), w.bar === 'kit' ? T.gantt.whatKit : T.gantt.whatStage, atText(w.at));
+      case 'hours':
+        return T.gantt.why.hours(T.gantt.crew[w.role] ?? T.gantt.crewAny(named(db?.roles[w.role]?.name, w.role)), w.bar === 'kit' ? T.gantt.whatKit : T.gantt.whatStage, atText(w.at));
       case 'room':
         return T.gantt.why.room(roomName(w.room), who(labels, w.batch, 'ins'), timeText(w.until));
       case 'clean':

@@ -20,7 +20,7 @@ const FOLDED = new Set(['crew', 'prep', 'review', 'truckCheck', 'unload', 'load'
 
 /** Поля строки по src/sim/now.ts: новое — сначала сюда, с вопросом, знает ли его завод. */
 const ALLOWED = new Set(
-  'view rows key dept kind batch stage lot method phase inst machine part room line sku supplier customer major planned people n role from norm range done target rate rated thing i k'.split(' '),
+  'view rows key dept kind batch stage lot method phase inst machine part room line sku supplier customer major planned people n role from norm range done target rate rated thing i k over'.split(' '),
 );
 
 function keysOf(v: unknown, out = new Set<string>()): Set<string> {

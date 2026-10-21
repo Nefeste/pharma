@@ -5,8 +5,11 @@
 // работа сейчас, окно считает по своим часам от мгновения её начала. Коды материалов и шапки документов (Б3а) — из базы,
 // какая редакция действует сегодня — из вида.
 import { type ReactNode, useState } from 'react';
+import { DEPTS, type Dept, type OvertimeMode } from '../content/types';
+import { daysFromCivil, weekday } from '../engine/core/calendar';
 import type { DocKind } from '../engine/docs';
-import { dayText, durText, lang, money, named, num, pctText, priceText, qtyText, T, whenText } from '../i18n';
+import { DEPT_SEAT } from '../engine/seats';
+import { dayText, durText, hText, lang, money, named, num, pctText, priceText, qtyText, T, whenText } from '../i18n';
 import type { RefContract, RefMaker, RefPair } from '../sim/partners';
 import type { DocNow } from '../sim/people';
 import type { AssetInfo, PlaceArea, PlaceCenter } from '../sim/places';
@@ -14,7 +17,7 @@ import type { RefCustomer, RefDoc, RefEquipment, RefInstrument, RefLine, RefMach
 import { assetClass, stateKey, untilText, unfitText, workName } from './assets';
 import { admText } from './Card';
 import { db, docText, headOf } from './db';
-import { type Actions, type Hud, REF_TABS } from './store';
+import { type Actions, type Hud, holds, REF_TABS } from './store';
 import { attrNum, attrText, paramNum, paramText } from './units';
 
 /**
@@ -334,7 +337,86 @@ function Lab({ v, q }: { v: RefView; q: string }) {
   );
 }
 
-function People({ v, q }: { v: RefView; q: string }) {
+/** Производственный календарь (Б4а): месяц сеткой по дням недели, листать на год вперёд; норма часов месяца. */
+function Calendar({ v }: { v: RefView }) {
+  const [k, setK] = useState(0);
+  const mo = v.calendar[Math.min(k, v.calendar.length - 1)];
+  if (!mo) return null;
+  const lead = weekday(daysFromCivil({ y: mo.y, m: mo.m, d: 1 }));
+  return (
+    <section className="rsec" data-test="ref-calendar" data-month={`${mo.y}-${mo.m}`}>
+      <div className="phead">
+        <b>{T.ref.calendar}</b>
+        <span>{T.ref.calMonth(T.cash.months[mo.m - 1], mo.y, hText(mo.norm))}</span>
+        <button type="button" disabled={k === 0} onClick={() => setK(k - 1)} data-test="cal-prev">
+          {T.ref.calPrev}
+        </button>
+        <button type="button" disabled={k >= v.calendar.length - 1} onClick={() => setK(k + 1)} data-test="cal-next">
+          {T.ref.calNext}
+        </button>
+      </div>
+      <div className="cal">
+        {T.date.weekdays.map(w => (
+          <span key={w} className="wd">
+            {w}
+          </span>
+        ))}
+        {Array.from({ length: lead }, (_, i) => (
+          <span key={`e${i}`} />
+        ))}
+        {mo.days.map((d, i) => (
+          <span key={i} className={d} title={T.ref.calKinds[d]} data-day={d}>
+            {i + 1}
+          </span>
+        ))}
+      </div>
+      <div className="muted small">
+        {(['work', 'short', 'off', 'holiday'] as const).map(d => (
+          <span key={d} className={`calkey ${d}`}>
+            {T.ref.calKinds[d]}: {num(mo.days.filter(x => x === d).length)}
+          </span>
+        ))}
+      </div>
+      <div className="muted small">{T.ref.calNote}</div>
+    </section>
+  );
+}
+
+/**
+ * Политики отделов (Б4а): сверхурочные — «по потребности» или «только закончить начатое». Меняет пост отдела или
+ * директор; места не выбраны — кто угодно (как команды других постов, 3е).
+ */
+function Policies({ v, hud, actions }: { v: RefView; hud: Hud; actions: Actions }) {
+  const pc = T.ref.policyCols;
+  const ot = v.overtime;
+  const mine = (d: Dept) => holds(hud, DEPT_SEAT[d]);
+  const cols: Col<Dept>[] = [
+    { name: pc.dept, text: d => T.morning.depts[d] ?? d },
+    { name: pc.overtime, text: d => T.ref.modes[v.policy[d]] ?? v.policy[d], show: d => <span data-test="policy-mode">{T.ref.modes[v.policy[d]] ?? v.policy[d]}</span> },
+    {
+      name: '',
+      text: () => '',
+      show: d => {
+        const other: OvertimeMode = v.policy[d] === 'need' ? 'finish' : 'need';
+        return (
+          <button type="button" disabled={!mine(d)} onClick={() => actions.overtime(d, other)} title={mine(d) ? '' : T.seats.notYours(T.seats.names[DEPT_SEAT[d]])} data-test="policy-set" data-dept={d}>
+            {T.ref.modeSet(T.ref.modes[other])}
+          </button>
+        );
+      },
+    },
+    { name: pc.seat, text: d => T.seats.names[DEPT_SEAT[d]] ?? DEPT_SEAT[d] },
+  ];
+  return (
+    <section className="rsec" data-test="ref-policy">
+      <b>{T.ref.policy}</b>
+      <Table cols={cols} items={[...DEPTS]} keyOf={d => d} q="" />
+      <div className="muted small">{T.ref.policyNote(hText(ot.shift), hText(ot.year))}</div>
+    </section>
+  );
+}
+
+function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actions: Actions }) {
   const r = T.ref.roleCols;
   const s = T.ref.shiftCols;
   const headcount = (x: RefRole) => x.shifts.reduce((n, sh) => n + sh.n, 0);
@@ -350,9 +432,11 @@ function People({ v, q }: { v: RefView; q: string }) {
     { name: s.name, text: x => named(db?.shifts[x.id]?.name, x.id) },
     { name: s.days, text: x => x.days.map(d => T.date.weekdays[d]).join(', '), num: x => x.days.length },
     { name: s.hours, text: x => T.ref.hours(x.from, x.to), num: x => x.from },
+    { name: s.break, text: x => (x.break > 0 ? durText(x.break) : T.ref.noBreak), num: x => x.break },
   ];
   // люди с допуском и матрица обучения (Б3б)
   const pc = T.ref.personCols;
+  const ot = v.overtime;
   const admClass = (x: RefPerson) => (x.adm.k === 'no' ? 'bad' : x.adm.k === 'soon' ? 'warn' : '');
   const people: Col<RefPerson>[] = [
     { name: pc.tab, text: x => String(x.tab), show: x => <span className="mono">{x.tab}</span>, num: x => x.tab },
@@ -360,6 +444,10 @@ function People({ v, q }: { v: RefView; q: string }) {
     { name: pc.shift, text: x => named(db?.shifts[x.shift]?.name, x.shift) },
     { name: pc.skill, text: x => num(x.skill), num: x => x.skill },
     { name: pc.adm, text: x => admText(x.adm), show: x => <span className={admClass(x)}>{admText(x.adm)}</span> },
+    // рабочее время (Б4а): по табелю месяца и за год
+    { name: pc.month, text: x => T.ref.ofNorm(hText(x.hours.worked), hText(x.hours.norm)), num: x => x.hours.worked },
+    { name: pc.over, text: x => (x.hours.over > 0 ? hText(x.hours.over) : '—'), num: x => x.hours.over },
+    { name: pc.year, text: x => T.ref.ofNorm(hText(x.hours.year), hText(ot.year)), show: x => <span className={x.hours.year >= ot.year - ot.shift ? 'warn' : ''}>{T.ref.ofNorm(hText(x.hours.year), hText(ot.year))}</span>, num: x => x.hours.year },
   ];
   type Doc = { i: number; d: DocNow };
   const mc = T.ref.matrixCols;
@@ -391,6 +479,8 @@ function People({ v, q }: { v: RefView; q: string }) {
       <section className="rsec">
         <Table cols={shifts} items={v.shifts} keyOf={x => x.id} q={q} />
       </section>
+      <Policies v={v} hud={hud} actions={actions} />
+      <Calendar v={v} />
       <section className="rsec">
         <Table test="ref-matrix" cols={matrix} items={v.matrix.docs.map((d, i) => ({ i, d }))} keyOf={x => x.d.code} q={q} />
       </section>
@@ -691,7 +781,7 @@ export function Ref({ hud, actions }: { hud: Hud; actions: Actions }) {
           {tab === 'equipment' ? <Equipment v={v} q={q} /> : null}
           {tab === 'places' ? <Places v={v} q={q} actions={actions} /> : null}
           {tab === 'lab' ? <Lab v={v} q={q} /> : null}
-          {tab === 'people' ? <People v={v} q={q} /> : null}
+          {tab === 'people' ? <People v={v} q={q} hud={hud} actions={actions} /> : null}
           {tab === 'partners' ? <Partners v={v} q={q} start={hud.start} /> : null}
           {tab === 'docs' ? <Docs v={v} q={q} /> : null}
           <div className="muted small">{T.ref.noHidden}</div>

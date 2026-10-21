@@ -8,6 +8,7 @@ import { HOUR, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { planOf } from './plant';
 import type { Batch, BatchPhase, DayLoss, Line, LineDay, MachineTimes, PlantState, ShiftTask, Task, TaskKind, WaitCause } from './types';
+import { calOf, shiftTo, worksOn } from './workdays';
 
 /** Участок задачи — отдел, чья это работа; отгрузку делает склад. */
 export const AREA: Record<TaskKind, Dept> = {
@@ -212,11 +213,13 @@ export function leanHour(db: ContentDb, s: PlantState) {
     }
     dayOf(s, now.day);
   }
+  // смена — по производственному календарю: в праздник её нет, накануне праздника она короче (Б4а)
+  const cal = calOf(db, s);
   for (const line of Object.values(s.lines)) {
     for (const id of shiftsOf(db, s, line)) {
       const sh = db.shifts[id];
-      if (!sh.days.includes(now.weekday)) continue;
-      if (now.sec === sh.to * HOUR) closeShift(s, line, id);
+      if (!worksOn(cal, sh, now.day)) continue;
+      if (now.sec === shiftTo(db, s, cal, sh, now.day)) closeShift(s, line, id);
       if (now.sec === sh.from * HOUR) openShift(db, s, line, id);
     }
   }

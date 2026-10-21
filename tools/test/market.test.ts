@@ -15,6 +15,7 @@ import { planOf } from '../../src/engine/plant';
 import { fromSave, toSave } from '../../src/engine/save';
 import { containersByLot, createLot, findSlot } from '../../src/engine/stock';
 import type { Lot, Notice, Order, PlantState } from '../../src/engine/types';
+import { calOf } from '../../src/engine/workdays';
 
 const SC = 'scn.proto';
 const N20 = 'sku.paracetamol500.n20';
@@ -66,7 +67,7 @@ function inject(s: PlantState, cases: number, inDays: number): Order {
     customer: NAT,
     lines: [{ sku: N20, cases, reserved: 0, shipped: 0 }],
     placed: s.t,
-    due: at(s, workdayOnOrAfter(dayOf(s) + inDays), TRUCK_HOUR),
+    due: at(s, workdayOnOrAfter(calOf(db, s), dayOf(s) + inDays), TRUCK_HOUR),
     minShelf: db.customers[NAT].minShelf,
     status: 'open',
     cases: [],
@@ -102,7 +103,7 @@ describe('заказы покупателей и выпуск в оборот (�
       expect(placed.sec).toBe(c.order.hour * HOUR);
       expect(due.sec).toBe(TRUCK_HOUR);
       expect(due.weekday).toBeLessThan(5);
-      expect(due.day).toBe(workdayOnOrAfter(due.day));
+      expect(due.day).toBe(workdayOnOrAfter(calOf(db, s), due.day));
       const lead = due.day - placed.day;
       expect(lead).toBeGreaterThanOrEqual(c.order.lead[0]);
       expect(lead).toBeLessThanOrEqual(c.order.lead[1] + 2);
@@ -196,13 +197,13 @@ describe('отгрузка', () => {
     expect(due.sum).toBe(sh.sum + sh.vat);
     const m = momentOf(s.start, due.due);
     expect(m.sec).toBe(10 * HOUR);
-    expect(m.day).toBe(workdayOnOrAfter(dayOf(s, sh.t) + db.customers[NAT].payDays));
+    expect(m.day).toBe(workdayOnOrAfter(calOf(db, s), dayOf(s, sh.t) + db.customers[NAT].payDays));
     expect(s.cash.vat.out).toBe(sh.vat);
   });
 
   test('подтверждение покупателя — на следующий рабочий день', () => {
     const next = momentOf(s.start, sh.accepted);
-    expect(next.day).toBe(workdayOnOrAfter(dayOf(s, sh.t) + 1));
+    expect(next.day).toBe(workdayOnOrAfter(calOf(db, s), dayOf(s, sh.t) + 1));
   });
 });
 

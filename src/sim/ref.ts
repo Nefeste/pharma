@@ -4,7 +4,7 @@
 // режимов и длительностей, причин, моделей расследования, происшествия — в виде нет. Мгновения начала работ — числами:
 // сколько прошло, окно считает по своим часам, и вид не меняется каждую секунду. Документы и редакции (Б3а) — по дате
 // завода: что действует сегодня, что в проекте и что в архиве.
-import type { ContentDb, Dept, Id, MaterialKind, OkeiUnit, ParamUnit } from '../content/types';
+import type { ContentDb, Dept, Id, MaterialKind, OkeiUnit, OvertimeMode, ParamUnit } from '../content/types';
 import { batchNo } from '../engine/batchno';
 import { momentOf } from '../engine/core/calendar';
 import { DOC_KINDS, type DocKind, type DocStatus, inForce, statusOf } from '../engine/docs';
@@ -14,6 +14,7 @@ import { nominal } from '../engine/mes';
 import { planOf } from '../engine/plant';
 import { shiftEnd } from '../engine/staff';
 import type { MachineState, PlantState } from '../engine/types';
+import { type CalMonth, calendarOf, type HoursRow, hoursRow } from './hours';
 import { type EqState, eqStateOf } from './pack';
 import { materialPairs, type PartnersView, partnersView } from './partners';
 import { type Admission, admissionOf, type Matrix, matrix } from './people';
@@ -145,14 +146,17 @@ export interface RefPerson {
   shift: Id;
   skill: number;
   adm: Admission;
+  /** рабочее время месяца и года (Б4а) */
+  hours: HoursRow;
 }
 
 export interface RefShift {
   id: Id;
-  /** дни недели 0–6, с понедельника; часы с и до */
+  /** дни недели 0–6, с понедельника; часы с и до; перерыв для отдыха и питания, с (Б4а) */
   days: number[];
   from: number;
   to: number;
+  break: number;
 }
 
 /**
@@ -213,9 +217,15 @@ export interface RefView {
   instruments: RefInstrument[];
   roles: RefRole[];
   shifts: RefShift[];
-  /** люди и матрица обучения (Б3б) */
+  /**
+   * люди и матрица обучения (Б3б); производственный календарь на год вперёд, политики отделов и пределы сверхурочных за
+   * смену и за год, с (Б4а)
+   */
   people: RefPerson[];
   matrix: Matrix;
+  calendar: CalMonth[];
+  policy: Record<Dept, OvertimeMode>;
+  overtime: { shift: number; year: number };
   suppliers: RefSupplier[];
   customers: RefCustomer[];
   /** места и оборудование (Б3в): площадка, участки, рабочие места, активы с инвентарными номерами и сроками */
@@ -370,8 +380,8 @@ export function refView(db: ContentDb, s: PlantState): RefView {
       busy: mine.filter(p => p.task !== undefined).length,
     };
   });
-  const shifts = Object.values(db.shifts).map(sh => ({ id: sh.id, days: [...sh.days], from: sh.from, to: sh.to }));
-  const staff = people.map(p => ({ person: Number(p.id.slice(1)), tab: p.tab, role: p.role, shift: p.shift, skill: p.skill, adm: admissionOf(db, s, p) }));
+  const shifts = Object.values(db.shifts).map(sh => ({ id: sh.id, days: [...sh.days], from: sh.from, to: sh.to, break: sh.break }));
+  const staff = people.map(p => ({ person: Number(p.id.slice(1)), tab: p.tab, role: p.role, shift: p.shift, skill: p.skill, adm: admissionOf(db, s, p), hours: hoursRow(db, s, p) }));
   const suppliers = Object.values(db.suppliers).map(su => ({
     id: su.id,
     lead: [...su.lead] as [number, number],
@@ -384,5 +394,6 @@ export function refView(db: ContentDb, s: PlantState): RefView {
       .map(sp => ({ spare: sp.id, price: sp.price, lead: [...sp.lead] as [number, number] })),
   }));
   const customers = Object.values(db.customers).map(c => ({ id: c.id, payDays: c.payDays, days: [...c.order.days], hour: c.order.hour, lead: [...c.order.lead] as [number, number], minShelf: c.minShelf }));
-  return { view: 'ref', products, materials, docs, recipes, equipment, lines, methods, instruments, roles, shifts, people: staff, matrix: matrix(db, s), suppliers, customers, places: placesView(db, s), partners: partnersView(db, s) };
+  const ot = db.profiles[db.scenarios[s.scenario].profile].payroll.overtime;
+  return { view: 'ref', products, materials, docs, recipes, equipment, lines, methods, instruments, roles, shifts, people: staff, matrix: matrix(db, s), calendar: calendarOf(db, s), policy: { ...s.policy }, overtime: { shift: ot.shift, year: ot.year }, suppliers, customers, places: placesView(db, s), partners: partnersView(db, s) };
 }

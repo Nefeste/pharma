@@ -48,6 +48,7 @@ const actions: Actions = {
   unwatch: later('unwatch'),
   setLabTab: later('setLabTab'),
   rush: later('rush'),
+  overtime: later('overtime'),
   toggleGantt: later('toggleGantt'),
   setGanttDays: later('setGanttDays'),
   moveGantt: later('moveGantt'),

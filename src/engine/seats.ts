@@ -2,10 +2,10 @@
 // место или несколько из тех, что даёт сценарий; у каждого поста свои команды, чужая команда игрока — отказ с причиной.
 // Работа отделов идёт по правилам движка, как раньше: место даёт команды и мерило. Журнал мест — кто и когда что держал:
 // по нему считают итог поста за время на месте.
-import { type ContentDb, SEATS, type SeatId } from '../content/types';
+import { type ContentDb, type Dept, SEATS, type SeatId } from '../content/types';
 import type { Command, Notice, PlantState } from './types';
 
-/** Чья команда — пост, к которому она относится; ход времени и выбор места — ничьи. */
+/** Чья команда — пост, к которому она относится; ход времени и выбор места — ничьи; политика отдела — пост отдела. */
 export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
   order: 'production',
   shift: 'production',
@@ -18,6 +18,14 @@ export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
   po: 'supply',
 };
 
+/** Пост отдела (Б4а): производство, линию и техслужбу ведёт «Производство», ОКК и ООК — «Качество», склад — «Снабжение и склад». */
+export const DEPT_SEAT: Record<Dept, SeatId> = { mes: 'production', line: 'production', maint: 'production', qc: 'quality', qa: 'quality', wms: 'supply' };
+
+/** Пост команды: у политики отдела — пост этого отдела, у остальных — по виду команды. */
+export function ownerOf(cmd: Command): SeatId | undefined {
+  return cmd.kind === 'overtime' ? DEPT_SEAT[cmd.dept] : OWNER[cmd.kind];
+}
+
 /** Места, которые игрок держит сейчас; ещё не выбирал — `undefined`. */
 export function held(s: PlantState): SeatId[] | undefined {
   return s.seats?.filter(x => x.to === undefined).map(x => x.seat);
@@ -28,7 +36,7 @@ export function held(s: PlantState): SeatId[] | undefined {
  * места не выбраны — можно всё, как до 3е; директор в прототипе отвечает за всё. Команды сценария и коллег не проверяются.
  */
 export function foreign(s: PlantState, cmd: Command): SeatId | undefined {
-  const own = OWNER[cmd.kind];
+  const own = ownerOf(cmd);
   if (!own || ('by' in cmd && cmd.by !== undefined && cmd.by !== 'player')) return undefined;
   const h = held(s);
   return !h || h.includes('director') || h.includes(own) ? undefined : own;

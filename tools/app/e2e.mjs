@@ -138,10 +138,12 @@ try {
       title: document.querySelector('#morning-title')?.textContent ?? '',
       yesterday: !!document.querySelector('[data-test=morning-yesterday]'),
       now: !!document.querySelector('[data-test=morning-now]'),
+      // рабочее время (Б4а): сверхурочные вчера, кто ближе к пределу года, праздники недели
+      hours: document.querySelector('[data-test=morning-hours]')?.innerText ?? '',
     }));
-    if (m.sec !== 8 * 3600 || m.speed !== 0 || !/Планёрка/.test(m.title) || !m.yesterday || !m.now)
-      fail(`планёрка: часы ${m.sec / 3600} ч, скорость ${m.speed}, «${m.title}», вчера ${m.yesterday}, сейчас ${m.now}`);
-    else ok(`планёрка открылась сама в 08:00, мир на паузе: «${m.title}»`);
+    if (m.sec !== 8 * 3600 || m.speed !== 0 || !/Планёрка/.test(m.title) || !m.yesterday || !m.now || !/^рабочее время\n(сверхурочные вчера|сверхурочных вчера не было)/iu.test(m.hours))
+      fail(`планёрка: часы ${m.sec / 3600} ч, скорость ${m.speed}, «${m.title}», вчера ${m.yesterday}, сейчас ${m.now}, рабочее время «${m.hours}»`);
+    else ok(`планёрка открылась сама в 08:00, мир на паузе: «${m.title}»; ${m.hours.replace(/\s*\n\s*/g, ' · ')}`);
     await page.keyboard.press('Escape');
     const closed = await page.evaluate(() => !document.querySelector('#morning'));
     if (!closed) fail('планёрка: Esc не закрыл');
@@ -616,8 +618,8 @@ try {
   await lister.close();
   ok(`контактный лист: ${sheet.length} снимков → ${join(out, 'contact.png')}`);
 
-  // автопаузы (Б2а): у производства и качества десять автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок вышел»,
-  // с Б3г — «пара приостановлена»), «фура» и «заказ» — не их; планёрку отключили — окно помнит; «До события» — мир
+  // автопаузы (Б2а): у производства и качества одиннадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
+  // вышел», с Б3г — «пара приостановлена», с Б4а — «сверхурочные года на исходе»), «фура» и «заказ» — не их; планёрку отключили — окно помнит; «До события» — мир
   // встал не в 08:00, а на первом событии автопаузы мест игрока: извещение со знаком паузы, часы стоят, отставания нет.
   // Планёрку включили обратно
   {
@@ -633,7 +635,7 @@ try {
     await page.screenshot({ path: join(out, 'e2e-pauses.png') });
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('Escape');
-    if (menu.all !== 10 || menu.on !== 10 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
+    if (menu.all !== 11 || menu.on !== 11 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
       fail(`автопаузы: в меню ${menu.all}, включено ${menu.on}, не ваши ${menu.notYours.join(', ')}, в окне «${kept}»`);
     else ok(`автопаузы: в меню ${menu.all}, не ваши — ${menu.notYours.join(', ')}; планёрку отключили — в окне ${kept}; Esc закрыл меню`);
     const t0 = await gameT();
@@ -819,6 +821,39 @@ try {
     if (staff.rows.length !== staff.people || first[0] !== '1001' || staff.bad > 0 || staff.docs !== staff.want)
       fail(`люди: строк ${staff.rows.length} из ${staff.people}, первая — ${first.join(' | ')}, не допущено ${staff.bad}, документов в матрице ${staff.docs} из ${staff.want}`);
     else ok(`люди: ${staff.rows.length} человек, первый — ${first.join(' · ')}; документов в матрице — ${staff.docs}, недопущенных нет`);
+    // рабочее время (Б4а): у каждого — месяц против нормы и сверхурочные года; политика своего отдела меняется и
+    // возвращается, чужого — кнопка погашена; календарь ноября 2027 года — 3-го короткий день, 4-го праздник, 5-го
+    // перенесённый выходной, норма 159 ч
+    {
+      const pc = await page.evaluate(() => {
+        const head = [...document.querySelectorAll('[data-test=ref-people] thead th')].map(th => th.innerText.trim());
+        const month = head.findIndex(h => /^Месяц/.test(h));
+        const year = head.findIndex(h => /за год$/.test(h));
+        const rows = [...document.querySelectorAll('[data-test=ref-people] tbody tr')].map(r => [...r.children].map(c => c.innerText.trim()));
+        return { month, year, bad: rows.filter(r => !/ из /.test(r[month] ?? '') || !/ из 120\u00a0ч$/.test(r[year] ?? '')).length, first: rows[0] ? [rows[0][month], rows[0][year]] : [] };
+      });
+      await page.click('[data-test=policy-set][data-dept=mes]');
+      await page.waitForFunction(() => window.__game.store.get().ref.view?.policy.mes === 'finish', null, { timeout: 20_000 });
+      const finish = await page.evaluate(() => [...document.querySelectorAll('[data-test=ref-policy] [data-test=policy-mode]')].map(x => x.textContent)[3]);
+      const wmsOff = await page.evaluate(() => document.querySelector('[data-test=policy-set][data-dept=wms]')?.disabled ?? false);
+      await page.click('[data-test=policy-set][data-dept=mes]');
+      await page.waitForFunction(() => window.__game.store.get().ref.view?.policy.mes === 'need', null, { timeout: 20_000 });
+      for (let i = 0; i < 12; i++) {
+        const month = await page.evaluate(() => document.querySelector('[data-test=ref-calendar]')?.getAttribute('data-month'));
+        if (month === '2027-11') break;
+        await page.click('[data-test=cal-next]');
+      }
+      const nov = await page.evaluate(() => {
+        const el = document.querySelector('[data-test=ref-calendar]');
+        const days = [...(el?.querySelectorAll('[data-day]') ?? [])].map(x => x.getAttribute('data-day'));
+        return { month: el?.getAttribute('data-month'), head: el?.querySelector('.phead')?.textContent ?? '', days: [days[2], days[3], days[4], days[7]] };
+      });
+      await page.locator('[data-test=ref-calendar]').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: join(out, 'e2e-calendar.png') });
+      if (pc.month < 0 || pc.year < 0 || pc.bad > 0 || finish !== 'только закончить начатое' || !wmsOff || nov.month !== '2027-11' || nov.days.join() !== 'short,holiday,off,work' || !/норма 159\u00a0ч/.test(nov.head))
+        fail(`рабочее время в справочнике: столбцы ${pc.month}/${pc.year}, без итогов ${pc.bad}; политика «${finish}», склад погашен ${wmsOff}; календарь ${nov.month}: ${nov.days.join()} — «${nov.head}»`);
+      else ok(`рабочее время в справочнике: ${pc.first.join(' · ')}; политика производства — «${finish}» и обратно, склада — не ваше место; ${nov.head.replace(/(Раньше|Дальше)/g, '').trim()}: 3 — короткий, 4 — праздник, 5 — выходной`);
+    }
     // места (Б3в): площадка, участки и рабочие места; у каждого актива — свой инвентарный номер, у зон хранения — режим
     await page.click('[data-test=ref-tab][data-tab=places]');
     await frames(1);
@@ -924,6 +959,10 @@ try {
       adm: document.querySelector('[data-test=card-adm]')?.textContent ?? '',
       rows: [...document.querySelectorAll('[data-test=card-train] li')].map(li => li.textContent ?? ''),
       bad: document.querySelectorAll('[data-test=card-train] li.bad').length,
+      // табель месяца (Б4а): по дню на каждый день с 1-го по сегодня, итоги — отработано против нормы и сверхурочные года
+      days: [...document.querySelectorAll('[data-test=sheet-day]')].map(d => d.textContent ?? ''),
+      sheetRows: window.__game.store.get().card?.card?.sheet?.rows.length ?? -1,
+      sums: document.querySelector('[data-test=card-sheet]')?.nextElementSibling?.textContent ?? '',
       want: (() => {
         const db = window.__game.db;
         return [...Object.values(db.sops), ...Object.values(db.tests)].filter((x, i, all) => x.roles.includes('role.operator') && all.findIndex(y => y.doc.code === x.doc.code) === i).length;
@@ -933,6 +972,9 @@ try {
     if (!/таб\. №\u00a01009/.test(c.title) || !c.adm || c.rows.length !== c.want || c.bad > 0 || !c.rows.every(r => /^(SOP|TM)-\d{4}, ред\.\u00a0\d+: /.test(r)) || !fresh)
       fail(`карточка человека: «${c.title}», допуск «${c.adm}», строк обучения ${c.rows.length} из ${c.want}, без записи ${c.bad}: ${c.rows.slice(0, 2).join(' | ')}`);
     else ok(`карточка человека: «${c.title}» — ${c.adm}; строк обучения — ${c.rows.length}, новая запись — «${fresh}»`);
+    if (c.days.length < 1 || c.days.length !== c.sheetRows || !c.days.every(d => /^\d+(Я|Н|С|РВ|В)/.test(d)) || !/^Отработано: .+ из .+ по норме месяца/.test(c.sums) || !/С: .+ из 120\u00a0ч за год/.test(c.sums))
+      fail(`табель в карточке: дней ${c.days.length} из ${c.sheetRows}: ${c.days.slice(0, 3).join(' | ')}; итоги «${c.sums}»`);
+    else ok(`табель в карточке: ${c.days.length} дней — ${c.days.slice(0, 3).join(' · ')}…; ${c.sums}`);
     await page.screenshot({ path: join(out, 'e2e-person.png') });
     await page.keyboard.press('Escape');
   }

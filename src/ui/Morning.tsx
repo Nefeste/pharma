@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import type { PartType } from '../content/types';
 import { civilFromDays, momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
-import { dateText, dayText, durText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
+import { dateText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { LineSum, MainLoss, MorningView, SeatSum } from '../sim/report';
 import type { Thing } from '../sim/views';
 import { assetName, workName } from './assets';
@@ -342,6 +342,24 @@ export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningV
                 )),
               ]}
             />
+            <div className="mblock" data-test="morning-hours">
+              <div className="mhead">{T.morning.hours.title}</div>
+              <div>{v.hours.people > 0 ? T.morning.hours.yesterday(v.hours.people, durText(v.hours.sec), money(v.hours.pay)) : T.morning.hours.none}</div>
+              {v.hours.near.length > 0 ? (
+                <div className="muted">
+                  {T.morning.hours.near(
+                    v.hours.near.map(x => T.card.person(named(db?.roles[x.role]?.name, x.role), x.tab)).join(', '),
+                    v.hours.near.map(x => hText(x.sec)).join(', '),
+                    hText(v.hours.limit),
+                  )}
+                </div>
+              ) : null}
+              {v.hours.week.map(x => (
+                <div key={x.day} className="muted">
+                  {x.kind === 'holiday' ? T.morning.hours.holiday(dayText(x.day)) : T.morning.hours.short(dayText(x.day))}
+                </div>
+              ))}
+            </div>
             <Rows
               title={T.assets.morningTitle}
               rows={[

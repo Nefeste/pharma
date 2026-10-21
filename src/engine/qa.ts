@@ -130,7 +130,7 @@ function decide(db: ContentDb, s: PlantState, b: Batch, notices: Notice[]) {
     lot.expiry = fgExpiry(prodDay(db, s, b), momentOf(s.start, s.t).day, db.materials[lot.material].shelf);
     b.status = 'released';
     b.released = s.t;
-    toRzn(s, lot.id);
+    toRzn(db, s, lot.id);
     codesFee(db, s, b);
     stockChanged(s);
     notices.push({ kind: 'batchReleased', batch: b.id, lot: lot.id });

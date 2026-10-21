@@ -5,16 +5,17 @@
 // не ждёт, люди на смене заняты, инварианты — каждые сутки.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
-import { DAY, HOUR, isWorkday, momentOf } from '../../src/engine/core/calendar';
+import { addWorkdays, DAY, HOUR, isWorkday, momentOf } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
 import { check } from '../../src/engine/invariants';
 import { BATCH_HOUR } from '../../src/engine/mes';
 import { pairsFor } from '../../src/engine/partners';
-import { AHEAD, casesOf, positionOf } from '../../src/engine/planner';
+import { AHEAD, AHEAD_WORK, aheadMilli, casesOf, positionOf } from '../../src/engine/planner';
 import { planOf } from '../../src/engine/plant';
 import { takesAt } from '../../src/engine/staff';
 import { planUse, SUPPLY_HOUR, supplyPosition } from '../../src/engine/supply';
 import type { PlantState } from '../../src/engine/types';
+import { calOf } from '../../src/engine/workdays';
 
 const SC = 'scn.proto';
 const N20 = 'sku.paracetamol500.n20';
@@ -36,7 +37,7 @@ describe('коллега планирования', () => {
     const s = newPlant(db, { scenario: SC });
     const per = casesOf(db.recipes[RCP], db.skus[N20]);
     const n20 = sc.batches.filter(b => b.sku === N20).length;
-    expect(positionOf(db, s, N20, 28)).toEqual({ sku: N20, cases: n20 * per, ordered: 0, span: 0 });
+    expect(positionOf(db, s, N20, 28)).toEqual({ sku: N20, cases: n20 * per, ordered: 0, span: 0, work: 0 });
   });
 
   test('пока спроса не видно — позиции по очереди, на тот же день через две недели, в начале смены аппаратчиков', () => {
@@ -62,7 +63,7 @@ describe('коллега планирования', () => {
     // суббота и воскресенье — не рабочие
     until(s, 1, BATCH_HOUR);
     until(s, 1, BATCH_HOUR);
-    expect(isWorkday(dayOf(s))).toBe(false);
+    expect(isWorkday(calOf(db, s), dayOf(s))).toBe(false);
     expect(Object.keys(s.batches)).toHaveLength(n);
     // понедельник: на день через две недели игрок уже сдвинул задание — коллега его не дублирует
     const target = Math.floor(s.t / DAY) * DAY + DAY + AHEAD * DAY + BATCH_HOUR;
@@ -81,11 +82,12 @@ describe('коллега планирования', () => {
     pass(BATCH_HOUR - HOUR);
     const pos = sc.plan!.items.map(it => positionOf(sc0, s, it.sku, sc.plan!.window));
     expect(pos.every(p => p.span > 0)).toBe(true);
-    const need = pos.filter(p => p.cases * p.span < p.ordered * (AHEAD + sc.plan!.cover) * DAY);
+    // спрос — на рабочий день окна (Б4а): запас против рабочих дней пятидневки в двух неделях и ещё `cover` сутках
+    const need = pos.filter(p => p.cases * p.work * 1000 < p.ordered * aheadMilli(AHEAD + sc.plan!.cover));
     const before = Object.keys(s.batches).length;
     apply(sc0, s, { kind: 'advance', seconds: HOUR });
     const added = Object.values(s.batches).slice(before);
-    if (!isWorkday(dayOf(s)) || need.length === 0) expect(added).toHaveLength(0);
+    if (!isWorkday(calOf(db, s), dayOf(s)) || need.length === 0) expect(added).toHaveLength(0);
     else {
       const days = (p: (typeof pos)[number]) => p.cases / p.ordered;
       const want = need.reduce((a, b) => (days(b) < days(a) ? b : a)).sku;
@@ -104,15 +106,16 @@ describe('коллега планирования', () => {
     while (s.t < end) {
       // секунда до задания коллеги
       until(s, s.t % DAY < BATCH_HOUR ? 0 : 1, BATCH_HOUR - 1);
-      const at = s.t + 1 + AHEAD * DAY;
+      // через две рабочие недели (Б4а): в обычную неделю — тот же день недели, у праздников — дальше
+      const at = s.t + 1 + (addWorkdays(calOf(db, s), dayOf(s, s.t + 1), AHEAD_WORK) - dayOf(s, s.t + 1)) * DAY;
       const pos = p.items.map(it => positionOf(db, s, it.sku, p.window));
       const busy = Object.values(s.batches).some(b => dayOf(s, b.notBefore) === dayOf(s, at));
       const before = Object.keys(s.batches).length;
       apply(db, s, { kind: 'advance', seconds: 1 });
       const added = Object.values(s.batches).slice(before);
-      if (!isWorkday(dayOf(s)) || busy || pos.some(x => x.span === 0)) continue;
+      if (!isWorkday(calOf(db, s), dayOf(s)) || busy || pos.some(x => x.span === 0)) continue;
       seen.checked++;
-      const need = pos.filter(x => x.cases * x.span < x.ordered * (AHEAD + p.cover) * DAY);
+      const need = pos.filter(x => x.cases * x.work * 1000 < x.ordered * aheadMilli(AHEAD + p.cover));
       if (need.length === 0) {
         expect(added).toHaveLength(0);
         continue;
@@ -125,7 +128,7 @@ describe('коллега планирования', () => {
         .sort((a, b) => a.notBefore - b.notBefore || Number(a.id.slice(1)) - Number(b.id.slice(1)))
         .at(-1)!;
       const mine = need.filter(x => productOf(x.sku) === prev.product);
-      const hurry = need.some(x => productOf(x.sku) !== prev.product && x.cases * x.span < x.ordered * (AHEAD + p.urgent!) * DAY);
+      const hurry = need.some(x => productOf(x.sku) !== prev.product && x.cases * x.work * 1000 < x.ordered * aheadMilli(AHEAD + p.urgent!));
       const want = mine.length > 0 && !hurry ? neediest(mine) : neediest(need);
       expect(added.map(b => b.sku)).toEqual([want]);
       if (mine.length > 0 && !hurry && productOf(neediest(need)) !== prev.product) seen.kept++;
@@ -190,7 +193,7 @@ describe('год завода прототипа', () => {
       apply(db, s, { kind: 'advance', seconds: HOUR });
       if (s.t > 30 * DAY)
         for (const p of Object.values(s.people)) {
-          if (!takesAt(db, s.start, p.shift, s.t)) continue;
+          if (!takesAt(db, s, p.shift, s.t)) continue;
           shift[p.role] = (shift[p.role] ?? 0) + 1;
           if (p.task) busy[p.role] = (busy[p.role] ?? 0) + 1;
         }
@@ -201,13 +204,18 @@ describe('год завода прототипа', () => {
       for (const b of Object.values(s.batches)) if (b.status === 'waiting' && b.notBefore < s.t - 3 * DAY) bad.push(`задание ${b.id} ждёт материал`);
     }
     expect([...new Set(bad)].slice(0, 5)).toEqual([]);
-    // с третьей недели — не меньше четырёх упакованных серий за любые две недели подряд. По неделе мерить нельзя: серия
-    // переходит через границу недели от часов, на которые сдвинулась жизнь завода, — так обучение (Б3б) на зерне сценария
-    // дало 33-й неделе одну серию, 34-й — пять, а до Б3б при зерне 5 была неделя без упаковки; серий за год — те же
-    const weeks = new Map<number, number>();
-    for (const b of Object.values(s.batches)) if (b.pack?.end !== undefined) weeks.set(Math.floor(b.pack.end / (7 * DAY)), (weeks.get(Math.floor(b.pack.end / (7 * DAY))) ?? 0) + 1);
-    const week = Array.from({ length: 49 }, (_, i) => weeks.get(i + 2) ?? 0);
-    expect(Math.min(...week.slice(1).map((n, i) => n + week[i]))).toBeGreaterThanOrEqual(4);
+    // с третьей недели — не меньше четырёх упакованных серий за любые десять рабочих дней подряд (две рабочие недели).
+    // По неделе мерить нельзя: серия переходит через границу недели от часов, на которые сдвинулась жизнь завода, — так
+    // обучение (Б3б) на зерне сценария дало 33-й неделе одну серию, 34-й — пять, а до Б3б при зерне 5 была неделя без
+    // упаковки; серий за год — те же. По календарным неделям — тоже нельзя (Б4а): с 31 декабря по 10 января завод
+    // отдыхает
+    const cal = calOf(db, s);
+    const per = new Map<number, number>();
+    for (const b of Object.values(s.batches)) if (b.pack?.end !== undefined) per.set(dayOf(s, b.pack.end), (per.get(dayOf(s, b.pack.end)) ?? 0) + 1);
+    const work: number[] = [];
+    for (let d = dayOf(s, 14 * DAY); d < dayOf(s, end); d++) if (isWorkday(cal, d)) work.push(d);
+    const tens = work.slice(9).map((_, i) => work.slice(i, i + 10).reduce((n, d) => n + (per.get(d) ?? 0), 0));
+    expect(Math.min(...tens)).toBeGreaterThanOrEqual(4);
     // после пуска — недопоставок почти нет: за год больше девяти из десяти заказов — в срок полностью
     const orders = Object.values(s.orders).filter(o => o.status !== 'open');
     expect(orders.filter(o => o.status === 'shipped').length / orders.length).toBeGreaterThan(0.9);

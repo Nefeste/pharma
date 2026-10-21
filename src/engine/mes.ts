@@ -20,7 +20,7 @@ import { measure, within } from './quality';
 import { normal, roll, spread } from './random';
 import { containersByLot, createLot, free, knownAssay, nextId, putUnit, stockChanged } from './stock';
 import { addTask, release } from './tasks';
-import type { Batch, Command, Container, Deviation, Equipment, KitLine, Lot, Notice, PackJob, Part, Place, PlantEvent, PlantState, Room, StageRecord, Task, Unit } from './types';
+import type { Batch, Command, Container, Deviation, Equipment, KitLine, Lot, Notice, PackJob, Part, Place, PlantEvent, PlantState, Room, StageRecord, StageRun, Task, Unit } from './types';
 import { PRIO, WMS } from './wms';
 
 /** Роли производства. */
@@ -393,7 +393,24 @@ function tryStart(db: ContentDb, s: PlantState, b: Batch) {
   // после отказа — остаток работы без подготовки; у оборудования с узлами — событие начала работы (stageBegin)
   const work = b.run?.rest ?? duration(db, s, b, st, roomId);
   const worn = eqs.some(e => partsOf(s, e!.id).length > 0);
-  addTask(s, { kind: 'stage', roles: [st.staff.role], count: st.staff.n, from: roomPlace(plan, roomId), work, prio: MES_PRIO.stage, batch: b.id, ...(worn ? { begin: true } : {}) });
+  addTask(s, { kind: 'stage', roles: [st.staff.role], count: st.staff.n, from: roomPlace(plan, roomId), work, prio: MES_PRIO.stage, batch: b.id, norm: stageTaskNorm(db, b), ...(worn ? { begin: true } : {}) });
+}
+
+/**
+ * Норма и наибольшая длительность задачи стадии серии — раздатчику (Б4а): после отказа — за вычетом того, что стадия
+ * уже отработала (сам остаток — разыгранный, его завод не знает).
+ */
+export function stageTaskNorm(db: ContentDb, b: Batch): [number, number] {
+  const [nom, max] = stageNorm(db, b.recipe, db.recipes[b.recipe].stages[b.stage], b.mass);
+  const done = b.run?.rest !== undefined ? worked(b.run) : 0;
+  return [Math.max(0, nom - done), max - done];
+}
+
+/** Сколько стадия уже шла до последнего отказа, с: от начала работы до отказа без прошлых простоев. */
+function worked(run: StageRun): number {
+  let sec = run.stops[run.stops.length - 1].from - run.start;
+  for (const x of run.stops) if (x.to !== undefined) sec -= x.to - x.from;
+  return sec;
 }
 
 /** Узлы оборудования, на котором идёт стадия серии. */
@@ -514,6 +531,15 @@ export function nominal(db: ContentDb, recipe: Id, st: RecipeStage, mass: number
   if (t.mgPerHour) sec += Math.ceil((mass * HOUR) / t.mgPerHour);
   if (t.unitsPerHour) sec += Math.ceil((units * HOUR) / t.unitsPerHour);
   return sec;
+}
+
+/**
+ * Норма стадии по карте и наибольшая длительность (Б4а): нормальная величина движка — сумма двенадцати равномерных, она
+ * не уходит дальше 6 сигм, поэтому дольше нормы × (1 + 6 × разброс) стадия не длится.
+ */
+export function stageNorm(db: ContentDb, recipe: Id, st: RecipeStage, mass: number): [number, number] {
+  const sec = nominal(db, recipe, st, mass);
+  return [sec, Math.max(MIN, sec + Math.ceil((sec * st.time.spread * 6) / P_ONE))];
 }
 
 /** Длительность стадии по карте: номинальная, с разбросом. */

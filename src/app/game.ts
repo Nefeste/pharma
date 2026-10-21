@@ -9,7 +9,7 @@ import { DAY, momentOf } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
 import { planOf } from '../engine/plant';
 import type { Command, Notice } from '../engine/types';
-import { dayText, named, qtyText, T } from '../i18n';
+import { dayText, durText, hText, named, qtyText, T } from '../i18n';
 import { bakeLook, lodOf, packPeople } from '../render/bake';
 import { AT, camDetail, type Detail, ease, speedDetail, type Weights } from '../render/detail';
 import { type Layout, layoutOf, levelY } from '../render/layout';
@@ -353,6 +353,7 @@ export class Game {
       : n.kind === 'invStep' ? T.notices.invStep
       : n.kind === 'concluded' ? T.notices.concluded(n.fate)
       : n.kind === 'qualLost' ? T.notices.qualLost(named(this.db.roles[n.role]?.name, n.role), n.tab, n.doc)
+      : n.kind === 'overtimeLow' ? T.notices.overtimeLow(named(this.db.roles[n.role]?.name, n.role), n.tab, durText(n.left), hText(this.db.profiles[this.scenario.profile].payroll.overtime.year))
       : n.kind === 'assetExpired' ? T.notices.assetExpired(workName(n, n.work), assetClass(n), T.assets.inv(n.inv))
       : n.kind === 'pairSuspended' ? T.notices.pairSuspended(named(this.db.suppliers[n.supplier]?.name, n.supplier), named(this.db.makers[n.maker]?.name, n.maker))
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
@@ -709,6 +710,7 @@ export class Game {
       this.sendViews();
     },
     rush: lot => this.client.command({ kind: 'rush', lot, by: 'player' }),
+    overtime: (dept, mode) => this.client.command({ kind: 'overtime', dept, mode, by: 'player' }),
     setCashPage: page => {
       this.store.set({ cash: { ...this.store.get().cash, page } });
       this.sendViews();

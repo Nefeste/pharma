@@ -123,7 +123,10 @@ describe('карточка', () => {
     const punches = Object.values(s.parts).find(x => x.machine === 'press-1' && x.type === 'punches')!;
     expect(punches.done).toBeGreaterThan(0);
     expect(e.parts.find(p => p.type === 'punches')!.wear).toBe(wearAt(partType(db, punches), punches.done));
-    expect(e.history.length).toBe(s.maintLog.filter(x => x.machine === 'press-1').length);
+    // журнал актива (Б3в): отказы, ремонты и замены — и записи квалификации
+    expect(e.history.filter(h => h.k === 'maint').length).toBe(s.maintLog.filter(x => x.machine === 'press-1').length);
+    expect(e.history.filter(h => h.k === 'rec').length).toBe(s.assets['press-1'].recs.length);
+    expect(e.asset?.inv).toBe(s.assets['press-1'].inv);
     const m = cardView(db, s, { kind: 'machine', line: 0, k: 0 }).card;
     expect(m.kind).toBe('machine');
     const p = cardView(db, s, { kind: 'person', n: 1 }).card;

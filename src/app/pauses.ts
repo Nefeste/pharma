@@ -9,17 +9,18 @@ import type { Thing } from '../sim/views';
 import type { Keep } from './preset';
 
 /**
- * Автопаузы прототипа — по порядку меню. Из событий сотрудника есть только потеря допуска (Б3б); жалобы, совещания S&OP и
- * инспекции в прототипе нет.
+ * Автопаузы прототипа — по порядку меню. Из событий сотрудника есть только потеря допуска (Б3б); срок квалификации или
+ * калибровки актива (Б3в); жалобы, совещания S&OP и инспекции в прототипе нет.
  */
-export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'morning'] as const;
+export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'assetExpired', 'morning'] as const;
 export type Pause = (typeof PAUSES)[number];
 
 /**
- * Извещения движка каждой автопаузы. Результат вне спецификации — расследование растворения и партия, отклонённая
- * лабораторией. Отклонения в прототипе не делятся на критические и прочие (геймдизайн, §6.4): встаёт на каждом.
+ * Ключи извещений движка каждой автопаузы (`stopKey`). Результат вне спецификации — расследование растворения и партия,
+ * отклонённая лабораторией. Отклонения в прототипе не делятся на критические и прочие (геймдизайн, §6.4): встаёт на каждом.
+ * Срок актива (Б3в) — по роду актива: чьё это дело, решает род.
  */
-export const PAUSE_NOTICES: Record<Pause, readonly Notice['kind'][]> = {
+export const PAUSE_NOTICES: Record<Pause, readonly string[]> = {
   failure: ['failure'],
   oos: ['investigation', 'lotRejected'],
   deviation: ['deviation'],
@@ -27,13 +28,14 @@ export const PAUSE_NOTICES: Record<Pause, readonly Notice['kind'][]> = {
   orderRisk: ['orderRisk'],
   materialLate: ['materialLate'],
   qualLost: ['qualLost'],
+  assetExpired: ['assetExpired/equipment', 'assetExpired/machine', 'assetExpired/ipc', 'assetExpired/lab', 'assetExpired/sensor'],
   morning: ['morning'],
 };
 
 /**
  * Чьё это дело (геймдизайн, §29.2): производство отвечает на поломку, OOS и опоздавшее сырьё; качество — на OOS,
  * отклонения и потерю допуска: обучение ведёт ООК (Б3б); снабжение меряют тревогами «материал не пришёл к серии»;
- * коммерцию — заказами в срок. Планёрка — у всех.
+ * коммерцию — заказами в срок. Срок актива (Б3в) — у трёх постов, у каждого свой род (`KEY_SEATS`). Планёрка — у всех.
  */
 export const PAUSE_SEATS: Record<Pause, readonly SeatId[] | 'all'> = {
   failure: ['production'],
@@ -43,7 +45,20 @@ export const PAUSE_SEATS: Record<Pause, readonly SeatId[] | 'all'> = {
   orderRisk: ['commerce'],
   materialLate: ['supply', 'production'],
   qualLost: ['quality'],
+  assetExpired: ['production', 'quality', 'supply'],
   morning: 'all',
+};
+
+/**
+ * Чьё дело ключ, если не всей автопаузы (Б3в): срок оборудования таблеток, машины линии и прибора МОК — производства,
+ * прибора лаборатории — качества и технологии, датчика склада — снабжения и склада.
+ */
+export const KEY_SEATS: Partial<Record<string, readonly SeatId[]>> = {
+  'assetExpired/equipment': ['production'],
+  'assetExpired/machine': ['production'],
+  'assetExpired/ipc': ['production'],
+  'assetExpired/lab': ['quality'],
+  'assetExpired/sensor': ['supply'],
 };
 
 /** Ключ в хранилище окна: отключённые автопаузы — новая автопауза в следующей версии придёт включённой. */
@@ -52,9 +67,9 @@ export const PAUSE_KEY = 'pharma.pauses';
 /** «До события» без события встаёт само через столько игровых секунд (гипотеза). */
 export const EVENT_CAP = 30 * DAY;
 
-/** Автопауза извещения; не автопауза — `undefined`. */
-export function pauseOf(kind: Notice['kind']): Pause | undefined {
-  return PAUSES.find(p => PAUSE_NOTICES[p].includes(kind));
+/** Автопауза ключа извещения (`stopKey`); не автопауза — `undefined`. */
+export function pauseOf(key: string): Pause | undefined {
+  return PAUSES.find(p => PAUSE_NOTICES[p].includes(key));
 }
 
 /** Дело ли это места игрока: у всех, директор или место ещё не выбрано — да. */
@@ -63,9 +78,13 @@ export function mine(p: Pause, seats: readonly SeatId[] | undefined): boolean {
   return who === 'all' || !seats || seats.includes('director') || who.some(x => seats.includes(x));
 }
 
-/** Виды извещений, на которых мир встаёт: автопауза включена и это дело места игрока. */
-export function stopKinds(off: readonly Pause[], seats: readonly SeatId[] | undefined): Notice['kind'][] {
-  return PAUSES.filter(p => !off.includes(p) && mine(p, seats)).flatMap(p => PAUSE_NOTICES[p]);
+/** Ключи извещений, на которых мир встаёт: автопауза включена и это дело места игрока; у ключа со своим делом — его. */
+export function stopKinds(off: readonly Pause[], seats: readonly SeatId[] | undefined): string[] {
+  const own = (k: string) => {
+    const who = KEY_SEATS[k];
+    return !who || !seats || seats.includes('director') || who.some(x => seats.includes(x));
+  };
+  return PAUSES.filter(p => !off.includes(p) && mine(p, seats)).flatMap(p => PAUSE_NOTICES[p].filter(own));
 }
 
 /** Отключённые автопаузы из хранилища окна; нет, не прочитать или чужое — ничего не отключено. */
@@ -88,7 +107,7 @@ export function keepOff(keep: Keep | undefined, off: readonly Pause[]) {
 }
 
 /** Куда ведёт щелчок по извещению: вещь на полу, окно или доска расследования. */
-export type Go = { thing: Thing } | { panel: 'gantt' | 'morning' | 'lab' } | { inv: string };
+export type Go = { thing: Thing } | { panel: 'gantt' | 'morning' | 'lab' | 'ref' } | { inv: string };
 
 /** Машина линии или оборудование участка по имени в плане — вещь для карточки. */
 export function machineThing(plant: Plant, id: string): Thing | undefined {
@@ -125,6 +144,11 @@ export function goOf(plant: Plant, n: Notice): Go | undefined {
       return { inv: n.id };
     case 'qualLost':
       return { thing: { kind: 'person', n: Number(n.person.slice(1)) } };
+    case 'assetExpired': {
+      // машина и оборудование — к ним; прибор и датчик — к справочнику, вкладке «Места»
+      const thing = machineThing(plant, n.asset);
+      return thing ? { thing } : { panel: 'ref' };
+    }
     default:
       return undefined;
   }

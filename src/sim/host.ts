@@ -11,6 +11,7 @@ import { fromSave, toSave } from '../engine/save';
 import type { Command, Notice, PlantState } from '../engine/types';
 import { Packer } from './pack';
 import type { FromSim, ToSim } from './protocol';
+import { stopKey } from './protocol';
 import { ViewDesk } from './views';
 
 /** Счёт до `ms` от сейчас: после события, на котором время вышло, кадр кончается (одно событие — всегда, `catchUp`). */
@@ -79,9 +80,9 @@ export function createSim(db: ContentDb): SimHost {
             if (!s) return { kind: 'error', message: 'no plant' };
             owed += msg.seconds;
             const fine = budget(msg.budgetMs);
-            // автопауза (Б2а): извещение вида из `stop` — и дальше этого события не жить
+            // автопауза (Б2а): извещение с ключом из `stop` — и дальше этого события не жить
             const stop = new Set(msg.stop ?? []);
-            const hit = (list: readonly Notice[]) => stop.size > 0 && list.some(n => stop.has(n.kind));
+            const hit = (list: readonly Notice[]) => stop.size > 0 && list.some(n => stop.has(stopKey(n)));
             const more: More = list => !hit(list) && fine();
             const notices: Notice[] = [];
             if (s.until !== undefined) notices.push(...catchUp(db, s, more));

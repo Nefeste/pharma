@@ -1,0 +1,6 @@
+id: reg.cool
+name: { ru: В прохладном месте, en: In a cool place }
+temp: [8, 15]
+rh: 65
+source: [gf-15]
+review: draft

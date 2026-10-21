@@ -133,6 +133,7 @@ describe('сохранение и база', () => {
       staff: [{ role: 'role.operator', shift: 'shift.a', skill: 3, n: 1 }],
       vehicles: [],
       training: { ahead: 14, check: 15, spread: 0, tab: 1 },
+      assets: { ahead: 14, hours: [9, 17], accept: 15, inv: 1 },
       ...(seats === undefined ? {} : { seats }),
     });
     expect(scenario.safeParse(raw(['director'])).success).toBe(true);

@@ -1,9 +1,11 @@
 // Производство (docs/specs/2026-10-engine.md, 1в, 1г; геймдизайн, §5.3–5.5): задание на серию, резерв по FEFO, комплект к
 // шлюзу, стадии по технологической карте — помещение, оборудование, люди; чистота и уборка; режимы; истинные показатели
 // и причины; МОК; балк в карантине; задание на упаковку и комплект упаковочных материалов к линии (саму линию ведёт
-// line.ts). Стадия с узлами под износом (1е) останавливается на отказе узла и продолжается после ремонта (maint.ts).
+// line.ts). Стадия с узлами под износом (1е) останавливается на отказе узла и продолжается после ремонта (maint.ts). Стадия
+// начинается только на пригодном оборудовании и с пригодными приборами своих МОК (Б3в, assets.ts).
 // Задачи раздаёт раздатчик (tasks.ts); здесь — когда их заводить и что они делают, когда кончаются.
 import { ATTRS, type Attr, type CauseDriver, type ContentDb, type Id, type RecipeStage } from '../content/types';
+import { stageUnfit } from './assets';
 import { batchNo, issueNo } from './batchno';
 import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
@@ -357,7 +359,7 @@ export function readyFor(room: Room, product: Id, now: number): boolean {
 
 /**
  * Следующая стадия серии: помещение её типа — чистое для продукта (или серия уже в нём), оборудование стадии в нём —
- * свободно. Иначе стадия ждёт; грязное или просроченное помещение уходит в уборку.
+ * свободно и пригодно, приборы МОК — пригодны (Б3в). Иначе стадия ждёт; грязное или просроченное помещение уходит в уборку.
  */
 function tryStart(db: ContentDb, s: PlantState, b: Batch) {
   const r = db.recipes[b.recipe];
@@ -380,8 +382,10 @@ function tryStart(db: ContentDb, s: PlantState, b: Batch) {
     }
   }
   const eqs = st.equipment.map(type => Object.values(s.equipment).find(e => e.room === roomId && e.type === type && (!e.batch || e.batch === b.id)));
-  // неисправное оборудование выведено из работы до устранения (GMP ЕАЭС, ч. I, п. 3.44): стадия ждёт ремонта
+  // неисправное оборудование выведено из работы до устранения (GMP ЕАЭС, ч. I, п. 3.44): стадия ждёт ремонта; без
+  // действующей квалификации или калибровки, с подрядчиком — ждёт, пока актив снова пригоден (Б3в)
   if (eqs.some(e => !e || blocked(s, e.id))) return;
+  if (stageUnfit(db, s, st, roomId)) return;
   room.status = 'busy';
   room.batch = b.id;
   b.room = roomId;

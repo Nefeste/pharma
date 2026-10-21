@@ -16,6 +16,7 @@ import { shiftEnd } from '../engine/staff';
 import type { MachineState, PlantState } from '../engine/types';
 import { type EqState, eqStateOf } from './pack';
 import { type Admission, admissionOf, type Matrix, matrix } from './people';
+import { type PlacesView, placesView } from './places';
 
 export interface RefQuery {
   view: 'ref';
@@ -213,6 +214,8 @@ export interface RefView {
   matrix: Matrix;
   suppliers: RefSupplier[];
   customers: RefCustomer[];
+  /** места и оборудование (Б3в): площадка, участки, рабочие места, активы с инвентарными номерами и сроками */
+  places: PlacesView;
 }
 
 function partsOf(db: ContentDb, s: PlantState, machine: string): RefPart[] {
@@ -304,7 +307,7 @@ export function refView(db: ContentDb, s: PlantState): RefView {
       room: roomType(e.room),
       cleaning: { ...t.cleaning },
       parts: partsOf(db, s, e.id),
-      state: eqStateOf(s, e.id),
+      state: eqStateOf(db, s, e.id),
       ...(b && s.batches[b] ? { batch: batchNo(s.batches[b].code) } : {}),
     };
   });
@@ -374,5 +377,5 @@ export function refView(db: ContentDb, s: PlantState): RefView {
       .map(sp => ({ spare: sp.id, price: sp.price, lead: [...sp.lead] as [number, number] })),
   }));
   const customers = Object.values(db.customers).map(c => ({ id: c.id, payDays: c.payDays, days: [...c.order.days], hour: c.order.hour, lead: [...c.order.lead] as [number, number], minShelf: c.minShelf }));
-  return { view: 'ref', products, materials, docs, recipes, equipment, lines, methods, instruments, roles, shifts, people: staff, matrix: matrix(db, s), suppliers, customers };
+  return { view: 'ref', products, materials, docs, recipes, equipment, lines, methods, instruments, roles, shifts, people: staff, matrix: matrix(db, s), suppliers, customers, places: placesView(db, s) };
 }

@@ -10,6 +10,7 @@ import { MIN, momentOf } from './core/calendar';
 import { inForce } from './docs';
 import { incidentMeasured, invTestDone, modelFor, openInvestigation } from './investigation';
 import { defect } from './lean';
+import { coldOf } from './places';
 import { type PlantPlan, planOf } from './plant';
 import { measure, within } from './quality';
 import { containersByLot, nextId, putUnit, setLotStatus, stockChanged, unitsOfLot } from './stock';
@@ -155,7 +156,7 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       }
       sm.left = sm.left.filter(id => id !== u.id);
       // из пробоотборной — обратно в карантин; балк, отобранный на месте, остаётся где стоит
-      if (u.where.kind === 'slot') addTask(s, { kind: 'fromSampling', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from: t.from, toKind: m.storage === 'cold' ? 'cold' : 'quarantine', work: 0, prio: prioOf(s, 'fromSampling', { lot: lot.id }), lot: lot.id });
+      if (u.where.kind === 'slot') addTask(s, { kind: 'fromSampling', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from: t.from, toKind: coldOf(db, s.plant, m.id) ? 'cold' : 'quarantine', work: 0, prio: prioOf(s, 'fromSampling', { lot: lot.id }), lot: lot.id });
       if (sm.left.length === 0) {
         sm.taken = s.t;
         setLotStatus(s, lot, 'sampled');
@@ -273,7 +274,7 @@ export function settleLot(db: ContentDb, s: PlantState, lot: Lot, u: Unit) {
   const at = plan.slot[u.where.id];
   const from: Place = { kind: 'slot', id: at.id };
   if (lot.status === 'released') {
-    if (at.kind === 'storage' || db.materials[lot.material].storage === 'cold') return;
+    if (at.kind === 'storage' || coldOf(db, s.plant, lot.material)) return;
     const gate = plan.byKind.staging[0];
     addTask(s, { kind: 'putaway', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from, toKind: 'storage', near: { x: gate.x, z: gate.z }, work: 0, prio: PRIO.putaway, lot: lot.id });
   } else if (at.kind !== 'rejected') {

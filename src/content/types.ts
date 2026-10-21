@@ -98,7 +98,8 @@ export type SeatId = (typeof SEATS)[number];
  * остатков, стадия серии, уборка помещения. Линия: смена у линии, переналадка, очистка линии и её проверка, балк к линии.
  * Качество: проверка ГП и досье, решение уполномоченного лица. Отгрузка: паллета в экспедицию, отбор ящиков на паллету
  * заказа, погрузка в фуру покупателя. Техслужба: ремонт после отказа или замена узла по плану. Расследование (часть 4):
- * шаг и замена сита калибратора по решению. Обучение (Б3б): изучить документ и проверка знаний.
+ * шаг и замена сита калибратора по решению. Обучение (Б3б): изучить документ и проверка знаний. Места и оборудование
+ * (Б3в): приёмка работы подрядчика — калибровки, поверки или квалификации.
  */
 export const TASK_KINDS = [
   'unload',
@@ -133,6 +134,7 @@ export const TASK_KINDS = [
   'invFix',
   'train',
   'trainCheck',
+  'accept',
 ] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];
 
@@ -210,6 +212,11 @@ export interface Scenario {
    * знаний, с; на старте дни обучения — до `spread` суток назад; табельные номера — по порядку приёма с `tab`
    */
   training: { ahead: number; check: number; spread: number; tab: number };
+  /**
+   * места и оборудование (Б3в): за сколько суток до конца записи коллега техслужбы назначает визит подрядчика; рабочие
+   * часы подрядчика — секунды от полуночи, с и до; приёмка его работы, с; инвентарные номера — по порядку мест с `inv`
+   */
+  assets: { ahead: number; hours: [number, number]; accept: number; inv: number };
   /** происшествие прототипа (часть 4): у задания на серию — неисправность по жребию зерна */
   incident?: IncidentDef;
 }
@@ -327,8 +334,8 @@ export interface Material {
   unit: 'mass' | 'pcs';
   /** в чём приходит */
   container: Id;
-  /** условия хранения: склад или холодная камера */
-  storage: 'room' | 'cold';
+  /** режим хранения, который материал требует (Б3в): запись `content/regimes/` */
+  storage: Id;
   /** срок годности или повторных испытаний, месяцев */
   shelf: number;
   /** навеска пересчитывается на фактическое содержание (АФС) */
@@ -343,6 +350,19 @@ export interface Material {
   sample: number;
   source?: string[];
   review?: Review;
+}
+
+/**
+ * Режим хранения (Б3в; ГФ XV, ОФС.1.1.0010): слова этикетки, диапазон температуры — десятые °C, наибольшая средняя
+ * относительная влажность — доли 1/10 000. Его требует материал и держит зона хранения плана.
+ */
+export interface Regime {
+  id: Id;
+  name: Text;
+  temp: [number, number];
+  rh: number;
+  source: string[];
+  review: Review;
 }
 
 /** Вид груза для отрисовки (src/render/loads.ts). */
@@ -422,12 +442,43 @@ export type ZoneKind = 'receiving' | 'quarantine' | 'cold' | 'rejected' | 'fgQua
 export type DoorKind = 'door' | 'double' | 'gate' | 'dock' | 'hatch';
 
 /**
+ * Рабочее место (Б3в; ролевая иерархия оборудования ISA-95): технологическая ячейка, производственная линия, зона хранения
+ * — с помещениями хранения и режимом, который она держит, — или лаборатория. Код — код участка, дефис и две цифры.
+ */
+export interface WorkCenter {
+  code: string;
+  kind: 'cell' | 'line' | 'storage' | 'lab';
+  name: Text;
+  rooms?: string[];
+  regime?: Id;
+}
+
+/** Участок площадки (Б3в): код — две латинские буквы; помещения, которым он служит; его рабочие места. */
+export interface Area {
+  code: string;
+  name: Text;
+  rooms: string[];
+  centers: WorkCenter[];
+}
+
+/** Прибор вне лаборатории (Б3в): прибор МОК у оборудования стадии или датчик условий хранения — вид, помещение, место. */
+export interface PlantMeter {
+  id: string;
+  type: Id;
+  room: string;
+  place: string;
+}
+
+/**
  * План завода прототипа (docs/specs/2026-10-engine.md, «План завода прототипа»; docs/specs/2026-10-view.md, 2а). Координаты
  * — сантиметры участка; клетка — 100 см. Здание и помещения — прямоугольники со стенами по краю: соседние помещения делят
  * общую стену.
  */
 export interface Plant {
   id: Id;
+  /** площадка и её участки (Б3в): иерархия мест ISA-95 */
+  site: { code: string; name: Text };
+  areas: Area[];
   building: [number, number, number, number];
   /** рампа — точка на клетке ворот рампы в стене здания */
   docks: { id: string; kind: 'in' | 'out'; x: number; z: number }[];
@@ -442,15 +493,18 @@ export interface Plant {
    * для материалов (внутренняя дверь шлюза для материалов) — люди через неё не ходят
    */
   doors: { cell: [number, number]; len: number; along: 'x' | 'z'; kind: DoorKind; materials?: boolean }[];
-  /** приборы лаборатории: вид и помещение */
-  instruments: { id: string; type: Id; room: string }[];
-  /** оборудование производства: вид, помещение, середина следа и поворот на четверти */
-  equipment: { id: string; type: Id; room: string; at: [number, number]; turn: number }[];
+  /** приборы лаборатории: вид, помещение, код места (Б3в) */
+  instruments: { id: string; type: Id; room: string; place: string }[];
+  /** приборы МОК у оборудования стадий и датчики условий хранения (Б3в) */
+  ipc: PlantMeter[];
+  sensors: PlantMeter[];
+  /** оборудование производства: вид, помещение, середина следа, поворот на четверти и код места */
+  equipment: { id: string; type: Id; room: string; at: [number, number]; turn: number; place: string }[];
   /**
    * упаковочные линии: помещение, зона паллетирования на выходе, машины по порядку; после машины — накопитель на
    * `buffer` её штук (у последней — нет)
    */
-  lines: { id: string; room: string; out: string; machines: { id: string; type: Id; buffer?: number; at: [number, number]; turn: number }[] }[];
+  lines: { id: string; room: string; out: string; machines: { id: string; type: Id; buffer?: number; at: [number, number]; turn: number; place: string }[] }[];
   /** точки: стоянка техники, вход персонала */
   points: { park: [number, number]; entrance: [number, number] };
   /** посты ожидания по ролям: где человек ждёт задачи — после прихода на смену и после каждой задачи */
@@ -459,10 +513,31 @@ export interface Plant {
   energy: { hvac: { D: number; cnc: number }; base: number };
 }
 
-/** Вид прибора лаборатории (геймдизайн, §6.2); экземпляры — в плане завода. */
+/**
+ * Работа подрядчика по классу (Б3в; геймдизайн, §7.2): повторная квалификация или калибровка — через сколько месяцев
+ * снова, сколько идёт, с, и цена — копейки без НДС; как она называется в окне; `verify` — у датчиков условий хранения она
+ * называется поверкой.
+ */
+export interface AssetWork {
+  every: number;
+  work: number;
+  price: number;
+  name: Text;
+  verify?: true;
+}
+
+/**
+ * Вид прибора (геймдизайн, §6.2): лаборатории, МОК или датчик условий хранения; экземпляры — в плане завода. Прибор —
+ * средство измерений: калибровка у него всегда (Б3в), квалификация — если нужна; критический — для перечня досье площадки.
+ */
 export interface InstrumentType {
   id: Id;
   name: Text;
+  cal: AssetWork;
+  qual?: AssetWork;
+  critical?: true;
+  source?: string[];
+  review?: Review;
 }
 
 /** Методика испытания (геймдизайн, §6.2); по ней учатся, как по процедуре (Б3б). */
@@ -573,6 +648,10 @@ export interface EquipmentType {
   /** мощность, пока идёт стадия, Вт */
   kw: number;
   parts: PartType[];
+  /** повторная квалификация и калибровка подрядчиком (Б3в); критическое — для перечня досье площадки */
+  qual?: AssetWork;
+  cal?: AssetWork;
+  critical?: true;
   source?: string[];
   review?: Review;
 }
@@ -741,6 +820,10 @@ export interface Machine {
   parts: PartType[];
   /** заминка — микроостановка, которая портит `cartons` пачек с вложениями; доля 1/10 000 испорченного не записывается */
   jam?: { cartons: number; uncounted: number };
+  /** повторная квалификация подрядчиком (Б3в); критическая — для перечня досье площадки */
+  qual?: AssetWork;
+  cal?: AssetWork;
+  critical?: true;
   source?: string[];
   review?: Review;
 }
@@ -823,4 +906,5 @@ export interface ContentDb {
   customers: Record<Id, Customer>;
   spares: Record<Id, Spare>;
   sops: Record<Id, Sop>;
+  regimes: Record<Id, Regime>;
 }

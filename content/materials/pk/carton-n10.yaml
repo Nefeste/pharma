@@ -5,7 +5,7 @@ code: 300006
 name: { ru: Пачка «Парацетамол 500 мг №10», en: Carton «Paracetamol 500 mg No. 10» }
 unit: pcs
 container: cnt.box.cartons
-storage: room
+storage: reg.ccrt
 shelf: 60
 spec: spec.mat.pk.carton-n10
 bad: { attr: appearance }

@@ -19,8 +19,11 @@ import { nextId, setLotStatus, stockChanged, unitsOfLot } from './stock';
 import { addTask } from './tasks';
 import { type Batch, type Command, INSTRUMENT_FAULTS, type InstrumentFault, type Investigation, type LabTest, type Lot, type Notice, type Place, type PlantState, type StageRecord, type Task } from './types';
 
-/** Номер неисправности прибора в числах улики — для слов окна: 0–3 — сбой, 4 — просроченная калибровка. */
-export const FAULT_NO: Record<InstrumentFault, number> = { height: 0, centering: 1, deaeration: 2, vibration: 3, overdue: 4 };
+/**
+ * Номер неисправности прибора в числах улики — для слов окна: 0–3 — сбой, 4 — описка в журнале прибора (до Б3в — 4 значило
+ * просроченную калибровку: прибор с вышедшим сроком в работу теперь не берут).
+ */
+export const FAULT_NO: Record<InstrumentFault, number> = { height: 0, centering: 1, deaeration: 2, vibration: 3, typo: 4 };
 
 /** Задачи расследования — выше обычной работы ООК (гипотеза): серия ждёт их. */
 export const INV_PRIO = 27;
@@ -146,9 +149,10 @@ export function incidentMeasured(db: ContentDb, s: PlantState, q: LabTest) {
     const r = f.read;
     const by = inc.fired[f.id];
     if (!('mark' in r) || !by) continue;
-    // от корня — ошибка, исказившая результат; фон — описка или просроченная калибровка, на результат не повлиявшие
+    // от корня — ошибка, исказившая результат; фон — описка в записи испытания или в журнале прибора, на результат не
+    // повлиявшая (Б3в: просроченной калибровки быть не может — такой прибор в работу не берут)
     if (r.mark === 'calc') q.mark = by === 'leak' ? 'typo' : 'calc';
-    else if (q.inst) s.instruments[q.inst].check = by === 'leak' ? 'overdue' : roll(s, 'incident/instrument', x => x.pick(INSTRUMENT_FAULTS));
+    else if (q.inst) s.instruments[q.inst].check = by === 'leak' ? 'typo' : roll(s, 'incident/instrument', x => x.pick(INSTRUMENT_FAULTS));
   }
 }
 
@@ -394,11 +398,11 @@ export function labProven(db: ContentDb, inv: Investigation): boolean {
   const m = modelOf(db, inv);
   const readOf = (f: string) => m.findings.find(x => x.id === f)?.read;
   // лабораторная причина — событие испытания, которое могло дать этот результат: ошибка пересчёта или сбой прибора;
-  // описка и просроченная калибровка его не объясняют
+  // описки в записи и в журнале прибора его не объясняют
   const cause = inv.obs.some(o => {
     const r = readOf(o.f);
     if (!o.shown || !r || !('mark' in r) || !o.data) return false;
-    return r.mark === 'calc' ? o.data[0] === 1 : o.data[0] !== FAULT_NO.overdue;
+    return r.mark === 'calc' ? o.data[0] === 1 : o.data[0] !== FAULT_NO.typo;
   });
   return cause && inv.obs.some(o => o.shown && !!readOf(o.f) && 'retest' in readOf(o.f)!);
 }

@@ -4,6 +4,7 @@
 // по своим часам.
 import { durText, named, num, T } from '../i18n';
 import { NOW_DEPTS, type NowRow } from '../sim/now';
+import { assetClass, workName } from './assets';
 import { db } from './db';
 import { TaskIcon } from './icons';
 import type { Actions, Hud } from './store';
@@ -31,6 +32,13 @@ export function rowTitle(r: NowRow): string {
       return T.now.repair(!!r.planned, partName(r.machine, r.part), machineName(r.machine));
     case 'truck':
       return r.customer ? T.now.truckOut(named(db?.customers[r.customer]?.name, r.customer)) : T.now.truckIn(named(db?.suppliers[r.supplier ?? '']?.name, r.supplier));
+    case 'visit':
+    case 'accept': {
+      // работа подрядчика и её приёмка (Б3в): «Калибровка весов · Весы с ламинарным боксом, инв. № 00000108»
+      const a = r.family && r.machine ? { family: r.family, type: r.machine } : undefined;
+      const what = a && r.inv !== undefined ? T.now.visit(r.work ? workName(a, r.work) : T.tasks.accept, assetClass(a), T.assets.inv(r.inv)) : '';
+      return r.kind === 'accept' ? [T.tasks.accept, what].filter(Boolean).join(' · ') : what;
+    }
     default:
       return [T.tasks[r.kind] ?? r.kind, batch || lot, r.line ? T.now.line(r.line) : ''].filter(Boolean).join(' · ');
   }
@@ -42,7 +50,7 @@ function rowWho(r: NowRow): string {
   for (const p of r.people) roles.set(p.role, (roles.get(p.role) ?? 0) + 1);
   const who = [...roles].map(([role, n]) => `${named(db?.roles[role]?.name, role)} × ${n}`).join(', ');
   const where = r.room ? (T.roomTypes[r.room] ?? r.room) : r.inst ? named(db?.instruments[r.inst]?.name, r.inst) : '';
-  return [where, who || (r.kind === 'test' && r.phase === 'run' ? '' : T.now.nobody)].filter(Boolean).join(' · ');
+  return [where, who || (r.kind === 'test' && r.phase === 'run' ? '' : r.kind === 'visit' ? T.now.contractor : T.now.nobody)].filter(Boolean).join(' · ');
 }
 
 /** Сколько прошло и по норме — по часам окна; упаковка — пачки и скорость; люди ещё идут — «идут к месту работы». */

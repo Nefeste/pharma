@@ -1,2 +1,9 @@
 id: inst.dissolution
 name: { ru: Прибор «Растворение», en: Dissolution tester }
+# калибровка (Б3в; геймдизайн, §7.2): снова — через столько месяцев, часов работы подрядчика и цена, ₽ без НДС;
+# записи калибровки и квалификации приборов — в ОКК (GMP ЕАЭС, ч. I, пп. 3.41, 6.7 iii). Часы и цены — гипотезы
+qual: { every: 36, hours: 6, price: 60000, name: { ru: Квалификация прибора растворения, en: Dissolution tester qualification } }
+cal: { every: 12, hours: 3, price: 20000, name: { ru: Калибровка прибора растворения, en: Dissolution tester calibration } }
+critical: true
+source: [gmp-eaeu]
+review: draft

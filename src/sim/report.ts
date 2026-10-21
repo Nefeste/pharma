@@ -9,8 +9,9 @@ import { MORNING } from '../engine/engine';
 import { AREA, type Oee, oee, rhythm, shiftsOfDay, type Switches, switchesOf } from '../engine/lean';
 import { orderRisks, type OrderRisk } from '../engine/market';
 import { planOf } from '../engine/plant';
-import type { Batch, CashItem, DayLoss, Deviation, LineDay, MachineTimes, PlantState, TaskKind, WaitCause } from '../engine/types';
+import type { AssetFamily, Batch, CashItem, DayLoss, Deviation, LineDay, MachineTimes, PlantState, TaskKind, WaitCause } from '../engine/types';
 import { type TrainSum, trainSum } from './people';
+import { type AssetSum, assetSum } from './places';
 import type { Thing } from './views';
 
 /** Планёрка в 08:00 суток `day` (номер дня от 1970-01-01). */
@@ -148,6 +149,8 @@ export interface MorningView {
   risk: RiskRow[];
   /** допуски сейчас (Б3б): кто потеряет допуск в срок предупреждения и кто уже не допущен */
   training: TrainSum;
+  /** калибровка и квалификация (Б3в): визиты подрядчика сегодня, что кончится в срок предупреждения, что просрочено */
+  assets: AssetSum;
   cash: { balance: number; day: number; next?: { due: number; item: CashItem; sum: number } };
   /** ваше место (3е): итог каждого взятого места за время на нём */
   seats: SeatSum[];
@@ -329,6 +332,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     broken,
     risk: orderRisks(db, s),
     training: trainSum(db, s),
+    assets: assetSum(db, s),
     cash: { balance: s.cash.balance, day: dayChange(s, s.t), ...(next ? { next: { due: next.due, item: next.item, sum: next.sum } } : {}) },
     seats: seatSums(db, s),
   };
@@ -478,7 +482,9 @@ export type CashWhy =
   | { k: 'shipment'; customer: Id }
   | { k: 'month'; y: number; m: number; half?: 1 | 2 }
   | { k: 'quarter'; y: number; q: number }
-  | { k: 'batch'; code: string };
+  | { k: 'batch'; code: string }
+  /** работа подрядчика (Б3в): актив — род, класс и инвентарный номер */
+  | { k: 'asset'; family: AssetFamily; type: Id; inv: number };
 
 export interface CashRow {
   t: number;
@@ -516,6 +522,7 @@ function whyOf(s: PlantState, item: CashItem, ref: string | undefined): CashWhy 
   if (s.spareOrders[ref]) return { k: 'spare', order: ref, spare: s.spareOrders[ref].spare };
   if (s.shipments[ref]) return { k: 'shipment', customer: s.shipments[ref].customer };
   if (item === 'codes' && s.batches[ref]) return { k: 'batch', code: batchNo(s.batches[ref].code) };
+  if (item === 'calqual' && s.assets[ref]) return { k: 'asset', family: s.assets[ref].family, type: s.assets[ref].type, inv: s.assets[ref].inv };
   const q = /^(\d+)-q(\d)$/.exec(ref);
   if (q) return { k: 'quarter', y: Number(q[1]), q: Number(q[2]) };
   const m = /^(\d+)-(\d+)([ab]?)$/.exec(ref);

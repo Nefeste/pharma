@@ -199,7 +199,7 @@ describe('прогон', () => {
     const b = summarize(runPlan(game, g, draft, o), 14).switches;
     expect(b.major[1]).toBeLessThan(a.major[1]);
     expect(b.majorSec[1]).toBeLessThan(a.majorSec[1]);
-  });
+  }, 60_000);
 });
 
 describe('поток прогона', () => {

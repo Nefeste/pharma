@@ -143,6 +143,16 @@ export const scenario = z.strictObject({
     tab: z.number().int().min(1).max(9000),
   }),
   /**
+   * места и оборудование (Б3в): за сколько суток до конца записи коллега техслужбы назначает визит подрядчика; рабочие
+   * часы подрядчика, с и до; приёмка его работы, минуты; инвентарные номера — по порядку мест с этого номера
+   */
+  assets: z.strictObject({
+    ahead: z.number().int().min(1).max(90),
+    hours: z.tuple([z.number().int().min(0).max(23), z.number().int().min(1).max(24)]).refine(([a, b]) => a < b, { message: 'рабочий день подрядчика кончается раньше, чем начинается' }),
+    accept: z.number().int().min(1).max(240),
+    inv: z.number().int().min(1).max(99_999_999),
+  }),
+  /**
    * происшествие прототипа (docs/specs/2026-10-investigation.md): задание на серию по номеру с 1, модель расследования,
    * веса корней, %, и величина неисправности — от и до: ошибка лаборатории — % ниже истинного, опудривание — мин сверх
    * цели, сила прессования — кН сверх цели, сито — мм крупнее карты
@@ -190,7 +200,8 @@ export const material = z
     name: text,
     unit: z.enum(['kg', 'pcs']),
     container: id,
-    storage: z.enum(['room', 'cold']),
+    /** режим хранения, который материал требует (Б3в): запись content/regimes/ */
+    storage: id,
     /** месяцев */
     shelf: z.number().int().min(1).max(120),
     potency: z.boolean().optional(),
@@ -260,10 +271,44 @@ export const shift = z.strictObject({
   to: z.number().int().min(1).max(24),
 });
 
-/** Прибор лаборатории: вид; экземпляры с местом — в плане завода. */
-export const instrument = z.strictObject({
+/**
+ * Работа подрядчика по классу (Б3в; геймдизайн, §7.2): через сколько месяцев снова, часов работы, цена — ₽ без НДС; как
+ * она называется в окне. Калибровка у датчика условий хранения называется поверкой (`verify`).
+ */
+const qualWork = z.strictObject({
+  every: z.number().int().min(1).max(120),
+  hours: z.number().positive().max(24),
+  price: z.number().positive(),
+  name: text,
+});
+const calWork = qualWork.extend({ verify: z.literal(true).optional() });
+/** класс критический — для перечня основного оборудования в досье площадки (GMP ЕАЭС, ч. III, прил. 8) */
+const critical = z.literal(true).optional();
+
+/** Прибор: вид — лаборатории, МОК или датчик; экземпляры с местом — в плане завода. Средство измерений: калибровка — всегда. */
+export const instrument = z
+  .strictObject({
+    id: z.string(),
+    name: text,
+    cal: calWork,
+    qual: qualWork.optional(),
+    critical,
+    source: sources.optional(),
+    review: review.optional(),
+  })
+  .refine(paired, pairedMsg);
+
+/**
+ * Режим хранения ГФ XV (Б3в; ОФС.1.1.0010): слова этикетки; диапазон температуры, °C, — от и до; наибольшая средняя
+ * относительная влажность, %.
+ */
+export const regime = z.strictObject({
   id: z.string(),
   name: text,
+  temp: z.tuple([z.number().min(-40).max(60), z.number().min(-40).max(60)]).refine(([a, b]) => a < b, { message: '«от» меньше «до»' }),
+  rh: percent,
+  source: sources,
+  review,
 });
 
 /** Методика испытания (геймдизайн, §6.2). */
@@ -337,9 +382,45 @@ const cells = z.tuple([z.number().int().min(0), z.number().int().min(0), z.numbe
 const cell = z.tuple([z.number().int().min(0), z.number().int().min(0)]);
 const turn = z.number().int().min(0).max(3).default(0);
 
+/**
+ * Коды мест (Б3в): участок — две латинские буквы; рабочее место — код участка, дефис и две цифры; рабочий блок — код
+ * рабочего места, точка и две цифры (`TB-01.03`). Формат — гипотеза.
+ */
+const areaCode = z.string().regex(/^[A-Z]{2}$/, 'код участка — две заглавные латинские буквы');
+const centerCode = z.string().regex(/^[A-Z]{2}-\d{2}$/, 'код рабочего места — участок, дефис и две цифры');
+const placeCode = z.string().regex(/^[A-Z]{2}-\d{2}\.\d{2}$/, 'код места — рабочее место, точка и две цифры');
+/** прибор вне лаборатории: прибор МОК или датчик условий хранения — вид, помещение, код места */
+const meter = z.strictObject({ id: z.string(), type: id, room: z.string(), place: placeCode });
+
 /** План завода: метры участка. */
 export const plant = z.strictObject({
   id: z.string(),
+  /** площадка (Б3в): код и название */
+  site: z.strictObject({ code: z.string().regex(/^[A-Z0-9]{2,6}$/, 'код площадки — от двух до шести латинских букв и цифр'), name: text }),
+  /**
+   * участки (Б3в): помещения, которым участок служит, и рабочие места — технологическая ячейка, производственная линия,
+   * зона хранения (её помещения и режим, который она держит) и лаборатория
+   */
+  areas: z
+    .array(
+      z.strictObject({
+        code: areaCode,
+        name: text,
+        rooms: z.array(z.string()).default([]),
+        centers: z
+          .array(
+            z.strictObject({
+              code: centerCode,
+              kind: z.enum(['cell', 'line', 'storage', 'lab']),
+              name: text,
+              rooms: z.array(z.string()).min(1).optional(),
+              regime: id.optional(),
+            }),
+          )
+          .default([]),
+      }),
+    )
+    .min(1),
   /** здание — прямоугольник клеток со стенами по краю */
   building: cells,
   docks: z.array(z.strictObject({ id: z.string(), kind: z.enum(['in', 'out']), x: z.number(), z: z.number() })).min(1),
@@ -375,10 +456,13 @@ export const plant = z.strictObject({
       materials: z.boolean().optional(),
     }),
   ),
-  /** приборы лаборатории: вид и помещение */
-  instruments: z.array(z.strictObject({ id: z.string(), type: id, room: z.string() })).default([]),
-  /** оборудование производства: вид и помещение */
-  equipment: z.array(z.strictObject({ id: z.string(), type: id, room: z.string(), at: point, turn })).default([]),
+  /** приборы лаборатории: вид, помещение и код места */
+  instruments: z.array(z.strictObject({ id: z.string(), type: id, room: z.string(), place: placeCode })).default([]),
+  /** приборы МОК у оборудования стадий и датчики системы мониторинга условий хранения (Б3в) */
+  ipc: z.array(meter).default([]),
+  sensors: z.array(meter).default([]),
+  /** оборудование производства: вид, помещение и код места */
+  equipment: z.array(z.strictObject({ id: z.string(), type: id, room: z.string(), at: point, turn, place: placeCode })).default([]),
   /**
    * упаковочные линии: помещение, зона паллетирования на выходе и машины по порядку; после каждой машины, кроме
    * последней, — накопитель: сколько её штук (блистеров, пачек) он держит
@@ -389,7 +473,7 @@ export const plant = z.strictObject({
         id: z.string(),
         room: z.string(),
         out: z.string(),
-        machines: z.array(z.strictObject({ id: z.string(), type: id, buffer: z.number().int().positive().optional(), at: point, turn })).min(2),
+        machines: z.array(z.strictObject({ id: z.string(), type: id, buffer: z.number().int().positive().optional(), at: point, turn, place: placeCode })).min(2),
       }),
     )
     .default([]),
@@ -480,6 +564,10 @@ export const equipment = z
     /** мощность, пока идёт стадия, кВт */
     kw: z.number().min(0).default(0),
     parts: z.array(part).default([]),
+    /** повторная квалификация и калибровка подрядчиком (Б3в) */
+    qual: qualWork.optional(),
+    cal: calWork.optional(),
+    critical,
     source: sources.optional(),
     review: review.optional(),
   })
@@ -612,6 +700,10 @@ export const machine = z
     parts: z.array(part).default([]),
     /** заминка — микроостановка, которая портит столько пачек с вложениями; столько % испорченного не записывают */
     jam: z.strictObject({ cartons: z.number().int().min(1), uncounted: percent }).optional(),
+    /** повторная квалификация и калибровка подрядчиком (Б3в) */
+    qual: qualWork.optional(),
+    cal: calWork.optional(),
+    critical,
     source: sources.optional(),
     review: review.optional(),
   })
@@ -771,6 +863,7 @@ export const KINDS = {
   customers: { prefix: 'cus', schema: customer },
   spares: { prefix: 'spare', schema: spare },
   sops: { prefix: 'sop', schema: sop },
+  regimes: { prefix: 'reg', schema: regime },
 } as const;
 
 export type Kind = keyof typeof KINDS;

@@ -4,6 +4,7 @@
 import type { Ymd } from '../engine/core/calendar';
 import { named, num, T, whenText } from '../i18n';
 import type { ChartView, LabLotRow, Limits, Signal, TaskNow } from '../sim/lab';
+import { assetClass } from './assets';
 import { db, docText } from './db';
 import { type Actions, type Hud, holds } from './store';
 
@@ -11,7 +12,15 @@ function nowText(n: TaskNow | undefined, start: Ymd): string {
   if (!n) return '';
   const task = T.tasks[n.task] ?? n.task;
   if (n.busy) return T.why.taskBusy(task);
-  return n.wait ? T.why.taskWait(task, T.wait[n.wait], whenText(start, n.since)) : T.why.taskOpen(task);
+  return n.wait ? T.why.taskWait(task, causeText(n), whenText(start, n.since)) : T.why.taskOpen(task);
+}
+
+/** Чего ждёт задача словами; ждёт прибор — называет его и почему он не годен (Б3в). */
+export function causeText(n: TaskNow): string {
+  if (n.wait !== 'asset' || !n.unfit) return n.wait ? T.wait[n.wait] : '';
+  const u = n.unfit;
+  const why = u.work === 'visit' ? T.assets.unfit.visit : u.work === 'qual' ? T.assets.unfit.qual : u.verify ? T.assets.unfit.verify : T.assets.unfit.calInst;
+  return `${why} — ${T.assets.named(assetClass(u), T.assets.inv(u.inv))}`;
 }
 
 /** Доли 1/10 000 номинала — процентами с двумя знаками. */

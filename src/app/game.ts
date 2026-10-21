@@ -23,11 +23,13 @@ import { type Slice, SimClient } from '../sim/client';
 import { unpack } from '../sim/pack';
 import { PlanClient } from '../sim/planClient';
 import type { Thing, ViewQuery } from '../sim/views';
+import { assetClass, workName } from '../ui/assets';
 import { useDb } from '../ui/db';
 import { commandsOf, prune, upsert } from '../ui/draft';
 import { type Actions, holds, type Hud, LIVE, NO_RUN, PLAN_RUN, type Speed, type Store } from '../ui/store';
 import { fillsOf, Flows, lineArrows, moveArrows, movesOf } from './flows';
 import { type Movers, moversAt, taskIcons } from './movers';
+import { stopKey } from '../sim/protocol';
 import { EVENT_CAP, type Go, goOf, keepOff, keptOff, stopKinds } from './pauses';
 import { keep, windowKeep } from './preset';
 import { type Box, machineBoxes, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
@@ -242,8 +244,8 @@ export class Game {
     // извещения автопауз игрока — вес «стоп» (13-art.md, §11): на таком поток встал; в полосе — оно, а не то, что пришло с
     // ним позже
     const stops = new Set(this.stops());
-    for (const n of s.notices) if (!stops.has(n.kind)) this.notice(n, false);
-    for (const n of s.notices) if (stops.has(n.kind)) this.notice(n, true);
+    for (const n of s.notices) if (!stops.has(stopKey(n))) this.notice(n, false);
+    for (const n of s.notices) if (stops.has(stopKey(n))) this.notice(n, true);
     if (s.notices.some(n => n.kind === 'morning')) this.morning(sl.t);
     if (s.stopped) this.autopause();
     this.gotSlice();
@@ -290,7 +292,7 @@ export class Game {
     this.hud();
   }
 
-  /** Виды извещений, на которых мир встаёт: включённые автопаузы мест игрока (pauses.ts). */
+  /** Ключи извещений, на которых мир встаёт: включённые автопаузы мест игрока (pauses.ts). */
   private stops() {
     const h = this.store.get();
     return stopKinds(h.pauses.off, h.top?.seats);
@@ -351,6 +353,7 @@ export class Game {
       : n.kind === 'invStep' ? T.notices.invStep
       : n.kind === 'concluded' ? T.notices.concluded(n.fate)
       : n.kind === 'qualLost' ? T.notices.qualLost(named(this.db.roles[n.role]?.name, n.role), n.tab, n.doc)
+      : n.kind === 'assetExpired' ? T.notices.assetExpired(workName(n, n.work), assetClass(n), T.assets.inv(n.inv))
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;
@@ -499,6 +502,10 @@ export class Game {
         if (!this.store.get().gantt.open) this.actions.toggleGantt();
       } else if (g.panel === 'lab') {
         if (!this.store.get().lab.open) this.actions.toggleLab();
+      } else if (g.panel === 'ref') {
+        // прибор или датчик (Б3в): справочник на вкладке «Места»
+        if (!this.store.get().ref.open) this.actions.toggleRef();
+        this.actions.setRefTab('places');
       } else this.actions.openMorning();
     },
     setQuality: (q: Quality) => {

@@ -8,6 +8,7 @@ import { planOf } from '../engine/plant';
 import { dateText, dayText, durText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { LineSum, MainLoss, MorningView, SeatSum } from '../sim/report';
 import type { Thing } from '../sim/views';
+import { assetName, workName } from './assets';
 import { db } from './db';
 import type { Actions } from './store';
 
@@ -334,6 +335,26 @@ export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningV
                 ...v.training.soon.map(x => (
                   <li key={`soon${x.person}`} className="go" onClick={go({ kind: 'person', n: x.person })} data-test="morning-train">
                     {T.morning.trainSoon(T.card.person(named(db?.roles[x.role]?.name, x.role), x.tab), T.ref.doc(x.doc.code, x.doc.rev), dayText(x.last))}
+                  </li>
+                )),
+              ]}
+            />
+            <Rows
+              title={T.assets.morningTitle}
+              rows={[
+                ...v.assets.expired.map(x => (
+                  <li key={`x${x.asset.id}${x.work}`} className={x.asset.thing ? 'go bad' : 'bad'} onClick={go(x.asset.thing)} data-test="morning-asset">
+                    {T.assets.lapsed(workName(x.asset, x.work), assetName(x.asset))}
+                  </li>
+                )),
+                ...v.assets.today.map(a => (
+                  <li key={`t${a.id}`} className={a.thing ? 'go' : ''} onClick={go(a.thing)} data-test="morning-asset">
+                    {T.assets.today(workName(a, a.visit!.work), assetName(a), a.working && a.visit?.to !== undefined ? T.assets.until(whenText(start, a.visit.to)) : whenText(start, a.visit!.from ?? a.visit!.at))}
+                  </li>
+                )),
+                ...v.assets.soon.map(x => (
+                  <li key={`s${x.asset.id}${x.work}`} className={x.asset.thing ? 'go' : ''} onClick={go(x.asset.thing)} data-test="morning-asset">
+                    {T.assets.soon(workName(x.asset, x.work), assetName(x.asset), dayText(x.until))}
                   </li>
                 )),
               ]}

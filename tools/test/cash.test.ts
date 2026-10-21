@@ -4,6 +4,7 @@
 import { describe, expect, test } from 'bun:test';
 import { legacy as db } from './legacy';
 import type { ContentDb } from '../../src/content/types';
+import { classOf } from '../../src/engine/places';
 import { baseLoad, part } from '../../src/engine/cash';
 import { DAY, daysFromCivil, HOUR, lastOfMonth, momentOf, weekday, workdayOnOrAfter, workdayOnOrBefore, workdaysIn } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
@@ -122,10 +123,17 @@ test('НДС квартала — тремя долями до 28-го числ�
   s.cash.vat = { out: 100_000_001, in: 10_000_000, carry: 0 };
   live(quiet, s, at(s, ymd(y, 10, 1), HOUR));
   const vat = s.cash.dues.filter(d => d.item === 'vat');
-  // начисленный за квартал НДС минус вычет, в том числе по энергии сентября (её считают в ту же полночь)
+  // начисленный за квартал НДС минус вычет, в том числе по энергии сентября (её считают в ту же полночь) и по счетам
+  // подрядчика за калибровку и квалификацию (Б3в): НДС в счёте — по цене работы класса
   const sec = at(s, ymd(y, 10, 1), 0) - sc.start.hour * HOUR;
   const net = Math.floor((Math.floor((baseLoad(quiet, s) * sec) / HOUR) * sc.energy.price) / 1000);
-  const due = 100_000_001 - 10_000_000 - part(net, pr.vat.general);
+  const visits = s.cash.ledger.filter(e => e.item === 'calqual' && e.t < at(s, ymd(y, 10, 1), 0));
+  const visitVat = visits.reduce((n, e) => {
+    const cls = classOf(quiet, s.assets[e.ref!]);
+    const w = [cls.qual, cls.cal].find(x => x && x.price + part(x.price, pr.vat.general) === -e.sum)!;
+    return n + part(w.price, pr.vat.general);
+  }, 0);
+  const due = 100_000_001 - 10_000_000 - part(net, pr.vat.general) - visitVat;
   expect(vat.length).toBe(3);
   expect(vat.reduce((n, d) => n + d.sum, 0)).toBe(-due);
   expect(vat.map(d => -d.sum)).toEqual([Math.floor(due / 3), Math.floor(due / 3), due - 2 * Math.floor(due / 3)]);

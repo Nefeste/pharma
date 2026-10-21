@@ -230,8 +230,8 @@ export function knownAssay(db: ContentDb, s: PlantState, lot: Lot): number {
 }
 
 /**
- * Ближайшее свободное место вида `kind` к точке `near`, не выше яруса `maxLevel`. Порядок — ярус (ниже — раньше),
- * расстояние, адрес: одинаковое состояние — одинаковый выбор.
+ * Ближайшее свободное место вида `kind` к точке `near`, не выше яруса `maxLevel`, — из тех, что годятся по `ok` (Б3в: зона
+ * хранения и её режим). Порядок — ярус (ниже — раньше), расстояние, адрес: одинаковое состояние — одинаковый выбор.
  */
 export function findSlot(
   s: PlantState,
@@ -240,11 +240,12 @@ export function findSlot(
   near: Point,
   maxLevel: number,
   mover: Mover = 'drive',
+  ok?: (sl: Slot) => boolean,
 ): Slot | undefined {
   let best: Slot | undefined;
   let bestKey: [number, number, string] | undefined;
   for (const sl of plan.byKind[kind] ?? []) {
-    if (sl.level > maxLevel || !slotFree(s, sl.id)) continue;
+    if (sl.level > maxLevel || !slotFree(s, sl.id) || (ok && !ok(sl))) continue;
     const key: [number, number, string] = [sl.level, dist(plan, sl, near, mover), sl.id];
     if (!bestKey || key[0] < bestKey[0] || (key[0] === bestKey[0] && (key[1] < bestKey[1] || (key[1] === bestKey[1] && key[2] < bestKey[2])))) {
       best = sl;

@@ -8,6 +8,9 @@
 //   сценария действует всё, что ему нужно (Б3а);
 // - кто делает работу, тот и учится по её процедурам и методикам: каждая роль, которой движок даёт работу с требованием,
 //   есть в матрице обучения документа (Б3б);
+// - места (Б3в): коды участков, рабочих мест и мест — по формату и не повторяются; помещение — не больше чем в одном
+//   участке; вещь плана — на рабочем месте своего вида, в помещении его участка; у зоны хранения — режим и один датчик;
+//   у стадии с МОК — прибор каждого испытания в её помещении; каждому материалу есть зона хранения по режиму;
 // - числа переводятся в единицы движка (docs/04-data-model.md, §2): кг → мг, г → мг, ₽ → копейки, м → см, % → доли
 //   1/10 000, минуты → секунды.
 // Ошибка любой записи останавливает сборку: база с битой ссылкой в игру не попадает.
@@ -18,6 +21,7 @@ import type { z } from 'zod';
 import {
   ATTR_SCALE,
   ATTRS,
+  type AssetWork,
   type Attr,
   type Cause,
   type ContainerType,
@@ -41,6 +45,7 @@ import {
   QUALITATIVE,
   type Recipe,
   type RecipeStage,
+  type Regime,
   type Role,
   type Scenario,
   type Shift,
@@ -55,6 +60,7 @@ import {
   type UnitType,
   type VehicleType,
 } from '../../src/content/types';
+import { ACCEPT } from '../../src/engine/assets';
 import { civilFromDays, daysFromCivil } from '../../src/engine/core/calendar';
 import { fnv1a, stableJson } from '../../src/engine/core/hash';
 import { DOC_KINDS, type DocKind, headOf, inForce, revisions } from '../../src/engine/docs';
@@ -62,6 +68,7 @@ import { QC } from '../../src/engine/lab';
 import { LINE } from '../../src/engine/line';
 import { MAINT } from '../../src/engine/maint';
 import { MES } from '../../src/engine/mes';
+import { accepts, areaCode, CENTER_OF, centerCode, classOf, coldOf, placesOf, rackStore, roomAt } from '../../src/engine/places';
 import { QA } from '../../src/engine/qa';
 import { CHECKERS } from '../../src/engine/train';
 import { WMS } from '../../src/engine/wms';
@@ -224,7 +231,19 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     need(raw.roles[d.approved], `${where}: утвердил ${d.approved} — нет такой роли`);
     return { code: d.code, rev: d.rev, from, approved: d.approved };
   };
-  const instruments: Record<string, InstrumentType> = { ...raw.instruments };
+  /** Работа подрядчика (Б3в): часы — в секунды, рубли — в копейки. */
+  const workOf = (w: { every: number; hours: number; price: number; name: InstrumentType['name']; verify?: true } | undefined): AssetWork | undefined =>
+    w && { every: w.every, work: Math.round(w.hours * 3600), price: kop(w.price), name: w.name, ...(w.verify ? { verify: true as const } : {}) };
+  const works = (x: { qual?: Parameters<typeof workOf>[0]; cal?: Parameters<typeof workOf>[0]; critical?: true }) => ({
+    ...(x.qual ? { qual: workOf(x.qual)! } : {}),
+    ...(x.cal ? { cal: workOf(x.cal)! } : {}),
+    ...(x.critical ? { critical: true as const } : {}),
+  });
+  const instruments: Record<string, InstrumentType> = {};
+  for (const i of Object.values(raw.instruments)) instruments[i.id] = { id: i.id, name: i.name, ...works(i), cal: workOf(i.cal)!, ...(i.source ? { source: i.source, review: i.review } : {}) };
+  // режимы хранения (Б3в): °C — в десятые, % — в доли 1/10 000
+  const regimes: Record<string, Regime> = {};
+  for (const r of Object.values(raw.regimes)) regimes[r.id] = { ...r, temp: [Math.round(r.temp[0] * 10), Math.round(r.temp[1] * 10)], rh: share(r.rh) };
   const tests: Record<string, TestMethod> = {};
   for (const t of Object.values(raw.tests)) {
     if (t.inst) need(raw.instruments[t.inst], `методика ${t.id}: нет прибора ${t.inst}`);
@@ -255,6 +274,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   for (const m of Object.values(raw.materials)) {
     const c = raw.containers[m.container];
     need(c, `материал ${m.id}: нет тары ${m.container}`);
+    need(raw.regimes[m.storage], `материал ${m.id}: нет режима хранения ${m.storage}`);
     if (c) need(('kg' in c.capacity) === (m.unit === 'kg'), `материал ${m.id}: тара ${c.id} в других единицах`);
     const sp = raw.specs[m.spec];
     need(sp, `материал ${m.id}: нет спецификации ${m.spec}`);
@@ -372,6 +392,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       cleaning: { minor: sec(e.cleaning.minor), major: sec(e.cleaning.major) },
       kw: watt(e.kw),
       parts: partsOf(e.parts, `оборудование ${e.id}`, undefined),
+      ...works(e),
       ...(e.source ? { source: e.source, review: e.review } : {}),
     };
   }
@@ -505,6 +526,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       kw: watt(m.kw),
       parts: partsOf(m.parts, `машина ${m.id}`, { micro: m.micro !== undefined }),
       ...(m.jam ? { jam: { cartons: m.jam.cartons, uncounted: share(m.jam.uncounted) } } : {}),
+      ...works(m),
       ...(m.source ? { source: m.source, review: m.review } : {}),
     };
     if (m.jam) need(m.micro && m.item === 'carton', `машина ${m.id}: заминка — микроостановка машины, которая работает с пачками`);
@@ -547,6 +569,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     const r4 = (r: [number, number, number, number]): [number, number, number, number] => [cm(r[0]), cm(r[1]), cm(r[2]), cm(r[3])];
     plants[p.id] = {
       id: p.id,
+      site: p.site,
+      areas: p.areas.map(a => ({ code: a.code, name: a.name, rooms: a.rooms, centers: a.centers.map(c => ({ ...c })) })),
       building: r4(p.building),
       docks: p.docks.map(d => ({ ...d, x: cm(d.x), z: cm(d.z) })),
       zones: p.zones.map(zn => ({ ...zn, rect: r4(zn.rect) })),
@@ -554,6 +578,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       rooms: p.rooms.map(r => ({ id: r.id, type: r.type, rect: r4(r.rect), grade: r.grade, vehicles: r.vehicles, ...(r.at ? { at: at2(r.at) } : {}) })),
       doors: p.doors.map(d => ({ cell: d.at, len: d.len, along: d.along, kind: d.kind, ...(d.materials ? { materials: true } : {}) })),
       instruments: p.instruments,
+      ipc: p.ipc,
+      sensors: p.sensors,
       equipment: p.equipment.map(e => ({ ...e, at: at2(e.at) })),
       lines: p.lines.map(ln => ({ ...ln, machines: ln.machines.map(m => ({ ...m, at: at2(m.at) })) })),
       points: { park: [cm(p.points.park[0]), cm(p.points.park[1])], entrance: [cm(p.points.entrance[0]), cm(p.points.entrance[1])] },
@@ -567,10 +593,13 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       ...p.racks.map(r => r.id),
       ...p.rooms.map(r => r.id),
       ...p.instruments.map(i => i.id),
+      ...p.ipc.map(i => i.id),
+      ...p.sensors.map(i => i.id),
       ...p.equipment.map(e => e.id),
       ...p.lines.flatMap(l => [l.id, ...l.machines.map(m => m.id)]),
     ];
-    need(new Set(ids).size === ids.length, `план ${p.id}: имена рамп, зон, стеллажей, помещений, приборов, оборудования, линий и машин повторяются`);
+    need(new Set(ids).size === ids.length, `план ${p.id}: имена рамп, зон, стеллажей, помещений, приборов, датчиков, оборудования, линий и машин повторяются`);
+    placeErrors(p.id, plants[p.id], need, (t: string) => raw.equipment[t] ?? raw.machines[t] ?? raw.instruments[t], regimes);
     // линия: помещение, зона паллетирования на выходе; первая машина делает блистеры, остальные работают с пачками;
     // накопитель — после каждой машины, кроме последней
     for (const ln of p.lines) {
@@ -596,7 +625,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     const worn = p.equipment.some(e => raw.equipment[e.type]?.parts.length) || p.lines.some(l => l.machines.some(m => raw.machines[m.type]?.parts.length));
     if (worn) need(p.rooms.some(r => r.type === 'workshop' && r.grade === 'cnc'), `план ${p.id}: у машин есть узлы — нужна мастерская вне чистой зоны (тип workshop, класс cnc)`);
     for (const role of Object.keys(p.posts)) need(raw.roles[role], `план ${p.id}: пост у неизвестной роли ${role}`);
-    for (const i of p.instruments) {
+    for (const i of [...p.instruments, ...p.ipc, ...p.sensors]) {
       need(raw.instruments[i.type], `план ${p.id}: прибор ${i.id} — нет вида ${i.type}`);
       need(p.rooms.some(r => r.id === i.room), `план ${p.id}: прибор ${i.id} — нет помещения ${i.room}`);
     }
@@ -693,16 +722,22 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     for (const v of s.vehicles) need(vehicles[v.type], `${where}: нет техники ${v.type}`);
     for (const c of s.customers) need(raw.customers[c], `${where}: нет покупателя ${c}`);
     if (s.customers.length > 0) need(raw.plants[s.plant]?.docks.some(d => d.kind === 'out'), `${where}: покупатели есть, а рампы отгрузки в плане нет`);
-    // задания на серию: у каждой стадии карты в плане — помещение этого типа и оборудование в нём
+    // задания на серию: у каждой стадии карты в плане — помещение этого типа, оборудование в нём и прибор каждого её МОК
+    // (Б3в)
     const pl = raw.plants[s.plant];
+    const stageNeeds = (st: (typeof raw.recipes)[string]['stages'][number]) => {
+      const room = pl?.rooms.find(x => x.type === st.room);
+      need(room, `${where}: для стадии ${st.id} нет помещения «${st.room}»`);
+      for (const e of st.equipment) need(room && pl.equipment.some(x => x.room === room.id && x.type === e), `${where}: в помещении «${st.room}» нет ${e}`);
+      for (const c of st.ipc) {
+        const inst = raw.tests[c.test]?.inst;
+        if (inst) need(room && pl.ipc.some(x => x.room === room.id && x.type === inst), `${where}: в помещении «${st.room}» нет прибора ${inst} для МОК ${c.test}`);
+      }
+    };
     for (const b of s.batches) {
       const r = raw.recipes[b.recipe];
       need(r, `${where}: нет карты ${b.recipe}`);
-      for (const st of r?.stages ?? []) {
-        const room = pl?.rooms.find(x => x.type === st.room);
-        need(room, `${where}: для стадии ${st.id} нет помещения «${st.room}»`);
-        for (const e of st.equipment) need(room && pl.equipment.some(x => x.room === room.id && x.type === e), `${where}: в помещении «${st.room}» нет ${e}`);
-      }
+      for (const st of r?.stages ?? []) stageNeeds(st);
       // товарная позиция: того же продукта, что карта, и линия в плане, где её упаковать
       if (b.sku) {
         const k = raw.skus[b.sku];
@@ -719,11 +754,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       need(r, `${where}: в плане нет карты ${it.recipe}`);
       need(k, `${where}: в плане нет товарной позиции ${it.sku}`);
       if (k && r) need(k.product === r.product, `${where}: в плане позиция ${it.sku} — не того продукта, что карта ${it.recipe}`);
-      for (const st of r?.stages ?? []) {
-        const room = pl?.rooms.find(x => x.type === st.room);
-        need(room, `${where}: для стадии ${st.id} нет помещения «${st.room}»`);
-        for (const e of st.equipment) need(room && pl.equipment.some(x => x.room === room.id && x.type === e), `${where}: в помещении «${st.room}» нет ${e}`);
-      }
+      for (const st of r?.stages ?? []) stageNeeds(st);
       if (s.supply) {
         const mats = [...(r?.bom ?? []).map(l => l.material), ...(k ? [...k.blister, ...k.carton].map(l => l.material) : []), ...(k ? [k.case.material] : [])];
         for (const m of mats) need(Object.values(raw.suppliers).some(x => x.approved && x.items[m]), `${where}: ${m} никто из одобренных поставщиков не продаёт`);
@@ -740,6 +771,35 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     for (const l of pl?.lines ?? []) for (const mc of l.machines) for (const pt of raw.machines[mc.type]?.parts ?? []) parts.add(`${mc.id}/${pt.id}`);
     for (const k of [...Object.keys(s.wear), ...Object.keys(s.maint)]) need(parts.has(k), `${where}: в плане нет узла ${k}`);
     need(new Set(s.seats).size === s.seats.length, `${where}: место повторяется в seats`);
+    // места и оборудование (Б3в): каждому материалу — зона хранения по режиму; срок предупреждения короче самого короткого
+    // интервала — иначе запись на старте сразу ждёт визита; работа подрядчика — в его рабочий день
+    if (plants[s.plant]) {
+      const plant = plants[s.plant];
+      const part = { regimes, materials, plants } as unknown as ContentDb;
+      const P = placesOf(plant);
+      const bulkRoom = plant.rooms.find(r => r.type === 'bulk')?.id;
+      for (const m of Object.values(materials)) {
+        if (!regimes[m.storage]) continue;
+        // путь материала по зонам хранения: балк — промежуточный склад; холод — камера; остальное — карантин или ГП, стеллажи;
+        // отклонённое — зона отклонённого. Зона вне зон хранения режима не держит — её не спрашивают
+        const cold = coldOf(part, s.plant, m.id);
+        const path = m.kind === 'bulk' ? [] : cold ? ['cold', 'rejected'] : [m.kind === 'fg' ? 'fgQuarantine' : 'quarantine', 'storage', 'rejected'];
+        const stores = m.kind === 'bulk' ? [bulkRoom ? P.storeOf[bulkRoom] : undefined] : path.map(k => storeOfKind(plant, k));
+        const ok = (m.kind === 'bulk' || !cold || coldStore(plant) !== undefined) && stores.every((st, i) => (st === undefined ? m.kind !== 'bulk' && path[i] !== 'storage' : accepts(part, P.center[st], m.id)));
+        need(ok, `${where}: материалу ${m.id} (${m.storage}) нет зоны хранения с подходящим режимом`);
+      }
+      const day = s.assets.hours[1] - s.assets.hours[0];
+      let shortest = Infinity;
+      for (const t of P.things) {
+        const cls = classOf({ equipment, machines, instruments } as unknown as ContentDb, t);
+        for (const w of [cls?.qual, cls?.cal]) {
+          if (!w) continue;
+          shortest = Math.min(shortest, w.every);
+          need(w.work <= day * 3600, `${where}: ${t.id} — работа «${w.name.ru}» длиннее рабочего дня подрядчика`);
+        }
+      }
+      need(s.assets.ahead + 3 < shortest * 28, `${where}: assets.ahead — срок предупреждения не короче самого короткого интервала, ${shortest} мес.`);
+    }
     const [y, m, d] = s.start.date.split('-').map(Number);
     scenarios[s.id] = {
       ...s,
@@ -753,6 +813,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       maint: Object.fromEntries(Object.entries(s.maint).map(([k, v]) => [k, share(v)])),
       norm: share(s.norm),
       training: { ...s.training, check: sec(s.training.check) },
+      assets: { ...s.assets, hours: [s.assets.hours[0] * 3600, s.assets.hours[1] * 3600], accept: sec(s.assets.accept) },
       ...(s.incident ? { incident: incidentOf(s.incident, s.batches.length, where) } : {}),
     };
   }
@@ -865,7 +926,84 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     customers,
     spares,
     sops,
+    regimes,
   };
+}
+
+/** Зона хранения, где лежат места паллет вида `kind`: помещение зоны плана этого вида; стеллажи — `storage`. */
+function storeOfKind(plant: Plant, kind: string): string | undefined {
+  if (kind === 'storage') return rackStore(plant);
+  const z = plant.zones.find(x => x.kind === kind);
+  const room = z ? roomAt(plant, z.rect[0] + Math.floor(z.rect[2] / 2), z.rect[1] + Math.floor(z.rect[3] / 2)) : undefined;
+  return room ? placesOf(plant).storeOf[room] : undefined;
+}
+const coldStore = (plant: Plant) => storeOfKind(plant, 'cold');
+
+/**
+ * Места плана (Б3в; docs/specs/2026-10-vertical-slice.md, «Проверки Б3в»): коды участков, рабочих мест и мест не
+ * повторяются; рабочее место — своего участка; помещение — не больше чем в одном участке и в одной зоне хранения; у зоны
+ * хранения — её помещения в участке, режим и ровно один датчик с поверкой; у других рабочих мест помещений и режима нет;
+ * вещь плана — на рабочем месте своего вида, в помещении его участка; машины линии — на одном рабочем месте, и на нём
+ * только они.
+ */
+function placeErrors(pid: string, plant: Plant, need: (ok: unknown, msg: string) => void, cls: (type: string) => { cal?: { verify?: true } } | undefined, regimes: Record<string, Regime>) {
+  const where = `план ${pid}`;
+  const codes = new Set<string>();
+  const uniq = (code: string, what: string) => {
+    need(!codes.has(code), `${where}: код ${code} повторяется (${what})`);
+    codes.add(code);
+  };
+  const roomIds = new Set(plant.rooms.map(r => r.id));
+  const roomArea = new Map<string, string>();
+  const stored = new Map<string, string>();
+  for (const a of plant.areas) {
+    uniq(a.code, `участок ${a.code}`);
+    for (const r of a.rooms) {
+      need(roomIds.has(r), `${where}: участок ${a.code} — нет помещения ${r}`);
+      const other = roomArea.get(r);
+      need(!other, `${where}: помещение ${r} — в участках ${other} и ${a.code}`);
+      roomArea.set(r, a.code);
+    }
+    for (const c of a.centers) {
+      uniq(c.code, `рабочее место ${c.code}`);
+      need(areaCode(c.code) === a.code, `${where}: рабочее место ${c.code} — не участка ${a.code}`);
+      if (c.kind !== 'storage') {
+        need(!c.rooms && !c.regime, `${where}: рабочее место ${c.code} — помещения и режим бывают только у зоны хранения`);
+        continue;
+      }
+      need(c.rooms, `${where}: зона хранения ${c.code} — нет помещений`);
+      need(c.regime && regimes[c.regime], `${where}: зона хранения ${c.code} — нет режима ${c.regime ?? ''}`);
+      for (const r of c.rooms ?? []) {
+        need(a.rooms.includes(r), `${where}: зона хранения ${c.code} — помещение ${r} не участка ${a.code}`);
+        need(!stored.has(r), `${where}: помещение ${r} — в зонах хранения ${stored.get(r)} и ${c.code}`);
+        stored.set(r, c.code);
+      }
+    }
+  }
+  const P = placesOf(plant);
+  const lineAt = new Map<string, string>();
+  const atLine = new Map<string, string>();
+  const sensors = new Map<string, number>();
+  for (const t of P.things) {
+    uniq(t.place, t.id);
+    const c = P.center[centerCode(t.place)];
+    need(c, `${where}: ${t.id} — нет рабочего места ${centerCode(t.place)}`);
+    if (!c) continue;
+    need(c.kind === CENTER_OF[t.family], `${where}: ${t.id} — на рабочем месте ${c.code} вида ${c.kind}, а нужно ${CENTER_OF[t.family]}`);
+    need(roomArea.get(t.room) === c.area, `${where}: ${t.id} — в помещении ${t.room}, а оно не участка ${c.area}`);
+    if (t.family === 'sensor') {
+      need(c.rooms?.includes(t.room), `${where}: датчик ${t.id} — не в помещении зоны ${c.code}`);
+      need(cls(t.type)?.cal?.verify, `${where}: датчик ${t.id} — у вида ${t.type} нет поверки`);
+      sensors.set(c.code, (sensors.get(c.code) ?? 0) + 1);
+    }
+    if (t.line) {
+      need((lineAt.get(t.line) ?? c.code) === c.code, `${where}: машины линии ${t.line} — на разных рабочих местах`);
+      need((atLine.get(c.code) ?? t.line) === t.line, `${where}: на рабочем месте ${c.code} — машины разных линий`);
+      lineAt.set(t.line, c.code);
+      atLine.set(c.code, t.line);
+    }
+  }
+  for (const c of Object.values(P.center)) if (c.kind === 'storage') need(sensors.get(c.code) === 1, `${where}: у зоны хранения ${c.code} — не один датчик`);
 }
 
 /**
@@ -913,6 +1051,7 @@ function learnErrors(raw: Raw, sops: Record<string, Sop>, tests: Record<string, 
     invFix: MAINT.mechanics,
     train: [],
     trainCheck: CHECKERS,
+    accept: Object.values(ACCEPT),
   };
   const LINE_WORK: TaskKind[] = ['crew', 'feed', 'changeover', 'clearance', 'clearCheck'];
   const check = (where: string, has: string[], doers: Iterable<string>) => {

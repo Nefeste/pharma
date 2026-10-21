@@ -1,0 +1,6 @@
+id: reg.below30
+name: { ru: При температуре не выше 30 °C, en: At not more than 30 °C }
+temp: [2, 30]
+rh: 65
+source: [gf-15]
+review: draft

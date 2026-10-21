@@ -6,9 +6,10 @@ import { useEffect, useRef, useState } from 'react';
 import type { InvFinding, InvModel, InvStep } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
 import type { InvObs } from '../engine/types';
-import { durText, named, num, pctText, T, whenText } from '../i18n';
+import { dayText, durText, named, num, pctText, T, whenText } from '../i18n';
 import type { InvBoard } from '../sim/inv';
 import type { TaskNow } from '../sim/lab';
+import { causeText } from './Lab';
 import { db } from './db';
 import { type Actions, type Hud, holds } from './store';
 import { attrText, paramText } from './units';
@@ -55,7 +56,7 @@ function nowText(n: TaskNow | undefined, start: Ymd): string {
   if (!n) return T.inv.running;
   const task = T.tasks[n.task] ?? n.task;
   if (n.busy) return T.why.taskBusy(task);
-  return n.wait ? T.why.taskWait(task, T.wait[n.wait], whenText(start, n.since)) : T.why.taskOpen(task);
+  return n.wait ? T.why.taskWait(task, causeText(n), whenText(start, n.since)) : T.why.taskOpen(task);
 }
 
 function What({ b, start }: { b: InvBoard; start: Ymd }) {
@@ -103,7 +104,10 @@ function What({ b, start }: { b: InvBoard; start: Ymd }) {
         <>
           <div className="muted">{T.inv.inst}</div>
           <ul className="iplain">
-            <li>{named(db?.instruments[b.who.inst]?.name, b.who.inst)}</li>
+            <li>
+              {named(db?.instruments[b.who.inst]?.name, b.who.inst)}
+              {b.who.instCal !== undefined ? <span className="muted"> · {T.inv.instCal(dayText(b.who.instCal))}</span> : null}
+            </li>
           </ul>
         </>
       ) : null}

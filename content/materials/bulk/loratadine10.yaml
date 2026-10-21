@@ -6,7 +6,7 @@ code: 400002
 name: { ru: Таблетки лоратадина 10 мг в балке, en: Loratadine 10 mg tablets in bulk }
 unit: pcs
 container: cnt.bin.tablets
-storage: room
+storage: reg.ccrt
 shelf: 6
 spec: spec.bulk.loratadine10
 # проба с контейнера, таблеток: на однородность дозирования нужно не меньше 30 (jp-602)

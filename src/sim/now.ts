@@ -1,15 +1,18 @@
 // «Сейчас» (этап Б, Б1б; docs/specs/2026-10-vertical-slice.md): что идёт на заводе одним списком — стадии серий, уборки,
-// упаковка, испытания, ремонты, фуры у рамп, склад, качество и шаги расследования. Сколько работа идёт, окно считает по
+// упаковка, испытания, ремонты, работа подрядчика (Б3в), фуры у рамп, склад, качество и шаги расследования. Сколько работа идёт, окно считает по
 // своим часам от мгновения начала; рядом — норма, которую знает завод: длительность стадии по карте, время уборки,
 // методики, норма задачи, у ремонта после отказа — «от и до» из записи узла. Сколько работа продлится на самом деле —
 // вытянутый движком разброс стадии и ремонта — в виде нет.
 import type { ContentDb, Id } from '../content/types';
+import { contractor } from '../engine/assets';
 import { batchNo } from '../engine/batchno';
 import { geo, SIXTY } from '../engine/line';
 import { partType } from '../engine/maint';
 import { cleanWork, nominal } from '../engine/mes';
+import { classOf } from '../engine/places';
 import { planOf } from '../engine/plant';
-import type { PlantState, Task, TaskKind } from '../engine/types';
+import type { AssetFamily, PlantState, Task, TaskKind } from '../engine/types';
+import { assetInfo } from './places';
 import type { Thing } from './views';
 
 export interface NowQuery {
@@ -24,8 +27,8 @@ export interface NowRow {
   /** по нему «Смотреть» узнаёт, что работа кончилась: задача, испытание, задание линии, фура */
   key: string;
   dept: NowDept;
-  /** вид работы: вид задачи движка; `pack` — упаковка серии, `test` — испытание, `truck` — фура у рампы */
-  kind: TaskKind | 'pack' | 'test' | 'truck';
+  /** вид работы: вид задачи движка; `pack` — упаковка серии, `test` — испытание, `truck` — фура у рампы, `visit` — подрядчик */
+  kind: TaskKind | 'pack' | 'test' | 'truck' | 'visit';
   batch?: string;
   stage?: string;
   /** партия: год, месяц, номер — как в карточке */
@@ -47,6 +50,11 @@ export interface NowRow {
   major?: boolean;
   /** замена узла по плану, а не ремонт после отказа */
   planned?: boolean;
+  /** работа подрядчика и её приёмка (Б3в): актив — вещь плана, его род, инвентарный номер, квалификация или калибровка */
+  asset?: string;
+  family?: AssetFamily;
+  inv?: number;
+  work?: 'qual' | 'cal';
   /** люди: номера, как в срезе, и роли */
   people: { n: number; role: Id }[];
   /** с какого мгновения идёт, с; норма — с; у ремонта после отказа — от и до */
@@ -88,6 +96,8 @@ const DEPT: Partial<Record<TaskKind, NowDept>> = {
   // обучение (Б3б) ведёт ООК
   train: 'qa',
   trainCheck: 'qa',
+  // приёмка работы подрядчика (Б3в): калибровку принимает начальник ОКК, квалификацию — специалист ООК
+  accept: 'qa',
 };
 
 /** Задачи, которые идут в своих строках: смена у линии — в строке упаковки, подготовка и проверка — в строке испытания, фура — в строке фуры. */
@@ -146,6 +156,19 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
             ? { kind: 'machine', line: li, k: plan.plant.lines[li].machines.findIndex(m => m.id === pt.machine) }
             : { kind: 'equipment', i: plan.plant.equipment.findIndex(e => e.id === pt.machine) };
       }
+    } else if (t.kind === 'accept' && t.asset && s.assets[t.asset]) {
+      const a = s.assets[t.asset];
+      row.asset = a.id;
+      row.family = a.family;
+      row.inv = a.inv;
+      row.machine = a.type;
+      if (a.visit) {
+        row.work = a.visit.work;
+        if (a.visit.work === 'cal') row.dept = 'qc';
+      }
+      row.norm = t.work;
+      const info = assetInfo(db, s, a.id);
+      if (info?.thing) row.thing = info.thing;
     } else {
       // норма задачи — время работы на месте; дорога до места — нет
       if (t.work > 0) row.norm = t.work;
@@ -213,6 +236,27 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
       from,
       ...(norm !== undefined ? { norm } : {}),
       ...(lab >= 0 ? { thing: { kind: 'room', i: lab } as Thing } : {}),
+    });
+  }
+
+  // подрядчик у актива (Б3в): с начала его работы, норма — часы работы класса; людей завода в ней нет
+  for (const a of Object.values(s.assets)) {
+    const v = a.visit;
+    if (!v || v.from === undefined || !contractor(a, s.t)) continue;
+    const info = assetInfo(db, s, a.id);
+    rows.push({
+      key: `visit:${a.id}:${v.from}`,
+      dept: 'maint',
+      kind: 'visit',
+      asset: a.id,
+      family: a.family,
+      inv: a.inv,
+      work: v.work,
+      machine: a.type,
+      people: [],
+      from: v.from,
+      norm: classOf(db, a)[v.work]?.work ?? 0,
+      ...(info?.thing ? { thing: info.thing } : {}),
     });
   }
 

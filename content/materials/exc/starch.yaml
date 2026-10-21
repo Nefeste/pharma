@@ -4,7 +4,7 @@ code: 200001
 name: { ru: Крахмал картофельный, en: Potato starch }
 unit: kg
 container: cnt.bag.25
-storage: room
+storage: reg.ccrt
 shelf: 24
 spec: spec.mat.exc.starch
 # истинные свойства партии: среднее и разброс, %; партия брака — сдвиг (гипотезы)

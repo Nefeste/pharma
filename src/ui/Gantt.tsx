@@ -14,6 +14,7 @@ import { planOf } from '../engine/plant';
 import { clock, dayText, durText, money, named, pctText, qtyText, T, whenText } from '../i18n';
 import type { BatchLabel, GanttRow, GanttView } from '../sim/plan';
 import type { Thing } from '../sim/views';
+import { assetClass, assetName, unfitText, workName } from './assets';
 import { db } from './db';
 import { type Actions, type GanttDays, type Hud, holds, PLAN_RUN, type PlanRun } from './store';
 
@@ -108,6 +109,14 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         return w.cause === 'after' ? T.gantt.why.after(roomName(w.room), who(labels, w.batch, 'gen'), durText(w.work)) : w.cause === 'expired' ? T.gantt.why.expired(roomName(w.room), durText(w.work)) : T.gantt.why.product(roomName(w.room), durText(w.work));
       case 'repair':
         return T.gantt.why.repair(roomName(w.room));
+      case 'visit': {
+        const a = v.assets[w.asset];
+        return T.gantt.why.visit(roomName(w.room), a ? `${workName(a, w.work)} — ${assetClass(a)}` : w.asset, timeText(w.until));
+      }
+      case 'unfit': {
+        const a = v.assets[w.asset];
+        return T.gantt.why.unfit(roomName(w.room), a ? `${unfitText(a)} — ${assetName(a)}` : w.asset);
+      }
     }
   };
 
@@ -126,6 +135,11 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         return `${T.gantt.bar.setup}: ${short(labels, b.batch)}`;
       case 'pack':
         return `${T.gantt.bar.pack}: ${short(labels, b.batch)}`;
+      case 'visit': {
+        // визит подрядчика (Б3в): работа так, как она названа у класса, — «Калибровка весов», «Квалификация пресса»
+        const a = b.asset ? v.assets[b.asset] : undefined;
+        return a && b.work ? workName(a, b.work) : T.gantt.bar.visit;
+      }
     }
   };
 
@@ -134,6 +148,11 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
     if (b.kind === 'clean' && b.batch) lines[0] = `${lines[0]} · ${who(labels, b.batch)}`;
     if (b.material) lines.push(T.gantt.material);
     if (b.repair) lines.push(T.gantt.repair);
+    if (b.kind === 'visit') {
+      const a = b.asset ? v.assets[b.asset] : undefined;
+      if (a) lines.push(assetName(a));
+      lines.push(T.gantt.visit);
+    }
     if (b.batch && b.when === 'plan' && moved.has(b.batch)) lines.push(T.gantt.inDraft);
     lines.push(...whyOf(b, v.why[b.batch ?? '']).map(whyText));
     if (b.batch && movable.has(b.batch)) lines.push(T.gantt.hintDrag);
@@ -360,6 +379,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
           <span className="gbar k-stage w-plan">{T.gantt.bar.stage}</span>
           <span className="gbar k-clean w-plan">{T.gantt.bar.clean}</span>
           <span className="gbar k-pack w-past">{T.gantt.bar.pack}</span>
+          <span className="gbar k-visit w-plan">{T.gantt.bar.visit}</span>
           <span className="gbar k-stage w-past">{T.gantt.when.past}</span>
           <span className="gbar k-stage w-now">{T.gantt.when.now}</span>
           <span className="gbar k-stage w-plan">{T.gantt.when.plan}</span>

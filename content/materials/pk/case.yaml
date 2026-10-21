@@ -4,7 +4,7 @@ code: 300005
 name: { ru: Гофроящик 40 × 30 × 25, en: Shipping carton 40 × 30 × 25 }
 unit: pcs
 container: cnt.bundle.cases
-storage: room
+storage: reg.ccrt
 shelf: 60
 spec: spec.mat.pk.case
 bad: { attr: appearance }

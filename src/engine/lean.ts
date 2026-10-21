@@ -1,8 +1,9 @@
 // Потери и ритм (docs/specs/2026-10-engine.md, 1ж; геймдизайн, §9.6): счётчики потерь за сутки по видам и участкам,
 // время серии по состояниям («чего ждёт серия»), сменное задание линии и коэффициент ритмичности. Причину ожидания
 // задачи называет раздатчик (tasks.ts), путь и время — он же; здесь — куда их записать. Модуль не зовёт других модулей
-// движка: его зовут они.
+// движка, кроме вопросов о пригодности активов (Б3в): его зовут они.
 import type { ContentDb, Dept, Id } from '../content/types';
+import { lineUnfit, stageUnfit } from './assets';
 import { HOUR, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { planOf } from './plant';
@@ -43,6 +44,8 @@ export const AREA: Record<TaskKind, Dept> = {
   // обучение (Б3б) ведёт ООК; путь к посту, где учатся, — на участок того, кто учится (`moved`)
   train: 'qa',
   trainCheck: 'qa',
+  // приёмка работы подрядчика (Б3в) — ООК или ОКК; путь к активу — на участок того, кто принимает (`moved`)
+  accept: 'qa',
 };
 
 /** Ожидание обучения в задержки не идёт: его ставят заранее, за срок предупреждения, и оно ждёт свободного часа. */
@@ -320,12 +323,18 @@ export function phaseOf(db: ContentDb, s: PlantState, b: Batch): BatchPhase | un
       const eqs = Object.values(s.equipment).filter(e => e.room === roomId && st.equipment.includes(e.type));
       if (eqs.some(e => e.batch && e.batch !== b.id)) return 'equipment';
       if (eqs.some(e => Object.values(s.parts).some(p => p.machine === e.id && (p.state === 'failed' || p.task !== undefined)))) return 'repair';
+      if (stageUnfit(db, s, st, roomId)) return 'asset';
       return 'cleaning';
     }
     case 'bulk':
       return 'lab';
-    case 'packing':
-      return b.pack!.state === 'running' ? 'packing' : b.pack!.state === 'waiting' ? 'materials' : 'line';
+    case 'packing': {
+      const job = b.pack!;
+      if (job.state === 'running') return 'packing';
+      if (job.state === 'waiting') return 'materials';
+      // комплект у линии, а машина линии не пригодна (Б3в) — упаковка ждёт её
+      return job.state === 'ready' && lineUnfit(db, s, job.line) ? 'asset' : 'line';
+    }
     case 'fg':
       return 'decision';
     default:

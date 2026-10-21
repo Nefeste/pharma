@@ -4,7 +4,7 @@ code: 200004
 name: { ru: Магния стеарат, en: Magnesium stearate }
 unit: kg
 container: cnt.bag.20
-storage: room
+storage: reg.ccrt
 shelf: 36
 spec: spec.mat.exc.mgst
 # истинные свойства партии: среднее и разброс, %; партия брака — сдвиг (гипотезы)

@@ -4,6 +4,7 @@
 import { momentOf, type Ymd } from '../engine/core/calendar';
 import { dayText, money, named, T, whenText } from '../i18n';
 import type { CashRow, CashWhy } from '../sim/report';
+import { assetClass } from './assets';
 import { db } from './db';
 import type { Actions, Hud } from './store';
 
@@ -22,6 +23,8 @@ function whyText(w: CashWhy | undefined): string {
       return T.cash.why.quarter(w.q, w.y);
     case 'batch':
       return T.cash.why.batch(w.code);
+    case 'asset':
+      return T.cash.why.asset(assetClass(w), T.assets.inv(w.inv));
   }
 }
 

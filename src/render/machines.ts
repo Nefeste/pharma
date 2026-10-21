@@ -105,7 +105,10 @@ function partGeometry(p: ModelPart): THREE.BufferGeometry {
   return new THREE.BoxGeometry(p.w, p.h, p.d);
 }
 
-/** Значок лампы — маленький холст: треугольник, пауза, квадрат, восклицание, ключ, капля, круг; на светлой лампе — тёмный. */
+/**
+ * Значок лампы — маленький холст: треугольник, пауза, квадрат, восклицание, ключ, капля, галочка (калибровка или
+ * квалификация, Б3в), круг; на светлой лампе — тёмный.
+ */
 function iconTexture(lamp: Lamp): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
@@ -147,6 +150,11 @@ function iconTexture(lamp: Lamp): THREE.CanvasTexture {
     g.arc(32, 38, 12, 0, Math.PI);
     g.quadraticCurveTo(18, 32, 32, 14);
     g.fill();
+  } else if (lamp === 'check') {
+    g.moveTo(18, 33);
+    g.lineTo(28, 43);
+    g.lineTo(46, 22);
+    g.stroke();
   } else {
     g.arc(32, 32, 10, 0, Math.PI * 2);
     g.stroke();

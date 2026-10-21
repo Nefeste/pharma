@@ -4,6 +4,7 @@
 // экране стоит там, где её держит движок, и едет тем путём, который он посчитал.
 import type { ContentDb, Plant, ZoneKind } from '../content/types';
 import { buildNav, CELL_CM, type Mover, type Nav, pathLength, RACK } from './nav';
+import { placesOf, roomAt } from './places';
 
 
 export interface Slot {
@@ -18,6 +19,8 @@ export interface Slot {
   z: number;
   /** ярус: 0 — пол */
   level: number;
+  /** зона хранения места (Б3в): рабочее место ISA-95 его помещения; у транзитных зон вне помещений хранения — нет */
+  store?: string;
 }
 
 export { type Mover, RACK } from './nav';
@@ -33,6 +36,8 @@ export interface PlantPlan {
   slot: Record<string, Slot>;
   /** места по виду, в порядке плана */
   byKind: Record<string, Slot[]>;
+  /** зоны хранения, где есть места вида (Б3в) */
+  storesOf: Record<string, string[]>;
   dock: Record<string, Point & { kind: 'in' | 'out' }>;
   /** рабочие точки помещений: своя точка записи или середина */
   room: Record<string, Point & { type: string }>;
@@ -90,11 +95,21 @@ export function planOf(db: ContentDb, plantId: string): PlantPlan {
       }
     }
   }
+  // зона хранения места — по помещению, где оно стоит (Б3в)
+  const stores = placesOf(plant).storeOf;
+  for (const sl of slots) {
+    const room = roomAt(plant, sl.x, sl.z);
+    const st = room ? stores[room] : undefined;
+    if (st) sl.store = st;
+  }
   const slot: Record<string, Slot> = {};
   const byKind: Record<string, Slot[]> = {};
+  const storesOf: Record<string, string[]> = {};
   for (const sl of slots) {
     slot[sl.id] = sl;
     (byKind[sl.kind] ??= []).push(sl);
+    const of = (storesOf[sl.kind] ??= []);
+    if (sl.store && !of.includes(sl.store)) of.push(sl.store);
   }
   const dock: PlantPlan['dock'] = {};
   for (const d of plant.docks) dock[d.id] = { x: d.x, z: d.z, kind: d.kind };
@@ -123,6 +138,7 @@ export function planOf(db: ContentDb, plantId: string): PlantPlan {
     slots,
     slot,
     byKind,
+    storesOf,
     dock,
     room,
     roomOf,

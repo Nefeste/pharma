@@ -1,2 +1,8 @@
 id: inst.ir
 name: { ru: ИК-спектрометр, en: IR spectrometer }
+# калибровка (Б3в; геймдизайн, §7.2): снова — через столько месяцев, часов работы подрядчика и цена, ₽ без НДС;
+# записи калибровки и квалификации приборов — в ОКК (GMP ЕАЭС, ч. I, пп. 3.41, 6.7 iii). Часы и цены — гипотезы
+cal: { every: 12, hours: 2, price: 15000, name: { ru: Калибровка ИК-спектрометра, en: IR spectrometer calibration } }
+critical: true
+source: [gmp-eaeu]
+review: draft

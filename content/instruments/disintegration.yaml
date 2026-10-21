@@ -1,2 +1,7 @@
 id: inst.disintegration
 name: { ru: Прибор «Распадаемость», en: Disintegration tester }
+# калибровка (Б3в; геймдизайн, §7.2): снова — через столько месяцев, часов работы подрядчика и цена, ₽ без НДС;
+# записи калибровки и квалификации приборов — в ОКК (GMP ЕАЭС, ч. I, пп. 3.41, 6.7 iii). Часы и цены — гипотезы
+cal: { every: 12, hours: 1, price: 5000, name: { ru: Калибровка прибора распадаемости, en: Disintegration tester calibration } }
+source: [gmp-eaeu]
+review: draft

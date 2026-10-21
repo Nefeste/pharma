@@ -1,12 +1,14 @@
 // Упакованный срез для отрисовки (docs/02-architecture.md, §10; docs/specs/2026-10-view.md, «Срез 2а», «Срез 2б»,
 // «Срез 2в»; docs/specs/2026-10-panels.md, «Срез 3а»): `Int32Array` уходит из потока расчёта без копии (transferList).
-// Формат 6: заголовок, помещения, фуры, изменённые и ушедшие паллеты, задачи в работе, люди, техника, линии и
-// оборудование. Строк в срезе нет: номера мест и помещений — по порядку плана, который окно строит само из той же базы
+// Формат 7: заголовок, помещения, фуры, изменённые и ушедшие паллеты, задачи в работе, люди, техника, линии и
+// оборудование; у машины линии и оборудования — «калибровка или квалификация» (Б3в). Строк в срезе нет: номера мест и помещений — по порядку плана, который окно строит само из той же базы
 // (`planOf`); номер серии `PPNNNMMYY` — одним целым (`packNo`, src/engine/batchno.ts). Истины здесь нет (§9): упаковка читает только номер, место, ярлык, вид и число тары паллеты, статус и серию
 // помещения, рампу фуры и открыт ли её кузов, вид и времена задачи, где человек и техника и откуда человек идёт на пост,
-// состояние машины, её скорость, сколько штук прошло и сколько в накопителе, — то, что завод видит глазами. Позиция
+// состояние машины, её скорость, сколько штук прошло и сколько в накопителе, у подрядчика ли она или вышел ли её срок
+// (Б3в), — то, что завод видит глазами. Позиция
 // следующей микроостановки и запас узла до отказа в срез не идут.
 import type { ContentDb } from '../content/types';
+import { unfit } from '../engine/assets';
 import { packNo } from '../engine/batchno';
 import { flowAt, geo, SIXTY } from '../engine/line';
 import { partsOf } from '../engine/maint';
@@ -15,7 +17,7 @@ import { shiftEnd } from '../engine/staff';
 import { destOf, pointOf } from '../engine/tasks';
 import type { Line, MachineState, PlantState, Tag, Task, TaskKind, Unit } from '../engine/types';
 
-export const FORMAT = 6;
+export const FORMAT = 7;
 
 /** Поля заголовка: формат, часы, сутки, отставание; сколько записей в каждом разделе. */
 export const H = { format: 0, t: 1, day: 2, lag: 3, rooms: 4, trucks: 5, units: 6, gone: 7, tasks: 8, people: 9, vehicles: 10, lines: 11, equipment: 12, size: 13 } as const;
@@ -45,16 +47,22 @@ export const V = { vehicle: 0, type: 1, x: 2, z: 3, task: 4, size: 5 } as const;
  * машине — `M.size` чисел.
  */
 export const L = { line: 0, batch: 1, sku: 2, flags: 3, machines: 4, size: 5 } as const;
-/** Машина линии: состояние, скорость — штук в минуту, сколько штук прошло за задание, сколько в накопителе после неё (−1 — нет накопителя). */
-export const M = { state: 0, rate: 1, items: 2, fill: 3, size: 4 } as const;
+/**
+ * Машина линии: состояние, скорость — штук в минуту, сколько штук прошло за задание, сколько в накопителе после неё (−1 —
+ * нет накопителя), не годна к новой работе — срок квалификации вышел или у неё подрядчик (Б3в).
+ */
+export const M = { state: 0, rate: 1, items: 2, fill: 3, check: 4, size: 5 } as const;
 /** Флаги линии: очищена и проверена; идёт переналадка; идёт очистка линии. */
 export const LINE_FLAG = { clear: 1, changeover: 2, clearance: 4 } as const;
 /** Оборудование участка (2в): номер в плане, состояние. */
 export const E = { eq: 0, state: 1, size: 2 } as const;
 
 export const MACHINE_STATES: readonly MachineState[] = ['run', 'slow', 'micro', 'fail', 'wait', 'setup', 'off', 'idle'];
-/** Оборудование: свободно, работает (держит стадию серии), уборка помещения, авария (узел отказал). */
-export const EQ_STATES = ['idle', 'run', 'clean', 'fail'] as const;
+/**
+ * Оборудование: свободно, работает (держит стадию серии), уборка помещения, авария (узел отказал), калибровка или
+ * квалификация — у подрядчика или срок вышел, работы не берёт (Б3в).
+ */
+export const EQ_STATES = ['idle', 'run', 'clean', 'fail', 'check'] as const;
 export type EqState = (typeof EQ_STATES)[number];
 
 /** Номер вида задачи в срезе: запись на каждый вид — новый вид без номера не соберётся. */
@@ -62,7 +70,7 @@ const KIND_NO: Record<TaskKind, number> = {
   unload: 0, receive: 1, putaway: 2, move: 3, toSampling: 4, sample: 5, fromSampling: 6, handover: 7, prep: 8, review: 9,
   decide: 10, pick: 11, transfer: 12, return: 13, stage: 14, clean: 15, crew: 16, changeover: 17, clearance: 18, clearCheck: 19,
   feed: 20, fgCheck: 21, qpDecide: 22, ship: 23, casePick: 24, load: 25, repair: 26, truckCheck: 27, invStep: 28, invFix: 29,
-  train: 30, trainCheck: 31,
+  train: 30, trainCheck: 31, accept: 32,
 };
 /** Виды задач по номерам — как в срезе. */
 export const TASK_KINDS: readonly TaskKind[] = (Object.keys(KIND_NO) as TaskKind[]).sort((a, b) => KIND_NO[a] - KIND_NO[b]);
@@ -146,6 +154,8 @@ export interface MachineRow {
   items: number;
   /** −1 — после машины накопителя нет */
   fill: number;
+  /** калибровка или квалификация (Б3в): у подрядчика или срок вышел */
+  check: boolean;
 }
 
 export interface LineRow {
@@ -250,20 +260,23 @@ function lineRow(db: ContentDb, s: PlantState, ix: Index, i: number, line: Line)
       Math.round((mc.rate * 60) / per),
       Math.floor(pos[k] / per),
       next ? Math.floor((pos[k] - pos[k + 1]) / per) : -1,
+      unfit(db, s, mc.id) ? 1 : 0,
     );
   });
   return row;
 }
 
 /**
- * Состояние оборудования участка: авария — узел отказал (до конца ремонта); работает — держит стадию серии; уборка — в
- * помещении идёт уборка. Плановая замена узла идёт на свободной машине — она «свободна», механик рядом.
+ * Состояние оборудования участка: авария — узел отказал (до конца ремонта); работает — держит стадию серии; калибровка или
+ * квалификация — не годно к новой работе: у подрядчика или срок вышел (Б3в); уборка — в помещении идёт уборка. Плановая
+ * замена узла идёт на свободной машине — она «свободна», механик рядом.
  */
-export function eqStateOf(s: PlantState, id: string): EqState {
+export function eqStateOf(db: ContentDb, s: PlantState, id: string): EqState {
   const e = s.equipment[id];
   if (!e) return 'idle';
   if (partsOf(s, id).some(p => p.state === 'failed')) return 'fail';
   if (e.batch) return 'run';
+  if (unfit(db, s, id)) return 'check';
   if (Object.values(s.tasks).some(t => t.kind === 'clean' && t.room === e.room && t.state === 'busy')) return 'clean';
   return 'idle';
 }
@@ -316,7 +329,7 @@ export class Packer {
     });
     const vehicles = Object.values(s.vehicles).map(v => [num(v.id), ix.vehicle.get(v.type)!, v.x, v.z, v.task !== undefined ? row.get(v.task) ?? -1 : -1]);
     const lines = plan.plant.lines.map((l, i) => lineRow(db, s, ix, i, s.lines[l.id]));
-    const equipment = plan.plant.equipment.map((e, i) => [i, EQ_STATES.indexOf(eqStateOf(s, e.id))]);
+    const equipment = plan.plant.equipment.map((e, i) => [i, EQ_STATES.indexOf(eqStateOf(db, s, e.id))]);
     const size = [tasks, people, vehicles, lines, equipment].reduce((n, rows) => n + rows.reduce((k, r) => k + r.length, 0), 0);
     const buf = new Int32Array(H.size + rooms.length * R.size + trucks.length * K.size + changed.length * U.size + gone.length + size);
     buf[H.format] = FORMAT;
@@ -434,7 +447,7 @@ export function unpack(buf: Int32Array): Unpacked {
     const machines: MachineRow[] = [];
     for (let k = 0; k < n; k++) {
       const q = o + L.size + k * M.size;
-      machines.push({ state: MACHINE_STATES[buf[q + M.state]], rate: buf[q + M.rate], items: buf[q + M.items], fill: buf[q + M.fill] });
+      machines.push({ state: MACHINE_STATES[buf[q + M.state]], rate: buf[q + M.rate], items: buf[q + M.items], fill: buf[q + M.fill], check: buf[q + M.check] === 1 });
     }
     lines.push({ line: buf[o + L.line], batch: buf[o + L.batch], sku: buf[o + L.sku], clear: (flags & LINE_FLAG.clear) !== 0, changeover: (flags & LINE_FLAG.changeover) !== 0, clearance: (flags & LINE_FLAG.clearance) !== 0, machines });
     o += L.size + n * M.size;

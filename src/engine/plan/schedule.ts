@@ -5,12 +5,13 @@
 // которое завод ещё проведёт, прогон не предсказывает. Назначенные визиты подрядчика (Б3в) прогон знает: с их часа актив
 // новых работ не берёт, идущая работа доходит до конца, подрядчик работает в свои часы; визиты, которые коллега
 // техслужбы ещё не назначил, — нет. Разброса нет: жизнь отличается от прогона на разброс длительностей, на людей, занятых
-// другим, на отказы и ремонты и на комплекты упаковки, которые появятся позже, — их прогон не предсказывает.
+// другим, на отказы и ремонты и на комплекты упаковки, которые появятся позже, — их прогон не предсказывает. Идущая и
+// ждущая стадии — тоже по норме (`stageTaskNorm`): вытянутую движком длительность задачи окно не видит (Б1б).
 import type { ContentDb, Id } from '../../content/types';
 import { stageMeters, unfit } from '../assets';
 import { DAY, HOUR, isWorkday, momentOf } from '../core/calendar';
 import { blocked } from '../maint';
-import { cleanWork, DIRTY_HOLD, MES, nominal, readyFor, TRANSFER_WORK } from '../mes';
+import { cleanWork, DIRTY_HOLD, MES, nominal, readyFor, stageTaskNorm, TRANSFER_WORK } from '../mes';
 import { classOf, placesOf } from '../places';
 import { planOf } from '../plant';
 import { admitted, needFor } from '../quals';
@@ -27,7 +28,7 @@ export interface Bar {
   stage?: Id;
   from: number;
   to: number;
-  /** прошлое — по записям; сейчас — идёт по задаче; план — прогон */
+  /** прошлое — по записям; сейчас — идёт с начала задачи, конец — по норме; план — прогон */
   when: 'past' | 'now' | 'plan';
   major?: true;
   /** комплект упаковочных материалов, а не серии */
@@ -137,11 +138,12 @@ interface Proj {
 }
 
 /**
- * Прогон: идущие задачи — до их конца; дальше — по правилам движка. Комплектовка — одна на завод: когда она свободна,
- * берёт первое по порядку создания задание, чей срок настал, а нет такого — чей настанет раньше; работа — в смене
- * кладовщиков: по паллетам комплекта, кладовщики перекладывают параллельно (гипотеза: перевозки к шлюзу быстрее
- * перекладки). Стадия — когда кончилась прошлая, помещение свободно, убрано и готово (`readyFor`) и в смене есть люди
- * её роли. Ушла серия из помещения — уборка, как только аппаратчик в смене; генеральная — если грязно дольше суток.
+ * Прогон: идущие уборка и комплектовка — до их конца, идущая стадия — от начала на норму; дальше — по правилам движка.
+ * Комплектовка — одна на завод: когда она свободна, берёт первое по порядку создания задание, чей срок настал, а нет
+ * такого — чей настанет раньше; работа — в смене кладовщиков: по паллетам комплекта, кладовщики перекладывают
+ * параллельно (гипотеза: перевозки к шлюзу быстрее перекладки). Стадия — когда кончилась прошлая, помещение свободно,
+ * убрано и готово (`readyFor`) и в смене есть люди её роли. Ушла серия из помещения — уборка, как только аппаратчик в
+ * смене; генеральная — если грязно дольше суток.
  */
 export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[] = []): Forecast {
   const asked = new Map(changes.map(c => [c.batch, c.notBefore]));
@@ -241,7 +243,8 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     clean(p, c.t, cleanWork(db, s, roomId, major), major, 'plan', b.id);
   };
 
-  // грязные сейчас: уборка идёт по задаче или начнётся, как только аппаратчик в смене
+  // грязные сейчас: уборка идёт по задаче или начнётся, как только аппаратчик в смене. Работа задачи уборки — норма по
+  // оборудованию помещения (`cleanWork`): разброса у неё нет
   for (const p of rooms.values()) {
     const r = p.room;
     if (r.status !== 'dirty') continue;
@@ -341,20 +344,27 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     ...stageMeters(db, s, st, roomId),
   ];
 
-  /** Серия на стадиях: идущая стадия — до конца задачи; ждущая людей — когда они в смене; после отказа — остаток работы. */
+  /**
+   * Серия на стадиях: идущая стадия — от начала задачи на норму; ждущая людей — когда они в смене; после отказа —
+   * остаток по норме. Конец задачи, её работа и остаток после отказа вытянуты движком — их прогон не читает; идёт
+   * дольше нормы — кончится не раньше этой минуты.
+   */
   const inProcess = (b: Batch) => {
     const r = db.recipes[b.recipe];
     if (b.stage >= r.stages.length) return;
     const st = r.stages[b.stage];
     const roomId = plan.roomOf[st.room];
     const t = taskOf(x => x.kind === 'stage' && x.batch === b.id);
+    const work = stageTaskNorm(db, b);
+    // встала на отказе и ещё не пошла снова: у простоя в записи нет конца
+    const stop = b.run?.stops[b.run.stops.length - 1];
     let end: number;
     if (t?.state === 'busy') {
-      out.bars.push({ row: roomId, kind: 'stage', batch: b.id, stage: st.id, from: t.times![1], to: t.times![4], when: 'now' });
-      end = t.times![4];
+      const from = t.times![1];
+      end = Math.max(now, from + work);
+      out.bars.push({ row: roomId, kind: 'stage', batch: b.id, stage: st.id, from, to: end, when: 'now' });
       for (const id of assetsOf(st, roomId)) held.set(id, Math.max(held.get(id) ?? now, end));
-    } else if (t || b.run?.rest !== undefined) {
-      const work = t ? t.work : b.run!.rest!;
+    } else if (t || (stop && stop.to === undefined)) {
       const repair = !t;
       if (repair) note(b.id, { why: 'repair', bar: st.id, room: roomId });
       const c = take([st.staff.role], st.staff.n, now, needFor(db, 'stage', { stage: st }));

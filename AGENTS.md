@@ -138,10 +138,12 @@ first, or copy the working code of Bolnitsa on the same versions.
   equipment and people, cleaning, process parameters, true batch
   quality with causes, IPC, the bulk lot; the packing job and its packaging kit; a stage stopped by a part failure and
   resumed after the repair; a new not-before time of a batch order from the player — `shift`; room readiness, nominal
-  stage time and cleaning time shared with the schedule run; new part budgets of a running stage for the plan run's
-  twin — `stageRedraw`), `plan/schedule.ts` (the schedule run — a pure function: running tasks to their end, then
-  kitting, stages and cleaning by the engine's rules and its own functions, with the player's draft changes; bars and
-  the reasons why not earlier), `plan/twin.ts` (the plan run's twin: on a copy, forget what the plant does not know —
+  stage time, the norm of a stage task (after a failure — the tablets left at the recipe's rate, `stageTaskNorm`) and
+  cleaning time shared with the schedule run; new part budgets of a running stage for the plan run's twin —
+  `stageRedraw`), `plan/schedule.ts` (the schedule run — a pure function: running cleaning and kitting to their end, a
+  running or waiting stage by the plant's norm, never the engine's drawn duration; then kitting, stages and cleaning by
+  the engine's rules and its own functions, with the player's draft changes; bars and the reasons why not earlier),
+  `plan/twin.ts` (the plan run's twin: on a copy, forget what the plant does not know —
   true lot and batch properties, causes, part budgets, unrecorded jams, results before review, the incident not yet
   seen, marks no step has looked for — and redraw it from what was measured, the root of an open investigation from its
   versions; branches anew from the run seed), `plan/run.ts` (the plan run — a pure function: per seed a copy, the

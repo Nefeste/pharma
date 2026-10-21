@@ -1,15 +1,18 @@
 // Часть 3д: прогон расписания, сдвиг задания и призрак (docs/specs/2026-10-panels.md, 3д). Прогон — по правилам движка и
 // его функциями: прошлое — ровно записи стадий; в помещении полосы не перекрываются, между сериями — уборка; стадии
 // начинаются в смене, не позже чем за 15 минут до её конца; комплектовка одна; состояние не меняется; прогон с начала
-// партии близок к тому, как серии потом прошли на деле. Сдвиг меняет срок только у задания, не начавшего комплектовку.
-// Призрак называет, почему не там, куда тянут. Черновик (часть 5, docs/specs/2026-10-plan-run.md): отпустили — строка
-// черновика, команды нет; план — с черновиком, прежние полосы сдвинутых серий — рядом; «Утвердить» — сроки как в
-// черновике и план как показан; «Сбросить» — ничего не изменилось; начатое задание из черновика уходит.
+// партии близок к тому, как серии потом прошли на деле. Идущая и ждущая стадии — по норме завода: вытянутая движком
+// длительность и истинный остаток после отказа прогон не меняют (Б1б). Сдвиг меняет срок только у задания, не начавшего
+// комплектовку. Призрак называет, почему не там, куда тянут. Черновик (часть 5, docs/specs/2026-10-plan-run.md):
+// отпустили — строка черновика, команды нет; план — с черновиком, прежние полосы сдвинутых серий — рядом; «Утвердить» —
+// сроки как в черновике и план как показан; «Сбросить» — ничего не изменилось; начатое задание из черновика уходит.
 import { describe, expect, test } from 'bun:test';
 import { legacy as db } from './legacy';
+import type { ContentDb } from '../../src/content/types';
 import { DAY, HOUR, MIN } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
-import { readyFor, TRANSFER_WORK } from '../../src/engine/mes';
+import { consume, partType } from '../../src/engine/maint';
+import { nominal, readyFor, TRANSFER_WORK } from '../../src/engine/mes';
 import { type Bar, forecast } from '../../src/engine/plan/schedule';
 import { planOf } from '../../src/engine/plant';
 import { takesAt } from '../../src/engine/staff';
@@ -268,6 +271,86 @@ describe('вид расписания', () => {
     expect(JSON.stringify(ganttView(db, b, q))).toBe(JSON.stringify(ganttView(db, a, q)));
     const gq = { view: 'ghost' as const, batch: 'B3', notBefore: at(10, 9) };
     expect(JSON.stringify(ghostView(db, b, gq))).toBe(JSON.stringify(ghostView(db, a, gq)));
+  });
+});
+
+describe('стадия — по норме завода', () => {
+  // Сколько стадия продлится на самом деле, окно не знает (Б1б). Завод без заданий сценария, как в maint.test.ts:
+  // задание в полдень, второе — назавтра; пуансоны откажут на 90 000-й таблетке — прессование встанет вечером, ремонт
+  // кончится ночью, стадия до утра ждёт аппаратчиков и утром идёт дальше
+  const RCP = 'rcp.paracetamol500.wet.v1';
+  const PRESSED = 90_000;
+  const bare: ContentDb = { ...db, scenarios: { ...db.scenarios, [SC]: { ...db.scenarios[SC], batches: [], wear: {}, maint: {} } } };
+
+  /** Что сейчас со стадией первой серии: идёт, встала на отказе, ждёт людей, идёт после ремонта. */
+  const phaseOf = (s: PlantState): string | undefined => {
+    const b = s.batches.B1;
+    const t = Object.values(s.tasks).find(x => x.kind === 'stage' && x.batch === b.id);
+    if (t?.state === 'busy') return b.run && b.run.stops.length > 0 ? 'resumed' : 'busy';
+    if (t) return 'open';
+    return b.run?.rest !== undefined ? 'stopped' : undefined;
+  };
+
+  const s = newPlant(bare, { scenario: SC });
+  const pt = s.parts['press-1/punches'];
+  pt.budget = consume(partType(bare, pt), pt.done, PRESSED);
+  apply(bare, s, { kind: 'order', recipe: RCP, notBefore: at(0, 12) });
+  apply(bare, s, { kind: 'order', recipe: RCP, notBefore: at(1, 12) });
+  const shots: { phase: string; s: PlantState }[] = [];
+  while (s.t < at(1, 10)) {
+    apply(bare, s, { kind: 'advance', seconds: 10 * MIN });
+    const phase = phaseOf(s);
+    if (phase) shots.push({ phase, s: structuredClone(s) });
+  }
+
+  /** Тот же завод, но движок вытянул стадию иначе: работа её задачи, конец задачи, истинный остаток после отказа. */
+  function redraw(st: PlantState, dt: number): PlantState {
+    const o: PlantState = structuredClone(st);
+    for (const t of Object.values(o.tasks)) {
+      if (t.kind !== 'stage') continue;
+      t.work += dt;
+      if (t.times) t.times[4] += dt;
+    }
+    for (const b of Object.values(o.batches)) if (b.run?.rest !== undefined) b.run.rest += dt;
+    return o;
+  }
+
+  test('стадия шла, вставала на отказе, ждала людей ночью и шла после ремонта', () => {
+    expect([...new Set(shots.map(x => x.phase))].sort()).toEqual(['busy', 'open', 'resumed', 'stopped']);
+  });
+
+  test('два завода, у которых различается только вытянутая длительность стадии, — одни и те же прогон, Гант и призрак', () => {
+    for (const { s: a } of shots) {
+      const b = redraw(a, 2 * HOUR);
+      expect(JSON.stringify(forecast(bare, b))).toBe(JSON.stringify(forecast(bare, a)));
+      // вторую серию тянут на эту минуту: её стадии встают вслед за первой
+      const draft = [{ batch: 'B2', notBefore: a.t }];
+      const q = { view: 'gantt' as const, from: a.t - DAY, to: a.t + 2 * DAY, draft };
+      expect(JSON.stringify(ganttView(bare, b, q))).toBe(JSON.stringify(ganttView(bare, a, q)));
+      const g = { view: 'ghost' as const, batch: 'B2', notBefore: a.t };
+      const ghost = ghostView(bare, a, g);
+      expect(ghost.refused).toBeUndefined();
+      expect(JSON.stringify(ghostView(bare, b, g))).toBe(JSON.stringify(ghost));
+    }
+  });
+
+  test('идущая — от начала задачи на норму карты; после отказа — остаток таблеток по скорости карты, без подготовки', () => {
+    for (const { phase, s: a } of shots) {
+      const b = a.batches.B1;
+      const st = db.recipes[RCP].stages[b.stage];
+      const norm = nominal(bare, RCP, st, b.mass);
+      const bar = forecast(bare, a).bars.find(x => x.batch === b.id && x.stage === st.id)!;
+      const t = Object.values(a.tasks).find(x => x.kind === 'stage' && x.batch === b.id);
+      if (phase === 'busy') {
+        expect(bar).toMatchObject({ when: 'now', from: t!.times![1], to: Math.max(a.t, t!.times![1] + norm) });
+        continue;
+      }
+      const run = b.run!;
+      expect(run.left).toBe(run.units - PRESSED);
+      const rest = Math.ceil(((norm - st.time.setup) * run.left) / run.units);
+      if (phase === 'resumed') expect(bar).toMatchObject({ when: 'now', from: t!.times![1], to: Math.max(a.t, t!.times![1] + rest) });
+      else expect(bar).toMatchObject({ when: 'plan', to: bar.from + rest, ...(phase === 'stopped' ? { repair: true } : {}) });
+    }
   });
 });
 

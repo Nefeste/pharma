@@ -516,6 +516,19 @@ export function nominal(db: ContentDb, recipe: Id, st: RecipeStage, mass: number
   return sec;
 }
 
+/**
+ * Норма задачи стадии — то, что знает завод: длительность по карте на массу серии; после отказа — остаток по счётчику
+ * таблеток со скоростью карты, без подготовки. Сколько стадия продлится на самом деле (`duration`, остаток после отказа
+ * `run.rest`), знает только движок; прогон расписания (3д) берёт норму, как «Сейчас» (Б1б).
+ */
+export function stageTaskNorm(db: ContentDb, b: Batch): number {
+  const st = db.recipes[b.recipe].stages[b.stage];
+  const sec = nominal(db, b.recipe, st, b.mass);
+  const run = b.run;
+  if (!run || run.stops.length === 0 || run.units === 0) return sec;
+  return Math.ceil(((sec - st.time.setup) * run.left) / run.units);
+}
+
 /** Длительность стадии по карте: номинальная, с разбросом. */
 function duration(db: ContentDb, s: PlantState, b: Batch, st: RecipeStage, roomId: string): number {
   const t = st.time;

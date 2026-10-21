@@ -39,7 +39,7 @@ export function truckArrives(db: ContentDb, s: PlantState, poId: string, notices
   po.status = 'arrived';
   if (po.sum !== undefined) {
     s.cash.vat.in += po.vat!;
-    owe(s, 'supplier', -(po.sum - po.prepaid!), dueIn(s, db.suppliers[po.supplier].payDays), po.id);
+    owe(s, 'supplier', -(po.sum - po.prepaid!), dueIn(db, s, db.suppliers[po.supplier].payDays), po.id);
   }
   const dock = db.plants[s.plant].docks.find(d => d.kind === 'in')!.id;
   const truck: Truck = { id: `K${po.id.slice(1)}`, dock, po: po.id, units: [], arrived: s.t, docked: false, open: false };

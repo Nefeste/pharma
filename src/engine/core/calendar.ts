@@ -58,28 +58,112 @@ export function momentOf(start: Ymd, t: number): Moment {
   return { day, date: civilFromDays(day), weekday: weekday(day), sec: ((t % DAY) + DAY) % DAY };
 }
 
-// Рабочие дни: понедельник — пятница; праздников в календаре пока нет (docs/specs/2026-10-engine.md, 1д).
+// Производственный календарь (Б4а; docs/10-domain.md, §2): рабочие дни пятидневки — понедельник — пятница, кроме
+// нерабочих праздников (ст. 112 ТК РФ) и выходных, перенесённых на будни; выходной, совпавший с праздником, переносится
+// на следующий рабочий день, кроме январских — их переносит постановление Правительства. Перенос постановлением — «с» и
+// «на»: день «на» становится выходным, день «с» — рабочим, если он не праздник, и длится как день «на». Рабочий день
+// накануне праздника короче (ст. 95; Порядок 588н). Год считается один раз и помнится в календаре.
 
-export function isWorkday(z: number): boolean {
-  return weekday(z) < 5;
+/** Данные календаря — из регуляторного профиля: праздники (месяц, число), январские (с, по), переносы (с, на) — дни. */
+export interface CalendarSpec {
+  holidays: readonly (readonly [number, number])[];
+  january: readonly [number, number];
+  transfers: readonly (readonly [number, number])[];
+}
+
+/** Дни года: праздники; выходные пятидневки сверх субботы и воскресенья; рабочие субботы и воскресенья; короткие дни. */
+interface YearDays {
+  holiday: Set<number>;
+  off: Set<number>;
+  on: Set<number>;
+  short: Set<number>;
+}
+
+export interface WorkCalendar {
+  spec: CalendarSpec;
+  years: Map<number, YearDays>;
+  /** день → отметки: 1 — рабочий, 2 — короткий, 4 — праздник; раздатчик спрашивает о дне много раз за час */
+  days: Map<number, number>;
+}
+
+export const workCalendar = (spec: CalendarSpec): WorkCalendar => ({ spec, years: new Map(), days: new Map() });
+
+function yearOf(cal: WorkCalendar, y: number): YearDays {
+  const known = cal.years.get(y);
+  if (known) return known;
+  const r: YearDays = { holiday: new Set(), off: new Set(), on: new Set(), short: new Set() };
+  for (const [m, d] of cal.spec.holidays) r.holiday.add(daysFromCivil({ y, m, d }));
+  const inYear = (z: number) => civilFromDays(z).y === y;
+  // постановление: «на» — выходной; «с» — рабочий, если не праздник
+  const moves = cal.spec.transfers.filter(([, to]) => inYear(to));
+  for (const [from, to] of moves) {
+    r.off.add(to);
+    if (!r.holiday.has(from)) r.on.add(from);
+  }
+  const works = (z: number) => !r.holiday.has(z) && !r.off.has(z) && (weekday(z) < 5 || r.on.has(z));
+  // ч. 2 ст. 112: выходной, совпавший с праздником, кроме январских, — на следующий после праздника рабочий день
+  const [j0, j1] = cal.spec.january;
+  for (const z of [...r.holiday].sort((a, b) => a - b)) {
+    const { m, d } = civilFromDays(z);
+    if (weekday(z) < 5 || (m === 1 && d >= j0 && d <= j1)) continue;
+    let w = z + 1;
+    while (!works(w)) w++;
+    r.off.add(w);
+  }
+  cal.years.set(y, r);
+  // накануне праздника — короче; рабочий день «с» длится как день «на». Праздник — по дате: 31 декабря смотрит на
+  // 1 января следующего года, не считая весь год
+  const holidayAt = (z: number) => {
+    const { m, d } = civilFromDays(z);
+    return cal.spec.holidays.some(h => h[0] === m && h[1] === d);
+  };
+  for (let z = daysFromCivil({ y, m: 1, d: 1 }), end = daysFromCivil({ y, m: 12, d: 31 }); z <= end; z++) if (works(z) && holidayAt(z + 1)) r.short.add(z);
+  for (const [from, to] of moves) if (r.on.has(from) && holidayAt(to + 1)) r.short.add(from);
+  return r;
+}
+
+/** Отметки дня (`WorkCalendar.days`). */
+function flags(cal: WorkCalendar, z: number): number {
+  let f = cal.days.get(z);
+  if (f === undefined) {
+    const r = yearOf(cal, civilFromDays(z).y);
+    f = (!r.holiday.has(z) && !r.off.has(z) && (weekday(z) < 5 || r.on.has(z)) ? 1 : 0) | (r.short.has(z) ? 2 : 0) | (r.holiday.has(z) ? 4 : 0);
+    cal.days.set(z, f);
+  }
+  return f;
+}
+
+/** Рабочий ли день пятидневки по календарю. */
+export function isWorkday(cal: WorkCalendar, z: number): boolean {
+  return (flags(cal, z) & 1) !== 0;
+}
+
+/** Нерабочий праздник ли (ст. 112). */
+export function isHoliday(cal: WorkCalendar, z: number): boolean {
+  return (flags(cal, z) & 4) !== 0;
+}
+
+/** Короткий ли день: рабочий день накануне праздника (ст. 95). */
+export function isShort(cal: WorkCalendar, z: number): boolean {
+  return (flags(cal, z) & 2) !== 0;
 }
 
 /** Первый рабочий день не раньше `z`. */
-export function workdayOnOrAfter(z: number): number {
-  while (!isWorkday(z)) z++;
+export function workdayOnOrAfter(cal: WorkCalendar, z: number): number {
+  while (!isWorkday(cal, z)) z++;
   return z;
 }
 
 /** Последний рабочий день не позже `z`. */
-export function workdayOnOrBefore(z: number): number {
-  while (!isWorkday(z)) z--;
+export function workdayOnOrBefore(cal: WorkCalendar, z: number): number {
+  while (!isWorkday(cal, z)) z--;
   return z;
 }
 
 /** Через `n` рабочих дней после `z` (n ≥ 1). */
-export function addWorkdays(z: number, n: number): number {
+export function addWorkdays(cal: WorkCalendar, z: number, n: number): number {
   let d = z;
-  for (let i = 0; i < n; i++) d = workdayOnOrAfter(d + 1);
+  for (let i = 0; i < n; i++) d = workdayOnOrAfter(cal, d + 1);
   return d;
 }
 
@@ -100,9 +184,19 @@ export function lastOfMonth(y: number, m: number): number {
   return daysFromCivil(m === 12 ? { y: y + 1, m: 1, d: 1 } : { y, m: m + 1, d: 1 }) - 1;
 }
 
-/** Рабочих дней в месяце. */
-export function workdaysIn(y: number, m: number): number {
+/** Рабочих дней пятидневки в месяце. */
+export function workdaysIn(cal: WorkCalendar, y: number, m: number): number {
   let n = 0;
-  for (let z = daysFromCivil({ y, m, d: 1 }), end = lastOfMonth(y, m); z <= end; z++) if (isWorkday(z)) n++;
+  for (let z = daysFromCivil({ y, m, d: 1 }), end = lastOfMonth(y, m); z <= end; z++) if (isWorkday(cal, z)) n++;
   return n;
+}
+
+/**
+ * Норма рабочего времени месяца, с (Порядок 588н): рабочие дни пятидневки по `day` секунд, без `short` секунд за каждый
+ * короткий день.
+ */
+export function normOf(cal: WorkCalendar, y: number, m: number, day: number, short: number): number {
+  let sec = 0;
+  for (let z = daysFromCivil({ y, m, d: 1 }), end = lastOfMonth(y, m); z <= end; z++) if (isWorkday(cal, z)) sec += day - (isShort(cal, z) ? short : 0);
+  return sec;
 }

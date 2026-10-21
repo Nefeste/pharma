@@ -14,6 +14,7 @@ import { accepts, classOf, placesOf, roomAt } from './places';
 import { type PlantPlan, planOf, type Slot } from './plant';
 import { addTask } from './tasks';
 import type { Asset, AssetRec, Notice, PlantState, Task } from './types';
+import { calOf } from './workdays';
 
 /** Работы подрядчика у актива: повторная квалификация и калибровка (у датчика — поверка). */
 export const WORKS = ['qual', 'cal'] as const;
@@ -133,7 +134,7 @@ export function assetStep(db: ContentDb, s: PlantState) {
     const v = a.visit;
     if (!v || v.from !== undefined || s.t < v.at) continue;
     now ??= momentOf(s.start, s.t);
-    if (!isWorkday(now.day)) return;
+    if (!isWorkday(calOf(db, s), now.day)) return;
     const [from, to] = db.scenarios[s.scenario].assets.hours;
     const w = classOf(db, a)[v.work];
     if (!w || now.sec < from || now.sec + w.work > to || busy(db, s, a)) continue;
@@ -148,7 +149,7 @@ export function assetStep(db: ContentDb, s: PlantState) {
 export function assetHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   const now = momentOf(s.start, s.t);
   if (now.sec === 0) expired(db, s, now.day, notices);
-  if (now.sec === BOOK_HOUR && isWorkday(now.day)) book(db, s, now.day);
+  if (now.sec === BOOK_HOUR && isWorkday(calOf(db, s), now.day)) book(db, s, now.day);
   assetStep(db, s);
 }
 
@@ -166,7 +167,7 @@ function expired(db: ContentDb, s: PlantState, day: number, notices: Notice[]) {
  */
 function book(db: ContentDb, s: PlantState, today: number) {
   const sc = db.scenarios[s.scenario];
-  const at = (addWorkdays(today, 1) - daysFromCivil(s.start)) * DAY + sc.assets.hours[0];
+  const at = (addWorkdays(calOf(db, s), today, 1) - daysFromCivil(s.start)) * DAY + sc.assets.hours[0];
   for (const a of Object.values(s.assets)) {
     if (a.visit) continue;
     const cls = classOf(db, a);

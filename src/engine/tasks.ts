@@ -7,12 +7,15 @@
 // Задачу берёт только допущенный (Б3б, quals.ts): у кого есть записи обучения по всему, что нужно для работы и для
 // техники; есть люди роли в смене, но ни один не допущен, — задача ждёт «нет допуска» и называет документ. Прибор
 // лаборатории берётся только пригодный, а место хранения — в зоне, которая принимает режим материала и чей датчик в сроке
-// (Б3в, assets.ts): иначе задача ждёт актив и называет его.
+// (Б3в, assets.ts): иначе задача ждёт актив и называет его. Задачу берёт только тот, у кого она с дорогой по норме и с
+// запасом на разброс помещается в остаток смены и в сверхурочные, которые ему ещё можно (Б4а, hours.ts): свободные
+// допущенные люди в смене есть, но ни у кого не помещается, — задача ждёт «нет часов».
 import type { ContentDb, Id, ZoneKind } from '../content/types';
 import { slotFit, unfit } from './assets';
 import { mixStart } from './batchno';
 import { schedule } from './core/agenda';
 import { momentOf } from './core/calendar';
+import { endTask, fits, startTask } from './hours';
 import { moved, waitEnd, waitNote } from './lean';
 import { placesOf } from './places';
 import { dist, type PlantPlan, planOf, type Point, travel } from './plant';
@@ -55,6 +58,7 @@ export interface NewTask {
   doc?: Id;
   asset?: string;
   pair?: string;
+  norm?: [number, number];
 }
 
 export function addTask(s: PlantState, n: NewTask): Task {
@@ -122,21 +126,43 @@ interface Pass {
 }
 
 /**
- * Ближайший свободный человек ролей задачи, который может взять задачу сейчас и допущен ко всему из `need` и `more`; при
- * равенстве — меньший номер.
+ * Ближайший свободный человек ролей задачи, который может взять задачу сейчас, допущен ко всему из `need` и `more` и
+ * подходит по `ok` (у него задача помещается в часы, Б4а); при равенстве — меньший номер. Никого, а `ok` кого-то
+ * отклонил, — `miss.hours`: так задача ждёт «нет часов», а не людей, без второго поиска.
  */
-function nearestPerson(db: ContentDb, s: PlantState, x: Pass, t: Task, at: Point, need: readonly string[], skip: Set<string>, more: readonly string[] = []): Person | undefined {
+function nearestPerson(db: ContentDb, s: PlantState, x: Pass, t: Task, at: Point, need: readonly string[], skip: Set<string>, more: readonly string[] = [], ok?: (p: Person) => boolean, miss?: { hours: boolean }): Person | undefined {
   let best: Person | undefined;
   let bestD = 0;
   for (const p of x.people) {
     if (skip.has(p.id) || !t.roles.includes(p.role) || t.not?.includes(p.id) || !canTake(db, s, p) || !admitted(db, p, need, x.day) || !admitted(db, p, more, x.day)) continue;
     const d = dist(x.plan, x.where(p), at);
     if (!best || d < bestD || (d === bestD && idNum(p.id) < idNum(best.id))) {
+      if (ok && !ok(p)) {
+        if (miss) miss.hours = true;
+        continue;
+      }
       best = p;
       bestD = d;
     }
   }
   return best;
+}
+
+/**
+ * Помещается ли задача у этих людей с этой техникой и местом (Б4а): от сейчас до её конца — дорога и работа по норме и
+ * по наибольшей длительности — в остаток смены каждого и в сверхурочные, которые ему ещё можно (hours.ts).
+ */
+function fitsAll(db: ContentDb, s: PlantState, x: Pass, t: Task, people: readonly Person[], v: Vehicle | undefined, to: string | undefined): boolean {
+  const pos = people.map(x.where);
+  const lead = timesOf(db, s, x.plan, t, pos, v, to, 0)[4] - s.t;
+  const work = t.kind === 'crew' ? crewWork(db, s, people, s.t + lead) : t.work;
+  const [nom, max] = t.norm ?? [work, work];
+  return people.every(p => fits(db, s, p, t.kind, shiftEnd(db, s, p)!, lead + nom, lead + max));
+}
+
+/** Смена у линии — до конца смены того, у кого она кончается раньше; люди у линии с мгновения `at`. */
+function crewWork(db: ContentDb, s: PlantState, people: readonly Person[], at: number): number {
+  return Math.max(1, Math.min(...people.map(p => shiftEnd(db, s, p)!)) - at);
 }
 
 /** Раздать открытые задачи — в их порядке, пока хватает людей, техники и приборов; не досталась — запомнить почему. */
@@ -224,6 +250,7 @@ function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | und
   if (t.kind === 'train') {
     const p = s.people[t.trainee!];
     if (!p || !canTake(db, s, p)) return p && onShift(db, s, p) ? 'people' : 'shift';
+    if (!fitsAll(db, s, x, t, [p], undefined, undefined)) return 'hours';
     start(db, s, plan, t, [p], undefined, undefined, undefined);
     return undefined;
   }
@@ -260,11 +287,13 @@ function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | und
       .sort((a, b) => dist(plan, a, from, 'drive') - dist(plan, b, from, 'drive') || idNum(a.id) - idNum(b.id));
     if (free.length === 0) return 'vehicle';
     let place = false;
+    let short = false;
     let closedBy: string | undefined;
     for (const v of free) {
       const vt = db.vehicles[v.type];
-      const driver = nearestPerson(db, s, x, t, v, need, new Set(), vehicleNeed(db, v.type));
-      if (!driver) continue;
+      const drive = vehicleNeed(db, v.type);
+      const near = nearestPerson(db, s, x, t, v, need, new Set(), drive);
+      if (!near) continue;
       let to: string | undefined;
       if (t.toKind) {
         const sl = findSlot(s, plan, t.toKind, t.near ?? from, vt.levels, 'drive', fit?.ok);
@@ -275,6 +304,12 @@ function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | und
         }
         to = sl.id;
       }
+      // ближайшему водителю задача не помещается в часы — ближайший, у кого помещается (Б4а)
+      const driver = fitsAll(db, s, x, t, [near], v, to) ? near : nearestPerson(db, s, x, t, v, need, new Set([near.id]), drive, p => fitsAll(db, s, x, t, [p], v, to));
+      if (!driver) {
+        short = true;
+        continue;
+      }
       start(db, s, plan, t, [driver], v, to, inst);
       return undefined;
     }
@@ -282,72 +317,84 @@ function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | und
       t.unfit = x.closed.get(closedBy);
       return 'asset';
     }
-    return place ? 'place' : driverWait(db, s, x, t, need, free);
+    return place ? 'place' : short ? 'hours' : driverWait(db, s, x, t, need, free);
   }
+  // пешком, но с местом назначения на полу (возврат остатков в шлюз): место — ближе к началу задачи; его нет — задача
+  // ждёт место, но сначала — людей
+  const sl = t.toKind ? findSlot(s, plan, t.toKind, t.near ?? from, 0, 'walk', fit?.ok) : undefined;
   const people: Person[] = [];
   const skip = new Set<string>();
+  const noPlace = !!t.toKind && !sl;
   for (let i = 0; i < t.count; i++) {
-    const p = nearestPerson(db, s, x, t, from, need, skip);
-    if (!p) return crewWait(db, s, x, t, need);
+    // у каждого следующего — задача всей группы с ним помещается в часы у всех (Б4а)
+    const ok = noPlace ? undefined : (p: Person) => fitsAll(db, s, x, t, [...people, p], undefined, sl?.id);
+    const miss = { hours: false };
+    const p = nearestPerson(db, s, x, t, from, need, skip, [], ok, miss);
+    if (!p) return miss.hours ? 'hours' : crewWait(db, s, x, t, need);
     people.push(p);
     skip.add(p.id);
   }
-  // пешком, но с местом назначения на полу (возврат остатков в шлюз): место — ближе к началу задачи
-  let to: string | undefined;
-  if (t.toKind) {
-    const sl = findSlot(s, plan, t.toKind, t.near ?? from, 0, 'walk', fit?.ok);
-    if (!sl) {
-      const by = fit ? findSlot(s, plan, t.toKind, t.near ?? from, 0, 'walk', fit.open)?.store : undefined;
-      if (!by) return 'place';
-      t.unfit = x.closed.get(by);
-      return 'asset';
-    }
-    to = sl.id;
+  if (noPlace) {
+    const by = fit ? findSlot(s, plan, t.toKind!, t.near ?? from, 0, 'walk', fit.open)?.store : undefined;
+    if (!by) return 'place';
+    t.unfit = x.closed.get(by);
+    return 'asset';
   }
-  start(db, s, plan, t, people, undefined, to, inst);
+  start(db, s, plan, t, people, undefined, sl?.id, inst);
   return undefined;
+}
+
+/**
+ * Времена задачи у людей в точках `pos` (по порядку людей) с этой техникой и местом и работой `work` на месте: начало,
+ * у груза, взял, у места, конец. Ничего не меняет — по ним раздатчик решает, помещается ли задача в часы (Б4а).
+ */
+function timesOf(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, pos: readonly Point[], v: Vehicle | undefined, to: string | undefined, work: number): [number, number, number, number, number] {
+  const from = pointOf(plan, s, t.from);
+  const t0 = s.t;
+  if (v) {
+    const vt = db.vehicles[v.type];
+    const atLoad = t0 + travel(plan, pos[0], v, WALK) + travel(plan, v, from, vt.speedEmpty, 'drive');
+    const off = atLoad + vt.liftBase + levelOf(plan, t.from) * vt.liftPerLevel;
+    const atDrop = off + travel(plan, from, to ? plan.slot[to] : (destOf(plan, s, t) ?? from), vt.speedLoaded, 'drive');
+    return [t0, atLoad, off, atDrop, atDrop + (to ? vt.liftBase + plan.slot[to].level * vt.liftPerLevel : 0) + work];
+  }
+  // пешком: дойти, взять, донести до места назначения (если оно есть) и там работать
+  const walk = Math.max(...pos.map(p => travel(plan, p, from, WALK)));
+  const dest = to ? plan.slot[to] : destOf(plan, s, t);
+  const carry = dest ? travel(plan, from, dest, WALK) : 0;
+  return [t0, t0 + walk, t0 + walk, t0 + walk + carry, t0 + walk + carry + work];
 }
 
 function start(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, people: Person[], v: Vehicle | undefined, to: string | undefined, inst: Instrument | undefined) {
   const from = pointOf(plan, s, t.from);
-  const t0 = s.t;
-  let times: [number, number, number, number, number];
   waitEnd(s, t);
   delete t.lack;
   delete t.unfit;
   // кто шёл на пост — остановился там, где его застала задача: путь к ней — оттуда
   for (const p of people) stopWalk(db, s, p);
+  // смена у линии — до конца смены того, у кого она кончается раньше; линия узнаёт о приходе людей событием
+  if (t.kind === 'crew') {
+    const at = timesOf(db, s, plan, t, people, v, to, 0)[1];
+    t.work = crewWork(db, s, people, at);
+    schedule(s.agenda, at, { kind: 'line', id: t.line!, v: -1 });
+  }
+  const times = timesOf(db, s, plan, t, people, v, to, t.work);
   if (v) {
     const vt = db.vehicles[v.type];
-    const walk = travel(plan, people[0], v, WALK);
-    const empty = travel(plan, v, from, vt.speedEmpty, 'drive');
-    const atLoad = t0 + walk + empty;
-    const off = atLoad + vt.liftBase + levelOf(plan, t.from) * vt.liftPerLevel;
     const dest = to ? plan.slot[to] : (destOf(plan, s, t) ?? from);
-    const loaded = travel(plan, from, dest, vt.speedLoaded, 'drive');
-    const atDrop = off + loaded;
-    const end = atDrop + (to ? vt.liftBase + plan.slot[to].level * vt.liftPerLevel : 0) + t.work;
-    times = [t0, atLoad, off, atDrop, end];
     v.task = t.id;
     t.vehicle = v.id;
     // водитель идёт к технике — перемещение; техника едет порожняком и с грузом — транспортировка
-    moved(s, t.kind, dist(plan, people[0], v), walk, dist(plan, v, from, 'drive'), dist(plan, from, dest, 'drive'), empty + loaded);
+    moved(s, t.kind, dist(plan, people[0], v), travel(plan, people[0], v, WALK), dist(plan, v, from, 'drive'), dist(plan, from, dest, 'drive'), travel(plan, v, from, vt.speedEmpty, 'drive') + travel(plan, from, dest, vt.speedLoaded, 'drive'));
   } else {
-    // пешком: дойти, взять, донести до места назначения (если оно есть) и там работать
-    const walk = Math.max(...people.map(p => travel(plan, p, from, WALK)));
     const dest = to ? plan.slot[to] : destOf(plan, s, t);
-    const carry = dest ? travel(plan, from, dest, WALK) : 0;
     // каждый идёт к месту — перемещение; груз на руках — транспортировка
     // к посту, где учатся (Б3б), и к активу, чью работу принимают (Б3в), идут люди своего участка
     const area = t.kind === 'train' || t.kind === 'accept' ? db.roles[people[0].role].dept : undefined;
-    moved(s, t.kind, people.reduce((n, p) => n + dist(plan, p, from), 0), people.reduce((n, p) => n + travel(plan, p, from, WALK), 0), 0, dest ? dist(plan, from, dest) : 0, carry, area);
-    // смена у линии — до конца смены того, у кого она кончается раньше; линия узнаёт о приходе людей событием
-    if (t.kind === 'crew') {
-      t.work = Math.max(1, Math.min(...people.map(p => shiftEnd(db, s, p)!)) - (t0 + walk));
-      schedule(s.agenda, t0 + walk, { kind: 'line', id: t.line!, v: -1 });
-    }
-    times = [t0, t0 + walk, t0 + walk, t0 + walk + carry, t0 + walk + carry + t.work];
+    moved(s, t.kind, people.reduce((n, p) => n + dist(plan, p, from), 0), people.reduce((n, p) => n + travel(plan, p, from, WALK), 0), 0, dest ? dist(plan, from, dest) : 0, times[3] - times[2], area);
   }
+  // до конца смены — работа по графику, после — сверхурочная (Б4а)
+  for (const p of people) startTask(p, shiftEnd(db, s, p)!);
   if (to) {
     t.to = to;
     (s.slots[to] ??= {}).held = t.id;
@@ -398,7 +445,8 @@ export function release(db: ContentDb, s: PlantState, t: Task) {
     delete p.task;
     p.x = endAt.x;
     p.z = endAt.z;
-    // кончил после смены — уходит через вход
+    // работа после конца смены — в табель сверхурочно (Б4а); кончил после смены — уходит через вход
+    endTask(s, p);
     goHome(db, s, p);
   }
   if (t.vehicle) {

@@ -67,7 +67,7 @@ describe('прогон', () => {
       for (const b of forecast(db, st).bars.filter(x => x.kind === 'stage' && x.when === 'plan')) {
         const stage = recipe.stages.find(x => x.id === b.stage)!;
         const shifts = [...new Set(Object.values(st.people).filter(p => p.role === stage.staff.role).map(p => p.shift))];
-        const ready = shifts.filter(sh => takesAt(db, st.start, sh, b.from)).reduce((k, sh) => k + Object.values(st.people).filter(p => p.role === stage.staff.role && p.shift === sh).length, 0);
+        const ready = shifts.filter(sh => takesAt(db, st, sh, b.from)).reduce((k, sh) => k + Object.values(st.people).filter(p => p.role === stage.staff.role && p.shift === sh).length, 0);
         expect(ready).toBeGreaterThanOrEqual(stage.staff.n);
         n++;
       }

@@ -63,13 +63,13 @@ import {
   type VehicleType,
 } from '../../src/content/types';
 import { ACCEPT } from '../../src/engine/assets';
-import { civilFromDays, daysFromCivil } from '../../src/engine/core/calendar';
+import { civilFromDays, daysFromCivil, weekday } from '../../src/engine/core/calendar';
 import { fnv1a, stableJson } from '../../src/engine/core/hash';
 import { DOC_KINDS, type DocKind, headOf, inForce, revisions } from '../../src/engine/docs';
 import { QC } from '../../src/engine/lab';
 import { LINE } from '../../src/engine/line';
 import { MAINT } from '../../src/engine/maint';
-import { MES } from '../../src/engine/mes';
+import { MES, stageNorm } from '../../src/engine/mes';
 import { agreementFor, REVIEWERS, STARTING } from '../../src/engine/partners';
 import { accepts, areaCode, CENTER_OF, centerCode, classOf, coldOf, placesOf, rackStore, roomAt } from '../../src/engine/places';
 import { QA } from '../../src/engine/qa';
@@ -208,7 +208,7 @@ export function buildDb(content = CONTENT): Built {
   }
 
   const db = convert(raw, errors);
-  // план — когда ссылки целы: сетка, двери, шлюзы, что достижимо (plan.ts)
+  // план — когда ссылки целы: сетка, двери, шлюзы, что достижимо (plan.ts); стадии — в смены своих ролей (Б4а)
   if (errors.length === 0) {
     for (const id of Object.keys(db.plants)) {
       try {
@@ -217,6 +217,7 @@ export function buildDb(content = CONTENT): Built {
         errors.push(`план ${id}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
+    errors.push(...stageErrors({ hash: '', ...db }));
   }
   const hash = fnv1a(stableJson(db)).toString(16).padStart(8, '0');
   return { db: { hash, ...db }, errors, files: count };
@@ -347,7 +348,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   const shifts: Record<string, Shift> = {};
   for (const sh of Object.values(raw.shifts)) {
     need(sh.from < sh.to, `график ${sh.id}: смена кончается раньше, чем начинается`);
-    shifts[sh.id] = { ...sh, days: [...new Set(sh.days)].sort().map(d => d - 1) };
+    need((sh.break ?? 0) < sh.to - sh.from, `график ${sh.id}: перерыв не короче смены`);
+    shifts[sh.id] = { ...sh, days: [...new Set(sh.days)].sort().map(d => d - 1), break: Math.round((sh.break ?? 0) * 3600) };
   }
   const products: Record<string, Product> = Object.fromEntries(Object.values(raw.products).map(pr => [pr.id, { ...pr, strength: pr.strength.mg }]));
   for (const pr of Object.values(raw.products)) if (pr.jnvlp) need(pr.source, `продукт ${pr.id}: «в перечне ЖНВЛП» — факт, нужен источник`);
@@ -856,14 +858,19 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   const profiles: Record<string, Profile> = {};
   for (const p of Object.values(raw.profiles)) {
     need(p.payroll.night.from !== p.payroll.night.to, `профиль ${p.id}: у ночных часов нет длины`);
+    const ot = p.payroll.overtime;
+    need(ot.first <= ot.shift, `профиль ${p.id}: payroll.overtime.first — больше предела за смену`);
     profiles[p.id] = {
       ...p,
       vat: { medicines: share(p.vat.medicines), general: share(p.vat.general) },
       marking: { ...p.marking, fee: kop(p.marking.fee), free: kop(p.marking.free) },
       payroll: {
         night: { ...p.payroll.night, extra: share(p.payroll.night.extra) },
+        overtime: { shift: Math.round(ot.shift * 3600), year: ot.year * 3600, first: Math.round(ot.first * 3600), rates: [share(ot.rates[0]), share(ot.rates[1])] },
+        holiday: { within: share(p.payroll.holiday.within), beyond: share(p.payroll.holiday.beyond) },
         contrib: { ...p.payroll.contrib, rate: share(p.payroll.contrib.rate), base: kop(p.payroll.contrib.base), above: share(p.payroll.contrib.above), injury: share(p.payroll.contrib.injury) },
       },
+      calendar: calendarOf(p.calendar, `профиль ${p.id}`, need),
       energy: { advances: p.energy.advances.map(([d, pct]) => [d, share(pct)] as [number, number]), final: p.energy.final },
       key: share(p.key),
     };
@@ -985,6 +992,69 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     makers,
     agreements,
   };
+}
+
+/**
+ * Стадии в часы (Б4а; docs/specs/2026-10-vertical-slice.md, «Проверки Б4а»): человек берёт стадию, только если она с
+ * запасом на разброс помещается в остаток его смены и в сверхурочные. У каждой стадии карты в каждом сценарии норма —
+ * не длиннее самой длинной смены её роли, а наибольшая длительность — не длиннее этой смены с пределом сверхурочных за
+ * смену: иначе стадию никто не начнёт. Учатся только в смену: часы изучения документа — не длиннее самой короткой смены
+ * ролей, которые по нему учатся.
+ */
+function stageErrors(db: ContentDb): string[] {
+  const out: string[] = [];
+  for (const sc of Object.values(db.scenarios)) {
+    const len = (role: string) => sc.staff.filter(x => x.role === role).map(x => (db.shifts[x.shift].to - db.shifts[x.shift].from) * 3600);
+    for (const d of [...Object.values(db.sops), ...Object.values(db.tests)]) {
+      for (const role of d.roles) {
+        const short = Math.min(...len(role));
+        if (Number.isFinite(short) && d.study > short) out.push(`сценарий ${sc.id}, ${d.id}: изучение ${d.study / 3600} ч длиннее смены роли ${role} — обучение никто не начнёт`);
+      }
+    }
+    const over = db.profiles[sc.profile].payroll.overtime.shift;
+    for (const r of Object.values(db.recipes)) {
+      for (const st of r.stages) {
+        const rows = sc.staff.filter(x => x.role === st.staff.role);
+        if (rows.length === 0) continue;
+        const len = Math.max(...rows.map(x => (db.shifts[x.shift].to - db.shifts[x.shift].from) * 3600));
+        const [nom, max] = stageNorm(db, r.id, st, r.batch.mass);
+        const h = (sec: number) => Math.round(sec / 360) / 10;
+        if (nom > len) out.push(`сценарий ${sc.id}, карта ${r.id}, стадия ${st.id}: норма ${h(nom)} ч длиннее самой длинной смены роли ${st.staff.role} (${h(len)} ч) — стадию никто не начнёт`);
+        else if (max > len + over) out.push(`сценарий ${sc.id}, карта ${r.id}, стадия ${st.id}: наибольшая длительность ${h(max)} ч длиннее смены роли ${st.staff.role} со сверхурочными (${h(len + over)} ч) — стадию никто не начнёт`);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Производственный календарь профиля (Б4а; docs/specs/2026-10-vertical-slice.md, «Проверки Б4а»): праздник — настоящая
+ * дата; январские праздники — отрезок месяца; перенос — с субботы или воскресенья на будний день того же года, который
+ * не праздник. Даты переносов — номера дней от 1970-01-01; часы — секунды.
+ */
+function calendarOf(c: z.infer<(typeof KINDS)['profiles']['schema']>['calendar'], where: string, need: (ok: unknown, msg: string) => void): Profile['calendar'] {
+  const real = ([m, d]: readonly [number, number]) => {
+    const z = daysFromCivil({ y: 2001, m, d });
+    const back = civilFromDays(z);
+    return back.m === m && back.d === d;
+  };
+  for (const h of c.holidays) need(real(h), `${where}: праздника ${h[1]}.${h[0]} не бывает`);
+  need(c.january[0] <= c.january[1], `${where}: calendar.january — начало позже конца`);
+  const holiday = (z: number) => {
+    const { m, d } = civilFromDays(z);
+    return c.holidays.some(h => h[0] === m && h[1] === d);
+  };
+  const transfers = c.transfers.map(([a, b]): [number, number] => {
+    const [from, to] = [a, b].map(x => {
+      const [y, m, d] = x.split('-').map(Number);
+      return daysFromCivil({ y, m, d });
+    });
+    need(civilFromDays(from).y === civilFromDays(to).y, `${where}: перенос ${a} → ${b} — в другой год`);
+    need(weekday(from) >= 5, `${where}: перенос ${a} → ${b} — не с выходного`);
+    need(weekday(to) < 5 && !holiday(to), `${where}: перенос ${a} → ${b} — не на будний день или на праздник`);
+    return [from, to];
+  });
+  return { holidays: c.holidays.map(([m, d]) => [m, d]), january: [c.january[0], c.january[1]], transfers, short: c.short * 3600, day: Math.round((c.week * 3600) / 5) };
 }
 
 /**

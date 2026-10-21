@@ -79,6 +79,12 @@ export function durText(sec: number): string {
   return m > 0 ? `${h} ${T.units.h} ${m} ${T.units.min}` : `${h} ${T.units.h}`;
 }
 
+/** Часы — с: целыми, а не целые — с десятой: «176 ч», «7,5 ч». */
+export function hText(sec: number): string {
+  const h = sec / 3600;
+  return `${num(h, Number.isInteger(Math.round(h * 10) / 10) ? 0 : 1)}\u00a0${T.units.h}`;
+}
+
 /** Доля 1/10 000 — процентами: «61 %». */
 export function pctText(share: number, digits = 0): string {
   return `${num(share / 100, digits)} %`;

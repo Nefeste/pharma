@@ -6,16 +6,17 @@
 // договора, а сверх обещанного — по прайсу (partners.ts).
 import type { ContentDb, Id } from '../content/types';
 import { schedule } from './core/agenda';
-import { DAY, HOUR, isWorkday, MIN, momentOf } from './core/calendar';
+import { DAY, HOUR, isWorkday, MIN, momentOf, workdayOnOrAfter } from './core/calendar';
 import { part, post, vatRate } from './cash';
 import { inForce } from './docs';
 import { packNeeds } from './mes';
 import { approved, pairsFor, priceLine } from './partners';
-import { casesOf, positionOf } from './planner';
+import { aheadMilli, casesOf, positionOf } from './planner';
 import { planOf } from './plant';
 import { roll } from './random';
 import { containersByLot, containersFor, free, nextId } from './stock';
 import type { Command, Notice, PackJob, PlantState, Po, PoLine } from './types';
+import { calOf } from './workdays';
 
 /** Окно прихода фур: рабочий день, с 09:00, плюс до шести часов. */
 const ARRIVE_FROM = 9 * HOUR;
@@ -52,7 +53,7 @@ export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { ki
     const cap = db.containers[db.materials[l.material].container].capacity;
     lines.push({ material: l.material, qty: containersFor(db, l.material, l.qty) * cap, maker });
   }
-  const eta = etaOf(s, sup.id, sup.lead);
+  const eta = etaOf(db, s, sup.id, sup.lead);
   // сумма с НДС: АФС — по ставке лекарственных средств, остальное — по общей; предоплата — сейчас, остаток — после прихода
   let net = 0;
   let vat = 0;
@@ -71,31 +72,26 @@ export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { ki
 }
 
 /** Срок прихода заказа поставщику из его ветви: через `lead` дней, рабочим днём в окне прихода. */
-export function etaOf(s: PlantState, supplier: Id, lead: [number, number]): number {
+export function etaOf(db: ContentDb, s: PlantState, supplier: Id, lead: [number, number]): number {
   return roll(s, `supply/${supplier}`, r => {
     const days = r.range(lead[0], lead[1]);
-    return arrival(s, s.t + days * DAY, r.int(ARRIVE_SPREAD / MIN) * MIN);
+    return arrival(db, s, s.t + days * DAY, r.int(ARRIVE_SPREAD / MIN) * MIN);
   });
 }
 
-/** Ближайший рабочий день не раньше `t` — в 09:00 плюс `extra` секунд. */
-function arrival(s: PlantState, t: number, extra: number): number {
-  let day = t - momentOf(s.start, t).sec;
-  for (let i = 0; i < 7; i++) {
-    const wd = momentOf(s.start, day).weekday;
-    if (wd < 5) return day + ARRIVE_FROM + extra;
-    day += DAY;
-  }
-  return day + ARRIVE_FROM + extra;
+/** Ближайший рабочий день не раньше `t` по производственному календарю (Б4а) — в 09:00 плюс `extra` секунд. */
+function arrival(db: ContentDb, s: PlantState, t: number, extra: number): number {
+  const m = momentOf(s.start, t);
+  return t - m.sec + (workdayOnOrAfter(calOf(db, s), m.day) - m.day) * DAY + ARRIVE_FROM + extra;
 }
 
 /** Коллега снабжения сидит с 09:00: в этот час рабочего дня он и считает (гипотеза). */
 export const SUPPLY_HOUR = 9 * HOUR;
 
 /**
- * Расход по плану выпуска за `days` суток: серий в сутки по позиции — по спросу её заказов (как у коллеги планирования),
- * а пока спроса не видно — по серии в рабочий день поровну; на серию — состав карты и упаковка позиции. Счёт — в
- * тысячных долях серии, в целых.
+ * Расход по плану выпуска за `days` суток: серий в рабочий день по позиции — по спросу её заказов на рабочий день (как
+ * у коллеги планирования, Б4а), а пока спроса не видно — по серии в рабочий день поровну, — на рабочие дни этих суток;
+ * на серию — состав карты и упаковка позиции. Счёт — в тысячных долях серии, в целых.
  */
 export function planUse(db: ContentDb, s: PlantState, days: number, byLot = containersByLot(s)): Map<Id, number> {
   const plan = db.scenarios[s.scenario].plan;
@@ -104,13 +100,15 @@ export function planUse(db: ContentDb, s: PlantState, days: number, byLot = cont
   const pos = plan.items.map(it => positionOf(db, s, it.sku, plan.window, byLot));
   const blind = pos.some(p => p.span === 0);
   const today = momentOf(s.start, s.t).day;
+  // серии идут в рабочие дни (Б4а): расход — на рабочие дни пятидневки в этих сутках, тысячных
+  const work = aheadMilli(days);
   plan.items.forEach((it, i) => {
     // карта — редакция, действующая сегодня (Б3а)
     const r = db.recipes[inForce(db, 'recipes', it.recipe, today)];
     const p = pos[i];
-    // тысячных серии в сутки: вслепую — 5/7 серии на все позиции; по спросу — ящики в сутки / ящики с серии
-    const milli = blind ? Math.floor(5000 / (7 * plan.items.length)) : Math.floor((p.ordered * DAY * 1000) / (p.span * casesOf(r, db.skus[it.sku])));
-    const add = (material: Id, perBatch: number) => out.set(material, (out.get(material) ?? 0) + Math.ceil((milli * days * perBatch) / 1000));
+    // тысячных серии в рабочий день: вслепую — серия на все позиции; по спросу — ящики в рабочий день / ящики с серии
+    const milli = blind ? Math.floor(1000 / plan.items.length) : Math.floor((p.ordered * 1000) / (p.work * casesOf(r, db.skus[it.sku])));
+    const add = (material: Id, perBatch: number) => out.set(material, (out.get(material) ?? 0) + Math.ceil((milli * work * perBatch) / 1e6));
     for (const l of r.bom) add(l.material, l.qty);
     for (const n of packNeeds(db, { sku: it.sku, tablets: r.batch.units } as PackJob)) add(n.material, n.qty);
   });
@@ -142,7 +140,7 @@ export function supplyPosition(db: ContentDb, s: PlantState, material: Id, byLot
 export function supplyDay(db: ContentDb, s: PlantState, notices: Notice[]) {
   const sc = db.scenarios[s.scenario];
   const now = momentOf(s.start, s.t);
-  if (!sc.supply || !sc.plan || !isWorkday(now.day) || now.sec !== SUPPLY_HOUR) return;
+  if (!sc.supply || !sc.plan || !isWorkday(calOf(db, s), now.day) || now.sec !== SUPPLY_HOUR) return;
   const { safety, every, qc } = sc.supply;
   const room = Math.max(1, Math.floor((planOf(db, s.plant).byKind.quarantine?.length ?? 2) / 2));
   // тара по партиям — один проход на весь расчёт

@@ -1,13 +1,13 @@
 // Состояние завода и обмен с движком (docs/02-architecture.md, §1, §3, §7; docs/specs/2026-10-engine.md). Состояние —
 // обычный сериализуемый объект: сохранение — его снимок со схемой и миграциями (ADR студии 0004). Сущности — словари с
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
-import type { Attr, Dept, Id, IncidentRoot, SeatId, TaskKind, ZoneKind } from '../content/types';
+import type { Attr, Dept, Id, IncidentRoot, OvertimeMode, SeatId, TaskKind, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 20;
+export const SCHEMA = 21;
 
 // ---------------------------------------------------------------- склад
 
@@ -628,6 +628,12 @@ export interface Person {
    * где он сейчас — точка маршрута (`here`, staff.ts)
    */
   walk?: { x: number; z: number; t: number };
+  /** конец смены, в которую человек взял нынешнюю задачу (Б4а): работа после него — сверхурочная */
+  until?: number;
+  /** сверхурочные (Б4а, hours.ts): отрезки работы после конца смены — с и по, мгновения — с начала прошлого месяца */
+  ot: [number, number][];
+  /** сверхурочно за календарный год (Б4а): год и секунды */
+  otYear: { y: number; sec: number };
 }
 
 /**
@@ -657,7 +663,7 @@ export type { TaskKind } from '../content/types';
  * не откалиброван или у подрядчика, зона хранения не принимает паллет — поверка её датчика вышла или он у подрядчика (Б3в). В потерях
  * суток есть ещё ожидание фуры: рампа занята (3а) — это ждёт не задача, а фура во дворе.
  */
-export type WaitCause = 'people' | 'shift' | 'vehicle' | 'instrument' | 'place' | 'dock' | 'qual' | 'asset';
+export type WaitCause = 'people' | 'shift' | 'vehicle' | 'instrument' | 'place' | 'dock' | 'qual' | 'asset' | 'hours';
 
 /** Место задачи: место паллеты, рампа с фурой или точка. */
 export type Place = { kind: 'slot'; id: string } | { kind: 'truck'; id: string } | { kind: 'point'; x: number; z: number };
@@ -719,6 +725,11 @@ export interface Task {
   pair?: string;
   /** работа на месте, с */
   work: number;
+  /**
+   * у стадии (Б4а): норма по карте и наибольшая длительность с разбросом, с, — по ним раздатчик решает, помещается ли
+   * она в смену и в сверхурочные; работа `work` — разыгранная, её завод не знает
+   */
+  norm?: [number, number];
   /** больше — раньше */
   prio: number;
   /** сколько людей нужно */
@@ -1071,6 +1082,16 @@ export interface Cash {
   interest: number;
   /** день последнего извещения «касса ниже предела» */
   low?: number;
+  /** части зарплаты за половину месяца (Б4а) — по её ссылке: `2027-9a`, `2027-9b` */
+  wages: Record<string, WageParts>;
+}
+
+/** Части зарплаты (Б4а), копейки: оклады, доплаты за ночные часы, сверхурочные и работу в выходной или праздник. */
+export interface WageParts {
+  salary: number;
+  night: number;
+  over: number;
+  off: number;
 }
 
 export interface PlantState {
@@ -1130,6 +1151,8 @@ export interface PlantState {
   /** пары «поставщик — изготовитель» (Б3г): одобрения и оценки; договоры с поставщиками и покупателями по номерам */
   pairs: Record<string, Pair>;
   contracts: Record<string, Contract>;
+  /** политики отделов (Б4а): сверхурочные — «по потребности» или «только закончить начатое» (src/engine/hours.ts) */
+  policy: Record<Dept, OvertimeMode>;
   /** узлы машин; склад ЗИП; заказы запчастей; журнал оборудования */
   parts: Record<string, Part>;
   spares: Record<Id, SpareStock>;
@@ -1175,7 +1198,9 @@ export type Command =
   /** шаг расследования (часть 4) */
   | { kind: 'investigate'; inv: string; step: string; by?: string }
   /** решение расследования: причина — версия модели; судьба серии */
-  | { kind: 'conclude'; inv: string; cause: string; fate: 'reject' | 'release'; by?: string };
+  | { kind: 'conclude'; inv: string; cause: string; fate: 'reject' | 'release'; by?: string }
+  /** политика отдела «Сверхурочные» (Б4а): «по потребности» или «только закончить начатое» */
+  | { kind: 'overtime'; dept: Dept; mode: OvertimeMode; by?: string };
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
@@ -1199,6 +1224,8 @@ export type Refusal =
   | 'noSeat'
   /** заказ не по одобренной паре «поставщик — изготовитель» действующей спецификации (Б3г) */
   | 'pair'
+  /** такого отдела или такой политики нет (Б4а) */
+  | 'noDept'
   /** расследования нет; оно уже решено; такого шага или версии нет; «выпустить» без лабораторной причины и повтора в пределах */
   | 'noInv'
   | 'closed'
@@ -1250,6 +1277,11 @@ export type Notice =
   | { kind: 'assetExpired'; asset: string; family: AssetFamily; type: Id; inv: number; work: 'qual' | 'cal' }
   /** срок одобрения пары «поставщик — изготовитель» вышел, новой записи нет (Б3г): заказов по ней нет */
   | { kind: 'pairSuspended'; pair: string; supplier: Id; maker: Id }
+  /**
+   * сверхурочных года осталось меньше, чем можно за смену (Б4а): дальше человек задерживается только на остаток; роль и
+   * номер — для слов, отдел — чей пост встаёт, остаток — с
+   */
+  | { kind: 'overtimeLow'; person: string; role: Id; dept: Dept; tab: number; left: number }
   /** команда не выполнена */
   | { kind: 'refused'; cmd: Command['kind']; why: Refusal; detail?: string }
   /** результат вне спецификации — расследование открыто; шаг расследования сделан; расследование решено */

@@ -1,22 +1,25 @@
 // Прогон расписания (docs/specs/2026-10-panels.md, 3д; docs/02-architecture.md, §8): что, где и когда будет делаться, —
 // чистая функция из состояния; состояние не меняется. Правила — те же, что у движка, и из тех же его функций: готово ли
 // помещение для продукта (`readyFor`), номинальная длительность стадии (`nominal`), время уборки (`cleanWork`), может ли
-// человек смены взять задачу (`takesAt`); людей считают только допущенных к работе сейчас (Б3б, `admitted`) — обучение,
+// человек смены взять задачу (`takesAt`) и помещается ли она у него в часы (Б4а, `fitsIn`: с остатком сверхурочных на
+// начало прогона); людей считают только допущенных к работе сейчас (Б3б, `admitted`) — обучение,
 // которое завод ещё проведёт, прогон не предсказывает. Назначенные визиты подрядчика (Б3в) прогон знает: с их часа актив
 // новых работ не берёт, идущая работа доходит до конца, подрядчик работает в свои часы; визиты, которые коллега
 // техслужбы ещё не назначил, — нет. Разброса нет: жизнь отличается от прогона на разброс длительностей, на людей, занятых
 // другим, на отказы и ремонты и на комплекты упаковки, которые появятся позже, — их прогон не предсказывает.
-import type { ContentDb, Id } from '../../content/types';
+import type { ContentDb, Id, TaskKind } from '../../content/types';
 import { stageMeters, unfit } from '../assets';
 import { DAY, HOUR, isWorkday, momentOf } from '../core/calendar';
+import { fitsIn, overLeft } from '../hours';
 import { blocked } from '../maint';
-import { cleanWork, DIRTY_HOLD, MES, nominal, readyFor, TRANSFER_WORK } from '../mes';
+import { cleanWork, DIRTY_HOLD, MES, nominal, readyFor, stageNorm, stageTaskNorm, TRANSFER_WORK } from '../mes';
 import { classOf, placesOf } from '../places';
 import { planOf } from '../plant';
 import { admitted, needFor } from '../quals';
-import { takesAt } from '../staff';
+import { LAST_CALL, shiftEndAt } from '../staff';
 import type { Batch, KitLine, PlantState, Room, Task } from '../types';
 import { WMS } from '../wms';
+import { calOf } from '../workdays';
 
 /** Полоса Ганта: строка — `kit` (комплектовка у шлюза для материалов), помещение или линия плана. */
 export interface Bar {
@@ -54,6 +57,8 @@ export type Why =
   | { why: 'material'; bar: 'kit'; material: Id; qty: number; lab?: true; po?: string; eta?: number }
   /** людей роли нет в смене или до её конца меньше 15 минут: начнётся в `at` */
   | { why: 'shift'; bar: BarRef; role: Id; at: number }
+  /** люди роли в смене есть, но работа не помещается у них в остаток смены и сверхурочные (Б4а): начнётся в `at` */
+  | { why: 'hours'; bar: BarRef; role: Id; at: number }
   /** помещение занято другой серией до `until` */
   | { why: 'room'; bar: Id; room: string; batch?: string; until: number }
   /** помещение убирают: после серии, чистота просрочена, чисто только для другого продукта */
@@ -85,8 +90,8 @@ const LOOK = 31 * DAY;
 
 const idNum = (id: string) => Number(id.slice(1));
 
-/** Люди по ролям и графикам: роль → график → сколько человек. */
-type Crew = Map<Id, Map<Id, number>>;
+/** Люди по ролям и графикам: роль → график → сколько сверхурочных ещё можно каждому на начало прогона, с (Б4а). */
+type Crew = Map<Id, Map<Id, number[]>>;
 
 /** Люди, допущенные сейчас к работе с документами `need`. */
 function crewOf(db: ContentDb, s: PlantState, need: readonly string[]): Crew {
@@ -94,24 +99,41 @@ function crewOf(db: ContentDb, s: PlantState, need: readonly string[]): Crew {
   const c: Crew = new Map();
   for (const p of Object.values(s.people)) {
     if (!admitted(db, p, need, day)) continue;
-    const m = c.get(p.role) ?? new Map<Id, number>();
-    m.set(p.shift, (m.get(p.shift) ?? 0) + 1);
+    const m = c.get(p.role) ?? new Map<Id, number[]>();
+    m.set(p.shift, [...(m.get(p.shift) ?? []), overLeft(db, s, p, s.t)]);
     c.set(p.role, m);
   }
   return c;
 }
 
+/** Задача для прогона (Б4а): вид, норма и наибольшая длительность, с. */
+interface Job {
+  kind: TaskKind;
+  nom: number;
+  max: number;
+}
+
 /**
- * Первое мгновение не раньше `t`, когда `n` человек ролей могут взять задачу (`takesAt`: в смене и до её конца не меньше
- * 15 минут), и сколько их тогда. Смены начинаются в целые часы: если не сейчас — то в начале какого-то часа.
+ * Первое мгновение не раньше `t`, когда `n` человек ролей могут взять задачу — в смене, до её конца не меньше 15 минут
+ * и задача помещается у них в часы (`fitsIn`), — и сколько их тогда; `hours` — в мгновение `t` люди в смене были, но
+ * работа у них не помещалась. Смены начинаются в целые часы: если не сейчас — то в начале какого-то часа.
  */
-function firstTake(db: ContentDb, s: PlantState, crew: Crew, roles: readonly Id[], n: number, t: number): { t: number; n: number } | undefined {
-  const shifts = new Map<Id, number>();
-  for (const r of roles) for (const [sh, k] of crew.get(r) ?? []) shifts.set(sh, (shifts.get(sh) ?? 0) + k);
+function firstTake(db: ContentDb, s: PlantState, crew: Crew, roles: readonly Id[], n: number, t: number, job: Job): { t: number; n: number; hours: boolean } | undefined {
+  const shifts: [Id, Id, number[]][] = [];
+  for (const r of roles) for (const [sh, left] of crew.get(r) ?? []) shifts.push([r, sh, left]);
+  let hours = false;
   for (let at = t; at <= t + LOOK; at = Math.floor(at / HOUR) * HOUR + HOUR) {
     let k = 0;
-    for (const [sh, c] of shifts) if (takesAt(db, s.start, sh, at)) k += c;
-    if (k >= n) return { t: at, n: k };
+    let on = 0;
+    for (const [r, sh, left] of shifts) {
+      const end = shiftEndAt(db, s, sh, at);
+      if (end === undefined || end - at < LAST_CALL) continue;
+      const mode = s.policy[db.roles[r].dept];
+      on += left.length;
+      for (const l of left) if (fitsIn(job.kind, mode, end - at, job.nom, job.max, l)) k++;
+    }
+    if (k >= n) return { t: at, n: k, hours };
+    if (at === t) hours = on >= n;
   }
   return undefined;
 }
@@ -150,11 +172,15 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
   const crews = new Map<string, Crew>();
   const out: Forecast = { bars: [], why: {}, stuck: [] };
   const note = (b: string, w: Why) => (out.why[b] ??= []).push(w);
-  const take = (roles: readonly Id[], n: number, t: number, need: readonly string[]) => {
+  const take = (roles: readonly Id[], n: number, t: number, need: readonly string[], job: Job) => {
     const key = need.join(' ');
     let crew = crews.get(key);
     if (!crew) crews.set(key, (crew = crewOf(db, s, need)));
-    return firstTake(db, s, crew, roles, n, t);
+    return firstTake(db, s, crew, roles, n, t, job);
+  };
+  const cleanJob = (roomId: string, major: boolean): Job => {
+    const sec = cleanWork(db, s, roomId, major);
+    return { kind: 'clean', nom: sec, max: sec };
   };
   const cleanNeed = needFor(db, 'clean');
   const kitNeed = needFor(db, 'transfer');
@@ -184,7 +210,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     for (let at = t, i = 0; i < 400; i++) {
       const m = momentOf(s.start, at);
       const day = at - m.sec;
-      if (isWorkday(m.day) && m.sec <= hours[1] - len) return Math.max(at, day + hours[0]);
+      if (isWorkday(calOf(db, s), m.day) && m.sec <= hours[1] - len) return Math.max(at, day + hours[0]);
       at = day + DAY + hours[0];
     }
     return t;
@@ -231,7 +257,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     r.product = b.product;
     p.last = b.id;
     p.left = at;
-    const c = take(MES.operators, 1, at, cleanNeed);
+    const c = take(MES.operators, 1, at, cleanNeed, cleanJob(roomId, !!r.major));
     if (!c) {
       p.free = Number.POSITIVE_INFINITY;
       return;
@@ -253,7 +279,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
       clean(p, t.times![1], t.times![4] - t.times![1], !!r.major, 'now', p.last);
       continue;
     }
-    const c = take(MES.operators, 1, now, cleanNeed);
+    const c = take(MES.operators, 1, now, cleanNeed, t ? { kind: 'clean', nom: t.work, max: t.work } : cleanJob(r.id, !!r.major));
     if (!c) {
       p.free = Number.POSITIVE_INFINITY;
       continue;
@@ -281,7 +307,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
         if (!readyFor(p.room, b.product, t)) {
           // чисто только для другого продукта — генеральная уборка; чистота просрочена — убрать снова (tryStart)
           const cause = p.room.cleanFor !== undefined && p.room.cleanFor !== b.product ? 'product' : 'expired';
-          const c = take(MES.operators, 1, t, cleanNeed);
+          const c = take(MES.operators, 1, t, cleanNeed, cleanJob(roomId, cause === 'product'));
           if (!c) return;
           const major = cause === 'product' || c.t - t > DIRTY_HOLD;
           const work = cleanWork(db, s, roomId, major);
@@ -304,7 +330,9 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
         note(b.id, { why: 'unfit', bar: st.id, room: roomId, asset: dead, work: unfit(db, s, dead) as 'qual' | 'cal' });
         return;
       }
-      let c = take([st.staff.role], st.staff.n, t, needFor(db, 'stage', { stage: st }));
+      const [nom, max] = stageNorm(db, b.recipe, st, b.mass > 0 ? b.mass : r.batch.mass);
+      const job: Job = { kind: 'stage', nom, max };
+      let c = take([st.staff.role], st.staff.n, t, needFor(db, 'stage', { stage: st }), job);
       if (!c) return;
       for (let i = 0; i < 8; i++) {
         let at = c.t;
@@ -318,10 +346,10 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
           }
         }
         if (at === c.t) break;
-        c = take([st.staff.role], st.staff.n, at, needFor(db, 'stage', { stage: st }));
+        c = take([st.staff.role], st.staff.n, at, needFor(db, 'stage', { stage: st }), job);
         if (!c) return;
       }
-      if (c.t > t && !(out.why[b.id] ?? []).some(w => w.why === 'visit' && w.bar === st.id)) note(b.id, { why: 'shift', bar: st.id, role: st.staff.role, at: c.t });
+      if (c.t > t && !(out.why[b.id] ?? []).some(w => w.why === 'visit' && w.bar === st.id)) note(b.id, { why: c.hours ? 'hours' : 'shift', bar: st.id, role: st.staff.role, at: c.t });
       out.bars.push({ row: roomId, kind: 'stage', batch: b.id, stage: st.id, from: c.t, to: c.t + work, when: 'plan', ...flags, ...(repair ? { repair: true as const } : {}) });
       // визит, чей час ещё не настал: подрядчик — после этой стадии
       for (const id of mine) {
@@ -357,9 +385,10 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
       const work = t ? t.work : b.run!.rest!;
       const repair = !t;
       if (repair) note(b.id, { why: 'repair', bar: st.id, room: roomId });
-      const c = take([st.staff.role], st.staff.n, now, needFor(db, 'stage', { stage: st }));
+      const [nom, max] = t?.norm ?? stageTaskNorm(db, b);
+      const c = take([st.staff.role], st.staff.n, now, needFor(db, 'stage', { stage: st }), { kind: 'stage', nom, max });
       if (!c) return;
-      if (c.t > now) note(b.id, { why: 'shift', bar: st.id, role: st.staff.role, at: c.t });
+      if (c.t > now) note(b.id, { why: c.hours ? 'hours' : 'shift', bar: st.id, role: st.staff.role, at: c.t });
       out.bars.push({ row: roomId, kind: 'stage', batch: b.id, stage: st.id, from: c.t, to: c.t + work, when: 'plan', ...(repair ? { repair: true as const } : {}) });
       end = c.t + work;
     } else return stages(b, b.stage, now, {});
@@ -371,9 +400,9 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
   /** Работа комплектовки с `from`: паллеты — по кладовщикам смены, по перекладке на каждую. */
   const kitWork = (batch: string | undefined, pallets: number, from: number): number | undefined => {
     if (pallets === 0) return from;
-    const c = take(WMS.keepers, 1, from, kitNeed);
+    const c = take(WMS.keepers, 1, from, kitNeed, { kind: 'transfer', nom: TRANSFER_WORK, max: TRANSFER_WORK });
     if (!c) return undefined;
-    if (batch && c.t > from) note(batch, { why: 'shift', bar: 'kit', role: WMS.keepers[0], at: c.t });
+    if (batch && c.t > from) note(batch, { why: c.hours ? 'hours' : 'shift', bar: 'kit', role: WMS.keepers[0], at: c.t });
     return c.t + Math.ceil(pallets / c.n) * TRANSFER_WORK;
   };
 

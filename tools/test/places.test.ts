@@ -27,6 +27,7 @@ import { forecast } from '../../src/engine/plan/schedule';
 import { planOf } from '../../src/engine/plant';
 import { fromSave } from '../../src/engine/save';
 import { INSTRUMENT_FAULTS, type PlantState, type Task } from '../../src/engine/types';
+import { calOf } from '../../src/engine/workdays';
 import { invView } from '../../src/sim/inv';
 import { labView } from '../../src/sim/lab';
 import { nowView } from '../../src/sim/now';
@@ -45,7 +46,8 @@ const ahead = sc.assets.ahead;
 // начало партии — в среду: четверг и пятница рабочие, суббота — нет
 const thu = start + 1;
 const fri = start + 2;
-const mon = addWorkdays(fri, 1);
+const cal = calOf(db, { start: sc.start.date, scenario: SC });
+const mon = addWorkdays(cal, fri, 1);
 
 /** Игровые секунды от начала партии до часа `hour` суток `day` (номер дня от 1970-01-01). */
 const at = (day: number, hour: number) => (day - start) * DAY + hour * HOUR;
@@ -211,7 +213,7 @@ describe('активы на начало партии', () => {
 
 describe('визит подрядчика', () => {
   test('коллега техслужбы в 09:00 рабочего дня: запись кончится в срок предупреждения — визит на следующий рабочий день к началу часов', () => {
-    expect([isWorkday(thu), isWorkday(fri), isWorkday(fri + 1), mon - fri]).toEqual([true, true, false, 3]);
+    expect([isWorkday(cal, thu), isWorkday(cal, fri), isWorkday(cal, fri + 1), mon - fri]).toEqual([true, true, false, 3]);
     const s = newPlant(db, { scenario: SC });
     const press = s.assets['press-1'];
     const hplc = s.assets['hplc-1'];

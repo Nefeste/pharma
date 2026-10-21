@@ -64,6 +64,8 @@ export interface NowRow {
   until?: number;
   /** люди: номера, как в срезе, и роли */
   people: { n: number; role: Id }[];
+  /** работа идёт после конца смены (Б4а): сверхурочно с какого мгновения — у того, у кого смена кончилась раньше */
+  over?: number;
   /** с какого мгновения идёт, с; норма — с; у ремонта после отказа — от и до */
   from: number;
   norm?: number;
@@ -113,6 +115,16 @@ const DEPT: Partial<Record<TaskKind, NowDept>> = {
 const FOLDED = new Set<TaskKind>(['crew', 'prep', 'review', 'truckCheck', 'unload', 'load']);
 
 const num = (id: string) => Number(id.slice(1));
+
+/** С какого мгновения люди работают после конца смены, в которую взяли задачу (Б4а); никто — `undefined`. */
+function overSince(s: PlantState, people: readonly string[]): number | undefined {
+  let at: number | undefined;
+  for (const id of people) {
+    const u = s.people[id]?.until;
+    if (u !== undefined && s.t > u && (at === undefined || u < at)) at = u;
+  }
+  return at;
+}
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
 
 export function nowView(db: ContentDb, s: PlantState): NowView {
@@ -299,6 +311,11 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
     });
   }
 
+  // работа после конца смены (Б4а): сверхурочно — с конца смены того, у кого она кончилась раньше
+  for (const r of rows) {
+    const over = overSince(s, r.people.map(x => `E${x.n}`));
+    if (over !== undefined) r.over = over;
+  }
   rows.sort((a, b) => NOW_DEPTS.indexOf(a.dept) - NOW_DEPTS.indexOf(b.dept) || a.from - b.from || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   return { view: 'now', rows };
 }

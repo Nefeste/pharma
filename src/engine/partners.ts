@@ -18,6 +18,7 @@ import { QA } from './qa';
 import { planUse } from './supply';
 import { addTask } from './tasks';
 import type { Contract, Notice, Pair, PlantState, PoLine, Task } from './types';
+import { calOf } from './workdays';
 
 /** Исходные и упаковочные материалы — их покупают, и у них одобренные пары; своя продукция — балк и готовая — нет. */
 export const STARTING: ReadonlySet<MaterialKind | undefined> = new Set<MaterialKind | undefined>(['api', 'excipient', 'packaging']);
@@ -209,7 +210,7 @@ export function partnersHour(db: ContentDb, s: PlantState, notices: Notice[]) {
     suspended(s, now.day, notices);
     contractsDay(db, s, now.day);
   }
-  if (now.sec === BOOK_HOUR && isWorkday(now.day)) book(db, s, now.day);
+  if (now.sec === BOOK_HOUR && isWorkday(calOf(db, s), now.day)) book(db, s, now.day);
 }
 
 /** Полночь: у пары с этого дня нет действующего одобрения — извещение (автопауза в окне): по ней не заказывают. */
@@ -232,8 +233,9 @@ function book(db: ContentDb, s: PlantState, today: number) {
     if (p.eval || !last || !live.has(p.id) || last.until - today > sc.partners.ahead) continue;
     const how = howOf(db, p.supplier, p.maker);
     if (how === 'audit') {
-      const from = base(addWorkdays(today, 1)) + AUDIT_FROM;
-      const to = base(addWorkdays(today, sc.partners.audit.days)) + AUDIT_TO;
+      const cal = calOf(db, s);
+      const from = base(addWorkdays(cal, today, 1)) + AUDIT_FROM;
+      const to = base(addWorkdays(cal, today, sc.partners.audit.days)) + AUDIT_TO;
       p.eval = { how, booked: s.t, from, to, v: 1 };
       schedule(s.agenda, to, { kind: 'audit', pair: p.id, v: 1 });
     } else {

@@ -170,7 +170,7 @@ function orderSpare(db: ContentDb, s: PlantState, spare: Id, qty: number) {
   const sup = db.suppliers[rec.supplier];
   const net = rec.price * qty;
   const vat = part(net, db.profiles[db.scenarios[s.scenario].profile].vat.general);
-  const eta = etaOf(s, sup.id, rec.lead);
+  const eta = etaOf(db, s, sup.id, rec.lead);
   const id = nextId(s, 'Z');
   s.spareOrders[id] = { id, spare, qty, ordered: s.t, eta, sum: net + vat, vat, prepaid: part(net + vat, sup.prepay), status: 'ordered', by: 'head:maint' };
   post(s, -s.spareOrders[id].prepaid, 'prepay', id);
@@ -184,7 +184,7 @@ export function spareArrives(db: ContentDb, s: PlantState, id: string) {
   o.status = 'arrived';
   s.spares[o.spare].qty += o.qty;
   s.cash.vat.in += o.vat;
-  owe(s, 'supplier', -(o.sum - o.prepaid), dueIn(s, db.suppliers[db.spares[o.spare].supplier].payDays), o.id);
+  owe(s, 'supplier', -(o.sum - o.prepaid), dueIn(db, s, db.suppliers[db.spares[o.spare].supplier].payDays), o.id);
 }
 
 /**

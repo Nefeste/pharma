@@ -9,7 +9,8 @@ import { MORNING } from '../engine/engine';
 import { AREA, type Oee, oee, rhythm, shiftsOfDay, type Switches, switchesOf } from '../engine/lean';
 import { orderRisks, type OrderRisk } from '../engine/market';
 import { planOf } from '../engine/plant';
-import type { AssetFamily, Batch, CashItem, DayLoss, Deviation, LineDay, MachineTimes, PlantState, TaskKind, WaitCause } from '../engine/types';
+import type { AssetFamily, Batch, CashItem, DayLoss, Deviation, LineDay, MachineTimes, PlantState, TaskKind, WageParts, WaitCause } from '../engine/types';
+import { type HoursMeeting, hoursMeeting } from './hours';
 import { type PartnerSum, partnerSum } from './partners';
 import { type TrainSum, trainSum } from './people';
 import { type AssetSum, assetSum } from './places';
@@ -154,6 +155,8 @@ export interface MorningView {
   assets: AssetSum;
   /** поставщики (Б3г): оценки и аудиты в срок предупреждения, приостановленные пары, договоры, недобор */
   partners: PartnerSum;
+  /** рабочее время (Б4а): сверхурочные вчера, кто ближе к пределу года, праздники и короткие дни недели */
+  hours: HoursMeeting;
   cash: { balance: number; day: number; next?: { due: number; item: CashItem; sum: number } };
   /** ваше место (3е): итог каждого взятого места за время на нём */
   seats: SeatSum[];
@@ -337,6 +340,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     training: trainSum(db, s),
     assets: assetSum(db, s),
     partners: partnerSum(db, s),
+    hours: hoursMeeting(db, s),
     cash: { balance: s.cash.balance, day: dayChange(s, s.t), ...(next ? { next: { due: next.due, item: next.item, sum: next.sum } } : {}) },
     seats: seatSums(db, s),
   };
@@ -498,6 +502,8 @@ export interface CashRow {
   item: CashItem;
   sum: number;
   why?: CashWhy;
+  /** у зарплаты (Б4а): оклады, ночные, сверхурочные и работа в выходной */
+  parts?: WageParts;
 }
 
 export interface CashView {
@@ -541,7 +547,8 @@ function whyOf(s: PlantState, item: CashItem, ref: string | undefined): CashWhy 
 
 const row = (s: PlantState, t: number, item: CashItem, sum: number, ref?: string): CashRow => {
   const why = whyOf(s, item, ref);
-  return { t, item, sum, ...(why ? { why } : {}) };
+  const parts = item === 'wages' && ref ? s.cash.wages[ref] : undefined;
+  return { t, item, sum, ...(why ? { why } : {}), ...(parts ? { parts: { ...parts } } : {}) };
 };
 
 export function cashView(db: ContentDb, s: PlantState, q: CashQuery): CashView {

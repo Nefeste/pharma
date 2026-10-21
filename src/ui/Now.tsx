@@ -2,8 +2,8 @@
 // разделам: что, где, кто, сколько прошло и сколько по норме. Щелчок по строке — камера к месту работы и её карточка;
 // «Смотреть» — туда же и ×1, пока работа не кончится. Вид собирает поток расчёта (src/sim/now.ts), сколько прошло —
 // окно по своим часам.
-import type { Ymd } from '../engine/core/calendar';
-import { durText, named, num, T, whenText } from '../i18n';
+import { momentOf, type Ymd } from '../engine/core/calendar';
+import { clock, durText, named, num, T, whenText } from '../i18n';
 import { NOW_DEPTS, type NowRow } from '../sim/now';
 import { assetClass, workName } from './assets';
 import { db } from './db';
@@ -104,7 +104,15 @@ export function Now({ hud, actions }: { hud: Hud; actions: Actions }) {
                         <span className="ntitle">
                           <TaskIcon kind={r.kind} /> {rowTitle(r)}
                         </span>
-                        <span className="muted small">{rowWho(r)}</span>
+                        <span className="muted small">
+                          {rowWho(r)}
+                          {r.over !== undefined ? (
+                            <span className="warn" data-test="now-over">
+                              {' · '}
+                              {T.now.over(clock(momentOf(hud.start, r.over).sec))}
+                            </span>
+                          ) : null}
+                        </span>
                       </button>
                       <span className="ntime small">{rowWhen(r, hud.t, hud.start)}</span>
                       <button type="button" onClick={() => actions.watch(r.key)} title={T.now.watchHint} data-test="now-watch">

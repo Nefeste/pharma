@@ -21,7 +21,9 @@
 // работает или его работа ждёт приёмки, а у другого запись уже принята в этой партии; обучения посреди дела здесь нет —
 // с визитом оно не сходится, его держит образец схемы 18. С схемы 20 — посреди оценки поставщика: у пары идёт оценка —
 // аудит у изготовителя или рассмотрение специалистом ООК, — а по рамочным договорам уже куплено; визита и расследования
-// здесь нет — их держат образцы схем 19 и 14.
+// здесь нет — их держат образцы схем 19 и 14. С схемы 21 — посреди сверхурочных: кто-то кончает после смены задачу,
+// взятую в смену, а у других в табеле уже есть отрезки после смены; оценки поставщика здесь нет — её держит образец
+// схемы 20.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { DAY, MIN, momentOf } from '../../src/engine/core/calendar';
@@ -54,8 +56,10 @@ const training = () => Object.values(s.tasks).some(t => (t.kind === 'train' || t
 const visiting = () => Object.values(s.assets).some(a => a.visit?.from !== undefined) && Object.values(s.assets).some(a => a.recs.some(r => r.by));
 // оценка пары идёт (Б3г), и по договорам уже покупали
 const evaluating = () => Object.values(s.pairs).some(p => p.eval !== undefined) && Object.values(s.contracts).some(c => c.lines.some(l => l.bought > 0));
+// работает после конца смены сейчас, а у другого в табеле уже есть сверхурочный отрезок (Б4а)
+const overtime = () => Object.values(s.people).some(p => p.task && p.until !== undefined && s.t > p.until) && Object.values(s.people).filter(p => p.ot.length > 0).length >= 2;
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : seated() && numbered() && switched() && evaluating();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : seated() && numbered() && switched() && overtime();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 if (SCHEMA >= 13) apply(db, s, { kind: 'seat', seats: ['director'] });

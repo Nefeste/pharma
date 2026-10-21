@@ -42,7 +42,14 @@ export function Cash({ hud, actions }: { hud: Hud; actions: Actions }) {
     <tr key={i}>
       <td className="nowrap">{after === undefined ? whenText(start, r.t) : date(r.t)}</td>
       <td>{T.cash.items[r.item]}</td>
-      <td>{whyText(r.why)}</td>
+      <td>
+        {whyText(r.why)}
+        {r.parts ? (
+          <div className="muted small" data-test="cash-wage-parts">
+            {T.cash.parts(money(r.parts.salary), money(r.parts.night), money(r.parts.over), money(r.parts.off))}
+          </div>
+        ) : null}
+      </td>
       <td className={sumClass(r.sum)}>{money(r.sum, true)}</td>
       {after !== undefined ? <td className={sumClass(after)}>{money(after)}</td> : null}
     </tr>

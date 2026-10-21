@@ -14,6 +14,7 @@ import { containersByLot, findSlot, nextId, putUnit, stockChanged } from './stoc
 import { addTask } from './tasks';
 import type { Notice, Order, PlantState, Shipment, Task, Truck, Unit } from './types';
 import { WMS } from './wms';
+import { calOf } from './workdays';
 
 /** Отбор: кладовщик перекладывает ящик на паллету заказа, с (гипотеза). */
 export const PICK_WORK = 30;
@@ -58,7 +59,7 @@ export function poisson(r: Rng, mean: number): number {
 /** Каждый час: заказы покупателей в их час; в 08:00 — распределение заказов дня; в 15:00 — фуры. Только в рабочий день. */
 export function marketHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   const now = momentOf(s.start, s.t);
-  if (!isWorkday(now.day)) return;
+  if (!isWorkday(calOf(db, s), now.day)) return;
   for (const id of db.scenarios[s.scenario].customers) {
     const c = db.customers[id];
     if (c.order.days.includes(now.weekday) && now.sec === c.order.hour * HOUR) placeOrder(db, s, c);
@@ -84,7 +85,7 @@ function placeOrder(db: ContentDb, s: PlantState, c: Customer) {
     customer: c.id,
     lines,
     placed: s.t,
-    due: at(s, workdayOnOrAfter(today(s) + lead), TRUCK_HOUR),
+    due: at(s, workdayOnOrAfter(calOf(db, s), today(s) + lead), TRUCK_HOUR),
     minShelf: c.minShelf,
     status: 'open',
     cases: [],
@@ -108,7 +109,7 @@ function allocateDay(db: ContentDb, s: PlantState) {
 /** После события: до 13:00 рабочего дня — распределить снова, если изменился склад; у рампы — грузить и отпускать фуру. */
 export function marketStep(db: ContentDb, s: PlantState, notices: Notice[]) {
   const now = momentOf(s.start, s.t);
-  if (isWorkday(now.day) && now.sec >= ALLOC_HOUR && now.sec < CUTOFF_HOUR) {
+  if (isWorkday(calOf(db, s), now.day) && now.sec >= ALLOC_HOUR && now.sec < CUTOFF_HOUR) {
     const v = s.next.stock ?? 0;
     for (const o of ordersToday(s)) if (o.checked !== v && o.lines.some(l => l.reserved < l.cases)) allocate(db, s, o);
   }
@@ -356,7 +357,7 @@ function depart(db: ContentDb, s: PlantState, tr: Truck, notices: Notice[]) {
     }
     o.units = o.units.filter(id => s.units[id]);
   }
-  const sh: Shipment = { id: nextId(s, 'H'), customer: tr.customer!, orders: orders.map(o => o.id), t: s.t, cases: [], reported: s.t, accepted: at(s, addWorkdays(today(s), 1), BANK_HOUR), sum: 0, vat: 0 };
+  const sh: Shipment = { id: nextId(s, 'H'), customer: tr.customer!, orders: orders.map(o => o.id), t: s.t, cases: [], reported: s.t, accepted: at(s, addWorkdays(calOf(db, s), today(s), 1), BANK_HOUR), sum: 0, vat: 0 };
   const fgSku = new Map(Object.values(db.skus).map(k => [k.fg, k]));
   for (const o of orders) {
     for (const uid of o.units) {
@@ -381,7 +382,7 @@ function depart(db: ContentDb, s: PlantState, tr: Truck, notices: Notice[]) {
   const pr = db.profiles[db.scenarios[s.scenario].profile];
   sh.vat = part(sh.sum, pr.vat.medicines);
   s.cash.vat.out += sh.vat;
-  owe(s, 'sale', sh.sum + sh.vat, dueIn(s, db.customers[sh.customer].payDays), sh.id);
+  owe(s, 'sale', sh.sum + sh.vat, dueIn(db, s, db.customers[sh.customer].payDays), sh.id);
   s.shipments[sh.id] = sh;
   delete s.trucks[tr.id];
   stockChanged(s);
@@ -398,9 +399,9 @@ function close(s: PlantState, o: Order, notices: Notice[]) {
 }
 
 /** Выпуск серии: документы — в АИС Росздравнадзора; сведения о серии опубликуют через 1–3 рабочих дня, в 10:00. */
-export function toRzn(s: PlantState, lot: string) {
+export function toRzn(db: ContentDb, s: PlantState, lot: string) {
   const days = roll(s, 'rzn', r => r.range(1, 3));
-  schedule(s.agenda, at(s, addWorkdays(today(s), days), BANK_HOUR), { kind: 'rzn', lot });
+  schedule(s.agenda, at(s, addWorkdays(calOf(db, s), today(s), days), BANK_HOUR), { kind: 'rzn', lot });
 }
 
 /** Сведения о серии опубликованы: пачки в обороте сами (автоввод) — серию можно отгружать. */

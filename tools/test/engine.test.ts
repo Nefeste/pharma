@@ -63,7 +63,7 @@ describe('сохранение', () => {
     expect(fingerprint(copy)).toBe(fingerprint(s));
   });
 
-  test.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])('образец схемы %d читается и живёт дальше (tools/test/fixtures/)', async v => {
+  test.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21])('образец схемы %d читается и живёт дальше (tools/test/fixtures/)', async v => {
     const json = await Bun.file(new URL(`./fixtures/save-v${v}.json`, import.meta.url)).text();
     const s = fromSave(db, json);
     expect(s.schema).toBe(SCHEMA);

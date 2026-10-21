@@ -34,8 +34,21 @@ export interface Profile {
    */
   payroll: {
     night: { from: number; to: number; extra: number };
+    /**
+     * сверхурочные (Б4а): предел за смену и за календарный год, с; первые `first` с смены — по первой ставке, дальше —
+     * по второй, доли 1/10 000 часовой ставки
+     */
+    overtime: { shift: number; year: number; first: number; rates: [number, number] };
+    /** работа в выходной или праздник (Б4а): сверх оклада, доли 1/10 000 часовой ставки — в пределах месячной нормы и сверх */
+    holiday: { within: number; beyond: number };
     contrib: { rate: number; base: number; above: number; injury: number; due: number };
   };
+  /**
+   * производственный календарь (Б4а; src/engine/core/calendar.ts): нерабочие праздники — месяц и число; январские
+   * праздники (с, по), выходные на которых по ч. 2 ст. 112 ТК РФ не переносятся; переносы постановлением — дни (с, на)
+   * от 1970-01-01; на сколько секунд короче рабочий день накануне праздника; секунд в рабочем дне расчётной пятидневки
+   */
+  calendar: { holidays: [number, number][]; january: [number, number]; transfers: [number, number][]; short: number; day: number };
   /** электроэнергия: авансы — число месяца и доля стоимости прошлого месяца, 1/10 000; окончательный расчёт — число */
   energy: { advances: [number, number][]; final: number };
   /** ключевая ставка, доли 1/10 000 */
@@ -171,6 +184,13 @@ export interface Sop extends Learn {
   review?: Review;
 }
 
+/**
+ * Политика отдела «Сверхурочные» (Б4а): «по потребности» — задачу ставят и тогда, когда она кончится после смены, в
+ * пределах закона; «только закончить начатое» — задача по норме помещается в смену, после неё остаются, лишь если
+ * стадия длится дольше нормы.
+ */
+export type OvertimeMode = 'need' | 'finish';
+
 export interface Scenario {
   id: Id;
   name: Text;
@@ -220,6 +240,8 @@ export interface Scenario {
   assets: { ahead: number; hours: [number, number]; accept: number; inv: number };
   /** контрагенты и договоры (Б3г): src/engine/partners.ts */
   partners: ScenarioPartners;
+  /** политики отделов на старте (Б4а): сверхурочные — src/engine/hours.ts */
+  policies: { overtime: OvertimeMode };
   /** происшествие прототипа (часть 4): у задания на серию — неисправность по жребию зерна */
   incident?: IncidentDef;
 }
@@ -454,7 +476,9 @@ export interface Agreement {
   review?: Review;
 }
 
-export type Dept = 'wms' | 'qc' | 'qa' | 'mes' | 'line' | 'maint';
+/** Отделы завода; у каждого — своя политика (Б4а). */
+export const DEPTS = ['wms', 'qc', 'qa', 'mes', 'line', 'maint'] as const;
+export type Dept = (typeof DEPTS)[number];
 
 export interface Role {
   id: Id;
@@ -485,6 +509,8 @@ export interface Shift {
   days: number[];
   from: number;
   to: number;
+  /** перерыв для отдыха и питания, с (Б4а): в рабочее время не входит (ст. 108 ТК РФ); где он в смене, прототип не показывает */
+  break: number;
 }
 
 export type ZoneKind = 'receiving' | 'quarantine' | 'cold' | 'rejected' | 'fgQuarantine' | 'shipping' | 'staging' | 'sampling' | 'palletizing';

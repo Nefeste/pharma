@@ -3,7 +3,7 @@
 // неизменяемый: каждое `set` — новый объект.
 import { useSyncExternalStore } from 'react';
 import type { Go, Pause } from '../app/pauses';
-import type { SeatId } from '../content/types';
+import type { Dept, OvertimeMode, SeatId } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
 import type { RunSum } from '../engine/plan/run';
 import type { Change } from '../engine/plan/schedule';
@@ -206,6 +206,8 @@ export interface Actions {
   unwatch(): void;
   setLabTab(tab: 'queue' | 'chart'): void;
   rush(lot: string): void;
+  /** политика отдела «Сверхурочные» (Б4а) — команда `overtime` */
+  overtime(dept: Dept, mode: OvertimeMode): void;
   /**
    * расписание: открыть или закрыть; окно — сутки, трое, неделя; на сутки назад, вперёд, к сегодня (0); тянуть задание —
    * призрак с новым сроком; отпустить — строка черновика; отменить; утвердить черновик — команды `shift`; сбросить его

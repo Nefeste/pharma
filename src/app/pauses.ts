@@ -4,15 +4,17 @@
 // игроку стоп и куда ведёт щелчок по ним. Чистые функции без DOM — их проверяют тесты в Bun.
 import type { Plant, SeatId } from '../content/types';
 import { DAY } from '../engine/core/calendar';
+import { DEPT_SEAT } from '../engine/seats';
 import type { Notice } from '../engine/types';
 import type { Thing } from '../sim/views';
 import type { Keep } from './preset';
 
 /**
- * Автопаузы прототипа — по порядку меню. Из событий сотрудника есть только потеря допуска (Б3б); срок квалификации или
- * калибровки актива (Б3в); приостановленная пара поставщика (Б3г); жалобы, совещания S&OP и инспекции в прототипе нет.
+ * Автопаузы прототипа — по порядку меню. Из событий сотрудника есть потеря допуска (Б3б) и сверхурочные года на исходе
+ * (Б4а); срок квалификации или калибровки актива (Б3в); приостановленная пара поставщика (Б3г); жалобы, совещания S&OP
+ * и инспекции в прототипе нет.
  */
-export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'assetExpired', 'pairSuspended', 'morning'] as const;
+export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'assetExpired', 'pairSuspended', 'morning'] as const;
 export type Pause = (typeof PAUSES)[number];
 
 /**
@@ -28,6 +30,7 @@ export const PAUSE_NOTICES: Record<Pause, readonly string[]> = {
   orderRisk: ['orderRisk'],
   materialLate: ['materialLate'],
   qualLost: ['qualLost'],
+  overtimeLow: ['overtimeLow/mes', 'overtimeLow/line', 'overtimeLow/maint', 'overtimeLow/qc', 'overtimeLow/qa', 'overtimeLow/wms'],
   assetExpired: ['assetExpired/equipment', 'assetExpired/machine', 'assetExpired/ipc', 'assetExpired/lab', 'assetExpired/sensor'],
   pairSuspended: ['pairSuspended'],
   morning: ['morning'],
@@ -46,6 +49,8 @@ export const PAUSE_SEATS: Record<Pause, readonly SeatId[] | 'all'> = {
   orderRisk: ['commerce'],
   materialLate: ['supply', 'production'],
   qualLost: ['quality'],
+  // сверхурочные года (Б4а) — у поста отдела человека (`KEY_SEATS`)
+  overtimeLow: ['production', 'quality', 'supply'],
   assetExpired: ['production', 'quality', 'supply'],
   // пара поставщика (Б3г): оценку ведёт качество, заказывает снабжение
   pairSuspended: ['quality', 'supply'],
@@ -54,7 +59,8 @@ export const PAUSE_SEATS: Record<Pause, readonly SeatId[] | 'all'> = {
 
 /**
  * Чьё дело ключ, если не всей автопаузы (Б3в): срок оборудования таблеток, машины линии и прибора МОК — производства,
- * прибора лаборатории — качества и технологии, датчика склада — снабжения и склада.
+ * прибора лаборатории — качества и технологии, датчика склада — снабжения и склада. Сверхурочные года (Б4а) — пост
+ * отдела человека, как у политики отдела (src/engine/seats.ts).
  */
 export const KEY_SEATS: Partial<Record<string, readonly SeatId[]>> = {
   'assetExpired/equipment': ['production'],
@@ -62,6 +68,7 @@ export const KEY_SEATS: Partial<Record<string, readonly SeatId[]>> = {
   'assetExpired/ipc': ['production'],
   'assetExpired/lab': ['quality'],
   'assetExpired/sensor': ['supply'],
+  ...Object.fromEntries(Object.entries(DEPT_SEAT).map(([d, seat]) => [`overtimeLow/${d}`, [seat]])),
 };
 
 /** Ключ в хранилище окна: отключённые автопаузы — новая автопауза в следующей версии придёт включённой. */
@@ -125,7 +132,7 @@ export function machineThing(plant: Plant, id: string): Thing | undefined {
 /**
  * Куда ведёт извещение (13-art.md, §11: «щелчок ведёт на место»): отказ — к машине, фура — к фуре, материал — к
  * расписанию, заказ — к планёрке с заказами под угрозой, отклонённая партия — к лаборатории, расследование — к доске,
- * потеря допуска — к человеку.
+ * потеря допуска и сверхурочные года на исходе — к человеку.
  */
 export function goOf(plant: Plant, n: Notice): Go | undefined {
   switch (n.kind) {
@@ -146,6 +153,7 @@ export function goOf(plant: Plant, n: Notice): Go | undefined {
     case 'concluded':
       return { inv: n.id };
     case 'qualLost':
+    case 'overtimeLow':
       return { thing: { kind: 'person', n: Number(n.person.slice(1)) } };
     case 'assetExpired': {
       // машина и оборудование — к ним; прибор и датчик — к справочнику, вкладке «Места»

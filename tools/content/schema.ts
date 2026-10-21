@@ -41,7 +41,23 @@ export const profile = z.strictObject({
    */
   payroll: z.strictObject({
     night: z.strictObject({ from: z.number().int().min(0).max(23), to: z.number().int().min(0).max(23), extra: percent }),
+    /** сверхурочные (Б4а): предел за смену и за год, ч; первые `first` ч — по первой ставке, дальше — по второй, % часовой */
+    overtime: z.strictObject({ shift: z.number().positive().max(12), year: z.number().int().positive().max(1000), first: z.number().positive().max(12), rates: z.tuple([z.number().min(100).max(1000), z.number().min(100).max(1000)]) }),
+    /** работа в выходной или праздник (Б4а): сверх оклада, % часовой ставки — в пределах месячной нормы и сверх неё */
+    holiday: z.strictObject({ within: z.number().min(0).max(1000), beyond: z.number().min(0).max(1000) }),
     contrib: z.strictObject({ rate: percent, base: z.number().int().positive(), above: percent, injury: percent, due: day }),
+  }),
+  /**
+   * производственный календарь (Б4а): нерабочие праздники — месяц и число; январские праздники (с, по), выходные на
+   * которых по ч. 2 ст. 112 не переносятся; переносы постановлением — с какого дня на какой; на сколько часов короче
+   * день накануне праздника; часов в неделю — норма по расчётной пятидневке
+   */
+  calendar: z.strictObject({
+    holidays: z.array(z.tuple([z.number().int().min(1).max(12), z.number().int().min(1).max(31)])),
+    january: z.tuple([z.number().int().min(1).max(31), z.number().int().min(1).max(31)]),
+    transfers: z.array(z.tuple([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'дата пишется как ГГГГ-ММ-ДД'), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'дата пишется как ГГГГ-ММ-ДД')])).default([]),
+    short: z.number().int().min(0).max(4),
+    week: z.number().int().min(1).max(60),
   }),
   /** электроэнергия: авансы — число месяца и доля стоимости прошлого месяца, %; окончательный расчёт — число следующего */
   energy: z.strictObject({ advances: z.array(z.tuple([day, percent])), final: day }),
@@ -168,6 +184,11 @@ export const scenario = z.strictObject({
     months: z.number().int().min(1).max(36),
     ctr: z.number().int().min(1).max(9999),
   }),
+  /**
+   * политики отделов на старте (Б4а): сверхурочные — «по потребности» (задачу ставят и тогда, когда она кончится после
+   * смены, в пределах закона) или «только закончить начатое»
+   */
+  policies: z.strictObject({ overtime: z.enum(['need', 'finish']) }),
   /**
    * происшествие прототипа (docs/specs/2026-10-investigation.md): задание на серию по номеру с 1, модель расследования,
    * веса корней, %, и величина неисправности — от и до: ошибка лаборатории — % ниже истинного, опудривание — мин сверх
@@ -318,6 +339,11 @@ export const shift = z.strictObject({
   days: z.array(z.number().int().min(1).max(7)).min(1),
   from: z.number().int().min(0).max(23),
   to: z.number().int().min(1).max(24),
+  /**
+   * перерыв для отдыха и питания, ч (Б4а): от 30 минут до 2 часов, в рабочее время не входит (ст. 108 ТК РФ); нет —
+   * отдых и еда в рабочее время, где перерыв невозможен по условиям производства (ст. 108, ч. 3)
+   */
+  break: z.number().min(0.5).max(2).optional(),
 });
 
 /**

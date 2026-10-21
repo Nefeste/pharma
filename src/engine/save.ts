@@ -7,16 +7,19 @@ import { type Agenda, schedule } from './core/agenda';
 import { HOUR, momentOf } from './core/calendar';
 import { newCash } from './cash';
 import { inForce } from './docs';
+import { newPolicy } from './hours';
 import { leanStep, newLoss } from './lean';
 import { newLines } from './line';
 import { newParts } from './maint';
 import { newCustomers } from './market';
+import { stageTaskNorm } from './mes';
 import { seedContracts, seedPairs, specPairs } from './partners';
 import { planOf } from './plant';
 import { nominal } from './quality';
+import { shiftEndAt } from './staff';
 import { seedTraining } from './train';
 import type { Ymd } from './core/calendar';
-import { type Person, type PlantEvent, type PlantState, SCHEMA } from './types';
+import { type Batch, type Person, type PlantEvent, type PlantState, SCHEMA, type Task } from './types';
 
 type Raw = Record<string, unknown>;
 
@@ -264,6 +267,24 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     raw.contracts = {};
     seedPairs(db, sc, raw as unknown as PlantState, day);
     seedContracts(db, sc, raw as unknown as PlantState, day);
+    return raw;
+  },
+  // 20 → 21 (Б4а): табель — с мгновения сохранения: сверхурочных отрезков нет, за год — ноль; кто занят задачей — после
+  // конца нынешней смены сверхурочно, а вне смены — с мгновения сохранения; у стадий — норма для раздатчика; политика
+  // отделов — «по потребности»; частей прошлых зарплат нет.
+  20: (raw, db) => {
+    const sc = db.scenarios[raw.scenario as string];
+    if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
+    const s = raw as unknown as PlantState;
+    const y = momentOf(s.start, s.t).date.y;
+    for (const p of Object.values(s.people)) {
+      p.ot = [];
+      p.otYear = { y, sec: 0 };
+      if (p.task) p.until = shiftEndAt(db, s, p.shift, s.t) ?? s.t;
+    }
+    for (const t of Object.values(raw.tasks as Record<string, Task>)) if (t.kind === 'stage' && t.batch) t.norm = stageTaskNorm(db, (raw.batches as Record<string, Batch>)[t.batch]);
+    raw.policy = Object.fromEntries(Object.keys(newPolicy(db, sc.id)).map(d => [d, 'need']));
+    (raw.cash as Raw).wages = {};
     return raw;
   },
 };

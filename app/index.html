@@ -6,7 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:">
   <link rel="icon" href="data:,">
   <title>Farmzavod</title>
-  <!-- из bolnitsa: app/index.html @ e0a3491 — изменено: полоса сверху, отладка и состояние (часть 0); карточка вещи — её стиль `.card`, панель склада — своя (3б); планёрка и касса — свои (3в); лаборатория (3г), расписание (3д), «Кем вы будете» (3е), прогон плана (часть 5) и доска расследования (4б) — свои -->
+  <!-- из bolnitsa: app/index.html @ e0a3491 — изменено: полоса сверху, отладка и состояние (часть 0); карточка вещи — её стиль `.card`, панель склада — своя (3б); планёрка и касса — свои (3в); лаборатория (3г), расписание (3д), «Кем вы будете» (3е), прогон плана (часть 5) и доска расследования (4б) — свои; ограда панели и шапка большого окна на виду (0.0.37) — свои -->
   <style>
     :root {
       --panel: rgba(22, 30, 34, 0.86);
@@ -216,6 +216,10 @@
     /* справочник завода (Б1а) — большое окно под полосой, как доска расследования: вкладки и таблицы «как должно быть и как есть» */
     .ref { position: absolute; left: 8px; right: 8px; top: calc(var(--top-h, 48px) + 8px); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 4px; }
     .ref .phead .filters { margin-left: 12px; }
+    /* шапка большого окна — название и ✕ — всегда наверху, когда окно прокручено (0.0.37), как подвал планёрки */
+    .inv > .phead, .ref > .phead { position: sticky; top: -8px; z-index: 1; margin: -8px -12px 0; padding: 8px 12px 4px; background: rgba(22, 30, 34, 0.98); border-bottom: 1px solid var(--line); }
+    /* ограда панели (src/ui/Guard.tsx): на месте упавшей панели — ошибка и «Закрыть» */
+    .guard { position: absolute; left: 50%; top: calc(var(--top-h, 48px) + 8px); transform: translateX(-50%); max-width: min(720px, calc(100% - 16px)); z-index: 6; display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
     .rbody { display: flex; flex-direction: column; gap: 6px; }
     .rsec { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
     .rsub { margin: 4px 0 2px 10px; }

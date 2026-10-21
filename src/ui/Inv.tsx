@@ -238,9 +238,21 @@ function Debrief({ b, m, start }: { b: InvBoard; m: InvModel; start: Ymd }) {
   const method = named(db?.tests[b.what.method]?.name, b.what.method);
   const fateText = d.fate ? (d.good && !d.provable && c.fate === 'reject' ? T.inv.fateRules : T.inv.fateRight) : T.inv.fateLost;
   const who = c.by === 'player' ? T.inv.whoDecided.player : T.inv.whoDecided.colleague;
-  // решили — разбор на виду
+  // решили — разбор на виду: крутится доска, а не окно игры. Тело эффекта — блок: что вернул эффект, React зовёт при
+  // снятии как уборку, а в Electron 44 (Chromium 152) прокрутка возвращает Promise — в 0.0.36 закрытие доски после
+  // решения роняло всё окно (README, 0.0.37)
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => ref.current?.scrollIntoView({ block: 'nearest' }), []);
+  useEffect(() => {
+    const el = ref.current;
+    const board = el?.closest<HTMLElement>('.inv');
+    if (!el || !board) return;
+    const box = board.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    // разбор виден целиком — не крутить; иначе его верх — под шапкой доски, она с ✕ всегда наверху
+    if (r.bottom <= box.bottom) return;
+    const head = board.querySelector<HTMLElement>('.phead')?.offsetHeight ?? 0;
+    board.scrollTop += r.top - box.top - board.clientTop - head;
+  }, []);
   return (
     <div className="isec idebrief" ref={ref} data-test="inv-debrief" data-root={d.root} data-cause={d.cause ? '1' : '0'} data-fate={d.fate ? '1' : '0'}>
       <div className="msec">{T.inv.debrief}</div>

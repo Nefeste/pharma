@@ -268,7 +268,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   composition (`stage.ts`).
 - `src/ui/` — panels (React) and their store: the top bar with «До утра», «До события» and the latest notice — the one
   the world stopped on marked «❚❚», a click leads to its place (`App.tsx`), the autopause menu (`Pauses.tsx`), the
-  warehouse (`Stock.tsx`), the card of a
+  warehouse (`Stock.tsx`), a guard around each panel and the top bar — an error stays in its place
+  (`Guard.tsx`), the card of a
   thing — what it is, state, why, what can be done, history (`Card.tsx`), the plant reference with its tabs, sortable columns and search (`Ref.tsx`,
   F1), quality attribute and process parameter values in words (`units.ts`), what is going on now with «Смотреть»
   (`Now.tsx`, N), the 08:00 meeting (`Morning.tsx`), the cash

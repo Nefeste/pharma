@@ -640,7 +640,7 @@ export class Game {
     release: (batch, decision) => this.client.command({ kind: 'release', batch, decision }),
     assess: (deviation, verdict) => this.client.command({ kind: 'assess', deviation, verdict, by: 'player' }),
     urgent: (recipe, sku) => {
-      // срочное задание (Б1г) — строка черновика; расписание открывается: «Прогнать план» покажет, что оно изменит
+      // срочное задание (Б1г) — строка черновика, его полосы — в расписании (0.0.39); «Прогнать план» — что оно изменит
       const g = this.store.get().gantt;
       this.store.set({ gantt: { ...g, urgent: [...g.urgent, { recipe, sku }] } });
       if (!g.open) this.actions.toggleGantt();
@@ -824,7 +824,11 @@ export class Game {
     if (h.morning.open && h.morning.day !== undefined) list.push({ id: 'morning', view: 'morning', day: h.morning.day });
     if (h.cash.open) list.push({ id: 'cash', view: 'cash', page: h.cash.page });
     if (h.lab.open) list.push(h.lab.tab === 'queue' ? { id: 'lab', view: 'lab' } : { id: 'chart', view: 'chart', test: 'test.ipc.mass' });
-    const draft = h.gantt.draft.length > 0 ? { draft: [...h.gantt.draft] } : {};
+    // черновик: новые сроки заданий и новые срочные задания (0.0.39) — их полосы расписание показывает до «Утвердить»
+    const draft = {
+      ...(h.gantt.draft.length > 0 ? { draft: [...h.gantt.draft] } : {}),
+      ...(h.gantt.urgent.length > 0 ? { fresh: h.gantt.urgent.map(u => ({ recipe: u.recipe, sku: u.sku })) } : {}),
+    };
     if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days), ...draft });
     if (h.gantt.open && h.gantt.drag) list.push({ id: 'ghost', view: 'ghost', ...h.gantt.drag, ...draft });
     if (h.inv.open) list.push({ id: 'inv', view: 'inv', ...(h.inv.id ? { inv: h.inv.id } : {}) });

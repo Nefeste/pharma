@@ -4,13 +4,15 @@
 // партии близок к тому, как серии потом прошли на деле. Сдвиг меняет срок только у задания, не начавшего комплектовку.
 // Призрак называет, почему не там, куда тянут. Черновик (часть 5, docs/specs/2026-10-plan-run.md): отпустили — строка
 // черновика, команды нет; план — с черновиком, прежние полосы сдвинутых серий — рядом; «Утвердить» — сроки как в
-// черновике и план как показан; «Сбросить» — ничего не изменилось; начатое задание из черновика уходит.
+// черновике и план как показан; «Сбросить» — ничего не изменилось; начатое задание из черновика уходит. Новое задание
+// черновика (0.0.39): его полосы и причины до «Утвердить» — те же, что после, с номером, который оно получит.
 import { describe, expect, test } from 'bun:test';
 import { legacy as db } from './legacy';
+import { db as game } from '../../src/content';
 import { DAY, HOUR, MIN } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
 import { readyFor, TRANSFER_WORK } from '../../src/engine/mes';
-import { type Bar, forecast } from '../../src/engine/plan/schedule';
+import { type Bar, forecast, freshBatches } from '../../src/engine/plan/schedule';
 import { planOf } from '../../src/engine/plant';
 import { takesAt } from '../../src/engine/staff';
 import type { Notice, PlantState } from '../../src/engine/types';
@@ -338,4 +340,39 @@ describe('черновик', () => {
     expect(prune(draft, v.gone)).toEqual([]);
     expect(ganttView(db, s, { ...q, draft: [...prune(draft, v.gone)] }).moved).toEqual([]);
   });
+});
+
+describe('новое задание черновика (0.0.39)', () => {
+  test('полосы и причины до «Утвердить» — те же, что после; номер — тот, что оно получит; резерв — вслед за прошлым', () => {
+    const s = newPlant(game, { scenario: SC });
+    apply(game, s, { kind: 'seat', seats: ['production'] });
+    apply(game, s, { kind: 'advance', seconds: at(1, 20) - s.t });
+    const q = { view: 'gantt' as const, from: 0, to: at(60, 0) };
+    const fresh = [
+      { recipe: 'rcp.paracetamol500.wet.v1', sku: 'sku.paracetamol500.n20' },
+      { recipe: 'rcp.paracetamol500.wet.v1', sku: 'sku.paracetamol500.n20' },
+    ];
+    const before = JSON.stringify(s);
+    const v = ganttView(game, s, { ...q, fresh });
+    const kits = freshBatches(game, s, fresh).map(b => b.kit);
+    // черновик — не команда: завод тот же
+    expect(JSON.stringify(s)).toBe(before);
+    const ids = [1, 2].map(i => `B${(s.next.B ?? 0) + i}`);
+    for (const id of ids) {
+      expect(v.moved).toContain(id);
+      expect(v.batches[id]).toMatchObject({ n: Number(id.slice(1)), status: 'reserved', notBefore: s.t });
+      expect(v.bars.filter(b => b.batch === id && b.kind === 'kit')).toHaveLength(1);
+    }
+    // второе задание берёт то, что осталось после первого: из тары вместе — не больше свободного в ней
+    const want = new Map<string, number>();
+    for (const k of [...kits[0], ...kits[1]]) want.set(k.container, (want.get(k.container) ?? 0) + k.qty);
+    for (const [c, n] of want) expect(n).toBeLessThanOrEqual(s.containers[c].qty - (s.containers[c].reserved ?? 0));
+    // утвердили — у заданий тот же резерв, а расписание — как показал черновик
+    for (const f of fresh) apply(game, s, { kind: 'order', ...f });
+    expect(ids.map(id => s.batches[id].kit)).toEqual(kits);
+    const after = ganttView(game, s, q);
+    expect(JSON.stringify(after.bars)).toBe(JSON.stringify(v.bars));
+    expect(JSON.stringify(after.why)).toBe(JSON.stringify(v.why));
+    expect(after.moved).toEqual([]);
+  }, 60_000);
 });

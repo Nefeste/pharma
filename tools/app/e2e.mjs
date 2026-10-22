@@ -26,8 +26,9 @@
 // лампа показывает «калибровка или квалификация», после приёмки в карточке — новая запись и кто её принял. Что делать
 // (Б1г): у главной потери планёрки — рычаги и строка «Будет в …», «Потоки — люди» включает слой; карточка отклонения
 // опудривания — время по досье, цель и диапазон по карте, связанные испытания, решает расследование; пояснение при
-// первом событии; удержанную серию держат и выпускают из карточки её ГП; срочное задание — строкой черновика и
-// «Утвердить». Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
+// первом событии; удержанную серию держат и выпускают из карточки её ГП; срочное задание — строкой черновика и его
+// полосами в расписании до «Утвердить» (0.0.39). Ошибок в консоли и запросов наружу нет. Снимки —
+// tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -902,22 +903,44 @@ try {
     }
   }
 
-  // срочное задание (Б1г): в расписании «Срочное задание» — позиция; в черновике — «срочное задание — …»; «Утвердить» —
-  // новое задание на серию сейчас, оно в расписании; черновик пуст
+  // срочное задание (Б1г, 0.0.39): «Срочное задание» — первым в строке черновика, позиции — списком под ним; выбрали —
+  // список закрылся, в черновике «срочное задание — …», а в расписании — полосы нового задания с отметкой черновика, до
+  // «Утвердить». «Утвердить» — задание на тех же полосах, черновик пуст. Мир на паузе: мгновение то же
   {
     await page.keyboard.press('KeyG');
     await page.waitForFunction(() => !!window.__game.store.get().gantt.view, null, { timeout: 20_000 });
     await frames(2);
-    const before = await page.evaluate(() => Object.keys(window.__game.store.get().gantt.view.batches).length);
+    const top = await page.evaluate(() => {
+      const v = window.__game.store.get().gantt.view;
+      return { n: Math.max(0, ...Object.keys(v.batches).map(id => Number(id.slice(1)))), first: !!document.querySelector('[data-test=gantt-draft]')?.firstElementChild?.querySelector('[data-test=urgent-open]') };
+    });
     await page.click('[data-test=urgent-open]');
+    const opened = await page.isVisible('[data-test=urgent-list]');
     await page.click('[data-test=urgent-sku]');
+    await page.waitForFunction(n => window.__game.store.get().gantt.view?.moved.some(id => Number(id.slice(1)) > n), top.n, { timeout: 20_000 }).catch(() => {});
     await frames(2);
-    const list = await page.evaluate(() => document.querySelector('[data-test=draft-list]')?.textContent ?? '');
+    const pre = await page.evaluate(n => {
+      const v = window.__game.store.get().gantt.view;
+      const id = v.moved.filter(x => Number(x.slice(1)) > n).sort((x, y) => Number(x.slice(1)) - Number(y.slice(1)))[0] ?? '';
+      return {
+        id,
+        bars: v.bars.filter(b => b.batch === id).map(b => `${b.row} ${b.kind} ${b.from} ${b.to}`),
+        dom: id ? document.querySelectorAll(`[data-test=gbar][data-batch="${id}"][data-draft="1"]`).length : 0,
+        list: document.querySelector('[data-test=draft-list]')?.textContent ?? '',
+        closed: !document.querySelector('[data-test=urgent-list]'),
+      };
+    }, top.n);
+    await page.screenshot({ path: join(out, 'e2e-urgent.png') });
     await page.click('[data-test=draft-approve]');
-    await page.waitForFunction(n => Object.keys(window.__game.store.get().gantt.view?.batches ?? {}).length > n, before, { timeout: 20_000 }).catch(() => {});
-    const after = await page.evaluate(() => ({ n: Object.keys(window.__game.store.get().gantt.view.batches).length, urgent: window.__game.store.get().gantt.urgent.length }));
-    if (!/срочное задание — /.test(list) || after.n <= before || after.urgent !== 0) fail(`срочное задание: черновик «${list}», заданий ${before} → ${after.n}, в черновике осталось ${after.urgent}`);
-    else ok(`срочное задание: «${list}»; «Утвердить» — заданий в расписании ${before} → ${after.n}, черновик пуст`);
+    await page.waitForFunction(id => !!window.__game.store.get().gantt.view?.batches[id] && !window.__game.store.get().gantt.view.moved.includes(id), pre.id, { timeout: 20_000 }).catch(() => {});
+    const post = await page.evaluate(id => {
+      const v = window.__game.store.get().gantt.view;
+      return { bars: v.bars.filter(b => b.batch === id).map(b => `${b.row} ${b.kind} ${b.from} ${b.to}`), urgent: window.__game.store.get().gantt.urgent.length };
+    }, pre.id);
+    if (!top.first || !opened || !pre.closed || !/срочное задание — /.test(pre.list) || !pre.id || pre.bars.length === 0 || pre.dom !== pre.bars.length)
+      fail(`срочное задание: кнопка первой ${top.first}, список ${opened} → закрыт ${pre.closed}, черновик «${pre.list}», полосы ${pre.id} — ${pre.bars.length} (в черновике ${pre.dom})`);
+    else if (post.urgent !== 0 || post.bars.join('|') !== pre.bars.join('|')) fail(`срочное задание: после «Утвердить» полосы ${post.bars.length} — ${post.bars.join('|') === pre.bars.join('|') ? 'те же' : 'другие'}, в черновике ${post.urgent}`);
+    else ok(`срочное задание: «${pre.list}» — до «Утвердить» в расписании ${pre.bars.length} полос задания ${pre.id.slice(1)} с отметкой черновика; «Утвердить» — те же полосы, черновик пуст; снимок ${join(out, 'e2e-urgent.png')}`);
     await page.keyboard.press('Escape');
   }
 

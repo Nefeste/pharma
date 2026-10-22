@@ -53,17 +53,28 @@ export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, {
     return;
   }
   const notBefore = Math.max(s.t, cmd.notBefore ?? s.t);
-  const r = db.recipes[inForce(db, 'recipes', cmd.recipe, momentOf(s.start, notBefore).day)];
-  const b: Batch = {
-    id: nextId(s, 'B'),
+  const b = newBatch(db, s, nextId(s, 'B'), cmd.recipe, notBefore, cmd.by ?? 'player', cmd.sku);
+  s.batches[b.id] = b;
+  schedule(s.agenda, b.notBefore, { kind: 'batch', id: b.id });
+  reserve(db, s, b);
+}
+
+/**
+ * Новое задание на серию — каким его ставит команда `order`: карта — редакция, действующая в день «не раньше», резерва
+ * ещё нет. Прогон расписания (0.0.39) строит так же задания черновика, которых в состоянии нет.
+ */
+export function newBatch(db: ContentDb, s: PlantState, id: string, recipe: Id, notBefore: number, by: string, sku?: Id): Batch {
+  const r = db.recipes[inForce(db, 'recipes', recipe, momentOf(s.start, notBefore).day)];
+  return {
+    id,
     code: { pp: '', n: 0, m: 0, y: 0 },
     recipe: r.id,
     product: r.product,
     notBefore,
     ordered: s.t,
-    by: cmd.by ?? 'player',
+    by,
     status: 'waiting',
-    ...(cmd.sku ? { sku: cmd.sku } : {}),
+    ...(sku ? { sku } : {}),
     kit: [],
     stage: 0,
     mass: 0,
@@ -75,9 +86,6 @@ export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, {
     spent: {},
     phaseAt: s.t,
   };
-  s.batches[b.id] = b;
-  schedule(s.agenda, b.notBefore, { kind: 'batch', id: b.id });
-  reserve(db, s, b);
 }
 
 /**
@@ -96,10 +104,22 @@ function fefo(s: PlantState, material: Id, today: number, byLot: Map<string, Con
     }));
 }
 
-function reserve(db: ContentDb, s: PlantState, b: Batch): boolean {
-  const r = db.recipes[b.recipe];
+/** Что даст резерв по FEFO сейчас: комплект или чего не хватает. */
+export interface KitPlan {
+  kit: KitLine[];
+  short: { material: Id; qty: number }[];
+  /** сколько взято из тары — вместе с `before` */
+  taken: Map<string, number>;
+}
+
+/**
+ * Примерка резерва по FEFO, ничего не записывая: резерв задания и прогон расписания с новыми заданиями черновика (0.0.39)
+ * берут тару одним правилом. `before` — сколько из тары уже взяли задания той же примерки.
+ */
+export function kitPlan(db: ContentDb, s: PlantState, recipe: Id, before?: ReadonlyMap<string, number>): KitPlan {
+  const r = db.recipes[recipe];
   const today = momentOf(s.start, s.t).day;
-  const taken = new Map<string, number>();
+  const taken = new Map(before ?? []);
   const kit: KitLine[] = [];
   const short: { material: Id; qty: number }[] = [];
   const lines = [...r.bom.filter(l => l.potency), ...r.bom.filter(l => !l.potency && !l.qs), ...r.bom.filter(l => l.qs)];
@@ -128,6 +148,11 @@ function reserve(db: ContentDb, s: PlantState, b: Batch): boolean {
     if (left > 0) short.push({ material: line.material, qty: left });
     if (line.potency) extra += gross - line.qty;
   }
+  return { kit, short, taken };
+}
+
+function reserve(db: ContentDb, s: PlantState, b: Batch): boolean {
+  const { kit, short } = kitPlan(db, s, b.recipe);
   if (short.length > 0) {
     b.status = 'waiting';
     b.short = short;

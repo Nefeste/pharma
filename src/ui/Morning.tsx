@@ -2,7 +2,8 @@
 // за время на нём (3е), вчера в цифрах, одна главная потеря, одна подсказка; что было с прошлой планёрки; что ждёт сейчас. Большое окно поверх карты с
 // вопросом в заголовке. Вид собирает поток расчёта (src/sim/report.ts) без слов и без истины; слова — отсюда.
 import type { ReactNode } from 'react';
-import type { PartType } from '../content/types';
+import { devLevers, heldLevers, mainLevers, riskLevers } from '../app/levers';
+import type { PartType, Scenario } from '../content/types';
 import { civilFromDays, momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
 import { dateText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
@@ -10,7 +11,8 @@ import type { LineSum, MainLoss, MorningView, SeatSum } from '../sim/report';
 import type { Thing } from '../sim/views';
 import { assetName, workName } from './assets';
 import { db } from './db';
-import type { Actions } from './store';
+import { Levers } from './Levers';
+import type { Actions, Hud } from './store';
 
 /** Название машины или оборудования по виду; узлы — из той же записи. */
 function machineOf(thing: Thing | undefined, type: string): { name: string; parts: readonly PartType[] } {
@@ -120,7 +122,7 @@ function SeatBlock({ x, start }: { x: SeatSum; start: Ymd }) {
   );
 }
 
-export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningView; day: number; start: Ymd; plant: string; pause: boolean; actions: Actions }) {
+export function Morning({ v, day, start, plant, pause, actions, hud, scenario }: { v?: MorningView; day: number; start: Ymd; plant: string; pause: boolean; actions: Actions; hud: Hud; scenario?: Scenario }) {
   const d = civilFromDays(day);
   const at = momentOf(d, 0);
   const yest = civilFromDays(day - 1);
@@ -135,6 +137,8 @@ export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningV
     actions.closeMorning(false);
     actions.openInv(id);
   };
+  // рычаг (Б1г): планёрка закрывается раньше, чем откроется окно решения; пауза остаётся
+  const close = () => actions.closeMorning(false);
   return (
     <div className="morning panel" id="morning" role="dialog" aria-labelledby="morning-title" data-test="morning">
       <div className="phead">
@@ -221,6 +225,7 @@ export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningV
                         <span className="muted">{T.morning.hintTitle}: </span>
                         {hintOf(v.main)}
                       </div>
+                      <Levers list={mainLevers(v.main, v.policy)} hud={hud} actions={actions} close={close} />
                     </>
                   ) : (
                     <div className="muted">{T.morning.noMain}</div>
@@ -234,8 +239,8 @@ export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningV
             <Rows
               title={T.morning.devTitle}
               rows={v.deviations.map((x, i) => (
-                <li key={i}>
-                  <span className="mono muted">{when(x.t)}</span> {T.morning.devKinds[x.kind]}
+                <li key={i} className="go" onClick={x.inv ? undefined : go({ kind: 'dev', n: x.dev })} data-test="morning-dev">
+                  <span className="mono muted">{when(x.t)}</span> {T.morning.devKinds[x.kind]} <span className="mono">{T.dev.no(x.dev)}</span>
                   {x.lot ? ` · ${named(db?.materials[x.material ?? '']?.name, x.material)} ${T.lotCode(...x.lot)}` : ''}
                   {x.batch ? ` · ${T.card.batch} ${x.batch}` : ''}
                   {x.inv ? (
@@ -321,11 +326,31 @@ export function Morning({ v, day, start, plant, pause, actions }: { v?: MorningV
             <Rows
               title={T.morning.riskTitle}
               rows={v.risk.map((x, i) => (
-                <li key={i} className="bad">
+                <li key={i} className="bad" data-test="morning-risk">
                   {T.morning.risk(named(db?.customers[x.customer]?.name, x.customer), dayText(momentOf(start, x.due).day), x.missing)}
                   {x.pending > 0 ? <span className="muted">; {T.morning.pending(x.pending)}</span> : null}
+                  <Levers list={riskLevers(x, scenario ?? {}, v.held)} hud={hud} actions={actions} close={close} />
                 </li>
               ))}
+            />
+            <Rows
+              title={T.morning.pendingTitle}
+              rows={[
+                // что ждёт решения (Б1г): неоценённые отклонения — старшие первыми; удержанные серии
+                ...v.pending.map(x => (
+                  <li key={`d${x.dev}`} className={hud.t > x.due ? 'bad' : ''} data-test="morning-pending">
+                    {T.morning.pendingDev(T.morning.devKinds[x.kind], T.dev.no(x.dev), x.batch ?? '', dayText(momentOf(start, x.due).day))}
+                    {x.assessing ? <span className="muted"> · {T.morning.assessing}</span> : null}
+                    {x.assessing ? null : <Levers list={devLevers(x)} hud={hud} actions={actions} close={close} />}
+                  </li>
+                )),
+                ...v.held.map(x => (
+                  <li key={`h${x.code}`} className="warn" data-test="morning-held">
+                    {T.morning.heldRow(x.code)}
+                    <Levers list={heldLevers(x)} hud={hud} actions={actions} close={close} />
+                  </li>
+                )),
+              ]}
             />
             <Rows
               title={T.morning.trainTitle}

@@ -13,6 +13,7 @@ import { defect } from './lean';
 import { approved, pairKey } from './partners';
 import { coldOf } from './places';
 import { type PlantPlan, planOf } from './plant';
+import { openDevs } from './qa';
 import { measure, within } from './quality';
 import { containersByLot, nextId, putUnit, setLotStatus, stockChanged, unitsOfLot } from './stock';
 import { addTask, resort } from './tasks';
@@ -235,7 +236,9 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
         return true;
       } else {
         setLotStatus(s, lot, 'rejected');
-        const d: Deviation = { id: nextId(s, 'D'), opened: s.t, kind: 'oos', lot: lot.id, tests: out, status: 'open' };
+        // партию отклонили — отклонение решено с ней, у балка — и открытые отклонения серии (Б1г): оценивать нечего
+        const d: Deviation = { id: nextId(s, 'D'), opened: s.t, kind: 'oos', lot: lot.id, tests: out, status: 'closed' };
+        if (lot.batch) for (const x of openDevs(s, s.batches[lot.batch])) x.status = 'closed';
         s.deviations[d.id] = d;
         defect(s, 'deviations');
         defect(s, lot.batch ? 'batches' : 'lots');

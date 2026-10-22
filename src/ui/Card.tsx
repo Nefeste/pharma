@@ -9,12 +9,14 @@ import type { SheetView } from '../sim/hours';
 import type { NowRow } from '../sim/now';
 import type { Admission, DocNow } from '../sim/people';
 import type { AssetInfo } from '../sim/places';
+import { firstOf } from '../app/firsts';
 import type { CardView, Hist, Holds, Why } from '../sim/views';
 import { assetName, untilText, unfitText, workName } from './assets';
 import { db, docText } from './db';
+import { DevBody, First, RegimesBlock, ReleaseBlock } from './Decide';
 import { StatusIcon, TaskIcon } from './icons';
 import { placeText, supplierText } from './Stock';
-import type { Actions } from './store';
+import type { Actions, Hud } from './store';
 
 /**
  * Табель месяца (Б4а): по дням с 1-го по сегодня — отметки формы Т-13 и часы, сеткой по дням недели; итоги — отработано
@@ -209,8 +211,11 @@ function History({ list, start, unit, parts = [], asset }: { list: Hist[]; start
   );
 }
 
-/** `beside` — открыта панель справа: карточка уже, чтобы не заходить под неё; `watch` — работа вещи в «Сейчас» (Б1б). */
-export function Card({ v, start, plant, actions, beside, watch }: { v: CardView; start: Ymd; plant: string; actions: Actions; beside?: boolean; watch?: NowRow }) {
+/**
+ * `beside` — открыта панель справа: карточка уже, чтобы не заходить под неё; `watch` — работа вещи в «Сейчас» (Б1б);
+ * `hud` — чьи посты у игрока и какие пояснения он уже понял (Б1г).
+ */
+export function Card({ v, start, plant, actions, hud, beside, watch }: { v: CardView; start: Ymd; plant: string; actions: Actions; hud: Hud; beside?: boolean; watch?: NowRow }) {
   const c = v.card;
   let title: ReactNode = '';
   let body: ReactNode = null;
@@ -245,6 +250,13 @@ export function Card({ v, start, plant, actions, beside, watch }: { v: CardView;
               </Row>
             ) : lot && lot.supplier !== 'start' && lot.supplier !== 'plant' ? (
               <Row k={T.card.vendorLot}>{lot.vendorLot}</Row>
+            ) : lot && mat?.kind === 'fg' ? (
+              // готовая продукция — номер серии (Б1г): у склада на старте серии сделаны до игры
+              <Row k={T.card.batch}>
+                <span className="mono" data-test="card-fg-batch">
+                  {lot.vendorLot}
+                </span>
+              </Row>
             ) : null}
             <Row k={T.card.state}>
               {lot ? (
@@ -283,8 +295,14 @@ export function Card({ v, start, plant, actions, beside, watch }: { v: CardView;
             ) : null}
           </dl>
           <Why list={c.why} start={start} />
-          <div className="csec">{T.card.can}</div>
-          <div className="muted">{T.card.nothing}</div>
+          {c.release ? (
+            <ReleaseBlock r={c.release} hud={hud} actions={actions} />
+          ) : (
+            <>
+              <div className="csec">{T.card.can}</div>
+              <div className="muted">{T.card.nothing}</div>
+            </>
+          )}
           <History list={c.history} start={start} unit={mat?.unit} />
         </>
       );
@@ -311,6 +329,7 @@ export function Card({ v, start, plant, actions, beside, watch }: { v: CardView;
             ) : null}
             {c.stage ? <Row k={T.card.stage}>{T.stages[c.stage] ?? c.stage}</Row> : null}
           </dl>
+          {c.regimes ? <RegimesBlock g={c.regimes} start={start} actions={actions} /> : null}
           <Why list={c.why} start={start} />
         </>
       );
@@ -349,6 +368,7 @@ export function Card({ v, start, plant, actions, beside, watch }: { v: CardView;
             ) : null}
             {c.asset ? <AssetRows a={c.asset} start={start} /> : null}
           </dl>
+          {c.kind === 'equipment' && c.regimes ? <RegimesBlock g={c.regimes} start={start} actions={actions} /> : null}
           <Why list={c.why} start={start} />
           <History list={c.history} start={start} parts={rec?.parts} asset={c.asset} />
         </>
@@ -412,6 +432,15 @@ export function Card({ v, start, plant, actions, beside, watch }: { v: CardView;
         </dl>
       );
       break;
+    case 'dev':
+      // отклонение (Б1г): вид и номер в журнале отклонений
+      title = (
+        <>
+          {T.morning.devKinds[c.what]} <span className="mono">{T.dev.no(c.dev)}</span>
+        </>
+      );
+      body = <DevBody c={c} start={start} hud={hud} actions={actions} />;
+      break;
     case 'truck':
       title = T.card.truck(!!c.customer);
       body = (
@@ -434,6 +463,7 @@ export function Card({ v, start, plant, actions, beside, watch }: { v: CardView;
           ✕
         </button>
       </div>
+      <First kind={firstOf(c)} hud={hud} actions={actions} />
       {body}
       {watch ? (
         <div className="cwatch">

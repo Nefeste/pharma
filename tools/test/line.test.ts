@@ -207,21 +207,27 @@ describe('места для паллет кончились — линия ст�
 });
 
 describe('уполномоченное лицо', () => {
-  test('открытое отклонение серии — держать: ГП заблокирована и ждёт на стеллаже (Б2в); решение игрока «выпустить» — отклонение оценено, серия выпущена', () => {
+  test('открытое отклонение серии — держать: ГП заблокирована и ждёт на стеллаже (Б2в); «выпустить» при неоценённом отклонении — отказ, оценка «без влияния» — серия выпущена (Б1г)', () => {
     const s = newPlant(bare, { scenario: SC });
+    // посты производства и качества — у игрока: задание на серию — его, а коллега качества отклонения не оценивает
+    apply(bare, s, { kind: 'seat', seats: ['production', 'quality'] });
     const b = order(s, N20);
     live(s, 10, undefined, () => b.status === 'fg');
     s.deviations.D900 = { id: 'D900', opened: s.t, kind: 'ipc', batch: b.id, stage: 'compress', test: 'test.ipc.mass', status: 'open' };
     const out = live(s, 5, undefined, () => b.held === true);
-    expect(out.some(n => n.kind === 'batchHeld' && n.batch === b.id)).toBe(true);
+    expect(out.some(n => n.kind === 'batchHeld' && n.batch === b.id && !n.mine)).toBe(true);
     expect(s.lots[b.pack!.fg!].status).toBe('blocked');
     // зона карантина ГП свободна для следующих серий: удержанные паллеты уехали на стеллажи хранения
     live(s, 1, undefined, () => !Object.values(s.tasks).some(t => t.lot === b.pack!.fg));
     for (const c of containersByLot(s).get(b.pack!.fg!)!) expect(plan.slot[(s.units[c.unit].where as { id: string }).id].kind).toBe('storage');
-    expect(apply(bare, s, { kind: 'release', batch: b.id, decision: 'release' })).toEqual([]);
-    live(s, 3, undefined, () => b.status === 'released');
+    // до подтверждения серии отклонения должны быть оценены (прил. 16, п. 6.1): выпустить нельзя никому
+    expect(apply(bare, s, { kind: 'release', batch: b.id, decision: 'release' })).toEqual([{ kind: 'refused', cmd: 'release', why: 'devOpen', detail: 'D900' }]);
+    // испытания балка готовы и в пределах — «без влияния»; специалист ООК работает час, затем серию снова решает УЛ
+    expect(apply(bare, s, { kind: 'assess', deviation: 'D900', verdict: 'none' })).toEqual([]);
+    const done = live(s, 3, undefined, () => b.status === 'released');
+    expect(done.some(n => n.kind === 'assessed' && n.id === 'D900' && n.verdict === 'none')).toBe(true);
     expect(b.status).toBe('released');
-    expect(s.deviations.D900.status).toBe('assessed');
+    expect(s.deviations.D900).toMatchObject({ status: 'assessed', assess: { verdict: 'none', by: 'player' } });
   });
 
   test('решение «отклонить»: ГП — в зону отклонённого', () => {
@@ -232,6 +238,19 @@ describe('уполномоченное лицо', () => {
     const out = live(s, 5, undefined, () => b.status === 'rejected' && !Object.values(s.tasks).some(t => t.lot === b.pack!.fg));
     expect(out.some(n => n.kind === 'batchRejected')).toBe(true);
     for (const c of containersByLot(s).get(b.pack!.fg!)!) expect(plan.slot[(s.units[c.unit].where as { id: string }).id].kind).toBe('rejected');
+  });
+
+  test('решение «держать» без отклонений — извещение «по вашему решению»; «выпустить» из удержания — серия выпущена (Б1г)', () => {
+    const s = newPlant(bare, { scenario: SC });
+    const b = order(s, N20);
+    live(s, 10, undefined, () => b.status === 'fg');
+    expect(apply(bare, s, { kind: 'release', batch: b.id, decision: 'hold' })).toEqual([]);
+    const out = live(s, 5, undefined, () => b.held === true);
+    expect(out.some(n => n.kind === 'batchHeld' && n.batch === b.id && n.mine === true)).toBe(true);
+    expect(s.lots[b.pack!.fg!].status).toBe('blocked');
+    expect(apply(bare, s, { kind: 'release', batch: b.id, decision: 'release' })).toEqual([]);
+    live(s, 2, undefined, () => b.status === 'released');
+    expect(b.status).toBe('released');
   });
 });
 

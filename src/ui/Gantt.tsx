@@ -16,6 +16,7 @@ import type { BatchLabel, GanttRow, GanttView } from '../sim/plan';
 import type { Thing } from '../sim/views';
 import { assetClass, assetName, unfitText, workName } from './assets';
 import { db } from './db';
+import { draftKey } from './draft';
 import { type Actions, type GanttDays, type Hud, holds, PLAN_RUN, type PlanRun } from './store';
 
 /** Шаг срока, куда тянут: 15 минут; стрелка с Shift — час. */
@@ -51,6 +52,8 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
   const start = hud.start;
   const ref = useRef<{ batch: string; x0: number; t0: number; perPx: number; moved: boolean; bar: Bar } | null>(null);
   const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
+  // срочное задание (Б1г): открыт ли выбор позиции
+  const [pick, setPick] = useState(false);
   const drag = useRef(g.drag);
   drag.current = g.drag;
   // конец перетаскивания — снять подсказку у курсора (Esc отменил его в игре)
@@ -76,6 +79,8 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
   const labels: Labels = { ...v.batches, ...(g.ghost?.batches ?? {}) };
   // черновик: полосы сдвинутых им серий — в белой рамке; прежние — бледнее
   const moved = new Set(v.moved);
+  // срочное задание (Б1г) — по позициям плана выпуска сценария этого завода
+  const items = Object.values(db?.scenarios ?? {}).find(sc => sc.plant === plant)?.plan?.items ?? [];
 
   /** Мгновение — словами для причин: сегодня — часы; в пределах недели — день недели и часы; дальше — дата и часы. */
   const timeText = (t: number) => {
@@ -265,9 +270,9 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         </button>
       </div>
       <div className="gdraft" data-test="gantt-draft">
-        {g.draft.length > 0 ? (
+        {g.draft.length + g.urgent.length > 0 ? (
           <>
-            <span data-test="draft-list">{T.plan.draft(g.draft.map(c => who(labels, c.batch) || c.batch).join(', '))}</span>
+            <span data-test="draft-list">{T.plan.draft([...g.draft.map(c => who(labels, c.batch) || c.batch), ...g.urgent.map(u => T.urgent.item(named(db?.skus[u.sku]?.name, u.sku)))].join(', '))}</span>
             <button type="button" onClick={() => actions.approveDraft()} disabled={!mine} title={T.plan.approveHint} data-test="draft-approve">
               {T.plan.approve}
             </button>
@@ -277,6 +282,28 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
           </>
         ) : mine ? (
           <span className="muted">{T.plan.noDraft}</span>
+        ) : null}
+        {mine ? (
+          <span className="upick">
+            <button type="button" className={pick ? 'on' : ''} onClick={() => setPick(!pick)} title={T.urgent.hint} data-test="urgent-open">
+              {T.urgent.button}
+            </button>
+            {pick
+              ? items.map(it => (
+                  <button
+                    type="button"
+                    key={it.sku}
+                    onClick={() => {
+                      setPick(false);
+                      actions.urgent(it.recipe, it.sku);
+                    }}
+                    data-test="urgent-sku"
+                  >
+                    {named(db?.skus[it.sku]?.name, it.sku)}
+                  </button>
+                ))
+              : null}
+          </span>
         ) : null}
         <span className="grow" />
         {p.running ? (
@@ -392,7 +419,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         </span>
         {v.stuck.length > 0 ? <span className="bad">{T.gantt.stuck(v.stuck.map(id => who(labels, id)).join(', '))}</span> : null}
       </div>
-      {p.running || p.error || p.sums.some(Boolean) ? <PlanSum p={p} start={start} stale={p.key !== JSON.stringify(g.draft)} rowName={rowName} lineNo={lineNo} /> : null}
+      {p.running || p.error || p.sums.some(Boolean) ? <PlanSum p={p} start={start} stale={p.key !== draftKey(g.draft, g.urgent)} rowName={rowName} lineNo={lineNo} /> : null}
       {g.drag && tip ? (
         <div className="gtip panel" style={{ left: Math.min(tip.x + 14, window.innerWidth - 380), top: tip.y + 14 }} data-test="gtip">
           <div>

@@ -127,7 +127,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   on while its SKUs need a batch and no SKU of the other product is urgent), `wms.ts` (truck, its check at the dock
   before unloading, unloading, receiving, putaway), `quality.ts` (true lot properties, the lab result, spec limits),
   `lab.ts` (sampling,
-  lab tests by the spec revision in force when the sample was taken, the lot decision, a lot raised by the player),
+  lab tests by the spec revision in force when the sample was taken, the lot decision — a lot rejected without an
+  investigation settles its deviation, a lot raised by the player),
   `docs.ts` (regulatory documents — specs, test methods, recipes, packaging instructions: revisions of one code, the one
   in force on a plant day, draft, in force or archived), `infer.ts` (the inference — a copy of Anamnez's: noisy-OR
   findings, the posterior over candidates, entropy and the expected gain of a step), `investigation.ts` (the scenario's
@@ -154,9 +155,12 @@ first, or copy the working code of Bolnitsa on the same versions.
   reconciliation, machine times for OEE, a machine part failing at a flow boundary, jams of the cartoner; the flow at a
   moment between events without writing the state — `flowAt`, for the slice; new part budgets for the twin —
   `lineRedraw`), `qa.ts` (QA check of finished goods with
-  retention samples, the qualified person's decision — «hold» blocks the FG and puts it on the racks, FG shelf life),
+  retention samples, the qualified person's decision — «hold» blocks the FG and puts it on the racks, FG shelf life;
+  the deviation impact assessment — tests linked by the cause records, `assess` by the quality post, the quality
+  colleague by the same rule, release only with assessed deviations),
   `market.ts` (customers and their orders, FG into circulation after the regulator publishes the batch, FEFO allocation
-  with the residual shelf life, whole pallets and case picking, the customer's truck at 15:00, shipments with codes; with
+  with the residual shelf life, the FG stock at the start — `seedFg`, whole pallets and case picking, the customer's
+  truck at 15:00, shipments with codes; with
   no free staging place, the docked truck is loaded straight from the racks; orders at risk — one rule for the meeting
   and the hourly alert, `orderRisks`), `cash.ts` (kopecks and ledger entries, dues by
   date, suppliers, wages twice a month by the time sheet — salary halves, night hours, overtime and work on a day off —,
@@ -215,7 +219,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   progress, people with their walk to a post, vehicles, lines with their machines, equipment, and whether a machine or
   equipment is in calibration or qualification; no truth fields — not the next micro-stop, not a part's budget), views
   for panels — the warehouse and the card of a thing with what a pallet holds, built here on request and sent with the
-  slice only when they changed, without truth fields (`views.ts`); the plant reference — how it should be by master data
+  slice only when they changed, without truth fields (`views.ts`); the deviation card, the batch decision at release and
+  the stage parameters of a room or equipment card (`devs.ts`);
+  the plant reference — how it should be by master data
   and how it is: products and SKUs, recipes with stages by plan and by the stage records, equipment and the line,
   instruments and methods, roles and shifts, suppliers and customers, materials with their OKEI unit codes and the spec
   in force, every document revision with its status by the plant date, without the model's hidden parameters, start
@@ -248,10 +254,12 @@ first, or copy the working code of Bolnitsa on the same versions.
   the start preset — the frame measured on medium at first run, low if slower than 33 ms, the result and the player's
   choice kept in the window (`preset.ts`); the autopauses — which notices stop the world, whose post each is, the ones
   switched off kept in the window, where a click on a notice leads (`pauses.ts`); which «Сейчас» row is the work of a
-  thing in the card (`watch.ts`); trucks in the yard — backing in, waiting,
+  thing in the card (`watch.ts`); the levers of meeting rows — decisions, whose post, «будет в …» (`levers.ts`); the
+  first-event explanations understood, kept in the window (`firsts.ts`); trucks in the yard — backing in, waiting,
   driving off, a picture only (`yard.ts`); what is under the cursor — people by their point on screen, pallets, machines
   and trucks by the camera ray, the room by the floor (`pick.ts`); pallet moves between zones seen from the slice, their
-  rates, arrows and the fill of warehouse places (`flows.ts`); the scene bench, a copy of Bolnitsa's (`bench.ts`,
+  rates, arrows and the fill of warehouse places, people moving between rooms for the «Потоки — люди» layer
+  (`flows.ts`); the scene bench, a copy of Bolnitsa's (`bench.ts`,
   `stats.ts`).
 - `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa); the plant
   from the plan (`layout.ts` — rooms, walls, doors and spots from `planOf`), floors, zone markings, ground and yard,
@@ -277,8 +285,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   план» and the run's outcome per variant (`Gantt.tsx`), the draft's pure rules — a row per batch order, gone once kitting
   starts, `shift` commands on approval (`draft.ts`), the «Кем вы будете» screen of places (`Seats.tsx`), the
   investigation board — steps, findings in words with numbers from the records, version bars, the decision, the
-  debrief (`Inv.tsx`), status and work icons
-  (`icons.tsx`), asset words — class and inventory number, the work's name, «until» and why it does not work
+  debrief (`Inv.tsx`), the levers of a row (`Levers.tsx`), the deviation card, the batch decision, stage parameters and
+  the first-event explanation in the card (`Decide.tsx`), status and work icons (`icons.tsx`), asset words — class and
+  inventory number, the work's name, «until» and why it does not work
   (`assets.ts`), the content base for names (`db.ts`); `src/i18n/` — every player-facing string, Russian
   and English, and number, quantity, money, duration and date formats.
 - `src/content/` — content types and the built bundle loader; `content/` — the game database in YAML (with part 4 —

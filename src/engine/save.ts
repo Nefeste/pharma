@@ -287,6 +287,17 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     (raw.cash as Raw).wages = {};
     return raw;
   },
+  // 21 → 22 (Б1г): у отклонения — оценка влияния, у старых её нет: открытые — без оценки, как были, их оценит пост
+  // качества или коллега, а удержанные серии ждут их решения. Отклонение отклонённой партии и открытые отклонения
+  // отклонённой серии решены вместе с ней — так их теперь решает движок (lab.ts, qa.ts).
+  21: raw => {
+    const s = raw as unknown as PlantState;
+    for (const d of Object.values(s.deviations)) {
+      if (d.status !== 'open') continue;
+      if ((d.lot && s.lots[d.lot]?.status === 'rejected') || (d.batch && s.batches[d.batch]?.status === 'rejected')) d.status = 'closed';
+    }
+    return raw;
+  },
 };
 
 export function toSave(s: PlantState): string {

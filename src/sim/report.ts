@@ -2,13 +2,15 @@
 // (views.ts). Планёрка говорит о вчерашних календарных сутках — потери, смены и OEE движок ведёт по ним, — о событиях за
 // 24 часа до неё и о том, что ждёт сейчас. Данные — без слов и без истины: время машин, счётчики линии, ожидания задач,
 // записи отклонений, журнал оборудования, решения, заказы и проводки — то, что завод мог узнать.
-import type { ContentDb, Dept, Id, SeatId } from '../content/types';
+import type { ContentDb, Dept, Id, OvertimeMode, SeatId } from '../content/types';
 import { batchNo } from '../engine/batchno';
 import { DAY, momentOf } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
 import { AREA, type Oee, oee, rhythm, shiftsOfDay, type Switches, switchesOf } from '../engine/lean';
 import { orderRisks, type OrderRisk } from '../engine/market';
 import { planOf } from '../engine/plant';
+import { devsOf, openDevs } from '../engine/qa';
+import { unitsOfLot } from '../engine/stock';
 import type { AssetFamily, Batch, CashItem, DayLoss, Deviation, LineDay, MachineTimes, PlantState, TaskKind, WageParts, WaitCause } from '../engine/types';
 import { type HoursMeeting, hoursMeeting } from './hours';
 import { type PartnerSum, partnerSum } from './partners';
@@ -68,6 +70,8 @@ export interface ShiftRow {
 
 export interface DevRow {
   t: number;
+  /** номер отклонения (Б1г): строка ведёт к его карточке */
+  dev: number;
   kind: Deviation['kind'];
   lot?: Code;
   /** номер серии строкой (src/engine/batchno.ts) */
@@ -128,6 +132,32 @@ export interface BrokenRow {
 /** Заказ под угрозой — по правилу движка (`orderRisks`, market.ts): его же разбирает тревога часа (Б2а). */
 export type RiskRow = OrderRisk;
 
+/**
+ * Неоценённое отклонение (Б1г): номер, вид, серия, когда открыто и срок расследования; оценка идёт; расследование,
+ * которое его решает.
+ */
+export interface PendingDev {
+  dev: number;
+  kind: Deviation['kind'];
+  batch?: string;
+  opened: number;
+  due: number;
+  assessing?: true;
+  inv?: string;
+}
+
+/**
+ * Удержанная серия (Б1г): уполномоченное лицо держит её ГП; позиция; первая паллета — к решению по серии; неоценённые
+ * отклонения и с оценкой «отклонить серию» — номерами.
+ */
+export interface HeldRow {
+  code: string;
+  sku: Id;
+  unit?: number;
+  open: number[];
+  reject: number[];
+}
+
 export interface MorningView {
   view: 'morning';
   day: number;
@@ -149,6 +179,11 @@ export interface MorningView {
   short: ShortRow[];
   broken: BrokenRow[];
   risk: RiskRow[];
+  /** что ждёт решения (Б1г): неоценённые отклонения и удержанные серии */
+  pending: PendingDev[];
+  held: HeldRow[];
+  /** политики отделов (Б4а): «Сверхурочные» — для решения у потери «нет часов» (Б1г) */
+  policy: Record<Dept, OvertimeMode>;
   /** допуски сейчас (Б3б): кто потеряет допуск в срок предупреждения и кто уже не допущен */
   training: TrainSum;
   /** калибровка и квалификация (Б3в): визиты подрядчика сегодня, что кончится в срок предупреждения, что просрочено */
@@ -253,6 +288,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     .filter(d => inW(d.opened))
     .map(d => ({
       t: d.opened,
+      dev: num(d.id),
       kind: d.kind,
       ...(d.lot && s.lots[d.lot] ? { lot: code(s.lots[d.lot].code), material: s.lots[d.lot].material } : {}),
       ...(d.batch && s.batches[d.batch] ? { batch: batchNo(s.batches[d.batch].code) } : {}),
@@ -337,6 +373,8 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     short,
     broken,
     risk: orderRisks(db, s),
+    ...pendingOf(db, s),
+    policy: { ...s.policy },
     training: trainSum(db, s),
     assets: assetSum(db, s),
     partners: partnerSum(db, s),
@@ -344,6 +382,43 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     cash: { balance: s.cash.balance, day: dayChange(s, s.t), ...(next ? { next: { due: next.due, item: next.item, sum: next.sum } } : {}) },
     seats: seatSums(db, s),
   };
+}
+
+/** Что ждёт решения (Б1г): неоценённые отклонения — старшие первыми; удержанные серии — по номеру задания. */
+function pendingOf(db: ContentDb, s: PlantState): { pending: PendingDev[]; held: HeldRow[] } {
+  const term = db.scenarios[s.scenario].deviations.term * DAY;
+  const pending: PendingDev[] = Object.values(s.deviations)
+    .filter(d => d.status === 'open')
+    .sort((a, b) => a.opened - b.opened || num(a.id) - num(b.id))
+    .map(d => {
+      const b = d.batch ? s.batches[d.batch] : undefined;
+      const inv = d.inv ?? (b ? Object.values(s.investigations).find(i => i.batch === b.id && i.status === 'open')?.id : undefined);
+      return {
+        dev: num(d.id),
+        kind: d.kind,
+        ...(b ? { batch: batchNo(b.code) } : {}),
+        opened: d.opened,
+        due: d.opened + term,
+        ...(d.assess?.task !== undefined ? { assessing: true as const } : {}),
+        ...(inv ? { inv } : {}),
+      };
+    });
+  const held: HeldRow[] = Object.values(s.batches)
+    .filter(b => b.held && b.status === 'fg' && b.pack?.fg)
+    .sort((a, b) => num(a.id) - num(b.id))
+    .map(b => {
+      const first = unitsOfLot(s, b.pack!.fg!).sort((x, y) => num(x.id) - num(y.id))[0];
+      return {
+        code: batchNo(b.code),
+        sku: b.pack!.sku,
+        ...(first ? { unit: num(first.id) } : {}),
+        open: openDevs(s, b).map(d => num(d.id)),
+        reject: devsOf(s, b)
+          .filter(d => d.assess?.verdict === 'reject')
+          .map(d => num(d.id)),
+      };
+    });
+  return { pending, held };
 }
 
 // ---------------------------------------------------------------- ваше место (3е)

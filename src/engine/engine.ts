@@ -17,13 +17,13 @@ import { labDone, runDone, rushCommand, startSampling } from './lab';
 import { leanHour, leanStep, newLoss } from './lean';
 import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from './line';
 import { maintainCommand, maintDone, maintStep, newParts, spareArrives } from './maint';
-import { marketDone, marketHour, marketStep, newCustomers, rznPublished } from './market';
+import { marketDone, marketHour, marketStep, newCustomers, rznPublished, seedFg } from './market';
 import { BATCH_HOUR, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
 import { auditDone, partnersDone, partnersHour, seedContracts, seedPairs, specPairs } from './partners';
 import { coldOf } from './places';
 import { planHour } from './planner';
 import { planOf } from './plant';
-import { qaDone, qaStep, releaseCommand } from './qa';
+import { assessCommand, devHour, qaDone, qaStep, releaseCommand } from './qa';
 import { foreign, seatCommand } from './seats';
 import { goHome, LAST_CALL, postArrive, toPosts } from './staff';
 import { createLot, findSlot } from './stock';
@@ -138,6 +138,8 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
       },
     });
   }
+  // склад ГП на старте (Б1г): завод уже работает — выпущенная ГП в обороте, ближе к экспедиции
+  seedFg(db, sc, s, startDay);
   // первая планёрка — ближайшие 08:00; часы — с ближайшего целого часа
   const today = Math.floor(s.t / DAY) * DAY;
   schedule(s.agenda, s.t < today + MORNING ? today + MORNING : today + DAY + MORNING, { kind: 'morning' });
@@ -220,8 +222,9 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
     case 'seat': {
       const notices: Notice[] = [];
       seatCommand(db, s, cmd, notices);
-      // место качества отдали — коллега качества ведёт открытые расследования дальше
-      if (invStep(db, s, notices)) settle(db, s);
+      // место качества отдали — коллега качества ведёт открытые расследования дальше и оценивает отклонения (Б1г)
+      const inv = invStep(db, s, notices);
+      if (devHour(db, s) || inv) settle(db, s);
       return notices;
     }
     case 'investigate': {
@@ -233,6 +236,12 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
     case 'conclude': {
       const notices: Notice[] = [];
       concludeCommand(db, s, cmd, notices);
+      steps(db, s, notices);
+      return notices;
+    }
+    case 'assess': {
+      const notices: Notice[] = [];
+      assessCommand(db, s, cmd, notices);
       steps(db, s, notices);
       return notices;
     }
@@ -322,6 +331,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       // коллеги планирования и снабжения (Б2в): задание через две недели, заказы поставщикам по расходу плана
       planHour(db, s, notices);
       supplyDay(db, s, notices);
+      // коллега качества (Б1г): отклонения, которые уже можно оценить
+      devHour(db, s);
       lineStep(db, s, notices);
       qaStep(db, s);
       marketStep(db, s, notices);

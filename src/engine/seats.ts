@@ -15,6 +15,7 @@ export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
   release: 'quality',
   investigate: 'quality',
   conclude: 'quality',
+  assess: 'quality',
   po: 'supply',
 };
 

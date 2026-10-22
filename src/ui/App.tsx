@@ -11,6 +11,7 @@ import { QUALITIES } from '../render/view';
 import type { WallMode } from '../render/world';
 import { Card } from './Card';
 import { Cash } from './Cash';
+import { db } from './db';
 import { Gantt } from './Gantt';
 import { Guard } from './Guard';
 import { Inv } from './Inv';
@@ -135,6 +136,14 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
               </button>
             </span>
           ) : null}
+          {s.flows ? (
+            <span className="watching" data-test="flows-on">
+              <span className="wtext">{T.flows.people}</span>
+              <button type="button" onClick={() => actions.toggleFlows()} data-test="flows-off">
+                {T.flows.off}
+              </button>
+            </span>
+          ) : null}
           <NoticeLine n={s.notices[0]} actions={actions} />
         </div>
       </Guard>
@@ -155,7 +164,7 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
         {s.now.open && <Now hud={s} actions={actions} />}
       </Guard>
       <Guard name={T.morning.button} close={s.morning.open ? () => actions.closeMorning(false) : undefined}>
-        {s.morning.open && s.morning.day !== undefined && <Morning v={s.morning.view} day={s.morning.day} start={s.start} plant={plant} pause={!s.pauses.off.includes('morning')} actions={actions} />}
+        {s.morning.open && s.morning.day !== undefined && <Morning v={s.morning.view} day={s.morning.day} start={s.start} plant={plant} pause={!s.pauses.off.includes('morning')} actions={actions} hud={s} scenario={db?.scenarios[scenario]} />}
       </Guard>
       <Guard name={T.gantt.button} close={s.gantt.open ? actions.toggleGantt : undefined}>
         {s.gantt.open && <Gantt hud={s} actions={actions} plant={plant} />}
@@ -171,7 +180,7 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
       </Guard>
       <Guard name={T.card.title} close={s.selected ? () => actions.select(undefined) : undefined}>
         {s.selected && s.card && (
-          <Card v={s.card} start={s.start} plant={plant} actions={actions} beside={s.stock.open || s.cash.open || s.lab.open || s.now.open} watch={watchFor(s.selected, s.card.card, s.now.view?.rows)} />
+          <Card v={s.card} start={s.start} plant={plant} actions={actions} hud={s} beside={s.stock.open || s.cash.open || s.lab.open || s.now.open} watch={watchFor(s.selected, s.card.card, s.now.view?.rows)} />
         )}
       </Guard>
       {s.debug && (

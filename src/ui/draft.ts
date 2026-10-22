@@ -1,8 +1,18 @@
 // Черновик расписания (docs/specs/2026-10-plan-run.md, «Черновик в расписании»; docs/02-architecture.md, §7): новые сроки
 // «не раньше» заданий, которые игрок протянул в Ганте, — ещё не команды. Командами `shift` они станут, только когда игрок
 // утвердит черновик. Чистые функции окна: движка здесь нет.
+import type { Id } from '../content/types';
 import type { Change } from '../engine/plan/schedule';
 import type { Command } from '../engine/types';
+
+/**
+ * Срочное задание черновика (Б1г): позиция и карта плана выпуска. Командой `order` оно станет, когда игрок утвердит
+ * черновик; «не раньше» — тогда же: комплектовка начнётся, как только будет весь комплект.
+ */
+export interface Urgent {
+  recipe: Id;
+  sku: Id;
+}
 
 /**
  * Отпустили задание: его строка черновика — новая или сменилась, порядок — порядок первых перетаскиваний. Вернули на
@@ -22,3 +32,11 @@ export function prune(draft: readonly Change[], gone: readonly string[]): readon
 export function commandsOf(draft: readonly Change[]): Command[] {
   return draft.map(c => ({ kind: 'shift', batch: c.batch, notBefore: c.notBefore, by: 'player' }));
 }
+
+/** Утвердить срочные задания (Б1г): команды `order` по порядку; от игрока, «не раньше» — сейчас. */
+export function ordersOf(list: readonly Urgent[]): Command[] {
+  return list.map(u => ({ kind: 'order', recipe: u.recipe, sku: u.sku, by: 'player' }));
+}
+
+/** Ключ черновика для итога прогона: черновик изменился — итог говорит о прежнем. Без срочных заданий — как до Б1г. */
+export const draftKey = (draft: readonly Change[], urgent: readonly Urgent[]): string => JSON.stringify(urgent.length > 0 ? [draft, urgent] : draft);

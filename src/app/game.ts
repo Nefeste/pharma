@@ -25,9 +25,10 @@ import { PlanClient } from '../sim/planClient';
 import type { Thing, ViewQuery } from '../sim/views';
 import { assetClass, workName } from '../ui/assets';
 import { useDb } from '../ui/db';
-import { commandsOf, prune, upsert } from '../ui/draft';
+import { commandsOf, draftKey, ordersOf, prune, upsert } from '../ui/draft';
 import { type Actions, holds, type Hud, LIVE, NO_RUN, PLAN_RUN, type Speed, type Store } from '../ui/store';
-import { fillsOf, Flows, lineArrows, moveArrows, movesOf } from './flows';
+import { keepFirsts, keptFirsts } from './firsts';
+import { fillsOf, Flows, lineArrows, moveArrows, movesOf, peopleMoves } from './flows';
 import { type Movers, moversAt, taskIcons } from './movers';
 import { stopKey } from '../sim/protocol';
 import { EVENT_CAP, type Go, goOf, keepOff, keptOff, stopKinds } from './pauses';
@@ -102,6 +103,9 @@ export class Game {
   private moving = '';
   /** частоты перевозок между зонами — для стрелок участка (2г) */
   readonly flows = new Flows();
+  /** слой «Потоки — люди» (Б1г): переходы людей между помещениями и где каждый был в прошлом срезе */
+  readonly peopleFlows = new Flows();
+  private peopleAt = new Map<number, string>();
   /** фуры двора: въезд, ожидание, отъезд — картинка по срезам (3а) */
   readonly yard = new Yard();
   /** выбранная вещь и что было на экране в последнем кадре — для выбора щелчком и рамки (3б) */
@@ -185,7 +189,7 @@ export class Game {
     await g.firstSlice;
     new ResizeObserver(() => g.stage.resize()).observe(host);
     g.bindInput();
-    store.set({ ready: true, start: sc.start.date, quality, walls: g.stage.wallMode, pauses: { open: false, off: keptOff(windowKeep()) } });
+    store.set({ ready: true, start: sc.start.date, quality, walls: g.stage.wallMode, pauses: { open: false, off: keptOff(windowKeep()) }, firsts: keptFirsts(windowKeep()) });
     // игра начинается с экрана «Кем вы будете» (3е): мир стоит, пока место не выбрано; «Взять» пустит его на ×1
     g.speed = 0;
     g.resume = 1;
@@ -199,11 +203,14 @@ export class Game {
     const sl = unpack(s.buf);
     // перевозки — по прежним местам паллет окна, до того как срез их перепишет
     this.flows.step(sl.t, movesOf(this.layout.plan, this.view.units, this.view.trucks, sl));
+    this.peopleFlows.step(sl.t, peopleMoves(this.layout, this.peopleAt, sl.people));
     this.t = sl.t;
     this.day = sl.day;
     this.lag = s.lag;
     this.view.apply(sl);
-    this.stage.setOverlay([...moveArrows(this.layout, this.flows), ...lineArrows(this.db, this.layout, sl.lines)], fillsOf(this.layout.plan, this.view.units.values()));
+    // слой «Потоки — люди» (Б1г) — стрелки переходов людей вместо перевозок паллет и линии
+    const arrows = this.store.get().flows ? moveArrows(this.layout, this.peopleFlows) : [...moveArrows(this.layout, this.flows), ...lineArrows(this.db, this.layout, sl.lines)];
+    this.stage.setOverlay(arrows, fillsOf(this.layout.plan, this.view.units.values()));
     this.showPallets();
     this.yard.update(this.view.trucks, d => dockFront(this.layout, d), sl.t);
     this.stage.setRooms(this.view.rooms);
@@ -338,7 +345,7 @@ export class Game {
       : n.kind === 'batchPacked' ? T.notices.batchPacked
       : n.kind === 'batchReleased' ? T.notices.batchReleased
       : n.kind === 'batchRejected' ? T.notices.batchRejected
-      : n.kind === 'batchHeld' ? T.notices.batchHeld
+      : n.kind === 'batchHeld' ? (n.mine ? T.notices.batchHeldMine : T.notices.batchHeld)
       : n.kind === 'deviation' ? T.notices.deviation(T.morning.devKinds[n.what], n.code ? T.gantt.batch(n.code) : '')
       : n.kind === 'shipped' ? T.notices.shipped
       : n.kind === 'lateOrder' ? T.notices.lateOrder
@@ -352,6 +359,7 @@ export class Game {
       : n.kind === 'investigation' ? T.notices.investigation(named(this.db.tests[n.method]?.name, n.method), n.code)
       : n.kind === 'invStep' ? T.notices.invStep
       : n.kind === 'concluded' ? T.notices.concluded(n.fate)
+      : n.kind === 'assessed' ? T.notices.assessed(n.verdict, n.code)
       : n.kind === 'qualLost' ? T.notices.qualLost(named(this.db.roles[n.role]?.name, n.role), n.tab, n.doc)
       : n.kind === 'overtimeLow' ? T.notices.overtimeLow(named(this.db.roles[n.role]?.name, n.role), n.tab, durText(n.left), hText(this.db.profiles[this.scenario.profile].payroll.overtime.year))
       : n.kind === 'assetExpired' ? T.notices.assetExpired(workName(n, n.work), assetClass(n), T.assets.inv(n.inv))
@@ -538,7 +546,7 @@ export class Game {
       const g = this.store.get().gantt;
       // большое окно поверх карты во всю ширину: панели справа закрываются; закрыли — то, что тянули, отменено
       const open = !g.open;
-      this.store.set({ gantt: { open, days: g.days, draft: g.draft, ...(g.from !== undefined ? { from: g.from } : {}) }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false } } : {}) });
+      this.store.set({ gantt: { open, days: g.days, draft: g.draft, urgent: g.urgent, ...(g.from !== undefined ? { from: g.from } : {}) }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false } } : {}) });
       this.sendViews();
     },
     setGanttDays: days => {
@@ -576,26 +584,28 @@ export class Game {
       this.sendViews();
     },
     approveDraft: () => {
-      // утвердить — команды `shift` по строкам по порядку; черновик пуст. Расписание — команда производства (3е)
+      // утвердить — команды `shift` по строкам по порядку и срочные задания — команды `order` (Б1г); черновик пуст.
+      // Расписание — команда производства (3е)
       const h = this.store.get();
-      if (h.gantt.draft.length === 0 || !holds(h, 'production')) return;
-      for (const cmd of commandsOf(h.gantt.draft)) this.client.command(cmd);
-      this.store.set({ gantt: { ...h.gantt, draft: [] } });
+      if ((h.gantt.draft.length === 0 && h.gantt.urgent.length === 0) || !holds(h, 'production')) return;
+      for (const cmd of [...commandsOf(h.gantt.draft), ...ordersOf(h.gantt.urgent)]) this.client.command(cmd);
+      this.store.set({ gantt: { ...h.gantt, draft: [], urgent: [] } });
       this.sendViews();
     },
     resetDraft: () => {
       const g = this.store.get().gantt;
-      if (g.draft.length === 0) return;
-      this.store.set({ gantt: { ...g, draft: [] } });
+      if (g.draft.length === 0 && g.urgent.length === 0) return;
+      this.store.set({ gantt: { ...g, draft: [], urgent: [] } });
       this.sendViews();
     },
     runPlan: () => {
       // «как сейчас» и черновик, если он есть, — на одних и тех же зёрнах; снимок — строкой от потока расчёта
       const h = this.store.get();
       if (h.plan.running) return;
-      const draft = h.gantt.draft;
-      const variants: Command[][] = [[], ...(draft.length > 0 ? [commandsOf(draft)] : [])];
-      this.store.set({ plan: { ...NO_RUN, running: true, variants: variants.length, key: JSON.stringify(draft) } });
+      const { draft, urgent } = h.gantt;
+      const changes = [...commandsOf(draft), ...ordersOf(urgent)];
+      const variants: Command[][] = [[], ...(changes.length > 0 ? [changes] : [])];
+      this.store.set({ plan: { ...NO_RUN, running: true, variants: variants.length, key: draftKey(draft, urgent) } });
       const seq = ++this.planSeq;
       void this.client.save().then(json => {
         // прервали или прогнали заново, пока снимок шёл, — этого прогона нет
@@ -627,6 +637,27 @@ export class Game {
     },
     setRefTab: tab => this.store.set({ ref: { ...this.store.get().ref, tab } }),
     investigate: (inv, step) => this.client.command({ kind: 'investigate', inv, step, by: 'player' }),
+    release: (batch, decision) => this.client.command({ kind: 'release', batch, decision }),
+    assess: (deviation, verdict) => this.client.command({ kind: 'assess', deviation, verdict, by: 'player' }),
+    urgent: (recipe, sku) => {
+      // срочное задание (Б1г) — строка черновика; расписание открывается: «Прогнать план» покажет, что оно изменит
+      const g = this.store.get().gantt;
+      this.store.set({ gantt: { ...g, urgent: [...g.urgent, { recipe, sku }] } });
+      if (!g.open) this.actions.toggleGantt();
+      else this.sendViews();
+    },
+    toggleFlows: () => {
+      const on = !this.store.get().flows;
+      this.stage.forceLayer(on);
+      this.store.set({ flows: on });
+    },
+    understood: kind => {
+      const list = this.store.get().firsts;
+      if (list.includes(kind)) return;
+      const next = [...list, kind];
+      keepFirsts(windowKeep(), next);
+      this.store.set({ firsts: next });
+    },
     conclude: (inv, cause, fate) => this.client.command({ kind: 'conclude', inv, cause, fate, by: 'player' }),
     openSeats: () => {
       // сменить место — на паузе; «Взять» пустит мир с прежней скоростью
@@ -756,7 +787,7 @@ export class Game {
       ...(keep !== 'cash' ? { cash: { ...h.cash, open: false } } : {}),
       ...(keep !== 'lab' ? { lab: { ...h.lab, open: false } } : {}),
       ...(keep !== 'now' ? { now: { ...h.now, open: false } } : {}),
-      ...(keep && h.gantt.open ? { gantt: { open: false, days: h.gantt.days, draft: h.gantt.draft, ...(h.gantt.from !== undefined ? { from: h.gantt.from } : {}) } } : {}),
+      ...(keep && h.gantt.open ? { gantt: { open: false, days: h.gantt.days, draft: h.gantt.draft, urgent: h.gantt.urgent, ...(h.gantt.from !== undefined ? { from: h.gantt.from } : {}) } } : {}),
     };
   }
 
@@ -771,7 +802,7 @@ export class Game {
   /** Расписание закрыто: черновик и окно времени остаются. */
   private ganttClosed(): Partial<Hud> {
     const g = this.store.get().gantt;
-    return { gantt: { open: false, days: g.days, draft: g.draft, ...(g.from !== undefined ? { from: g.from } : {}) } };
+    return { gantt: { open: false, days: g.days, draft: g.draft, urgent: g.urgent, ...(g.from !== undefined ? { from: g.from } : {}) } };
   }
 
   /** Окно расписания: с `from` или, вслед за часами, от полуночи — сегодняшней для суток, вчерашней для трёх суток и недели. */
@@ -873,6 +904,9 @@ export class Game {
         const v = this.moversNow.vehicles.find(x => x.vehicle === t.n);
         return v ? { circle: [v.x, v.z, 1.1], y: 0 } : undefined;
       }
+      case 'dev':
+        // отклонения на полу нет
+        return undefined;
     }
   }
 

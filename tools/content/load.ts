@@ -826,6 +826,12 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       }
       need(s.assets.ahead + 3 < shortest * 28, `${where}: assets.ahead — срок предупреждения не короче самого короткого интервала, ${shortest} мес.`);
     }
+    // склад ГП на старте (Б1г): у каждой позиции, которую заказывают покупатели, — карта в плане выпуска: по ней
+    // считают ящики серии
+    if (s.fg) {
+      const planned = new Set((s.plan?.items ?? []).map(it => it.sku));
+      for (const c of s.customers) for (const k of Object.keys(raw.customers[c]?.demand ?? {})) need(planned.has(k), `${where}: склад ГП на старте — у позиции ${k} нет карты в плане выпуска`);
+    }
     // контрагенты (Б3г): срок предупреждения короче самого короткого интервала оценки — иначе на старте пара сразу ждёт
     // оценки; аудит с рассмотрением отчёта укладывается в срок предупреждения
     const every = Math.min(s.partners.every.api, s.partners.every.excipient, s.partners.every.packaging);
@@ -1207,6 +1213,7 @@ function learnErrors(raw: Raw, sops: Record<string, Sop>, tests: Record<string, 
     trainCheck: CHECKERS,
     accept: Object.values(ACCEPT),
     vendorReview: REVIEWERS,
+    devAssess: QA.specialists,
   };
   const LINE_WORK: TaskKind[] = ['crew', 'feed', 'changeover', 'clearance', 'clearCheck'];
   const check = (where: string, has: string[], doers: Iterable<string>) => {

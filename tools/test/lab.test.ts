@@ -193,7 +193,7 @@ describe('путь партии', () => {
     expect(last + DECIDE_WORK).toBeLessThanOrEqual(s.t);
   });
 
-  test('брак ловится: партия отклонена, открыто отклонение, паллеты — в зоне отклонённого с красным ярлыком', () => {
+  test('брак ловится: партия отклонена, отклонение записано и решено вместе с ней (Б1г), паллеты — в зоне отклонённого с красным ярлыком', () => {
     const s = newPlant(labOnly, { scenario: SC, seed: 2 });
     // ждём партию АФС в карантине и портим её истинное содержание: так брак выглядит изнутри движка
     while (!fresh(s, API)) apply(labOnly, s, { kind: 'advance', seconds: HOUR });
@@ -205,7 +205,8 @@ describe('путь партии', () => {
     if (n?.kind !== 'lotRejected') throw new Error('no rejection');
     expect(n.lot).toBe(lot.id);
     const d = s.deviations[n.deviation];
-    expect(d).toMatchObject({ kind: 'oos', lot: lot.id, status: 'open' });
+    // оценивать нечего: партию уже отклонили
+    expect(d).toMatchObject({ kind: 'oos', lot: lot.id, status: 'closed' });
     expect(d.tests!.map(id => s.tests[id].method)).toEqual(['test.hplc-assay']);
     // паспорт — без брака: изготовитель его не заметил
     expect(lot.coa.assay).not.toBe(9600);

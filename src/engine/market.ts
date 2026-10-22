@@ -2,17 +2,21 @@
 // расписанию; выпущенная серия попадает в оборот, когда Росздравнадзор опубликует сведения о ней; в день отгрузки отдел
 // продаж резервирует ящики по FEFO с условием остаточного срока, склад собирает паллеты заказа в экспедиции, в 15:00 к
 // рампе встаёт фура покупателя. Ушла фура — отгрузка: ящики с отрезками кодов — в запись отгрузки, счёт — в кассу.
-import type { ContentDb, Customer, Id, Scenario } from '../content/types';
+import type { ContentDb, Customer, Id, Scenario, Sku } from '../content/types';
+import { batchNo } from './batchno';
 import { schedule } from './core/agenda';
 import type { Rng } from './core/rng';
-import { addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf, workdayOnOrAfter } from './core/calendar';
+import { addWorkdays, civilFromDays, DAY, daysFromCivil, HOUR, isWorkday, momentOf, workdayOnOrAfter, workdayOnOrBefore } from './core/calendar';
 import { BANK_HOUR, dueIn, owe, part } from './cash';
 import { dockWait } from './lean';
+import { fgExpiry } from './line';
+import { coldOf } from './places';
+import { casesOf } from './planner';
 import { planOf } from './plant';
 import { expo, roll } from './random';
 import { containersByLot, findSlot, nextId, putUnit, stockChanged } from './stock';
 import { addTask } from './tasks';
-import type { Notice, Order, PlantState, Shipment, Task, Truck, Unit } from './types';
+import type { Container, Lot, Notice, Order, PlantState, Shipment, Task, Truck, Unit } from './types';
 import { WMS } from './wms';
 import { calOf } from './workdays';
 
@@ -38,6 +42,90 @@ export function newCustomers(sc: Scenario, t: number): PlantState['customers'] {
   const out: PlantState['customers'] = {};
   for (const id of sc.customers) out[id] = { last: t };
   return out;
+}
+
+/**
+ * Склад ГП на старте (Б1г; геймдизайн, §17): завод уже работает — на стеллажах ближе к экспедиции выпущенная ГП позиций
+ * плана выпуска в обороте, на `fg.days` суток спроса покупателей сценария. Партия — серия карты плана по номиналу
+ * (`casesOf`): у позиции столько серий, сколько нужно на этот спрос; самая старая — остаток после прежних отгрузок,
+ * остальные — целые. Серии продукта произведены по очереди его позиций в рабочие дни от `age[1]` до `age[0]` суток до
+ * начала; номера — по порядку с 001 в их году (batchno.ts): счёт серий завода продолжается с них. Срок годности — от
+ * производства (`fgExpiry`), в обороте — с начала партии. Истины у такой ГП нет: её испытания были до игры.
+ */
+export function seedFg(db: ContentDb, sc: Scenario, s: PlantState, startDay: number) {
+  const fg = sc.fg;
+  if (!fg) return;
+  const plan = planOf(db, s.plant);
+  const cal = calOf(db, s);
+  const near = plan.byKind.shipping?.[0] ?? plan.byKind.storage[0];
+  const at = momentOf(s.start, s.t).date;
+  // серии каждого продукта: позиция, ящиков в серии и в этой партии, место в очереди — (2i + 1) / 2k у i-й из k серий
+  type Old = { sku: Sku; per: number; cases: number; i: number; k: number };
+  const byProduct = new Map<Id, Old[]>();
+  const seen = new Set<Id>();
+  for (const it of sc.plan?.items ?? []) {
+    if (seen.has(it.sku)) continue;
+    seen.add(it.sku);
+    const sku = db.skus[it.sku];
+    const perDay = sc.customers.reduce((n, c) => n + (db.customers[c].demand[it.sku] ?? 0), 0);
+    if (perDay === 0) continue;
+    const need = Math.ceil((perDay * fg.days) / sku.case.per);
+    const per = casesOf(db.recipes[it.recipe], sku);
+    const k = Math.ceil(need / per);
+    const list = byProduct.get(sku.product) ?? [];
+    for (let i = 0; i < k; i++) list.push({ sku, per, cases: i === 0 ? need - per * (k - 1) : per, i, k });
+    byProduct.set(sku.product, list);
+  }
+  for (const [product, list] of byProduct) {
+    // по очереди позиций: раньше доля — раньше серия; при равной — по порядку плана
+    const queue = list.map((x, j) => ({ ...x, j })).sort((a, b) => (2 * a.i + 1) * b.k - (2 * b.i + 1) * a.k || a.j - b.j);
+    const pp = db.products[product].code;
+    const span = fg.age[1] - fg.age[0];
+    let year = 0;
+    let n = 0;
+    queue.forEach((x, q) => {
+      const back = queue.length === 1 ? fg.age[0] : fg.age[1] - Math.floor((q * span) / (queue.length - 1));
+      const day = workdayOnOrBefore(cal, startDay - back);
+      const made = civilFromDays(day);
+      n = made.y === year ? n + 1 : 1;
+      year = made.y;
+      const m = db.materials[x.sku.fg];
+      const lot: Lot = {
+        id: nextId(s, 'L'),
+        material: x.sku.fg,
+        supplier: 'start',
+        vendorLot: batchNo({ pp, n, m: made.m, y: made.y % 100 }),
+        code: { y: at.y % 100, m: at.m, n: (s.next.lotCode = (s.next.lotCode ?? 0) + 1) },
+        qty: x.cases * x.sku.case.per,
+        expiry: fgExpiry(day, day, m.shelf),
+        status: 'released',
+        since: s.t,
+        received: s.t,
+        used: 0,
+        sampled: 0,
+        written: 0,
+        truth: {},
+        coa: {},
+        circulation: s.t,
+      };
+      s.lots[lot.id] = lot;
+      // ящики — последние по номерам серии: прежние уже отгружены; коды пачек — по порядку ящиков
+      const first = x.per - x.cases;
+      for (let c = 0; c < x.cases; c += x.sku.pallet.cases) {
+        const sl = findSlot(s, plan, coldOf(db, sc.plant, x.sku.fg) ? 'cold' : 'storage', near, 99);
+        if (!sl) throw new Error(`scenario ${sc.id}: no slot for start finished goods ${x.sku.fg}`);
+        const u: Unit = { id: nextId(s, 'U'), type: 'unit.pallet.euro', where: { kind: 'slot', id: sl.id }, items: [], tag: 'released' };
+        s.units[u.id] = u;
+        s.slots[sl.id] = { unit: u.id };
+        for (let k = c; k < Math.min(x.cases, c + x.sku.pallet.cases); k++) {
+          const ct: Container = { id: nextId(s, 'C'), lot: lot.id, type: m.container, qty: x.sku.case.per, unit: u.id, opened: false, codes: [[(first + k) * x.sku.case.per + 1, x.sku.case.per]] };
+          s.containers[ct.id] = ct;
+          u.items.push(ct.id);
+        }
+      }
+    });
+    s.batchNos[pp] = { year, n };
+  }
 }
 
 /**
@@ -412,13 +500,17 @@ export function rznPublished(s: PlantState, lot: string) {
   stockChanged(s);
 }
 
-/** Заказ под угрозой: сколько ящиков не хватит и сколько ящиков позиции ещё ждут решения или ввода в оборот. */
+/**
+ * Заказ под угрозой: сколько ящиков не хватит и сколько ящиков позиции ещё ждут решения или ввода в оборот; каких
+ * позиций не хватит (Б1г) — к ним срочное задание.
+ */
 export interface OrderRisk {
   order: string;
   customer: Id;
   due: number;
   missing: number;
   pending: number;
+  short: Id[];
 }
 
 /**
@@ -437,6 +529,7 @@ export function orderRisks(db: ContentDb, s: PlantState): OrderRisk[] {
     const day = dueDay(s, o);
     let missing = 0;
     let pending = 0;
+    const short: Id[] = [];
     for (const line of o.lines) {
       let need = line.cases - line.reserved;
       if (need <= 0) continue;
@@ -452,10 +545,12 @@ export function orderRisks(db: ContentDb, s: PlantState): OrderRisk[] {
         need -= take;
       }
       missing += need;
-      if (need > 0)
+      if (need > 0) {
+        if (!short.includes(line.sku)) short.push(line.sku);
         for (const l of lots) if (l.status !== 'rejected' && (l.status !== 'released' || l.circulation === undefined)) pending += free.get(l.id) ?? 0;
+      }
     }
-    if (missing > 0) out.push({ order: o.id, customer: o.customer, due: o.due, missing, pending });
+    if (missing > 0) out.push({ order: o.id, customer: o.customer, due: o.due, missing, pending, short });
   }
   return out;
 }

@@ -160,6 +160,7 @@ export function check(db: ContentDb, s: PlantState): string[] {
     if (t.instrument && s.instruments[t.instrument]?.test !== t.test) bad.push(`задача ${t.id}: прибор ${t.instrument} занят не её испытанием`);
   }
   production(db, s, bad);
+  devs(s, bad);
   packing(db, s, bad);
   market(db, s, bad);
   maint(db, s, bad);
@@ -184,6 +185,26 @@ export function check(db: ContentDb, s: PlantState): string[] {
     seen.set(no, b.id);
   }
   return bad;
+}
+
+/**
+ * Инварианты отклонений (Б1г): открытое отклонение — у серии, которую ещё не выпустили и не отклонили, и у партии,
+ * которую не отклонили; оценка, пока идёт, — задача специалиста ООК этого отклонения; «оценено» — только «без влияния».
+ */
+function devs(s: PlantState, bad: string[]) {
+  for (const d of Object.values(s.deviations)) {
+    const a = d.assess;
+    if (a?.task !== undefined) {
+      const t = s.tasks[a.task];
+      if (!t || t.kind !== 'devAssess' || t.dev !== d.id) bad.push(`отклонение ${d.id}: оценка идёт, а задачи ${a.task} нет`);
+      if (a.done !== undefined) bad.push(`отклонение ${d.id}: оценка и идёт, и сделана`);
+    }
+    if (d.status === 'assessed' && a && a.verdict !== 'none') bad.push(`отклонение ${d.id}: оценено, а решение — ${a.verdict}`);
+    if (d.status !== 'open') continue;
+    const b = d.batch ? s.batches[d.batch] : undefined;
+    if (b && (b.status === 'released' || b.status === 'rejected')) bad.push(`отклонение ${d.id}: открыто, а серия ${b.id} — ${b.status}`);
+    if (d.lot && s.lots[d.lot]?.status === 'rejected') bad.push(`отклонение ${d.id}: открыто, а партия ${d.lot} отклонена`);
+  }
 }
 
 /**

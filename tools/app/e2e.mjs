@@ -23,8 +23,11 @@
 // (Б3б): в справочнике — табельные номера и допуск, матрица обучения без недопущенных; карточка человека — табельный
 // номер, допуск и строка обучения на каждый документ его роли. Места и оборудование (Б3в): в справочнике «Места» — у
 // каждого актива инвентарный номер, у зон хранения — режим; в день первого визита подрядчика к оборудованию или машине
-// лампа показывает «калибровка или квалификация», после приёмки в карточке — новая запись и кто её принял. Ошибок в
-// консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
+// лампа показывает «калибровка или квалификация», после приёмки в карточке — новая запись и кто её принял. Что делать
+// (Б1г): у главной потери планёрки — рычаги и строка «Будет в …», «Потоки — люди» включает слой; карточка отклонения
+// опудривания — время по досье, цель и диапазон по карте, связанные испытания, решает расследование; пояснение при
+// первом событии; удержанную серию держат и выпускают из карточки её ГП; срочное задание — строкой черновика и
+// «Утвердить». Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -209,6 +212,33 @@ try {
   const notice = await page.textContent('.top .notice');
   if (!shown) fail(`извещение: ${notice}`);
   else ok(`извещение: ${notice}`);
+  // что делать (Б1г): вчера люди много ходили — у главной потери рычаг «Потоки — люди» и строка «Будет в Б7». Рычаг
+  // закрывает планёрку и включает слой участка со стрелками переходов людей; в полосе — «Потоки — люди»; «Скрыть слой»
+  {
+    await page.evaluate(() => window.__game.actions.openMorning());
+    await page.waitForFunction(() => !!window.__game.store.get().morning.view, null, { timeout: 20_000 });
+    await frames(2);
+    const lv = await page.evaluate(() => {
+      const main = document.querySelector('[data-test=morning-main]');
+      return {
+        main: window.__game.store.get().morning.view.main?.k ?? '',
+        flows: !!main?.querySelector('[data-test=lever-flows] button'),
+        later: [...(main?.querySelectorAll('[data-test=lever-later]') ?? [])].map(x => x.textContent ?? ''),
+      };
+    });
+    if (lv.main !== 'walk' || !lv.flows || !lv.later.some(x => /Б7/.test(x))) fail(`планёрка: у главной потери «${lv.main}» — слой ${lv.flows}, «${lv.later.join('; ')}»`);
+    else {
+      await page.click('[data-test=morning-main] [data-test=lever-flows] button');
+      await frames(3);
+      const on = await page.evaluate(() => ({ morning: window.__game.store.get().morning.open, flows: window.__game.store.get().flows, chip: !!document.querySelector('[data-test=flows-on]'), layer: window.__game.stage.overlay.group.visible }));
+      if (on.morning || !on.flows || !on.chip || !on.layer) fail(`слой «Потоки — люди»: ${JSON.stringify(on)}`);
+      else ok(`планёрка: у потери «люди много ходили» — «Потоки — люди» и «${lv.later[0]}»; слой включён, планёрка закрыта`);
+      await page.click('[data-test=flows-off]');
+      await frames(2);
+      const off = await page.evaluate(() => ({ flows: window.__game.store.get().flows, chip: !!document.querySelector('[data-test=flows-on]') }));
+      if (off.flows || off.chip) fail(`слой «Потоки — люди»: после «Скрыть слой» — ${JSON.stringify(off)}`);
+    }
+  }
 
   // склад и карточка (3б): строка склада ведёт камеру к паллете (мимо панели) и открывает карточку партии; щелчок по паллете —
   // карточка её партии; Esc снимает выбор и закрывает склад
@@ -695,6 +725,57 @@ try {
     const stop = await page.evaluate(() => ({ inv: window.__game.store.get().top?.inv ?? 0, speed: window.__game.speed, ff: window.__game.ff, notice: document.querySelector('[data-test=notice-inv]')?.textContent ?? '' }));
     if (stop.inv < 1 || stop.speed !== 0 || stop.ff || !/вне спецификации/.test(stop.notice)) fail(`расследование: идёт ${stop.inv}, скорость ${stop.speed}, промотка ${stop.ff}, извещение «${stop.notice}»`);
     else ok(`расследование: «${stop.notice}» — мир на паузе`);
+    // что делать (Б1г): последняя планёрка — у потери «людей нет в смене» кнопки решений и строка «Будет в Б4б»; ждут
+    // решения отклонения серии с происшествием. Карточка отклонения опудривания: время по досье, цель и диапазон по
+    // карте, связанные испытания; после результата растворения его решает расследование — «без влияния» и «отклонить»
+    // погашены, есть кнопка доски. В первый раз — пояснение; «Понятно» его убирает, окно помнит
+    {
+      await page.evaluate(() => window.__game.actions.openMorning());
+      await page.waitForFunction(() => !!window.__game.store.get().morning.view, null, { timeout: 20_000 });
+      await frames(2);
+      const m = await page.evaluate(() => {
+        const main = document.querySelector('[data-test=morning-main]');
+        const v = window.__game.store.get().morning.view;
+        return {
+          main: v.main ? `${v.main.k}/${v.main.cause ?? ''}` : '',
+          buttons: [...(main?.querySelectorAll('[data-test=levers] .lever button') ?? [])].map(b => b.textContent ?? ''),
+          later: [...(main?.querySelectorAll('[data-test=lever-later]') ?? [])].map(x => x.textContent ?? ''),
+          pending: document.querySelectorAll('[data-test=morning-pending]').length,
+          param: v.pending.find(p => p.kind === 'param')?.dev,
+        };
+      });
+      if (m.main !== 'wait/shift' || m.buttons.length < 2 || !m.later.some(x => /Б4б/.test(x)) || m.param === undefined) fail(`планёрка: потеря «${m.main}», кнопки «${m.buttons.join(', ')}», «${m.later.join('; ')}», ждут решения ${m.pending}`);
+      else ok(`планёрка: у потери «людей нет в смене» — ${m.buttons.join(', ')}; «${m.later.join('; ')}»; ждут решения — ${m.pending}`);
+      await page.keyboard.press('Escape');
+      await page.evaluate(n => window.__game.actions.select({ kind: 'dev', n }), m.param);
+      await page.waitForFunction(n => window.__game.store.get().card?.card?.kind === 'dev' && window.__game.store.get().card.card.dev === n, m.param, { timeout: 20_000 });
+      await frames(2);
+      const card = () =>
+        page.evaluate(() => ({
+          title: document.querySelector('#card-title')?.textContent ?? '',
+          what: document.querySelector('[data-test=dev-what]')?.textContent ?? '',
+          linked: [...document.querySelectorAll('[data-test=dev-linked] li')].map(x => x.textContent ?? ''),
+          means: document.querySelector('[data-test=dev-means]')?.textContent ?? '',
+          none: document.querySelector('[data-test=dev-none]')?.disabled,
+          reject: document.querySelector('[data-test=dev-reject]')?.disabled,
+          board: !!document.querySelector('[data-test=dev-inv]'),
+          first: !!document.querySelector('[data-test=card-first]'),
+        }));
+      const c = await card();
+      await page.screenshot({ path: join(out, 'e2e-dev.png') });
+      if (!/Режим вне диапазона/.test(c.title) || !/Время опудривания: .+ — цель .+, диапазон .+/.test(c.what) || c.linked.length < 2 || !c.linked.some(x => /Растворение/.test(x))) fail(`карточка отклонения: «${c.title}», «${c.what}», испытания ${c.linked.join(' | ')}`);
+      else if (!/расследование/.test(c.means) || c.none !== true || c.reject !== true || !c.board) fail(`карточка отклонения: «${c.means}», без влияния ${c.none}, отклонить ${c.reject}, доска ${c.board}`);
+      else ok(`карточка отклонения «${c.title}»: «${c.what}»; испытания: ${c.linked.join('; ')}; решает расследование — кнопки погашены, есть доска; снимок ${join(out, 'e2e-dev.png')}`);
+      if (!c.first) fail('карточка отклонения: пояснения при первом событии нет');
+      else {
+        await page.click('[data-test=first-ok]');
+        await frames(2);
+        const kept = await page.evaluate(() => ({ shown: !!document.querySelector('[data-test=card-first]'), store: localStorage.getItem('pharma.firsts') ?? '' }));
+        if (kept.shown || !/dev:param/.test(kept.store)) fail(`пояснение: после «Понятно» — на виду ${kept.shown}, в окне «${kept.store}»`);
+        else ok(`пояснение при первом событии: «Понятно» убрало его, окно помнит — ${kept.store}`);
+      }
+      await page.keyboard.press('Escape');
+    }
     await page.click('[data-test=notice-inv]');
     await page.waitForFunction(() => !!window.__game.store.get().inv.view?.board, null, { timeout: 20_000 });
     await frames(2);
@@ -751,6 +832,93 @@ try {
     await frames(2);
     const again = await alive();
     if (again.inv || !again.top || again.guard) fail(`расследование: Esc — доска ${again.inv ? 'открыта' : 'закрыта'}, полоса ${again.top ? 'на месте' : 'пропала'}${again.guard ? `, ограда: «${again.guard}»` : ''}`);
+  }
+
+  // решение по серии (Б1г): паллета ГП в карантине ГП; решение в её карточке — когда серия упакована (раньше команда
+  // выпуска — отказ), и до решения уполномоченного лица: мир на ×4 до карточки с решением — и сразу пауза. В карточке —
+  // условия выпуска и три кнопки. «Держать» — уполномоченное лицо держит серию после проверки ООК; в первый раз —
+  // пояснение. «Выпустить» из той же карточки — серия выпущена, решения в карточке больше нет. Мир встаёт на планёрке —
+  // её закрыть
+  {
+    // чего ждёт шаг — по имени: функция уходит в страницу целиком, без замыканий, а строку страница игры не исполнит
+    // (CSP без unsafe-eval). Проба срабатывает, когда условие выполнено или мир встал сам
+    const probe = k => {
+      const g = window.__game;
+      const c = g.store.get().card?.card;
+      const r =
+        k === 'fg'
+          ? [...g.view.units.values()].find(u => u.where === 'slot' && g.layout.plan.slots[u.ref].kind === 'fgQuarantine')?.unit
+          : k === 'release'
+            ? !!c?.release
+            : k === 'held'
+              ? c?.release?.held === true
+              : c?.kind === 'unit' && !c.release && c.lot?.status === 'released';
+      return r || g.speed === 0 ? { r } : false;
+    };
+    const got = async k => (await page.evaluate(probe, k))?.r;
+    // ×4, пока не выполнено условие `k` (проба в каждом кадре) или пока не прошло `days` суток завода; мир встаёт сам на
+    // автопаузах места игрока — дальше. `went` — сколько раз пускали мир и сколько часов он прожил
+    const went = { runs: 0, hours: 0 };
+    const go4 = async (k, days) => {
+      const from = await gameT();
+      went.runs = 0;
+      while (!(await got(k)) && (await gameT()) < from + days * 86400 && went.runs < 500) {
+        await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
+        await page.evaluate(() => window.__game.actions.setSpeed(4));
+        await page.waitForFunction(probe, k, { timeout: 30_000 }).catch(() => {});
+        await page.evaluate(() => window.__game.actions.setSpeed(0));
+        went.runs++;
+      }
+      went.hours = Math.round(((await gameT()) - from) / 3600);
+      return got(k);
+    };
+    const unit = await go4('fg', 6);
+    if (unit === undefined) fail(`решение по серии: ГП в карантине ГП не появилась — мир пускали ${went.runs} раз, прошло ${went.hours} ч`);
+    else {
+      await page.evaluate(n => window.__game.actions.select({ kind: 'unit', n }), unit);
+      await page.waitForFunction(n => window.__game.store.get().card?.card?.kind === 'unit' && window.__game.store.get().card.card.unit === n, unit, { timeout: 20_000 });
+      const has = await go4('release', 3);
+      await frames(2);
+      if (!has) fail(`решение по серии: в карточке паллеты ${unit} решения нет — мир пускали ${went.runs} раз, прошло ${went.hours} ч`);
+      else {
+        await page.click('[data-test=release-hold]');
+        const held = await go4('held', 2);
+        await frames(2);
+        await page.screenshot({ path: join(out, 'e2e-release.png') });
+        const h = await page.evaluate(() => ({
+          checks: [...document.querySelectorAll('[data-test=card-release] .checks li')].map(x => x.textContent ?? ''),
+          first: document.querySelector('[data-test=card-first]')?.textContent ?? '',
+          release: document.querySelector('[data-test=release-release]')?.disabled,
+        }));
+        if (!held || h.checks.length !== 4 || h.release !== false || !/держит серию/.test(h.first)) fail(`решение по серии: держат ${held} (${went.hours} ч), условия ${h.checks.join(' | ')}, «Выпустить» погашено ${h.release}, пояснение «${h.first}»`);
+        else ok(`решение по серии: «Держать» — серию держат; условия: ${h.checks.join('; ')}; снимок ${join(out, 'e2e-release.png')}`);
+        if (h.first) await page.click('[data-test=first-ok]');
+        await page.click('[data-test=release-release]');
+        const done = await go4('released', 2);
+        if (!done) fail(`решение по серии: «Выпустить» — серия не выпущена за ${went.hours} ч`);
+        else ok('решение по серии: «Выпустить» из карточки ГП — серия выпущена');
+      }
+      await page.keyboard.press('Escape');
+    }
+  }
+
+  // срочное задание (Б1г): в расписании «Срочное задание» — позиция; в черновике — «срочное задание — …»; «Утвердить» —
+  // новое задание на серию сейчас, оно в расписании; черновик пуст
+  {
+    await page.keyboard.press('KeyG');
+    await page.waitForFunction(() => !!window.__game.store.get().gantt.view, null, { timeout: 20_000 });
+    await frames(2);
+    const before = await page.evaluate(() => Object.keys(window.__game.store.get().gantt.view.batches).length);
+    await page.click('[data-test=urgent-open]');
+    await page.click('[data-test=urgent-sku]');
+    await frames(2);
+    const list = await page.evaluate(() => document.querySelector('[data-test=draft-list]')?.textContent ?? '');
+    await page.click('[data-test=draft-approve]');
+    await page.waitForFunction(n => Object.keys(window.__game.store.get().gantt.view?.batches ?? {}).length > n, before, { timeout: 20_000 }).catch(() => {});
+    const after = await page.evaluate(() => ({ n: Object.keys(window.__game.store.get().gantt.view.batches).length, urgent: window.__game.store.get().gantt.urgent.length }));
+    if (!/срочное задание — /.test(list) || after.n <= before || after.urgent !== 0) fail(`срочное задание: черновик «${list}», заданий ${before} → ${after.n}, в черновике осталось ${after.urgent}`);
+    else ok(`срочное задание: «${list}»; «Утвердить» — заданий в расписании ${before} → ${after.n}, черновик пуст`);
+    await page.keyboard.press('Escape');
   }
 
   // справочник завода (Б1а, Б1в): F1 — «Что и как делает завод, на чём, кем и с кем»; у каждой карты шесть стадий — по

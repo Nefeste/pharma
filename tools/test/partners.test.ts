@@ -154,7 +154,8 @@ describe('движок (Б3г)', () => {
     ]);
     for (const c of cs) expect([c.from, c.to]).toEqual([start, addMonths(start, sc.partners.months) - 1]);
     for (const l of cs[0].lines) expect([l.price, l.bought, l.volume > 0]).toEqual([db.suppliers['sup.api'].items[l.material].price, 0, true]);
-    for (const l of Object.values(s.lots)) if (l.supplier === 'start') expect(l.maker).toBe(specPairs(db, l.material, start)[0].maker);
+    // у купленного запаса — изготовитель пары; готовая продукция на старте (Б1г) — своя, пар у неё нет
+    for (const l of Object.values(s.lots)) if (l.supplier === 'start' && db.materials[l.material].kind !== 'fg') expect(l.maker).toBe(specPairs(db, l.material, start)[0].maker);
     expect(check(db, s)).toEqual([]);
   });
 

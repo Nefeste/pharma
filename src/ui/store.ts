@@ -3,7 +3,7 @@
 // неизменяемый: каждое `set` — новый объект.
 import { useSyncExternalStore } from 'react';
 import type { Go, Pause } from '../app/pauses';
-import type { Dept, OvertimeMode, SeatId } from '../content/types';
+import type { Dept, Id, OvertimeMode, SeatId } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
 import type { RunSum } from '../engine/plan/run';
 import type { Change } from '../engine/plan/schedule';
@@ -17,6 +17,7 @@ import type { NowRow, NowView } from '../sim/now';
 import type { RefView } from '../sim/ref';
 import type { CashView, MorningView, TopView } from '../sim/report';
 import type { CardView, StockQuery, StockView, Thing } from '../sim/views';
+import type { Urgent } from './draft';
 
 /** Скорости геймдизайна (§2): 0 — пауза; 1–4 — минута, 5 минут, 20 минут, 2 часа за секунду; 5 — «живое время» 1:1. */
 export type Speed = 0 | 1 | 2 | 3 | 4 | 5;
@@ -82,6 +83,8 @@ export interface Hud {
     drag?: { batch: string; notBefore: number };
     ghost?: GhostView;
     draft: readonly Change[];
+    /** срочные задания черновика (Б1г): командами `order` станут при «Утвердить» */
+    urgent: readonly Urgent[];
   };
   /** прогон плана (часть 5) */
   plan: PlanRun;
@@ -91,6 +94,10 @@ export interface Hud {
   seats: { open: boolean; pick: SeatId[] };
   /** справочник завода (этап Б, Б1а): открыт ли, вкладка, вид */
   ref: { open: boolean; tab: RefTab; view?: RefView };
+  /** слой «Потоки — люди» (Б1г): стрелки переходов людей между помещениями вместо перевозок паллет */
+  flows: boolean;
+  /** пояснения при первом событии (Б1г): виды, которые игрок уже понял, — запоминаются в окне (src/app/firsts.ts) */
+  firsts: readonly string[];
 }
 
 /** Вкладки справочника завода: продукты, карты, оборудование, лаборатория, люди, контрагенты. */
@@ -158,11 +165,13 @@ export const initial: Hud = {
   cash: { open: false, page: 0 },
   lab: { open: false, tab: 'queue' },
   now: { open: false },
-  gantt: { open: false, days: 3, draft: [] },
+  gantt: { open: false, days: 3, draft: [], urgent: [] },
   plan: NO_RUN,
   inv: { open: false },
   seats: { open: false, pick: [] },
   ref: { open: false, tab: 'recipes' },
+  flows: false,
+  firsts: [],
 };
 
 export interface Actions {
@@ -234,6 +243,16 @@ export interface Actions {
   setRefTab(tab: RefTab): void;
   investigate(inv: string, step: string): void;
   conclude(inv: string, cause: string, fate: 'reject' | 'release'): void;
+  /**
+   * решение по серии на выпуске (Б1г) — команда `release`; оценка влияния отклонения — команда `assess`; срочное
+   * задание позиции — в черновик расписания, расписание открывается; слой «Потоки — люди» — включить или снять;
+   * пояснение при первом событии — «Понятно»
+   */
+  release(batch: string, decision: 'release' | 'reject' | 'hold'): void;
+  assess(dev: string, verdict: 'none' | 'reject'): void;
+  urgent(recipe: Id, sku: Id): void;
+  toggleFlows(): void;
+  understood(kind: string): void;
   /** экран «Кем вы будете»: открыть — мир на паузе; отметить место; взять отмеченные — команда `seat`; закрыть без смены */
   openSeats(): void;
   pickSeat(seat: SeatId): void;

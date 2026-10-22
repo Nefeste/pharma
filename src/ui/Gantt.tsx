@@ -270,6 +270,31 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         </button>
       </div>
       <div className="gdraft" data-test="gantt-draft">
+        {mine ? (
+          <span className="upick">
+            <button type="button" className={pick ? 'on' : ''} onClick={() => setPick(!pick)} title={T.urgent.hint} data-test="urgent-open">
+              {T.urgent.button}
+            </button>
+            {pick ? (
+              <span className="upick-list" data-test="urgent-list">
+                <span className="muted">{T.urgent.pick}</span>
+                {items.map(it => (
+                  <button
+                    type="button"
+                    key={it.sku}
+                    onClick={() => {
+                      setPick(false);
+                      actions.urgent(it.recipe, it.sku);
+                    }}
+                    data-test="urgent-sku"
+                  >
+                    {named(db?.skus[it.sku]?.name, it.sku)}
+                  </button>
+                ))}
+              </span>
+            ) : null}
+          </span>
+        ) : null}
         {g.draft.length + g.urgent.length > 0 ? (
           <>
             <span data-test="draft-list">{T.plan.draft([...g.draft.map(c => who(labels, c.batch) || c.batch), ...g.urgent.map(u => T.urgent.item(named(db?.skus[u.sku]?.name, u.sku)))].join(', '))}</span>
@@ -282,28 +307,6 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
           </>
         ) : mine ? (
           <span className="muted">{T.plan.noDraft}</span>
-        ) : null}
-        {mine ? (
-          <span className="upick">
-            <button type="button" className={pick ? 'on' : ''} onClick={() => setPick(!pick)} title={T.urgent.hint} data-test="urgent-open">
-              {T.urgent.button}
-            </button>
-            {pick
-              ? items.map(it => (
-                  <button
-                    type="button"
-                    key={it.sku}
-                    onClick={() => {
-                      setPick(false);
-                      actions.urgent(it.recipe, it.sku);
-                    }}
-                    data-test="urgent-sku"
-                  >
-                    {named(db?.skus[it.sku]?.name, it.sku)}
-                  </button>
-                ))
-              : null}
-          </span>
         ) : null}
         <span className="grow" />
         {p.running ? (
@@ -412,6 +415,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
           <span className="gbar k-stage w-past">{T.gantt.when.past}</span>
           <span className="gbar k-stage w-now">{T.gantt.when.now}</span>
           <span className="gbar k-stage w-plan">{T.gantt.when.plan}</span>
+          <span className="gbar k-stage w-plan draft">{T.gantt.legendDraft}</span>
           <span className="goff-key">{T.gantt.off}</span>
         </span>
         <span className="muted" data-test="gantt-hint">

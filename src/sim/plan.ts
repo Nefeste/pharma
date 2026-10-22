@@ -1,16 +1,16 @@
 // Расписание (docs/specs/2026-10-panels.md, 3д): Гант и призрак — виды для окна из прогона расписания движка
 // (src/engine/plan/schedule.ts) и записей. Прошлое — как было: стадии серий из их записей, задания упаковки от взятия до
 // конца, последняя уборка помещения — по его учёту. С части 5 — черновик (docs/specs/2026-10-plan-run.md): план — каким он
-// станет, если черновик утвердить, а прежние полосы сдвинутых серий — рядом. Без истины: прогон и записи — сроки, учёт и
-// задачи; истинных свойств и причин тут нет.
+// станет, если черновик утвердить, а прежние полосы сдвинутых серий — рядом; с 0.0.39 — и полосы его новых заданий.
+// Без истины: прогон и записи — сроки, учёт и задачи; истинных свойств и причин тут нет.
 import type { ContentDb } from '../content/types';
 import { batchNo } from '../engine/batchno';
 import { HOUR } from '../engine/core/calendar';
 import { cleanWork, MES } from '../engine/mes';
-import { type Bar, type Change, forecast, type Why } from '../engine/plan/schedule';
+import { type Bar, type Change, type Fresh, forecast, freshBatches, type Why } from '../engine/plan/schedule';
 import { planOf } from '../engine/plant';
 import { shiftEndAt } from '../engine/staff';
-import type { BatchStatus, PlantState } from '../engine/types';
+import type { Batch, BatchStatus, PlantState } from '../engine/types';
 import { type AssetInfo, assetInfo } from './places';
 
 export interface GanttQuery {
@@ -20,6 +20,8 @@ export interface GanttQuery {
   to: number;
   /** черновик (часть 5): новые сроки «не раньше» заданий — ещё не команды */
   draft?: Change[];
+  /** новые задания черновика (0.0.39): срочные задания — ещё не команды */
+  fresh?: Fresh[];
 }
 
 export interface GhostQuery {
@@ -29,6 +31,7 @@ export interface GhostQuery {
   notBefore: number;
   /** черновик — призрак считает его вместе с тем, что тянут */
   draft?: Change[];
+  fresh?: Fresh[];
 }
 
 /** Строка Ганта: комплектовка у шлюза, помещение производства (тип — для названия), упаковочная линия. */
@@ -134,10 +137,10 @@ export function offOf(db: ContentDb, s: PlantState, from: number, to: number): [
 }
 
 /** Подписи серий, о которых говорят полосы и причины, — и серий в итоге прогона плана (planHost.ts). */
-export function labels(s: PlantState, ids: Iterable<string>): Record<string, BatchLabel> {
+export function labels(s: PlantState, ids: Iterable<string>, fresh: readonly Batch[] = []): Record<string, BatchLabel> {
   const out: Record<string, BatchLabel> = {};
   for (const id of ids) {
-    const b = s.batches[id];
+    const b = s.batches[id] ?? fresh.find(x => x.id === id);
     if (!b || out[id]) continue;
     out[id] = { ...(b.code.n > 0 ? { code: batchNo(b.code) } : {}), n: Number(id.slice(1)), status: b.status, notBefore: b.notBefore };
   }
@@ -161,10 +164,13 @@ function movedOf(a: Bar[], b: Bar[], skip?: string): string[] {
 export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttView {
   const base = forecast(db, s);
   const draft = q.draft ?? [];
-  const f = draft.length > 0 ? forecast(db, s, draft) : base;
+  const fresh = q.fresh ?? [];
+  const changed = draft.length + fresh.length > 0;
+  const f = changed ? forecast(db, s, draft, fresh) : base;
   const inWindow = (b: Bar) => b.to > q.from && b.from < q.to && b.to > b.from;
   const bars = [...pastBars(db, s), ...f.bars].filter(inWindow);
-  const moved = draft.length > 0 ? movedOf(base.bars, f.bars) : [];
+  // новые задания черновика — среди сдвинутых: у них полосы по плану есть только с черновиком
+  const moved = changed ? movedOf(base.bars, f.bars) : [];
   const was = base.bars.filter(b => b.batch !== undefined && moved.includes(b.batch) && b.when === 'plan' && inWindow(b));
   const ids = new Set<string>([...bars.flatMap(b => (b.batch ? [b.batch] : [])), ...f.stuck]);
   const assets: Record<string, AssetInfo> = {};
@@ -190,7 +196,7 @@ export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttVie
     now: s.t,
     rows: rowsOf(db, s),
     bars,
-    batches: labels(s, ids),
+    batches: labels(s, ids, freshBatches(db, s, fresh)),
     why: f.why,
     movable: [...new Set(f.bars.filter(b => b.kind === 'kit' && b.batch && movable(s, b.batch)).map(b => b.batch!))],
     stuck: f.stuck,
@@ -212,10 +218,11 @@ export function ghostView(db: ContentDb, s: PlantState, q: GhostQuery): GhostVie
   if (!s.batches[q.batch]) return { ...empty, refused: 'noBatch' };
   if (!movable(s, q.batch)) return { ...empty, refused: 'started' };
   const rest = (q.draft ?? []).filter(c => c.batch !== q.batch);
-  const base = forecast(db, s, rest);
-  const f = forecast(db, s, [...rest, { batch: q.batch, notBefore: q.notBefore }]);
+  const fresh = q.fresh ?? [];
+  const base = forecast(db, s, rest, fresh);
+  const f = forecast(db, s, [...rest, { batch: q.batch, notBefore: q.notBefore }], fresh);
   const moved = movedOf(base.bars, f.bars, q.batch);
   const why = f.why[q.batch] ?? [];
   const ids = new Set<string>([q.batch, ...moved, ...why.flatMap(w => (whyBatch(w) ? [whyBatch(w)!] : []))]);
-  return { view: 'ghost', batch: q.batch, notBefore: q.notBefore, bars: f.bars.filter(b => b.batch === q.batch), why, moved, batches: labels(s, ids) };
+  return { view: 'ghost', batch: q.batch, notBefore: q.notBefore, bars: f.bars.filter(b => b.batch === q.batch), why, moved, batches: labels(s, ids, freshBatches(db, s, fresh)) };
 }

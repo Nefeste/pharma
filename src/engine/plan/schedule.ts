@@ -12,7 +12,7 @@ import { stageMeters, unfit } from '../assets';
 import { DAY, HOUR, isWorkday, momentOf } from '../core/calendar';
 import { fitsIn, overLeft } from '../hours';
 import { blocked } from '../maint';
-import { cleanWork, DIRTY_HOLD, MES, nominal, readyFor, stageNorm, stageTaskNorm, TRANSFER_WORK } from '../mes';
+import { cleanWork, DIRTY_HOLD, kitPlan, MES, newBatch, nominal, readyFor, stageNorm, stageTaskNorm, TRANSFER_WORK } from '../mes';
 import { classOf, placesOf } from '../places';
 import { planOf } from '../plant';
 import { admitted, needFor } from '../quals';
@@ -83,6 +83,35 @@ export interface Forecast {
 export interface Change {
   batch: string;
   notBefore: number;
+}
+
+/** Новое задание черновика (0.0.39): срочное задание на серию — карта и позиция; «не раньше» — сейчас. */
+export interface Fresh {
+  recipe: Id;
+  sku?: Id;
+}
+
+/**
+ * Новые задания черновика — какими их поставят команды `order` в это мгновение, одна за другой: номера, которые они
+ * получат, карта, действующая сегодня, и резерв по FEFO — тот же, что сделает движок, с тарой, которую уже взяли задания
+ * раньше в черновике; не хватает материала — задание ждёт его. Состояние не меняется.
+ */
+export function freshBatches(db: ContentDb, s: PlantState, fresh: readonly Fresh[]): Batch[] {
+  const out: Batch[] = [];
+  let taken = new Map<string, number>();
+  for (const f of fresh) {
+    if (!db.recipes[f.recipe]) continue;
+    const b = newBatch(db, s, `B${(s.next.B ?? 0) + out.length + 1}`, f.recipe, s.t, 'player', f.sku);
+    const k = kitPlan(db, s, b.recipe, taken);
+    if (k.short.length > 0) b.short = k.short;
+    else {
+      b.kit = k.kit;
+      b.status = 'reserved';
+      taken = k.taken;
+    }
+    out.push(b);
+  }
+  return out;
 }
 
 /** Дальше этого смену с людьми роли не ищут: людей роли нет. */
@@ -164,8 +193,9 @@ interface Proj {
  * кладовщиков: по паллетам комплекта, кладовщики перекладывают параллельно (гипотеза: перевозки к шлюзу быстрее
  * перекладки). Стадия — когда кончилась прошлая, помещение свободно, убрано и готово (`readyFor`) и в смене есть люди
  * её роли. Ушла серия из помещения — уборка, как только аппаратчик в смене; генеральная — если грязно дольше суток.
+ * `fresh` — новые задания черновика (0.0.39): прогон ставит их после существующих, как поставят команды.
  */
-export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[] = []): Forecast {
+export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[] = [], fresh: readonly Fresh[] = []): Forecast {
   const asked = new Map(changes.map(c => [c.batch, c.notBefore]));
   const plan = planOf(db, s.plant);
   const now = s.t;
@@ -224,7 +254,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
   // актив занят идущей стадией — подрядчик после её конца
   const held = new Map<string, number>();
   const taskOf = (f: (t: Task) => boolean) => Object.values(s.tasks).find(f);
-  const order = Object.values(s.batches);
+  const order = [...Object.values(s.batches), ...freshBatches(db, s, fresh)];
 
   // последняя серия в помещении по записям — для причины «убрать после серии» у грязного сейчас помещения
   const lastIn = new Map<string, { batch: string; end: number }>();

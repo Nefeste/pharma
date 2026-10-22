@@ -897,6 +897,7 @@ export const en: Strings = {
     forward: 'A day forward',
     today: 'Today',
     when: { past: 'done', now: 'running', plan: 'planned' },
+    legendDraft: 'in the draft',
     batch: (code: string) => `batch ${code}`,
     batchGen: (code: string) => `batch ${code}`,
     batchIns: (code: string) => `batch ${code}`,
@@ -1113,7 +1114,7 @@ export const en: Strings = {
   } as Record<string, string>,
   urgent: {
     button: 'Urgent order',
-    hint: 'A batch order now: kitting starts as soon as the whole kit is there. Stays in the draft until “Approve”',
+    hint: 'A batch order now. Until “Approve” it stays in the draft, and its bars are in the schedule: kitting starts as soon as the whole kit is there',
     pick: 'Which item',
     item: (sku: string) => `urgent order — ${sku}`,
   },

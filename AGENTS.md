@@ -137,14 +137,15 @@ first, or copy the working code of Bolnitsa on the same versions.
   retest of the same sample by another analyst; findings read from the plant's state; the conclusion — cause and fate,
   release only with a proven lab error; the quality colleague — lab first, then gain per hour — while the player does
   not hold the quality post; the debrief after the decision — `debrief`), `mes.ts` (batch orders on the recipe revision
-  in force at their not-before, FEFO reservation with potency, kitting through the airlock, stages in rooms with
-  equipment and people, cleaning, process parameters, true batch
-  quality with causes, IPC, the bulk lot; the packing job and its packaging kit; a stage stopped by a part failure and
-  resumed after the repair; a new not-before time of a batch order from the player — `shift`; room readiness, nominal
-  stage time and cleaning time shared with the schedule run; new part budgets of a running stage for the plan run's
-  twin — `stageRedraw`), `plan/schedule.ts` (the schedule run — a pure function: running tasks to their end, then
-  kitting, stages and cleaning by the engine's rules and its own functions, with the player's draft changes; bars and
-  the reasons why not earlier), `plan/twin.ts` (the plan run's twin: on a copy, forget what the plant does not know —
+  in force at their not-before, FEFO reservation with potency — tried without writing by `kitPlan`, shared with the
+  schedule run, kitting through the airlock, stages in rooms with equipment and people, cleaning, process parameters,
+  true batch quality with causes, IPC, the bulk lot; the packing job and its packaging kit; a stage stopped by a part
+  failure and resumed after the repair; a new not-before time of a batch order from the player — `shift`; room
+  readiness, nominal stage time and cleaning time shared with the schedule run; new part budgets of a running stage for
+  the plan run's twin — `stageRedraw`), `plan/schedule.ts` (the schedule run — a pure function: running tasks to their
+  end, then kitting, stages and cleaning by the engine's rules and its own functions, with the player's draft changes
+  and the draft's new batch orders as the `order` commands would place them; bars and the reasons why not earlier),
+  `plan/twin.ts` (the plan run's twin: on a copy, forget what the plant does not know —
   true lot and batch properties, causes, part budgets, unrecorded jams, results before review, the incident not yet
   seen, marks no step has looked for — and redraw it from what was measured, the root of an open investigation from its
   versions; branches anew from the run seed), `plan/run.ts` (the plan run — a pure function: per seed a copy, the
@@ -240,13 +241,13 @@ first, or copy the working code of Bolnitsa on the same versions.
   время» — records are the plant's knowledge (`hours.ts`); people and admissions — a person's admission
   today and what they are losing within the warning period, training rows of the card, the training matrix of the
   reference with how many people of a role are admitted, the meeting's summary — records are the plant's knowledge, not
-  truth (`people.ts`); the schedule — the Gantt of the past, the running and the schedule run with the player's draft,
-  the old bars of what the draft moves, and the ghost of a dragged batch order (`plan.ts`), Web Worker (`worker.ts`) and
-  its client in the window (`client.ts`; how far the window's clock ran ahead of the last slice; at most one `tick` in
-  flight); the plan run's own thread — a second Web Worker over the same engine (`planHost.ts`, `planWorker.ts` →
-  `dist/plan.js`) and its client in the window (`planClient.ts`; a stop terminates the thread). The window never runs
-  the engine. Saves cross the thread boundary as a string: the window never parses the state with the true lot
-  properties — the plan run gets the same string.
+  truth (`people.ts`); the schedule — the Gantt of the past, the running and the schedule run with the player's draft —
+  new not-before times and new urgent batch orders, the old bars of what the draft moves, and the ghost of a dragged
+  batch order (`plan.ts`), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how far the window's
+  clock ran ahead of the last slice; at most one `tick` in flight); the plan run's own thread — a second Web Worker over
+  the same engine (`planHost.ts`, `planWorker.ts` → `dist/plan.js`) and its client in the window (`planClient.ts`; a
+  stop terminates the thread). The window never runs the engine. Saves cross the thread boundary as a string: the window
+  never parses the state with the true lot properties — the plan run gets the same string.
 - `src/app/` — the game in the window: content, stage, clock and speeds with live time 1:1, input, panels (`game.ts`,
   `main.tsx`); what the slice puts on the floor — pallets, trucks, rooms, pallets on forks (`scene.ts`); where people
   and vehicles are now — a pure function of the tasks in the slice and the clock, on the plan's routes and with the

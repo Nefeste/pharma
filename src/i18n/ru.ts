@@ -24,6 +24,8 @@ export const ru = {
     title: 'Фармзавод',
     loading: 'Загрузка…',
     error: 'Ошибка',
+    /** ограда панели (src/ui/Guard.tsx): панель упала, остальное окно живо */
+    panelError: (panel: string, message: string) => `Ошибка в панели «${panel}»: ${message}`,
     stage: 'Этап Б, часть 1: что происходит',
   },
   date: {
@@ -277,6 +279,7 @@ export const ru = {
   equipment: { idle: 'Свободно', run: 'Работает', clean: 'Уборка', fail: 'Авария', check: 'Калибровка или квалификация' },
   /** карточка вещи (docs/specs/2026-10-panels.md, 3б): что это → состояние → почему так → что можно сделать → история */
   card: {
+    title: 'Карточка',
     close: 'Закрыть',
     closeHint: 'Esc',
     gone: 'Этого больше нет на заводе',

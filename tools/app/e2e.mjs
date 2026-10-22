@@ -18,7 +18,8 @@
 // паузе, после «Взять» поднять можно. Автопаузы (Б2а): меню — восемь автопауз, две — не места игрока; планёрку
 // отключили — окно это помнит, и «До события» (клавиша 6) встаёт не в 08:00, а на первом событии автопаузы, с извещением со
 // знаком паузы, и часы стоят. Расследование (часть 4б): «До события», пока растворение второй серии не выйдет за
-// спецификацию, — извещение ставит мир на паузу и ведёт к доске; три шага, решение, разбор; Esc закрывает. Люди и допуски
+// спецификацию, — извещение ставит мир на паузу и ведёт к доске; три шага, решение, разбор; ✕ мышью закрывает —
+// полоса на месте (0.0.37), I открывает снова, Esc закрывает; прокрутка — с Promise, как в окне игры. Люди и допуски
 // (Б3б): в справочнике — табельные номера и допуск, матрица обучения без недопущенных; карточка человека — табельный
 // номер, допуск и строка обучения на каждый документ его роли. Места и оборудование (Б3в): в справочнике «Места» — у
 // каждого актива инвентарный номер, у зон хранения — режим; в день первого визита подрядчика к оборудованию или машине
@@ -46,6 +47,21 @@ const browser = await chromium.launch({
   args: ['--ignore-gpu-blocklist', '--enable-unsafe-swiftshader', '--use-angle=swiftshader'],
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+// окно игры — Electron 44 (Chromium 152): прокрутка там возвращает Promise, а Chromium сценария старше. Сценарий делает
+// так же, иначе не увидит того, что увидит игрок: в 0.0.36 Promise из эффекта разбора ронял всё окно при закрытии доски
+await page.addInitScript(() => {
+  const promised = (o, names) => {
+    for (const k of names) {
+      const f = o[k];
+      o[k] = function (...a) {
+        const r = f.apply(this, a);
+        return r instanceof Promise ? r : Promise.resolve();
+      };
+    }
+  };
+  promised(Element.prototype, ['scrollIntoView', 'scroll', 'scrollTo', 'scrollBy']);
+  promised(window, ['scroll', 'scrollTo', 'scrollBy']);
+});
 const errors = [];
 const requests = [];
 page.on('console', m => {
@@ -711,8 +727,30 @@ try {
     });
     if (!deb.root || !/на самом деле/.test(deb.text)) fail(`разбор: корень «${deb.root}», текст «${deb.text.slice(0, 120)}»`);
     else ok(`разбор: на самом деле — ${deb.root}; причина ${deb.cause === '1' ? 'верна' : 'неверна'}, судьба серии ${deb.fate === '1' ? 'верна' : 'неверна'}; снимок ${join(out, 'e2e-inv.png')}`);
+    // ✕ мышью, как игрок (в 0.0.36 тут пропадало всё окно): шапка доски с ✕ видна, и когда доска прокручена к разбору
+    const x = await page.evaluate(() => {
+      const b = document.querySelector('#inv .close')?.getBoundingClientRect();
+      if (!b) return undefined;
+      const at = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
+      return { x: b.x + b.width / 2, y: b.y + b.height / 2, hit: !!at?.closest('#inv .close'), scrolled: Math.round(document.querySelector('#inv').scrollTop) };
+    });
+    const alive = () => page.evaluate(() => ({ inv: !!document.querySelector('#inv'), top: !!document.querySelector('.top [data-test=clock]'), guard: document.querySelector('[data-test=guard]')?.textContent ?? '' }));
+    if (!x?.hit) fail(`расследование: ✕ доски не на виду — ${JSON.stringify(x)}`);
+    else {
+      await page.mouse.click(x.x, x.y);
+      await frames(2);
+      const after = await alive();
+      if (after.inv || !after.top || after.guard) fail(`расследование: после ✕ доска ${after.inv ? 'открыта' : 'закрыта'}, полоса ${after.top ? 'на месте' : 'пропала'}${after.guard ? `, ограда: «${after.guard}»` : ''}`);
+      else ok(`расследование: ✕ мышью закрыл доску после разбора (доска прокручена на ${x.scrolled} точек) — полоса на месте`);
+    }
+    // снова: I открывает доску с разбором, Esc закрывает
+    await page.keyboard.press('KeyI');
+    await page.waitForSelector('[data-test=inv-debrief]', { timeout: 20_000 });
+    await frames(2);
     await page.keyboard.press('Escape');
-    if (await page.evaluate(() => !!document.querySelector('#inv'))) fail('расследование: Esc не закрыл');
+    await frames(2);
+    const again = await alive();
+    if (again.inv || !again.top || again.guard) fail(`расследование: Esc — доска ${again.inv ? 'открыта' : 'закрыта'}, полоса ${again.top ? 'на месте' : 'пропала'}${again.guard ? `, ограда: «${again.guard}»` : ''}`);
   }
 
   // справочник завода (Б1а, Б1в): F1 — «Что и как делает завод, на чём, кем и с кем»; у каждой карты шесть стадий — по

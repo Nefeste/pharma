@@ -17,6 +17,7 @@ export const en: Strings = {
     title: 'Farmzavod',
     loading: 'Loading…',
     error: 'Error',
+    panelError: (panel: string, message: string) => `Error in the “${panel}” panel: ${message}`,
     stage: 'Stage B, part 1: what is going on',
   },
   date: {
@@ -253,6 +254,7 @@ export const en: Strings = {
   machine: { run: 'Running', slow: 'Running slow', micro: 'Micro-stop', fail: 'Breakdown', wait: 'Waiting', setup: 'Changeover', off: 'Off', idle: 'Idle' },
   equipment: { idle: 'Free', run: 'Running', clean: 'Cleaning', fail: 'Breakdown', check: 'Calibration or qualification' },
   card: {
+    title: 'Card',
     close: 'Close',
     closeHint: 'Esc',
     gone: 'This is no longer at the plant',

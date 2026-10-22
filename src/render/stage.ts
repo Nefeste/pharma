@@ -188,7 +188,14 @@ export class Stage {
   /** Крупность показа кадра — веса уровней (detail.ts): люди и техника уходят в пол, штуки — в полосу, слой проступает. */
   setDetail(w: Weights) {
     this.shownD = shownOf(w);
-    this.overlay.setShown(this.shownD.layer);
+    this.overlay.setShown(this.layerOn ? 1 : this.shownD.layer);
+  }
+
+  /** Слой участка виден всегда — слой «Потоки — люди» (Б1г) включён; снят — по уровню показа. */
+  private layerOn = false;
+  forceLayer(on: boolean) {
+    this.layerOn = on;
+    this.overlay.setShown(on ? 1 : this.shownD.layer);
   }
 
   /** Стрелки перевозок и линии, загрузка мест склада — слой участка (2г). */

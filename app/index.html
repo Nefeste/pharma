@@ -6,7 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:">
   <link rel="icon" href="data:,">
   <title>Farmzavod</title>
-  <!-- из bolnitsa: app/index.html @ e0a3491 — изменено: полоса сверху, отладка и состояние (часть 0); карточка вещи — её стиль `.card`, панель склада — своя (3б); планёрка и касса — свои (3в); лаборатория (3г), расписание (3д), «Кем вы будете» (3е), прогон плана (часть 5) и доска расследования (4б) — свои; ограда панели и шапка большого окна на виду (0.0.37) — свои -->
+  <!-- из bolnitsa: app/index.html @ e0a3491 — изменено: полоса сверху, отладка и состояние (часть 0); карточка вещи — её стиль `.card`, панель склада — своя (3б); планёрка и касса — свои (3в); лаборатория (3г), расписание (3д), «Кем вы будете» (3е), прогон плана (часть 5) и доска расследования (4б) — свои; ограда панели и шапка большого окна на виду (0.0.37), рычаги, пояснение при первом событии и решение по серии (Б1г) — свои -->
   <style>
     :root {
       --panel: rgba(22, 30, 34, 0.86);
@@ -79,6 +79,7 @@
     .empty { padding: 6px; }
     /* планёрка (3в) — большое окно сверху посередине; касса — справа, как склад */
     .bad { color: #ff8a7a; }
+    .warn { color: var(--yellow); }
     .grow { flex: 1 1 auto; }
     .go { cursor: pointer; }
     .go:hover { color: #fff; text-decoration: underline; text-decoration-color: var(--accent); }
@@ -213,6 +214,15 @@
     .watching { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 45%; color: var(--accent); }
     .watching .wtext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .watching button { flex: none; }
+    /* что делать (Б1г): рычаги у строки — кнопка и что она изменит; пояснение при первом событии; решение по серии */
+    .levers { margin: 3px 0 2px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+    .lever button { font-size: 12px; padding: 1px 6px; }
+    .first { margin: 2px 0 6px; padding: 6px 8px; border-left: 3px solid var(--accent); background: rgba(255, 255, 255, .05); font-size: 12px; }
+    .first button { margin-top: 4px; }
+    .card ul.checks { margin: 0; padding-left: 0; list-style: none; }
+    .cbtns { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 2px; }
+    .cbtns .muted, .cbtns .warn { flex-basis: 100%; font-size: 12px; }
+    .upick { display: inline-flex; flex-wrap: wrap; gap: 4px; }
     /* справочник завода (Б1а) — большое окно под полосой, как доска расследования: вкладки и таблицы «как должно быть и как есть» */
     .ref { position: absolute; left: 8px; right: 8px; top: calc(var(--top-h, 48px) + 8px); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 4px; }
     .ref .phead .filters { margin-left: 12px; }

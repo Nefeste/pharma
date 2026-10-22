@@ -132,7 +132,7 @@ export function machineThing(plant: Plant, id: string): Thing | undefined {
 /**
  * Куда ведёт извещение (13-art.md, §11: «щелчок ведёт на место»): отказ — к машине, фура — к фуре, материал — к
  * расписанию, заказ — к планёрке с заказами под угрозой, отклонённая партия — к лаборатории, расследование — к доске,
- * потеря допуска и сверхурочные года на исходе — к человеку.
+ * потеря допуска и сверхурочные года на исходе — к человеку; отклонение и его оценка — к карточке отклонения (Б1г).
  */
 export function goOf(plant: Plant, n: Notice): Go | undefined {
   switch (n.kind) {
@@ -148,6 +148,9 @@ export function goOf(plant: Plant, n: Notice): Go | undefined {
       return { panel: 'morning' };
     case 'lotRejected':
       return { panel: 'lab' };
+    case 'deviation':
+    case 'assessed':
+      return { thing: { kind: 'dev', n: Number(n.id.slice(1)) } };
     case 'investigation':
     case 'invStep':
     case 'concluded':

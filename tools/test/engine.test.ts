@@ -63,7 +63,7 @@ describe('сохранение', () => {
     expect(fingerprint(copy)).toBe(fingerprint(s));
   });
 
-  test.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21])('образец схемы %d читается и живёт дальше (tools/test/fixtures/)', async v => {
+  test.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22])('образец схемы %d читается и живёт дальше (tools/test/fixtures/)', async v => {
     const json = await Bun.file(new URL(`./fixtures/save-v${v}.json`, import.meta.url)).text();
     const s = fromSave(db, json);
     expect(s.schema).toBe(SCHEMA);
@@ -71,6 +71,21 @@ describe('сохранение', () => {
     const before = s.day;
     apply(db, s, { kind: 'advance', seconds: DAY });
     expect(s.day).toBe(before + 1);
+  });
+
+  test('образец схемы 21 (Б1г): открытые отклонения — без оценки, как были; отклонение отклонённой партии — решено', async () => {
+    const raw = JSON.parse(await Bun.file(new URL('./fixtures/save-v21.json', import.meta.url)).text());
+    const open = Object.values(raw.deviations as Record<string, { id: string; status: string }>).filter(d => d.status === 'open').map(d => d.id);
+    expect(open.length).toBeGreaterThan(0);
+    const lot = Object.values(raw.lots as Record<string, { id: string; status: string }>).find(l => l.status === 'released')!;
+    lot.status = 'rejected';
+    raw.deviations.D99 = { id: 'D99', opened: raw.t, kind: 'oos', lot: lot.id, tests: [], status: 'open' };
+    const s = fromSave(db, JSON.stringify(raw));
+    expect(s.deviations.D99.status).toBe('closed');
+    for (const id of open) {
+      expect(s.deviations[id].status).toBe('open');
+      expect(s.deviations[id].assess).toBeUndefined();
+    }
   });
 
   test('образец схемы 2: у партий — свойства, приборы — по плану; 90 суток лаборатория работает, инварианты — каждый час', async () => {

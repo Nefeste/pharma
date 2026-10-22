@@ -13,6 +13,7 @@ import { planOf } from '../engine/plant';
 import { shiftEnd } from '../engine/staff';
 import { TAG } from '../engine/stock';
 import type { AssetRec, Lot, LotStatus, MachineState, PlantState, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
+import { type DevCard, devCard, type Regimes, regimesAt, type ReleaseView, releaseOf } from './devs';
 import { type SheetView, sheetOf } from './hours';
 import { type InvQuery, type InvView, invView } from './inv';
 import { type ChartQuery, type ChartView, chartView, type LabQuery, type LabView, labView } from './lab';
@@ -33,7 +34,9 @@ export type Thing =
   | { kind: 'machine'; line: number; k: number }
   | { kind: 'person'; n: number }
   | { kind: 'vehicle'; n: number }
-  | { kind: 'truck'; n: number; customer: boolean };
+  | { kind: 'truck'; n: number; customer: boolean }
+  /** отклонение (Б1г): на полу его нет — карточка открывается из извещения, планёрки и карточки серии */
+  | { kind: 'dev'; n: number };
 
 export type StockSort = 'code' | 'material' | 'supplier' | 'status' | 'left' | 'expiry';
 
@@ -144,15 +147,20 @@ export interface LotInfo {
   sku?: Id;
 }
 
+/**
+ * Карточка вещи. У паллеты ГП своей серии, ещё не решённой, — решение по серии (Б1г); у помещения и оборудования —
+ * режимы стадии (Б1г); отклонение — своя карточка (`DevCard`).
+ */
 export type CardData =
-  | { kind: 'unit'; unit: number; tag: Tag; containers: number; holds?: Holds; where: PlaceRef; lot?: LotInfo; why: Why[]; history: Hist[] }
-  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; batch?: string; recipe?: Id; stage?: string; why: Why[] }
-  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; recipe?: Id; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[] }
+  | { kind: 'unit'; unit: number; tag: Tag; containers: number; holds?: Holds; where: PlaceRef; lot?: LotInfo; release?: ReleaseView; why: Why[]; history: Hist[] }
+  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; batch?: string; recipe?: Id; stage?: string; regimes?: Regimes; why: Why[] }
+  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; recipe?: Id; parts: PartInfo[]; asset?: AssetInfo; regimes?: Regimes; why: Why[]; history: Hist[] }
   | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; sku?: Id; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[] }
   /** человек (Б3б): табельный номер, навык, допуск сегодня, обучение по матрице его роли, что изучает сейчас; табель месяца (Б4а) */
   | { kind: 'person'; person: number; tab: number; role: Id; shift: Id; skill: number; doing: Doing; adm: Admission; train: TrainRow[]; learning?: DocNow; sheet: SheetView }
   | { kind: 'vehicle'; vehicle: number; type: Id; task?: TaskKind }
   | { kind: 'truck'; truck: number; customer?: Id; supplier?: Id; po?: string; docked: boolean; open: boolean; units: number; arrived: number }
+  | DevCard
   /** вещи больше нет на заводе: паллету отгрузили, фура уехала */
   | { kind: 'gone' };
 
@@ -403,6 +411,9 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       const lot = first ? s.lots[first.lot] : undefined;
       const tasks = Object.values(s.tasks).filter(t => t.unit === u.id);
       const left = lot ? Object.values(s.containers).reduce((n, c) => n + (c.lot === lot.id ? c.qty : 0), 0) : 0;
+      // ГП своей серии, которую ещё не выпустили и не отклонили, — решение по серии (Б1г)
+      const b = lot?.batch ? s.batches[lot.batch] : undefined;
+      const release = b?.pack?.fg === lot?.id && b?.status === 'fg' ? releaseOf(s, b) : undefined;
       return {
         kind: 'unit',
         unit: thing.n,
@@ -411,6 +422,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(first ? { holds: holdsOf(db, s, u) } : {}),
         where: placeOf(db, s, u),
         ...(lot ? { lot: lotInfo(s, lot, left) } : {}),
+        ...(release ? { release } : {}),
         why: [...tasks.map(t => taskWhy(db, s, t)), ...(lot ? lotWhy(s, lot) : [])],
         history: lot ? lotHistory(s, lot) : [],
       };
@@ -421,6 +433,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       if (!def || !r) return { kind: 'gone' };
       const b = r.batch ? s.batches[r.batch] : undefined;
       const clean = Object.values(s.tasks).filter(t => t.kind === 'clean' && t.room === def.id);
+      const regimes = regimesAt(db, s, def.id);
       return {
         kind: 'room',
         room: thing.i,
@@ -430,6 +443,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         since: r.since,
         ...(b ? { batch: batchNo(b.code), recipe: b.recipe } : {}),
         ...(b && r.status === 'busy' ? { stage: db.recipes[b.recipe].stages[b.stage]?.id } : {}),
+        ...(regimes ? { regimes } : {}),
         why: [...clean.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.room === def.id)],
       };
     }
@@ -439,6 +453,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       if (!def || !e) return { kind: 'gone' };
       const b = e.batch ? s.batches[e.batch] : undefined;
       const repairs = Object.values(s.tasks).filter(t => t.kind === 'repair' && Object.values(s.parts).some(p => p.machine === def.id && p.task === t.id));
+      const regimes = regimesAt(db, s, def.room);
       return {
         kind: 'equipment',
         eq: thing.i,
@@ -448,6 +463,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(b ? { batch: batchNo(b.code), recipe: b.recipe } : {}),
         parts: partsOfMachine(db, s, def.id),
         ...(s.assets[def.id] ? { asset: assetInfo(db, s, def.id)! } : {}),
+        ...(regimes ? { regimes } : {}),
         why: [...repairs.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.asset === def.id)],
         history: maintHistory(s, def.id),
       };
@@ -509,6 +525,8 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         arrived: t.arrived,
       };
     }
+    case 'dev':
+      return devCard(db, s, thing.n) ?? { kind: 'gone' };
   }
 }
 

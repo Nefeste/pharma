@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 21;
+export const SCHEMA = 22;
 
 // ---------------------------------------------------------------- склад
 
@@ -201,12 +201,27 @@ export interface Deviation {
   param?: string;
   material?: Id;
   /**
-   * `assessed` — уполномоченное лицо оценило отклонение «без влияния на качество» и выпустило серию; `closed` —
-   * расследование решило (часть 4): его отклонение, а если серию отклонили — и другие открытые отклонения серии
+   * `assessed` — оценено «без влияния на качество» (Б1г; до схемы 22 — уполномоченным лицом при выпуске); `closed` —
+   * серию отклонили: оценкой, решением уполномоченного лица или расследованием (часть 4) — его отклонение и другие
+   * открытые отклонения серии
    */
   status: 'open' | 'assessed' | 'closed';
   /** расследование результата вне спецификации */
   inv?: string;
+  /** оценка влияния (Б1г), пока идёт или когда сделана */
+  assess?: DevAssess;
+}
+
+/**
+ * Оценка влияния отклонения (Б1г): решение поста качества — «без влияния на качество» или «отклонить серию», кто решил
+ * и когда; работа специалиста ООК по досье и результатам серии — задача, пока идёт, и когда кончилась.
+ */
+export interface DevAssess {
+  verdict: 'none' | 'reject';
+  by: string;
+  t: number;
+  task?: string;
+  done?: number;
 }
 
 /**
@@ -723,6 +738,8 @@ export interface Task {
   asset?: string;
   /** оценка пары «поставщик — изготовитель» (Б3г): рассмотрение отчёта аудитора или документов — какой пары */
   pair?: string;
+  /** оценка влияния отклонения (Б1г): какого */
+  dev?: string;
   /** работа на месте, с */
   work: number;
   /**
@@ -1180,6 +1197,11 @@ export type Command =
   | { kind: 'po'; supplier: Id; lines: PoLine[]; by?: string }
   /** задание на серию по карте: не раньше — игровые секунды; нет — сейчас */
   | { kind: 'order'; recipe: Id; notBefore?: number; by?: string; sku?: Id }
+  /**
+   * оценка влияния отклонения (Б1г): пост качества решает, специалист ООК делает работу; «без влияния» — только когда
+   * связанные испытания серии готовы и в спецификации
+   */
+  | { kind: 'assess'; deviation: string; verdict: 'none' | 'reject'; by?: string }
   /** упаковать балк серии в товарную позицию — когда балк разрешат */
   | { kind: 'pack'; batch: string; sku: Id }
   /**
@@ -1231,7 +1253,20 @@ export type Refusal =
   | 'closed'
   | 'noStep'
   | 'noCause'
-  | 'notProven';
+  | 'notProven'
+  /**
+   * оценка влияния (Б1г): такого отклонения нет; оно уже оценено или решено; его решает расследование; лаборатория ещё
+   * не решила балк серии; связанное испытание ещё не готово или вне пределов; выпуск при неоценённом отклонении серии и
+   * после оценки «отклонить серию»
+   */
+  | 'noDev'
+  | 'devDone'
+  | 'devInv'
+  | 'bulkPending'
+  | 'testPending'
+  | 'outOfSpec'
+  | 'devOpen'
+  | 'devReject';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
@@ -1254,7 +1289,8 @@ export type Notice =
   /** решение уполномоченного лица: выпущена, отклонена, держать */
   | { kind: 'batchReleased'; batch: string; lot: string }
   | { kind: 'batchRejected'; batch: string; lot: string }
-  | { kind: 'batchHeld'; batch: string }
+  /** держать: `mine` — по решению игрока, а неоценённых отклонений нет (Б1г) */
+  | { kind: 'batchHeld'; batch: string; mine?: true }
   /** фура покупателя ушла с отгрузкой */
   | { kind: 'shipped'; shipment: string; customer: Id; cases: number }
   /** заказ закрыт недопоставкой или отгружен позже срока */
@@ -1268,7 +1304,7 @@ export type Notice =
    * материал не пришёл к серии из расписания (`pack` — к её упаковке); номер серии — для слов извещения
    */
   | { kind: 'truckWait'; truck: string; po: string; supplier: Id }
-  | { kind: 'orderRisk'; order: string; customer: Id; due: number; missing: number; pending: number }
+  | { kind: 'orderRisk'; order: string; customer: Id; due: number; missing: number; pending: number; short: Id[] }
   | { kind: 'materialLate'; batch: string; code: string; pack?: true; short: { material: Id; qty: number }[] }
   | { kind: 'repaired'; machine: string; part: string; planned: boolean }
   /** потерял допуск (Б3б): срок записи кончился или ввели редакцию, которой его не учили; роль и номер — для слов */
@@ -1288,4 +1324,6 @@ export type Notice =
   /** результат вне спецификации — расследование; методика и номер серии — для слов извещения */
   | { kind: 'investigation'; id: string; batch: string; lot: string; method: Id; code: string }
   | { kind: 'invStep'; id: string; step: string }
-  | { kind: 'concluded'; id: string; cause: string; fate: 'reject' | 'release' };
+  | { kind: 'concluded'; id: string; cause: string; fate: 'reject' | 'release' }
+  /** отклонение оценено (Б1г): без влияния или серию отклонили; номер серии — для слов извещения */
+  | { kind: 'assessed'; id: string; verdict: 'none' | 'reject'; code: string };

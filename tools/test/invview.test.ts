@@ -63,7 +63,8 @@ describe('доска до решения', () => {
 
   test('что случилось, участники; шаги — сделан, идёт, можно; версии по уликам', () => {
     const v = invView(db, s, { view: 'inv' });
-    expect(v.list).toEqual([{ id: inv.id, batch: 'PA0020927', opened: inv.opened, status: 'open' }]);
+    // номера серий продолжают счёт года: на складе ГП на старте — PA001…PA006 июля и августа (Б1г)
+    expect(v.list).toEqual([{ id: inv.id, batch: 'PA0080927', opened: inv.opened, status: 'open' }]);
     const b = v.board!;
     expect(b.what).toMatchObject({ method: 'test.dissolution', result: s.tests[inv.test].result, min: s.tests[inv.test].min, recipe: s.batches.B2.recipe });
     expect(b.who.lots.some(l => l.material === 'mat.api.paracetamol')).toBe(true);

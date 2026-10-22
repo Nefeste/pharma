@@ -33,11 +33,13 @@ function until(s: PlantState, day: number, sec: number) {
 }
 
 describe('коллега планирования', () => {
-  test('положение позиции на старте — серии сценария по номиналу; спроса ещё не видно', () => {
+  test('положение позиции на старте — склад ГП и серии сценария по номиналу; спроса ещё не видно', () => {
     const s = newPlant(db, { scenario: SC });
     const per = casesOf(db.recipes[RCP], db.skus[N20]);
     const n20 = sc.batches.filter(b => b.sku === N20).length;
-    expect(positionOf(db, s, N20, 28)).toEqual({ sku: N20, cases: n20 * per, ordered: 0, span: 0, work: 0 });
+    // склад ГП на старте (Б1г) — спрос покупателей сценария на `fg.days` суток, ящиками
+    const fg = Math.ceil((sc.customers.reduce((n, c) => n + db.customers[c].demand[N20], 0) * sc.fg!.days) / db.skus[N20].case.per);
+    expect(positionOf(db, s, N20, 28)).toEqual({ sku: N20, cases: fg + n20 * per, ordered: 0, span: 0, work: 0 });
   });
 
   test('пока спроса не видно — позиции по очереди, на тот же день через две недели, в начале смены аппаратчиков', () => {

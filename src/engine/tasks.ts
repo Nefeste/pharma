@@ -58,6 +58,7 @@ export interface NewTask {
   doc?: Id;
   asset?: string;
   pair?: string;
+  dev?: string;
   norm?: [number, number];
 }
 

@@ -23,11 +23,13 @@
 // аудит у изготовителя или рассмотрение специалистом ООК, — а по рамочным договорам уже куплено; визита и расследования
 // здесь нет — их держат образцы схем 19 и 14. С схемы 21 — посреди сверхурочных: кто-то кончает после смены задачу,
 // взятую в смену, а у других в табеле уже есть отрезки после смены; оценки поставщика здесь нет — её держит образец
-// схемы 20.
+// схемы 20. С схемы 22 — посреди оценки отклонения: игрок на посту качества оценивает, что уже можно, — у одного
+// отклонения работа специалиста ООК идёт, другое уже оценено; сверхурочных здесь нет — их держит образец схемы 21.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { DAY, MIN, momentOf } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
+import { assessBlock, linkedTests } from '../../src/engine/qa';
 import { toSave } from '../../src/engine/save';
 import { SCHEMA } from '../../src/engine/types';
 
@@ -58,8 +60,10 @@ const visiting = () => Object.values(s.assets).some(a => a.visit?.from !== undef
 const evaluating = () => Object.values(s.pairs).some(p => p.eval !== undefined) && Object.values(s.contracts).some(c => c.lines.some(l => l.bought > 0));
 // работает после конца смены сейчас, а у другого в табеле уже есть сверхурочный отрезок (Б4а)
 const overtime = () => Object.values(s.people).some(p => p.task && p.until !== undefined && s.t > p.until) && Object.values(s.people).filter(p => p.ot.length > 0).length >= 2;
+// оценка отклонения идёт, а другое уже оценено (Б1г)
+const assessing = () => Object.values(s.deviations).some(d => d.assess?.task !== undefined) && Object.values(s.deviations).some(d => d.assess?.done !== undefined);
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : seated() && numbered() && switched() && overtime();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : seated() && numbered() && assessing();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 if (SCHEMA >= 13) apply(db, s, { kind: 'seat', seats: ['director'] });
@@ -74,6 +78,13 @@ while (s.t < end && !busy()) {
   if (SCHEMA >= 14)
     for (const i of Object.values(s.investigations))
       if (i.status === 'open' && i.runs.length === 0) for (const step of ['records', 'dossier']) apply(db, s, { kind: 'investigate', inv: i.id, step, by: 'player' });
+  // с схемы 22 — игрок на посту качества оценивает отклонения, которые уже можно: испытания готовы — по ним
+  if (SCHEMA >= 22)
+    for (const d of Object.values(s.deviations))
+      if (!assessBlock(s, d)) {
+        const tests = linkedTests(db, s, d);
+        if (tests.every(x => x.done)) apply(db, s, { kind: 'assess', deviation: d.id, verdict: tests.some(x => x.out > 0) ? 'reject' : 'none', by: 'player' });
+      }
   apply(db, s, { kind: 'advance', seconds: SCHEMA < 6 ? 10 * MIN : MIN });
 }
 writeFileSync(new URL(`./fixtures/save-v${SCHEMA}.json`, import.meta.url), `${toSave(s)}\n`);

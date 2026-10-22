@@ -49,6 +49,8 @@ export const ICON_OF: Record<TaskKind | 'pack' | 'test' | 'truck' | 'visit' | 'a
   // работа подрядчика и её приёмка (Б3в) — проверка
   accept: 'check',
   vendorReview: 'check',
+  // оценка влияния отклонения (Б1г) — проверка по досье и результатам
+  devAssess: 'check',
   visit: 'check',
   audit: 'check',
 };

@@ -95,7 +95,7 @@ describe('извещение ведёт на место', () => {
   test('фура — к фуре; материал — к расписанию; заказ — к планёрке; партия — к лаборатории; расследование — к доске', () => {
     expect(goOf(plant, { kind: 'truckWait', truck: 'T7', po: 'P1', supplier: 'sup.api' })).toEqual({ thing: { kind: 'truck', n: 7, customer: false } });
     expect(goOf(plant, { kind: 'materialLate', batch: 'B9', code: '', short: [] })).toEqual({ panel: 'gantt' });
-    expect(goOf(plant, { kind: 'orderRisk', order: 'O1', customer: 'cus.national', due: 0, missing: 1, pending: 0 })).toEqual({ panel: 'morning' });
+    expect(goOf(plant, { kind: 'orderRisk', order: 'O1', customer: 'cus.national', due: 0, missing: 1, pending: 0, short: ['sku.paracetamol500.n20'] })).toEqual({ panel: 'morning' });
     expect(goOf(plant, { kind: 'lotRejected', lot: 'L1', deviation: 'D1' })).toEqual({ panel: 'lab' });
     expect(goOf(plant, { kind: 'investigation', id: 'I1', batch: 'B2', lot: 'L1', method: 'test.dissolution', code: 'PA002' })).toEqual({ inv: 'I1' });
     expect(goOf(plant, { kind: 'qualLost', person: 'E9', role: 'role.operator', tab: 1009, doc: 'SOP-0015' })).toEqual({ thing: { kind: 'person', n: 9 } });

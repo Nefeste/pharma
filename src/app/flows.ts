@@ -6,7 +6,7 @@ import type { ContentDb } from '../content/types';
 import { RACK } from '../engine/nav';
 import type { PlantPlan } from '../engine/plant';
 import type { Layout } from '../render/layout';
-import type { LineRow, TruckRow, Unpacked, UnitRow } from '../sim/pack';
+import type { LineRow, PersonRow, TruckRow, Unpacked, UnitRow } from '../sim/pack';
 import { dockFront } from './scene';
 
 /**
@@ -43,6 +43,31 @@ export function movesOf(plan: PlantPlan, prev: ReadonlyMap<number, UnitRow>, pre
     const from = areaOf(plan, old, prevTrucks);
     const to = areaOf(plan, u, sl.trucks);
     if (from && to && from !== to) out.push({ from, to });
+  }
+  return out;
+}
+
+/**
+ * Где человек для слоя «Потоки — люди» (Б1г): помещение по его месту в срезе; вне помещений — `undefined`. Место в
+ * срезе движок пишет, когда человек пришёл: на пост, к работе или к выходу.
+ */
+export function roomOfPoint(l: Layout, x: number, z: number): string | undefined {
+  const i = l.rooms.findIndex(r => x >= r.x && x <= r.x + r.w && z >= r.z && z <= r.z + r.d);
+  return i >= 0 ? `room:${i}` : undefined;
+}
+
+/**
+ * Переходы людей между помещениями за срез (Б1г): у кого помещение в новом срезе не то, что было, — переход из прежнего
+ * в новое. `prev` — помещение каждого по номеру, его срез перепишет; вне смены и вне помещений — не считается.
+ */
+export function peopleMoves(l: Layout, prev: Map<number, string>, people: readonly PersonRow[]): Move[] {
+  const out: Move[] = [];
+  for (const p of people) {
+    const now = p.present ? roomOfPoint(l, p.x / 100, p.z / 100) : undefined;
+    const was = prev.get(p.person);
+    if (now && was && now !== was) out.push({ from: was, to: now });
+    if (now) prev.set(p.person, now);
+    else prev.delete(p.person);
   }
   return out;
 }

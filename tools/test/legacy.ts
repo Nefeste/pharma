@@ -64,6 +64,8 @@ sc.stock = [
 ];
 delete sc.plan;
 delete sc.supply;
+// склада ГП на старте в прежней жизни завода нет (Б1г): первые заказы ждали первых серий
+delete sc.fg;
 legacy.customers['cus.national'].demand = { [N20]: 600, [N10]: 300 };
 legacy.customers['cus.regional'].demand = { [N20]: 300, [N10]: 200 };
 // неснижаемый запас пуансонов — прежний, до второго продукта (Б2б): резерва нет, заказ — когда кончились

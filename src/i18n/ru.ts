@@ -99,6 +99,9 @@ export const ru = {
     investigation: (method: string, batch: string): string => `${method} вне спецификации: серия ${batch} — расследование`,
     qualLost: (role: string, tab: number, doc: string) => `${role}, таб. №\u00a0${tab}: с сегодня не допущен — ${doc}`,
     overtimeLow: (role: string, tab: number, left: string, limit: string) => `${role}, таб. №\u00a0${tab}: сверхурочных за год осталось ${left} из ${limit} — дальше после смены задерживается только на них`,
+    /** перевод на другой график (Б4б) */
+    rostered: (who: string, shift: string, day: string) => `${who}: с ${day} — в графике «${shift}»`,
+    rosterCancel: (who: string) => `${who}: перевод на другой график отменён`,
     pairSuspended: (supplier: string, maker: string) => `Пара приостановлена: ${supplier} — ${maker}. Срок одобрения вышел, по ней не заказывают`,
     assetExpired: (work: string, what: string, inv: string) => `${work}: срок вышел — ${what}, ${inv} не работает`,
     invStep: 'Шаг расследования сделан',
@@ -130,6 +133,9 @@ export const ru = {
       outOfSpec: 'связанное испытание серии вне пределов: «без влияния» нельзя',
       devOpen: 'у серии неоценённое отклонение: выпустить можно после оценки',
       devReject: 'по оценке отклонения серию отклоняют',
+      noPerson: 'такого человека нет',
+      noShift: 'такого графика нет',
+      same: 'человек и так в этом графике',
     } as Partial<Record<string, string>>,
   },
   view: {
@@ -338,6 +344,15 @@ export const ru = {
     role: 'Роль',
     shift: 'График',
     /** человек (Б3б): табельный номер, навык, допуск, обучение */
+    /** перевод на другой график (Б4б): ждущий — с какого дня; учётный период сменного по циклу */
+    next: (day: string, shift: string) => `с ${day} — ${shift}`,
+    rosterTo: 'Перевести на график…',
+    rosterHint: (day: string) => `Перевод — с ${day}: график сменности доводят до работника не позже чем за месяц (ст. 103 ТК РФ)`,
+    rosterCancel: 'Отменить перевод',
+    sa: (from: string, to: string) => `Учётный период ${from}–${to}`,
+    saLine: (norm: string, plan: string, worked: string, after: string, off: number) => `Норма ${norm} · по графику ${plan} · отработано ${worked}, после смен ${after} · снято смен: ${off}`,
+    saHint:
+      'Суммированный учёт (ст. 104 ТК РФ): сверхурочные — отработанное без праздничных часов сверх нормы периода, их считают и оплачивают в его конце. Снятые смены — дополнительные выходные, чтобы график не планировал сверхурочных, и вторая смена подряд на стыке графиков.',
     person: (role: string, tab: number) => `${role} · таб. №\u00a0${tab}`,
     skill: 'Навык',
     admission: 'Допуск',
@@ -537,6 +552,9 @@ export const ru = {
       near: (who: string, h: string, limit: string) => `Ближе к пределу года: ${who} — ${h} из ${limit}`,
       holiday: (day: string) => `${day} — нерабочий праздник`,
       short: (day: string) => `${day} — короткий день: смены на час короче`,
+      /** переводы и дополнительные выходные (Б4б) */
+      move: (who: string, shift: string, day: string) => `${who} — в график «${shift}» с ${day}`,
+      extra: (shift: string, day: string, n: number) => `${day} — ${shift}: дополнительный выходной у ${n} ${pluralRu(n, 'человека', 'человек', 'человек')}`,
     },
     pause: 'Пауза на планёрке',
     pauseHint: 'Ставить мир на паузу в 08:00, когда открывается планёрка',
@@ -592,6 +610,8 @@ export const ru = {
     top: (balance: string) => `Касса ${balance}`,
     /** части зарплаты (Б4а) */
     parts: (salary: string, night: string, over: string, off: string) => `оклады ${salary} · ночные ${night} · сверхурочные ${over} · в выходной ${off}`,
+    /** сверхурочные по итогу учётного периода (Б4б) */
+    period: (sum: string) => ` · сверхурочные за учётный период ${sum}`,
   },
   /** панель лаборатории (3г): очередь проб и контрольная карта средней массы таблеток */
   lab: {
@@ -751,9 +771,21 @@ export const ru = {
     selfMaker: 'сам изготовитель',
     distributor: 'дистрибьютор',
     roleCols: { name: 'Роль', dept: 'Отдел', salary: 'Зарплата в месяц', shifts: 'По сменам', present: 'На заводе сейчас', busy: 'Заняты задачей' },
-    shiftCols: { name: 'Смена', days: 'Дни', hours: 'Часы', break: 'Перерыв' },
+    shiftCols: { name: 'Смена', kind: 'Вид', days: 'Дни', hours: 'Часы', break: 'Перерыв', account: 'Учёт', now: 'Людей', next: 'С 1-го числа' },
+    /** графики (Б4б): вид, рисунок, учётный период, календарь месяца по графикам и ролям */
+    shiftKind: { week: 'пятидневка', cycle: 'сменный по циклу' } as Record<string, string>,
+    cycleHours: (d0: number, d1: number, n0: number, n1: number) => `день ${d0}–${d1}, ночь ${n0}–${n1}`,
+    cycleMarks: { day: 'Д', night: 'Н', off: '·' } as Record<string, string>,
+    account: (n: number): string => (n === 1 ? 'месяц' : n === 3 ? 'квартал' : n === 6 ? 'полугодие' : n === 12 ? 'год' : `${n} мес.`),
+    weekAccount: 'неделя',
+    shiftCal: 'Графики месяца',
+    shiftCalMonth: (month: string, y: number) => `${month} ${y}`,
+    shiftCalNote:
+      'Д — дневная смена, Н — ночная, · — нет смены; число — людей графика в смене; «×» — у людей графика дополнительный выходной: по рисунку смена, а с ней часов больше нормы учётного периода (ст. 104 ТК РФ). Перевод — с 1-го числа месяца, до которого не меньше месяца (ст. 103).',
+    roleDay: (role: string) => `${role}: днём`,
+    roleNight: (role: string) => `${role}: ночью`,
     /** люди и матрица обучения (Б3б) */
-    personCols: { tab: 'Таб. №', role: 'Роль', shift: 'График', skill: 'Навык', adm: 'Допуск', month: 'Месяц: отработано из нормы', over: 'Сверхурочно за месяц', year: 'Сверхурочно за год' },
+    personCols: { tab: 'Таб. №', role: 'Роль', shift: 'График', next: 'Перевод', skill: 'Навык', adm: 'Допуск', month: 'Месяц: отработано из нормы', over: 'Сверхурочно за месяц', year: 'Сверхурочно за год' },
     ofNorm: (a: string, b: string) => `${a} из ${b}`,
     /** перерыв для отдыха и питания (Б4а): нет — отдых и еда в рабочее время */
     noBreak: 'в рабочее время',
@@ -872,6 +904,8 @@ export const ru = {
     repair: (planned: boolean, part: string, machine: string) => `${planned ? 'Замена по плану' : 'Ремонт'}: ${part} · ${machine}`,
     visit: (work: string, machine: string, inv: string) => `${work} · ${machine}, ${inv}`,
     contractor: 'подрядчик',
+    /** чья смена ведёт работу (Б4б) */
+    crew: (shift: string) => `смена «${shift}»`,
     audit: 'Аудит изготовителя',
     auditor: 'сторонний аудитор',
     maker: (maker: string, country: string) => `${maker}, ${country}`,

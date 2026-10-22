@@ -280,7 +280,7 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     for (const p of Object.values(s.people)) {
       p.ot = [];
       p.otYear = { y, sec: 0 };
-      if (p.task) p.until = shiftEndAt(db, s, p.shift, s.t) ?? s.t;
+      if (p.task) p.until = shiftEndAt(db, s, p, s.t) ?? s.t;
     }
     for (const t of Object.values(raw.tasks as Record<string, Task>)) if (t.kind === 'stage' && t.batch) t.norm = stageTaskNorm(db, (raw.batches as Record<string, Batch>)[t.batch]);
     raw.policy = Object.fromEntries(Object.keys(newPolicy(db, sc.id)).map(d => [d, 'need']));
@@ -298,6 +298,10 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     }
     return raw;
   },
+  // 22 → 23 (Б4б): у человека — графики с днями начала, часы после смен за учётный период и итог прошлого периода. В
+  // прежних сохранениях их нет: каждый — в своём графике с начала завода, переводов нет, часы периода — ноль; это и
+  // значит отсутствие полей, менять нечего. Схема новая, чтобы 0.0.39 не открыл сохранение с переводами и не потерял их.
+  22: raw => raw,
 };
 
 export function toSave(s: PlantState): string {

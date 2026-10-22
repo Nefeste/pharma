@@ -47,6 +47,7 @@ export function Cash({ hud, actions }: { hud: Hud; actions: Actions }) {
         {r.parts ? (
           <div className="muted small" data-test="cash-wage-parts">
             {T.cash.parts(money(r.parts.salary), money(r.parts.night), money(r.parts.over), money(r.parts.off))}
+            {r.parts.period ? <span data-test="cash-wage-period">{T.cash.period(money(r.parts.period))}</span> : null}
           </div>
         ) : null}
       </td>

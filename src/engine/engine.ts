@@ -12,6 +12,7 @@ import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
 import { hoursHour, newPolicy, overtimeCommand } from './hours';
+import { rosterCommand, rosterDay } from './shifts';
 import { concludeCommand, invDone, investigateCommand, invStep, newIncident } from './investigation';
 import { labDone, runDone, rushCommand, startSampling } from './lab';
 import { leanHour, leanStep, newLoss } from './lean';
@@ -171,7 +172,7 @@ export function apply(db: ContentDb, s: PlantState, cmd: Command, more?: More): 
 
 function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notice[] {
   // своё и чужое (3е): команда игрока чужого поста — отказ с местом, чья она
-  const own = foreign(s, cmd);
+  const own = foreign(s, cmd, db);
   if (own) return [{ kind: 'refused', cmd: cmd.kind, why: 'notYours', detail: own }];
   switch (cmd.kind) {
     case 'advance':
@@ -252,6 +253,12 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       settle(db, s);
       return notices;
     }
+    case 'roster': {
+      // перевод на другой график (Б4б): с 1-го числа через месяц — сейчас раздавать нечего
+      const notices: Notice[] = [];
+      rosterCommand(db, s, cmd, notices);
+      return notices;
+    }
   }
 }
 
@@ -315,8 +322,12 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       schedule(s.agenda, s.t + HOUR, { kind: 'hour' });
       schedule(s.agenda, s.t + HOUR - LAST_CALL, { kind: 'leave' });
       for (const p of Object.values(s.people)) goHome(db, s, p);
-      // полночь: кто потерял допуск, кому пора учиться (Б3б)
-      if (momentOf(s.start, s.t).sec === 0) trainDay(db, s, notices);
+      // полночь: кто потерял допуск, кому пора учиться (Б3б); переводы на другой график и итог учётного периода (Б4б) —
+      // до зарплаты 1-го числа
+      if (momentOf(s.start, s.t).sec === 0) {
+        trainDay(db, s, notices);
+        rosterDay(db, s, momentOf(s.start, s.t).day);
+      }
       startSampling(db, s);
       cashHour(db, s, notices);
       // места и оборудование (Б3в): в полночь — у кого вышел срок; коллега техслужбы назначает визиты; подрядчик

@@ -242,6 +242,13 @@
     .cal .work, .cal .short { background: rgba(255,255,255,.06); }
     .cal .short { text-decoration: underline dotted; }
     .cal .holiday { color: #ff8a7a; font-weight: 700; }
+    .scal { display: grid; gap: 1px; font-size: 10px; overflow-x: auto; }
+    .scal span { text-align: center; padding: 1px 0; border-radius: 2px; white-space: nowrap; }
+    .scal .sname { text-align: left; padding-right: 6px; }
+    .scal .wd, .scal .off { color: var(--muted); }
+    .scal .day { background: rgba(255,255,255,.08); }
+    .scal .night { background: rgba(120,140,255,.18); }
+    .scal .extra { background: rgba(255,138,122,.22); color: #ff8a7a; }
     .calkey { margin-right: 10px; }
     .calkey.holiday { color: #ff8a7a; font-weight: 700; }
     .calkey.short { text-decoration: underline dotted; }

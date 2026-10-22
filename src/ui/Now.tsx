@@ -106,6 +106,12 @@ export function Now({ hud, actions }: { hud: Hud; actions: Actions }) {
                         </span>
                         <span className="muted small">
                           {rowWho(r)}
+                          {r.crew ? (
+                            <span data-test="now-crew">
+                              {' · '}
+                              {T.now.crew(named(db?.shifts[r.crew]?.name, r.crew))}
+                            </span>
+                          ) : null}
                           {r.over !== undefined ? (
                             <span className="warn" data-test="now-over">
                               {' · '}

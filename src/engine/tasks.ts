@@ -447,7 +447,7 @@ export function release(db: ContentDb, s: PlantState, t: Task) {
     p.x = endAt.x;
     p.z = endAt.z;
     // работа после конца смены — в табель сверхурочно (Б4а); кончил после смены — уходит через вход
-    endTask(s, p);
+    endTask(db, s, p);
     goHome(db, s, p);
   }
   if (t.vehicle) {

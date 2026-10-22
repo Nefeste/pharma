@@ -4,7 +4,7 @@
 // модели; здесь — слова и таблицы. Любую таблицу можно упорядочить по столбцу и сузить поиском по вкладке. Сколько идёт
 // работа сейчас, окно считает по своим часам от мгновения её начала. Коды материалов и шапки документов (Б3а) — из базы,
 // какая редакция действует сегодня — из вида.
-import { type ReactNode, useState } from 'react';
+import { Fragment, type ReactNode, useState } from 'react';
 import { DEPTS, type Dept, type OvertimeMode } from '../content/types';
 import { daysFromCivil, weekday } from '../engine/core/calendar';
 import type { DocKind } from '../engine/docs';
@@ -337,6 +337,74 @@ function Lab({ v, q }: { v: RefView; q: string }) {
   );
 }
 
+/**
+ * Графики месяца (Б4б): этот и следующий месяц; по графику — сутки: Д, Н или «·», число людей графика в смене, «×» — у
+ * людей графика дополнительный выходной; по роли — сколько людей днём и ночью. Графики без людей в месяце не видны.
+ */
+function ShiftCal({ v }: { v: RefView }) {
+  const [k, setK] = useState(0);
+  const mo = v.shiftCal[Math.min(k, v.shiftCal.length - 1)];
+  if (!mo) return null;
+  const days = mo.rows[0]?.days.length ?? 0;
+  const rows = mo.rows.filter(r => r.days.some(d => d.of > 0));
+  return (
+    <section className="rsec" data-test="ref-shiftcal" data-month={`${mo.y}-${mo.m}`}>
+      <div className="phead">
+        <b>{T.ref.shiftCal}</b>
+        <span>{T.ref.shiftCalMonth(T.cash.months[mo.m - 1], mo.y)}</span>
+        <button type="button" disabled={k === 0} onClick={() => setK(k - 1)} data-test="shiftcal-prev">
+          {T.ref.calPrev}
+        </button>
+        <button type="button" disabled={k >= v.shiftCal.length - 1} onClick={() => setK(k + 1)} data-test="shiftcal-next">
+          {T.ref.calNext}
+        </button>
+      </div>
+      <div className="scal" style={{ gridTemplateColumns: `minmax(9em, auto) repeat(${days}, 1.9em)` }}>
+        <span />
+        {Array.from({ length: days }, (_, i) => (
+          <span key={i} className="wd">
+            {i + 1}
+          </span>
+        ))}
+        {rows.map(r => (
+          <Fragment key={r.shift}>
+            <span className="sname">{named(db?.shifts[r.shift]?.name, r.shift)}</span>
+            {r.days.map((d, i) => {
+              const extra = d.k !== 'off' && d.n < d.of;
+              return (
+                <span key={i} className={`${d.k}${extra ? ' extra' : ''}`} data-test="shiftcal-cell" data-shift={r.shift} data-k={d.k} data-n={d.n} data-of={d.of}>
+                  {d.k === 'off' ? T.ref.cycleMarks.off : extra ? `×${d.n > 0 ? d.n : ''}` : `${T.ref.cycleMarks[d.k]}${d.n}`}
+                </span>
+              );
+            })}
+          </Fragment>
+        ))}
+        {mo.roles.map(r => (
+          <Fragment key={r.role}>
+            <span className="sname muted">{T.ref.roleDay(named(db?.roles[r.role]?.name, r.role))}</span>
+            {r.day.map((n, i) => (
+              <span key={i} className="muted">
+                {n > 0 ? n : ''}
+              </span>
+            ))}
+            {r.night.some(n => n > 0) ? (
+              <>
+                <span className="sname muted">{T.ref.roleNight(named(db?.roles[r.role]?.name, r.role))}</span>
+                {r.night.map((n, i) => (
+                  <span key={i} className="muted">
+                    {n > 0 ? n : ''}
+                  </span>
+                ))}
+              </>
+            ) : null}
+          </Fragment>
+        ))}
+      </div>
+      <div className="muted small">{T.ref.shiftCalNote}</div>
+    </section>
+  );
+}
+
 /** Производственный календарь (Б4а): месяц сеткой по дням недели, листать на год вперёд; норма часов месяца. */
 function Calendar({ v }: { v: RefView }) {
   const [k, setK] = useState(0);
@@ -428,11 +496,16 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
     { name: r.present, text: x => num(x.present), num: x => x.present },
     { name: r.busy, text: x => num(x.busy), num: x => x.busy },
   ];
+  // графики (Б4б): пятидневка — дни недели и часы; сменный по циклу — рисунок, часы дня и ночи, учётный период
   const shifts: Col<RefShift>[] = [
     { name: s.name, text: x => named(db?.shifts[x.id]?.name, x.id) },
-    { name: s.days, text: x => x.days.map(d => T.date.weekdays[d]).join(', '), num: x => x.days.length },
-    { name: s.hours, text: x => T.ref.hours(x.from, x.to), num: x => x.from },
+    { name: s.kind, text: x => T.ref.shiftKind[x.cycle ? 'cycle' : 'week'] },
+    { name: s.days, text: x => (x.cycle ? x.cycle.pattern.map(d => T.ref.cycleMarks[d]).join(' ') : x.days.map(d => T.date.weekdays[d]).join(', ')), num: x => (x.cycle ? x.cycle.pattern.length : x.days.length) },
+    { name: s.hours, text: x => (x.cycle ? T.ref.cycleHours(x.cycle.day[0], x.cycle.day[1], x.cycle.night[0], x.cycle.night[1]) : T.ref.hours(x.from, x.to)), num: x => x.from },
     { name: s.break, text: x => (x.break > 0 ? durText(x.break) : T.ref.noBreak), num: x => x.break },
+    { name: s.account, text: x => (x.cycle ? T.ref.account(x.cycle.account) : T.ref.weekAccount) },
+    { name: s.now, text: x => num(x.now), num: x => x.now },
+    { name: s.next, text: x => num(x.next), num: x => x.next },
   ];
   // люди с допуском и матрица обучения (Б3б)
   const pc = T.ref.personCols;
@@ -442,6 +515,7 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
     { name: pc.tab, text: x => String(x.tab), show: x => <span className="mono">{x.tab}</span>, num: x => x.tab },
     { name: pc.role, text: x => named(db?.roles[x.role]?.name, x.role) },
     { name: pc.shift, text: x => named(db?.shifts[x.shift]?.name, x.shift) },
+    { name: pc.next, text: x => (x.next ? T.card.next(dayText(x.next.from), named(db?.shifts[x.next.shift]?.name, x.next.shift)) : '—') },
     { name: pc.skill, text: x => num(x.skill), num: x => x.skill },
     { name: pc.adm, text: x => admText(x.adm), show: x => <span className={admClass(x)}>{admText(x.adm)}</span> },
     // рабочее время (Б4а): по табелю месяца и за год
@@ -477,8 +551,9 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
         <Table test="ref-people" cols={people} items={v.people} keyOf={x => String(x.person)} q={q} />
       </section>
       <section className="rsec">
-        <Table cols={shifts} items={v.shifts} keyOf={x => x.id} q={q} />
+        <Table test="ref-shifts" cols={shifts} items={v.shifts} keyOf={x => x.id} q={q} />
       </section>
+      <ShiftCal v={v} />
       <Policies v={v} hud={hud} actions={actions} />
       <Calendar v={v} />
       <section className="rsec">

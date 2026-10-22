@@ -190,6 +190,11 @@ export const scenario = z.strictObject({
    */
   policies: z.strictObject({ overtime: z.enum(['need', 'finish']) }),
   /**
+   * учётный период суммированного учёта сменных графиков по циклу (Б4б; ст. 104 ТК РФ), месяцев: делитель года, не
+   * длиннее года — load.ts
+   */
+  account: z.number().int().min(1).max(12),
+  /**
    * склад ГП на старте (Б1г): выпущенная ГП позиций плана выпуска в обороте — на столько суток спроса покупателей;
    * серии произведены от `age[1]` до `age[0]` суток до начала
    */
@@ -344,18 +349,35 @@ export const vehicle = z.strictObject({
   liftPerLevel: z.number().int().min(0),
 });
 
+/** Часы смены по циклу (Б4б): с и до, целые часы от полуночи; ночная кончается на следующие сутки. */
+const hours = z.tuple([z.number().int().min(0).max(23), z.number().int().min(0).max(24)]);
+
+/**
+ * График (геймдизайн, §8.3): пятидневка — дни недели и часы смены; сменный по циклу (Б4б) — рисунок по суткам от дня
+ * отсчёта со сдвигом бригады, часы дневной и ночной смены. Одно из двух — load.ts.
+ */
 export const shift = z.strictObject({
   id: z.string(),
   name: text,
   /** 1 — понедельник … 7 — воскресенье */
-  days: z.array(z.number().int().min(1).max(7)).min(1),
-  from: z.number().int().min(0).max(23),
-  to: z.number().int().min(1).max(24),
+  days: z.array(z.number().int().min(1).max(7)).min(1).optional(),
+  from: z.number().int().min(0).max(23).optional(),
+  to: z.number().int().min(1).max(24).optional(),
   /**
    * перерыв для отдыха и питания, ч (Б4а): от 30 минут до 2 часов, в рабочее время не входит (ст. 108 ТК РФ); нет —
    * отдых и еда в рабочее время, где перерыв невозможен по условиям производства (ст. 108, ч. 3)
    */
   break: z.number().min(0.5).max(2).optional(),
+  /** сменный по циклу (Б4б): день отсчёта рисунка, сдвиг бригады в сутках, рисунок, часы дневной и ночной смены */
+  cycle: z
+    .strictObject({
+      from: date,
+      offset: z.number().int().min(0).max(60),
+      pattern: z.array(z.enum(['day', 'night', 'off'])).min(2).max(28),
+      day: hours,
+      night: hours,
+    })
+    .optional(),
 });
 
 /**

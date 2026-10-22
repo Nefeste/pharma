@@ -384,6 +384,16 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                   {x.kind === 'holiday' ? T.morning.hours.holiday(dayText(x.day)) : T.morning.hours.short(dayText(x.day))}
                 </div>
               ))}
+              {v.hours.moves.map(x => (
+                <div key={`m${x.person}`} className="go" onClick={go({ kind: 'person', n: x.person })} data-test="morning-move">
+                  {T.morning.hours.move(T.card.person(named(db?.roles[x.role]?.name, x.role), x.tab), named(db?.shifts[x.shift]?.name, x.shift), dayText(x.from))}
+                </div>
+              ))}
+              {v.hours.extra.map(x => (
+                <div key={`e${x.shift}${x.day}`} className="muted" data-test="morning-extra">
+                  {T.morning.hours.extra(named(db?.shifts[x.shift]?.name, x.shift), dayText(x.day), x.n)}
+                </div>
+              ))}
             </div>
             <Rows
               title={T.assets.morningTitle}

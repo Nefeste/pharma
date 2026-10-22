@@ -1,0 +1,9 @@
+# 2/2 по 12 часов в четыре бригады (Б4б): как бригада 1 (c1.yaml), со сдвигом на 4 суток
+id: shift.c3
+name: { ru: "12 ч, бригада 3", en: "12 h, crew 3" }
+cycle:
+  from: 2027-09-01
+  offset: 4
+  pattern: [day, day, off, off, night, night, off, off]
+  day: [8, 20]
+  night: [20, 8]

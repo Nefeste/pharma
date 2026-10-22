@@ -244,6 +244,8 @@ export interface Scenario {
   partners: ScenarioPartners;
   /** политики отделов на старте (Б4а): сверхурочные — src/engine/hours.ts */
   policies: { overtime: OvertimeMode };
+  /** учётный период суммированного учёта сменных графиков по циклу, месяцев (Б4б): src/engine/shifts.ts */
+  account: number;
   /**
    * склад ГП на старте (Б1г; геймдизайн, §17): выпущенная ГП позиций плана выпуска в обороте — на `days` суток спроса
    * покупателей сценария; серии произведены в рабочие дни от `age[1]` до `age[0]` суток до начала —
@@ -512,7 +514,27 @@ export interface VehicleType {
   liftPerLevel: number;
 }
 
-/** График: дни недели (0 — понедельник) и часы смены. */
+/** Сутки рисунка сменного графика по циклу (Б4б): дневная смена, ночная, выходной. */
+export type CycleDay = 'day' | 'night' | 'off';
+
+/**
+ * Рисунок сменного графика (Б4б): с дня отсчёта `from` (номер дня от 1970-01-01) со сдвигом бригады `offset` суток сутки
+ * идут по рисунку по кругу; часы дневной и ночной смены — с и до от полуночи, ночная кончается на следующие сутки. Цикл
+ * не смотрит на производственный календарь: смены идут и в праздники (ст. 113 ТК РФ).
+ */
+export interface Cycle {
+  from: number;
+  offset: number;
+  pattern: CycleDay[];
+  day: [number, number];
+  night: [number, number];
+}
+
+/**
+ * График: пятидневка — дни недели (0 — понедельник) и часы смены, по производственному календарю (Б4а); сменный по
+ * циклу (Б4б) — `cycle`, у него `days` пуст, а `from` и `to` — часы дневной смены. Смену человека в день спрашивают у
+ * src/engine/shifts.ts.
+ */
 export interface Shift {
   id: Id;
   name: Text;
@@ -521,6 +543,7 @@ export interface Shift {
   to: number;
   /** перерыв для отдыха и питания, с (Б4а): в рабочее время не входит (ст. 108 ТК РФ); где он в смене, прототип не показывает */
   break: number;
+  cycle?: Cycle;
 }
 
 export type ZoneKind = 'receiving' | 'quarantine' | 'cold' | 'rejected' | 'fgQuarantine' | 'shipping' | 'staging' | 'sampling' | 'palletizing';

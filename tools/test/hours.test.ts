@@ -61,12 +61,12 @@ describe('производственный календарь', () => {
 
   test('смены 5/2: 4 и 5 ноября 2027 года их нет, 3 ноября — на час короче', () => {
     const s = { start: sc.start.date, scenario: SC };
-    expect(shiftEndAt(db, s, 'shift.a', at(z(2027, 11, 3), 8))).toBe(at(z(2027, 11, 3), 14));
-    expect(shiftEndAt(db, s, 'shift.b', at(z(2027, 11, 3), 16))).toBe(at(z(2027, 11, 3), 22));
-    expect(shiftEndAt(db, s, 'shift.day', at(z(2027, 11, 3), 9))).toBe(at(z(2027, 11, 3), 16));
-    expect(shiftEndAt(db, s, 'shift.a', at(z(2027, 11, 4), 8))).toBeUndefined();
-    expect(shiftEndAt(db, s, 'shift.day', at(z(2027, 11, 5), 9))).toBeUndefined();
-    expect(shiftEndAt(db, s, 'shift.a', at(z(2027, 11, 8), 8))).toBe(at(z(2027, 11, 8), 15));
+    expect(shiftEndAt(db, s, { shift: 'shift.a' }, at(z(2027, 11, 3), 8))).toBe(at(z(2027, 11, 3), 14));
+    expect(shiftEndAt(db, s, { shift: 'shift.b' }, at(z(2027, 11, 3), 16))).toBe(at(z(2027, 11, 3), 22));
+    expect(shiftEndAt(db, s, { shift: 'shift.day' }, at(z(2027, 11, 3), 9))).toBe(at(z(2027, 11, 3), 16));
+    expect(shiftEndAt(db, s, { shift: 'shift.a' }, at(z(2027, 11, 4), 8))).toBeUndefined();
+    expect(shiftEndAt(db, s, { shift: 'shift.day' }, at(z(2027, 11, 5), 9))).toBeUndefined();
+    expect(shiftEndAt(db, s, { shift: 'shift.a' }, at(z(2027, 11, 8), 8))).toBe(at(z(2027, 11, 8), 15));
   });
 });
 
@@ -277,8 +277,8 @@ describe('сборщик базы — на испорченной копии con
     has(broken({ [PRF]: [['[2027-02-20, 2027-02-22]', '[2027-02-20, 2027-02-23]']] }), 'перенос 2027-02-20 → 2027-02-23 — не на будний день или на праздник');
   });
 
-  test('документ, который изучать дольше смены роли: учатся только в смену', () => {
-    has(broken({ 'sops/gmp.yaml': [['hours: 4', 'hours: 9']] }), 'sop.gmp: изучение 9 ч длиннее смены роли role.operator — обучение никто не начнёт');
+  test('документ, который изучать дольше самой короткой смены графиков: учатся только в смену (Б4б — любой график)', () => {
+    has(broken({ 'sops/gmp.yaml': [['hours: 4', 'hours: 9']] }), 'sop.gmp: изучение 9 ч длиннее самой короткой смены графиков (8 ч) — в таком графике обучение никто не начнёт');
   });
 
   test('стадия, которую по норме или наибольшей длительности не начать ни в одну смену её роли', () => {

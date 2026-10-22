@@ -10,11 +10,12 @@ import { batchNo } from '../engine/batchno';
 import { momentOf } from '../engine/core/calendar';
 import { partType, wearAt } from '../engine/maint';
 import { planOf } from '../engine/plant';
+import { pendingOf } from '../engine/shifts';
 import { shiftEnd } from '../engine/staff';
 import { TAG } from '../engine/stock';
 import type { AssetRec, Lot, LotStatus, MachineState, PlantState, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
 import { type DevCard, devCard, type Regimes, regimesAt, type ReleaseView, releaseOf } from './devs';
-import { type SheetView, sheetOf } from './hours';
+import { type SaView, type SheetView, saOf, sheetOf } from './hours';
 import { type InvQuery, type InvView, invView } from './inv';
 import { type ChartQuery, type ChartView, chartView, type LabQuery, type LabView, labView } from './lab';
 import { type EqState, eqStateOf } from './pack';
@@ -157,7 +158,8 @@ export type CardData =
   | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; recipe?: Id; parts: PartInfo[]; asset?: AssetInfo; regimes?: Regimes; why: Why[]; history: Hist[] }
   | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; sku?: Id; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[] }
   /** человек (Б3б): табельный номер, навык, допуск сегодня, обучение по матрице его роли, что изучает сейчас; табель месяца (Б4а) */
-  | { kind: 'person'; person: number; tab: number; role: Id; shift: Id; skill: number; doing: Doing; adm: Admission; train: TrainRow[]; learning?: DocNow; sheet: SheetView }
+  /** с Б4б — ждущий перевод на другой график и учётный период сменного по циклу */
+  | { kind: 'person'; person: number; tab: number; role: Id; shift: Id; skill: number; doing: Doing; adm: Admission; train: TrainRow[]; learning?: DocNow; sheet: SheetView; next?: { shift: Id; from: number }; sa?: SaView }
   | { kind: 'vehicle'; vehicle: number; type: Id; task?: TaskKind }
   | { kind: 'truck'; truck: number; customer?: Id; supplier?: Id; po?: string; docked: boolean; open: boolean; units: number; arrived: number }
   | DevCard
@@ -502,7 +504,9 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
             ? { k: 'walk', exit: p.x === plan.entrance.x && p.z === plan.entrance.z }
             : { k: 'post' };
       const learning = t?.kind === 'train' && t.doc ? docOfRev(db, t.doc) : undefined;
-      return { kind: 'person', person: thing.n, tab: p.tab, role: p.role, shift: p.shift, skill: p.skill, doing, adm: admissionOf(db, s, p), train: trainRows(db, s, p), ...(learning ? { learning } : {}), sheet: sheetOf(db, s, p) };
+      const next = pendingOf(s, p);
+      const sa = saOf(db, s, p);
+      return { kind: 'person', person: thing.n, tab: p.tab, role: p.role, shift: p.shift, skill: p.skill, doing, adm: admissionOf(db, s, p), train: trainRows(db, s, p), ...(learning ? { learning } : {}), sheet: sheetOf(db, s, p), ...(next ? { next: { shift: next.shift, from: next.from } } : {}), ...(sa ? { sa } : {}) };
     }
     case 'vehicle': {
       const v = s.vehicles[`V${thing.n}`];

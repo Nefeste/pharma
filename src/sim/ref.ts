@@ -4,17 +4,18 @@
 // режимов и длительностей, причин, моделей расследования, происшествия — в виде нет. Мгновения начала работ — числами:
 // сколько прошло, окно считает по своим часам, и вид не меняется каждую секунду. Документы и редакции (Б3а) — по дате
 // завода: что действует сегодня, что в проекте и что в архиве.
-import type { ContentDb, Dept, Id, MaterialKind, OkeiUnit, OvertimeMode, ParamUnit } from '../content/types';
+import type { ContentDb, CycleDay, Dept, Id, MaterialKind, OkeiUnit, OvertimeMode, ParamUnit } from '../content/types';
 import { batchNo } from '../engine/batchno';
-import { momentOf } from '../engine/core/calendar';
+import { daysFromCivil, momentOf } from '../engine/core/calendar';
 import { DOC_KINDS, type DocKind, type DocStatus, inForce, statusOf } from '../engine/docs';
 import { geo, SIXTY } from '../engine/line';
 import { partType, wearAt } from '../engine/maint';
 import { nominal } from '../engine/mes';
 import { planOf } from '../engine/plant';
+import { pendingOf, scheduleOn } from '../engine/shifts';
 import { shiftEnd } from '../engine/staff';
 import type { MachineState, PlantState } from '../engine/types';
-import { type CalMonth, calendarOf, type HoursRow, hoursRow } from './hours';
+import { type CalMonth, calendarOf, type HoursRow, hoursRow, type ShiftMonth, shiftMonths } from './hours';
 import { type EqState, eqStateOf } from './pack';
 import { materialPairs, type PartnersView, partnersView } from './partners';
 import { type Admission, admissionOf, type Matrix, matrix } from './people';
@@ -148,6 +149,8 @@ export interface RefPerson {
   adm: Admission;
   /** рабочее время месяца и года (Б4а) */
   hours: HoursRow;
+  /** ждущий перевод на другой график (Б4б): график и день, с которого */
+  next?: { shift: Id; from: number };
 }
 
 export interface RefShift {
@@ -157,6 +160,11 @@ export interface RefShift {
   from: number;
   to: number;
   break: number;
+  /** сменный по циклу (Б4б): рисунок по суткам, часы дневной и ночной смены, учётный период — месяцев */
+  cycle?: { pattern: CycleDay[]; day: [number, number]; night: [number, number]; account: number };
+  /** людей в графике сегодня и с 1-го числа следующего месяца — с переводами */
+  now: number;
+  next: number;
 }
 
 /**
@@ -224,6 +232,8 @@ export interface RefView {
   people: RefPerson[];
   matrix: Matrix;
   calendar: CalMonth[];
+  /** календарь графиков этого и следующего месяца (Б4б) */
+  shiftCal: ShiftMonth[];
   policy: Record<Dept, OvertimeMode>;
   overtime: { shift: number; year: number };
   suppliers: RefSupplier[];
@@ -380,8 +390,23 @@ export function refView(db: ContentDb, s: PlantState): RefView {
       busy: mine.filter(p => p.task !== undefined).length,
     };
   });
-  const shifts = Object.values(db.shifts).map(sh => ({ id: sh.id, days: [...sh.days], from: sh.from, to: sh.to, break: sh.break }));
-  const staff = people.map(p => ({ person: Number(p.id.slice(1)), tab: p.tab, role: p.role, shift: p.shift, skill: p.skill, adm: admissionOf(db, s, p), hours: hoursRow(db, s, p) }));
+  const { y: ty, m: tm } = momentOf(s.start, s.t).date;
+  const nextMonth = daysFromCivil({ y: ty + Math.floor(tm / 12), m: (tm % 12) + 1, d: 1 });
+  const account = db.scenarios[s.scenario].account;
+  const shifts = Object.values(db.shifts).map(sh => ({
+    id: sh.id,
+    days: [...sh.days],
+    from: sh.from,
+    to: sh.to,
+    break: sh.break,
+    ...(sh.cycle ? { cycle: { pattern: [...sh.cycle.pattern], day: [...sh.cycle.day] as [number, number], night: [...sh.cycle.night] as [number, number], account } } : {}),
+    now: people.filter(p => scheduleOn(p, today) === sh.id).length,
+    next: people.filter(p => scheduleOn(p, nextMonth) === sh.id).length,
+  }));
+  const staff = people.map(p => {
+    const next = pendingOf(s, p);
+    return { person: Number(p.id.slice(1)), tab: p.tab, role: p.role, shift: p.shift, skill: p.skill, adm: admissionOf(db, s, p), hours: hoursRow(db, s, p), ...(next ? { next: { shift: next.shift, from: next.from } } : {}) };
+  });
   const suppliers = Object.values(db.suppliers).map(su => ({
     id: su.id,
     lead: [...su.lead] as [number, number],
@@ -395,5 +420,5 @@ export function refView(db: ContentDb, s: PlantState): RefView {
   }));
   const customers = Object.values(db.customers).map(c => ({ id: c.id, payDays: c.payDays, days: [...c.order.days], hour: c.order.hour, lead: [...c.order.lead] as [number, number], minShelf: c.minShelf }));
   const ot = db.profiles[db.scenarios[s.scenario].profile].payroll.overtime;
-  return { view: 'ref', products, materials, docs, recipes, equipment, lines, methods, instruments, roles, shifts, people: staff, matrix: matrix(db, s), calendar: calendarOf(db, s), policy: { ...s.policy }, overtime: { shift: ot.shift, year: ot.year }, suppliers, customers, places: placesView(db, s), partners: partnersView(db, s) };
+  return { view: 'ref', products, materials, docs, recipes, equipment, lines, methods, instruments, roles, shifts, people: staff, matrix: matrix(db, s), calendar: calendarOf(db, s), shiftCal: shiftMonths(db, s), policy: { ...s.policy }, overtime: { shift: ot.shift, year: ot.year }, suppliers, customers, places: placesView(db, s), partners: partnersView(db, s) };
 }

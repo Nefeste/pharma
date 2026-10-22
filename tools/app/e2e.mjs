@@ -27,7 +27,9 @@
 // (Б1г): у главной потери планёрки — рычаги и строка «Будет в …», «Потоки — люди» включает слой; карточка отклонения
 // опудривания — время по досье, цель и диапазон по карте, связанные испытания, решает расследование; пояснение при
 // первом событии; удержанную серию держат и выпускают из карточки её ГП; срочное задание — строкой черновика и его
-// полосами в расписании до «Утвердить» (0.0.39). Ошибок в консоли и запросов наружу нет. Снимки —
+// полосами в расписании до «Утвердить» (0.0.39). Графики сменности (Б4б): в карточке аппаратчика — перевод в «12 ч,
+// бригада 2» с 01.10.2027, на планёрке — он же; утром 9 октября — дополнительный выходной бригады на планёрке, табель
+// октября по её рисунку и календарь бригад в справочнике. Ошибок в консоли и запросов наружу нет. Снимки —
 // tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
@@ -136,6 +138,28 @@ try {
     else ok(`взяли «Производство»: экран закрыт, ×1, на кнопке — «${after.label}»`);
   }
 
+  // перевод (Б4б): в карточке аппаратчика первой смены «Перевести на график…» → «12 ч, бригада 2» — команда дошла до
+  // движка: в карточке «с 01.10.2027 — 12 ч, бригада 2» и «Отменить перевод». Мир на паузе, потом снова ×1
+  {
+    await page.evaluate(() => window.__game.actions.setSpeed(0));
+    const who = { kind: 'person', n: 9 };
+    await page.evaluate(x => window.__game.actions.select(x), who);
+    await page.waitForSelector('[data-test=card-roster]', { timeout: 20_000 });
+    await page.selectOption('[data-test=card-roster]', 'shift.c2');
+    await page.waitForSelector('[data-test=card-next]', { timeout: 20_000 });
+    const c = await page.evaluate(() => ({
+      shift: document.querySelector('[data-test=card-shift]')?.textContent ?? '',
+      next: document.querySelector('[data-test=card-next]')?.textContent ?? '',
+      cancel: !!document.querySelector('[data-test=card-roster-cancel]'),
+      options: document.querySelectorAll('[data-test=card-roster] option').length,
+    }));
+    await page.screenshot({ path: join(out, 'e2e-roster.png') });
+    if (c.shift !== 'Первая смена 5/2' || c.next !== 'с 01.10.2027 — 12 ч, бригада 2' || !c.cancel) fail(`перевод: график «${c.shift}», «${c.next}», отмена ${c.cancel}`);
+    else ok(`перевод: «${c.shift}» · «${c.next}», «Отменить перевод» есть; в списке ${c.options - 1} графиков`);
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.__game.actions.setSpeed(1));
+  }
+
   // ×4 — два часа в секунду. Программная отрисовка без видеокарты даёт несколько кадров в секунду, а шаг кадра ограничен
   // 0,1 с — поэтому проверка мягкая: больше, чем ×2 смог бы и при 60 к/с (5 минут в секунду). В 08:00 часы встают на
   // планёрку (3в) — и тогда за 1,5 с прошло меньше, но ровно до 08:00
@@ -158,11 +182,12 @@ try {
       title: document.querySelector('#morning-title')?.textContent ?? '',
       yesterday: !!document.querySelector('[data-test=morning-yesterday]'),
       now: !!document.querySelector('[data-test=morning-now]'),
-      // рабочее время (Б4а): сверхурочные вчера, кто ближе к пределу года, праздники недели
+      // рабочее время (Б4а): сверхурочные вчера, кто ближе к пределу года, праздники недели; с Б4б — переводы
       hours: document.querySelector('[data-test=morning-hours]')?.innerText ?? '',
+      move: document.querySelector('[data-test=morning-move]')?.textContent ?? '',
     }));
-    if (m.sec !== 8 * 3600 || m.speed !== 0 || !/Планёрка/.test(m.title) || !m.yesterday || !m.now || !/^рабочее время\n(сверхурочные вчера|сверхурочных вчера не было)/iu.test(m.hours))
-      fail(`планёрка: часы ${m.sec / 3600} ч, скорость ${m.speed}, «${m.title}», вчера ${m.yesterday}, сейчас ${m.now}, рабочее время «${m.hours}»`);
+    if (m.sec !== 8 * 3600 || m.speed !== 0 || !/Планёрка/.test(m.title) || !m.yesterday || !m.now || !/^рабочее время\n(сверхурочные вчера|сверхурочных вчера не было)/iu.test(m.hours) || m.move !== 'Аппаратчик · таб. №\u00a01009 — в график «12 ч, бригада 2» с 01.10.2027')
+      fail(`планёрка: часы ${m.sec / 3600} ч, скорость ${m.speed}, «${m.title}», вчера ${m.yesterday}, сейчас ${m.now}, рабочее время «${m.hours}», перевод «${m.move}»`);
     else ok(`планёрка открылась сама в 08:00, мир на паузе: «${m.title}»; ${m.hours.replace(/\s*\n\s*/g, ' · ')}`);
     await page.keyboard.press('Escape');
     const closed = await page.evaluate(() => !document.querySelector('#morning'));
@@ -1205,6 +1230,62 @@ try {
       fail(`табель в карточке: дней ${c.days.length} из ${c.sheetRows}: ${c.days.slice(0, 3).join(' | ')}; итоги «${c.sums}»`);
     else ok(`табель в карточке: ${c.days.length} дней — ${c.days.slice(0, 3).join(' · ')}…; ${c.sums}`);
     await page.screenshot({ path: join(out, 'e2e-person.png') });
+    await page.keyboard.press('Escape');
+  }
+
+  // бригада (Б4б): с 1 октября аппаратчик — в «12 ч, бригада 2». Утро 9 октября: на планёрке — дополнительный выходной
+  // бригады в этот день; в табеле октября — смены по рисунку бригады: 1–3 — ночи через полночь, 4, 7 и 8 — выходные, 5 и
+  // 6 — дни, 9-го — выходной; итог учётного периода — с 1 октября. В справочнике, во вкладке «Люди», — календарь октября:
+  // у бригады 2 — дни, ночи, выходные и дополнительный выходной 9-го
+  {
+    const today = () => page.evaluate(() => Math.floor(window.__game.t / 86400));
+    for (let i = 0; i < 40 && (await today()) < 38; i++) {
+      await untilMorning(true);
+      if ((await today()) < 38) await page.keyboard.press('Escape');
+    }
+    await page.waitForFunction(() => {
+      const m = window.__game.store.get().morning;
+      return m.open && m.view?.day === m.day;
+    }, null, { timeout: 20_000 });
+    const day = await today();
+    const extra = await page.evaluate(() => [...document.querySelectorAll('[data-test=morning-extra]')].map(x => x.textContent ?? ''));
+    await page.keyboard.press('Escape');
+    const who = { kind: 'person', n: 9 };
+    await page.evaluate(x => window.__game.actions.select(x), who);
+    await page.waitForFunction(x => JSON.stringify(window.__game.store.get().card?.thing) === JSON.stringify(x), who, { timeout: 20_000 });
+    await page.waitForSelector('[data-test=card-sa]', { timeout: 20_000 });
+    const c = await page.evaluate(() => ({
+      shift: document.querySelector('[data-test=card-shift]')?.textContent ?? '',
+      days: [...document.querySelectorAll('[data-test=sheet-day]')].map(d => d.textContent ?? ''),
+      sa: document.querySelector('[data-test=card-sa]')?.textContent ?? '',
+    }));
+    await page.screenshot({ path: join(out, 'e2e-crew.png') });
+    const d = c.days;
+    const rest = [3, 6, 7, 8].every(i => new RegExp(`^${i + 1}В$`).test(d[i] ?? ''));
+    const nights = [0, 1, 2].every(i => / ?Н/.test((d[i] ?? '').replace(/^\d+/, '')));
+    const days = [4, 5].every(i => new RegExp(`^${i + 1}Я`).test(d[i] ?? ''));
+    if (day !== 38 || extra[0] !== '09.10.2027 — 12 ч, бригада 2: дополнительный выходной у 1 человека' || c.shift !== '12 ч, бригада 2' || !rest || !nights || !days || !/^Учётный период 01\.10\.2027–31\.12\.2027/.test(c.sa))
+      fail(`бригада: утро ${day} суток, на планёрке «${extra.join(' | ')}»; график «${c.shift}»; табель ${d.slice(0, 9).join(' · ')}; «${c.sa}»`);
+    else ok(`бригада: на планёрке «${extra[0]}»; табель октября — ${d.slice(0, 9).join(' · ')}; «${c.sa}»`);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('F1');
+    await page.waitForSelector('#ref', { timeout: 20_000 });
+    await page.click('[data-test=ref-tab][data-tab=people]');
+    await page.waitForSelector('[data-test=ref-shiftcal]', { timeout: 20_000 });
+    await frames(1);
+    const cal = await page.evaluate(() => {
+      const el = document.querySelector('[data-test=ref-shiftcal]');
+      const cells = [...(el?.querySelectorAll('[data-test=shiftcal-cell][data-shift="shift.c2"]') ?? [])].map(x => ({ k: x.getAttribute('data-k'), n: Number(x.getAttribute('data-n')), of: Number(x.getAttribute('data-of')), extra: x.classList.contains('extra'), text: x.textContent ?? '' }));
+      const shown = new Set([...(el?.querySelectorAll('[data-test=shiftcal-cell]') ?? [])].map(x => x.getAttribute('data-shift') ?? ''));
+      return { month: el?.getAttribute('data-month'), crews: [...shown].filter(x => /^shift\.c\d$/.test(x)), cells };
+    });
+    await page.locator('[data-test=ref-shiftcal]').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: join(out, 'e2e-shiftcal.png') });
+    const k = cal.cells.map(x => x.k).slice(0, 8).join();
+    const ninth = cal.cells[8];
+    if (cal.month !== '2027-10' || cal.crews.join() !== 'shift.c2' || cal.cells.length !== 31 || k !== 'night,night,off,off,day,day,off,off' || !ninth?.extra || ninth.k !== 'night' || ninth.n !== 0 || ninth.of !== 1)
+      fail(`календарь бригад: ${cal.month}, бригады с людьми ${cal.crews.join()}, клеток ${cal.cells.length}: ${k}; 9-го ${JSON.stringify(ninth)}`);
+    else ok(`календарь бригад: октябрь 2027 года — у бригады 2 ${k.replace(/,/g, ' ')}…, 9-го «${ninth.text}» — дополнительный выходной`);
     await page.keyboard.press('Escape');
   }
 

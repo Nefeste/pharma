@@ -7,6 +7,7 @@ import type { ContentDb, Profile } from '../content/types';
 import { civilFromDays, DAY, daysFromCivil, HOUR, isWorkday, lastOfMonth, momentOf, normOf, workdayOnOrAfter, workdayOnOrBefore } from './core/calendar';
 import { pruneSheet, type SheetDay, sheetDays } from './hours';
 import { planOf } from './plant';
+import { scheduleOn } from './shifts';
 import { nextId } from './stock';
 import type { Cash, CashItem, Notice, Person, PlantState, WageParts } from './types';
 import { calOf } from './workdays';
@@ -173,7 +174,7 @@ function midnight(db: ContentDb, s: PlantState, z: number) {
  * норма месяца — за вычетом часов смены по графику и РВ раньше в месяце). Часовая ставка — оклад на норму часов месяца
  * (гипотеза). Для кассы и для окна — одно.
  */
-export function extras(db: ContentDb, s: PlantState, p: Person, y: number, m: number, from: number, to: number): Omit<WageParts, 'salary'> {
+export function extras(db: ContentDb, s: PlantState, p: Person, y: number, m: number, from: number, to: number): Required<Omit<WageParts, 'salary'>> {
   const pr = profileOf(db, s).payroll;
   const cal = calOf(db, s);
   const salary = db.roles[p.role].salary;
@@ -187,10 +188,14 @@ export function extras(db: ContentDb, s: PlantState, p: Person, y: number, m: nu
   const within = Math.max(0, norm - planned - sum(month.slice(0, from - 1), d => d.off));
   const off = sum(mine, d => d.off);
   const share = (sec: number, rate: number) => (sec > 0 && norm > 0 ? Math.floor((Math.floor((salary * sec) / norm) * rate) / P) : 0);
+  // сменный по циклу (Б4б): работа после смен — не сверхурочная до итога учётного периода; итог — с зарплатой второй
+  // половины его последнего месяца (shifts.ts, `rosterDay`)
+  const week = mine.filter((_, i) => !db.shifts[scheduleOn(p, first + from - 1 + i)].cycle);
   return {
     night: share(sum(mine, d => d.night), pr.night.extra),
-    over: share(sum(mine, d => d.over[0]), pr.overtime.rates[0]) + share(sum(mine, d => d.over[1]), pr.overtime.rates[1]),
+    over: share(sum(week, d => d.over[0]), pr.overtime.rates[0]) + share(sum(week, d => d.over[1]), pr.overtime.rates[1]),
     off: share(Math.min(off, within), pr.holiday.within) + share(off - Math.min(off, within), pr.holiday.beyond),
+    period: p.saDone && p.saDone.y === y && p.saDone.m === m && from > 1 ? p.saDone.pay : 0,
   };
 }
 
@@ -205,13 +210,14 @@ function wages(db: ContentDb, s: PlantState, y: number, m: number, from: number,
     const half = Math.floor(salary / 2);
     const base = from === 1 ? half : salary - half;
     const x = extras(db, s, p, y, m, from, to);
-    const gross = base + x.night + x.over + x.off;
+    const gross = base + x.night + x.over + x.off + x.period;
     parts.salary += base;
     parts.night += x.night;
     parts.over += x.over;
     parts.off += x.off;
+    if (x.period > 0) parts.period = (parts.period ?? 0) + x.period;
     s.cash.gross[p.id] = (s.cash.gross[p.id] ?? 0) + gross;
   }
   s.cash.wages[ref] = parts;
-  return parts.salary + parts.night + parts.over + parts.off;
+  return parts.salary + parts.night + parts.over + parts.off + (parts.period ?? 0);
 }

@@ -54,6 +54,7 @@ const actions: Actions = {
   setLabTab: later('setLabTab'),
   rush: later('rush'),
   overtime: later('overtime'),
+  roster: later('roster'),
   toggleGantt: later('toggleGantt'),
   setGanttDays: later('setGanttDays'),
   moveGantt: later('moveGantt'),

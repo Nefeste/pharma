@@ -2,15 +2,19 @@
 // дни недели и часы смены; праздников, отпусков, болезней и усталости ещё нет. С 3а у каждой роли — пост ожидания
 // (docs/specs/2026-10-panels.md, 3а): без задачи человек идёт туда своим маршрутом, а в пути он свободен. С Б4а смена
 // пятидневки живёт по производственному календарю: в праздник её нет, накануне праздника она на час короче
-// (workdays.ts).
-import type { ContentDb, Id } from '../content/types';
+// (workdays.ts); с Б4б смена — человека: по графику с переводами, сменный по циклу — с ночью через полночь (shifts.ts).
+import type { ContentDb } from '../content/types';
 import { schedule } from './core/agenda';
 import { DAY, daysFromCivil, HOUR, MIN } from './core/calendar';
 import { walked } from './lean';
 import { pointAlong, route } from './nav';
 import { dist, type PlantPlan, planOf, type Point, travel } from './plant';
+import { shiftAt } from './shifts';
 import type { Person, PlantState } from './types';
 import { calOf, type Clock, shiftTo, worksOn } from './workdays';
+
+/** Графики человека — для смены в мгновение (shifts.ts). */
+type Rostered = Pick<Person, 'shift' | 'roster'>;
 
 /** Человек пешком, см/с. */
 export const WALK = 120;
@@ -18,36 +22,42 @@ export const WALK = 120;
 /** Новую задачу не берут, если до конца смены меньше этого. */
 export const LAST_CALL = 15 * MIN;
 
-/** Конец смены графика `shift` в мгновение `t`, если оно в смене, — игровые секунды; иначе `undefined`. */
-export function shiftEndAt(db: ContentDb, s: Clock, shift: Id, t: number): number | undefined {
-  const sh = db.shifts[shift];
-  // день и секунда суток — без гражданской даты: раздатчик спрашивает о каждом свободном человеке
-  const day = daysFromCivil(s.start) + Math.floor(t / DAY);
-  const sec = ((t % DAY) + DAY) % DAY;
-  const cal = calOf(db, s);
-  if (!worksOn(cal, sh, day) || sec < sh.from * HOUR) return undefined;
-  const to = shiftTo(db, s, cal, sh, day);
-  return sec < to ? t - sec + to : undefined;
+/**
+ * Конец смены человека в мгновение `t`, если оно в его смене, — игровые секунды; иначе `undefined`. Смена — по графику с
+ * переводами, ночная — через полночь (shifts.ts, Б4б).
+ */
+export function shiftEndAt(db: ContentDb, s: Clock, p: Rostered, t: number): number | undefined {
+  const sh = db.shifts[p.shift];
+  // пятидневка без переводов — то же правило короче: раздатчик спрашивает о каждом свободном человеке, а таких почти все
+  if (!p.roster && !sh.cycle) {
+    const day = daysFromCivil(s.start) + Math.floor(t / DAY);
+    const sec = ((t % DAY) + DAY) % DAY;
+    const cal = calOf(db, s);
+    if (!worksOn(cal, sh, day) || sec < sh.from * HOUR) return undefined;
+    const to = shiftTo(db, s, cal, sh, day);
+    return sec < to ? t - sec + to : undefined;
+  }
+  return shiftAt(db, s, p, t)?.to;
 }
 
 /** Конец смены человека, если он сейчас в смене, — игровые секунды; иначе `undefined`. */
 export function shiftEnd(db: ContentDb, s: PlantState, p: Person): number | undefined {
-  return shiftEndAt(db, s, p.shift, s.t);
+  return shiftEndAt(db, s, p, s.t);
 }
 
 /**
- * Может ли человек графика `shift` взять новую задачу в мгновение `t`: в смене и до её конца не меньше `LAST_CALL`. Одна
- * проверка для раздатчика задач и для прогона расписания (3д).
+ * Может ли человек взять новую задачу в мгновение `t`: в смене и до её конца не меньше `LAST_CALL`. Одна проверка для
+ * раздатчика задач и для прогона расписания (3д).
  */
-export function takesAt(db: ContentDb, s: Clock, shift: Id, t: number): boolean {
-  const end = shiftEndAt(db, s, shift, t);
+export function takesAt(db: ContentDb, s: Clock, p: Rostered, t: number): boolean {
+  const end = shiftEndAt(db, s, p, t);
   return end !== undefined && end - t >= LAST_CALL;
 }
 
 /** Может ли человек сейчас взять новую задачу: в смене, свободен, до конца смены не меньше `LAST_CALL`. */
 export function canTake(db: ContentDb, s: PlantState, p: Person): boolean {
   if (p.task) return false;
-  return takesAt(db, s, p.shift, s.t);
+  return takesAt(db, s, p, s.t);
 }
 
 /**

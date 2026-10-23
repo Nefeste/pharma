@@ -13,6 +13,7 @@ import { devsOf, openDevs } from '../engine/qa';
 import { unitsOfLot } from '../engine/stock';
 import type { AssetFamily, Batch, CashItem, DayLoss, Deviation, LineDay, MachineTimes, PlantState, TaskKind, WageParts, WaitCause } from '../engine/types';
 import { type PeopleMeeting, peopleMeeting } from './hire';
+import { type LeaveMeeting, leaveMeeting } from './leave';
 import { type HoursMeeting, hoursMeeting } from './hours';
 import { type PartnerSum, partnerSum } from './partners';
 import { type TrainSum, trainSum } from './people';
@@ -195,6 +196,8 @@ export interface MorningView {
   hours: HoursMeeting;
   /** люди (Б4в): кто выходит и уходит за 7 суток, заявления за сутки, испытания к концу, новые кандидаты */
   people: PeopleMeeting;
+  /** отпуска (Б4г): кто в отпуске, уходит и выходит; черновик графика до утверждения; у сценария без отпусков — нет */
+  leave?: LeaveMeeting;
   cash: { balance: number; day: number; next?: { due: number; item: CashItem; sum: number } };
   /** ваше место (3е): итог каждого взятого места за время на нём */
   seats: SeatSum[];
@@ -383,12 +386,18 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     partners: partnerSum(db, s),
     hours: hoursMeeting(db, s),
     people: peopleMeeting(s),
+    ...leaveOf(db, s),
     cash: { balance: s.cash.balance, day: dayChange(s, s.t), ...(next ? { next: { due: next.due, item: next.item, sum: next.sum } } : {}) },
     seats: seatSums(db, s),
   };
 }
 
 /** Что ждёт решения (Б1г): неоценённые отклонения — старшие первыми; удержанные серии — по номеру задания. */
+function leaveOf(db: ContentDb, s: PlantState): { leave?: LeaveMeeting } {
+  const l = leaveMeeting(db, s);
+  return l ? { leave: l } : {};
+}
+
 function pendingOf(db: ContentDb, s: PlantState): { pending: PendingDev[]; held: HeldRow[] } {
   const term = db.scenarios[s.scenario].deviations.term * DAY;
   const pending: PendingDev[] = Object.values(s.deviations)
@@ -577,7 +586,9 @@ export type CashWhy =
   | { k: 'contract'; contract: string; supplier: Id }
   /** найм (Б4в): объявление, медосмотр или кадровое агентство; расчёт при увольнении — роль и табельный номер */
   | { k: 'hiring'; what: 'ad' | 'med' | 'agency' }
-  | { k: 'leave'; role: Id; tab: number };
+  | { k: 'leave'; role: Id; tab: number }
+  /** отпускные (Б4г): роль и табельный номер, дни части с и по */
+  | { k: 'vacation'; role: Id; tab: number; from: number; to: number };
 
 export interface CashRow {
   t: number;
@@ -626,6 +637,13 @@ function whyOf(s: PlantState, item: CashItem, ref: string | undefined): CashWhy 
   const gone = /^leave-(E\d+)$/.exec(ref);
   const who = gone ? (s.former[gone[1]] ?? s.people[gone[1]]) : undefined;
   if (item === 'settle' && who) return { k: 'leave', role: who.role, tab: who.tab };
+  const vac = /^vac-(A\d+)$/.exec(ref);
+  if (item === 'vacation' && vac) {
+    for (const p of [...Object.values(s.people), ...Object.values(s.former)]) {
+      const a = p.away?.find(x => x.id === vac[1]);
+      if (a) return { k: 'vacation', role: p.role, tab: p.tab, from: a.from, to: a.to };
+    }
+  }
   const q = /^(\d+)-q(\d)$/.exec(ref);
   if (q) return { k: 'quarter', y: Number(q[1]), q: Number(q[2]) };
   const m = /^(\d+)-(\d+)([ab]?)$/.exec(ref);
@@ -635,7 +653,7 @@ function whyOf(s: PlantState, item: CashItem, ref: string | undefined): CashWhy 
 
 const row = (s: PlantState, t: number, item: CashItem, sum: number, ref?: string): CashRow => {
   const why = whyOf(s, item, ref);
-  const parts = (item === 'wages' || item === 'settle') && ref ? s.cash.wages[ref] : undefined;
+  const parts = (item === 'wages' || item === 'settle' || item === 'vacation') && ref ? s.cash.wages[ref] : undefined;
   return { t, item, sum, ...(why ? { why } : {}), ...(parts ? { parts: { ...parts } } : {}) };
 };
 

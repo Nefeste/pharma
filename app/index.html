@@ -273,6 +273,15 @@
     .pauses ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
     .pauses li.muted label { color: var(--muted); }
     button.notice.link:hover { text-decoration: underline; text-decoration-color: var(--accent); }
+    /* график отпусков (Б4г): недели года — пусто, часть черновика — контур, утверждённая — заливка, с помехой — штриховка */
+    table.leaveplan td.weeks { white-space: nowrap; }
+    table.leaveplan .wk { display: inline-block; width: 6px; height: 12px; margin-right: 1px; background: rgba(255,255,255,.06); vertical-align: middle; }
+    table.leaveplan .wk.on { background: var(--accent); }
+    table.leaveplan .wk.draft { background: transparent; box-shadow: inset 0 0 0 1px var(--accent); }
+    table.leaveplan .wk.bad { background: repeating-linear-gradient(45deg, #ff8a7a 0 2px, transparent 2px 4px); }
+    table.leaveplan tbody tr { cursor: pointer; }
+    table.leaveplan tr.on td { background: rgba(47,181,201,.12); }
+    .also { margin-right: 10px; }
   </style>
 </head>
 <body>

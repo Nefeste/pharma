@@ -33,6 +33,8 @@ function whyText(w: CashWhy | undefined): string {
       return T.cash.why.hiring[w.what];
     case 'leave':
       return T.cash.why.leave(named(db?.roles[w.role]?.name, w.role), w.tab);
+    case 'vacation':
+      return T.cash.why.vacation(named(db?.roles[w.role]?.name, w.role), w.tab, dayText(w.from), dayText(w.to));
   }
 }
 
@@ -50,8 +52,10 @@ export function Cash({ hud, actions }: { hud: Hud; actions: Actions }) {
         {whyText(r.why)}
         {r.parts ? (
           <div className="muted small" data-test="cash-wage-parts">
-            {T.cash.parts(money(r.parts.salary), money(r.parts.night), money(r.parts.over), money(r.parts.off))}
+            {r.parts.vac === undefined ? T.cash.parts(money(r.parts.salary), money(r.parts.night), money(r.parts.over), money(r.parts.off)) : null}
             {r.parts.period ? <span data-test="cash-wage-period">{T.cash.period(money(r.parts.period))}</span> : null}
+            {r.parts.cover ? <span data-test="cash-wage-cover">{T.cash.cover(money(r.parts.cover))}</span> : null}
+            {r.parts.comp ? <span data-test="cash-wage-comp">{T.cash.comp(money(r.parts.comp))}</span> : null}
           </div>
         ) : null}
       </td>

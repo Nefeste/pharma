@@ -29,10 +29,12 @@
 // уже есть часы после смены, а перевод механика первой смены в «12 ч, бригада 2» ждёт своего 1-го числа; оценки
 // отклонений здесь нет — её держит образец схемы 22. С схемы 24 — посреди найма: принятый аппаратчик ждёт первого дня,
 // по вакансии упаковщика есть кандидаты, упаковщик первой смены уже уволен по соглашению, аппаратчик второй — в свой
-// последний день; бригад здесь нет — их держит образец схемы 23.
+// последний день; бригад здесь нет — их держит образец схемы 23. С схемы 25 — посреди отпуска: график 2028 года утверждён,
+// у одного человека идёт часть с заместителем и отпускные заплачены, другого уже известили о его части; найм — как в
+// образце схемы 24, до января он кончился.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
-import { DAY, MIN, momentOf } from '../../src/engine/core/calendar';
+import { DAY, daysFromCivil, HOUR, MIN, momentOf } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
 import { assessBlock, linkedTests } from '../../src/engine/qa';
 import { toSave } from '../../src/engine/save';
@@ -40,7 +42,9 @@ import { pendingOf } from '../../src/engine/shifts';
 import { SCHEMA } from '../../src/engine/types';
 
 const s = newPlant(db, { scenario: 'scn.proto', seed: 1 });
-const end = s.t + 120 * DAY;
+// отпуска (Б4г) — с января 2028 года: до 9 января — по часу
+const end = s.t + (SCHEMA >= 25 ? 160 : 120) * DAY;
+const jan9 = daysFromCivil({ y: 2028, m: 1, d: 9 });
 const packing = () => Object.values(s.lines).some(l => l.batch && s.batches[l.batch].pack?.state === 'running' && l.cases > 0 && l.pallet && l.machines.some(m => m.down !== undefined));
 const running = () => Object.values(s.tests).some(q => q.state === 'run');
 const stage = () => Object.values(s.tasks).some(t => t.kind === 'stage' && t.state === 'busy');
@@ -73,8 +77,14 @@ const afterShift = () => Object.values(s.people).some(p => (p.sa?.segs.length ??
 const rostered = () => afterShift() && Object.values(s.people).some(p => pendingOf(s, p));
 // найм идёт (Б4в): принятый ждёт первого дня, есть кандидаты, кто-то уволен, кто-то уходит
 const hiring = () => Object.keys(s.hires).length > 0 && Object.keys(s.candidates).length > 0 && Object.keys(s.former).length > 0 && Object.values(s.people).some(p => p.quit);
+// посреди отпуска (Б4г): график утверждён, часть идёт с заместителем и отпускными, о другой уже известили
+const vacation = () => {
+  const z = momentOf(s.start, s.t).day;
+  const all = Object.values(s.people).flatMap(p => p.away ?? []);
+  return Object.values(s.leave).some(y => y.st === 'approved') && all.some(a => a.from <= z && z <= a.to && a.deputy && a.paid !== undefined) && all.some(a => a.from > z && a.told);
+};
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : seated() && hiring();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : seated() && vacation();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 if (SCHEMA >= 13) apply(db, s, { kind: 'seat', seats: ['director'] });
@@ -117,7 +127,7 @@ while (s.t < end && !busy()) {
     const p = Object.values(s.people).find(x => x.role === 'role.mechanic' && x.shift === 'shift.a');
     if (p) apply(db, s, { kind: 'roster', person: p.id, shift: 'shift.c2', by: 'player' });
   }
-  apply(db, s, { kind: 'advance', seconds: SCHEMA < 6 ? 10 * MIN : MIN });
+  apply(db, s, { kind: 'advance', seconds: SCHEMA < 6 ? 10 * MIN : SCHEMA >= 25 && momentOf(s.start, s.t).day < jan9 ? HOUR : MIN });
 }
 writeFileSync(new URL(`./fixtures/save-v${SCHEMA}.json`, import.meta.url), `${toSave(s)}\n`);
 console.log(`fixtures/save-v${SCHEMA}.json: сутки ${s.day}, испытаний ${Object.keys(s.tests).length}`);

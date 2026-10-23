@@ -15,7 +15,7 @@ import { check } from '../../src/engine/invariants';
 import { MES, MES_PRIO } from '../../src/engine/mes';
 import { forecast } from '../../src/engine/plan/schedule';
 import { planOf } from '../../src/engine/plant';
-import { dueRev, knows, learnCodes, matrixOf, needFor, vehicleNeed } from '../../src/engine/quals';
+import { dueRev, knows, learnCodes, matrixOf, needFor, rowsOf, vehicleNeed } from '../../src/engine/quals';
 import { fromSave } from '../../src/engine/save';
 import { addTask, dispatch, dropTask } from '../../src/engine/tasks';
 import { CHECKERS, TRAIN_PRIO, trainDay } from '../../src/engine/train';
@@ -203,11 +203,14 @@ describe('раздатчик даёт задачу только допущенн
     dropTask(db, s, t);
   });
 
-  test('ричтрак водит только допущенный к нему: кладовщику его не дают, водитель без записи — «нет допуска» к технике', () => {
+  test('ричтрак водит только допущенный к нему: кладовщику без записи его не дают, водитель без записи — «нет допуска» к технике', () => {
     const s = morning();
     const [driver] = by(s, 'role.driver');
     const [keeper] = by(s, 'role.storekeeper');
-    expect([driver.task, keeper.task, keeper.train['SOP-0005']]).toEqual([undefined, undefined, undefined]);
+    // кладовщик со смежной профессией водителя (Б4г) знает и ричтрак — здесь его записи нет
+    expect(keeper.also).toEqual(['role.driver']);
+    delete keeper.train['SOP-0005'];
+    expect([driver.task, keeper.task]).toEqual([undefined, undefined]);
     const rec = driver.train['SOP-0005'];
     delete driver.train['SOP-0005'];
     const t = addTask(s, { kind: 'move', roles: ['role.driver', 'role.storekeeper'], veh: ['veh.reach'], from: post('role.driver'), work: 60, prio: 99 });
@@ -221,12 +224,12 @@ describe('раздатчик даёт задачу только допущенн
 });
 
 describe('обучение и проверка знаний', () => {
-  test('на старте: табельные номера по порядку, записи по матрице роли — не старше срока сценария, все допущены', () => {
+  test('на старте: табельные номера по порядку, записи по строкам матрицы роли и смежных профессий — не старше срока сценария, все допущены', () => {
     const s = newPlant(db, { scenario: SC });
     const days = new Set<number>();
     for (const p of Object.values(s.people)) {
       expect(p.tab).toBe(sc.training.tab + Number(p.id.slice(1)) - 1);
-      expect(Object.keys(p.train).sort()).toEqual([...matrixOf(db, p.role)]);
+      expect(Object.keys(p.train).sort()).toEqual([...rowsOf(db, p)].sort());
       for (const [code, rec] of Object.entries(p.train)) {
         const x = db.sops[rec.rev] ?? db.tests[rec.rev];
         expect(x.doc.code).toBe(code);
@@ -338,7 +341,7 @@ describe('старое сохранение', () => {
     const day = dayOf(s);
     for (const p of Object.values(s.people)) {
       expect(p.tab).toBe(sc.training.tab + Number(p.id.slice(1)) - 1);
-      expect(Object.keys(p.train).sort()).toEqual([...matrixOf(db, p.role)]);
+      expect(Object.keys(p.train).sort()).toEqual([...rowsOf(db, p)].sort());
       for (const [code, rec] of Object.entries(p.train)) {
         expect(rec.day).toBeLessThanOrEqual(day);
         expect(rec.day).toBeGreaterThanOrEqual(day - sc.training.spread);
@@ -361,7 +364,7 @@ describe('прогон расписания и виды окна', () => {
     expect(cleans(copy)).toBe(0);
   });
 
-  test('справочник: люди с табельными номерами и допуском; матрица — в клетке допущено из скольких', () => {
+  test('справочник: люди с табельными номерами и допуском; матрица — в клетке допущено из скольких и по смежной профессии', () => {
     const s = newPlant(db, { scenario: SC });
     const v = refView(db, s);
     expect(v.people.map(p => p.tab)).toEqual(Object.values(s.people).map(p => p.tab));
@@ -372,7 +375,7 @@ describe('прогон расписания и виды окна', () => {
       v.matrix.roles.forEach((r, j) => {
         const cell = v.matrix.cells[i][j];
         if (!matrixOf(db, r).includes(d.code)) expect(cell).toBeNull();
-        else expect(cell).toEqual({ ok: by(s, r).length, all: by(s, r).length });
+        else expect(cell).toEqual({ ok: by(s, r).length, all: by(s, r).length, also: Object.values(s.people).filter(p => p.also?.includes(r)).length });
       }),
     );
     // до дня новой редакции в клетке — действующая сегодня
@@ -389,7 +392,9 @@ describe('прогон расписания и виды окна', () => {
     const k = card(keeper.id);
     expect(k?.kind === 'person' && [k.tab, k.skill, k.adm]).toEqual([keeper.tab, keeper.skill, { k: 'soon', last: start + 10, doc: { code: 'SOP-0004', kind: 'sops', id: 'sop.storage', rev: 1 } }]);
     const rows = k?.kind === 'person' ? k.train : [];
-    expect(rows.map(r => r.doc.code)).toEqual([...matrixOf(db, 'role.storekeeper')]);
+    // строки — своей роли и смежной профессии водителя (Б4г)
+    expect(rows.map(r => r.doc.code)).toEqual([...rowsOf(db, keeper)]);
+    expect(rows.map(r => r.doc.code)).toContain('SOP-0005');
     expect(rows.find(r => r.doc.code === 'SOP-0004')).toEqual({ doc: { code: 'SOP-0004', kind: 'sops', id: 'sop.storage', rev: 1 }, rec: { rev: 1, day: keeper.train['SOP-0004'].day, until: start + 10 }, ok: true });
     const d = card(driver.id);
     expect(d?.kind === 'person' && d.train.find(r => r.doc.code === 'SOP-0005')).toEqual({ doc: { code: 'SOP-0005', kind: 'sops', id: 'sop.reach', rev: 1 }, ok: false });

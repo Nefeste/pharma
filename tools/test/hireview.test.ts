@@ -64,7 +64,8 @@ describe('вакансия аппаратчика: кандидаты, приё�
 
   test('штат: по сценарию и сейчас — у каждой роли и графика; сумма — люди сценария и люди завода', () => {
     const row = v1.staff.find(x => x.role === 'role.operator' && x.shift === 'shift.a')!;
-    expect(row).toEqual({ role: 'role.operator', shift: 'shift.a', plan: 2, now: 2, coming: 0, leaving: 0 });
+    // аппаратчиков первой смены — трое: двое на отвешивании и запас на отпуска (Б4г)
+    expect(row).toEqual({ role: 'role.operator', shift: 'shift.a', plan: 3, now: 3, coming: 0, leaving: 0 });
     expect(v1.staff.reduce((n, x) => n + x.plan, 0)).toBe(sc.staff.reduce((n, x) => n + x.n, 0));
     expect(v1.staff.reduce((n, x) => n + x.now, 0)).toBe(Object.keys(s.people).length);
     expect(v1.levels.find(x => x.role === 'role.operator')!.salary).toBe(d.roles['role.operator'].salary);
@@ -116,7 +117,7 @@ describe('вакансия аппаратчика: кандидаты, приё�
     live(d, s, at(mon + 1, 7));
     const v = hiringView(d, s)!;
     expect(v.former).toEqual([{ person: num(a.id), tab: a.tab, role: 'role.operator', shift: 'shift.a', why: 'agree', last: mon }]);
-    expect(v.staff.find(x => x.role === 'role.operator' && x.shift === 'shift.a')).toMatchObject({ now: 1, coming: 1, leaving: 0 });
+    expect(v.staff.find(x => x.role === 'role.operator' && x.shift === 'shift.a')).toMatchObject({ now: 2, coming: 1, leaving: 0 });
     const c = person(d, s, a.id);
     expect(c.gone).toBe(true);
     expect(c.terms).toBeUndefined();

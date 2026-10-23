@@ -17,6 +17,7 @@ import { seedContracts, seedPairs, specPairs } from './partners';
 import { planOf } from './plant';
 import { nominal } from './quality';
 import { shiftEndAt } from './staff';
+import { rowsOf } from './quals';
 import { seedTraining } from './train';
 import type { Ymd } from './core/calendar';
 import { type Batch, type Person, type PlantEvent, type PlantState, SCHEMA, type Task } from './types';
@@ -331,6 +332,47 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
         const p: Person = { id: `E${n}`, role: row.role, shift: row.shift, skill: row.skill, tab: sc.training.tab + n - 1, train: {}, x: plan.entrance.x, z: plan.entrance.z, ot: [], otYear: { y, sec: 0 } };
         s.people[p.id] = p;
         seedTraining(db, sc, p, day);
+      }
+    }
+    return raw;
+  },
+  // 24 → 25 (Б4г): отпуска — графиков и частей нет, черновик кадры составят в ближайшие 09:00 рабочего дня, если его день
+  // уже настал (leave.ts); дней отпуска использовано — ноль. Запас людей сценария — новыми людьми у входа, с записями
+  // обучения на день сохранения, как будто были с начала: людей роли меньше, чем в штате сценария, — недостающие с
+  // графиком последних строк этой роли. Смежные профессии строк штата — людям строки по порядку табельных номеров, с
+  // записями обучения по её строке матрицы. Начисленного по месяцам нет — для среднего заработка это оклад (cash.ts).
+  24: (raw, db) => {
+    const sc = db.scenarios[raw.scenario as string];
+    if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
+    const s = raw as unknown as PlantState;
+    s.leave = {};
+    const plan = planOf(db, s.plant);
+    const day = momentOf(s.start, s.t).day;
+    const { y } = momentOf(s.start, s.t).date;
+    const want = new Map<string, number>();
+    for (const row of sc.staff) want.set(row.role, (want.get(row.role) ?? 0) + row.n);
+    for (const [role, n] of want) {
+      const rows = sc.staff.filter(r => r.role === role);
+      for (let k = Object.values(s.people).filter(p => p.role === role).length; k < n; k++) {
+        const row = rows[rows.length - 1 - ((n - 1 - k) % rows.length)];
+        const e = (s.next.E = (s.next.E ?? 0) + 1);
+        const p: Person = { id: `E${e}`, role, shift: row.shift, skill: row.skill, tab: sc.training.tab + e - 1, train: {}, x: plan.entrance.x, z: plan.entrance.z, ot: [], otYear: { y, sec: 0 } };
+        s.people[p.id] = p;
+        seedTraining(db, sc, p, day);
+      }
+    }
+    const used = new Set<string>();
+    for (const row of sc.staff) {
+      const mine = Object.values(s.people)
+        .filter(p => p.role === row.role && p.shift === row.shift && !used.has(p.id))
+        .sort((a, b) => a.tab - b.tab)
+        .slice(0, row.n);
+      for (const p of mine) {
+        used.add(p.id);
+        if (!row.also || p.also) continue;
+        const had = new Set(rowsOf(db, p));
+        p.also = [...row.also];
+        seedTraining(db, sc, p, day, new Set(rowsOf(db, p).filter(c => !had.has(c))));
       }
     }
     return raw;

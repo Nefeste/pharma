@@ -7,6 +7,7 @@ import type { ContentDb, Id } from '../content/types';
 import { contractor } from '../engine/assets';
 import { batchNo } from '../engine/batchno';
 import { momentOf } from '../engine/core/calendar';
+import { coversOn } from '../engine/leave';
 import { geo, SIXTY } from '../engine/line';
 import { partType } from '../engine/maint';
 import { nominal, roomWork, washWork } from '../engine/mes';
@@ -64,8 +65,8 @@ export interface NowRow {
   maker?: Id;
   how?: 'audit' | 'docs';
   until?: number;
-  /** люди: номера, как в срезе, и роли */
-  people: { n: number; role: Id }[];
+  /** люди: номера, как в срезе, и роли; заместитель ушедшего в отпуск (Б4г) — и за кого: роль ушедшего */
+  people: { n: number; role: Id; for?: Id }[];
   /** работа идёт после конца смены (Б4а): сверхурочно с какого мгновения — у того, у кого смена кончилась раньше */
   over?: number;
   /** чья смена ведёт работу (Б4б): сменный по циклу график первого из людей, если он в таком */
@@ -137,14 +138,23 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
   const roomIx = (id: string) => plan.plant.rooms.findIndex(r => r.id === id);
   const roomType = (id: string) => plan.plant.rooms.find(r => r.id === id)?.type;
   const lab = plan.plant.rooms.findIndex(r => r.type === 'lab');
-  const peopleOf = (ids: readonly string[]) => ids.filter(id => s.people[id]).map(id => ({ n: num(id), role: s.people[id].role }));
+  const cover = coversOn(s, momentOf(s.start, s.t).day);
+  /** люди работы ролей `roles`: кто взял её не по своей роли — заместитель, за роль ушедшего */
+  const peopleOf = (ids: readonly string[], roles: readonly Id[] = []) =>
+    ids
+      .filter(id => s.people[id])
+      .map(id => {
+        const role = s.people[id].role;
+        const by = roles.includes(role) ? undefined : cover.get(id)?.find(r => roles.includes(r));
+        return { n: num(id), role, ...(by ? { for: by } : {}) };
+      });
   const startOf = (t: Task) => t.times?.[1] ?? t.created;
   const busy = Object.values(s.tasks).filter(t => t.state === 'busy');
   const rows: NowRow[] = [];
 
   for (const t of busy) {
     if (FOLDED.has(t.kind)) continue;
-    const row: NowRow = { key: t.id, dept: DEPT[t.kind] ?? 'wms', kind: t.kind, people: peopleOf(t.people), from: startOf(t) };
+    const row: NowRow = { key: t.id, dept: DEPT[t.kind] ?? 'wms', kind: t.kind, people: peopleOf(t.people, t.roles), from: startOf(t) };
     const b = t.batch ? s.batches[t.batch] : undefined;
     if (b) row.batch = batchNo(b.code);
     const lot = t.lot ? s.lots[t.lot] : undefined;
@@ -223,7 +233,8 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
     const g = geo(db, s, line, job.sku);
     const k = l.machines.findIndex(m => db.machines[m.type].item === 'carton');
     const mc = line.machines[k];
-    const crew = busy.filter(t => (t.kind === 'crew' || t.kind === 'feed') && t.line === l.id).flatMap(t => t.people);
+    const crewTasks = busy.filter(t => (t.kind === 'crew' || t.kind === 'feed') && t.line === l.id);
+    const crew = crewTasks.flatMap(t => t.people);
     rows.push({
       key: `pack:${b.id}`,
       dept: 'line',
@@ -231,7 +242,7 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
       batch: batchNo(b.code),
       sku: job.sku,
       line: li + 1,
-      people: peopleOf([...new Set(crew)]),
+      people: peopleOf([...new Set(crew)], [...new Set(crewTasks.flatMap(t => t.roles))]),
       from: job.start ?? job.taken ?? s.t,
       done: line.made,
       target: Math.floor(job.tablets / (sku.perBlister * sku.blisters)),
@@ -265,7 +276,7 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
       phase: q.state,
       ...(q.inst && s.instruments[q.inst] ? { inst: s.instruments[q.inst].type } : {}),
       ...(lot ? { lot: codeOf(lot.code) } : {}),
-      people: peopleOf(task?.people ?? []),
+      people: peopleOf(task?.people ?? [], task?.roles),
       from,
       ...(norm !== undefined ? { norm } : {}),
       ...(lab >= 0 ? { thing: { kind: 'room', i: lab } as Thing } : {}),
@@ -311,7 +322,7 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
       kind: 'truck',
       ...(tr.customer ? { customer: tr.customer } : {}),
       ...(po ? { supplier: po.supplier } : {}),
-      people: peopleOf([...new Set(ids.flatMap(t => t.people))]),
+      people: peopleOf([...new Set(ids.flatMap(t => t.people))], [...new Set(ids.flatMap(t => t.roles))]),
       from: tr.arrived,
       thing: { kind: 'truck', n: num(tr.id), customer: !!tr.customer },
     });

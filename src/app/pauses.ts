@@ -12,9 +12,9 @@ import type { Keep } from './preset';
 /**
  * Автопаузы прототипа — по порядку меню. Из событий сотрудника есть потеря допуска (Б3б), сверхурочные года на исходе
  * (Б4а) и заявление об увольнении (Б4в); срок квалификации или калибровки актива (Б3в); приостановленная пара поставщика
- * (Б3г); жалобы, совещания S&OP и инспекции в прототипе нет.
+ * (Б3г); черновик графика отпусков (Б4г); жалобы, совещания S&OP и инспекции в прототипе нет.
  */
-export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'morning'] as const;
+export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'leaveDraft', 'morning'] as const;
 export type Pause = (typeof PAUSES)[number];
 
 /**
@@ -34,6 +34,7 @@ export const PAUSE_NOTICES: Record<Pause, readonly string[]> = {
   resign: ['resign/mes', 'resign/line', 'resign/maint', 'resign/qc', 'resign/qa', 'resign/wms'],
   assetExpired: ['assetExpired/equipment', 'assetExpired/machine', 'assetExpired/ipc', 'assetExpired/lab', 'assetExpired/sensor'],
   pairSuspended: ['pairSuspended'],
+  leaveDraft: ['leaveDraft'],
   morning: ['morning'],
 };
 
@@ -57,6 +58,8 @@ export const PAUSE_SEATS: Record<Pause, readonly SeatId[] | 'all'> = {
   assetExpired: ['production', 'quality', 'supply'],
   // пара поставщика (Б3г): оценку ведёт качество, заказывает снабжение
   pairSuspended: ['quality', 'supply'],
+  // черновик графика отпусков (Б4г): строки своих постов правит каждый пост
+  leaveDraft: 'all',
   morning: 'all',
 };
 
@@ -136,7 +139,8 @@ export function machineThing(plant: Plant, id: string): Thing | undefined {
  * Куда ведёт извещение (13-art.md, §11: «щелчок ведёт на место»): отказ — к машине, фура — к фуре, материал — к
  * расписанию, заказ — к планёрке с заказами под угрозой, отклонённая партия — к лаборатории, расследование — к доске,
  * потеря допуска и сверхурочные года на исходе — к человеку; отклонение и его оценка — к карточке отклонения (Б1г);
- * найм (Б4в): заявление, увольнение, уход и выход на работу — к человеку, вакансия и кандидаты — к вкладке «Люди».
+ * найм (Б4в): заявление, увольнение, уход и выход на работу — к человеку, вакансия и кандидаты — к вкладке «Люди»;
+ * отпуска (Б4г): черновик и утверждение графика — к вкладке «Люди», извещение, уход в отпуск и выход — к человеку.
  */
 export function goOf(plant: Plant, n: Notice): Go | undefined {
   switch (n.kind) {
@@ -165,10 +169,15 @@ export function goOf(plant: Plant, n: Notice): Go | undefined {
     case 'dismissed':
     case 'left':
     case 'hired':
+    case 'leaveNotice':
+    case 'leaveStart':
+    case 'leaveEnd':
       return { thing: { kind: 'person', n: Number(n.person.slice(1)) } };
     case 'vacancy':
     case 'candidates':
     case 'accepted':
+    case 'leaveDraft':
+    case 'leaveApproved':
       return { panel: 'ref', tab: 'people' };
     case 'assetExpired': {
       // машина и оборудование — к ним; прибор и датчик — к справочнику, вкладке «Места»

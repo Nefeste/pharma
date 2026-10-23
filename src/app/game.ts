@@ -372,6 +372,11 @@ export class Game {
       : n.kind === 'resign' ? T.notices.resign(T.card.person(this.roleName(n.role), n.tab), dayText(n.last))
       : n.kind === 'dismissed' ? T.notices.dismissed(T.card.person(this.roleName(n.role), n.tab), T.hire.why[n.why], dayText(n.last))
       : n.kind === 'left' ? T.notices.left(T.card.person(this.roleName(n.role), n.tab), T.hire.why[n.why])
+      : n.kind === 'leaveDraft' ? T.notices.leaveDraft(n.y, n.miss)
+      : n.kind === 'leaveApproved' ? T.notices.leaveApproved(n.y)
+      : n.kind === 'leaveNotice' ? T.notices.leaveNotice(T.card.person(this.roleName(n.role), n.tab), dayText(n.from), dayText(n.to), n.deputy && T.card.person(this.roleName(n.deputy.role), n.deputy.tab))
+      : n.kind === 'leaveStart' ? T.notices.leaveStart(T.card.person(this.roleName(n.role), n.tab), dayText(n.to), n.deputy && T.card.person(this.roleName(n.deputy.role), n.deputy.tab))
+      : n.kind === 'leaveEnd' ? T.notices.leaveEnd(T.card.person(this.roleName(n.role), n.tab))
       : n.kind === 'overtimeLow' ? T.notices.overtimeLow(named(this.db.roles[n.role]?.name, n.role), n.tab, durText(n.left), hText(this.db.profiles[this.scenario.profile].payroll.overtime.year))
       : n.kind === 'assetExpired' ? T.notices.assetExpired(workName(n, n.work), assetClass(n), T.assets.inv(n.inv))
       : n.kind === 'pairSuspended' ? T.notices.pairSuspended(named(this.db.suppliers[n.supplier]?.name, n.supplier), named(this.db.makers[n.maker]?.name, n.maker))
@@ -763,6 +768,11 @@ export class Game {
     closeVacancy: id => this.client.command({ kind: 'close', vacancy: id, by: 'player' }),
     hire: (candidate, trial) => this.client.command({ kind: 'hire', candidate, trial, by: 'player' }),
     dismiss: (person, why) => this.client.command({ kind: 'dismiss', person: `E${person}`, why, by: 'player' }),
+    leaveAdd: (person, from, days) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'add', from, days, by: 'player' }),
+    leaveMove: (person, part, from) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'move', part, from, by: 'player' }),
+    leaveDrop: (person, part) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'drop', part, by: 'player' }),
+    leaveDeputy: (person, part, deputy) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'deputy', part, ...(deputy !== undefined ? { deputy: `E${deputy}` } : {}), by: 'player' }),
+    also: (person, role, on) => this.client.command({ kind: 'also', person: `E${person}`, role, on, by: 'player' }),
     setCashPage: page => {
       this.store.set({ cash: { ...this.store.get().cash, page } });
       this.sendViews();

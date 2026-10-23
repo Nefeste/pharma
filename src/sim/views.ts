@@ -15,12 +15,13 @@ import { planOf } from '../engine/plant';
 import { pendingOf } from '../engine/shifts';
 import { shiftEnd } from '../engine/staff';
 import { TAG } from '../engine/stock';
-import type { AssetRec, Lot, LotStatus, MachineState, PlantState, Quit, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
+import type { AssetRec, Lot, LotStatus, MachineState, Person, PlantState, Quit, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
 import { type DevCard, devCard, type Regimes, regimesAt, type ReleaseView, releaseOf } from './devs';
 import { type SaView, type SheetView, saOf, sheetOf } from './hours';
 import { type InvQuery, type InvView, invView } from './inv';
 import { type ChartQuery, type ChartView, chartView, type LabQuery, type LabView, labView } from './lab';
 import { type EqState, eqStateOf } from './pack';
+import { type PersonLeave, personLeave } from './leave';
 import { lotDeal } from './partners';
 import { type Admission, admissionOf, type DocNow, docNow, docOfRev, type TrainRow, trainRows } from './people';
 import { type AssetInfo, assetInfo, assetWaits } from './places';
@@ -162,6 +163,7 @@ export type CardData =
   /** человек (Б3б): табельный номер, навык, допуск сегодня, обучение по матрице его роли, что изучает сейчас; табель месяца (Б4а) */
   /** с Б4б — ждущий перевод на другой график и учётный период сменного по циклу */
   /** с Б4в — оклад, день приёма, последний день испытания, увольнение; ушёл с завода — `gone` с днём и основанием */
+  /** с Б4г — смежные профессии и отпуска: части, дни, в отпуске ли и кто замещает, кого замещает он */
   | {
       kind: 'person';
       person: number;
@@ -181,6 +183,8 @@ export type CardData =
       trial?: number;
       quit?: { why: Quit['why']; day: number; last: number; pay?: number };
       gone?: true;
+      also?: Id[];
+      leave?: PersonLeave;
       /**
        * что можно сегодня (Б4в): уволить по соглашению — последний день и выплата; не выдержал испытание — последний
        * день и успеть ли в срок испытания; подал заявление — отпустить раньше, последний день — сегодня
@@ -210,6 +214,13 @@ export interface PartInfo {
   wear: number;
   failed: boolean;
   repair: boolean;
+}
+
+/** Отпуска в карточке человека (Б4г): ушёл с завода или у сценария нет отпусков — нет. */
+function personLeaveOf(db: ContentDb, s: PlantState, p: Person, gone: boolean): { leave?: PersonLeave } {
+  if (gone) return {};
+  const l = personLeave(db, s, p);
+  return l ? { leave: l } : {};
 }
 
 /** Что делает человек: задача, идёт на пост или к выходу, стоит на посту, вне смены. */
@@ -554,6 +565,8 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(p.trial !== undefined ? { trial: p.trial } : {}),
         ...(p.quit ? { quit: { why: p.quit.why, day: p.quit.day, last: p.quit.last, ...(p.quit.pay ? { pay: p.quit.pay } : {}) } } : {}),
         ...(gone ? { gone: true as const } : {}),
+        ...(p.also ? { also: [...p.also] } : {}),
+        ...(personLeaveOf(db, s, p, gone)),
         ...(gone || !laborOf(db, s) ? {} : p.quit ? (p.quit.why === 'own' && p.quit.last > momentOf(s.start, s.t).day ? { terms: { early: { last: momentOf(s.start, s.t).day } } } : {}) : { terms: dismissTerms(db, s, p) }),
       };
     }

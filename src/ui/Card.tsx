@@ -15,6 +15,7 @@ import type { CardView, Hist, Holds, Why } from '../sim/views';
 import { assetName, untilText, unfitText, workName } from './assets';
 import { db, docText } from './db';
 import { DevBody, First, RegimesBlock, ReleaseBlock } from './Decide';
+import { LeaveBlock } from './Leave';
 import { StatusIcon, TaskIcon } from './icons';
 import { placeText, supplierText } from './Stock';
 import { type Actions, type Hud, holds } from './store';
@@ -549,6 +550,7 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
               </li>
             ))}
           </ol>
+          {c.leave ? <LeaveBlock v={c.leave} also={c.also} hud={hud} actions={actions} /> : null}
           <Sheet v={c.sheet} start={start} />
           {c.sa ? <SaBlock v={c.sa} /> : null}
         </>

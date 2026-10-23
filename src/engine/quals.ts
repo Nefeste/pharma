@@ -88,6 +88,17 @@ export function matrixOf(db: ContentDb, role: Id): readonly string[] {
   return index(db).matrix.get(role) ?? [];
 }
 
+/**
+ * Строки матрицы человека (Б4г): своей роли и его смежных профессий — коды без повторов, своей роли первыми. По ним он
+ * учится, и записи, сроки и новые редакции у смежной — как у своей.
+ */
+export function rowsOf(db: ContentDb, p: Pick<Person, 'role' | 'also'>): readonly string[] {
+  if (!p.also?.length) return matrixOf(db, p.role);
+  const out = [...matrixOf(db, p.role)];
+  for (const r of p.also) for (const c of matrixOf(db, r)) if (!out.includes(c)) out.push(c);
+  return out;
+}
+
 /** Все коды матрицы обучения: процедуры, потом методики, по порядку кода. */
 export function learnCodes(db: ContentDb): string[] {
   return [...index(db).byCode.keys()].sort();

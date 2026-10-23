@@ -98,7 +98,12 @@ const ALLOWED = new Set(
     // Б4в: штат по сценарию и сейчас, вакансии, кандидаты рынка, принятые до первого дня, уволенные; оклад, испытание
     // и увольнение — записи завода; уровни оплаты, сроки закона и цены найма — база и профиль
     'hiring plan coming leaving vacancies via candidates exam first fee instead hires former levels probation law agree ' +
-    'costs ad medical agency trial why hired quit'
+    'costs ad medical agency trial why hired quit ' +
+    // Б4г: график отпусков — годы, черновик и утверждение, кто не поместился; дни человека — заработано, использовано,
+    // осталось; у части — заместитель, кто ещё годится, извещён ли, отпускные, началась, кончилась, что мешает; смежные
+    // профессии — записи завода; числа закона и правило черновика — профиль и сценарий
+    'leave years draft approve miss earned used left deputy can told paid started ended problems right also law part ' +
+    'notice pay rule cover'
   ).split(' '),
 );
 

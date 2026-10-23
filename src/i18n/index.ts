@@ -85,6 +85,11 @@ export function hText(sec: number): string {
   return `${num(h, Number.isInteger(Math.round(h * 10) / 10) ? 0 : 1)}\u00a0${T.units.h}`;
 }
 
+/** Дни (Б4г): «14 дней»; не целые — «2,33 дня». */
+export function daysText(n: number): string {
+  return `${num(n, Number.isInteger(n) ? 0 : 2)}\u00a0${T.leave.dayWord(n)}`;
+}
+
 /** Доля 1/10 000 — процентами: «61 %». */
 export function pctText(share: number, digits = 0): string {
   return `${num(share / 100, digits)} %`;

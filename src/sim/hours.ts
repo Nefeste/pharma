@@ -5,12 +5,16 @@ import type { ContentDb, Dept, Id, OvertimeMode } from '../content/types';
 import { extras } from '../engine/cash';
 import { civilFromDays, DAY, daysFromCivil, isHoliday, isShort, isWorkday, lastOfMonth, momentOf, normOf } from '../engine/core/calendar';
 import { type SheetDay, sheetDays, yearOver } from '../engine/hours';
+import { awayOn } from '../engine/leave';
 import { cycleDay, dayNorm, pendingOf, periodOf, scheduleOn, spanOn } from '../engine/shifts';
 import type { Person, PlantState } from '../engine/types';
 import { calOf, worksOn } from '../engine/workdays';
 
-/** Отметки дня табеля по форме Т-13: Я — день, Н — ночь, С — сверхурочно, РВ — в выходной или праздник, В — выходной. */
-export type SheetMark = 'day' | 'night' | 'over' | 'off' | 'rest';
+/**
+ * Отметки дня табеля по форме Т-13: Я — день, Н — ночь, С — сверхурочно, РВ — в выходной или праздник, В — выходной, ОТ —
+ * ежегодный отпуск (Б4г; праздник в отпуске — В).
+ */
+export type SheetMark = 'day' | 'night' | 'over' | 'off' | 'rest' | 'leave';
 
 /** День табеля: номер дня от 1970-01-01, отметки и часы, с; сегодня — до этой минуты. */
 export interface SheetRow {
@@ -48,6 +52,7 @@ function withOpen(s: PlantState, p: Person): Person {
 function rowsTo(db: ContentDb, s: PlantState, p: Person, z0: number, z1: number, now: number): SheetRow[] {
   // смена идёт: её часы — до этой минуты (sheetDays до `now`); отрезки после прошлой смены — как есть
   const days = sheetDays(db, s, withOpen(s, p), z0, z1, now);
+  const cal = calOf(db, s);
   return days.map((d, i) => {
     const z = z0 + i;
     const x: SheetDay = d;
@@ -56,7 +61,7 @@ function rowsTo(db: ContentDb, s: PlantState, p: Person, z0: number, z1: number,
     if (x.night > 0) marks.push('night');
     if (x.over[0] + x.over[1] > 0) marks.push('over');
     if (x.off > 0) marks.push('off');
-    if (x.work === 0) marks.push('rest');
+    if (x.work === 0) marks.push(awayOn(p, z) && !isHoliday(cal, z) ? 'leave' : 'rest');
     return { day: z, marks, work: x.work, night: x.night, over: x.over[0] + x.over[1], off: x.off };
   });
 }

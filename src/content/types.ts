@@ -61,6 +61,14 @@ export interface Profile {
    * не позже чем за `trial` суток
    */
   labor: { probation: number; notice: number; trial: number };
+  /**
+   * отпуска (Б4г; ст. 115, 122, 123, 125, 136, 139 ТК РФ; Положение № 922; Правила 1930 года, пп. 28, 35): календарных
+   * дней за рабочий год; одна часть — не меньше `part` дней; право за первый год — через `first` месяцев; график
+   * утверждают не позже чем за `approve` дней до года, извещают не позже чем за `notice` дней до начала, отпускные — не
+   * позже чем за `pay` дней; средний заработок — за `months` месяцев, среднемесячное число дней — `avg` тысячных дня; при
+   * увольнении `full` месяцев рабочего года и больше — полная компенсация
+   */
+  leave: { days: number; part: number; first: number; approve: number; notice: number; pay: number; months: number; avg: number; full: number };
   /** ключи источников из docs/10-domain.md, §9 */
   source: string[];
   review: Review;
@@ -88,6 +96,8 @@ export interface StaffRow {
   /** навык 1–5 */
   skill: number;
   n: number;
+  /** смежные профессии (Б4г): роли, по строкам матрицы которых люди строки учатся наряду со своей */
+  also?: Id[];
 }
 
 /** Заказ поставщику в начале сценария: делается в первую секунду партии. */
@@ -263,6 +273,8 @@ export interface Scenario {
   deviations: { term: number };
   /** рынок труда города (Б4в; src/engine/hire.ts); нет — ни кандидатов, ни заявлений */
   labor?: Labor;
+  /** отпуска (Б4г; src/engine/leave.ts): правило черновика графика и доплата заместителю; нет — отпусков нет */
+  leave?: LeaveRule;
   /** происшествие прототипа (часть 4): у задания на серию — неисправность по жребию зерна */
   incident?: IncidentDef;
 }
@@ -288,6 +300,22 @@ export interface Labor {
   trial: number;
   colleague: { skill: number; over: number; ad: number };
   roles: Record<Id, { ad: [number, number, number, number]; skill: [number, number, number, number, number]; quit: number }>;
+}
+
+/**
+ * Правило графика отпусков (Б4г; гипотезы): черновик на следующий год — в первый рабочий день не раньше `draft`,
+ * утверждение — в последний рабочий день не позже `approve` (месяц и число); части у каждого — дней по порядку, первая —
+ * в `summer`, остальные — в `rest` (месяц и число с и по); из отдела сразу — не больше `dept` человек; доплата
+ * заместителю — доля оклада ушедшего за дни замещения, 1/10 000.
+ */
+export interface LeaveRule {
+  draft: [number, number];
+  approve: [number, number];
+  parts: number[];
+  summer: [[number, number], [number, number]];
+  rest: [[number, number], [number, number]];
+  dept: number;
+  cover: number;
 }
 
 /**
@@ -530,6 +558,11 @@ export interface Role {
   dept: Dept;
   /** копейки в месяц */
   salary: number;
+  /**
+   * заменить на время отпуска может только человек той же роли (Б4г): смежной профессией у других людей эта роль не
+   * бывает — уполномоченное лицо (GMP ЕАЭС, ч. I, п. 2.6)
+   */
+  same?: true;
 }
 
 /** Техника склада (геймдизайн, §4.4). */

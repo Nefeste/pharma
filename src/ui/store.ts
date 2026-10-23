@@ -228,6 +228,15 @@ export interface Actions {
   hire(candidate: string, trial: number): void;
   dismiss(person: number, why: 'agree' | 'trial' | 'early'): void;
   /**
+   * отпуска (Б4г): часть — добавить с дня на столько дней, перенести на другой день, убрать, сменить или снять
+   * заместителя (номер человека); смежная профессия — обучить или снять
+   */
+  leaveAdd(person: number, from: number, days: number): void;
+  leaveMove(person: number, part: string, from: number): void;
+  leaveDrop(person: number, part: string): void;
+  leaveDeputy(person: number, part: string, deputy?: number): void;
+  also(person: number, role: Id, on: boolean): void;
+  /**
    * расписание: открыть или закрыть; окно — сутки, трое, неделя; на сутки назад, вперёд, к сегодня (0); тянуть задание —
    * призрак с новым сроком; отпустить — строка черновика; отменить; утвердить черновик — команды `shift`; сбросить его
    */

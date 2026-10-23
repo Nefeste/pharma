@@ -140,7 +140,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   in force at their not-before, FEFO reservation with potency — tried without writing by `kitPlan`, shared with the
   schedule run, kitting through the airlock, stages in rooms with equipment and people, cleaning in two works — the
   equipment washed by operators, then the room by a cleaner by its floor area —, process parameters,
-  true batch quality with causes, IPC, the bulk lot; the packing job and its packaging kit; a stage stopped by a part
+  true batch quality with causes, IPC, the bulk lot; the packing job and its packaging kit — a container of it already
+  in the line room is in place, whatever pallet it lies on; a stage stopped by a part
   failure and resumed after the repair; a new not-before time of a batch order from the player — `shift`; room
   readiness, nominal stage time and cleaning time shared with the schedule run; new part budgets of a running stage for
   the plan run's twin — `stageRedraw`), `plan/schedule.ts` (the schedule run — a pure function: running tasks to their
@@ -167,8 +168,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   and the hourly alert, `orderRisks`), `cash.ts` (kopecks and ledger entries, dues by
   date, suppliers, wages twice a month by the time sheet — salary halves, night hours, overtime and work on a day off,
   the overtime of a cyclic shift's accounting period with the second half of its last month, a share of the salary by
-  hours in the month of hiring or leaving —, the settlement on the last day with the payment by agreement and the wages
-  accrued but not yet paid, contributions, energy, VAT by quarter, the credit line), `maint.ts` (machine
+  hours in the month of hiring, leaving or a vacation, the deputy's cover pay —, the settlement on the last day with the
+  payment by agreement, the wages accrued but not yet paid and the compensation for unused vacation days, with Б4г —
+  vacation pay at the bank hour three days before a part, the average daily earnings over twelve months × its days
+  (`avgDaily`), contributions, energy, VAT by quarter, the credit line), `maint.ts` (machine
   parts, wear by work done, failure by the hazard table of wear, repairs and planned replacement by the mechanic with a
   spare from the workshop, spares replenished by level, the maintenance policy, `maintain`), `lean.ts` (losses per day
   by kind and department: waiting tasks by cause, a truck waiting for the dock, transport and walking, defects, room
@@ -179,27 +182,34 @@ first, or copy the working code of Bolnitsa on the same versions.
   vehicles, instruments; why a task waits; a person walking to a post is free and measured from where they are; only a
   person admitted to everything the work and the vehicle need takes it, otherwise the task waits «нет допуска» with the
   document; a person takes it only if, with the walk and its norm (a stage with its largest spread), it fits the rest
-  of the shift and the overtime still allowed, otherwise «нет часов»), `hours.ts` (working time by law: the time sheet
-  by days from the person's shifts, a night shift split at midnight — work, night, overtime at two rates, work on a day
+  of the shift and the overtime still allowed, otherwise «нет часов»; a deputy takes the work of the absent's role in
+  their own shifts, and with nobody of a role on shift because of a vacation the task waits «в отпуске»), `hours.ts`
+  (working time by law: the time sheet by days from the person's shifts, a night shift split at midnight — work, night,
+  overtime at two rates, work on a day
   off or a holiday; overtime limits per shift and per calendar year; the
   fit rule shared with the schedule run; the department policy «Сверхурочные», `overtime`; the notice when the year's
   overtime runs low), `workdays.ts` (the production calendar of the scenario's profile; five-day shifts live by it, a
   short day ends an hour earlier), `shifts.ts` (schedules: with Б4б, cyclic ones — a pattern of day, night and off days
   from a start day with a crew offset, a night ending the next day; a pattern's checks — no two shifts in a row, 42
   hours of weekly rest; a person's shift on a day, one for the dispatcher, the schedule run, the line, the time sheet
-  and the pay — transfers from the 1st of a month at least a month ahead, the first shift of a new schedule dropped if
+  and the pay, none on the days of a vacation part (`graphSpan` — by the schedule alone) — transfers from the 1st of a
+  month at least a month ahead, the first shift of a new schedule dropped if
   it starts no later than the old one ends, extra days off so a cyclic schedule plans no overtime — by the end of each
   month its hours without holiday hours within the norm since the start of the accounting period, whole shifts spread
-  over the month; the `roster` command; at midnight of a period's first day — its overtime, worked minus the norm, into
-  the pay of the second half of its last month, the rest back to the year's overtime), `quals.ts` (admissions: the
+  over the month; the `roster` command; at midnight of a period's first day — its overtime, worked minus the norm less
+  the schedule's hours that fell on a vacation, into the pay of the second half of its last month, the rest back to the
+  year's overtime), `quals.ts` (admissions: the
   training matrix — the roles of each procedure and test
   method, the same for all
   revisions of a code; what a work needs to know — procedures of its task kind and of any work, the equipment and IPC
-  methods of a stage, the machines of a line, the method of a test, a vehicle's procedure; a person knows a document on a
-  day — a record on the revision in force or newer, not expired; which revision to learn and when — `ahead` days before a
+  methods of a stage, the machines of a line, the method of a test, a vehicle's procedure; what a person learns — the
+  rows of their role and of their related professions (`rowsOf`); a person knows a document on a day — a record on the
+  revision in force or newer, not expired; which revision to learn and when — `ahead` days before a
   new revision or the end of a record), `train.ts` (training: start records spread by a hash of person and code up to
   `spread` days back; at midnight — a notice for an admission lost and a task to study at the person's post; the
-  knowledge check by the QA specialist or the QC head, never the trainee; the record with the check's day), `staff.ts`
+  knowledge check by the QA specialist or the QC head, never the trainee; the record with the check's day; a related
+  profession, with Б4г — the `also` command: tasks to study what the row of its role needs and the person lacks; off —
+  the records stay to their term, the tasks go), `staff.ts`
   (whether a person may take a task at a moment and when their shift ends — by the person's shift (`shifts.ts`), shared
   with the schedule run; a free
   person walks to the post of their role, and to the exit 15 minutes before the end of the shift; where they are on the
@@ -209,11 +219,20 @@ first, or copy the working code of Bolnitsa on the same versions.
   medical exam on workdays at the plant's cost, the first day — the first shift of the vacancy's schedule after it, the
   next personnel number, training at once, the trial; dismissal — by agreement today with a payment, a failed trial in
   three days and only within the trial, by own wish two weeks after the application, «let go earlier»; turnover; the
-  person leaves after the last shift; the colleague of a post the player does not hold opens a vacancy for each
+  person leaves after the last shift, the vacation parts after the last day dropped and the parts they deputized for
+  given to the next deputy; the colleague of a post the player does not hold opens a vacancy for each
   application and hires the first fit candidate — an agency at once for a role no ad finds, the price within the
-  market's for the skill), `seats.ts` (the player's places — the director and four posts: whose each command is — a
-  transfer, a vacancy, a hire or a dismissal is the post of the role's department —, the `seat` command, the log of
-  places; a player's command of another's post is refused),
+  market's for the skill), `leave.ts` (vacations, with Б4г: the law's numbers in the profile, the scenario's rule of the
+  draft; a year's vacation schedule — the draft by HR on the first workday of December at 09:00 by the rule
+  (`placeDraft`, shared with the content build): parts from a Monday, the first in summer, people of one role apart, a
+  person and their deputy apart, at most so many of a department at once, a part on the week of its window where it
+  hinders nobody and the fewest days of others' parts fall; edits by the department's post or the director, the
+  approval on 17 December or the last workday before it, then a move by agreement no closer than two weeks; the notice
+  two weeks ahead; away and back at midnight; a deputy — the first by personnel number with the related profession of
+  the absent's role, of the same shift if any; who covers whom on a day; days earned and used, the compensation days;
+  the `leave` command), `seats.ts` (the player's places — the director and four posts: whose each command is — a
+  transfer, a vacancy, a hire, a dismissal, a vacation part or a related profession is the post of the role's
+  department —, the `seat` command, the log of places; a player's command of another's post is refused),
   `batchno.ts` (the batch number `PPNNNMMYY`: the short `PPNNN` when the batch record is issued, month and year when the
   first mixing starts; a count per product code from 1 January and after 999 again from 001, skipping numbers still held,
   so a full number never repeats; one integer in the slice), `alerts.ts` (the hourly alerts — a supplier truck still not
@@ -249,7 +268,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   instruments and methods, roles and shifts, suppliers and customers, materials with their OKEI unit codes and the spec
   in force, every document revision with its status by the plant date, without the model's hidden parameters, start
   moments of running work as numbers (`ref.ts`); what is going on now — running work by department, one row per work,
-  with the plant's norm and never the engine's drawn duration (`now.ts`); the 08:00 meeting — the player's places over
+  with the plant's norm and never the engine's drawn duration, a deputy's work with «за» and the absent's role
+  (`now.ts`); the 08:00 meeting — the player's places over
   their tenure, yesterday by calendar day with its cleanings and changeovers, events of the 24 hours before it, what
   waits now — the cash panel and the top-bar cash with the player's places (`report.ts`); the places and assets — the
   «Места» tab, an asset in a card, the meeting's calibration and qualification, which batch waits for which asset —
@@ -259,15 +279,19 @@ first, or copy the working code of Bolnitsa on the same versions.
   average tablet mass with its limits and special-cause signs, a lot under investigation and its steps' tests
   (`lab.ts`); the investigation board — what happened, participants, steps, findings, versions from the findings only,
   whether release is proven, the debrief only once concluded (`inv.ts`); working time — the month's time sheet of a
-  person's card with its totals and the year, the accounting period of a person on a cyclic schedule, the calendar of
+  person's card with its totals and the year, «ОТ» on vacation days, the accounting period of a person on a cyclic
+  schedule, the calendar of
   twelve months, the schedules of this and the next month — by schedule and by role, department policies, the meeting's
   «Рабочее время» with transfers soon in force and the crews' extra days off — records are the plant's knowledge
   (`hours.ts`); people and admissions — a person's admission
   today and what they are losing within the warning period, training rows of the card, the training matrix of the
-  reference with how many people of a role are admitted, the meeting's summary — records are the plant's knowledge, not
-  truth (`people.ts`); hiring — the staff by the scenario and now, vacancies with their candidates and the days of a
-  hire today, the hired before their first day, the former, the meeting's «Люди» — candidates as they came, records of
-  the plant (`hire.ts`); the schedule — the Gantt of the past, the running and the schedule run with the player's draft —
+  reference with how many people of a role are admitted, and of other roles by the related profession, the meeting's
+  summary — records are the plant's knowledge, not truth (`people.ts`); hiring — the staff by the scenario and now,
+  vacancies with their candidates and the days of a hire today, the hired before their first day, the former, the
+  meeting's «Люди» — candidates as they came, records of the plant (`hire.ts`); vacations — the schedule of this and the
+  next year by people and weeks with what hinders it, a person's days earned, used and left, the parts with their
+  deputies and whom one may choose, whom a person covers, the meeting's away, leaving soon and back — records of the
+  plant (`leave.ts`); the schedule — the Gantt of the past, the running and the schedule run with the player's draft —
   new not-before times and new urgent batch orders, the old bars of what the draft moves, and the ghost of a dragged
   batch order (`plan.ts`), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how far the window's
   clock ran ahead of the last slice; at most one `tick` in flight); the plan run's own thread — a second Web Worker over
@@ -306,7 +330,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   warehouse (`Stock.tsx`), a guard around each panel and the top bar — an error stays in its place
   (`Guard.tsx`), the card of a
   thing — what it is, state, why, what can be done, history; a person's dismissal (`Card.tsx`), the plant reference with
-  its tabs, sortable columns and search, hiring in «Люди» (`Ref.tsx`, F1), quality attribute and process parameter
+  its tabs, sortable columns and search, hiring in «Люди» (`Ref.tsx`, F1), the vacation schedule in «Люди» and the
+  vacation block of a person's card — parts, deputies, the related profession (`Leave.tsx`), quality attribute and
+  process parameter
   values in words (`units.ts`), what is going on now with «Смотреть»
   (`Now.tsx`, N), the 08:00 meeting (`Morning.tsx`), the cash
   panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), the schedule window with dragging, the draft, «Прогнать
@@ -324,14 +350,19 @@ first, or copy the working code of Bolnitsa on the same versions.
   with Б3в — `regimes/`: storage regimes of the pharmacopoeia, a temperature range and the highest humidity; with Б3г —
   `makers/`: fictional makers in real countries, and `agreements/`: quality agreements `QAG-` with the document header;
   with Б4б — cyclic schedules in `shifts/` and the scenario's accounting period in months; with Б4в — the scenario's
-  labor market `labor`, the terms of the labor law in the profile and the plan's cleaning seconds per m² by grade);
+  labor market `labor`, the terms of the labor law in the profile and the plan's cleaning seconds per m² by grade; with
+  Б4г — the vacation numbers of the law in the profile, the scenario's rule of the draft `leave`, related professions
+  `also` of the staff rows and `same` of a role only another person of it replaces);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
   code share roles and works, start records younger than the shortest term; a cyclic pattern without two shifts in a row
   and with 42 hours of weekly rest, the accounting period a divisor of the year, a study or a stage no longer than the
   shortest shift of any schedule; a labor market row for every role of the staff, shares adding up to a whole, the
-  trial within the profile's limit, cleaning seconds for the grade of every room with equipment; plan rules in
+  trial within the profile's limit, cleaning seconds for the grade of every room with equipment; the vacation rule —
+  dates of the year, parts adding up to the year's days with one no shorter than the law's, the approval no later than
+  the law's term before the year; a related profession — a role of the base, not one's own and not a `same` one; the
+  draft of the start staff fits whole (`leaveErrors`); plan rules in
   `plan.ts`: doors on walls, docks on outer walls, class D only through
   airlocks, reachability, posts on
   walkable floor; models in

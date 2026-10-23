@@ -7,6 +7,7 @@
 import type { ContentDb, Cycle, CycleDay, Id, Shift } from '../content/types';
 import { civilFromDays, DAY, daysFromCivil, isHoliday, isShort, isWorkday, lastOfMonth, momentOf, normOf } from './core/calendar';
 import { P_ONE } from './core/rng';
+import { awayOn } from './leave';
 import type { Command, Notice, Person, PlantState } from './types';
 import { calOf, type Clock, shiftTo, worksOn } from './workdays';
 
@@ -87,8 +88,8 @@ export function shiftLengths(sh: Shift): number[] {
 
 // ---------------------------------------------------------------- смена человека
 
-/** Графики человека: запись, с какого дня он в каком графике. */
-type Rostered = Pick<Person, 'shift' | 'roster'> & Partial<Pick<Person, 'hired' | 'quit'>>;
+/** Графики человека: запись, с какого дня он в каком графике; приём, уход и части отпуска (Б4в, Б4г). */
+type Rostered = Pick<Person, 'shift' | 'roster'> & Partial<Pick<Person, 'hired' | 'quit' | 'away'>>;
 
 /** График человека в день `z` (номер дня от 1970-01-01): запись, начатая не позже; без записей — его график. */
 export function scheduleOn(p: Rostered, z: number): Id {
@@ -210,9 +211,18 @@ export function offDays(db: ContentDb, s: Clock, id: Id, base: number, prev: Id)
 /**
  * Смена человека, начатая в день `z`, — мгновения [с, по) от полуночи дня начала завода; в этот день смены нет —
  * `undefined`. График — с переводами; у сменного по циклу — без дополнительных выходных; первая смена нового графика,
- * которая начинается не позже конца последней смены прежнего, снята (две смены подряд).
+ * которая начинается не позже конца последней смены прежнего, снята (две смены подряд). В дни части отпуска (Б4г) смены
+ * нет, и ночной накануне, которая кончается в день части, — тоже.
  */
 export function spanOn(db: ContentDb, s: Clock, p: Rostered, z: number): [number, number] | undefined {
+  if (p.away && awayOn(p, z)) return undefined;
+  const span = graphSpan(db, s, p, z);
+  if (span && p.away && span[1] > (z + 1 - daysFromCivil(s.start)) * DAY && awayOn(p, z + 1)) return undefined;
+  return span;
+}
+
+/** Смена человека в день `z` по его графику, без отпуска (Б4г): её часы снимают с нормы учётного периода. */
+export function graphSpan(db: ContentDb, s: Clock, p: Rostered, z: number): [number, number] | undefined {
   // до дня приёма и после последнего дня (Б4в) смен нет
   if (!employedOn(p, z)) return undefined;
   const id = scheduleOn(p, z);
@@ -225,7 +235,7 @@ export function spanOn(db: ContentDb, s: Clock, p: Rostered, z: number): [number
     const prev = base > since ? id : scheduleOn(p, base - 1);
     if (offDays(db, s, id, base, prev).has(z)) return undefined;
   } else if (z === since && p.roster && scheduleOn(p, z - 1) !== id) {
-    const before = spanOn(db, s, p, z - 1);
+    const before = graphSpan(db, s, p, z - 1);
     const at = (z - daysFromCivil(s.start)) * DAY;
     if (before && before[1] >= at + h[0] * 3600) return undefined;
   }
@@ -319,9 +329,11 @@ export interface SaResult {
 /**
  * Итог учётного периода `from`–`last` человека (Б4б; ст. 99, ч. 1; ст. 104; `mintrud-6854`): дни в сменном по циклу
  * графике; отработано без праздничных — смены по графику и работа после смен в эти дни — минус норма этих дней —
- * сверхурочные. Их часы — последние часы после смен, по дням: первые часы дня — по первой ставке, дальше — по второй;
- * ставка — оклад на норму месяца дня (Б4а). Работа после смен шла в счёт года сразу; что не стало сверхурочными
- * (праздничные часы — РВ, ст. 152, ч. 3; по графику вышло меньше нормы), — `back`. В периоде нет таких дней — `undefined`.
+ * сверхурочные. Норма меньше на часы смен его графика, которые снял отпуск (Б4г; `mintrud-8378`; гипотеза — по графику,
+ * сверить), без праздничных, как отработанное: поэтому от отпуска нет ни сверхурочных, ни дополнительных выходных. Часы
+ * сверхурочных — последние часы после смен, по дням: первые часы дня — по первой ставке, дальше — по второй; ставка —
+ * оклад на норму месяца дня (Б4а). Работа после смен шла в счёт года сразу; что не стало сверхурочными (праздничные
+ * часы — РВ, ст. 152, ч. 3; по графику вышло меньше нормы), — `back`. В периоде нет таких дней — `undefined`.
  */
 export function saResult(db: ContentDb, s: PlantState, p: Person, from: number, last: number, now: number): SaResult | undefined {
   const base = daysFromCivil(s.start);
@@ -340,11 +352,11 @@ export function saResult(db: ContentDb, s: PlantState, p: Person, from: number, 
   const t0 = (first - base) * DAY;
   const t1 = Math.min(now, (last + 1 - base) * DAY);
   /** части отрезка [a, b) по календарным дням периода: день и секунды */
-  const pieces = (a: number, b: number): [number, number][] => {
+  const pieces = (a: number, b: number, until = t1): [number, number][] => {
     const out: [number, number][] = [];
-    for (let x = Math.max(a, t0); x < Math.min(b, t1); ) {
+    for (let x = Math.max(a, t0); x < Math.min(b, until); ) {
       const d = Math.floor(x / DAY);
-      const y = Math.min(b, t1, (d + 1) * DAY);
+      const y = Math.min(b, until, (d + 1) * DAY);
       out.push([base + d, y - x]);
       x = y;
     }
@@ -354,7 +366,11 @@ export function saResult(db: ContentDb, s: PlantState, p: Person, from: number, 
   for (let z = first - 1; z <= last; z++) {
     const span = spanOn(db, s, p, z);
     if (span) for (const [d, sec] of pieces(span[0], span[1])) if (sa(d) && !isHoliday(cal, d)) worked += sec;
+    // смену снял отпуск — её часы в периоде сняты с нормы, и ещё не наставшие: норма — за весь период
+    const plan = !span && p.away ? graphSpan(db, s, p, z) : undefined;
+    if (plan) for (const [d, sec] of pieces(plan[0], plan[1], (last + 1 - base) * DAY)) if (sa(d) && !isHoliday(cal, d)) norm -= sec;
   }
+  norm = Math.max(0, norm);
   const segs = [...(p.sa?.segs ?? []), ...(p.until !== undefined && now > p.until ? [[p.until, now] as [number, number]] : [])];
   let all = 0;
   const after: [number, number][] = [];

@@ -18,6 +18,7 @@ import { shiftEnd } from '../engine/staff';
 import type { MachineState, PlantState, Quit } from '../engine/types';
 import { type CalMonth, calendarOf, type HoursRow, hoursRow, type ShiftMonth, shiftMonths } from './hours';
 import { type HiringView, hiringView } from './hire';
+import { type LeaveView, leaveView } from './leave';
 import { type EqState, eqStateOf } from './pack';
 import { materialPairs, type PartnersView, partnersView } from './partners';
 import { type Admission, admissionOf, type Matrix, matrix } from './people';
@@ -245,6 +246,8 @@ export interface RefView {
   overtime: { shift: number; year: number };
   /** найм (Б4в): штат, вакансии, принятые, уволенные; у сценария без рынка труда — нет */
   hiring?: HiringView;
+  /** график отпусков (Б4г); у сценария без отпусков — нет */
+  leave?: LeaveView;
   suppliers: RefSupplier[];
   customers: RefCustomer[];
   /** места и оборудование (Б3в): площадка, участки, рабочие места, активы с инвентарными номерами и сроками */
@@ -442,10 +445,15 @@ export function refView(db: ContentDb, s: PlantState): RefView {
   }));
   const customers = Object.values(db.customers).map(c => ({ id: c.id, payDays: c.payDays, days: [...c.order.days], hour: c.order.hour, lead: [...c.order.lead] as [number, number], minShelf: c.minShelf }));
   const ot = db.profiles[db.scenarios[s.scenario].profile].payroll.overtime;
-  return { view: 'ref', products, materials, docs, recipes, equipment, lines, methods, instruments, roles, shifts, people: staff, matrix: matrix(db, s), calendar: calendarOf(db, s), shiftCal: shiftMonths(db, s), policy: { ...s.policy }, overtime: { shift: ot.shift, year: ot.year }, ...hiringOf(db, s), suppliers, customers, places: placesView(db, s), partners: partnersView(db, s) };
+  return { view: 'ref', products, materials, docs, recipes, equipment, lines, methods, instruments, roles, shifts, people: staff, matrix: matrix(db, s), calendar: calendarOf(db, s), shiftCal: shiftMonths(db, s), policy: { ...s.policy }, overtime: { shift: ot.shift, year: ot.year }, ...hiringOf(db, s), ...leaveRef(db, s), suppliers, customers, places: placesView(db, s), partners: partnersView(db, s) };
 }
 
 /** Найм для справочника (Б4в): у сценария без рынка труда — ничего. */
+function leaveRef(db: ContentDb, s: PlantState): { leave?: LeaveView } {
+  const l = leaveView(db, s);
+  return l ? { leave: l } : {};
+}
+
 function hiringOf(db: ContentDb, s: PlantState): { hiring?: HiringView } {
   const h = hiringView(db, s);
   return h ? { hiring: h } : {};

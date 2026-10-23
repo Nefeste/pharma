@@ -9,10 +9,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { db } from '../../src/content';
 import type { ContentDb } from '../../src/content/types';
-import { extras, settle } from '../../src/engine/cash';
+import { avgDaily, extras, settle } from '../../src/engine/cash';
 import { addMonths, addWorkdays, DAY, daysFromCivil, HOUR, momentOf, weekday } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
 import { sheetDays } from '../../src/engine/hours';
+import { compDays } from '../../src/engine/leave';
 import { check } from '../../src/engine/invariants';
 import { admitted, matrixOf, needOf } from '../../src/engine/quals';
 import { fromSave } from '../../src/engine/save';
@@ -209,18 +210,23 @@ describe('увольнение', () => {
     expect(s.people.E16).toBeUndefined();
     expect(s.former.E16.quit!.why).toBe('agree');
     // расчёт по ст. 140 на примере: оклад 1–20 сентября — 14 смен по 8 ч из нормы 176 ч; первая половина, начисленная
-    // 16-го, — из общей выплаты 30-го в расчёт; выплата по соглашению — два оклада, без взносов до трёх окладов
+    // 16-го, — из общей выплаты 30-го в расчёт; выплата по соглашению — два оклада, без взносов до трёх окладов;
+    // компенсация за отпуск (Б4г) — 20 дней с начала завода — месяц (не меньше половины), 28 / 12 = 2,33 дня по среднему
+    // дневному: до начала завода — оклад на 29,3
     const half = Math.floor(salary / 2);
     const worked = Math.floor((salary * 14 * 8) / 176);
     const a = extras(d, s, s.former.E16, 2027, 9, 1, 15);
     const b = extras(d, s, s.former.E16, 2027, 9, 16, 20);
     const parts = s.cash.wages['leave-E16'];
-    expect(parts).toEqual({ salary: worked, night: a.night + b.night, over: a.over + b.over, off: a.off + b.off, leave: 2 * salary });
+    expect(compDays(d, s, s.former.E16, z)).toBe(233);
+    expect(avgDaily(d, s, s.former.E16, 2027, 9)).toBe(Math.floor((salary * 1000) / 29300));
+    const comp = Math.floor((233 * Math.floor((salary * 1000) / 29300)) / 100);
+    expect(parts).toEqual({ salary: worked, night: a.night + b.night, over: a.over + b.over, off: a.off + b.off, leave: 2 * salary, comp });
     const firstHalf = half + a.night + a.over + a.off;
     expect(dueA()).toBe(before + firstHalf);
-    const sum = parts.salary + parts.night + parts.over + parts.off + parts.leave!;
+    const sum = parts.salary + parts.night + parts.over + parts.off + parts.leave! + comp;
     expect(s.cash.ledger.filter(e => e.item === 'settle')).toEqual([{ t: expect.any(Number), sum: -sum, item: 'settle', ref: 'leave-E16' }]);
-    expect(s.cash.gross.E16).toBe(gross0 + (worked - half) + b.night + b.over + b.off);
+    expect(s.cash.gross.E16).toBe(gross0 + (worked - half) + b.night + b.over + b.off + comp);
     // больше не приходит: ни задач, ни смен
     live(d, s, at(z + 10, 12), () => {
       expect(Object.values(s.tasks).some(t => t.people.includes('E16'))).toBe(false);
@@ -315,6 +321,7 @@ describe('увольнение', () => {
     expect(got.filter(x => x.kind === 'resign')).toEqual([
       { kind: 'resign', person: 'E16', role: 'role.packer', tab: s.people.E16.tab, dept: 'line', last: mon },
       { kind: 'resign', person: 'E17', role: 'role.packer', tab: s.people.E17.tab, dept: 'line', last: mon },
+      { kind: 'resign', person: 'E24', role: 'role.packer', tab: s.people.E24.tab, dept: 'line', last: mon },
     ]);
     expect(s.people.E16.quit).toEqual({ why: 'own', day: sat, last: mon });
     // отпустить раньше — по соглашению, основание то же; без заявления — отказ
@@ -328,7 +335,7 @@ describe('увольнение', () => {
 });
 
 describe('коллеги и посты', () => {
-  /** Заявления обоих упаковщиков в полночь 2 сентября 2027 года; отклики — трое с навыком 3. */
+  /** Заявления всех трёх упаковщиков в полночь 2 сентября 2027 года; отклики — трое с навыком 3. */
   function resign(seats?: ('production' | 'quality')[]) {
     const d = market({ role: 'role.packer', skill: 3 });
     const s = newPlant(d, { scenario: SC });
@@ -346,12 +353,13 @@ describe('коллеги и посты', () => {
     expect(got.filter(x => x.kind === 'vacancy')).toEqual([
       { kind: 'vacancy', id: 'J1', role: 'role.packer', shift: 'shift.a', via: 'ad', by: 'colleague' },
       { kind: 'vacancy', id: 'J2', role: 'role.packer', shift: 'shift.a', via: 'ad', by: 'colleague' },
+      { kind: 'vacancy', id: 'J3', role: 'role.packer', shift: 'shift.a', via: 'ad', by: 'colleague' },
     ]);
     expect(s.vacancies.J1).toMatchObject({ by: 'colleague', instead: 'E16' });
     expect(s.people.E16.quit!.vacancy).toBe('J1');
     live(d, s, at(monday(s), 10), x => got.push(...x));
     const acc = got.filter(x => x.kind === 'accepted');
-    expect(acc.length).toBe(2);
+    expect(acc.length).toBe(3);
     expect(s.vacancies).toEqual({});
     const level = d.roles['role.packer'].salary;
     for (const h of Object.values(s.hires)) {
@@ -427,10 +435,9 @@ describe('сохранения', () => {
       expect(p.paid).toBeUndefined();
     }
     const { d } = momentOf(s.start, s.t).date;
-    for (const p of Object.values(s.people).filter(x => x.role !== 'role.cleaner')) {
-      expect(p.paid).toBeDefined();
-      expect(p.half !== undefined).toBe(d >= 16);
-    }
+    // начислений нет у уборщиков (схема 24) и у запаса людей на отпуска (схема 25): они новые
+    expect(Object.values(s.people).filter(p => p.paid === undefined).map(p => p.role).sort()).toEqual(['role.cleaner', 'role.cleaner', 'role.operator', 'role.packer', 'role.qp']);
+    for (const p of Object.values(s.people).filter(x => x.paid !== undefined)) expect(p.half !== undefined).toBe(d >= 16);
     expect(s.vacancies).toEqual({});
     live(db, s, s.t + 2 * DAY);
   }, 120_000);

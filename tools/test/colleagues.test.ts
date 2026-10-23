@@ -210,14 +210,16 @@ describe('год завода прототипа', () => {
     // По неделе мерить нельзя: серия переходит через границу недели от часов, на которые сдвинулась жизнь завода, — так
     // обучение (Б3б) на зерне сценария дало 33-й неделе одну серию, 34-й — пять, а до Б3б при зерне 5 была неделя без
     // упаковки; серий за год — те же. По календарным неделям — тоже нельзя (Б4а): с 31 декабря по 10 января завод
-    // отдыхает
+    // отдыхает. С отпусками (Б4г) нехватка людей сезонная: когда в отпуске единственный аппаратчик второй смены, стадии
+    // второй смены ждут его — тогда три серии, но не меньше, и таких окон — не больше двух недель подряд
     const cal = calOf(db, s);
     const per = new Map<number, number>();
     for (const b of Object.values(s.batches)) if (b.pack?.end !== undefined) per.set(dayOf(s, b.pack.end), (per.get(dayOf(s, b.pack.end)) ?? 0) + 1);
     const work: number[] = [];
     for (let d = dayOf(s, 14 * DAY); d < dayOf(s, end); d++) if (isWorkday(cal, d)) work.push(d);
     const tens = work.slice(9).map((_, i) => work.slice(i, i + 10).reduce((n, d) => n + (per.get(d) ?? 0), 0));
-    expect(Math.min(...tens)).toBeGreaterThanOrEqual(4);
+    expect(Math.min(...tens)).toBeGreaterThanOrEqual(3);
+    expect(tens.filter(n => n < 4).length).toBeLessThanOrEqual(10);
     // после пуска — недопоставок почти нет: за год больше девяти из десяти заказов — в срок полностью
     const orders = Object.values(s.orders).filter(o => o.status !== 'open');
     expect(orders.filter(o => o.status === 'shipped').length / orders.length).toBeGreaterThan(0.9);

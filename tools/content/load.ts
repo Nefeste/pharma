@@ -33,6 +33,7 @@ import {
   type FindingRead,
   type IncidentDef,
   type Labor,
+  type LeaveRule,
   type InstrumentType,
   type InvModel,
   type Machine,
@@ -73,6 +74,7 @@ import { MAINT } from '../../src/engine/maint';
 import { MES, stageNorm } from '../../src/engine/mes';
 import { agreementFor, REVIEWERS, STARTING } from '../../src/engine/partners';
 import { accepts, areaCode, CENTER_OF, centerCode, classOf, coldOf, placesOf, rackStore, roomAt } from '../../src/engine/places';
+import { type DraftPerson, placeDraft } from '../../src/engine/leave';
 import { QA } from '../../src/engine/qa';
 import { cycleErrors, shiftLengths } from '../../src/engine/shifts';
 import { CHECKERS } from '../../src/engine/train';
@@ -220,6 +222,7 @@ export function buildDb(content = CONTENT): Built {
       }
     }
     errors.push(...stageErrors({ hash: '', ...db }));
+    errors.push(...leaveErrors({ hash: '', ...db }));
   }
   const hash = fnv1a(stableJson(db)).toString(16).padStart(8, '0');
   return { db: { hash, ...db }, errors, files: count };
@@ -771,6 +774,31 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       ),
     };
   };
+  // отпуска (Б4г): части складываются в дни года профиля, одна не короче части профиля; сроки частей — настоящие числа
+  // года, «с» не позже «по»; утверждение — не позже чем за срок профиля до года, черновик — не позже утверждения
+  const leaveRuleOf = (x: NonNullable<RawScenario['leave']>, sc: RawScenario, where: string): LeaveRule => {
+    const pr = raw.profiles[sc.profile];
+    const z = ([m, d]: [number, number]) => daysFromCivil({ y: 2027, m, d });
+    const real = (md: [number, number], what: string) => {
+      const c = civilFromDays(z(md));
+      need(c.m === md[0] && c.d === md[1], `${where}: отпуска — ${what} ${md[1]}.${md[0]} нет в году`);
+    };
+    for (const [k, w] of [['summer', x.summer], ['rest', x.rest]] as const) {
+      real(w[0], `${k}: с`);
+      real(w[1], `${k}: по`);
+      need(z(w[0]) <= z(w[1]), `${where}: отпуска — у ${k} «с» позже «по»`);
+    }
+    real(x.draft, 'черновик');
+    real(x.approve, 'утверждение');
+    need(z(x.draft) <= z(x.approve), `${where}: отпуска — черновик позже утверждения`);
+    if (pr) {
+      const sum = x.parts.reduce((n, d) => n + d, 0);
+      need(sum === pr.leave.days, `${where}: отпуска — части дают ${sum} дн., а за год — ${pr.leave.days}`);
+      need(x.parts.some(d => d >= pr.leave.part), `${where}: отпуска — нет части не короче ${pr.leave.part} дн. (ст. 125 ТК РФ)`);
+      need(daysFromCivil({ y: 2028, m: 1, d: 1 }) - z(x.approve) >= pr.leave.approve, `${where}: отпуска — график утверждают позже чем за ${pr.leave.approve} дн. до года`);
+    }
+    return { draft: x.draft, approve: x.approve, parts: x.parts, summer: x.summer, rest: x.rest, dept: x.dept, cover: share(x.cover) };
+  };
   const incidentOf = (x: NonNullable<RawScenario['incident']>, batches: number, where: string): IncidentDef => {
     need(investigations[x.inv], `${where}: нет модели расследования ${x.inv}`);
     need(x.batch <= batches, `${where}: в сценарии нет задания на серию ${x.batch}`);
@@ -792,6 +820,12 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       need(roles[r.role], `${where}: нет роли ${r.role}`);
       need(shifts[r.shift], `${where}: нет графика ${r.shift}`);
       need(raw.plants[s.plant]?.posts[r.role], `${where}: у роли ${r.role} нет поста в плане ${s.plant}`);
+      // смежная профессия (Б4г): роль базы, не своя; роль, которую заменяет только человек той же роли, — не смежная
+      for (const a of r.also ?? []) {
+        need(roles[a], `${where}: у ${r.role} смежная профессия ${a} — нет такой роли`);
+        need(a !== r.role, `${where}: у ${r.role} смежная профессия — своя роль`);
+        need(!raw.roles[a]?.same, `${where}: у ${r.role} смежная профессия ${a} — её заменяет только человек той же роли`);
+      }
     }
     for (const v of s.vehicles) need(vehicles[v.type], `${where}: нет техники ${v.type}`);
     // учётный период суммированного учёта (Б4б): не длиннее года (ст. 104, ч. 1), делитель года — периоды встают в год
@@ -916,6 +950,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       },
       ...(s.incident ? { incident: incidentOf(s.incident, s.batches.length, where) } : {}),
       ...(s.labor ? { labor: laborOf(s.labor, s, where) } : {}),
+      ...(s.leave ? { leave: leaveRuleOf(s.leave, s, where) } : {}),
     };
   }
   const profiles: Record<string, Profile> = {};
@@ -923,6 +958,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     need(p.payroll.night.from !== p.payroll.night.to, `профиль ${p.id}: у ночных часов нет длины`);
     const ot = p.payroll.overtime;
     need(ot.first <= ot.shift, `профиль ${p.id}: payroll.overtime.first — больше предела за смену`);
+    need(p.leave.part <= p.leave.days, `профиль ${p.id}: leave.part — часть длиннее отпуска`);
     profiles[p.id] = {
       ...p,
       vat: { medicines: share(p.vat.medicines), general: share(p.vat.general) },
@@ -937,6 +973,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       energy: { advances: p.energy.advances.map(([d, pct]) => [d, share(pct)] as [number, number]), final: p.energy.final },
       key: share(p.key),
       labor: p.labor,
+      leave: { ...p.leave, avg: Math.round(p.leave.avg * 1000) },
     };
   }
   // запчасти: поставщик из базы, цена — копейки
@@ -1081,6 +1118,27 @@ function stageErrors(db: ContentDb): string[] {
         if (nom > len) out.push(`карта ${r.id}, стадия ${st.id}: норма ${h(nom)} ч длиннее самой короткой смены графиков (${h(len)} ч) — в таком графике стадию никто не начнёт`);
         else if (max > len + over) out.push(`сценарий ${sc.id}, карта ${r.id}, стадия ${st.id}: наибольшая длительность ${h(max)} ч длиннее самой короткой смены графиков со сверхурочными (${h(len + over)} ч) — в таком графике стадию никто не начнёт`);
       }
+    }
+  }
+  return out;
+}
+
+/**
+ * Черновик графика отпусков стартового штата (Б4г; docs/specs/2026-10-vertical-slice.md, «Проверки Б4г»): на первый год
+ * после начала партии правило сценария ставит все части всех людей — без «не помещается» (leave.ts, `placeDraft`).
+ */
+function leaveErrors(db: ContentDb): string[] {
+  const out: string[] = [];
+  for (const sc of Object.values(db.scenarios)) {
+    if (!sc.leave) continue;
+    const days = db.profiles[sc.profile].leave.days;
+    const people: DraftPerson[] = [];
+    for (const row of sc.staff) for (let i = 0; i < row.n; i++) people.push({ id: `E${people.length + 1}`, role: row.role, shift: row.shift, tab: sc.training.tab + people.length, ...(row.also ? { also: row.also } : {}), right: 0, days });
+    const y = sc.start.date.y + 1;
+    const d = placeDraft(db, { start: sc.start.date, scenario: sc.id }, y, people, people, []);
+    for (const id of d.miss) {
+      const p = people.find(x => x.id === id)!;
+      out.push(`сценарий ${sc.id}: черновик графика отпусков ${y} года — ${p.role} (${p.shift}, таб. № ${p.tab}): не всем частям нашлось место по правилу`);
     }
   }
   return out;

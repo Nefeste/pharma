@@ -12,7 +12,7 @@ import { stageMeters, unfit } from '../assets';
 import { DAY, HOUR, isWorkday, momentOf } from '../core/calendar';
 import { fitsIn, overLeft } from '../hours';
 import { blocked } from '../maint';
-import { cleanWork, DIRTY_HOLD, kitPlan, MES, newBatch, nominal, readyFor, stageNorm, stageTaskNorm, TRANSFER_WORK } from '../mes';
+import { DIRTY_HOLD, kitPlan, MES, newBatch, nominal, readyFor, roomWork, stageNorm, stageTaskNorm, TRANSFER_WORK, washWork } from '../mes';
 import { classOf, placesOf } from '../places';
 import { planOf } from '../plant';
 import { admitted, needFor } from '../quals';
@@ -21,10 +21,13 @@ import type { Batch, KitLine, Person, PlantState, Room, Task } from '../types';
 import { WMS } from '../wms';
 import { calOf } from '../workdays';
 
-/** Полоса Ганта: строка — `kit` (комплектовка у шлюза для материалов), помещение или линия плана. */
+/**
+ * Полоса Ганта: строка — `kit` (комплектовка у шлюза для материалов), помещение или линия плана. Уборка помещения после
+ * серии — две полосы (Б4в): мойка оборудования (`clean`) и уборка помещения уборщиком (`roomClean`).
+ */
 export interface Bar {
   row: string;
-  kind: 'kit' | 'stage' | 'clean' | 'setup' | 'pack' | 'visit';
+  kind: 'kit' | 'stage' | 'clean' | 'roomClean' | 'setup' | 'pack' | 'visit';
   /** чья: серия стадии и комплектовки; у уборки — серия, после которой или перед которой убирают, если она известна */
   batch?: string;
   stage?: Id;
@@ -207,11 +210,8 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     if (!crew) crews.set(key, (crew = crewOf(db, s, need)));
     return firstTake(db, s, crew, roles, n, t, job);
   };
-  const cleanJob = (roomId: string, major: boolean): Job => {
-    const sec = cleanWork(db, s, roomId, major);
-    return { kind: 'clean', nom: sec, max: sec };
-  };
   const cleanNeed = needFor(db, 'clean');
+  const roomNeed = needFor(db, 'roomClean');
   const kitNeed = needFor(db, 'transfer');
 
   // визиты подрядчика (Б3в): у начатого — его часы; у назначенного — с какого мгновения актив новых работ не берёт; окно
@@ -262,18 +262,56 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
   const rooms = new Map<string, Proj>();
   for (const r of Object.values(s.rooms)) rooms.set(r.id, { room: { ...r }, free: now, work: 0, major: false });
 
-  /** Уборка помещения с `from`: полоса; помещение чистое — для продукта прошлой серии или, после генеральной, для любого. */
-  const clean = (p: Proj, from: number, work: number, major: boolean, when: Bar['when'], batch?: string) => {
-    out.bars.push({ row: p.room.id, kind: 'clean', ...(batch ? { batch } : {}), from, to: from + work, when, ...(major ? { major: true as const } : {}) });
+  /**
+   * Уборка помещения (Б4в): мойка оборудования — как только аппаратчик в смене не раньше `at`, потом уборка помещения —
+   * как только уборщик в смене после мойки; полосы обеих. Генеральная — если помечено или грязно дольше суток к началу
+   * мойки, а без оборудования — к началу уборки помещения (mesHour). Мойка уже идёт или кончилась — `wash`: её конец.
+   * Помещение чистое — для продукта прошлой серии или, после генеральной, для любого; не предсказать — `undefined`.
+   */
+  const cleanFrom = (p: Proj, at: number, dirtySince: number, when: Bar['when'], batch?: string, force?: boolean, wash?: { from: number; to: number; work: number }) => {
     const r = p.room;
+    let major = !!r.major || !!force;
+    let end = at;
+    let work = 0;
+    const washes = !!wash || washWork(db, s, r.id, major) > 0;
+    if (wash) {
+      if (wash.to > wash.from) out.bars.push({ row: r.id, kind: 'clean', ...(batch ? { batch } : {}), from: wash.from, to: wash.to, when: 'now', ...(major ? { major: true as const } : {}) });
+      end = wash.to;
+      work += wash.work;
+    } else {
+      const w = washWork(db, s, r.id, major);
+      if (w > 0) {
+        const c = take(MES.operators, 1, at, cleanNeed, { kind: 'clean', nom: w, max: w });
+        if (!c) return undefined;
+        if (!major && c.t - dirtySince > DIRTY_HOLD) major = true;
+        const sec = washWork(db, s, r.id, major);
+        out.bars.push({ row: r.id, kind: 'clean', ...(batch ? { batch } : {}), from: c.t, to: c.t + sec, when, ...(major ? { major: true as const } : {}) });
+        end = c.t + sec;
+        work += sec;
+      }
+    }
+    let rw = roomWork(db, s, r.id, major);
+    if (rw > 0) {
+      const c = take(MES.cleaners, 1, end, roomNeed, { kind: 'roomClean', nom: rw, max: rw });
+      if (!c) return undefined;
+      if (!washes && !major && c.t - dirtySince > DIRTY_HOLD) {
+        major = true;
+        rw = roomWork(db, s, r.id, major);
+      }
+      out.bars.push({ row: r.id, kind: 'roomClean', ...(batch ? { batch } : {}), from: c.t, to: c.t + rw, when, ...(major ? { major: true as const } : {}) });
+      end = c.t + rw;
+      work += rw;
+    }
     r.status = 'clean';
-    r.since = from + work;
+    r.since = end;
     if (major) delete r.cleanFor;
     else if (r.product) r.cleanFor = r.product;
     delete r.major;
-    p.free = from + work;
+    delete r.washed;
+    p.free = end;
     p.work = work;
     p.major = major;
+    return end;
   };
 
   /** Серия ушла из помещения в `at`: грязное; уборка — как только аппаратчик в смене (политика мастера по умолчанию). */
@@ -286,35 +324,36 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     r.product = b.product;
     p.last = b.id;
     p.left = at;
-    const c = take(MES.operators, 1, at, cleanNeed, cleanJob(roomId, !!r.major));
-    if (!c) {
-      p.free = Number.POSITIVE_INFINITY;
-      return;
-    }
-    // грязное ждёт уборки дольше суток — генеральная (mesHour)
-    const major = !!r.major || c.t - at > DIRTY_HOLD;
-    clean(p, c.t, cleanWork(db, s, roomId, major), major, 'plan', b.id);
+    if (cleanFrom(p, at, at, 'plan', b.id) === undefined) p.free = Number.POSITIVE_INFINITY;
   };
 
-  // грязные сейчас: уборка идёт по задаче или начнётся, как только аппаратчик в смене
+  // грязные сейчас: мойка или уборка помещения идёт по задаче или начнётся, как только люди в смене
   for (const p of rooms.values()) {
     const r = p.room;
     if (r.status !== 'dirty') continue;
     const was = lastIn.get(r.id);
     p.left = r.since;
     if (was) p.last = was.batch;
-    const t = taskOf(x => x.kind === 'clean' && x.room === r.id);
-    if (t?.state === 'busy') {
-      clean(p, t.times![1], t.times![4] - t.times![1], !!r.major, 'now', p.last);
-      continue;
-    }
-    const c = take(MES.operators, 1, now, cleanNeed, t ? { kind: 'clean', nom: t.work, max: t.work } : cleanJob(r.id, !!r.major));
-    if (!c) {
-      p.free = Number.POSITIVE_INFINITY;
-      continue;
-    }
-    const major = !!r.major || c.t - r.since > DIRTY_HOLD;
-    clean(p, c.t, major && !r.major ? cleanWork(db, s, r.id, true) : (t?.work ?? cleanWork(db, s, r.id, major)), major, 'plan', p.last);
+    const w = taskOf(x => x.kind === 'clean' && x.room === r.id);
+    const rc = taskOf(x => x.kind === 'roomClean' && x.room === r.id);
+    let end: number | undefined;
+    if (rc?.state === 'busy') {
+      // уборка помещения идёт — оборудование уже вымыто
+      out.bars.push({ row: r.id, kind: 'roomClean', ...(p.last ? { batch: p.last } : {}), from: rc.times![1], to: rc.times![4], when: 'now', ...(r.major ? { major: true as const } : {}) });
+      end = rc.times![4];
+      r.status = 'clean';
+      r.since = end;
+      if (r.major) delete r.cleanFor;
+      else if (r.product) r.cleanFor = r.product;
+      p.free = end;
+      p.work = rc.times![4] - rc.times![1];
+      p.major = !!r.major;
+      delete r.major;
+      delete r.washed;
+    } else if (w?.state === 'busy') end = cleanFrom(p, now, r.since, 'plan', p.last, false, { from: w.times![1], to: w.times![4], work: w.times![4] - w.times![1] });
+    else if (r.washed) end = cleanFrom(p, now, r.since, 'plan', p.last, false, { from: now, to: now, work: 0 });
+    else end = cleanFrom(p, now, r.since, 'plan', p.last);
+    if (end === undefined) p.free = Number.POSITIVE_INFINITY;
   }
 
   /** Стадии серии с `k0`, если серия готова к ним в `t0`. */
@@ -336,13 +375,10 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
         if (!readyFor(p.room, b.product, t)) {
           // чисто только для другого продукта — генеральная уборка; чистота просрочена — убрать снова (tryStart)
           const cause = p.room.cleanFor !== undefined && p.room.cleanFor !== b.product ? 'product' : 'expired';
-          const c = take(MES.operators, 1, t, cleanNeed, cleanJob(roomId, cause === 'product'));
-          if (!c) return;
-          const major = cause === 'product' || c.t - t > DIRTY_HOLD;
-          const work = cleanWork(db, s, roomId, major);
-          note(b.id, { why: 'clean', bar: st.id, room: roomId, work, major, cause });
-          clean(p, c.t, work, major, 'plan', b.id);
-          t = c.t + work;
+          const end = cleanFrom(p, t, t, 'plan', b.id, cause === 'product');
+          if (end === undefined) return;
+          note(b.id, { why: 'clean', bar: st.id, room: roomId, work: p.work, major: p.major, cause });
+          t = end;
         }
         p.room.status = 'busy';
         p.room.batch = b.id;

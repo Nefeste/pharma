@@ -6,7 +6,7 @@
 import type { ContentDb } from '../content/types';
 import { batchNo } from '../engine/batchno';
 import { HOUR } from '../engine/core/calendar';
-import { cleanWork, MES } from '../engine/mes';
+import { MES, roomWork, washWork } from '../engine/mes';
 import { type Bar, type Change, type Fresh, forecast, freshBatches, type Why } from '../engine/plan/schedule';
 import { planOf } from '../engine/plant';
 import { shiftEndAt } from '../engine/staff';
@@ -116,8 +116,12 @@ export function pastBars(db: ContentDb, s: PlantState): Bar[] {
   for (const r of Object.values(s.rooms)) {
     if ((r.status !== 'clean' && r.status !== 'busy') || r.product === undefined) continue;
     const major = r.cleanFor === undefined;
-    const work = cleanWork(db, s, r.id, major);
-    bars.push({ row: r.id, kind: 'clean', from: r.since - work, to: r.since, when: 'past', ...(major ? { major: true as const } : {}) });
+    // мойка оборудования, потом уборка помещения (Б4в) — вплотную: ожидания между ними учёт не хранит
+    const room = roomWork(db, s, r.id, major);
+    const wash = washWork(db, s, r.id, major);
+    const m = major ? { major: true as const } : {};
+    if (wash > 0) bars.push({ row: r.id, kind: 'clean', from: r.since - room - wash, to: r.since - room, when: 'past', ...m });
+    if (room > 0) bars.push({ row: r.id, kind: 'roomClean', from: r.since - room, to: r.since, when: 'past', ...m });
   }
   return bars;
 }

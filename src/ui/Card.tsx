@@ -1,10 +1,10 @@
 // Карточка вещи (docs/specs/2026-10-panels.md, 3б; docs/13-art.md, §11): одного устройства для всех — что это → состояние
 // → почему так → что можно сделать → история. Снизу экрана, как карточка выбранного в «Больнице» (её src/ui/App.tsx,
 // `card`). Вид приходит из потока расчёта (src/sim/views.ts) без истины и без слов; слова — отсюда, из src/i18n/.
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import type { PartType } from '../content/types';
 import { civilFromDays, momentOf, weekday, type Ymd } from '../engine/core/calendar';
-import { clock, dayText, hText, named, num, qtyText, T, whenText } from '../i18n';
+import { clock, dayText, hText, money, named, num, qtyText, T, whenText } from '../i18n';
 import { DEPT_SEAT } from '../engine/seats';
 import type { SaView, SheetView } from '../sim/hours';
 import type { NowRow } from '../sim/now';
@@ -95,6 +95,65 @@ function Roster({ c, hud, actions }: { c: PersonCard; hud: Hud; actions: Actions
         </select>
       </div>
     </>
+  );
+}
+
+/**
+ * Увольнение (Б4в): по соглашению — последний день сегодня и выплата; не выдержал испытание — через срок
+ * предупреждения, только в срок испытания; подавшего заявление — отпустить раньше. Каждое — со словами, что будет,
+ * и подтверждением; чужой пост — кнопки погашены.
+ */
+function Dismiss({ c, hud, actions }: { c: PersonCard; hud: Hud; actions: Actions }) {
+  const [ask, setAsk] = useState<'agree' | 'trial' | 'early' | undefined>();
+  const dept = db?.roles[c.role]?.dept;
+  const mine = dept === undefined || holds(hud, DEPT_SEAT[dept]);
+  const title = mine ? '' : T.seats.notYours(T.seats.names[DEPT_SEAT[dept!]] ?? '');
+  const t = c.terms!;
+  const words =
+    ask === 'agree' && t.agree
+      ? T.card.dismissAgreeAsk(dayText(t.agree.last), money(t.agree.pay))
+      : ask === 'trial' && t.trial
+        ? T.card.dismissTrialAsk(dayText(t.trial.last))
+        : ask === 'early' && t.early
+          ? T.card.earlyAsk(dayText(t.early.last))
+          : '';
+  return (
+    <div className="dismiss" data-test="card-dismiss">
+      {t.agree ? (
+        <button type="button" disabled={!mine} title={title} onClick={() => setAsk('agree')} data-test="dismiss-agree">
+          {T.card.dismissAgree}
+        </button>
+      ) : null}{' '}
+      {t.trial ? (
+        <button type="button" disabled={!mine || !t.trial.ok} title={!mine ? title : t.trial.ok ? '' : (T.notices.why.tooLate ?? '')} onClick={() => setAsk('trial')} data-test="dismiss-trial">
+          {T.card.dismissTrial}
+        </button>
+      ) : null}
+      {t.early ? (
+        <button type="button" disabled={!mine} title={title} onClick={() => setAsk('early')} data-test="dismiss-early">
+          {T.card.early}
+        </button>
+      ) : null}
+      {ask && words ? (
+        <div className="hireask" data-test="dismiss-ask">
+          <span>{words}</span>{' '}
+          <button
+            type="button"
+            disabled={!mine}
+            onClick={() => {
+              actions.dismiss(c.person, ask);
+              setAsk(undefined);
+            }}
+            data-test="dismiss-do"
+          >
+            {T.card.dismissDo}
+          </button>{' '}
+          <button type="button" className="link" onClick={() => setAsk(undefined)}>
+            {T.card.dismissCancel}
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -459,12 +518,29 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
               <Roster c={c} hud={hud} actions={actions} />
             </Row>
             <Row k={T.card.skill}>{num(c.skill)}</Row>
+            <Row k={T.card.salary}>
+              <span data-test="card-salary">{T.card.perMonth(money(c.salary))}</span>
+            </Row>
+            {c.hired !== undefined ? <Row k={T.card.hiredOn}>{dayText(c.hired)}</Row> : null}
+            {c.trial !== undefined ? (
+              <Row k={T.card.trialTo}>
+                <span data-test="card-trial">{dayText(c.trial)}</span>
+              </Row>
+            ) : null}
+            {c.quit ? (
+              <Row k={c.gone ? T.card.goneOut : T.card.quit}>
+                <span className="warn" data-test="card-quit">
+                  {[T.card.quitLine(T.hire.why[c.quit.why] ?? c.quit.why, dayText(c.quit.last)), c.quit.why === 'own' ? T.card.quitDay(dayText(c.quit.day)) : '', c.quit.pay ? T.card.quitPay(money(c.quit.pay)) : ''].filter(Boolean).join(' · ')}
+                </span>
+              </Row>
+            ) : null}
             <Row k={T.card.admission}>
               <span className={c.adm.k === 'no' ? 'bad' : ''} data-test="card-adm">
                 {admText(c.adm)}
               </span>
             </Row>
           </dl>
+          {c.terms ? <Dismiss c={c} hud={hud} actions={actions} /> : null}
           <div className="csec">{T.card.training}</div>
           <ol className="hist" data-test="card-train">
             {c.train.map(r => (

@@ -12,6 +12,7 @@ import { planOf } from '../engine/plant';
 import { devsOf, openDevs } from '../engine/qa';
 import { unitsOfLot } from '../engine/stock';
 import type { AssetFamily, Batch, CashItem, DayLoss, Deviation, LineDay, MachineTimes, PlantState, TaskKind, WageParts, WaitCause } from '../engine/types';
+import { type PeopleMeeting, peopleMeeting } from './hire';
 import { type HoursMeeting, hoursMeeting } from './hours';
 import { type PartnerSum, partnerSum } from './partners';
 import { type TrainSum, trainSum } from './people';
@@ -192,6 +193,8 @@ export interface MorningView {
   partners: PartnerSum;
   /** рабочее время (Б4а): сверхурочные вчера, кто ближе к пределу года, праздники и короткие дни недели */
   hours: HoursMeeting;
+  /** люди (Б4в): кто выходит и уходит за 7 суток, заявления за сутки, испытания к концу, новые кандидаты */
+  people: PeopleMeeting;
   cash: { balance: number; day: number; next?: { due: number; item: CashItem; sum: number } };
   /** ваше место (3е): итог каждого взятого места за время на нём */
   seats: SeatSum[];
@@ -379,6 +382,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     assets: assetSum(db, s),
     partners: partnerSum(db, s),
     hours: hoursMeeting(db, s),
+    people: peopleMeeting(s),
     cash: { balance: s.cash.balance, day: dayChange(s, s.t), ...(next ? { next: { due: next.due, item: next.item, sum: next.sum } } : {}) },
     seats: seatSums(db, s),
   };
@@ -570,7 +574,10 @@ export type CashWhy =
   | { k: 'asset'; family: AssetFamily; type: Id; inv: number }
   /** аудит изготовителя (Б3г): пара; расчёт по договору — номер и поставщик */
   | { k: 'audit'; supplier: Id; maker: Id }
-  | { k: 'contract'; contract: string; supplier: Id };
+  | { k: 'contract'; contract: string; supplier: Id }
+  /** найм (Б4в): объявление, медосмотр или кадровое агентство; расчёт при увольнении — роль и табельный номер */
+  | { k: 'hiring'; what: 'ad' | 'med' | 'agency' }
+  | { k: 'leave'; role: Id; tab: number };
 
 export interface CashRow {
   t: number;
@@ -613,6 +620,12 @@ function whyOf(s: PlantState, item: CashItem, ref: string | undefined): CashWhy 
   if (item === 'calqual' && s.assets[ref]) return { k: 'asset', family: s.assets[ref].family, type: s.assets[ref].type, inv: s.assets[ref].inv };
   if (item === 'audit' && s.pairs[ref]) return { k: 'audit', supplier: s.pairs[ref].supplier, maker: s.pairs[ref].maker };
   if (item === 'contract' && s.contracts[ref]) return { k: 'contract', contract: ref, supplier: s.contracts[ref].party };
+  // найм и увольнение (Б4в): объявление, медосмотр, агентство; расчёт при увольнении — роль и табельный номер
+  const h = /^(ad|med|agency)-/.exec(ref);
+  if (item === 'hiring' && h) return { k: 'hiring', what: h[1] as 'ad' | 'med' | 'agency' };
+  const gone = /^leave-(E\d+)$/.exec(ref);
+  const who = gone ? (s.former[gone[1]] ?? s.people[gone[1]]) : undefined;
+  if (item === 'settle' && who) return { k: 'leave', role: who.role, tab: who.tab };
   const q = /^(\d+)-q(\d)$/.exec(ref);
   if (q) return { k: 'quarter', y: Number(q[1]), q: Number(q[2]) };
   const m = /^(\d+)-(\d+)([ab]?)$/.exec(ref);
@@ -622,7 +635,7 @@ function whyOf(s: PlantState, item: CashItem, ref: string | undefined): CashWhy 
 
 const row = (s: PlantState, t: number, item: CashItem, sum: number, ref?: string): CashRow => {
   const why = whyOf(s, item, ref);
-  const parts = item === 'wages' && ref ? s.cash.wages[ref] : undefined;
+  const parts = (item === 'wages' || item === 'settle') && ref ? s.cash.wages[ref] : undefined;
   return { t, item, sum, ...(why ? { why } : {}), ...(parts ? { parts: { ...parts } } : {}) };
 };
 

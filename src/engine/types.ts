@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 23;
+export const SCHEMA = 24;
 
 // ---------------------------------------------------------------- склад
 
@@ -296,6 +296,8 @@ export interface Room {
   cleanFor?: Id;
   /** нужна генеральная уборка: другой продукт или грязно дольше суток */
   major?: boolean;
+  /** оборудование вымыто — дальше уборка помещения уборщиком (Б4в) */
+  washed?: true;
 }
 
 /** Оборудование из плана: занято серией, пока идёт её стадия. */
@@ -661,6 +663,73 @@ export interface Person {
   sa?: { from: number; segs: [number, number][] };
   /** итог учётного периода (Б4б): месяц, с зарплатой второй половины которого платят сверхурочные периода, — их часы и копейки */
   saDone?: { y: number; m: number; over: number; pay: number };
+  /** оклад, копейки в месяц (Б4в): принятого — его ожидание; нет — оклад роли (люди сценария) */
+  salary?: number;
+  /** день приёма — номер дня от 1970-01-01 (Б4в); нет — с начала завода */
+  hired?: number;
+  /** последний день испытания (Б4в); без испытания или выдержал — нет */
+  trial?: number;
+  /** увольнение (Б4в): основание, день заявления или решения, последний день, выплата по соглашению */
+  quit?: Quit;
+  /** по какой день начислена зарплата (Б4в): расчёт при увольнении — с дня после него */
+  paid?: number;
+  /**
+   * первая половина месяца, начисленная 16-го (Б4в): месяц и оклад за неё, копейки; в неполный месяц вторая половина —
+   * доля оклада за месяц минус она
+   */
+  half?: { y: number; m: number; base: number };
+}
+
+/**
+ * Увольнение (Б4в; ст. 71, 78, 80 ТК РФ): по соглашению сторон, не выдержал испытание или по собственному желанию; день
+ * заявления или решения и последний день работы — номера дней от 1970-01-01; выплата по соглашению, копейки.
+ */
+export interface Quit {
+  why: 'agree' | 'trial' | 'own';
+  day: number;
+  last: number;
+  pay?: number;
+  /** вакансия, которую коллега открыл на его место (Б4в) */
+  vacancy?: string;
+}
+
+/** Вакансия (Б4в): роль и график; канал; день открытия; открыл коллега — вместо кого; когда агентство пришлёт кандидата. */
+export interface Vacancy {
+  id: string;
+  role: Id;
+  shift: Id;
+  via: 'ad' | 'agency';
+  from: number;
+  by?: 'colleague';
+  instead?: string;
+  next?: number;
+}
+
+/**
+ * Кандидат рынка труда (Б4в): по какой вакансии и каналу, роль, навык, ожидание оклада — копейки в месяц; с какого дня
+ * и по какой ищет работу.
+ */
+export interface Candidate {
+  id: string;
+  vacancy: string;
+  via: 'ad' | 'agency';
+  role: Id;
+  skill: number;
+  salary: number;
+  from: number;
+  until: number;
+}
+
+/**
+ * Принятый до первого дня (Б4в): кандидат и вакансия, испытание — месяцев, день заключения медосмотра, первый рабочий
+ * день и мгновение начала первой смены.
+ */
+export interface Hire extends Omit<Candidate, 'from' | 'until'> {
+  shift: Id;
+  trial: number;
+  exam: number;
+  day: number;
+  at: number;
 }
 
 /** Запись графика человека (Б4б): график и номер дня от 1970-01-01, с которого он в нём. */
@@ -865,7 +934,7 @@ export interface Shipment {
   vat: number;
 }
 
-export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract';
+export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle';
 
 // ---------------------------------------------------------------- техслужба
 
@@ -1131,6 +1200,8 @@ export interface WageParts {
   over: number;
   off: number;
   period?: number;
+  /** выплата по соглашению сторон в расчёте при увольнении (Б4в) */
+  leave?: number;
 }
 
 export interface PlantState {
@@ -1202,6 +1273,11 @@ export interface PlantState {
   shiftTasks: ShiftTask[];
   /** журнал мест игрока (3е): какое место, с какого мгновения и по какое; места ещё не выбраны — нет */
   seats?: Tenure[];
+  /** найм (Б4в): вакансии, кандидаты рынка, принятые до первого дня, уволенные — с их записями */
+  vacancies: Record<string, Vacancy>;
+  candidates: Record<string, Candidate>;
+  hires: Record<string, Hire>;
+  former: Record<string, Person>;
 }
 
 /** Запись журнала мест: место игрока, с какого мгновения и по какое; держит его сейчас — без конца. */
@@ -1249,7 +1325,18 @@ export type Command =
    * перевод человека на другой график (Б4б): с 1-го числа месяца, до которого не меньше месяца (ст. 103 ТК РФ, ч. 4);
    * график, в котором он и так будет, — отмена ждущего перевода
    */
-  | { kind: 'roster'; person: string; shift: Id; by?: string };
+  | { kind: 'roster'; person: string; shift: Id; by?: string }
+  /** вакансия (Б4в): роль, график и канал — объявление или кадровое агентство */
+  | { kind: 'vacancy'; role: Id; shift: Id; via: 'ad' | 'agency'; by?: string }
+  /** закрыть вакансию (Б4в): её кандидаты уходят */
+  | { kind: 'close'; vacancy: string; by?: string }
+  /** принять кандидата (Б4в) с испытанием на столько месяцев: медосмотр, первый день */
+  | { kind: 'hire'; candidate: string; trial: number; by?: string }
+  /**
+   * уволить (Б4в): по соглашению сторон — сегодня, с выплатой (ст. 78); не выдержал испытание — через три дня, в срок
+   * испытания (ст. 71); отпустить раньше — того, кто подал заявление, сегодня (ст. 80, ч. 2)
+   */
+  | { kind: 'dismiss'; person: string; why: 'agree' | 'trial' | 'early'; by?: string };
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
@@ -1297,10 +1384,33 @@ export type Refusal =
   /** перевод (Б4б): такого человека или графика нет; человек и так будет в этом графике */
   | 'noPerson'
   | 'noShift'
-  | 'same';
+  | 'same'
+  /**
+   * найм (Б4в): у сценария нет рынка труда или у роли нет строки; вакансии или кандидата нет; испытание длиннее предела;
+   * не на испытании; до конца испытания меньше срока предупреждения; уже уходит; «отпустить раньше» без заявления
+   */
+  | 'noLabor'
+  | 'noVacancy'
+  | 'noCandidate'
+  | 'trialLong'
+  | 'notTrial'
+  | 'tooLate'
+  | 'leaving'
+  | 'noNotice';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
+  /**
+   * найм (Б4в): вакансия открыта; новые кандидаты по ней; принят — первый день; вышел на работу; заявление об уходе —
+   * последний день и отдел, чей пост встаёт; уволен — последний день прошёл; роль и номер — для слов
+   */
+  | { kind: 'vacancy'; id: string; role: Id; shift: Id; via: 'ad' | 'agency'; by?: 'colleague' }
+  | { kind: 'candidates'; vacancy: string; role: Id; n: number }
+  | { kind: 'accepted'; candidate: string; role: Id; day: number }
+  | { kind: 'hired'; person: string; role: Id; tab: number }
+  | { kind: 'resign'; person: string; role: Id; tab: number; dept: Dept; last: number }
+  | { kind: 'dismissed'; person: string; role: Id; tab: number; why: Quit['why']; last: number }
+  | { kind: 'left'; person: string; role: Id; tab: number; why: Quit['why'] }
   /** перевод на другой график (Б4б): с какого дня; отмена ждущего перевода — `cancel` */
   | { kind: 'rostered'; person: string; role: Id; tab: number; shift: Id; from: number; cancel?: true }
   /** планёрка: начались сутки `day` */

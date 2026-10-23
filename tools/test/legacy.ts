@@ -34,7 +34,12 @@ sc.staff = [
   row('role.mechanic', 'shift.a', 1),
   row('role.mechanic', 'shift.b', 1),
   row('role.setter', 'shift.day', 1),
+  // уборщики (Б4в): помещение после мойки оборудования убирает уборщик — по одному в смену, как в игре
+  row('role.cleaner', 'shift.a', 1),
+  row('role.cleaner', 'shift.b', 1),
 ];
+// найма и текучести в прежней жизни завода нет (Б4в): механику найма проверяют свои тесты на базе игры
+delete sc.labor;
 sc.orders = [
   { supplier: 'sup.exc', lines: [{ material: 'mat.exc.starch', qty: kg(500) }, { material: 'mat.exc.mcc', qty: kg(200) }] },
   {

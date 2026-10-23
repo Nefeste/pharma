@@ -28,6 +28,7 @@ export const ICON_OF: Record<TaskKind | 'pack' | 'test' | 'truck' | 'visit' | 'a
   return: 'move',
   stage: 'process',
   clean: 'clean',
+  roomClean: 'clean',
   crew: 'line',
   pack: 'line',
   changeover: 'line',

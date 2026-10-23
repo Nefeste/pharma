@@ -7,16 +7,17 @@ import { DEPT_SEAT } from '../engine/seats';
 import type { HeldRow, MainLoss, PendingDev, RiskRow } from '../sim/report';
 
 /**
- * Что будет: аналитик во вторую смену и графики (Б4б), найм (Б4в), стройка (Б7), политики продаж и классификация
- * отклонений с CAPA (Б5), план под спрос — S&OP (Б6); часть и слова — в src/i18n/.
+ * Что будет: стройка (Б7), политики продаж и классификация отклонений с CAPA (Б5), план под спрос — S&OP (Б6); часть
+ * и слова — в src/i18n/.
  */
-export const LATERS = ['analyst', 'schedules', 'hire', 'build', 'sales', 'sop', 'capa'] as const;
+export const LATERS = ['build', 'sales', 'sop', 'capa'] as const;
 export type Later = (typeof LATERS)[number];
 
 /**
  * Рычаг: расписание — сдвинуть задание на серию; лаборатория — «Поднять» пробу партии; политика отдела «Сверхурочные» —
  * «по потребности» (`on` — уже так); слой «Потоки — люди»; справочник на вкладке; срочное задание позиции; решение по
- * удержанной серии — карточка её ГП; оценка отклонения — его карточка; доска расследования; будет позже.
+ * удержанной серии — карточка её ГП; оценка отклонения — его карточка; доска расследования; найм и графики (Б4б, Б4в) —
+ * справочник «Люди» поста отдела; карточка человека; будет позже.
  */
 export type Lever =
   | { k: 'gantt'; seat: SeatId }
@@ -28,33 +29,37 @@ export type Lever =
   | { k: 'batch'; unit: number; code: string; seat: SeatId }
   | { k: 'dev'; n: number; seat: SeatId }
   | { k: 'inv'; id: string; seat: SeatId }
+  | { k: 'staff'; seat: SeatId }
+  | { k: 'person'; n: number; tab: number; role: Id; seat: SeatId }
   | { k: 'later'; what: Later };
 
 const later = (...what: Later[]): Lever[] => what.map(w => ({ k: 'later', what: w }));
 
 /**
- * Главная потеря суток: ждали «людей нет в смене» — расписание и лаборатория, будет аналитик во вторую смену и найм;
- * «нет часов» — политика отдела и расписание, будут графики и найм; «нет допуска» — матрица обучения; калибровка или
- * квалификация — «Места»; люди заняты — расписание и найм; техника, прибор, место, рампа — стройка. Люди много ходили —
- * слой «Потоки — люди», переставить пост — стройка; перевозки — стройка. Потеря линии — строка ведёт к её машине.
+ * Главная потеря суток: ждали «людей нет в смене» — расписание, лаборатория, найм и графики отдела; «нет часов» —
+ * политика отдела, расписание, найм и графики; «нет допуска» — матрица обучения; калибровка или квалификация — «Места»;
+ * люди заняты — расписание, найм и графики; техника, прибор, место, рампа — стройка. Люди много ходили — слой «Потоки —
+ * люди», переставить пост — стройка; перевозки — стройка. Потеря линии — строка ведёт к её машине.
  */
 export function mainLevers(m: MainLoss, policy: Record<Dept, OvertimeMode>): Lever[] {
   switch (m.k) {
-    case 'wait':
+    case 'wait': {
+      const staff: Lever = { k: 'staff', seat: DEPT_SEAT[m.dept] };
       switch (m.cause) {
         case 'shift':
-          return [{ k: 'gantt', seat: 'production' }, { k: 'lab', seat: 'quality' }, ...later('analyst', 'hire')];
+          return [{ k: 'gantt', seat: 'production' }, { k: 'lab', seat: 'quality' }, staff];
         case 'hours':
-          return [{ k: 'overtime', dept: m.dept, seat: DEPT_SEAT[m.dept], on: policy[m.dept] === 'need' }, { k: 'gantt', seat: 'production' }, ...later('schedules', 'hire')];
+          return [{ k: 'overtime', dept: m.dept, seat: DEPT_SEAT[m.dept], on: policy[m.dept] === 'need' }, { k: 'gantt', seat: 'production' }, staff];
         case 'qual':
-          return [{ k: 'ref', tab: 'people' }, ...later('hire')];
+          return [{ k: 'ref', tab: 'people' }];
         case 'asset':
           return [{ k: 'ref', tab: 'places' }];
         case 'people':
-          return [{ k: 'gantt', seat: 'production' }, ...later('hire')];
+          return [{ k: 'gantt', seat: 'production' }, staff];
         default:
           return later('build');
       }
+    }
     case 'walk':
       return [{ k: 'flows' }, ...later('build')];
     case 'move':
@@ -83,6 +88,14 @@ export function riskLevers(r: RiskRow, sc: Pick<Scenario, 'plan'>, held: readonl
 /** Отклонение: оценить в его карточке, а решает расследование — его доска; будут классификация и CAPA. */
 export function devLevers(d: Pick<PendingDev, 'dev' | 'inv'>): Lever[] {
   return [d.inv ? { k: 'inv', id: d.inv, seat: 'quality' } : { k: 'dev', n: d.dev, seat: 'quality' }, ...later('capa')];
+}
+
+/**
+ * Заявление об увольнении (Б4в): найм на его место и карточка человека — отпустить раньше; пост — отдела его роли.
+ */
+export function resignLevers(r: { person: number; tab: number; role: Id }, dept: Dept): Lever[] {
+  const seat = DEPT_SEAT[dept];
+  return [{ k: 'staff', seat }, { k: 'person', n: r.person, tab: r.tab, role: r.role, seat }];
 }
 
 /** Удержанная серия: решение по ней — в карточке её ГП. */

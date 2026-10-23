@@ -32,6 +32,7 @@ import {
   type EquipmentType,
   type FindingRead,
   type IncidentDef,
+  type Labor,
   type InstrumentType,
   type InvModel,
   type Machine,
@@ -624,6 +625,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       points: { park: [cm(p.points.park[0]), cm(p.points.park[1])], entrance: [cm(p.points.entrance[0]), cm(p.points.entrance[1])] },
       posts: Object.fromEntries(Object.entries(p.posts).map(([role, at]) => [role, at2(at)])),
       energy: { hvac: p.energy.hvac, base: watt(p.energy.base) },
+      cleaning: p.cleaning,
     };
     need(p.docks.some(d => d.kind === 'out') === p.zones.some(z => z.kind === 'shipping'), `план ${p.id}: рампа отгрузки и зона экспедиции бывают только вместе`);
     const ids = [
@@ -664,6 +666,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     const worn = p.equipment.some(e => raw.equipment[e.type]?.parts.length) || p.lines.some(l => l.machines.some(m => raw.machines[m.type]?.parts.length));
     if (worn) need(p.rooms.some(r => r.type === 'workshop' && r.grade === 'cnc'), `план ${p.id}: у машин есть узлы — нужна мастерская вне чистой зоны (тип workshop, класс cnc)`);
     for (const role of Object.keys(p.posts)) need(raw.roles[role], `план ${p.id}: пост у неизвестной роли ${role}`);
+    // уборка помещения после серии (Б4в): у класса помещений с оборудованием — секунды на м²
+    for (const r of p.rooms) if (p.equipment.some(e => e.room === r.id)) need(p.cleaning[r.grade], `план ${p.id}: в помещении ${r.id} оборудование, а у класса ${r.grade} нет времени уборки (cleaning)`);
     for (const i of [...p.instruments, ...p.ipc, ...p.sensors]) {
       need(raw.instruments[i.type], `план ${p.id}: прибор ${i.id} — нет вида ${i.type}`);
       need(p.rooms.some(r => r.id === i.room), `план ${p.id}: прибор ${i.id} — нет помещения ${i.room}`);
@@ -736,6 +740,37 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     };
   }
   /** Происшествие: номер задания — в пределах сценария; величины — в единицы движка. */
+  // рынок труда (Б4в): доли откликов и навыков складываются в целое; строка — у каждой роли штата и только у ролей базы;
+  // испытание по умолчанию — не длиннее предела профиля
+  const laborOf = (x: NonNullable<RawScenario['labor']>, sc: RawScenario, where: string): Labor => {
+    const sum = (a: readonly number[]) => a.reduce((n, v) => n + v, 0);
+    for (const [role, r] of Object.entries(x.roles)) {
+      need(raw.roles[role], `${where}: рынок труда — нет роли ${role}`);
+      need(Math.abs(sum(r.ad) - 100) < 1e-6, `${where}: рынок труда, ${role} — доли откликов на объявление не складываются в 100 %`);
+      need(Math.abs(sum(r.skill) - 100) < 1e-6, `${where}: рынок труда, ${role} — доли навыков не складываются в 100 %`);
+    }
+    for (const row of sc.staff) need(x.roles[row.role], `${where}: рынок труда — нет строки роли ${row.role}`);
+    const pr = raw.profiles[sc.profile];
+    if (pr) need(x.probation <= pr.labor.probation, `${where}: рынок труда — испытание ${x.probation} мес. длиннее предела профиля, ${pr.labor.probation} мес.`);
+    return {
+      ad: kop(x.ad),
+      agency: { share: share(x.agency.share), days: x.agency.days, skill: x.agency.skill },
+      medical: { days: x.medical.days, price: kop(x.medical.price) },
+      wait: x.wait,
+      step: share(x.step),
+      spread: share(x.spread),
+      agree: share(x.agree * 100),
+      probation: x.probation,
+      trial: share(x.trial * 100),
+      colleague: { skill: x.colleague.skill, over: share(x.colleague.over), ad: x.colleague.ad },
+      roles: Object.fromEntries(
+        Object.entries(x.roles).map(([role, r]) => [
+          role,
+          { ad: r.ad.map(share) as [number, number, number, number], skill: r.skill.map(share) as [number, number, number, number, number], quit: share(r.quit) },
+        ]),
+      ),
+    };
+  };
   const incidentOf = (x: NonNullable<RawScenario['incident']>, batches: number, where: string): IncidentDef => {
     need(investigations[x.inv], `${where}: нет модели расследования ${x.inv}`);
     need(x.batch <= batches, `${where}: в сценарии нет задания на серию ${x.batch}`);
@@ -880,6 +915,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         share: share(s.partners.share),
       },
       ...(s.incident ? { incident: incidentOf(s.incident, s.batches.length, where) } : {}),
+      ...(s.labor ? { labor: laborOf(s.labor, s, where) } : {}),
     };
   }
   const profiles: Record<string, Profile> = {};
@@ -900,6 +936,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       calendar: calendarOf(p.calendar, `профиль ${p.id}`, need),
       energy: { advances: p.energy.advances.map(([d, pct]) => [d, share(pct)] as [number, number]), final: p.energy.final },
       key: share(p.key),
+      labor: p.labor,
     };
   }
   // запчасти: поставщик из базы, цена — копейки
@@ -1211,6 +1248,7 @@ function learnErrors(raw: Raw, sops: Record<string, Sop>, tests: Record<string, 
     return: WMS.keepers,
     stage: stageRoles(() => true),
     clean: MES.operators,
+    roomClean: MES.cleaners,
     crew: crewOf(Object.keys(raw.machines)),
     changeover: LINE.setters,
     clearance: LINE.cleaners,

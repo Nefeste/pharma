@@ -50,20 +50,36 @@ const postOf = (plan: PlantPlan, role: Id) => plan.posts[role] ?? plan.entrance;
  * учиться — задача изучить документ на своём посту, если такой ещё нет.
  */
 export function trainDay(db: ContentDb, s: PlantState, notices: Notice[]) {
-  const sc = db.scenarios[s.scenario];
-  const plan = planOf(db, s.plant);
   const day = momentOf(s.start, s.t).day;
-  const open = new Set(Object.values(s.tasks).flatMap(t => (t.trainee && t.doc ? [`${t.trainee}/${codeOfRev(db, t.doc)}`] : [])));
+  const open = openStudies(db, s);
   for (const p of Object.values(s.people)) {
     for (const code of matrixOf(db, p.role)) {
+      // принятый сегодня (Б4в) допуска и не имел — терять нечего
       if (knows(db, p, code, day - 1) && !knows(db, p, code, day)) notices.push({ kind: 'qualLost', person: p.id, role: p.role, tab: p.tab, doc: code });
-      if (open.has(`${p.id}/${code}`)) continue;
-      const rev = dueRev(db, p, code, day, sc.training.ahead);
-      if (!rev) continue;
-      const study = learnRec(db, learnable(db, code)!, rev).study;
-      addTask(s, { kind: 'train', roles: [p.role], from: point(postOf(plan, p.role)), work: study, prio: TRAIN_PRIO.train, trainee: p.id, doc: rev });
     }
+    study(db, s, p, day, open);
   }
+}
+
+/** Задачи изучить документ, которые уже есть: `<человек>/<код>`. */
+const openStudies = (db: ContentDb, s: PlantState) => new Set(Object.values(s.tasks).flatMap(t => (t.trainee && t.doc ? [`${t.trainee}/${codeOfRev(db, t.doc)}`] : [])));
+
+/** Кому пора учиться в день `day` — задача изучить документ на своём посту, если такой ещё нет. */
+function study(db: ContentDb, s: PlantState, p: Person, day: number, open: ReadonlySet<string>) {
+  const sc = db.scenarios[s.scenario];
+  const plan = planOf(db, s.plant);
+  for (const code of matrixOf(db, p.role)) {
+    if (open.has(`${p.id}/${code}`)) continue;
+    const rev = dueRev(db, p, code, day, sc.training.ahead);
+    if (!rev) continue;
+    const work = learnRec(db, learnable(db, code)!, rev).study;
+    addTask(s, { kind: 'train', roles: [p.role], from: point(postOf(plan, p.role)), work, prio: TRAIN_PRIO.train, trainee: p.id, doc: rev });
+  }
+}
+
+/** Новый человек (Б4в): задачи изучить всё, чему учат его роль, — в первый день, не дожидаясь полуночи. */
+export function trainNow(db: ContentDb, s: PlantState, p: Person) {
+  study(db, s, p, momentOf(s.start, s.t).day, openStudies(db, s));
 }
 
 /** Конец задачи обучения: изучил — проверка знаний у поста ООК; проверили — запись «годен» с этим днём. */

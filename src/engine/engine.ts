@@ -11,6 +11,7 @@ import { assetDone, assetHour, assetStep, seedAssets, visitDone } from './assets
 import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
+import { hireCommand, hireHour } from './hire';
 import { hoursHour, newPolicy, overtimeCommand } from './hours';
 import { rosterCommand, rosterDay } from './shifts';
 import { concludeCommand, invDone, investigateCommand, invStep, newIncident } from './investigation';
@@ -93,6 +94,10 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     maintLog: [],
     losses: [],
     shiftTasks: [],
+    vacancies: {},
+    candidates: {},
+    hires: {},
+    former: {},
   };
   s.losses.push(newLoss(momentOf(s.start, s.t).day));
   // люди — у входа, с табельными номерами по порядку приёма и записями обучения (Б3б); техника — на стоянке, приборы — в
@@ -259,6 +264,16 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       rosterCommand(db, s, cmd, notices);
       return notices;
     }
+    case 'vacancy':
+    case 'close':
+    case 'hire':
+    case 'dismiss': {
+      // найм и увольнение (Б4в): по соглашению последний день — сегодня, а новую работу человек берёт только в смену
+      const notices: Notice[] = [];
+      hireCommand(db, s, cmd, notices);
+      settle(db, s);
+      return notices;
+    }
   }
 }
 
@@ -328,6 +343,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
         trainDay(db, s, notices);
         rosterDay(db, s, momentOf(s.start, s.t).day);
       }
+      // найм (Б4в): кандидаты, заявления, первые дни принятых, уход после последней смены — до раздачи задач часа
+      hireHour(db, s, notices);
       startSampling(db, s);
       cashHour(db, s, notices);
       // места и оборудование (Б3в): в полночь — у кого вышел срок; коллега техслужбы назначает визиты; подрядчик

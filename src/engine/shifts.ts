@@ -88,7 +88,7 @@ export function shiftLengths(sh: Shift): number[] {
 // ---------------------------------------------------------------- смена человека
 
 /** Графики человека: запись, с какого дня он в каком графике. */
-type Rostered = Pick<Person, 'shift' | 'roster'>;
+type Rostered = Pick<Person, 'shift' | 'roster'> & Partial<Pick<Person, 'hired' | 'quit'>>;
 
 /** График человека в день `z` (номер дня от 1970-01-01): запись, начатая не позже; без записей — его график. */
 export function scheduleOn(p: Rostered, z: number): Id {
@@ -213,6 +213,8 @@ export function offDays(db: ContentDb, s: Clock, id: Id, base: number, prev: Id)
  * которая начинается не позже конца последней смены прежнего, снята (две смены подряд).
  */
 export function spanOn(db: ContentDb, s: Clock, p: Rostered, z: number): [number, number] | undefined {
+  // до дня приёма и после последнего дня (Б4в) смен нет
+  if (!employedOn(p, z)) return undefined;
   const id = scheduleOn(p, z);
   const sh = db.shifts[id];
   const h = rawHours(db, s, sh, z);
@@ -230,6 +232,9 @@ export function spanOn(db: ContentDb, s: Clock, p: Rostered, z: number): [number
   const at = (z - daysFromCivil(s.start)) * DAY;
   return [at + h[0] * 3600, at + Math.round(h[1] * 3600)];
 }
+
+/** Работает ли человек на заводе в день `z` (Б4в): не раньше дня приёма и не позже последнего дня. */
+export const employedOn = (p: Partial<Pick<Person, 'hired' | 'quit'>>, z: number) => (p.hired === undefined || z >= p.hired) && (p.quit === undefined || z <= p.quit.last);
 
 /** Смена человека, в которой мгновение `t`: её начало, конец и график; вне смены — `undefined`. */
 export function shiftAt(db: ContentDb, s: Clock, p: Rostered, t: number): { from: number; to: number; shift: Id } | undefined {
@@ -371,7 +376,7 @@ export function saResult(db: ContentDb, s: PlantState, p: Person, from: number, 
   if (left > 0) byDay.set(last, (byDay.get(last) ?? 0) + left);
   const pr = db.profiles[db.scenarios[s.scenario].profile];
   const ot = pr.payroll.overtime;
-  const salary = db.roles[p.role].salary;
+  const salary = p.salary ?? db.roles[p.role].salary;
   let pay = 0;
   for (const [d, sec] of byDay) {
     const { y, m } = civilFromDays(d);
@@ -382,6 +387,15 @@ export function saResult(db: ContentDb, s: PlantState, p: Person, from: number, 
     pay += rate(f, ot.rates[0]) + rate(sec - f, ot.rates[1]);
   }
   return { over, pay, back: Math.max(0, all - over) };
+}
+
+/**
+ * Итог учётного периода при увольнении (Б4в): с начала периода по последний день — сверхурочные, копейки; не было дней
+ * сменного по циклу графика — ноль. Гипотеза: как в конце периода (сверить).
+ */
+export function leaveResult(db: ContentDb, s: PlantState, p: Person, last: number): number {
+  const [from] = periodOf(db, s, last);
+  return saResult(db, s, p, from, last, s.t)?.pay ?? 0;
 }
 
 /**

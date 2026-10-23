@@ -302,6 +302,39 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   // прежних сохранениях их нет: каждый — в своём графике с начала завода, переводов нет, часы периода — ноль; это и
   // значит отсутствие полей, менять нечего. Схема новая, чтобы 0.0.39 не открыл сохранение с переводами и не потерял их.
   22: raw => raw,
+  // 23 → 24 (Б4в): найм — вакансий, кандидатов, принятых и уволенных нет; оклад у людей — роли (поля нет). Уборщики
+  // сценария (#80) — новыми людьми у входа, с табельными номерами по порядку и записями обучения на день сохранения, как
+  // будто были с начала; уборка, которая уже идёт, — мойка оборудования, после неё помещение уберёт уборщик (mes.ts).
+  23: (raw, db) => {
+    const sc = db.scenarios[raw.scenario as string];
+    if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
+    const s = raw as unknown as PlantState;
+    s.vacancies = {};
+    s.candidates = {};
+    s.hires = {};
+    s.former = {};
+    const plan = planOf(db, s.plant);
+    const day = momentOf(s.start, s.t).day;
+    const { y, m, d } = momentOf(s.start, s.t).date;
+    // зарплата до схемы 24 начислена людям партии за весь месяц: по 15-е этого или по конец прошлого; первая половина —
+    // половина оклада роли; уборщикам сценария, новым, начислений ещё не было
+    const first = day - d + 1;
+    for (const p of Object.values(s.people)) {
+      p.paid = d >= 16 ? first + 14 : first - 1;
+      if (d >= 16) p.half = { y, m, base: Math.floor(db.roles[p.role].salary / 2) };
+    }
+    const have = new Set(Object.values(s.people).map(p => p.role));
+    for (const row of sc.staff) {
+      if (have.has(row.role)) continue;
+      for (let i = 0; i < row.n; i++) {
+        const n = (s.next.E = (s.next.E ?? 0) + 1);
+        const p: Person = { id: `E${n}`, role: row.role, shift: row.shift, skill: row.skill, tab: sc.training.tab + n - 1, train: {}, x: plan.entrance.x, z: plan.entrance.z, ot: [], otYear: { y, sec: 0 } };
+        s.people[p.id] = p;
+        seedTraining(db, sc, p, day);
+      }
+    }
+    return raw;
+  },
 };
 
 export function toSave(s: PlantState): string {

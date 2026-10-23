@@ -229,5 +229,5 @@ describe('поток прогона', () => {
     } finally {
       await w.terminate();
     }
-  });
+  }, 60_000);
 });

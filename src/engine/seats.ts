@@ -23,13 +23,39 @@ export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
 export const DEPT_SEAT: Record<Dept, SeatId> = { mes: 'production', line: 'production', maint: 'production', qc: 'quality', qa: 'quality', wms: 'supply' };
 
 /**
- * Пост команды: у политики отдела — пост этого отдела, у перевода на другой график (Б4б) — пост отдела человека (`dept`),
- * у остальных — по виду команды.
+ * Пост команды: у политики отдела — пост этого отдела, у перевода на другой график (Б4б) и команд найма и увольнения (Б4в)
+ * — пост отдела роли (`dept`), у остальных — по виду команды.
  */
 export function ownerOf(cmd: Command, dept?: Dept): SeatId | undefined {
   if (cmd.kind === 'overtime') return DEPT_SEAT[cmd.dept];
-  if (cmd.kind === 'roster') return dept && DEPT_SEAT[dept];
+  if (cmd.kind === 'roster' || cmd.kind === 'vacancy' || cmd.kind === 'close' || cmd.kind === 'hire' || cmd.kind === 'dismiss') return dept && DEPT_SEAT[dept];
   return OWNER[cmd.kind];
+}
+
+/** Роль, о которой команда найма (Б4в) или перевода (Б4б): её отдел — чей пост. */
+function roleOf(s: PlantState, cmd: Command): string | undefined {
+  switch (cmd.kind) {
+    case 'roster':
+    case 'dismiss':
+      return s.people[cmd.person]?.role;
+    case 'vacancy':
+      return cmd.role;
+    case 'close':
+      return s.vacancies[cmd.vacancy]?.role;
+    case 'hire':
+      return s.candidates[cmd.candidate]?.role;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Держит ли игрок пост отдела `dept` (или директора) — тогда коллега этого поста ждёт его решений (Б4в); места не
+ * выбраны — ведут коллеги.
+ */
+export function playerHolds(s: PlantState, dept: Dept): boolean {
+  const h = held(s);
+  return !!h && (h.includes('director') || h.includes(DEPT_SEAT[dept]));
 }
 
 /** Места, которые игрок держит сейчас; ещё не выбирал — `undefined`. */
@@ -42,8 +68,8 @@ export function held(s: PlantState): SeatId[] | undefined {
  * места не выбраны — можно всё, как до 3е; директор в прототипе отвечает за всё. Команды сценария и коллег не проверяются.
  */
 export function foreign(s: PlantState, cmd: Command, db?: ContentDb): SeatId | undefined {
-  const who = cmd.kind === 'roster' ? s.people[cmd.person] : undefined;
-  const own = ownerOf(cmd, who && db?.roles[who.role]?.dept);
+  const role = roleOf(s, cmd);
+  const own = ownerOf(cmd, role ? db?.roles[role]?.dept : undefined);
   if (!own || ('by' in cmd && cmd.by !== undefined && cmd.by !== 'player')) return undefined;
   const h = held(s);
   return !h || h.includes('director') || h.includes(own) ? undefined : own;

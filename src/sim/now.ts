@@ -9,7 +9,7 @@ import { batchNo } from '../engine/batchno';
 import { momentOf } from '../engine/core/calendar';
 import { geo, SIXTY } from '../engine/line';
 import { partType } from '../engine/maint';
-import { cleanWork, nominal } from '../engine/mes';
+import { nominal, roomWork, washWork } from '../engine/mes';
 import { classOf } from '../engine/places';
 import { planOf } from '../engine/plant';
 import { scheduleOn } from '../engine/shifts';
@@ -159,11 +159,12 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
         row.room = roomType(b.room);
         row.thing = { kind: 'room', i: roomIx(b.room) };
       }
-    } else if (t.kind === 'clean' && t.room) {
+    } else if ((t.kind === 'clean' || t.kind === 'roomClean') && t.room) {
+      // мойка оборудования — аппаратчики, уборка помещения — уборщик (Б4в): у каждой своя норма
       const r = s.rooms[t.room];
       row.room = roomType(t.room);
       row.major = !!r?.major;
-      row.norm = cleanWork(db, s, t.room, !!r?.major);
+      row.norm = (t.kind === 'clean' ? washWork : roomWork)(db, s, t.room, !!r?.major);
       row.thing = { kind: 'room', i: roomIx(t.room) };
     } else if ((t.kind === 'repair' || t.kind === 'invFix') && t.part) {
       const pt = s.parts[t.part];

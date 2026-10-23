@@ -7,13 +7,15 @@
 // «Больницы» (её src/sim/doctor.ts, `DoctorDesk`): вид уходит, только когда изменился.
 import type { ContentDb, Id, MaterialKind } from '../content/types';
 import { batchNo } from '../engine/batchno';
+import { salaryOf } from '../engine/cash';
+import { dismissTerms, laborOf } from '../engine/hire';
 import { momentOf } from '../engine/core/calendar';
 import { partType, wearAt } from '../engine/maint';
 import { planOf } from '../engine/plant';
 import { pendingOf } from '../engine/shifts';
 import { shiftEnd } from '../engine/staff';
 import { TAG } from '../engine/stock';
-import type { AssetRec, Lot, LotStatus, MachineState, PlantState, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
+import type { AssetRec, Lot, LotStatus, MachineState, PlantState, Quit, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
 import { type DevCard, devCard, type Regimes, regimesAt, type ReleaseView, releaseOf } from './devs';
 import { type SaView, type SheetView, saOf, sheetOf } from './hours';
 import { type InvQuery, type InvView, invView } from './inv';
@@ -159,7 +161,32 @@ export type CardData =
   | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; sku?: Id; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[] }
   /** человек (Б3б): табельный номер, навык, допуск сегодня, обучение по матрице его роли, что изучает сейчас; табель месяца (Б4а) */
   /** с Б4б — ждущий перевод на другой график и учётный период сменного по циклу */
-  | { kind: 'person'; person: number; tab: number; role: Id; shift: Id; skill: number; doing: Doing; adm: Admission; train: TrainRow[]; learning?: DocNow; sheet: SheetView; next?: { shift: Id; from: number }; sa?: SaView }
+  /** с Б4в — оклад, день приёма, последний день испытания, увольнение; ушёл с завода — `gone` с днём и основанием */
+  | {
+      kind: 'person';
+      person: number;
+      tab: number;
+      role: Id;
+      shift: Id;
+      skill: number;
+      doing: Doing;
+      adm: Admission;
+      train: TrainRow[];
+      learning?: DocNow;
+      sheet: SheetView;
+      next?: { shift: Id; from: number };
+      sa?: SaView;
+      salary: number;
+      hired?: number;
+      trial?: number;
+      quit?: { why: Quit['why']; day: number; last: number; pay?: number };
+      gone?: true;
+      /**
+       * что можно сегодня (Б4в): уволить по соглашению — последний день и выплата; не выдержал испытание — последний
+       * день и успеть ли в срок испытания; подал заявление — отпустить раньше, последний день — сегодня
+       */
+      terms?: { agree?: { last: number; pay: number }; trial?: { last: number; ok: boolean }; early?: { last: number } };
+    }
   | { kind: 'vehicle'; vehicle: number; type: Id; task?: TaskKind }
   | { kind: 'truck'; truck: number; customer?: Id; supplier?: Id; po?: string; docked: boolean; open: boolean; units: number; arrived: number }
   | DevCard
@@ -493,12 +520,14 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       };
     }
     case 'person': {
-      const p = s.people[`E${thing.n}`];
+      // уволенный (Б4в) — карточка остаётся: табель, обучение, основание и последний день
+      const gone = !s.people[`E${thing.n}`];
+      const p = s.people[`E${thing.n}`] ?? s.former[`E${thing.n}`];
       if (!p) return { kind: 'gone' };
       const t = p.task ? s.tasks[p.task] : undefined;
       const doing: Doing = t
         ? { k: 'task', task: t.kind }
-        : shiftEnd(db, s, p) === undefined
+        : gone || shiftEnd(db, s, p) === undefined
           ? { k: 'off' }
           : p.walk
             ? { k: 'walk', exit: p.x === plan.entrance.x && p.z === plan.entrance.z }
@@ -506,7 +535,27 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       const learning = t?.kind === 'train' && t.doc ? docOfRev(db, t.doc) : undefined;
       const next = pendingOf(s, p);
       const sa = saOf(db, s, p);
-      return { kind: 'person', person: thing.n, tab: p.tab, role: p.role, shift: p.shift, skill: p.skill, doing, adm: admissionOf(db, s, p), train: trainRows(db, s, p), ...(learning ? { learning } : {}), sheet: sheetOf(db, s, p), ...(next ? { next: { shift: next.shift, from: next.from } } : {}), ...(sa ? { sa } : {}) };
+      return {
+        kind: 'person',
+        person: thing.n,
+        tab: p.tab,
+        role: p.role,
+        shift: p.shift,
+        skill: p.skill,
+        doing,
+        adm: admissionOf(db, s, p),
+        train: trainRows(db, s, p),
+        ...(learning ? { learning } : {}),
+        sheet: sheetOf(db, s, p),
+        ...(next ? { next: { shift: next.shift, from: next.from } } : {}),
+        ...(sa ? { sa } : {}),
+        salary: salaryOf(db, p),
+        ...(p.hired !== undefined ? { hired: p.hired } : {}),
+        ...(p.trial !== undefined ? { trial: p.trial } : {}),
+        ...(p.quit ? { quit: { why: p.quit.why, day: p.quit.day, last: p.quit.last, ...(p.quit.pay ? { pay: p.quit.pay } : {}) } } : {}),
+        ...(gone ? { gone: true as const } : {}),
+        ...(gone || !laborOf(db, s) ? {} : p.quit ? (p.quit.why === 'own' && p.quit.last > momentOf(s.start, s.t).day ? { terms: { early: { last: momentOf(s.start, s.t).day } } } : {}) : { terms: dismissTerms(db, s, p) }),
+      };
     }
     case 'vehicle': {
       const v = s.vehicles[`V${thing.n}`];

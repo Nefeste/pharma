@@ -94,7 +94,11 @@ const ALLOWED = new Set(
     'break hours worked norm over year calendar y m policy wms qc qa mes maint overtime ' +
     // Б4б: рисунок сменного графика, учётный период, люди в графике сейчас и с нового месяца, ждущий перевод, календарь
     // бригад — записи базы и учёт завода
-    'cycle pattern night account next shiftCal rows of'
+    'cycle pattern night account next shiftCal rows of ' +
+    // Б4в: штат по сценарию и сейчас, вакансии, кандидаты рынка, принятые до первого дня, уволенные; оклад, испытание
+    // и увольнение — записи завода; уровни оплаты, сроки закона и цены найма — база и профиль
+    'hiring plan coming leaving vacancies via candidates exam first fee instead hires former levels probation law agree ' +
+    'costs ad medical agency trial why hired quit'
   ).split(' '),
 );
 

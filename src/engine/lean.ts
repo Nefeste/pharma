@@ -31,6 +31,7 @@ export const AREA: Record<TaskKind, Dept> = {
   decide: 'qc',
   stage: 'mes',
   clean: 'mes',
+  roomClean: 'mes',
   crew: 'line',
   changeover: 'line',
   clearance: 'line',

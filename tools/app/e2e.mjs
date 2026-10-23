@@ -29,8 +29,10 @@
 // первом событии; удержанную серию держат и выпускают из карточки её ГП; срочное задание — строкой черновика и его
 // полосами в расписании до «Утвердить» (0.0.39). Графики сменности (Б4б): в карточке аппаратчика — перевод в «12 ч,
 // бригада 2» с 01.10.2027, на планёрке — он же; утром 9 октября — дополнительный выходной бригады на планёрке, табель
-// октября по её рисунку и календарь бригад в справочнике. Ошибок в консоли и запросов наружу нет. Снимки —
-// tools/app/out/e2e*.png.
+// октября по её рисунку и календарь бригад в справочнике. Найм (Б4в): в расписании уборка — мойка оборудования и уборка
+// помещения; вакансия аппаратчика по объявлению, кандидаты на планёрке, приём — медосмотр, первый день, следующий
+// табельный номер, оклад и испытание в карточке; упаковщика — по соглашению: среди уволенных, расчёт в кассе. Ошибок
+// в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -347,7 +349,9 @@ try {
     const rows = await page.$$eval('[data-test=gantt-row]', r => r.length);
     const bars = await page.$$eval('[data-test=gbar]', r => r.length);
     const bar = await page.$('[data-test=gbar][data-movable="1"][data-kind=kit]');
-    if (rows < 6 || bars < 5 || !bar) fail(`расписание: строк ${rows}, полос ${bars}, задания, которое можно тянуть, ${bar ? 'есть' : 'нет'}`);
+    // уборка в два шага (Б4в): после мойки оборудования — уборка помещения уборщиком
+    const room = await page.$$eval('[data-test=gbar][data-kind=roomClean]', r => r.length);
+    if (rows < 6 || bars < 5 || !bar || room === 0) fail(`расписание: строк ${rows}, полос ${bars}, уборки помещения ${room}, задания, которое можно тянуть, ${bar ? 'есть' : 'нет'}`);
     else {
       const batch = await bar.getAttribute('data-batch');
       const before = await page.evaluate(b => window.__game.store.get().gantt.view.batches[b].notBefore, batch);
@@ -378,7 +382,7 @@ try {
       if (!ghost || !drafted || kept !== before || marks.was < 1)
         fail(`расписание: призрак ${ghost ? 'виден' : 'не виден'}; черновик ${drafted ? 'есть' : 'нет'}, срок задания ${batch}: ${before} → ${kept}, прежних полос ${marks.was}`);
       else
-        ok(`расписание: строк ${rows}, полос ${bars}; задание ${batch} протянули на сутки раньше — призрак, у курсора «${tip.slice(0, 90)}…»; отпустили — «${marks.list}», срок прежний; полос черновика ${marks.draft}, прежних ${marks.was}`);
+        ok(`расписание: строк ${rows}, полос ${bars}, из них уборки помещения — ${room}; задание ${batch} протянули на сутки раньше — призрак, у курсора «${tip.slice(0, 90)}…»; отпустили — «${marks.list}», срок прежний; полос черновика ${marks.draft}, прежних ${marks.was}`);
 
       // «Прервать» сразу после «Прогнать план» — прогона и итога нет
       const stopped = await page.evaluate(async () => {
@@ -690,8 +694,9 @@ try {
   await lister.close();
   ok(`контактный лист: ${sheet.length} снимков → ${join(out, 'contact.png')}`);
 
-  // автопаузы (Б2а): у производства и качества одиннадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
-  // вышел», с Б3г — «пара приостановлена», с Б4а — «сверхурочные года на исходе»), «фура» и «заказ» — не их; планёрку отключили — окно помнит; «До события» — мир
+  // автопаузы (Б2а): у производства и качества двенадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
+  // вышел», с Б3г — «пара приостановлена», с Б4а — «сверхурочные года на исходе», с Б4в — «заявление об увольнении»),
+  // «фура» и «заказ» — не их; планёрку отключили — окно помнит; «До события» — мир
   // встал не в 08:00, а на первом событии автопаузы мест игрока: извещение со знаком паузы, часы стоят, отставания нет.
   // Планёрку включили обратно
   {
@@ -707,7 +712,7 @@ try {
     await page.screenshot({ path: join(out, 'e2e-pauses.png') });
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('Escape');
-    if (menu.all !== 11 || menu.on !== 11 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
+    if (menu.all !== 12 || menu.on !== 12 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
       fail(`автопаузы: в меню ${menu.all}, включено ${menu.on}, не ваши ${menu.notYours.join(', ')}, в окне «${kept}»`);
     else ok(`автопаузы: в меню ${menu.all}, не ваши — ${menu.notYours.join(', ')}; планёрку отключили — в окне ${kept}; Esc закрыл меню`);
     const t0 = await gameT();
@@ -751,7 +756,7 @@ try {
     const stop = await page.evaluate(() => ({ inv: window.__game.store.get().top?.inv ?? 0, speed: window.__game.speed, ff: window.__game.ff, notice: document.querySelector('[data-test=notice-inv]')?.textContent ?? '' }));
     if (stop.inv < 1 || stop.speed !== 0 || stop.ff || !/вне спецификации/.test(stop.notice)) fail(`расследование: идёт ${stop.inv}, скорость ${stop.speed}, промотка ${stop.ff}, извещение «${stop.notice}»`);
     else ok(`расследование: «${stop.notice}» — мир на паузе`);
-    // что делать (Б1г): последняя планёрка — у потери «людей нет в смене» кнопки решений и строка «Будет в Б4б»; ждут
+    // что делать (Б1г): последняя планёрка — у потери «людей нет в смене» кнопки решений, с Б4в и «Найм и графики»; ждут
     // решения отклонения серии с происшествием. Карточка отклонения опудривания: время по досье, цель и диапазон по
     // карте, связанные испытания; после результата растворения его решает расследование — «без влияния» и «отклонить»
     // погашены, есть кнопка доски. В первый раз — пояснение; «Понятно» его убирает, окно помнит
@@ -770,8 +775,9 @@ try {
           param: v.pending.find(p => p.kind === 'param')?.dev,
         };
       });
-      if (m.main !== 'wait/shift' || m.buttons.length < 2 || !m.later.some(x => /Б4б/.test(x)) || m.param === undefined) fail(`планёрка: потеря «${m.main}», кнопки «${m.buttons.join(', ')}», «${m.later.join('; ')}», ждут решения ${m.pending}`);
-      else ok(`планёрка: у потери «людей нет в смене» — ${m.buttons.join(', ')}; «${m.later.join('; ')}»; ждут решения — ${m.pending}`);
+      if (m.main !== 'wait/shift' || m.buttons.length < 3 || !m.buttons.includes('Найм и графики') || m.later.some(x => /Б4/.test(x)) || m.param === undefined)
+        fail(`планёрка: потеря «${m.main}», кнопки «${m.buttons.join(', ')}», «${m.later.join('; ')}», ждут решения ${m.pending}`);
+      else ok(`планёрка: у потери «людей нет в смене» — ${m.buttons.join(', ')}; ждут решения — ${m.pending}`);
       await page.keyboard.press('Escape');
       await page.evaluate(n => window.__game.actions.select({ kind: 'dev', n }), m.param);
       await page.waitForFunction(n => window.__game.store.get().card?.card?.kind === 'dev' && window.__game.store.get().card.card.dev === n, m.param, { timeout: 20_000 });
@@ -1373,6 +1379,120 @@ try {
       fail(`первая оценка пары: на планёрке ${seen ? 'была' : 'не было'}, ${done ? 'рассмотрели' : 'не рассмотрели'}; в справочнике «${pack.text}»`);
     else ok(`первая оценка пары: упаковку оценили по документам — в справочнике «${pack.text}»`);
     await page.keyboard.press('Escape');
+  }
+
+  // найм и увольнение (Б4в): F1 → «Люди» — вакансия аппаратчика первой смены по объявлению; на планёрке после
+  // понедельника — новые кандидаты; принять первого — медосмотр и первый день; в первый день — следующий табельный номер,
+  // в карточке оклад и испытание, он учится; упаковщика — по соглашению: после смены он среди уволенных, в кассе — расчёт
+  // при увольнении с выплатой по соглашению
+  {
+    const epochDay = () => page.evaluate(() => {
+      const d = window.__game.db.scenarios['scn.proto'].start.date;
+      return Date.UTC(d.y, d.m - 1, d.d) / 86_400_000 + Math.floor(window.__game.t / 86_400);
+    });
+    const openPeople = async () => {
+      await page.keyboard.press('F1');
+      await page.waitForSelector('#ref', { timeout: 20_000 });
+      await page.click('[data-test=ref-tab][data-tab=people]');
+      await page.waitForFunction(() => !!window.__game.store.get().ref.view?.hiring, null, { timeout: 20_000 });
+      await frames(1);
+    };
+    await openPeople();
+    await page.click('[data-test=vacancy-open]');
+    await page.selectOption('[data-test=vacancy-role]', 'role.operator');
+    await page.selectOption('[data-test=vacancy-shift]', 'shift.a');
+    await page.selectOption('[data-test=vacancy-via]', 'ad');
+    await page.click('[data-test=vacancy-do]');
+    await page.waitForFunction(() => window.__game.store.get().ref.view?.hiring?.vacancies.some(v => v.role === 'role.operator' && !v.by), null, { timeout: 20_000 });
+    await frames(1);
+    const vac = await page.evaluate(() => ({
+      id: window.__game.store.get().ref.view.hiring.vacancies.find(v => v.role === 'role.operator' && !v.by).id,
+      text: [...document.querySelectorAll('[data-test=ref-vacancy] b')].map(b => b.textContent ?? '').find(x => /Аппаратчик/.test(x)) ?? '',
+    }));
+    await page.keyboard.press('Escape');
+    // отклики — по понедельникам в 09:00: на планёрке следующего утра
+    let seen = '';
+    for (let i = 0; i < 24 && !seen; i++) {
+      await untilMorning(true);
+      await page.waitForFunction(() => {
+        const m = window.__game.store.get().morning;
+        return m.view?.day === m.day;
+      }, null, { timeout: 20_000 });
+      seen = await page.evaluate(() => [...document.querySelectorAll('[data-test=morning-candidates]')].map(x => x.textContent ?? '').find(x => /Аппаратчик/.test(x)) ?? '');
+      await page.keyboard.press('Escape');
+    }
+    await openPeople();
+    const cand = await page.evaluate(id => document.querySelector(`[data-test=ref-vacancy][data-id=${id}] [data-test=cand-hire]`)?.getAttribute('data-id') ?? '', vac.id);
+    let ask = '';
+    let hire = null;
+    if (cand) {
+      await page.click(`[data-test=cand-hire][data-id=${cand}]`);
+      await page.waitForSelector('[data-test=hire-ask]', { timeout: 20_000 });
+      ask = (await page.textContent('[data-test=hire-ask]')) ?? '';
+      await page.click('[data-test=hire-do]');
+      await page.waitForFunction(id => window.__game.store.get().ref.view?.hiring?.hires.some(h => h.id === id), cand, { timeout: 20_000 });
+      hire = await page.evaluate(id => window.__game.store.get().ref.view.hiring.hires.find(h => h.id === id), cand);
+    }
+    await page.keyboard.press('Escape');
+    if (!vac.text || !seen || !hire || !/Медосмотр за счёт завода/.test(ask) || !(hire.exam < hire.day) || hire.trial !== 3)
+      fail(`найм: вакансия «${vac.text}», на планёрке «${seen}», кандидат ${cand || 'не найден'}, «${ask}», принят ${JSON.stringify(hire)}`);
+    else {
+      ok(`найм: вакансия «${vac.text}»; на планёрке «${seen}»; «${ask.replace(/\s+/g, ' ').trim()}» — принят, испытание 3 мес.`);
+      // первый день — утро за утром, пока он не наступит; табельный номер — следующий, в карточке — оклад и испытание
+      for (let i = 0; i < 12 && (await epochDay()) <= hire.day; i++) await untilMorning();
+      await openPeople();
+      const p = await page.evaluate(day => {
+        const v = window.__game.store.get().ref.view;
+        return { last: v.people.find(x => x.role === 'role.operator' && x.hired === day), tabs: v.people.map(x => x.tab) };
+      }, hire.day);
+      await page.keyboard.press('Escape');
+      await page.evaluate(n => window.__game.actions.show({ kind: 'person', n }), p.last?.person ?? 0);
+      await page.waitForSelector('[data-test=card-salary]', { timeout: 20_000 });
+      await frames(2);
+      const c = await page.evaluate(() => ({
+        title: document.querySelector('#card-title')?.textContent ?? '',
+        salary: document.querySelector('[data-test=card-salary]')?.textContent ?? '',
+        trial: document.querySelector('[data-test=card-trial]')?.textContent ?? '',
+        train: document.querySelectorAll('[data-test=card-train] li').length,
+      }));
+      await page.screenshot({ path: join(out, 'e2e-hire.png') });
+      await page.keyboard.press('Escape');
+      if (!p.last || p.last.salary !== hire.salary || p.last.tab !== Math.max(...p.tabs) || !/в месяц/.test(c.salary) || !c.trial || c.train === 0)
+        fail(`первый день: последний — ${JSON.stringify(p.last)}; карточка «${c.title}», «${c.salary}», испытание до «${c.trial}», строк обучения ${c.train}`);
+      else ok(`первый день: «${c.title}» — оклад «${c.salary}», испытание до ${c.trial}; строк обучения — ${c.train}; снимок ${join(out, 'e2e-hire.png')}`);
+    }
+    // по соглашению: упаковщик, который не уходит сам, последний день — сегодня; после смены — среди уволенных, расчёт
+    // в кассе
+    await openPeople();
+    const who = await page.evaluate(() => window.__game.store.get().ref.view.people.find(x => x.role === 'role.packer' && !x.quit));
+    await page.keyboard.press('Escape');
+    await page.evaluate(n => window.__game.actions.show({ kind: 'person', n }), who.person);
+    await page.waitForSelector('[data-test=dismiss-agree]', { timeout: 20_000 });
+    await page.click('[data-test=dismiss-agree]');
+    await page.waitForSelector('[data-test=dismiss-ask]', { timeout: 20_000 });
+    const terms = (await page.textContent('[data-test=dismiss-ask]')) ?? '';
+    await page.click('[data-test=dismiss-do]');
+    await page.waitForFunction(() => !!document.querySelector('[data-test=card-quit]'), null, { timeout: 20_000 });
+    await page.keyboard.press('Escape');
+    const left = () => page.evaluate(tab => window.__game.notices.some(n => n.text === `Уволен по соглашению сторон: Упаковщик · таб. №\u00a0${tab}`), who.tab);
+    for (let i = 0; i < 8 && !(await left()); i++) {
+      await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
+      await page.keyboard.press('Digit4');
+      await page.waitForFunction(() => window.__game.speed === 0 || window.__game.notices.some(n => /^Уволен по соглашению сторон/.test(n.text)), null, { timeout: 120_000 });
+    }
+    await page.evaluate(() => window.__game.actions.setSpeed(0));
+    await openPeople();
+    const former = await page.evaluate(() => [...document.querySelectorAll('[data-test=ref-former] tbody tr')].map(r => [...r.children].map(c => c.innerText.trim()).join(' · ')));
+    await page.keyboard.press('Escape');
+    await page.click('[data-test=cash-open]');
+    // вид кассы приходит из потока расчёта, а прежний, с первого открытия, остаётся в окне до нового — ждём строку расчёта
+    await page.waitForFunction(() => !!window.__game.store.get().cash.view?.entries.some(e => e.item === 'settle'), null, { timeout: 20_000 }).catch(() => {});
+    const settle = await page.evaluate(() => window.__game.store.get().cash.view?.entries.find(e => e.item === 'settle'));
+    await page.keyboard.press('Escape');
+    const row = former.find(x => x.startsWith(`${who.tab} · Упаковщик`) && /по соглашению сторон/.test(x));
+    if (!/^Последний день — сегодня/.test(terms) || !(await left()) || !row || !settle || settle.sum >= 0)
+      fail(`по соглашению: «${terms}», уволен ${await left()}, уволенные ${former.join(' | ')}, расчёт ${JSON.stringify(settle)}`);
+    else ok(`по соглашению: «${terms}»; среди уволенных — «${row}»; в кассе расчёт при увольнении ${Math.round(-settle.sum / 100)} ₽`);
   }
 
   // стартовый пресет (Б1б): первый запуск без пресета в адресе — средний, через пять секунд замер; кадр программной

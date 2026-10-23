@@ -44,9 +44,13 @@ export function fitsIn(kind: TaskKind, mode: OvertimeMode, room: number, nom: nu
   return max <= room + left;
 }
 
-/** Помещается ли задача у человека сейчас (`fitsIn`): конец его смены — `end`. */
+/**
+ * Помещается ли задача у человека сейчас (`fitsIn`): конец его смены — `end`. В его последний день (Б4в) — как
+ * «только закончить начатое»: работа по норме — в остаток смены.
+ */
 export function fits(db: ContentDb, s: PlantState, p: Person, kind: TaskKind, end: number, nom: number, max: number): boolean {
-  return fitsIn(kind, s.policy[db.roles[p.role].dept], end - s.t, nom, max, overLeft(db, s, p, s.t));
+  const mode = p.quit && p.quit.last <= momentOf(s.start, s.t).day ? 'finish' : s.policy[db.roles[p.role].dept];
+  return fitsIn(kind, mode, end - s.t, nom, max, overLeft(db, s, p, s.t));
 }
 
 /** Взял задачу в смену: до конца смены — работа по графику, после — сверхурочная (`endTask`). */

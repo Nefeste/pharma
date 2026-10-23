@@ -365,6 +365,13 @@ export class Game {
         ? n.cancel
           ? T.notices.rosterCancel(T.card.person(named(this.db.roles[n.role]?.name, n.role), n.tab))
           : T.notices.rostered(T.card.person(named(this.db.roles[n.role]?.name, n.role), n.tab), named(this.db.shifts[n.shift]?.name, n.shift), dayText(n.from))
+      : n.kind === 'vacancy' ? T.notices.vacancy(T.hire.vacancyWhat(this.roleName(n.role), named(this.db.shifts[n.shift]?.name, n.shift)), T.hire.via[n.via], n.by === 'colleague')
+      : n.kind === 'candidates' ? T.notices.candidates(this.roleName(n.role), n.n)
+      : n.kind === 'accepted' ? T.notices.accepted(this.roleName(n.role), dayText(n.day))
+      : n.kind === 'hired' ? T.notices.hired(T.card.person(this.roleName(n.role), n.tab))
+      : n.kind === 'resign' ? T.notices.resign(T.card.person(this.roleName(n.role), n.tab), dayText(n.last))
+      : n.kind === 'dismissed' ? T.notices.dismissed(T.card.person(this.roleName(n.role), n.tab), T.hire.why[n.why], dayText(n.last))
+      : n.kind === 'left' ? T.notices.left(T.card.person(this.roleName(n.role), n.tab), T.hire.why[n.why])
       : n.kind === 'overtimeLow' ? T.notices.overtimeLow(named(this.db.roles[n.role]?.name, n.role), n.tab, durText(n.left), hText(this.db.profiles[this.scenario.profile].payroll.overtime.year))
       : n.kind === 'assetExpired' ? T.notices.assetExpired(workName(n, n.work), assetClass(n), T.assets.inv(n.inv))
       : n.kind === 'pairSuspended' ? T.notices.pairSuspended(named(this.db.suppliers[n.supplier]?.name, n.supplier), named(this.db.makers[n.maker]?.name, n.maker))
@@ -375,6 +382,11 @@ export class Game {
     const go = goOf(this.layout.plan.plant, n);
     this.notices.unshift({ t: this.t, text, ...(stop ? { stop: true as const } : {}), ...(go ? { go } : {}) });
     if (this.notices.length > 30) this.notices.length = 30;
+  }
+
+  /** Роль словами. */
+  private roleName(id: string): string {
+    return named(this.db.roles[id]?.name, id);
   }
 
   /** Машина и узел — словами: машина линии или оборудование участка по имени в плане. */
@@ -517,9 +529,9 @@ export class Game {
       } else if (g.panel === 'lab') {
         if (!this.store.get().lab.open) this.actions.toggleLab();
       } else if (g.panel === 'ref') {
-        // прибор или датчик (Б3в): справочник на вкладке «Места»
+        // справочник на вкладке извещения: «Места» (Б3в), «Контрагенты» (Б3г), «Люди» (Б4в)
         if (!this.store.get().ref.open) this.actions.toggleRef();
-        this.actions.setRefTab('places');
+        this.actions.setRefTab(g.tab);
       } else this.actions.openMorning();
     },
     setQuality: (q: Quality) => {
@@ -747,6 +759,10 @@ export class Game {
     rush: lot => this.client.command({ kind: 'rush', lot, by: 'player' }),
     overtime: (dept, mode) => this.client.command({ kind: 'overtime', dept, mode, by: 'player' }),
     roster: (person, shift) => this.client.command({ kind: 'roster', person: `E${person}`, shift, by: 'player' }),
+    vacancy: (role, shift, via) => this.client.command({ kind: 'vacancy', role, shift, via, by: 'player' }),
+    closeVacancy: id => this.client.command({ kind: 'close', vacancy: id, by: 'player' }),
+    hire: (candidate, trial) => this.client.command({ kind: 'hire', candidate, trial, by: 'player' }),
+    dismiss: (person, why) => this.client.command({ kind: 'dismiss', person: `E${person}`, why, by: 'player' }),
     setCashPage: page => {
       this.store.set({ cash: { ...this.store.get().cash, page } });
       this.sendViews();

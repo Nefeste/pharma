@@ -138,6 +138,8 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         return `${short(labels, b.batch)} · ${T.stages[b.stage ?? ''] ?? b.stage}`;
       case 'clean':
         return b.major ? T.gantt.bar.major : T.gantt.bar.clean;
+      case 'roomClean':
+        return b.major ? T.gantt.bar.roomMajor : T.gantt.bar.room;
       case 'setup':
         return `${T.gantt.bar.setup}: ${short(labels, b.batch)}`;
       case 'pack':
@@ -152,7 +154,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
 
   const titleOf = (b: Bar): string => {
     const lines = [barText(b), `${T.gantt.span(whenText(start, b.from), whenText(start, b.to))} · ${T.gantt.when[b.when]}`];
-    if (b.kind === 'clean' && b.batch) lines[0] = `${lines[0]} · ${who(labels, b.batch)}`;
+    if ((b.kind === 'clean' || b.kind === 'roomClean') && b.batch) lines[0] = `${lines[0]} · ${who(labels, b.batch)}`;
     if (b.material) lines.push(T.gantt.material);
     if (b.repair) lines.push(T.gantt.repair);
     if (b.kind === 'visit') {
@@ -410,6 +412,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
           <span className="gbar k-kit w-plan">{T.gantt.bar.kit}</span>
           <span className="gbar k-stage w-plan">{T.gantt.bar.stage}</span>
           <span className="gbar k-clean w-plan">{T.gantt.bar.clean}</span>
+          <span className="gbar k-roomClean w-plan">{T.gantt.bar.room}</span>
           <span className="gbar k-pack w-past">{T.gantt.bar.pack}</span>
           <span className="gbar k-visit w-plan">{T.gantt.bar.visit}</span>
           <span className="gbar k-stage w-past">{T.gantt.when.past}</span>

@@ -8,7 +8,7 @@ import { legacy as db } from './legacy';
 import { db as game } from '../../src/content';
 import type { ContentDb } from '../../src/content/types';
 import { firstOf, keepFirsts, keptFirsts } from '../../src/app/firsts';
-import { devLevers, heldLevers, type Lever, mainLevers, riskLevers } from '../../src/app/levers';
+import { devLevers, heldLevers, type Lever, mainLevers, resignLevers, riskLevers } from '../../src/app/levers';
 import { DAY, HOUR, momentOf } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
 import type { Batch, PlantState } from '../../src/engine/types';
@@ -57,21 +57,28 @@ function order(s: PlantState): Batch {
 }
 
 describe('рычаги планёрки — по таблице спецификации', () => {
-  test('ждали «людей нет в смене»: расписание и лаборатория; будут аналитик во вторую смену и найм', () => {
+  test('ждали «людей нет в смене»: расписание, лаборатория, найм и графики поста отдела (Б4в)', () => {
     const l = mainLevers({ k: 'wait', dept: 'qc', cause: 'shift', sec: 3600 }, policy);
-    expect(kinds(l)).toEqual(['gantt', 'lab', 'later:analyst', 'later:hire']);
-    expect(l.filter(x => 'seat' in x).map(x => ('seat' in x ? x.seat : ''))).toEqual(['production', 'quality']);
+    expect(kinds(l)).toEqual(['gantt', 'lab', 'staff']);
+    expect(l.filter(x => 'seat' in x).map(x => ('seat' in x ? x.seat : ''))).toEqual(['production', 'quality', 'quality']);
   });
 
-  test('ждали «нет часов»: политика отдела и расписание; будут графики и найм; политика уже такая — помечена', () => {
+  test('ждали «нет часов»: политика отдела, расписание, найм и графики; политика уже такая — помечена', () => {
     const l = mainLevers({ k: 'wait', dept: 'mes', cause: 'hours', sec: 3600 }, { ...policy, mes: 'finish' });
-    expect(kinds(l)).toEqual(['overtime', 'gantt', 'later:schedules', 'later:hire']);
+    expect(kinds(l)).toEqual(['overtime', 'gantt', 'staff']);
     expect(l[0]).toEqual({ k: 'overtime', dept: 'mes', seat: 'production', on: false });
     expect(mainLevers({ k: 'wait', dept: 'qc', cause: 'hours', sec: 1 }, policy)[0]).toEqual({ k: 'overtime', dept: 'qc', seat: 'quality', on: true });
   });
 
   test('люди много ходили: слой «Потоки — люди»; будет стройка', () => {
     expect(kinds(mainLevers({ k: 'walk', sec: 3600, cm: 100000 }, policy))).toEqual(['flows', 'later:build']);
+  });
+
+  test('заявление об увольнении (Б4в): найм и карточка человека — пост отдела его роли', () => {
+    expect(resignLevers({ person: 16, tab: 1016, role: 'role.packer' }, 'line')).toEqual([
+      { k: 'staff', seat: 'production' },
+      { k: 'person', n: 16, tab: 1016, role: 'role.packer', seat: 'production' },
+    ]);
   });
 
   test('заказ под угрозой: срочное задание по позиции, удержанная серия той же позиции, «Поднять»; будут политики продаж и S&OP', () => {

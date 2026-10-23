@@ -3,6 +3,7 @@
 // проверки.
 import type { Attr, ContentDb } from '../content/types';
 import { batchNo } from './batchno';
+import { addMonths } from './core/calendar';
 import { geo, good, SIXTY } from './line';
 import { partsOf, partType } from './maint';
 import { orderReserved } from './market';
@@ -224,6 +225,31 @@ function hours(db: ContentDb, s: PlantState, bad: string[]) {
     if (p.until !== undefined && !p.task) bad.push(`человек ${p.id}: конец смены задачи без задачи`);
     if (p.task && p.until === undefined) bad.push(`человек ${p.id}: задача ${p.task} без конца смены`);
   }
+  hiring(db, s, bad);
+}
+
+/**
+ * Инварианты найма (Б4в): табельные номера — разные у всех, кто был на заводе; испытание — не дольше предела закона с
+ * дня приёма; последний день — не раньше дня заявления или решения; ушедший — не в задачах; кандидат — своей открытой
+ * вакансии; принятый ещё не вышел и не повторяет кандидата.
+ */
+function hiring(db: ContentDb, s: PlantState, bad: string[]) {
+  const law = db.profiles[db.scenarios[s.scenario].profile].labor;
+  const tabs = new Map<number, string>();
+  for (const p of [...Object.values(s.people), ...Object.values(s.former)]) {
+    const was = tabs.get(p.tab);
+    if (was) bad.push(`табельный номер ${p.tab}: у ${was} и у ${p.id}`);
+    tabs.set(p.tab, p.id);
+    if (p.trial !== undefined && (p.hired === undefined || p.trial >= addMonths(p.hired, law.probation))) bad.push(`человек ${p.id}: испытание до ${p.trial} — дольше закона`);
+    if (p.quit && p.quit.last < p.quit.day) bad.push(`человек ${p.id}: последний день раньше заявления`);
+  }
+  for (const p of Object.values(s.former)) {
+    if (s.people[p.id]) bad.push(`человек ${p.id}: и на заводе, и среди уволенных`);
+    if (p.task) bad.push(`уволенный ${p.id}: с задачей ${p.task}`);
+  }
+  for (const t of Object.values(s.tasks)) for (const pid of t.people) if (s.former[pid]) bad.push(`задача ${t.id}: у неё уволенный ${pid}`);
+  for (const c of Object.values(s.candidates)) if (!s.vacancies[c.vacancy]) bad.push(`кандидат ${c.id}: нет вакансии ${c.vacancy}`);
+  for (const h of Object.values(s.hires)) if (s.candidates[h.id]) bad.push(`принятый ${h.id}: всё ещё кандидат`);
 }
 
 /**

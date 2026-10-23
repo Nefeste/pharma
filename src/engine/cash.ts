@@ -7,7 +7,7 @@ import type { ContentDb, Profile } from '../content/types';
 import { civilFromDays, DAY, daysFromCivil, HOUR, isWorkday, lastOfMonth, momentOf, normOf, workdayOnOrAfter, workdayOnOrBefore } from './core/calendar';
 import { pruneSheet, type SheetDay, sheetDays } from './hours';
 import { planOf } from './plant';
-import { scheduleOn } from './shifts';
+import { leaveResult, scheduleOn } from './shifts';
 import { nextId } from './stock';
 import type { Cash, CashItem, Notice, Person, PlantState, WageParts } from './types';
 import { calOf } from './workdays';
@@ -174,10 +174,10 @@ function midnight(db: ContentDb, s: PlantState, z: number) {
  * норма месяца — за вычетом часов смены по графику и РВ раньше в месяце). Часовая ставка — оклад на норму часов месяца
  * (гипотеза). Для кассы и для окна — одно.
  */
-export function extras(db: ContentDb, s: PlantState, p: Person, y: number, m: number, from: number, to: number): Required<Omit<WageParts, 'salary'>> {
+export function extras(db: ContentDb, s: PlantState, p: Person, y: number, m: number, from: number, to: number): Required<Omit<WageParts, 'salary' | 'leave'>> {
   const pr = profileOf(db, s).payroll;
   const cal = calOf(db, s);
-  const salary = db.roles[p.role].salary;
+  const salary = salaryOf(db, p);
   const norm = normOf(cal, y, m, profileOf(db, s).calendar.day, profileOf(db, s).calendar.short);
   const first = daysFromCivil({ y, m, d: 1 });
   const month = sheetDays(db, s, p, first, lastOfMonth(y, m));
@@ -199,25 +199,119 @@ export function extras(db: ContentDb, s: PlantState, p: Person, y: number, m: nu
   };
 }
 
+/** Оклад человека, копейки в месяц (Б4в): принятого — его, людей сценария — оклад роли. */
+export const salaryOf = (db: ContentDb, p: Pick<Person, 'role' | 'salary'>): number => p.salary ?? db.roles[p.role].salary;
+
 /**
- * Зарплата за дни `from`–`to` месяца: половина оклада роли (первая половина — вниз до копейки, вторая — остаток, чтобы
- * месяц сходился) и доплаты за эти дни по табелю (`extras`); части — в кассу под ссылкой `ref`, для окна.
+ * Оклад за дни `a`–`b` (номера дней) месяца, в котором человек работал не весь (Б4в): доля оклада по часам смен
+ * по графику, отработанным в его дни, против нормы месяца (гипотеза).
+ */
+function partOf(db: ContentDb, s: PlantState, p: Person, y: number, m: number, a: number, b: number): number {
+  const salary = salaryOf(db, p);
+  const first = daysFromCivil({ y, m, d: 1 });
+  const pr = profileOf(db, s).calendar;
+  const norm = normOf(calOf(db, s), y, m, pr.day, pr.short);
+  const from = Math.max(a, p.hired ?? a);
+  const to = Math.min(b, p.quit?.last ?? b);
+  if (norm <= 0 || from > to) return 0;
+  const days = sheetDays(db, s, p, first, lastOfMonth(y, m)).slice(from - first, to - first + 1);
+  const worked = days.reduce((n, d) => n + d.work - d.over[0] - d.over[1] - d.off, 0);
+  return Math.min(salary, Math.floor((salary * worked) / norm));
+}
+
+/**
+ * Зарплата человека за дни `from`–`to` месяца и доплаты за эти дни по табелю (`extras`). Месяц весь — половина оклада:
+ * первая — вниз до копейки, вторая — остаток, чтобы месяц сходился. В месяц приёма и увольнения (Б4в) — доля оклада
+ * по отработанному (`partOf`): первая половина — за 1–15-е, вторая — за месяц по `to` минус начисленная 16-го.
+ */
+function halfOf(db: ContentDb, s: PlantState, p: Person, y: number, m: number, from: number, to: number): WageParts {
+  const salary = salaryOf(db, p);
+  const first = daysFromCivil({ y, m, d: 1 });
+  const whole = (p.hired ?? 0) <= first && (p.quit === undefined || p.quit.last >= lastOfMonth(y, m));
+  const half = Math.floor(salary / 2);
+  let base: number;
+  if (from === 1) base = whole ? half : partOf(db, s, p, y, m, first, first + to - 1);
+  else {
+    const done = p.half && p.half.y === y && p.half.m === m ? p.half.base : 0;
+    base = whole ? salary - half : Math.max(0, partOf(db, s, p, y, m, first, first + to - 1) - done);
+  }
+  const x = extras(db, s, p, y, m, from, to);
+  return { salary: base, night: x.night, over: x.over, off: x.off, ...(x.period > 0 ? { period: x.period } : {}) };
+}
+
+const grossOf = (w: WageParts) => w.salary + w.night + w.over + w.off + (w.period ?? 0) + (w.leave ?? 0);
+
+function addParts(to: WageParts, w: WageParts) {
+  to.salary += w.salary;
+  to.night += w.night;
+  to.over += w.over;
+  to.off += w.off;
+  if (w.period) to.period = (to.period ?? 0) + w.period;
+  if (w.leave) to.leave = (to.leave ?? 0) + w.leave;
+}
+
+/**
+ * Зарплата за дни `from`–`to` месяца всем людям завода (`halfOf`); части — в кассу под ссылкой `ref`, для окна; у
+ * каждого — по какой день начислено (Б4в: расчёт при увольнении — дальше).
  */
 function wages(db: ContentDb, s: PlantState, y: number, m: number, from: number, to: number, ref: string): number {
   const parts: WageParts = { salary: 0, night: 0, over: 0, off: 0 };
+  const upTo = daysFromCivil({ y, m, d: to });
   for (const p of Object.values(s.people)) {
-    const salary = db.roles[p.role].salary;
-    const half = Math.floor(salary / 2);
-    const base = from === 1 ? half : salary - half;
-    const x = extras(db, s, p, y, m, from, to);
-    const gross = base + x.night + x.over + x.off + x.period;
-    parts.salary += base;
-    parts.night += x.night;
-    parts.over += x.over;
-    parts.off += x.off;
-    if (x.period > 0) parts.period = (parts.period ?? 0) + x.period;
-    s.cash.gross[p.id] = (s.cash.gross[p.id] ?? 0) + gross;
+    const w = halfOf(db, s, p, y, m, from, to);
+    addParts(parts, w);
+    s.cash.gross[p.id] = (s.cash.gross[p.id] ?? 0) + grossOf(w);
+    p.paid = upTo;
+    if (from === 1) p.half = { y, m, base: w.salary };
   }
   s.cash.wages[ref] = parts;
-  return parts.salary + parts.night + parts.over + parts.off + (parts.period ?? 0);
+  return grossOf(parts);
+}
+
+/** Расходы найма (Б4в): объявление (`ad-<вакансия>`), медосмотр (`med-<кандидат>`), агентство (`agency-<кандидат>`) — сейчас. */
+export function hiringPay(s: PlantState, sum: number, ref: string) {
+  post(s, sum, 'hiring', ref);
+}
+
+/**
+ * Расчёт при увольнении (Б4в; ст. 84.1, 140 ТК РФ): все суммы — в день ухода. Начисленное, но ещё не выплаченное — вторая
+ * половина прошлого месяца (выплата 15-го) и первая половина этого (выплата в конце месяца) — из общей выплаты в расчёт,
+ * взносы с него уже начислены; зарплата с дня после последнего начисления по последний день — доля оклада по
+ * отработанному и доплаты по табелю; у сменного по циклу — итог учётного периода по последний день (shifts.ts, гипотеза:
+ * как в конце периода); выплата по соглашению. Взносы — как с зарплаты, а с выплаты по соглашению — только сверх трёх
+ * окладов (ст. 422 НК РФ; средний заработок — оклад, гипотеза).
+ */
+export function settle(db: ContentDb, s: PlantState, p: Person) {
+  const q = p.quit!;
+  const { y, m, d } = civilFromDays(q.last);
+  const first = daysFromCivil({ y, m, d: 1 });
+  const parts: WageParts = { salary: 0, night: 0, over: 0, off: 0 };
+  const py = m === 1 ? y - 1 : y;
+  const pm = m === 1 ? 12 : m - 1;
+  const owed: [string, number, number, number, number][] = [
+    [`${py}-${pm}b`, py, pm, 16, lastOfMonth(py, pm) - daysFromCivil({ y: py, m: pm, d: 1 }) + 1],
+    [`${y}-${m}a`, y, m, 1, 15],
+  ];
+  let moved = 0;
+  for (const [ref, yy, mm, from, to] of owed) {
+    const due = s.cash.dues.find(x => x.item === 'wages' && x.ref === ref);
+    if (!due || p.paid === undefined || p.paid < daysFromCivil({ y: yy, m: mm, d: to })) continue;
+    // как начислили: первая половина — запомненная 16-го; вторая — от неё же
+    const w = halfOf(db, s, p, yy, mm, from, to);
+    if (from === 1 && p.half && p.half.y === yy && p.half.m === mm) w.salary = p.half.base;
+    due.sum = Math.min(0, due.sum + grossOf(w));
+    addParts(parts, w);
+    moved += grossOf(w);
+  }
+  const from = Math.max((p.paid ?? first - 1) + 1, first);
+  if (from <= q.last) addParts(parts, halfOf(db, s, p, y, m, from - first + 1, d));
+  const res = leaveResult(db, s, p, q.last);
+  if (res > 0) parts.period = (parts.period ?? 0) + res;
+  const pay = q.pay ?? 0;
+  if (pay > 0) parts.leave = pay;
+  const free = Math.min(pay, salaryOf(db, p) * 3);
+  s.cash.gross[p.id] = (s.cash.gross[p.id] ?? 0) + grossOf(parts) - moved - free;
+  p.paid = q.last;
+  s.cash.wages[`leave-${p.id}`] = parts;
+  post(s, -grossOf(parts), 'settle', `leave-${p.id}`);
 }

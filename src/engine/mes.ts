@@ -24,7 +24,8 @@ import type { Batch, Command, Container, Deviation, Equipment, KitLine, Lot, Not
 import { PRIO, WMS } from './wms';
 
 /** Роли производства. */
-export const MES = { operators: ['role.operator'] } as const;
+/** Кто что делает в производстве: стадии и мойку оборудования — аппаратчики, уборку помещений — уборщики (Б4в, #80). */
+export const MES = { operators: ['role.operator'], cleaners: ['role.cleaner'] } as const;
 
 /** Перекладка в шлюзе: с деревянной паллеты на пластиковую и обратно (спецификация 1в). */
 export const TRANSFER_WORK = 10 * MIN;
@@ -34,7 +35,7 @@ export const CLEAN_HOLD = 72 * HOUR;
 export const DIRTY_HOLD = 24 * HOUR;
 
 /** Приоритеты: комплект к шлюзу — раньше размещения, серия ждёт его; стадия — раньше уборки. */
-export const MES_PRIO = { pick: 45, transfer: 45, return: 35, stage: 30, clean: 28 } as const;
+export const MES_PRIO = { pick: 45, transfer: 45, return: 35, stage: 30, clean: 28, roomClean: 28 } as const;
 
 /** С какого часа «дня не раньше» задания на серию можно начинать: смена аппаратчиков (сценарий, график `shift.a`). */
 export const BATCH_HOUR = 7 * HOUR;
@@ -318,14 +319,17 @@ function holderOf(b: Batch): { kit: KitLine[]; kitUnit?: string } {
   return b.status === 'packing' ? b.pack! : b;
 }
 
-/** Каждый час: грязное дольше суток — к генеральной уборке; грязное без уборки — убрать. */
+/**
+ * Каждый час: грязное дольше суток — к генеральной уборке; грязное без уборки — убрать. Срок — у грязного оборудования
+ * (Б4в): вымыли его вовремя — уборка помещения после мойки идёт тем же видом, сколько бы ни ждала уборщика.
+ */
 export function mesHour(db: ContentDb, s: PlantState) {
   for (const t of s.open.map(id => s.tasks[id])) {
-    if (t.kind !== 'clean') continue;
+    if (t.kind !== 'clean' && t.kind !== 'roomClean') continue;
     const room = s.rooms[t.room!];
-    if (!room.major && s.t - room.since > DIRTY_HOLD) {
+    if (!room.major && !room.washed && s.t - room.since > DIRTY_HOLD) {
       room.major = true;
-      t.work = cleanTime(db, s, room);
+      t.work = t.kind === 'clean' ? washTime(db, s, room) : roomTime(db, s, room);
     }
   }
   for (const room of Object.values(s.rooms)) ensureCleaning(db, s, room);
@@ -575,24 +579,55 @@ function duration(db: ContentDb, s: PlantState, b: Batch, st: RecipeStage, roomI
   return Math.max(MIN, sec + roll(s, `mes/${roomId}`, rng => spread(Math.floor((sec * t.spread) / P_ONE), normal(rng))));
 }
 
-/** Уборка грязного помещения, если её ещё нет: малая — та же продукция, генеральная — если помечено или грязно дольше суток. */
+/**
+ * Уборка грязного помещения, если её ещё нет (Б4в): сначала мойка оборудования — аппаратчики, потом уборка помещения —
+ * уборщик; в помещении без оборудования — только уборка. Малая — та же продукция, генеральная — если помечено или грязно
+ * дольше суток.
+ */
 function ensureCleaning(db: ContentDb, s: PlantState, room: Room) {
-  if (room.status !== 'dirty' || Object.values(s.tasks).some(t => t.kind === 'clean' && t.room === room.id)) return;
-  if (s.t - room.since > DIRTY_HOLD) room.major = true;
+  if (room.status !== 'dirty' || Object.values(s.tasks).some(t => (t.kind === 'clean' || t.kind === 'roomClean') && t.room === room.id)) return;
+  if (!room.washed && s.t - room.since > DIRTY_HOLD) room.major = true;
   const plan = planOf(db, s.plant);
-  addTask(s, { kind: 'clean', roles: [...MES.operators], from: roomPlace(plan, room.id), work: cleanTime(db, s, room), prio: MES_PRIO.clean, room: room.id });
+  const wash = !room.washed && washTime(db, s, room) > 0;
+  if (wash) addTask(s, { kind: 'clean', roles: [...MES.operators], from: roomPlace(plan, room.id), work: washTime(db, s, room), prio: MES_PRIO.clean, room: room.id });
+  else if (roomTime(db, s, room) > 0) addTask(s, { kind: 'roomClean', roles: [...MES.cleaners], from: roomPlace(plan, room.id), work: roomTime(db, s, room), prio: MES_PRIO.roomClean, room: room.id });
+  else cleanDone(s, room);
 }
 
-/** Уборка помещения — уборка всего оборудования в нём (геймдизайн, §5.5): сумма времён по виду уборки. */
-function cleanTime(db: ContentDb, s: PlantState, room: Room): number {
-  return cleanWork(db, s, room.id, !!room.major);
-}
+const washTime = (db: ContentDb, s: PlantState, room: Room) => washWork(db, s, room.id, !!room.major);
+const roomTime = (db: ContentDb, s: PlantState, room: Room) => roomWork(db, s, room.id, !!room.major);
 
-/** Время уборки помещения малой или генеральной уборкой — для движка и прогона расписания (3д). */
-export function cleanWork(db: ContentDb, s: PlantState, roomId: string, major: boolean): number {
+/** Мойка оборудования помещения малой или генеральной уборкой (геймдизайн, §5.5): сумма времён его оборудования, с. */
+export function washWork(db: ContentDb, s: PlantState, roomId: string, major: boolean): number {
   let sec = 0;
   for (const e of Object.values(s.equipment)) if (e.room === roomId) sec += db.equipment[e.type].cleaning[major ? 'major' : 'minor'];
-  return Math.max(sec, 10 * MIN);
+  return sec;
+}
+
+/** Уборка помещения уборщиком (Б4в): площадь пола помещения × секунды на м² его класса чистоты (запись плана), с. */
+export function roomWork(db: ContentDb, s: PlantState, roomId: string, major: boolean): number {
+  const plan = planOf(db, s.plant);
+  const r = plan.plant.rooms.find(x => x.id === roomId);
+  const rate = r && plan.plant.cleaning[r.grade];
+  if (!r || !rate) return 0;
+  // площадь — см² → м², без стен, как у вентиляции
+  const m2 = Math.floor(((r.rect[2] - 200) * (r.rect[3] - 200)) / 10000);
+  return m2 * rate[major ? 'major' : 'minor'];
+}
+
+/** Время уборки помещения целиком — мойка и уборка — для движка, прогона расписания (3д) и итогов уборок. */
+export function cleanWork(db: ContentDb, s: PlantState, roomId: string, major: boolean): number {
+  return washWork(db, s, roomId, major) + roomWork(db, s, roomId, major);
+}
+
+/** Помещение чистое: после малой — для того же продукта, после генеральной — для любого. */
+function cleanDone(s: PlantState, room: Room) {
+  room.status = 'clean';
+  room.since = s.t;
+  if (room.major) delete room.cleanFor;
+  else if (room.product) room.cleanFor = room.product;
+  delete room.major;
+  delete room.washed;
 }
 
 export function deviate(s: PlantState, notices: Notice[], d: Omit<Deviation, 'id' | 'opened' | 'status'>) {
@@ -651,13 +686,22 @@ export function mesDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       return true;
     }
     case 'clean': {
+      // оборудование вымыто (Б4в): дальше — уборка помещения уборщиком; уборка помещения не нужна — чисто
       const room = s.rooms[t.room!];
-      cleaned(s, !!room.major, t.work);
-      room.status = 'clean';
-      room.since = s.t;
-      if (room.major) delete room.cleanFor;
-      else if (room.product) room.cleanFor = room.product;
-      delete room.major;
+      if (roomTime(db, s, room) > 0) {
+        room.washed = true;
+        ensureCleaning(db, s, room);
+      } else {
+        cleaned(s, !!room.major, t.work);
+        cleanDone(s, room);
+      }
+      return true;
+    }
+    case 'roomClean': {
+      // уборка помещения кончилась: в итоги суток — вся уборка, мойка и уборка помещения
+      const room = s.rooms[t.room!];
+      cleaned(s, !!room.major, (room.washed ? washTime(db, s, room) : 0) + t.work);
+      cleanDone(s, room);
       return true;
     }
     case 'stage':

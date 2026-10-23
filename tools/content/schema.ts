@@ -65,6 +65,11 @@ export const profile = z.strictObject({
   key: percent,
   /** коды единиц по ОКЕИ (Б3а): миллиграмм, грамм, килограмм, штука, упаковка — для справочника и обмена */
   okei: z.strictObject({ mg: okeiCode, g: okeiCode, kg: okeiCode, pcs: okeiCode, pack: okeiCode }),
+  /**
+   * найм и увольнение (Б4в): испытание при приёме — не дольше стольких месяцев; предупреждение об уходе по собственному
+   * желанию, дней; на испытании — дней; не выдержавшего испытание предупреждают не позже чем за столько дней
+   */
+  labor: z.strictObject({ probation: z.number().int().min(0).max(12), notice: z.number().int().min(1).max(60), trial: z.number().int().min(1).max(30) }),
   source: sources,
   review,
 });
@@ -206,6 +211,42 @@ export const scenario = z.strictObject({
     .optional(),
   /** отклонения (Б1г): срок расследования по процедуре завода, сутки */
   deviations: z.strictObject({ term: z.number().int().min(1).max(365) }),
+  /**
+   * рынок труда города (Б4в): объявление — ₽ в неделю; кадровое агентство — % годового оклада принятого, опытный
+   * кандидат с навыком от и до через столько-то суток от и до; медосмотр при приёме — рабочих дней и ₽; кандидат ищет
+   * работу столько суток; ожидание оклада — уровень роли, выше на `step` % за ступень навыка выше 3 (ниже — за ступень
+   * ниже), с разбросом `spread` %; выплата по соглашению сторон — окладов; испытание по умолчанию, месяцев, — не длиннее
+   * предела профиля (load.ts); на испытании уходят чаще во столько раз;
+   * коллега берёт кандидата с навыком не ниже `skill` и ожиданием не выше уровня роли на `over` %, через агентство — если
+   * по объявлению `ad` суток никого. По ролям: доли недель с 0, 1, 2 и 3 откликами на объявление, %; доли навыков 1–5,
+   * %; уходят по собственному желанию — % людей роли в год. Нет записи — ни кандидатов, ни заявлений
+   */
+  labor: z
+    .strictObject({
+      ad: z.number().min(0),
+      agency: z.strictObject({
+        share: percent,
+        days: z.tuple([z.number().int().min(1).max(120), z.number().int().min(1).max(120)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }),
+        skill: z.tuple([z.number().int().min(1).max(5), z.number().int().min(1).max(5)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }),
+      }),
+      medical: z.strictObject({ days: z.number().int().min(1).max(30), price: z.number().min(0) }),
+      wait: z.number().int().min(1).max(90),
+      step: percent,
+      spread: percent,
+      agree: z.number().min(0).max(24),
+      probation: z.number().int().min(0).max(12),
+      trial: z.number().min(1).max(20),
+      colleague: z.strictObject({ skill: z.number().int().min(1).max(5), over: percent, ad: z.number().int().min(1).max(90) }),
+      roles: z.record(
+        id,
+        z.strictObject({
+          ad: z.tuple([percent, percent, percent, percent]),
+          skill: z.tuple([percent, percent, percent, percent, percent]),
+          quit: percent,
+        }),
+      ),
+    })
+    .optional(),
   /**
    * происшествие прототипа (docs/specs/2026-10-investigation.md): задание на серию по номеру с 1, модель расследования,
    * веса корней, %, и величина неисправности — от и до: ошибка лаборатории — % ниже истинного, опудривание — мин сверх
@@ -593,6 +634,11 @@ export const plant = z.strictObject({
   posts: z.record(id, point).default({}),
   /** вентиляция круглые сутки — Вт на м² помещения по классу; постоянная база (свет, офис, склад) — кВт */
   energy: z.strictObject({ hvac: z.strictObject({ D: z.number().min(0), cnc: z.number().min(0) }), base: z.number().min(0) }),
+  /**
+   * уборка помещения после серии (Б4в): уборщик — после мойки оборудования, секунды на м² пола по классу чистоты, малая и
+   * генеральная; у класса помещений со стадиями — обязательно (load.ts)
+   */
+  cleaning: z.partialRecord(z.enum(['D', 'cnc']), z.strictObject({ minor: z.number().int().min(1).max(600), major: z.number().int().min(1).max(600) })).default({}),
 });
 
 /** Продукт: лекарство по МНН, форма и дозировка. */

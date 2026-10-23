@@ -29,6 +29,10 @@ function whyText(w: CashWhy | undefined): string {
       return T.cash.why.audit(named(db?.makers[w.maker]?.name, w.maker), named(db?.suppliers[w.supplier]?.name, w.supplier));
     case 'contract':
       return T.cash.why.contract(w.contract, named(db?.suppliers[w.supplier]?.name, w.supplier));
+    case 'hiring':
+      return T.cash.why.hiring[w.what];
+    case 'leave':
+      return T.cash.why.leave(named(db?.roles[w.role]?.name, w.role), w.tab);
   }
 }
 

@@ -5,11 +5,12 @@
 // работа сейчас, окно считает по своим часам от мгновения её начала. Коды материалов и шапки документов (Б3а) — из базы,
 // какая редакция действует сегодня — из вида.
 import { Fragment, type ReactNode, useState } from 'react';
-import { DEPTS, type Dept, type OvertimeMode } from '../content/types';
+import { DEPTS, type Dept, type Id, type OvertimeMode } from '../content/types';
 import { daysFromCivil, weekday } from '../engine/core/calendar';
 import type { DocKind } from '../engine/docs';
 import { DEPT_SEAT } from '../engine/seats';
 import { dayText, durText, hText, lang, money, named, num, pctText, priceText, qtyText, T, whenText } from '../i18n';
+import type { FormerRow, HireRow, HiringView, StaffRow, VacancyRow } from '../sim/hire';
 import type { RefContract, RefMaker, RefPair } from '../sim/partners';
 import type { DocNow } from '../sim/people';
 import type { AssetInfo, PlaceArea, PlaceCenter } from '../sim/places';
@@ -484,6 +485,233 @@ function Policies({ v, hud, actions }: { v: RefView; hud: Hud; actions: Actions 
   );
 }
 
+const roleName = (id: Id) => named(db?.roles[id]?.name, id);
+const shiftName = (id: Id) => named(db?.shifts[id]?.name, id);
+
+/** Пост, чья команда найма роли (Б4в): пост отдела роли; держит ли его игрок и подпись, если нет. */
+function roleSeat(hud: Hud, role: Id): { mine: boolean; title: string } {
+  const dept = db?.roles[role]?.dept;
+  const seat = dept ? DEPT_SEAT[dept] : undefined;
+  const mine = !seat || holds(hud, seat);
+  return { mine, title: mine || !seat ? '' : T.seats.notYours(T.seats.names[seat] ?? seat) };
+}
+
+/** Вакансия (Б4в): роль, график, канал, кто открыл; кандидаты — навык, ожидание, до какого дня ищут; «Принять…». */
+function Vacancy({ v, h, q, hud, actions }: { v: VacancyRow; h: HiringView; q: string; hud: Hud; actions: Actions }) {
+  const hc = T.hire;
+  const [pick, setPick] = useState<string | undefined>();
+  const [trial, setTrial] = useState(h.probation);
+  const { mine, title } = roleSeat(hud, v.role);
+  type Cand = VacancyRow['candidates'][number];
+  const cols: Col<Cand>[] = [
+    { name: hc.candCols.id, text: x => hc.candidate(Number(x.id.slice(1))) },
+    { name: hc.candCols.skill, text: x => num(x.skill), num: x => x.skill },
+    { name: hc.candCols.salary, text: x => money(x.salary), num: x => x.salary },
+    { name: hc.candCols.until, text: x => dayText(x.until), num: x => x.until },
+    { name: hc.candCols.fee, text: x => (x.fee !== undefined ? money(x.fee) : '—'), num: x => x.fee ?? 0 },
+    {
+      name: hc.candCols.hire,
+      text: () => '',
+      show: x => (
+        <button type="button" disabled={!mine} title={title} onClick={() => (setPick(x.id), setTrial(h.probation))} data-test="cand-hire" data-id={x.id}>
+          {hc.hire}
+        </button>
+      ),
+    },
+  ];
+  const months = Array.from({ length: h.law + 1 }, (_, n) => n);
+  return (
+    <div className="vacancy" data-test="ref-vacancy" data-id={v.id}>
+      <div>
+        <b>{hc.vacancy(roleName(v.role), shiftName(v.shift), hc.via[v.via], dayText(v.from))}</b>
+        {v.by && v.instead !== undefined ? <span className="muted"> · {hc.byColleague(v.instead)}</span> : null}{' '}
+        <button type="button" className="link" disabled={!mine} title={title} onClick={() => actions.closeVacancy(v.id)} data-test="vacancy-close">
+          {hc.close}
+        </button>
+      </div>
+      {v.candidates.length > 0 ? (
+        <Table test="ref-candidates" cols={cols} items={v.candidates} keyOf={x => x.id} q={q} />
+      ) : (
+        <div className="muted small">{v.via === 'ad' ? hc.waitAd : hc.waitAgency(v.next !== undefined ? dayText(v.next) : '—')}</div>
+      )}
+      {pick && v.candidates.some(c => c.id === pick) ? (
+        <div className="hireask" data-test="hire-ask">
+          <label>
+            {hc.trial}{' '}
+            <select value={trial} onChange={e => setTrial(Number(e.target.value))} data-test="hire-trial">
+              {months.map(n => (
+                <option key={n} value={n}>
+                  {hc.months(n)}
+                </option>
+              ))}
+            </select>
+          </label>{' '}
+          <span className="muted">{hc.hireAsk(dayText(v.exam), v.first !== undefined ? dayText(v.first) : '—', money(h.costs.medical))}</span>{' '}
+          <button
+            type="button"
+            disabled={!mine}
+            onClick={() => {
+              actions.hire(pick, trial);
+              setPick(undefined);
+            }}
+            data-test="hire-do"
+          >
+            {hc.hireDo}
+          </button>{' '}
+          <button type="button" className="link" onClick={() => setPick(undefined)}>
+            {hc.cancel}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** «Открыть вакансию…» (Б4в): роль рынка труда, график и канал; уровень оплаты роли в городе. */
+function OpenVacancy({ h, hud, actions }: { h: HiringView; hud: Hud; actions: Actions }) {
+  const hc = T.hire;
+  const roles = h.levels.map(x => x.role);
+  const [open, setOpen] = useState(false);
+  const [role, setRole] = useState(roles[0] ?? '');
+  const firstShift = (r: Id) => h.staff.find(x => x.role === r)?.shift ?? Object.keys(db?.shifts ?? {})[0] ?? '';
+  const [shift, setShift] = useState(firstShift(roles[0] ?? ''));
+  const [via, setVia] = useState<'ad' | 'agency'>('ad');
+  const { mine, title } = roleSeat(hud, role);
+  if (!open) {
+    return (
+      <div>
+        <button type="button" onClick={() => setOpen(true)} data-test="vacancy-open">
+          {hc.open}
+        </button>
+      </div>
+    );
+  }
+  const level = h.levels.find(x => x.role === role)?.salary;
+  return (
+    <div className="vform" data-test="vacancy-form">
+      <label>
+        {hc.role}{' '}
+        <select
+          value={role}
+          onChange={e => {
+            setRole(e.target.value);
+            setShift(firstShift(e.target.value));
+          }}
+          data-test="vacancy-role"
+        >
+          {roles.map(r => (
+            <option key={r} value={r}>
+              {roleName(r)}
+            </option>
+          ))}
+        </select>
+      </label>{' '}
+      <label>
+        {hc.shift}{' '}
+        <select value={shift} onChange={e => setShift(e.target.value)} data-test="vacancy-shift">
+          {Object.keys(db?.shifts ?? {}).map(id => (
+            <option key={id} value={id}>
+              {shiftName(id)}
+            </option>
+          ))}
+        </select>
+      </label>{' '}
+      <label>
+        {hc.channel}{' '}
+        <select value={via} onChange={e => setVia(e.target.value as 'ad' | 'agency')} data-test="vacancy-via">
+          <option value="ad">{hc.via.ad}</option>
+          <option value="agency">{hc.via.agency}</option>
+        </select>
+      </label>{' '}
+      <button
+        type="button"
+        disabled={!mine}
+        title={title}
+        onClick={() => {
+          actions.vacancy(role, shift, via);
+          setOpen(false);
+        }}
+        data-test="vacancy-do"
+      >
+        {hc.openDo}
+      </button>{' '}
+      <button type="button" className="link" onClick={() => setOpen(false)}>
+        {hc.cancel}
+      </button>
+      {level !== undefined ? <div className="muted small">{hc.level(money(level))}</div> : null}
+    </div>
+  );
+}
+
+/** Найм (Б4в): штат по сценарию и сейчас, вакансии с кандидатами, «Открыть вакансию…», принимаемые и уволенные. */
+function Hiring({ h, q, hud, actions }: { h: HiringView; q: string; hud: Hud; actions: Actions }) {
+  const hc = T.hire;
+  const staff: Col<StaffRow>[] = [
+    { name: hc.staffCols.role, text: x => roleName(x.role) },
+    { name: hc.staffCols.shift, text: x => shiftName(x.shift) },
+    { name: hc.staffCols.plan, text: x => num(x.plan), num: x => x.plan },
+    { name: hc.staffCols.now, text: x => num(x.now), num: x => x.now, show: x => <span className={x.now - x.leaving < x.plan ? 'warn' : ''}>{num(x.now)}</span> },
+    { name: hc.staffCols.coming, text: x => (x.coming > 0 ? num(x.coming) : '—'), num: x => x.coming },
+    { name: hc.staffCols.leaving, text: x => (x.leaving > 0 ? num(x.leaving) : '—'), num: x => x.leaving },
+  ];
+  const hires: Col<HireRow>[] = [
+    { name: hc.hireCols.role, text: x => roleName(x.role) },
+    { name: hc.hireCols.shift, text: x => shiftName(x.shift) },
+    { name: hc.hireCols.skill, text: x => num(x.skill), num: x => x.skill },
+    { name: hc.hireCols.salary, text: x => money(x.salary), num: x => x.salary },
+    { name: hc.hireCols.exam, text: x => dayText(x.exam), num: x => x.exam },
+    { name: hc.hireCols.day, text: x => dayText(x.day), num: x => x.day },
+    { name: hc.hireCols.trial, text: x => hc.months(x.trial), num: x => x.trial },
+  ];
+  const former: Col<FormerRow>[] = [
+    {
+      name: hc.formerCols.tab,
+      text: x => String(x.tab),
+      num: x => x.tab,
+      show: x => (
+        <button type="button" className="link mono" onClick={() => actions.show({ kind: 'person', n: x.person })} data-test="former-card">
+          {x.tab}
+        </button>
+      ),
+    },
+    { name: hc.formerCols.role, text: x => roleName(x.role) },
+    { name: hc.formerCols.shift, text: x => shiftName(x.shift) },
+    { name: hc.formerCols.hired, text: x => (x.hired !== undefined ? dayText(x.hired) : '—'), num: x => x.hired ?? 0 },
+    { name: hc.formerCols.why, text: x => hc.why[x.why] ?? x.why },
+    { name: hc.formerCols.last, text: x => dayText(x.last), num: x => x.last },
+  ];
+  return (
+    <>
+      <section className="rsec" data-test="ref-staff">
+        <b>{hc.staff}</b>
+        <Table cols={staff} items={h.staff} keyOf={x => `${x.role}@${x.shift}`} q={q} />
+      </section>
+      <section className="rsec" data-test="ref-vacancies">
+        <b>{hc.vacancies}</b>
+        {h.vacancies.length === 0 ? <div className="muted">{hc.noVacancies}</div> : null}
+        {h.vacancies.map(v => (
+          <Vacancy key={v.id} v={v} h={h} q={q} hud={hud} actions={actions} />
+        ))}
+        <OpenVacancy h={h} hud={hud} actions={actions} />
+        <div className="muted small">{hc.costs(money(h.costs.ad), h.costs.days[0], h.costs.days[1], pctText(h.costs.agency), money(h.costs.medical))}</div>
+        <div className="muted small">{hc.note}</div>
+      </section>
+      {h.hires.length > 0 ? (
+        <section className="rsec" data-test="ref-hires">
+          <b>{hc.hires}</b>
+          <Table cols={hires} items={h.hires} keyOf={x => x.id} q={q} />
+        </section>
+      ) : null}
+      {h.former.length > 0 ? (
+        <section className="rsec" data-test="ref-former">
+          <b>{hc.former}</b>
+          <Table cols={former} items={h.former} keyOf={x => String(x.person)} q={q} />
+        </section>
+      ) : null}
+    </>
+  );
+}
+
 function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actions: Actions }) {
   const r = T.ref.roleCols;
   const s = T.ref.shiftCols;
@@ -522,6 +750,10 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
     { name: pc.month, text: x => T.ref.ofNorm(hText(x.hours.worked), hText(x.hours.norm)), num: x => x.hours.worked },
     { name: pc.over, text: x => (x.hours.over > 0 ? hText(x.hours.over) : '—'), num: x => x.hours.over },
     { name: pc.year, text: x => T.ref.ofNorm(hText(x.hours.year), hText(ot.year)), show: x => <span className={x.hours.year >= ot.year - ot.shift ? 'warn' : ''}>{T.ref.ofNorm(hText(x.hours.year), hText(ot.year))}</span>, num: x => x.hours.year },
+    // найм (Б4в): оклад, конец испытания, увольнение
+    { name: pc.salary, text: x => money(x.salary), num: x => x.salary },
+    { name: pc.trial, text: x => (x.trial !== undefined ? dayText(x.trial) : '—'), num: x => x.trial ?? 0 },
+    { name: pc.quit, text: x => (x.quit ? T.card.quitLine(T.hire.why[x.quit.why] ?? x.quit.why, dayText(x.quit.last)) : '—'), show: x => (x.quit ? <span className="warn">{T.card.quitLine(T.hire.why[x.quit.why] ?? x.quit.why, dayText(x.quit.last))}</span> : '—'), num: x => x.quit?.last ?? 0 },
   ];
   type Doc = { i: number; d: DocNow };
   const mc = T.ref.matrixCols;
@@ -550,6 +782,7 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
       <section className="rsec">
         <Table test="ref-people" cols={people} items={v.people} keyOf={x => String(x.person)} q={q} />
       </section>
+      {v.hiring ? <Hiring h={v.hiring} q={q} hud={hud} actions={actions} /> : null}
       <section className="rsec">
         <Table test="ref-shifts" cols={shifts} items={v.shifts} keyOf={x => x.id} q={q} />
       </section>

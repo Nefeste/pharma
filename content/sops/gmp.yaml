@@ -7,7 +7,7 @@
 id: sop.gmp
 name: { ru: Основы GMP и гигиена персонала, en: GMP basics and personal hygiene }
 doc: { code: SOP-0001, rev: 1, from: 2026-01-19, approved: role.qa-head }
-roles: [role.storekeeper, role.driver, role.sampler, role.analyst, role.qc-head, role.qa, role.qp, role.operator, role.master, role.line-operator, role.packer, role.mechanic, role.setter]
+roles: [role.storekeeper, role.driver, role.sampler, role.analyst, role.qc-head, role.qa, role.qp, role.operator, role.master, role.line-operator, role.packer, role.mechanic, role.setter, role.cleaner]
 for: { any: true }
 hours: 4
 every: 12

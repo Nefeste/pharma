@@ -2,10 +2,11 @@
 // за время на нём (3е), вчера в цифрах, одна главная потеря, одна подсказка; что было с прошлой планёрки; что ждёт сейчас. Большое окно поверх карты с
 // вопросом в заголовке. Вид собирает поток расчёта (src/sim/report.ts) без слов и без истины; слова — отсюда.
 import type { ReactNode } from 'react';
-import { devLevers, heldLevers, mainLevers, riskLevers } from '../app/levers';
+import { devLevers, heldLevers, mainLevers, resignLevers, riskLevers } from '../app/levers';
 import type { PartType, Scenario } from '../content/types';
 import { civilFromDays, momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
+import { DEPT_SEAT } from '../engine/seats';
 import { dateText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { LineSum, MainLoss, MorningView, SeatSum } from '../sim/report';
 import type { Thing } from '../sim/views';
@@ -80,6 +81,54 @@ function Rows({ title, rows }: { title: string; rows: ReactNode[] }) {
     <div className="mblock">
       <div className="mhead">{title}</div>
       <ul className="mlist">{rows}</ul>
+    </div>
+  );
+}
+
+/**
+ * Люди (Б4в): заявления за сутки — найм на место и карточка человека; кто выходит и кто уходит на неделе; испытания,
+ * которые кончаются на неделе; новые кандидаты по вакансиям — найм.
+ */
+function PeopleBlock({ v, hud, actions, close, go }: { v: MorningView; hud: Hud; actions: Actions; close: () => void; go: (t: Thing | undefined) => (() => void) | undefined }) {
+  const p = v.people;
+  const role = (id: string) => named(db?.roles[id]?.name, id);
+  const who = (x: { role: string; tab: number }) => T.card.person(role(x.role), x.tab);
+  const dept = (id: string) => db?.roles[id]?.dept ?? 'mes';
+  const empty = p.resigned.length + p.coming.length + p.leaving.length + p.trials.length + p.candidates.length === 0;
+  return (
+    <div className="mblock" data-test="morning-people">
+      <div className="mhead">{T.morning.people.title}</div>
+      {empty ? <div className="muted">{T.morning.people.none}</div> : null}
+      <ul className="mlist">
+        {p.resigned.map(x => (
+          <li key={`r${x.person}`} className="warn" data-test="morning-resign">
+            {T.morning.people.resigned(who(x), dayText(x.last))}
+            {x.vacancy ? <span className="muted"> · {T.morning.people.colleague}</span> : null}
+            <Levers list={resignLevers(x, dept(x.role))} hud={hud} actions={actions} close={close} />
+          </li>
+        ))}
+        {p.coming.map(x => (
+          <li key={`c${x.id}`} data-test="morning-coming">
+            {T.morning.people.coming(dayText(x.day), role(x.role), named(db?.shifts[x.shift]?.name, x.shift))}
+          </li>
+        ))}
+        {p.leaving.map(x => (
+          <li key={`l${x.person}`} className="go" onClick={go({ kind: 'person', n: x.person })} data-test="morning-leaving">
+            {T.morning.people.leaving(dayText(x.last), who(x), T.hire.why[x.why] ?? x.why)}
+          </li>
+        ))}
+        {p.trials.map(x => (
+          <li key={`t${x.person}`} className="go" onClick={go({ kind: 'person', n: x.person })} data-test="morning-trial">
+            {T.morning.people.trial(dayText(x.last), who(x))}
+          </li>
+        ))}
+        {p.candidates.map(x => (
+          <li key={`k${x.vacancy}`} data-test="morning-candidates">
+            {T.morning.people.candidates(role(x.role), x.n)}
+            <Levers list={[{ k: 'staff', seat: DEPT_SEAT[dept(x.role)] }]} hud={hud} actions={actions} close={close} />
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -395,6 +444,7 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                 </div>
               ))}
             </div>
+            <PeopleBlock v={v} hud={hud} actions={actions} close={close} go={go} />
             <Rows
               title={T.assets.morningTitle}
               rows={[

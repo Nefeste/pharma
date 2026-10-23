@@ -57,8 +57,9 @@ export type FromPlan =
 
 /**
  * Ключ извещения для автопауз (Б2а): его вид, а у вышедшего срока актива (Б3в) — вид и род актива: чьё это дело, зависит
- * от того, оборудование это, прибор лаборатории или датчик склада; у сверхурочных года на исходе (Б4а) — вид и отдел.
+ * от того, оборудование это, прибор лаборатории или датчик склада; у сверхурочных года на исходе (Б4а) и заявления
+ * об увольнении (Б4в) — вид и отдел.
  */
 export function stopKey(n: Notice): string {
-  return n.kind === 'assetExpired' ? `${n.kind}/${n.family}` : n.kind === 'overtimeLow' ? `${n.kind}/${n.dept}` : n.kind;
+  return n.kind === 'assetExpired' ? `${n.kind}/${n.family}` : n.kind === 'overtimeLow' || n.kind === 'resign' ? `${n.kind}/${n.dept}` : n.kind;
 }

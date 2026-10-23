@@ -1,13 +1,14 @@
 // Б2б: второй продукт — лоратадин 10 мг — в тех же помещениях и на той же линии, что парацетамол. Смена продукта в
 // помещении — генеральная уборка; на линии — переналадка на формат позиции; у балка лоратадина — однородность
 // дозирования на ВЭЖХ, приемлемое значение AV против предела 15,0 (docs/specs/2026-10-vertical-slice.md, Б2б). Б2г:
-// кончившиеся уборки и переналадки — в сутках потерь, сколько и их работа.
+// кончившиеся уборки и переналадки — в сутках потерь, сколько и их работа. Б4в: уборка — мойка оборудования, потом
+// уборка помещения; в сутки потерь она идёт целиком, когда кончилась вторая.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { DAY, momentOf } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
 import { check } from '../../src/engine/invariants';
-import { cleanWork } from '../../src/engine/mes';
+import { roomWork, washWork } from '../../src/engine/mes';
 import type { Batch, PlantState, Task } from '../../src/engine/types';
 
 const SC = 'scn.proto';
@@ -17,17 +18,18 @@ const LOR = 'prd.loratadine10';
 function firstLoratadine() {
   const s: PlantState = newPlant(db, { scenario: SC });
   const seen = new Set<string>();
-  const cleans: { room: string; work: number; major: boolean; t: number }[] = [];
+  const cleans: { kind: string; room: string; work: number; major: boolean; t: number }[] = [];
   const line: { batch: string; kind: string }[] = [];
   // уборки и переналадки, какими их видели последний раз; пропала из задач — кончилась
-  const last = new Map<string, { kind: string; work: number; major: boolean; day: number }>();
-  const done: { kind: string; work: number; major: boolean; day: number }[] = [];
+  const last = new Map<string, { kind: string; room?: string; work: number; major: boolean; day: number }>();
+  const done: { kind: string; room?: string; work: number; major: boolean; day: number }[] = [];
+  const room = (t: Task) => t.kind === 'clean' || t.kind === 'roomClean';
   const look = () => {
     for (const t of Object.values(s.tasks) as Task[]) {
-      if (t.kind === 'clean' || t.kind === 'changeover') last.set(t.id, { kind: t.kind, work: t.work, major: t.kind === 'clean' && !!s.rooms[t.room!].major, day: momentOf(s.start, s.t).day });
+      if (room(t) || t.kind === 'changeover') last.set(t.id, { kind: t.kind, ...(t.room ? { room: t.room } : {}), work: t.work, major: room(t) && !!s.rooms[t.room!].major, day: momentOf(s.start, s.t).day });
       if (seen.has(t.id)) continue;
       seen.add(t.id);
-      if (t.kind === 'clean') cleans.push({ room: t.room!, work: t.work, major: !!s.rooms[t.room!].major, t: s.t });
+      if (room(t)) cleans.push({ kind: t.kind, room: t.room!, work: t.work, major: !!s.rooms[t.room!].major, t: s.t });
       if (t.kind === 'changeover' || t.kind === 'clearance') line.push({ batch: t.batch!, kind: t.kind });
     }
     for (const [id, x] of last)
@@ -55,14 +57,18 @@ describe('второй продукт', () => {
   });
 
   test('в помещение, где была серия парацетамола, лоратадин идёт после генеральной уборки', () => {
-    // помещение каждой стадии: последняя уборка до её начала — генеральная, если до того в нём был другой продукт
+    // помещение каждой стадии: последние мойка оборудования и уборка помещения до её начала — генеральные, если до того
+    // в нём был другой продукт
     for (const rec of b.records) {
       const before = Object.values(s.batches)
         .filter(x => x.id !== b.id && x.product !== b.product)
         .flatMap(x => x.records.filter(r => r.room === rec.room && r.end <= rec.start));
       if (before.length === 0) continue;
-      const last = cleans.filter(c => c.room === rec.room && c.t <= rec.start).at(-1)!;
-      expect([rec.stage, last.major, last.work]).toEqual([rec.stage, true, cleanWork(db, s, rec.room, true)]);
+      const lastOf = (kind: string) => cleans.filter(c => c.kind === kind && c.room === rec.room && c.t <= rec.start).at(-1)!;
+      const wash = lastOf('clean');
+      const floor = lastOf('roomClean');
+      expect([rec.stage, wash.major, wash.work, floor.major, floor.work]).toEqual([rec.stage, true, washWork(db, s, rec.room, true), true, roomWork(db, s, rec.room, true)]);
+      expect(floor.t).toBeGreaterThanOrEqual(wash.t);
     }
   });
 
@@ -72,14 +78,21 @@ describe('второй продукт', () => {
   });
 
   test('кончившиеся уборки и переналадки — в сутках потерь: по суткам столько же и той же работы', () => {
-    const days = [...new Set(done.map(x => x.day))];
-    expect(done.some(x => x.major)).toBe(true);
-    expect(done.some(x => x.kind === 'changeover')).toBe(true);
+    // уборка — в сутки, когда кончилась уборка помещения, с работой мойки перед ней
+    const all = done.flatMap(x => {
+      if (x.kind === 'clean') return [];
+      if (x.kind === 'changeover') return [x];
+      const wash = done.filter(w => w.kind === 'clean' && w.room === x.room && done.indexOf(w) < done.indexOf(x)).at(-1);
+      return [{ ...x, work: x.work + (wash?.work ?? 0) }];
+    });
+    const days = [...new Set(all.map(x => x.day))];
+    expect(all.some(x => x.major)).toBe(true);
+    expect(all.some(x => x.kind === 'changeover')).toBe(true);
     for (const day of days) {
-      const xs = done.filter(x => x.day === day);
+      const xs = all.filter(x => x.day === day);
       const sum = (f: (x: (typeof xs)[number]) => boolean) => ({ n: xs.filter(f).length, sec: xs.filter(f).reduce((n, x) => n + x.work, 0) });
-      const major = sum(x => x.kind === 'clean' && x.major);
-      const minor = sum(x => x.kind === 'clean' && !x.major);
+      const major = sum(x => x.kind === 'roomClean' && x.major);
+      const minor = sum(x => x.kind === 'roomClean' && !x.major);
       const changes = sum(x => x.kind === 'changeover');
       const d = s.losses.find(l => l.day === day)!;
       expect([day, d.cleans, d.changes]).toEqual([day, { major: major.n, majorSec: major.sec, minor: minor.n, minorSec: minor.sec }, { n: changes.n, sec: changes.sec }]);

@@ -1,0 +1,13 @@
+# Уборка производственных помещений (Б4в): уборщик убирает помещение после мойки оборудования — мусор, пыль, полы, стены,
+# двери (характеристика уборщика производственных помещений; docs/10-domain.md, §2); уборку помещений и оборудования
+# ведут по письменным процедурам (GMP ЕАЭС, ч. I, п. 4.29), а обучают и уборщиков (п. 2.10). Название, часы и срок —
+# гипотезы.
+id: sop.room-cleaning
+name: { ru: Уборка производственных помещений, en: Cleaning of production rooms }
+doc: { code: SOP-0022, rev: 1, from: 2026-01-19, approved: role.production-head }
+roles: [role.cleaner]
+for: { tasks: [roomClean] }
+hours: 2
+every: 12
+source: [gmp-eaeu, mintrud-31]
+review: draft

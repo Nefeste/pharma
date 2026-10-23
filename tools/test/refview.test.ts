@@ -91,7 +91,10 @@ const ALLOWED = new Set(
     'partners makers makes pairs supplier maker how since agreement eval review contracts party volume bought ' +
     // Б4а: перерыв смены, табель людей за месяц и год, производственный календарь, политики отделов и пределы
     // сверхурочных — учёт завода и профиль
-    'break hours worked norm over year calendar y m policy wms qc qa mes maint overtime'
+    'break hours worked norm over year calendar y m policy wms qc qa mes maint overtime ' +
+    // Б4б: рисунок сменного графика, учётный период, люди в графике сейчас и с нового месяца, ждущий перевод, календарь
+    // бригад — записи базы и учёт завода
+    'cycle pattern night account next shiftCal rows of'
   ).split(' '),
 );
 

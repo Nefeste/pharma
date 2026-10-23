@@ -195,7 +195,7 @@ describe('год завода прототипа', () => {
       apply(db, s, { kind: 'advance', seconds: HOUR });
       if (s.t > 30 * DAY)
         for (const p of Object.values(s.people)) {
-          if (!takesAt(db, s, p.shift, s.t)) continue;
+          if (!takesAt(db, s, p, s.t)) continue;
           shift[p.role] = (shift[p.role] ?? 0) + 1;
           if (p.task) busy[p.role] = (busy[p.role] ?? 0) + 1;
         }

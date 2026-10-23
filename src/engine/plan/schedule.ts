@@ -17,7 +17,7 @@ import { classOf, placesOf } from '../places';
 import { planOf } from '../plant';
 import { admitted, needFor } from '../quals';
 import { LAST_CALL, shiftEndAt } from '../staff';
-import type { Batch, KitLine, PlantState, Room, Task } from '../types';
+import type { Batch, KitLine, Person, PlantState, Room, Task } from '../types';
 import { WMS } from '../wms';
 import { calOf } from '../workdays';
 
@@ -119,8 +119,11 @@ const LOOK = 31 * DAY;
 
 const idNum = (id: string) => Number(id.slice(1));
 
-/** Люди по ролям и графикам: роль → график → сколько сверхурочных ещё можно каждому на начало прогона, с (Б4а). */
-type Crew = Map<Id, Map<Id, number[]>>;
+/**
+ * Люди по ролям: роль → люди и сколько сверхурочных ещё можно каждому на начало прогона, с (Б4а). Смена — у человека: его
+ * график с переводами и дополнительными выходными (Б4б).
+ */
+type Crew = Map<Id, { p: Person; left: number }[]>;
 
 /** Люди, допущенные сейчас к работе с документами `need`. */
 function crewOf(db: ContentDb, s: PlantState, need: readonly string[]): Crew {
@@ -128,9 +131,7 @@ function crewOf(db: ContentDb, s: PlantState, need: readonly string[]): Crew {
   const c: Crew = new Map();
   for (const p of Object.values(s.people)) {
     if (!admitted(db, p, need, day)) continue;
-    const m = c.get(p.role) ?? new Map<Id, number[]>();
-    m.set(p.shift, [...(m.get(p.shift) ?? []), overLeft(db, s, p, s.t)]);
-    c.set(p.role, m);
+    c.set(p.role, [...(c.get(p.role) ?? []), { p, left: overLeft(db, s, p, s.t) }]);
   }
   return c;
 }
@@ -148,18 +149,16 @@ interface Job {
  * работа у них не помещалась. Смены начинаются в целые часы: если не сейчас — то в начале какого-то часа.
  */
 function firstTake(db: ContentDb, s: PlantState, crew: Crew, roles: readonly Id[], n: number, t: number, job: Job): { t: number; n: number; hours: boolean } | undefined {
-  const shifts: [Id, Id, number[]][] = [];
-  for (const r of roles) for (const [sh, left] of crew.get(r) ?? []) shifts.push([r, sh, left]);
+  const people = roles.flatMap(r => crew.get(r) ?? []);
   let hours = false;
   for (let at = t; at <= t + LOOK; at = Math.floor(at / HOUR) * HOUR + HOUR) {
     let k = 0;
     let on = 0;
-    for (const [r, sh, left] of shifts) {
-      const end = shiftEndAt(db, s, sh, at);
+    for (const { p, left } of people) {
+      const end = shiftEndAt(db, s, p, at);
       if (end === undefined || end - at < LAST_CALL) continue;
-      const mode = s.policy[db.roles[r].dept];
-      on += left.length;
-      for (const l of left) if (fitsIn(job.kind, mode, end - at, job.nom, job.max, l)) k++;
+      on++;
+      if (fitsIn(job.kind, s.policy[db.roles[p.role].dept], end - at, job.nom, job.max, left)) k++;
     }
     if (k >= n) return { t: at, n: k, hours };
     if (at === t) hours = on >= n;

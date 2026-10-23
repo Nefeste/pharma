@@ -6,11 +6,13 @@
 import type { ContentDb, Id } from '../content/types';
 import { contractor } from '../engine/assets';
 import { batchNo } from '../engine/batchno';
+import { momentOf } from '../engine/core/calendar';
 import { geo, SIXTY } from '../engine/line';
 import { partType } from '../engine/maint';
 import { cleanWork, nominal } from '../engine/mes';
 import { classOf } from '../engine/places';
 import { planOf } from '../engine/plant';
+import { scheduleOn } from '../engine/shifts';
 import type { AssetFamily, PlantState, Task, TaskKind } from '../engine/types';
 import { assetInfo } from './places';
 import type { Thing } from './views';
@@ -66,6 +68,8 @@ export interface NowRow {
   people: { n: number; role: Id }[];
   /** работа идёт после конца смены (Б4а): сверхурочно с какого мгновения — у того, у кого смена кончилась раньше */
   over?: number;
+  /** чья смена ведёт работу (Б4б): сменный по циклу график первого из людей, если он в таком */
+  crew?: Id;
   /** с какого мгновения идёт, с; норма — с; у ремонта после отказа — от и до */
   from: number;
   norm?: number;
@@ -316,6 +320,10 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
   for (const r of rows) {
     const over = overSince(s, r.people.map(x => `E${x.n}`));
     if (over !== undefined) r.over = over;
+    // бригада (Б4б): сменный по циклу график первого из людей — сегодня
+    const first = r.people[0] && s.people[`E${r.people[0].n}`];
+    const sh = first && scheduleOn(first, momentOf(s.start, s.t).day);
+    if (sh && db.shifts[sh].cycle) r.crew = sh;
   }
   rows.sort((a, b) => NOW_DEPTS.indexOf(a.dept) - NOW_DEPTS.indexOf(b.dept) || a.from - b.from || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   return { view: 'now', rows };

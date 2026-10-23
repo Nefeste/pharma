@@ -4,10 +4,11 @@
 // норме с запасом на разброс она помещается в остаток смены и в сверхурочные, которые ему ещё можно (`fits`). Политика
 // отдела «Сверхурочные» — «по потребности» или «только закончить начатое»; учёба и проверка знаний — только в смену.
 // Деньги по табелю — cash.ts.
-import { type ContentDb, DEPTS, type Dept, type OvertimeMode, type Shift, type TaskKind } from '../content/types';
-import { civilFromDays, DAY, daysFromCivil, momentOf } from './core/calendar';
+import { type ContentDb, DEPTS, type Dept, type OvertimeMode, type TaskKind } from '../content/types';
+import { civilFromDays, DAY, daysFromCivil, isHoliday, momentOf } from './core/calendar';
+import { saAfter, scheduleOn, spanOn } from './shifts';
 import type { Command, Notice, Person, PlantState } from './types';
-import { calOf, type Clock, shiftTo, worksOn } from './workdays';
+import { calOf, type Clock, worksOn } from './workdays';
 
 /** Задачи, которые ставят только в смену (гипотеза): учёба и проверка знаний (Б3б). */
 const IN_SHIFT: ReadonlySet<TaskKind> = new Set<TaskKind>(['train', 'trainCheck']);
@@ -57,7 +58,7 @@ export function startTask(p: Person, end: number) {
  * Кончил задачу (Б4а): работа после конца смены, в которую он её взял, — сверхурочный отрезок табеля; за год — секунды,
  * по году дня смены.
  */
-export function endTask(s: PlantState, p: Person) {
+export function endTask(db: ContentDb, s: PlantState, p: Person) {
   const until = p.until;
   delete p.until;
   if (until === undefined || s.t <= until) return;
@@ -65,6 +66,8 @@ export function endTask(s: PlantState, p: Person) {
   const y = momentOf(s.start, until - 1).date.y;
   if (p.otYear.y !== y) p.otYear = { y, sec: 0 };
   p.otYear.sec += s.t - until;
+  // сменный по циклу (Б4б): в учётный период — итог в его конце
+  saAfter(db, s, p, until, s.t);
 }
 
 /**
@@ -127,31 +130,39 @@ export function nightIn(db: ContentDb, s: Clock, a: number, b: number): number {
   return sec;
 }
 
-/** Смена по графику в день `z` — мгновения [с, по); смена в этот день не работает — `undefined`. */
-export function shiftSpan(db: ContentDb, s: Clock, sh: Shift, z: number): [number, number] | undefined {
-  const cal = calOf(db, s);
-  if (!worksOn(cal, sh, z)) return undefined;
-  const base = (z - daysFromCivil(s.start)) * DAY;
-  return [base + sh.from * 3600, base + shiftTo(db, s, cal, sh, z)];
-}
-
 /**
- * Табель человека за дни `z0`–`z1` (Б4а), по дню на каждый: смена по графику — работа без перерыва для отдыха и питания
- * (ст. 108), из неё ночью; сверхурочные отрезки — своим календарным дням: в рабочий день графика сверхурочно, в его
- * выходной или праздник — РВ. Первая ставка — первые часы отрезка, хоть он и начался до `z0`.
+ * Табель человека за дни `z0`–`z1` (Б4а) до мгновения `upTo`, по дню на каждый: смены по его графику с переводами
+ * (shifts.ts, Б4б) — работа без перерыва для отдыха и питания (ст. 108) своим календарным дням, ночная — через полночь;
+ * из неё ночью; у сменного по циклу часы в праздник — РВ (ст. 153). Смена, которая идёт в `upTo`, — до этого мгновения,
+ * перерыв — долей прошедшей смены (где он в смене, завод не знает). Сверхурочные отрезки — своим календарным дням: у
+ * пятидневки в её рабочий день — сверхурочно, в выходной или праздник — РВ; у сменного по циклу — сверхурочно, в
+ * праздник — РВ. Первая ставка — первые часы отрезка, хоть он и начался до `z0`.
  */
-export function sheetDays(db: ContentDb, s: Clock, p: Person, z0: number, z1: number): SheetDay[] {
+export function sheetDays(db: ContentDb, s: Clock, p: Person, z0: number, z1: number, upTo = Infinity): SheetDay[] {
   const out = Array.from({ length: z1 - z0 + 1 }, emptyDay);
-  const sh = db.shifts[p.shift];
   const cal = calOf(db, s);
   const first = overtimeOf(db, s).first;
-  for (let z = z0; z <= z1; z++) {
-    const span = shiftSpan(db, s, sh, z);
-    if (!span) continue;
-    out[z - z0].work += span[1] - span[0] - sh.break;
-    out[z - z0].night += nightIn(db, s, span[0], span[1]);
-  }
   const base = daysFromCivil(s.start);
+  for (let z = z0 - 1; z <= z1; z++) {
+    const span = spanOn(db, s, p, z);
+    if (!span || span[0] >= upTo) continue;
+    const sh = db.shifts[scheduleOn(p, z)];
+    const end = Math.min(span[1], upTo);
+    const len = span[1] - span[0];
+    const brk = sh.break > 0 ? Math.floor(((end - span[0]) * sh.break) / len) : 0;
+    for (let a = span[0]; a < end; ) {
+      const d = Math.floor(a / DAY);
+      const b = Math.min(end, (d + 1) * DAY);
+      const day = base + d;
+      if (day >= z0 && day <= z1) {
+        const x = out[day - z0];
+        x.work += b - a - (day === z ? brk : 0);
+        x.night += nightIn(db, s, a, b);
+        if (sh.cycle && isHoliday(cal, day)) x.off += b - a;
+      }
+      a = b;
+    }
+  }
   for (const [a0, b0] of p.ot) {
     let done = 0;
     for (let d = Math.floor(a0 / DAY); d * DAY < b0; d++) {
@@ -159,7 +170,8 @@ export function sheetDays(db: ContentDb, s: Clock, p: Person, z0: number, z1: nu
       const b = Math.min(b0, (d + 1) * DAY);
       const z = base + d;
       const day = z >= z0 && z <= z1 ? out[z - z0] : undefined;
-      if (worksOn(cal, sh, z)) {
+      const sh = db.shifts[scheduleOn(p, z)];
+      if (sh.cycle ? !isHoliday(cal, z) : worksOn(cal, sh, z)) {
         const f = Math.max(0, Math.min(b - a, first - done));
         done += b - a;
         if (day) {

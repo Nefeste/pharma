@@ -73,6 +73,7 @@ import { MES, stageNorm } from '../../src/engine/mes';
 import { agreementFor, REVIEWERS, STARTING } from '../../src/engine/partners';
 import { accepts, areaCode, CENTER_OF, centerCode, classOf, coldOf, placesOf, rackStore, roomAt } from '../../src/engine/places';
 import { QA } from '../../src/engine/qa';
+import { cycleErrors, shiftLengths } from '../../src/engine/shifts';
 import { CHECKERS } from '../../src/engine/train';
 import { WMS } from '../../src/engine/wms';
 import { KINDS, type Kind, WORKS } from './schema';
@@ -345,11 +346,29 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   for (const r of Object.values(raw.roles)) roles[r.id] = { ...r, salary: kop(r.salary) };
   const vehicles: Record<string, VehicleType> = {};
   for (const v of Object.values(raw.vehicles)) vehicles[v.id] = { ...v, speedEmpty: cm(v.speedEmpty), speedLoaded: cm(v.speedLoaded) };
+  // график — пятидневка или сменный по циклу (Б4б): рисунок — по правилам закона (shifts.ts, `cycleErrors`)
   const shifts: Record<string, Shift> = {};
   for (const sh of Object.values(raw.shifts)) {
+    const c = sh.cycle;
+    if (c) {
+      need(sh.days === undefined && sh.from === undefined && sh.to === undefined && sh.break === undefined, `график ${sh.id}: у сменного по циклу нет дней недели, часов пятидневки и перерыва — рисунок и часы смен`);
+      const from = dayOf(c.from);
+      need(from >= 0, `график ${sh.id}: даты ${c.from} нет в календаре`);
+      need(c.offset < c.pattern.length, `график ${sh.id}: сдвиг бригады ${c.offset} — не меньше длины рисунка`);
+      need(c.day[0] < c.day[1], `график ${sh.id}: дневная смена кончается раньше, чем начинается`);
+      need(c.night[1] < c.night[0], `график ${sh.id}: ночная смена кончается не на следующие сутки`);
+      const cycle = { from, offset: c.offset, pattern: [...c.pattern], day: [c.day[0], c.day[1]] as [number, number], night: [c.night[0], c.night[1]] as [number, number] };
+      for (const e of cycleErrors(cycle)) need(false, `график ${sh.id}: ${e}`);
+      shifts[sh.id] = { id: sh.id, name: sh.name, days: [], from: c.day[0], to: c.day[1], break: 0, cycle };
+      continue;
+    }
+    if (sh.days === undefined || sh.from === undefined || sh.to === undefined) {
+      need(false, `график ${sh.id}: у пятидневки — дни недели и часы смены, у сменного по циклу — рисунок`);
+      continue;
+    }
     need(sh.from < sh.to, `график ${sh.id}: смена кончается раньше, чем начинается`);
     need((sh.break ?? 0) < sh.to - sh.from, `график ${sh.id}: перерыв не короче смены`);
-    shifts[sh.id] = { ...sh, days: [...new Set(sh.days)].sort().map(d => d - 1), break: Math.round((sh.break ?? 0) * 3600) };
+    shifts[sh.id] = { id: sh.id, name: sh.name, days: [...new Set(sh.days)].sort().map(d => d - 1), from: sh.from, to: sh.to, break: Math.round((sh.break ?? 0) * 3600) };
   }
   const products: Record<string, Product> = Object.fromEntries(Object.values(raw.products).map(pr => [pr.id, { ...pr, strength: pr.strength.mg }]));
   for (const pr of Object.values(raw.products)) if (pr.jnvlp) need(pr.source, `продукт ${pr.id}: «в перечне ЖНВЛП» — факт, нужен источник`);
@@ -740,6 +759,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       need(raw.plants[s.plant]?.posts[r.role], `${where}: у роли ${r.role} нет поста в плане ${s.plant}`);
     }
     for (const v of s.vehicles) need(vehicles[v.type], `${where}: нет техники ${v.type}`);
+    // учётный период суммированного учёта (Б4б): не длиннее года (ст. 104, ч. 1), делитель года — периоды встают в год
+    need(12 % s.account === 0, `${where}: учётный период ${s.account} мес. — не делитель года`);
     for (const c of s.customers) need(raw.customers[c], `${where}: нет покупателя ${c}`);
     if (s.customers.length > 0) need(raw.plants[s.plant]?.docks.some(d => d.kind === 'out'), `${where}: покупатели есть, а рампы отгрузки в плане нет`);
     // задания на серию: у каждой стадии карты в плане — помещение этого типа, оборудование в нём и прибор каждого её МОК
@@ -1002,31 +1023,26 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
 
 /**
  * Стадии в часы (Б4а; docs/specs/2026-10-vertical-slice.md, «Проверки Б4а»): человек берёт стадию, только если она с
- * запасом на разброс помещается в остаток его смены и в сверхурочные. У каждой стадии карты в каждом сценарии норма —
- * не длиннее самой длинной смены её роли, а наибольшая длительность — не длиннее этой смены с пределом сверхурочных за
- * смену: иначе стадию никто не начнёт. Учатся только в смену: часы изучения документа — не длиннее самой короткой смены
- * ролей, которые по нему учатся.
+ * запасом на разброс помещается в остаток его смены и в сверхурочные. Человека можно перевести в любой график базы (Б4б),
+ * поэтому у каждой стадии карты норма — не длиннее самой короткой смены всех графиков, а наибольшая длительность — не
+ * длиннее этой смены с пределом сверхурочных за смену в каждом сценарии: иначе в каком-то графике стадию никто не
+ * начнёт. Учатся только в смену: часы изучения документа — не длиннее самой короткой смены.
  */
 function stageErrors(db: ContentDb): string[] {
   const out: string[] = [];
+  const h = (sec: number) => Math.round(sec / 360) / 10;
+  const len = Math.min(...Object.values(db.shifts).flatMap(shiftLengths));
+  if (!Number.isFinite(len)) return out;
+  for (const d of [...Object.values(db.sops), ...Object.values(db.tests)]) {
+    if (d.roles.length > 0 && d.study > len) out.push(`${d.id}: изучение ${d.study / 3600} ч длиннее самой короткой смены графиков (${h(len)} ч) — в таком графике обучение никто не начнёт`);
+  }
   for (const sc of Object.values(db.scenarios)) {
-    const len = (role: string) => sc.staff.filter(x => x.role === role).map(x => (db.shifts[x.shift].to - db.shifts[x.shift].from) * 3600);
-    for (const d of [...Object.values(db.sops), ...Object.values(db.tests)]) {
-      for (const role of d.roles) {
-        const short = Math.min(...len(role));
-        if (Number.isFinite(short) && d.study > short) out.push(`сценарий ${sc.id}, ${d.id}: изучение ${d.study / 3600} ч длиннее смены роли ${role} — обучение никто не начнёт`);
-      }
-    }
     const over = db.profiles[sc.profile].payroll.overtime.shift;
     for (const r of Object.values(db.recipes)) {
       for (const st of r.stages) {
-        const rows = sc.staff.filter(x => x.role === st.staff.role);
-        if (rows.length === 0) continue;
-        const len = Math.max(...rows.map(x => (db.shifts[x.shift].to - db.shifts[x.shift].from) * 3600));
         const [nom, max] = stageNorm(db, r.id, st, r.batch.mass);
-        const h = (sec: number) => Math.round(sec / 360) / 10;
-        if (nom > len) out.push(`сценарий ${sc.id}, карта ${r.id}, стадия ${st.id}: норма ${h(nom)} ч длиннее самой длинной смены роли ${st.staff.role} (${h(len)} ч) — стадию никто не начнёт`);
-        else if (max > len + over) out.push(`сценарий ${sc.id}, карта ${r.id}, стадия ${st.id}: наибольшая длительность ${h(max)} ч длиннее смены роли ${st.staff.role} со сверхурочными (${h(len + over)} ч) — стадию никто не начнёт`);
+        if (nom > len) out.push(`карта ${r.id}, стадия ${st.id}: норма ${h(nom)} ч длиннее самой короткой смены графиков (${h(len)} ч) — в таком графике стадию никто не начнёт`);
+        else if (max > len + over) out.push(`сценарий ${sc.id}, карта ${r.id}, стадия ${st.id}: наибольшая длительность ${h(max)} ч длиннее самой короткой смены графиков со сверхурочными (${h(len + over)} ч) — в таком графике стадию никто не начнёт`);
       }
     }
   }

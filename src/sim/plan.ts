@@ -125,10 +125,10 @@ export function pastBars(db: ContentDb, s: PlantState): Bar[] {
 /** Часы окна, когда ни у кого из аппаратчиков нет смены, — слитыми отрезками. */
 export function offOf(db: ContentDb, s: PlantState, from: number, to: number): [number, number][] {
   const roles: readonly string[] = MES.operators;
-  const shifts = [...new Set(Object.values(s.people).filter(p => roles.includes(p.role)).map(p => p.shift))];
+  const people = Object.values(s.people).filter(p => roles.includes(p.role));
   const out: [number, number][] = [];
   for (let t = Math.floor(from / HOUR) * HOUR; t < to; t += HOUR) {
-    if (shifts.some(sh => shiftEndAt(db, s, sh, t) !== undefined)) continue;
+    if (people.some(p => shiftEndAt(db, s, p, t) !== undefined)) continue;
     const last = out[out.length - 1];
     if (last && last[1] === t) last[1] = t + HOUR;
     else out.push([t, t + HOUR]);

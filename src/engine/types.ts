@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 22;
+export const SCHEMA = 23;
 
 // ---------------------------------------------------------------- склад
 
@@ -649,6 +649,24 @@ export interface Person {
   ot: [number, number][];
   /** сверхурочно за календарный год (Б4а): год и секунды */
   otYear: { y: number; sec: number };
+  /**
+   * графики с днями начала (Б4б, shifts.ts): запись — график и номер дня от 1970-01-01, с которого человек в нём; запись
+   * в будущем — перевод. Нет — человек в графике `shift` с начала завода
+   */
+  roster?: RosterEntry[];
+  /**
+   * суммированный учёт (Б4б): работа после конца смены сменного по циклу графика в нынешнем учётном периоде — с какого
+   * мгновения считать (начало периода) и отрезки, мгновения с и по; итог — в конце периода
+   */
+  sa?: { from: number; segs: [number, number][] };
+  /** итог учётного периода (Б4б): месяц, с зарплатой второй половины которого платят сверхурочные периода, — их часы и копейки */
+  saDone?: { y: number; m: number; over: number; pay: number };
+}
+
+/** Запись графика человека (Б4б): график и номер дня от 1970-01-01, с которого он в нём. */
+export interface RosterEntry {
+  shift: Id;
+  from: number;
 }
 
 /**
@@ -1103,12 +1121,16 @@ export interface Cash {
   wages: Record<string, WageParts>;
 }
 
-/** Части зарплаты (Б4а), копейки: оклады, доплаты за ночные часы, сверхурочные и работу в выходной или праздник. */
+/**
+ * Части зарплаты (Б4а), копейки: оклады, доплаты за ночные часы, сверхурочные и работу в выходной или праздник; с Б4б —
+ * сверхурочные по итогу учётного периода у сменных по циклу, если они есть.
+ */
 export interface WageParts {
   salary: number;
   night: number;
   over: number;
   off: number;
+  period?: number;
 }
 
 export interface PlantState {
@@ -1222,7 +1244,12 @@ export type Command =
   /** решение расследования: причина — версия модели; судьба серии */
   | { kind: 'conclude'; inv: string; cause: string; fate: 'reject' | 'release'; by?: string }
   /** политика отдела «Сверхурочные» (Б4а): «по потребности» или «только закончить начатое» */
-  | { kind: 'overtime'; dept: Dept; mode: OvertimeMode; by?: string };
+  | { kind: 'overtime'; dept: Dept; mode: OvertimeMode; by?: string }
+  /**
+   * перевод человека на другой график (Б4б): с 1-го числа месяца, до которого не меньше месяца (ст. 103 ТК РФ, ч. 4);
+   * график, в котором он и так будет, — отмена ждущего перевода
+   */
+  | { kind: 'roster'; person: string; shift: Id; by?: string };
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
@@ -1266,10 +1293,16 @@ export type Refusal =
   | 'testPending'
   | 'outOfSpec'
   | 'devOpen'
-  | 'devReject';
+  | 'devReject'
+  /** перевод (Б4б): такого человека или графика нет; человек и так будет в этом графике */
+  | 'noPerson'
+  | 'noShift'
+  | 'same';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
+  /** перевод на другой график (Б4б): с какого дня; отмена ждущего перевода — `cancel` */
+  | { kind: 'rostered'; person: string; role: Id; tab: number; shift: Id; from: number; cancel?: true }
   /** планёрка: начались сутки `day` */
   | { kind: 'morning'; day: number }
   /** заказ поставщику принят */

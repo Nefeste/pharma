@@ -5,7 +5,8 @@ import type { ReactNode } from 'react';
 import type { PartType } from '../content/types';
 import { civilFromDays, momentOf, weekday, type Ymd } from '../engine/core/calendar';
 import { clock, dayText, hText, named, num, qtyText, T, whenText } from '../i18n';
-import type { SheetView } from '../sim/hours';
+import { DEPT_SEAT } from '../engine/seats';
+import type { SaView, SheetView } from '../sim/hours';
 import type { NowRow } from '../sim/now';
 import type { Admission, DocNow } from '../sim/people';
 import type { AssetInfo } from '../sim/places';
@@ -16,7 +17,7 @@ import { db, docText } from './db';
 import { DevBody, First, RegimesBlock, ReleaseBlock } from './Decide';
 import { StatusIcon, TaskIcon } from './icons';
 import { placeText, supplierText } from './Stock';
-import type { Actions, Hud } from './store';
+import { type Actions, type Hud, holds } from './store';
 
 /**
  * Табель месяца (Б4а): по дням с 1-го по сегодня — отметки формы Т-13 и часы, сеткой по дням недели; итоги — отработано
@@ -46,6 +47,64 @@ function Sheet({ v, start }: { v: SheetView; start: Ymd }) {
         </Row>
       </dl>
     </>
+  );
+}
+
+type PersonCard = Extract<CardView['card'], { kind: 'person' }>;
+
+/**
+ * График человека (Б4б): нынешний; ждущий перевод — с какого дня и «Отменить перевод»; «Перевести на график…» — список
+ * графиков базы, кроме того, в котором он будет. Переводит пост отдела человека или директор (как политику, Б4а).
+ */
+function Roster({ c, hud, actions }: { c: PersonCard; hud: Hud; actions: Actions }) {
+  const dept = db?.roles[c.role]?.dept;
+  const mine = dept === undefined || holds(hud, DEPT_SEAT[dept]);
+  const title = mine ? '' : T.seats.notYours(T.seats.names[DEPT_SEAT[dept!]] ?? '');
+  const will = c.next?.shift ?? c.shift;
+  const ids = Object.keys(db?.shifts ?? {}).filter(id => id !== will);
+  return (
+    <>
+      <span data-test="card-shift">{named(db?.shifts[c.shift]?.name, c.shift)}</span>
+      {c.next ? (
+        <>
+          {' · '}
+          <span className="warn" data-test="card-next">
+            {T.card.next(dayText(c.next.from), named(db?.shifts[c.next.shift]?.name, c.next.shift))}
+          </span>{' '}
+          <button type="button" className="link" disabled={!mine} title={title} onClick={() => actions.roster(c.person, c.shift)} data-test="card-roster-cancel">
+            {T.card.rosterCancel}
+          </button>
+        </>
+      ) : null}
+      <div>
+        <select
+          value=""
+          disabled={!mine}
+          title={title}
+          onChange={e => {
+            if (e.target.value) actions.roster(c.person, e.target.value);
+          }}
+          data-test="card-roster"
+        >
+          <option value="">{T.card.rosterTo}</option>
+          {ids.map(id => (
+            <option key={id} value={id}>
+              {named(db?.shifts[id]?.name, id)}
+            </option>
+          ))}
+        </select>
+      </div>
+    </>
+  );
+}
+
+/** Учётный период сменного по циклу (Б4б): норма, по графику, отработано, после смен, снятые смены. */
+function SaBlock({ v }: { v: SaView }) {
+  return (
+    <div title={T.card.saHint} data-test="card-sa">
+      <div className="csec">{T.card.sa(dayText(v.first), dayText(v.last))}</div>
+      <div className="small">{T.card.saLine(hText(v.norm), hText(v.plan), hText(v.worked), hText(v.after), v.off)}</div>
+    </div>
   );
 }
 
@@ -396,7 +455,9 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
                 T.card.doing[c.doing.k]
               )}
             </Row>
-            <Row k={T.card.shift}>{named(db?.shifts[c.shift]?.name, c.shift)}</Row>
+            <Row k={T.card.shift}>
+              <Roster c={c} hud={hud} actions={actions} />
+            </Row>
             <Row k={T.card.skill}>{num(c.skill)}</Row>
             <Row k={T.card.admission}>
               <span className={c.adm.k === 'no' ? 'bad' : ''} data-test="card-adm">
@@ -413,6 +474,7 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
             ))}
           </ol>
           <Sheet v={c.sheet} start={start} />
+          {c.sa ? <SaBlock v={c.sa} /> : null}
         </>
       );
       break;

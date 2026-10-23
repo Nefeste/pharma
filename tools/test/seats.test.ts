@@ -137,6 +137,7 @@ describe('сохранение и база', () => {
       partners: { ahead: 30, every: { api: 24, excipient: 36, packaging: 12 }, audit: { days: 3, review: 4, price: 350000 }, docs: { review: 3 }, markup: 10, share: 50, months: 12, ctr: 1 },
       policies: { overtime: 'need' },
       deviations: { term: 30 },
+      account: 3,
       ...(seats === undefined ? {} : { seats }),
     });
     expect(scenario.safeParse(raw(['director'])).success).toBe(true);

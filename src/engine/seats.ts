@@ -22,9 +22,14 @@ export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
 /** Пост отдела (Б4а): производство, линию и техслужбу ведёт «Производство», ОКК и ООК — «Качество», склад — «Снабжение и склад». */
 export const DEPT_SEAT: Record<Dept, SeatId> = { mes: 'production', line: 'production', maint: 'production', qc: 'quality', qa: 'quality', wms: 'supply' };
 
-/** Пост команды: у политики отдела — пост этого отдела, у остальных — по виду команды. */
-export function ownerOf(cmd: Command): SeatId | undefined {
-  return cmd.kind === 'overtime' ? DEPT_SEAT[cmd.dept] : OWNER[cmd.kind];
+/**
+ * Пост команды: у политики отдела — пост этого отдела, у перевода на другой график (Б4б) — пост отдела человека (`dept`),
+ * у остальных — по виду команды.
+ */
+export function ownerOf(cmd: Command, dept?: Dept): SeatId | undefined {
+  if (cmd.kind === 'overtime') return DEPT_SEAT[cmd.dept];
+  if (cmd.kind === 'roster') return dept && DEPT_SEAT[dept];
+  return OWNER[cmd.kind];
 }
 
 /** Места, которые игрок держит сейчас; ещё не выбирал — `undefined`. */
@@ -36,8 +41,9 @@ export function held(s: PlantState): SeatId[] | undefined {
  * Чьё место нужно, чтобы игрок отдал команду, если сейчас оно не его; можно — `undefined`. Ничья команда — можно всегда;
  * места не выбраны — можно всё, как до 3е; директор в прототипе отвечает за всё. Команды сценария и коллег не проверяются.
  */
-export function foreign(s: PlantState, cmd: Command): SeatId | undefined {
-  const own = ownerOf(cmd);
+export function foreign(s: PlantState, cmd: Command, db?: ContentDb): SeatId | undefined {
+  const who = cmd.kind === 'roster' ? s.people[cmd.person] : undefined;
+  const own = ownerOf(cmd, who && db?.roles[who.role]?.dept);
   if (!own || ('by' in cmd && cmd.by !== undefined && cmd.by !== 'player')) return undefined;
   const h = held(s);
   return !h || h.includes('director') || h.includes(own) ? undefined : own;

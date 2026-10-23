@@ -361,6 +361,10 @@ export class Game {
       : n.kind === 'concluded' ? T.notices.concluded(n.fate)
       : n.kind === 'assessed' ? T.notices.assessed(n.verdict, n.code)
       : n.kind === 'qualLost' ? T.notices.qualLost(named(this.db.roles[n.role]?.name, n.role), n.tab, n.doc)
+      : n.kind === 'rostered'
+        ? n.cancel
+          ? T.notices.rosterCancel(T.card.person(named(this.db.roles[n.role]?.name, n.role), n.tab))
+          : T.notices.rostered(T.card.person(named(this.db.roles[n.role]?.name, n.role), n.tab), named(this.db.shifts[n.shift]?.name, n.shift), dayText(n.from))
       : n.kind === 'overtimeLow' ? T.notices.overtimeLow(named(this.db.roles[n.role]?.name, n.role), n.tab, durText(n.left), hText(this.db.profiles[this.scenario.profile].payroll.overtime.year))
       : n.kind === 'assetExpired' ? T.notices.assetExpired(workName(n, n.work), assetClass(n), T.assets.inv(n.inv))
       : n.kind === 'pairSuspended' ? T.notices.pairSuspended(named(this.db.suppliers[n.supplier]?.name, n.supplier), named(this.db.makers[n.maker]?.name, n.maker))
@@ -742,6 +746,7 @@ export class Game {
     },
     rush: lot => this.client.command({ kind: 'rush', lot, by: 'player' }),
     overtime: (dept, mode) => this.client.command({ kind: 'overtime', dept, mode, by: 'player' }),
+    roster: (person, shift) => this.client.command({ kind: 'roster', person: `E${person}`, shift, by: 'player' }),
     setCashPage: page => {
       this.store.set({ cash: { ...this.store.get().cash, page } });
       this.sendViews();

@@ -8,7 +8,7 @@ import { HOUR, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { planOf } from './plant';
 import type { Batch, BatchPhase, DayLoss, Line, LineDay, MachineTimes, PlantState, ShiftTask, Task, TaskKind, WaitCause } from './types';
-import { calOf, shiftTo, worksOn } from './workdays';
+import { scheduleOn, spanOn } from './shifts';
 
 /** Участок задачи — отдел, чья это работа; отгрузку делает склад. */
 export const AREA: Record<TaskKind, Dept> = {
@@ -214,23 +214,36 @@ export function leanHour(db: ContentDb, s: PlantState) {
     }
     dayOf(s, now.day);
   }
-  // смена — по производственному календарю: в праздник её нет, накануне праздника она короче (Б4а)
-  const cal = calOf(db, s);
+  // смены людей у машин линии — их смены по графикам (Б4б): у пятидневки — по производственному календарю, в праздник её
+  // нет, накануне праздника она короче (Б4а); у сменного по циклу — по рисунку, ночная через полночь
   for (const line of Object.values(s.lines)) {
-    for (const id of shiftsOf(db, s, line)) {
-      const sh = db.shifts[id];
-      if (!worksOn(cal, sh, now.day)) continue;
-      if (now.sec === shiftTo(db, s, cal, sh, now.day)) closeShift(s, line, id);
-      if (now.sec === sh.from * HOUR) openShift(db, s, line, id);
+    for (const [id, x] of shiftsOf(db, s, line, now.day)) {
+      if (x.end) closeShift(s, line, id);
+      if (x.len !== undefined) openShift(db, s, line, id, x.len);
     }
   }
 }
 
-/** Графики людей, которые стоят у машин линии, — по порядку штата. */
-function shiftsOf(db: ContentDb, s: PlantState, line: Line): Id[] {
+/**
+ * Графики людей, которые стоят у машин линии, по порядку штата: у какого смена кончается в это мгновение (`end`) и у
+ * какого начинается — с её длиной для задания (`len`): у пятидневки — по графику, у сменного по циклу — по рисунку.
+ */
+function shiftsOf(db: ContentDb, s: PlantState, line: Line, day: number): Map<Id, { end: boolean; len?: number }> {
   const roles = new Set(line.machines.map(mc => db.machines[mc.type].crew.role));
-  const out: Id[] = [];
-  for (const p of Object.values(s.people)) if (roles.has(p.role) && !out.includes(p.shift)) out.push(p.shift);
+  const out = new Map<Id, { end: boolean; len?: number }>();
+  for (const p of Object.values(s.people)) {
+    if (!roles.has(p.role)) continue;
+    for (const z of [day - 1, day]) {
+      const span = spanOn(db, s, p, z);
+      if (!span || (span[0] !== s.t && span[1] !== s.t)) continue;
+      const id = scheduleOn(p, z);
+      const sh = db.shifts[id];
+      const x = out.get(id) ?? { end: false };
+      if (span[1] === s.t) x.end = true;
+      if (span[0] === s.t) x.len = sh.cycle ? span[1] - span[0] : (sh.to - sh.from) * HOUR;
+      out.set(id, x);
+    }
+  }
   return out;
 }
 
@@ -242,15 +255,14 @@ const queueOf = (s: PlantState, line: Line) =>
  * Сменное задание: меньшее из «осталось годных пачек в заданиях на упаковку линии с материалами в резерве» и «скорость
  * узкого места × время смены × норма мастера»; скорость — у первого задания. Заданий нет — задание смены 0.
  */
-function openShift(db: ContentDb, s: PlantState, line: Line, shift: Id) {
+function openShift(db: ContentDb, s: PlantState, line: Line, shift: Id, len: number) {
   const jobs = queueOf(s, line).map(b => b.pack!);
   let plan = 0;
   if (jobs.length > 0) {
     const sku = db.skus[jobs[0].sku];
-    const sh = db.shifts[shift];
     // пачек в минуту на номинале у каждой машины — ×10 000; узкое место — меньшая
     const rate = Math.min(...line.machines.map(mc => Math.floor((db.machines[mc.type].nominal * P_ONE) / (db.machines[mc.type].item === 'blister' ? sku.blisters : 1))));
-    const cap = Math.floor(((sh.to - sh.from) * 60 * rate * db.scenarios[s.scenario].norm) / (P_ONE * P_ONE));
+    const cap = Math.floor(((len / 60) * rate * db.scenarios[s.scenario].norm) / (P_ONE * P_ONE));
     const left = jobs.reduce((n, j) => n + j.expect! - (j.state === 'running' ? line.made : 0), 0);
     plan = Math.max(0, Math.min(left, cap));
   }

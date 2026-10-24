@@ -152,7 +152,7 @@ describe('узкое место', () => {
 });
 
 describe('переналадка и очистка линии', () => {
-  test('первая серия — наладка на формат; та же позиция — только очистка; другая — переналадка и очистка', () => {
+  test('первая серия — наладка на формат и очистка (Б1е); та же позиция — только очистка; другая — переналадка и очистка', () => {
     const s = newPlant(bare, { scenario: SC });
     const seen: string[] = [];
     const known = new Set<string>();
@@ -168,7 +168,7 @@ describe('переналадка и очистка линии', () => {
     const b3 = order(s, N10, s.t + 4 * DAY);
     live(s, 20, look, () => [b1, b2, b3].every(b => b.status === 'released'));
     expect([b1, b2, b3].map(b => b.status)).toEqual(['released', 'released', 'released']);
-    expect(seen).toEqual([`${b1.id}:changeover`, `${b2.id}:clearance`, `${b2.id}:clearCheck`, `${b3.id}:changeover`, `${b3.id}:clearance`, `${b3.id}:clearCheck`]);
+    expect(seen).toEqual([`${b1.id}:changeover`, `${b1.id}:clearance`, `${b1.id}:clearCheck`, `${b2.id}:clearance`, `${b2.id}:clearCheck`, `${b3.id}:changeover`, `${b3.id}:clearance`, `${b3.id}:clearCheck`]);
     expect(s.lines['line-1'].format).toBe(db.skus[N10].format);
     expect(s.lines['line-1'].clear).toBe(false);
   });

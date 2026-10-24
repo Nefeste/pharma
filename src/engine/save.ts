@@ -382,6 +382,22 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   // на входе стадии считается из массы серии и карты: у серии, которую уже отвесили, стадии впереди загружают своё
   // по карте. Схема новая, чтобы 0.0.42 не открыл сохранение с записями упаковки и не потерял их.
   25: raw => raw,
+  // 26 → 27 (Б1е): процедуру мойки оборудования учат и те, кто моет машины линии, — операторы упаковочной линии.
+  // У людей из прежних сохранений записи на неё нет — запись как на старте партии: по хешу человека и кода, на день
+  // сохранения. Помещение упаковки из прежнего сохранения чисто с начала игры: перед следующим заданием его уберут
+  // после просрочки, а линию очистят. Схема новая и затем, чтобы 0.0.43 не открыл сохранение с занятым помещением.
+  26: (raw, db) => {
+    const sc = db.scenarios[raw.scenario as string];
+    if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
+    const s = raw as unknown as PlantState;
+    const day = momentOf(s.start, s.t).day;
+    const wash = new Set(Object.values(db.sops).flatMap(x => (x.for.tasks?.includes('clean') ? [x.doc.code] : [])));
+    for (const p of Object.values(s.people)) {
+      const lack = new Set(rowsOf(db, p).filter(c => wash.has(c) && !p.train[c]));
+      if (lack.size > 0) seedTraining(db, sc, p, day, lack);
+    }
+    return raw;
+  },
 };
 
 export function toSave(s: PlantState): string {

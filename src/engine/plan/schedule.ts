@@ -13,7 +13,7 @@ import { DAY, daysFromCivil, HOUR, isWorkday, momentOf } from '../core/calendar'
 import { fitsIn, overLeft } from '../hours';
 import { coverWindows } from '../leave';
 import { blocked } from '../maint';
-import { DIRTY_HOLD, kitPlan, MES, newBatch, nominal, readyFor, roomWork, stageMass, stageNorm, stageTaskNorm, TRANSFER_WORK, washWork } from '../mes';
+import { DIRTY_HOLD, kitPlan, MES, newBatch, nominal, readyFor, roomWork, stageMass, stageNorm, stageTaskNorm, TRANSFER_WORK, washRoles, washWork } from '../mes';
 import { classOf, placesOf } from '../places';
 import { planOf } from '../plant';
 import { admitted, needFor } from '../quals';
@@ -227,6 +227,8 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     return firstTake(db, s, crew, roles, n, t, job);
   };
   const lineRoom = (id: string) => plan.plant.lines.find(l => l.id === id)?.room;
+  // уборка помещения линии — на строке линии (Б1е)
+  const rowOf = (roomId: string) => plan.plant.lines.find(l => l.room === roomId)?.id ?? roomId;
   const cleanNeed = needFor(db, 'clean');
   const roomNeed = needFor(db, 'roomClean');
   const kitNeed = needFor(db, 'transfer');
@@ -292,17 +294,17 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     let work = 0;
     const washes = !!wash || washWork(db, s, r.id, major) > 0;
     if (wash) {
-      if (wash.to > wash.from) out.bars.push({ row: r.id, kind: 'clean', ...(batch ? { batch } : {}), from: wash.from, to: wash.to, when: 'now', ...(major ? { major: true as const } : {}) });
+      if (wash.to > wash.from) out.bars.push({ row: rowOf(r.id), kind: 'clean', ...(batch ? { batch } : {}), from: wash.from, to: wash.to, when: 'now', ...(major ? { major: true as const } : {}) });
       end = wash.to;
       work += wash.work;
     } else {
       const w = washWork(db, s, r.id, major);
       if (w > 0) {
-        const c = take(MES.operators, 1, at, cleanNeed, { kind: 'clean', nom: w, max: w });
+        const c = take(washRoles(db, s.plant, r.id), 1, at, cleanNeed, { kind: 'clean', nom: w, max: w });
         if (!c) return undefined;
         if (!major && c.t - dirtySince > DIRTY_HOLD) major = true;
         const sec = washWork(db, s, r.id, major);
-        out.bars.push({ row: r.id, kind: 'clean', ...(batch ? { batch } : {}), from: c.t, to: c.t + sec, when, ...(major ? { major: true as const } : {}) });
+        out.bars.push({ row: rowOf(r.id), kind: 'clean', ...(batch ? { batch } : {}), from: c.t, to: c.t + sec, when, ...(major ? { major: true as const } : {}) });
         end = c.t + sec;
         work += sec;
       }
@@ -315,7 +317,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
         major = true;
         rw = roomWork(db, s, r.id, major);
       }
-      out.bars.push({ row: r.id, kind: 'roomClean', ...(batch ? { batch } : {}), from: c.t, to: c.t + rw, when, ...(major ? { major: true as const } : {}) });
+      out.bars.push({ row: rowOf(r.id), kind: 'roomClean', ...(batch ? { batch } : {}), from: c.t, to: c.t + rw, when, ...(major ? { major: true as const } : {}) });
       end = c.t + rw;
       work += rw;
     }
@@ -356,7 +358,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     let end: number | undefined;
     if (rc?.state === 'busy') {
       // уборка помещения идёт — оборудование уже вымыто
-      out.bars.push({ row: r.id, kind: 'roomClean', ...(p.last ? { batch: p.last } : {}), from: rc.times![1], to: rc.times![4], when: 'now', ...(r.major ? { major: true as const } : {}) });
+      out.bars.push({ row: rowOf(r.id), kind: 'roomClean', ...(p.last ? { batch: p.last } : {}), from: rc.times![1], to: rc.times![4], when: 'now', ...(r.major ? { major: true as const } : {}) });
       end = rc.times![4];
       r.status = 'clean';
       r.since = end;

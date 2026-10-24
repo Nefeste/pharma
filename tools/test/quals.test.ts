@@ -117,9 +117,9 @@ describe('сборщик базы — на испорченной копии con
   });
 
   test('редакции одного документа — одна строка матрицы и одни работы; роль и машина — из базы; обучению процедура не нужна', () => {
-    has(broken({ 'sops/cleaning-r2.yaml': [['roles: [role.operator]', 'roles: [role.operator, role.master]']] }), 'разные роли или работы — матрица обучения у документа одна');
+    has(broken({ 'sops/cleaning-r2.yaml': [['role.line-operator]', 'role.line-operator, role.master]']] }), 'разные роли или работы — матрица обучения у документа одна');
     has(broken({ 'sops/cleaning-r2.yaml': [['tasks: [clean]', 'tasks: [clean, repair]']] }), 'документ SOP-0015: у редакций');
-    has(broken({ 'sops/cleaning.yaml': [['roles: [role.operator]', 'roles: [role.operator, role.nobody]']] }), 'процедура sop.cleaning: учится роль role.nobody — нет такой роли');
+    has(broken({ 'sops/cleaning.yaml': [['role.line-operator]', 'role.line-operator, role.nobody]']] }), 'процедура sop.cleaning: учится роль role.nobody — нет такой роли');
     has(broken({ 'sops/cleanzone.yaml': [['for: {', 'for: { machines: [mch.nobody],']] }), 'процедура sop.cleanzone: нет машины mch.nobody');
     has(broken({ 'sops/receiving.yaml': [['tasks: [', 'tasks: [train, ']] }), 'sops/receiving.yaml: for.tasks.0:');
     has(broken({ 'sops/gmp.yaml': [['code: SOP-0001', 'code: SP-0001']] }), 'код документа — SOP-NNNN');
@@ -310,11 +310,11 @@ describe('обучение и проверка знаний', () => {
     expect([t.state, t.why, t.lack]).toEqual(['open', 'qual', CLEAN]);
     const card = cardView(db, s, { kind: 'person', n: Number(ops[0].id.slice(1)) }).card;
     expect(card?.kind === 'person' && card.adm).toEqual({ k: 'no', doc: { code: CLEAN, kind: 'sops', id: R2, rev: 2 } });
-    // выучились — уборки дают тем, кто выучил новую редакцию в этот день, и только им
+    // выучились — уборки дают тем, кто выучил новую редакцию в этот день, и только им; операторы линии учились в срок
     const took = new Set<string>();
     while (s.t < at(r2from, 15)) {
       apply(db, s, { kind: 'advance', seconds: 5 * MIN });
-      for (const x of Object.values(s.tasks)) if (x.kind === 'clean' && x.state === 'busy') for (const id of x.people) took.add(id);
+      for (const x of Object.values(s.tasks)) if (x.kind === 'clean' && x.state === 'busy') for (const id of x.people) if (ops.includes(s.people[id])) took.add(id);
     }
     expect(took.size).toBeGreaterThan(0);
     for (const id of took) expect([id, s.people[id].train[CLEAN].rev, s.people[id].train[CLEAN].day]).toEqual([id, R2, r2from]);

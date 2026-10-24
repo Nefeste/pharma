@@ -1,9 +1,10 @@
 # Уборка помещений и оборудования — процедуры технического обслуживания, очистки и дезинфекции (GMP ЕАЭС, ч. I,
 # п. 4.29). Редакция 2 вводится в первом месяце сценария (cleaning-r2): механику обучения видно сразу.
+# С Б1е её учат и операторы упаковочной линии: блистерную машину моют они.
 id: sop.cleaning
 name: { ru: Уборка помещений и оборудования, en: Cleaning of rooms and equipment }
 doc: { code: SOP-0015, rev: 1, from: 2026-01-19, approved: role.production-head }
-roles: [role.operator]
+roles: [role.operator, role.line-operator]
 for: { tasks: [clean] }
 hours: 2
 every: 12

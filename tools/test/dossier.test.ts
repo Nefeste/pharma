@@ -145,7 +145,7 @@ describe('масса по стадиям и запись упаковки — п
   );
   const packed = first(s);
   const done = dossierView(db, s, { view: 'dossier', batch: num(packed.id) });
-  // следующее упакованное задание: линию очищают между сериями — перед ним очистка и проверка мастера
+  // следующее упакованное задание: перед ним, как и перед первым, — очистка и проверка мастера
   const cleared = () => Object.values(s.batches).find(b => b.id !== packed.id && b.pack?.state === 'done' && b.pack.clear?.check !== undefined);
   until(s, () => !!cleared(), 10 * MIN, undefined, 30 * 24 * HOUR);
   const next = cleared()!;
@@ -195,19 +195,19 @@ describe('масса по стадиям и запись упаковки — п
     expect(ICON_OF.pick).toBe('move');
   });
 
-  test('упаковка: люди линии — в записи задания; очистка и кто её проверил — у задания после прошлой серии', () => {
+  test('упаковка: люди линии — в записи задания; очистка и кто её проверил — у каждого задания, первого тоже (Б1е)', () => {
     const job = packed.pack!;
     expect(job.people!.length).toBeGreaterThanOrEqual(4);
     expect(job.issued!.length).toBeGreaterThan(0);
-    // первое задание: линия с начала игры не упаковывала — очищать нечего
-    expect(job.clear).toBeUndefined();
-    const c = next.pack!.clear!;
-    expect(c.by.length).toBe(2);
-    for (const id of c.by) expect(s.people[id]?.role ?? s.former[id]?.role).toBe('role.packer');
-    expect(s.people[c.check!]?.role ?? s.former[c.check!]?.role).toBe('role.master');
-    expect(c.from).toBeLessThan(c.to);
-    expect(c.at!).toBeGreaterThanOrEqual(c.to);
-    expect(c.at!).toBeLessThanOrEqual(next.pack!.start!);
+    for (const b of [packed, next]) {
+      const c = b.pack!.clear!;
+      expect(c.by.length).toBe(2);
+      for (const id of c.by) expect(s.people[id]?.role ?? s.former[id]?.role).toBe('role.packer');
+      expect(s.people[c.check!]?.role ?? s.former[c.check!]?.role).toBe('role.master');
+      expect(c.from).toBeLessThan(c.to);
+      expect(c.at!).toBeGreaterThanOrEqual(c.to);
+      expect(c.at!).toBeLessThanOrEqual(b.pack!.start!);
+    }
     expect(next.pack!.people!.length).toBeGreaterThanOrEqual(4);
   });
 
@@ -242,8 +242,9 @@ describe('масса по стадиям и запись упаковки — п
     const p = done.pack!;
     expect(p.state).toBe('done');
     expect(p.people!.length).toBeGreaterThanOrEqual(4);
-    expect(p.clear).toBeUndefined();
-    expect(p.clearNone).toBe(true);
+    // очистка линии — перед каждым заданием, первым тоже (Б1е): кто очищал и кто проверил
+    expect(p.clear!.check).toBeDefined();
+    expect(p.clearNone).toBeUndefined();
     expect(nextView.pack!.clear!.check).toBeDefined();
     expect(nextView.pack!.clearNone).toBeUndefined();
     expect(p.result!.good + p.result!.scrap + p.result!.remainder).toBe(p.tablets);

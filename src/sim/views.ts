@@ -11,11 +11,12 @@ import { salaryOf } from '../engine/cash';
 import { dismissTerms, laborOf } from '../engine/hire';
 import { momentOf } from '../engine/core/calendar';
 import { partType, wearAt } from '../engine/maint';
+import { CLEAN_HOLD, DIRTY_HOLD } from '../engine/mes';
 import { planOf } from '../engine/plant';
 import { pendingOf } from '../engine/shifts';
 import { shiftEnd } from '../engine/staff';
 import { TAG } from '../engine/stock';
-import type { AssetRec, KitLine, Lot, LotStatus, MachineState, Person, PlantState, Quit, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
+import type { AssetRec, KitLine, Lot, LotStatus, MachineState, Person, PlantState, Quit, Room, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
 import { type DevCard, devCard, type Regimes, regimesAt, type ReleaseView, releaseOf } from './devs';
 import { type DossierQuery, type DossierView, dossierView, type Inside, insideOf, type LineMaterial, lineMaterials } from './dossier';
 import { type SaView, type SheetView, saOf, sheetOf } from './hours';
@@ -110,6 +111,8 @@ export type Why =
   | { k: 'tests'; done: number; all: number }
   | { k: 'decided'; status: 'released' | 'rejected'; t?: number }
   | { k: 'batch'; code: string }
+  /** задание на линии ждёт уборки её помещения (Б1е) */
+  | { k: 'room'; code: string }
   | { k: 'start' };
 
 /**
@@ -162,12 +165,19 @@ export interface LotInfo {
 }
 
 /**
+ * Чистота помещения (Б1е; геймдизайн, §5.5). Чисто — для какого продукта (после генеральной уборки — для любого) и до
+ * какого часа годно; грязно — после какого продукта и какая уборка нужна: малой хватит, если начать до `until`. Учёт
+ * помещения — знание завода.
+ */
+export type RoomClean = { k: 'clean'; product?: Id; until: number; expired?: true } | { k: 'dirty'; product?: Id; major: boolean; until?: number };
+
+/**
  * Карточка вещи. У паллеты ГП своей серии, ещё не решённой, — решение по серии (Б1г); у помещения и оборудования —
  * режимы стадии (Б1г); отклонение — своя карточка (`DevCard`).
  */
 export type CardData =
   | { kind: 'unit'; unit: number; tag: Tag; containers: number; holds?: Holds; where: PlaceRef; lot?: LotInfo; release?: ReleaseView; why: Why[]; history: Hist[] }
-  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; batch?: string; bn?: number; recipe?: Id; stage?: string; inside?: Inside; regimes?: Regimes; why: Why[] }
+  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; clean?: RoomClean; batch?: string; bn?: number; recipe?: Id; stage?: string; inside?: Inside; regimes?: Regimes; why: Why[] }
   | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; bn?: number; recipe?: Id; inside?: Inside; parts: PartInfo[]; asset?: AssetInfo; regimes?: Regimes; why: Why[]; history: Hist[] }
   | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; bn?: number; sku?: Id; materials?: LineMaterial[]; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[] }
   /** человек (Б3б): табельный номер, навык, допуск сегодня, обучение по матрице его роли, что изучает сейчас; табель месяца (Б4а) */
@@ -329,6 +339,16 @@ export function stockView(db: ContentDb, s: PlantState, q: StockQuery): StockVie
   const pages = Math.max(1, Math.ceil(rows.length / PAGE));
   const page = Math.min(Math.max(0, q.page), pages - 1);
   return { view: 'stock', rows: rows.slice(page * PAGE, (page + 1) * PAGE), total: rows.length, page, pages };
+}
+
+/** Чистота свободного помещения — по правилу движка (`readyFor`, `ensureCleaning`): сроки 72 и 24 часа. */
+function cleanOf(s: PlantState, r: Room): RoomClean | undefined {
+  if (r.batch) return undefined;
+  if (r.status === 'clean') return { k: 'clean', ...(r.cleanFor ? { product: r.cleanFor } : {}), until: r.since + CLEAN_HOLD, ...(s.t - r.since > CLEAN_HOLD ? { expired: true as const } : {}) };
+  if (r.status !== 'dirty') return undefined;
+  // грязным дольше суток — генеральная; начатая мойка своё уже решила
+  const major = r.major === true || (!r.washed && s.t - r.since > DIRTY_HOLD);
+  return { k: 'dirty', ...(r.product ? { product: r.product } : {}), major, ...(!major && !r.washed ? { until: r.since + DIRTY_HOLD } : {}) };
 }
 
 /** Задача вещи: идёт или ждёт и чего — как её видит завод (1ж); ждёт актив — какой (Б3в). */
@@ -495,9 +515,10 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       const r = def ? s.rooms[def.id] : undefined;
       if (!def || !r) return { kind: 'gone' };
       const b = r.batch ? s.batches[r.batch] : undefined;
-      const clean = Object.values(s.tasks).filter(t => t.kind === 'clean' && t.room === def.id);
+      const clean = Object.values(s.tasks).filter(t => (t.kind === 'clean' || t.kind === 'roomClean') && t.room === def.id);
       const regimes = regimesAt(db, s, def.id);
       const inside = insideOf(db, s, def.id);
+      const tidy = cleanOf(s, r);
       return {
         kind: 'room',
         room: thing.i,
@@ -505,6 +526,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         grade: def.grade,
         status: r.status,
         since: r.since,
+        ...(tidy ? { clean: tidy } : {}),
         ...(b ? { batch: batchNo(b.code), bn: num(b.id), recipe: b.recipe } : {}),
         ...(b && r.status === 'busy' ? { stage: db.recipes[b.recipe].stages[b.stage]?.id } : {}),
         ...(inside ? { inside } : {}),
@@ -543,6 +565,9 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       if (!ln || !line || !def || !mc) return { kind: 'gone' };
       const b = line.batch ? s.batches[line.batch] : undefined;
       const repairs = Object.values(s.tasks).filter(t => t.kind === 'repair' && Object.values(s.parts).some(p => p.machine === def.id && p.task === t.id));
+      // уборка помещения линии (Б1е): пока она идёт, линию под задание не очищают
+      const cleans = Object.values(s.tasks).filter(t => (t.kind === 'clean' || t.kind === 'roomClean') && t.room === ln.room);
+      const held: Why[] = b?.pack && b.pack.state !== 'running' && cleans.length > 0 ? [{ k: 'room', code: batchNo(b.code) }] : [];
       const mats = lineMaterials(db, s, ln.id, thing.k);
       return {
         kind: 'machine',
@@ -555,7 +580,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(mats && mats.materials.length > 0 ? { materials: mats.materials } : {}),
         parts: partsOfMachine(db, s, def.id),
         ...(s.assets[def.id] ? { asset: assetInfo(db, s, def.id)! } : {}),
-        why: [...repairs.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.asset === def.id)],
+        why: [...repairs.map(t => taskWhy(db, s, t)), ...held, ...cleans.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.asset === def.id)],
         history: maintHistory(s, def.id),
       };
     }

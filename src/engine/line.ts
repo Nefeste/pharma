@@ -18,7 +18,7 @@ import { P_ONE } from './core/rng';
 import { changedOver, defect, lineDay, NO_TIMES } from './lean';
 import { coversOn } from './leave';
 import { blocked, consume, failPart, partsOf, partType, pending, untilFail, wearAt } from './maint';
-import { deviate, returnTask } from './mes';
+import { deviate, leaveRoom, returnTask, roomFor } from './mes';
 import { type PlantPlan, planOf, type Point } from './plant';
 import { expo, roll } from './random';
 import { shiftEnd } from './staff';
@@ -105,13 +105,13 @@ const cartonsAt = (g: Geo, pos: number) => Math.floor(good(blistersAt(g, pos), g
 const goodCartonsAt = (g: Geo, pos: number) => good(cartonsAt(g, pos), g.rej[1]);
 const posForGood = (g: Geo, n: number) => need(need(n, g.rej[1]) * g.sku.blisters, g.rej[0]) * g.unit[0] * SIXTY;
 
-/** Линии по плану: свободны, не налажены, чисты. */
+/** Линии по плану: свободны, не налажены, не очищены — очистка перед каждым заданием, первым тоже (Б1е; п. 5.50). */
 export function newLines(db: ContentDb, plantId: string, t: number): Record<string, Line> {
   const out: Record<string, Line> = {};
   for (const l of planOf(db, plantId).plant.lines) {
     out[l.id] = {
       id: l.id,
-      clear: true,
+      clear: false,
       machines: l.machines.map(m => ({ id: m.id, type: m.type, pos: 0, rate: 0, state: 'idle', next: 0, times: { ...NO_TIMES } })),
       cases: 0,
       t,
@@ -125,6 +125,19 @@ export function newLines(db: ContentDb, plantId: string, t: number): Record<stri
 }
 
 const tasksOf = (s: PlantState, line: Line, kind: Task['kind']) => Object.values(s.tasks).filter(t => t.kind === kind && t.line === line.id);
+
+/** Помещение линии по плану. */
+const roomOfLine = (db: ContentDb, s: PlantState, line: Line) => planOf(db, s.plant).plant.lines.find(l => l.id === line.id)!.room;
+
+/**
+ * Помещение линии — чистое для продукта задания (Б1е; геймдизайн, §5.5): иначе уборка — по правилу помещений
+ * производства, а линию после неё очищают снова.
+ */
+function roomReady(db: ContentDb, s: PlantState, line: Line, b: Batch): boolean {
+  if (roomFor(db, s, s.rooms[roomOfLine(db, s, line)], b.product, b.id)) return true;
+  line.clear = false;
+  return false;
+}
 
 /** Роли смены у линии: у каждой — сколько людей и какие машины. */
 function crews(db: ContentDb, line: Line): { role: Id; n: number; machines: number[] }[] {
@@ -530,8 +543,10 @@ export function lineHour(db: ContentDb, s: PlantState, notices: Notice[]) {
 // ---------------------------------------------------------------- задание на линии
 
 /**
- * Шаг линий: свободная берёт следующее задание с зарезервированными материалами; налаживается на формат позиции,
- * очищается, получает балк; когда комплект и балк у линии — смена встаёт к линии. Зовётся после каждого события.
+ * Шаг линий: свободная берёт следующее задание с зарезервированными материалами; помещение не чисто для его
+ * продукта — уборка, и переналадка на формат позиции идёт вместе с ней (Б1е); в чистом помещении линию очищают, потом
+ * она получает балк; когда комплект и балк у линии — смена встаёт к линии. Чистота помещения истекла, пока задание
+ * ждёт, — уборка и очистка снова. Зовётся после каждого события.
  */
 export function lineStep(db: ContentDb, s: PlantState, notices: Notice[]) {
   // задания на упаковку линии: сколько годных пачек ждать из всех таблеток при браке камер — для сменного задания (1ж)
@@ -554,6 +569,9 @@ export function lineStep(db: ContentDb, s: PlantState, notices: Notice[]) {
     if (job.state === 'running') continue;
     const sku = db.skus[job.sku];
     const g = geo(db, s, line, job.sku);
+    // помещение — в уборку, если оно не чисто для продукта задания (Б1е): переналадка идёт вместе с уборкой, очистка
+    // линии и балк — после неё
+    const ready = roomReady(db, s, line, b);
     // переналадка на формат позиции, потом очистка линии и проверка мастера, потом балк к линии
     if (line.format !== sku.format) {
       if (tasksOf(s, line, 'changeover').length === 0) {
@@ -562,6 +580,7 @@ export function lineStep(db: ContentDb, s: PlantState, notices: Notice[]) {
       }
       continue;
     }
+    if (!ready) continue;
     if (!line.clear) {
       if (tasksOf(s, line, 'clearance').length === 0 && tasksOf(s, line, 'clearCheck').length === 0) {
         addTask(s, { kind: 'clearance', roles: [...LINE.cleaners], count: 2, from: { kind: 'point', ...g.at }, work: CLEAR_WORK, prio: LINE_PRIO.clearance, batch: b.id, line: line.id });
@@ -569,7 +588,7 @@ export function lineStep(db: ContentDb, s: PlantState, notices: Notice[]) {
       continue;
     }
     const plan = planOf(db, s.plant);
-    const room = plan.plant.lines.find(l => l.id === line.id)!.room;
+    const room = roomOfLine(db, s, line);
     const bulk = [...new Set((containersByLot(s).get(b.bulk!) ?? []).map(c => c.unit))].map(id => s.units[id]);
     for (const u of bulk) {
       if ((u.where.kind === 'room' && u.where.id === room) || Object.values(s.tasks).some(t => t.unit === u.id)) continue;
@@ -593,6 +612,10 @@ function startRun(db: ContentDb, s: PlantState, line: Line, b: Batch, g: Geo) {
   const job = b.pack!;
   job.state = 'running';
   job.start = s.t;
+  // задание занимает помещение линии до конца (Б1е)
+  const room = s.rooms[roomOfLine(db, s, line)];
+  room.status = 'busy';
+  room.batch = b.id;
   const lot = emptyLot(s, { material: g.sku.fg, vendorLot: batchNo(b.code), batch: b.id, expiry: 0, truth: { ...b.truth } });
   lot.expiry = fgExpiry(prodDay(db, s, b), prodDay(db, s, b), db.materials[g.sku.fg].shelf);
   job.fg = lot.id;
@@ -679,6 +702,8 @@ function finish(db: ContentDb, s: PlantState, line: Line, g: Geo, b: Batch, noti
   b.status = 'fg';
   delete line.batch;
   line.clear = false;
+  // помещение линии — грязное после серии, уборка сразу, как в помещениях производства (Б1е)
+  leaveRoom(db, s, roomOfLine(db, s, line), b.product);
   line.packs += goodCartons;
   line.made = 0;
   for (const t of tasksOf(s, line, 'crew')) {

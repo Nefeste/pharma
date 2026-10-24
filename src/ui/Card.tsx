@@ -12,7 +12,7 @@ import type { Admission, DocNow } from '../sim/people';
 import type { AssetInfo } from '../sim/places';
 import { firstOf } from '../app/firsts';
 import type { Inside, LineMaterial } from '../sim/dossier';
-import type { CardView, Hist, Holds, Why } from '../sim/views';
+import type { CardView, Hist, Holds, RoomClean, Why } from '../sim/views';
 import { assetName, untilText, unfitText, workName } from './assets';
 import { db, docText } from './db';
 import { DevBody, First, RegimesBlock, ReleaseBlock } from './Decide';
@@ -206,6 +206,8 @@ function whyText(w: Why, start: Ymd): string {
       return w.status === 'released' ? T.why.released(when(start, w.t)) : T.why.rejected(when(start, w.t));
     case 'batch':
       return T.why.batch(w.code);
+    case 'room':
+      return T.why.room(w.code);
     case 'start':
       return T.why.start;
   }
@@ -342,6 +344,25 @@ function DossierButton({ n, actions }: { n: number | undefined; actions: Actions
     <button type="button" onClick={() => actions.openDossier(n)} title={T.dossier.hint} data-test="card-dossier">
       {T.dossier.button}
     </button>
+  );
+}
+
+/** Чистота помещения (Б1е): чисто — для какого продукта и до какого часа годно; грязно — после чего и какая уборка нужна. */
+function RoomCleanRows({ x, start }: { x: RoomClean; start: Ymd }) {
+  const product = x.product ? named(db?.products[x.product]?.name, x.product) : undefined;
+  return x.k === 'clean' ? (
+    <>
+      <Row k={T.card.cleanFor}>{product ?? T.card.anyProduct}</Row>
+      <Row k={T.card.cleanUntil}>
+        <span data-test="card-clean-until">{whenText(start, x.until)}</span>
+        {x.expired ? <span className="muted"> · {T.card.cleanExpired}</span> : null}
+      </Row>
+    </>
+  ) : (
+    <>
+      {product ? <Row k={T.card.product}>{product}</Row> : null}
+      <Row k={T.card.cleaning}>{x.major ? T.card.majorClean : x.until !== undefined ? T.card.minorUntil(whenText(start, x.until)) : T.card.minorClean}</Row>
+    </>
   );
 }
 
@@ -498,6 +519,7 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
             <Row k={T.card.state}>
               {T.room.status[c.status]} <span className="muted">{T.card.since(whenText(start, c.since))}</span>
             </Row>
+            {c.clean ? <RoomCleanRows x={c.clean} start={start} /> : null}
             {c.batch ? (
               <Row k={T.card.batch}>
                 {c.batch}

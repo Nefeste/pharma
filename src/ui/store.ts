@@ -10,6 +10,7 @@ import type { Change } from '../engine/plan/schedule';
 import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
+import type { DossierView } from '../sim/dossier';
 import type { InvView } from '../sim/inv';
 import type { ChartView, LabView } from '../sim/lab';
 import type { BatchLabel, GanttView, GhostView } from '../sim/plan';
@@ -90,6 +91,8 @@ export interface Hud {
   plan: PlanRun;
   /** доска расследования (часть 4б): открыта ли, какое расследование выбрано (нет — последнее открытое), вид */
   inv: { open: boolean; id?: string; view?: InvView };
+  /** досье серии (Б1д): открыто ли, какая серия — номер `B<n>`, вид; окно — поверх остальных */
+  dossier: { open: boolean; batch?: number; view?: DossierView };
   /** экран «Кем вы будете» (3е): открыт ли, что отмечено */
   seats: { open: boolean; pick: SeatId[] };
   /** справочник завода (этап Б, Б1а): открыт ли, вкладка, вид */
@@ -168,6 +171,7 @@ export const initial: Hud = {
   gantt: { open: false, days: 3, draft: [], urgent: [] },
   plan: NO_RUN,
   inv: { open: false },
+  dossier: { open: false },
   seats: { open: false, pick: [] },
   ref: { open: false, tab: 'recipes' },
   flows: false,
@@ -257,6 +261,9 @@ export interface Actions {
    */
   toggleInv(): void;
   openInv(id: string): void;
+  /** досье серии `B<n>` — поверх остальных окон; закрыть */
+  openDossier(batch: number): void;
+  closeDossier(): void;
   /** справочник завода: открыть или закрыть (F1), вкладка */
   toggleRef(): void;
   setRefTab(tab: RefTab): void;

@@ -41,7 +41,7 @@ export interface DevCard {
   what: Deviation['kind'];
   opened: number;
   status: Deviation['status'];
-  batch?: { code: string; status: BatchStatus; held: boolean; unit?: number };
+  batch?: { code: string; n: number; status: BatchStatus; held: boolean; unit?: number };
   lot?: { code: [number, number, number]; material: Id; status: LotStatus };
   recipe?: Id;
   stage?: string;
@@ -89,7 +89,7 @@ export function devCard(db: ContentDb, s: PlantState, n: number): DevCard | unde
   };
   if (b) {
     const unit = fgUnit(s, b);
-    out.batch = { code: batchNo(b.code), status: b.status, held: !!b.held, ...(unit !== undefined ? { unit } : {}) };
+    out.batch = { code: batchNo(b.code), n: num(b.id), status: b.status, held: !!b.held, ...(unit !== undefined ? { unit } : {}) };
     out.recipe = b.recipe;
   }
   if (lot) out.lot = { code: [lot.code.y, lot.code.m, lot.code.n], material: lot.material, status: lot.status };

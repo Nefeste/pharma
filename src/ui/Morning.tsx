@@ -416,12 +416,20 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                     {T.morning.pendingDev(T.morning.devKinds[x.kind], T.dev.no(x.dev), x.batch ?? '', dayText(momentOf(start, x.due).day))}
                     {x.assessing ? <span className="muted"> · {T.morning.assessing}</span> : null}
                     {x.assessing ? null : <Levers list={devLevers(x)} hud={hud} actions={actions} close={close} />}
+                    {x.bn !== undefined ? (
+                      <button type="button" onClick={() => actions.openDossier(x.bn!)} title={T.dossier.hint} data-test="morning-dossier">
+                        {T.dossier.button}
+                      </button>
+                    ) : null}
                   </li>
                 )),
                 ...v.held.map(x => (
                   <li key={`h${x.code}`} className="warn" data-test="morning-held">
                     {T.morning.heldRow(x.code)}
                     <Levers list={heldLevers(x)} hud={hud} actions={actions} close={close} />
+                    <button type="button" onClick={() => actions.openDossier(x.bn)} title={T.dossier.hint} data-test="morning-dossier">
+                      {T.dossier.button}
+                    </button>
                   </li>
                 )),
               ]}

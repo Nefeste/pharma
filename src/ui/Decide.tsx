@@ -91,7 +91,10 @@ export function DevBody({ c, start, hud, actions }: { c: DevCard; start: Ymd; hu
         {c.batch ? (
           <Row k={T.card.batch}>
             <span data-test="dev-batch">{c.batch.code}</span>
-            {c.batch.held ? <span className="warn"> · {T.dev.held}</span> : null}
+            {c.batch.held ? <span className="warn"> · {T.dev.held}</span> : null}{' '}
+            <button type="button" onClick={() => actions.openDossier(c.batch!.n)} title={T.dossier.hint} data-test="dev-dossier">
+              {T.dossier.button}
+            </button>
           </Row>
         ) : null}
         {c.lot ? (

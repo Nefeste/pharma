@@ -7,7 +7,7 @@ import { db } from '../../src/content';
 import type { Attr, ContentDb, Recipe } from '../../src/content/types';
 import { momentOf } from '../../src/engine/core/calendar';
 import { apply } from '../../src/engine/engine';
-import { nominal } from '../../src/engine/mes';
+import { nominal, stageMass } from '../../src/engine/mes';
 import { fromSave } from '../../src/engine/save';
 import type { PlantState } from '../../src/engine/types';
 import { ru } from '../../src/i18n/ru';
@@ -103,7 +103,9 @@ const ALLOWED = new Set(
     // осталось; у части — заместитель, кто ещё годится, извещён ли, отпускные, началась, кончилась, что мешает; смежные
     // профессии — записи завода; числа закона и правило черновика — профиль и сценарий
     'leave years draft approve miss earned used left deputy can told paid started ended problems right also law part ' +
-    'notice pay rule cover'
+    'notice pay rule cover ' +
+    // Б1д: стадия загрузки строки состава и что загружают на стадии — по карте
+    'stage load'
   ).split(' '),
 );
 
@@ -124,11 +126,11 @@ describe('справочник: только то, что завод знает'
 
 describe('справочник: как должно быть и как есть', () => {
 
-  test('по карте — длительность стадии движка и прогона расписания, на размер серии', () => {
+  test('по карте — длительность стадии движка и прогона расписания, на размер серии: на входе стадии — без того, что загрузят дальше', () => {
     for (const r of v.recipes) {
       const rec = db.recipes[r.id];
       expect(r.stages.map(x => x.id)).toEqual(rec.stages.map(x => x.id));
-      for (const [i, st] of r.stages.entries()) expect(st.nominal).toBe(nominal(db, r.id, rec.stages[i], rec.batch.mass));
+      for (const [i, st] of r.stages.entries()) expect(st.nominal).toBe(nominal(db, r.id, rec.stages[i], stageMass(db, { recipe: r.id, mass: 0, dispensed: [] }, i)));
       expect(r.stages.filter(x => x.mix).map(x => x.id)).toEqual(rec.stages.filter(x => x.mix).map(x => x.id));
     }
   });

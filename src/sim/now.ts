@@ -10,7 +10,7 @@ import { momentOf } from '../engine/core/calendar';
 import { coversOn } from '../engine/leave';
 import { geo, SIXTY } from '../engine/line';
 import { partType } from '../engine/maint';
-import { nominal, roomWork, washWork } from '../engine/mes';
+import { nominal, roomWork, stageMass, washWork } from '../engine/mes';
 import { classOf } from '../engine/places';
 import { planOf } from '../engine/plant';
 import { scheduleOn } from '../engine/shifts';
@@ -36,9 +36,12 @@ export interface NowRow {
    */
   kind: TaskKind | 'pack' | 'test' | 'truck' | 'visit' | 'audit';
   batch?: string;
+  /** номер серии `B<n>` — к её досье (Б1д) */
+  bn?: number;
   stage?: string;
-  /** партия: год, месяц, номер — как в карточке */
+  /** партия: год, месяц, номер — как в карточке; у работ комплекта (Б1д) — и её материал: что везут или выносят */
   lot?: [number, number, number];
+  material?: Id;
   method?: Id;
   /** испытание: подготовка, прибор работает, проверка результата */
   phase?: 'prep' | 'run' | 'review';
@@ -133,6 +136,20 @@ function overSince(s: PlantState, people: readonly string[]): number | undefined
 }
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
 
+/** Работы комплекта: к шлюзу, перекладка, возврат остатка. */
+const KIT_TRIPS = new Set<TaskKind>(['pick', 'transfer', 'return']);
+
+/**
+ * Что везут или выносят в работе комплекта (Б1д): материал и партия первой тары на паллете — у возврата это та партия,
+ * чей остаток выносят этой ходкой (mes.ts, `return`).
+ */
+export function kitItem(s: PlantState, t: Task): { material: Id; lot: [number, number, number] } | undefined {
+  if (!KIT_TRIPS.has(t.kind) || !t.unit) return undefined;
+  const c = s.containers[s.units[t.unit]?.items[0] ?? ''];
+  const lot = c ? s.lots[c.lot] : undefined;
+  return lot ? { material: lot.material, lot: codeOf(lot.code) } : undefined;
+}
+
 export function nowView(db: ContentDb, s: PlantState): NowView {
   const plan = planOf(db, s.plant);
   const roomIx = (id: string) => plan.plant.rooms.findIndex(r => r.id === id);
@@ -156,7 +173,10 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
     if (FOLDED.has(t.kind)) continue;
     const row: NowRow = { key: t.id, dept: DEPT[t.kind] ?? 'wms', kind: t.kind, people: peopleOf(t.people, t.roles), from: startOf(t) };
     const b = t.batch ? s.batches[t.batch] : undefined;
-    if (b) row.batch = batchNo(b.code);
+    if (b) {
+      row.batch = batchNo(b.code);
+      row.bn = num(b.id);
+    }
     const lot = t.lot ? s.lots[t.lot] : undefined;
     if (lot) row.lot = codeOf(lot.code);
     if (t.kind === 'stage' && b) {
@@ -164,7 +184,7 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
       row.stage = st.id;
       // после отказа стадия идёт дальше с того же начала; по карте — на массу серии
       row.from = b.run?.start ?? row.from;
-      row.norm = nominal(db, b.recipe, st, b.mass);
+      row.norm = nominal(db, b.recipe, st, stageMass(db, b, b.stage));
       if (b.room) {
         row.room = roomType(b.room);
         row.thing = { kind: 'room', i: roomIx(b.room) };
@@ -215,6 +235,11 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
     } else {
       // норма задачи — время работы на месте; дорога до места — нет
       if (t.work > 0) row.norm = t.work;
+      const item = kitItem(s, t);
+      if (item) {
+        row.lot = item.lot;
+        row.material = item.material;
+      }
       if (t.unit && s.units[t.unit]) row.thing = { kind: 'unit', n: num(t.unit) };
       else if (t.people[0]) row.thing = { kind: 'person', n: num(t.people[0]) };
       if (t.line) row.line = plan.plant.lines.findIndex(l => l.id === t.line) + 1;
@@ -240,6 +265,7 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
       dept: 'line',
       kind: 'pack',
       batch: batchNo(b.code),
+      bn: num(b.id),
       sku: job.sku,
       line: li + 1,
       people: peopleOf([...new Set(crew)], [...new Set(crewTasks.flatMap(t => t.roles))]),

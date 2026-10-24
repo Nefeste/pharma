@@ -202,7 +202,7 @@
     .nowp { width: min(560px, calc(100% - 16px)); }
     .nsec .msec { margin-top: 4px; }
     ul.nlist { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
-    ul.nlist li { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+    ul.nlist li { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
     ul.nlist li.on { background: rgba(47,181,201,.12); }
     button.nmain { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; background: none; border: none; padding: 2px 4px; text-align: left; color: var(--text); cursor: pointer; min-width: 0; }
     button.nmain:hover .ntitle { text-decoration: underline; text-decoration-color: var(--accent); }
@@ -230,6 +230,19 @@
     .ref { position: absolute; left: 8px; right: 8px; top: calc(var(--top-h, 48px) + 8px); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 4px; }
     .ref .phead .filters { margin-left: 12px; }
     /* шапка большого окна — название и ✕ — всегда наверху, когда окно прокручено (0.0.37), как подвал планёрки */
+    /* досье серии (Б1д): поверх остальных окон и карточки */
+    .dossier { position: absolute; left: 50%; top: calc(var(--top-h, 48px) + 8px); transform: translateX(-50%); width: min(1100px, calc(100% - 16px)); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 6px; z-index: 7; background: rgba(22, 30, 34, 0.98); box-shadow: 0 6px 30px rgba(0,0,0,.5); }
+    .dossier > .phead { position: sticky; top: -8px; z-index: 1; margin: -8px -12px 0; padding: 8px 12px 4px; background: rgba(22, 30, 34, 0.98); border-bottom: 1px solid var(--line); }
+    .dossier .dhead { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 4px 0; }
+    .dossier .dhead dt { color: var(--muted); }
+    .dossier .dhead dd { margin: 0; }
+    .dossier .dsec { display: flex; flex-direction: column; gap: 3px; }
+    .dossier .dtab { border-collapse: collapse; width: 100%; font-size: 12px; }
+    .dossier .dtab th { text-align: left; color: var(--muted); font-weight: normal; border-bottom: 1px solid var(--line); padding: 2px 6px; }
+    .dossier .dtab td { padding: 2px 6px; vertical-align: top; }
+    .dossier .dtab .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .dossier .dstages { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+    .dossier .dstage.s-plan { opacity: 0.75; }
     .inv > .phead, .ref > .phead { position: sticky; top: -8px; z-index: 1; margin: -8px -12px 0; padding: 8px 12px 4px; background: rgba(22, 30, 34, 0.98); border-bottom: 1px solid var(--line); }
     /* ограда панели (src/ui/Guard.tsx): на месте упавшей панели — ошибка и «Закрыть» */
     .guard { position: absolute; left: 50%; top: calc(var(--top-h, 48px) + 8px); transform: translateX(-50%); max-width: min(720px, calc(100% - 16px)); z-index: 6; display: flex; align-items: center; gap: 10px; padding: 8px 12px; }

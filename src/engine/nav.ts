@@ -37,15 +37,26 @@ export interface Nav {
   /** можно пройти человеку; проехать технике */
   walk: Uint8Array;
   drive: Uint8Array;
-  /** клетки доступа точек, которые план знает заранее: места паллет (стеллаж — проход с его стороны) — «x,z» → клетка */
-  known: Map<string, number>;
+  /** клетки доступа точек, которые план знает заранее: места паллет (стеллаж — проход с его стороны) — `pointKey` → клетка */
+  known: Map<number | string, number>;
   /** найденные клетки доступа прочих точек */
-  access: Record<Mover, Map<string, number>>;
+  access: Record<Mover, Map<number | string, number>>;
   /** поля расстояний до клетки, шаги; −1 — не дойти */
   fields: Record<Mover, Map<number, Int32Array>>;
 }
 
 const key = (p: Point) => `${p.x},${p.z}`;
+
+/** Предел целых сантиметров числового ключа точки: план много меньше. */
+const KEY_CM = 2 ** 24;
+
+/**
+ * Ключ точки для кэшей клеток доступа: целые сантиметры (так стоят места, люди и техника) — числом, без строки на каждый
+ * путь; другая точка — строкой «x,z». Разные точки — разные ключи, одна точка — всегда один ключ.
+ */
+export function pointKey(p: Point): number | string {
+  return Number.isInteger(p.x) && Number.isInteger(p.z) && p.x >= 0 && p.z >= 0 && p.x < KEY_CM && p.z < KEY_CM ? p.x * KEY_CM + p.z : key(p);
+}
 
 /** Прямоугольник клеток [x0, z0, x1, z1] включительно из прямоугольника записи в см. */
 function cellsOf(r: readonly [number, number, number, number]): [number, number, number, number] {
@@ -150,7 +161,7 @@ function neighbours(nav: Nav, c: number, out: number[]) {
  * ширину, не сквозь стены; при равенстве — по порядку соседей. Нет такой — −1.
  */
 export function accessOf(nav: Nav, p: Point, mover: Mover): number {
-  const k = key(p);
+  const k = pointKey(p);
   const known = nav.known.get(k);
   const ok = mover === 'walk' ? nav.walk : nav.drive;
   if (known !== undefined && ok[known]) return known;

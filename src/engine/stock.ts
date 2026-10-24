@@ -3,7 +3,7 @@
 import type { ContentDb, Id } from '../content/types';
 import { momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
-import { dist, type Mover, type PlantPlan, type Point, type Slot } from './plant';
+import { dist, type Mover, type PlantPlan, type Point, type Slot, straight } from './plant';
 import { lotProps, type Props } from './quality';
 import type { Container, Lot, LotStatus, PlantState, Tag, Unit, Where } from './types';
 
@@ -246,13 +246,16 @@ export function findSlot(
   ok?: (sl: Slot) => boolean,
 ): Slot | undefined {
   let best: Slot | undefined;
-  let bestKey: [number, number, string] | undefined;
+  let bestD = 0;
   for (const sl of plan.byKind[kind] ?? []) {
-    if (sl.level > maxLevel || !slotFree(s, sl.id) || (ok && !ok(sl))) continue;
-    const key: [number, number, string] = [sl.level, dist(plan, sl, near, mover), sl.id];
-    if (!bestKey || key[0] < bestKey[0] || (key[0] === bestKey[0] && (key[1] < bestKey[1] || (key[1] === bestKey[1] && key[2] < bestKey[2])))) {
+    if (sl.level > maxLevel) continue;
+    // выше лучшего или на его ярусе, но дальше его уже по прямой, — не лучше: ни проверять, ни мерить путь
+    if (best && (sl.level > best.level || (sl.level === best.level && straight(sl, near) > bestD))) continue;
+    if (!slotFree(s, sl.id) || (ok && !ok(sl))) continue;
+    const d = dist(plan, sl, near, mover);
+    if (!best || sl.level < best.level || d < bestD || (d === bestD && sl.id < best.id)) {
       best = sl;
-      bestKey = key;
+      bestD = d;
     }
   }
   return best;

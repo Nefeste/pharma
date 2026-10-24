@@ -21,9 +21,9 @@ import { endTask, fits, startTask } from './hours';
 import { awayOn, coversOn } from './leave';
 import { moved, waitEnd, waitNote } from './lean';
 import { placesOf } from './places';
-import { dist, type PlantPlan, planOf, type Point, travel } from './plant';
+import { dist, type PlantPlan, planOf, type Point, straight, travel } from './plant';
 import { admitted, lacking, needOf, vehicleNeed } from './quals';
-import { canTake, goHome, here, LAST_CALL, shiftEnd, shiftEndAt, stopWalk, WALK } from './staff';
+import { goHome, here, LAST_CALL, shiftEnd, shiftEndAt, stopWalk, WALK } from './staff';
 import { findSlot, nextId } from './stock';
 import type { Instrument, Person, Place, PlantState, Task, TaskKind, Vehicle, WaitCause } from './types';
 
@@ -118,37 +118,139 @@ export function levelOf(plan: PlantPlan, p: Place | string | undefined): number 
 
 /**
  * Один проход раздатчика: план, день завода, люди и где они сейчас — у идущих на пост точка маршрута считается один раз.
- * Люди за проход не приходят и не уходят: их список один.
+ * Люди за проход не приходят и не уходят: их список один. За проход у людей меняется только занятость — у тех, кому
+ * досталась задача; поэтому кто берёт работу ролей, конец смены и кого из ролей нет из-за отпуска считаются один раз.
  */
 interface Pass {
   plan: PlantPlan;
   day: number;
   people: readonly Person[];
   where: (p: Person) => Point;
-  /** зоны хранения, которые не принимают новых паллет (Б3в): зона → её датчик */
-  closed: ReadonlyMap<string, string>;
+  /** зоны хранения, которые не принимают новых паллет (Б3в): зона → её датчик; `closedOf` */
+  closed?: ReadonlyMap<string, string>;
   /** кого замещают сегодня (Б4г): заместитель → роли ушедших в отпуск */
   cover: ReadonlyMap<string, readonly Id[]>;
+  /** люди ролей задачи — по набору ролей (`crewOf`) */
+  crews: Map<string, Crew>;
+  /** кто берёт работу ролей — по набору ролей, между проходами (`listsFor`) */
+  lists: Map<string, readonly Person[]>;
+  /** конец смены человека (`shiftEnd`); вне смены — `null` */
+  ends: Map<Person, number | null>;
+  vehicles?: readonly Vehicle[];
+  instruments?: readonly Instrument[];
+}
+
+/**
+ * Люди ролей задачи за проход: кто берёт их работу (`takes`), в порядке людей; есть ли среди них кто-то в смене и есть ли
+ * человек своей роли в отпуске, который сейчас был бы в смене (Б4г), — когда спросят.
+ */
+interface Crew {
+  roles: readonly Id[];
+  people: readonly Person[];
+  on?: boolean;
+  away?: boolean;
 }
 
 /** Берёт ли человек работу этих ролей: своей роли или роли того, кого сегодня замещает (Б4г). */
 function takes(x: Pass, p: Person, roles: readonly Id[]): boolean {
   if (roles.includes(p.role)) return true;
-  const c = x.cover.get(p.id);
+  const c = x.cover.size > 0 ? x.cover.get(p.id) : undefined;
   return !!c && c.some(r => roles.includes(r));
 }
 
+/** Люди ролей задачи (`Crew`): за проход — один раз на набор ролей; ключ набора — роли через `\0`, его нет в id. */
+function crewOf(x: Pass, roles: readonly Id[]): Crew {
+  const key = roles.length === 1 ? roles[0] : roles.join('\0');
+  let c = x.crews.get(key);
+  if (!c) {
+    let people = x.lists.get(key);
+    if (!people) x.lists.set(key, (people = x.people.filter(p => takes(x, p, roles))));
+    x.crews.set(key, (c = { roles, people }));
+  }
+  return c;
+}
+
 /**
- * Ближайший свободный человек ролей задачи, который может взять задачу сейчас, допущен ко всему из `need` и `more` и
- * подходит по `ok` (у него задача помещается в часы, Б4а); при равенстве — меньший номер. Никого, а `ok` кого-то
+ * Кто берёт работу ролей, между проходами: это зависит только от людей по порядку, их ролей и того, кого кто сегодня
+ * замещает, — пока они те же, списки те же. Проход сверяет их и берёт прежние списки или начинает новые (`listsFor`).
+ */
+interface Lists {
+  people: readonly Person[];
+  roles: readonly Id[];
+  cover: ReadonlyMap<string, readonly Id[]>;
+  lists: Map<string, readonly Person[]>;
+}
+
+const listsOf = new WeakMap<PlantState, Lists>();
+
+/** Списки людей ролей для прохода: прежние, если люди, роли и замещения те же, иначе — новые, пустые. */
+function listsFor(s: PlantState, people: readonly Person[], cover: ReadonlyMap<string, readonly Id[]>): Map<string, readonly Person[]> {
+  const was = listsOf.get(s);
+  if (was && samePeople(was, people) && sameCover(was.cover, cover)) return was.lists;
+  const now: Lists = { people, roles: people.map(p => p.role), cover, lists: new Map() };
+  listsOf.set(s, now);
+  return now.lists;
+}
+
+/** Те же люди в том же порядке и с теми же ролями. */
+function samePeople(was: Lists, people: readonly Person[]): boolean {
+  if (was.people.length !== people.length) return false;
+  for (let i = 0; i < people.length; i++) if (was.people[i] !== people[i] || was.roles[i] !== people[i].role) return false;
+  return true;
+}
+
+/** Те же заместители с теми же ролями ушедших. */
+function sameCover(a: ReadonlyMap<string, readonly Id[]>, b: ReadonlyMap<string, readonly Id[]>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [who, roles] of a) {
+    const other = b.get(who);
+    if (!other || other.length !== roles.length || roles.some((r, i) => other[i] !== r)) return false;
+  }
+  return true;
+}
+
+/** Есть ли в смене кто-то из людей ролей. */
+const anyOn = (db: ContentDb, s: PlantState, x: Pass, c: Crew) => (c.on ??= c.people.some(p => onShift(db, s, x, p)));
+
+/**
+ * Кто из людей работы может взять её сейчас: свободен и в смене, задача его не исключает, допущен ко всему из `need`, —
+ * один раз за задачу: до её начала занятость людей не меняется.
+ */
+function poolOf(db: ContentDb, s: PlantState, x: Pass, t: Task, crew: Crew, need: readonly string[]): Person[] {
+  const out: Person[] = [];
+  for (const p of crew.people) if (!t.not?.includes(p.id) && free(db, s, x, p) && admitted(db, p, need, x.day)) out.push(p);
+  return out;
+}
+
+/** Конец смены человека (`shiftEnd`) — один раз за проход. */
+function endOf(db: ContentDb, s: PlantState, x: Pass, p: Person): number | undefined {
+  const known = x.ends.get(p);
+  if (known !== undefined) return known ?? undefined;
+  const end = shiftEnd(db, s, p);
+  x.ends.set(p, end ?? null);
+  return end;
+}
+
+/** Человек в смене, и до её конца не меньше `LAST_CALL`. */
+const onShift = (db: ContentDb, s: PlantState, x: Pass, p: Person) => (endOf(db, s, x, p) ?? s.t) - s.t >= LAST_CALL;
+
+/** Может ли человек взять задачу сейчас (`canTake`): свободен и в смене. */
+const free = (db: ContentDb, s: PlantState, x: Pass, p: Person) => !p.task && onShift(db, s, x, p);
+
+/**
+ * Ближайший из тех, кто может взять задачу сейчас (`poolOf`), — кроме `skip`, допущенный ко всему из `more` и
+ * подходящий по `ok` (у него задача помещается в часы, Б4а); при равенстве — меньший номер. Никого, а `ok` кого-то
  * отклонил, — `miss.hours`: так задача ждёт «нет часов», а не людей, без второго поиска.
  */
-function nearestPerson(db: ContentDb, s: PlantState, x: Pass, t: Task, at: Point, need: readonly string[], skip: Set<string>, more: readonly string[] = [], ok?: (p: Person) => boolean, miss?: { hours: boolean }): Person | undefined {
+function nearestPerson(db: ContentDb, x: Pass, pool: readonly Person[], at: Point, skip: ReadonlySet<string>, more: readonly string[] = [], ok?: (p: Person) => boolean, miss?: { hours: boolean }): Person | undefined {
   let best: Person | undefined;
   let bestD = 0;
-  for (const p of x.people) {
-    if (skip.has(p.id) || !takes(x, p, t.roles) || t.not?.includes(p.id) || !canTake(db, s, p) || !admitted(db, p, need, x.day) || !admitted(db, p, more, x.day)) continue;
-    const d = dist(x.plan, x.where(p), at);
+  for (const p of pool) {
+    if (skip.has(p.id) || !admitted(db, p, more, x.day)) continue;
+    const w = x.where(p);
+    // дальше лучшего уже по прямой — не ближе и по плану (`straight`)
+    if (best && straight(w, at) > bestD) continue;
+    const d = dist(x.plan, w, at);
     if (!best || d < bestD || (d === bestD && idNum(p.id) < idNum(best.id))) {
       if (ok && !ok(p)) {
         if (miss) miss.hours = true;
@@ -170,7 +272,7 @@ function fitsAll(db: ContentDb, s: PlantState, x: Pass, t: Task, people: readonl
   const lead = timesOf(db, s, x.plan, t, pos, v, to, 0)[4] - s.t;
   const work = t.kind === 'crew' ? crewWork(db, s, people, s.t + lead) : t.work;
   const [nom, max] = t.norm ?? [work, work];
-  return people.every(p => fits(db, s, p, t.kind, shiftEnd(db, s, p)!, lead + nom, lead + max));
+  return people.every(p => fits(db, s, p, t.kind, endOf(db, s, x, p)!, lead + nom, lead + max));
 }
 
 /** Смена у линии — до конца смены того, у кого она кончается раньше; люди у линии с мгновения `at`. */
@@ -189,7 +291,9 @@ export function dispatch(db: ContentDb, s: PlantState) {
     return q;
   };
   const day = momentOf(s.start, s.t).day;
-  const x: Pass = { plan, day, people: Object.values(s.people), where, closed: closedStores(db, s, plan, day), cover: coversOn(s, day) };
+  const people = Object.values(s.people);
+  const cover = coversOn(s, day, people);
+  const x: Pass = { plan, day, people, where, cover, crews: new Map(), lists: listsFor(s, people, cover), ends: new Map() };
   for (const id of [...s.open]) {
     const t = s.tasks[id];
     const why = assign(db, s, x, t);
@@ -202,45 +306,49 @@ export function dispatch(db: ContentDb, s: PlantState) {
   }
 }
 
-/** Человек в смене, и до её конца не меньше `LAST_CALL`. */
-const onShift = (db: ContentDb, s: PlantState, p: Person) => (shiftEnd(db, s, p) ?? s.t) - s.t >= LAST_CALL;
-
 /**
  * Люди ролей задачи в смене есть, допущенных среди них не меньше, чем задаче нужно (или чем людей в смене), но они заняты,
  * — «люди»; в смене есть, но допущенных не хватает — «нет допуска» и документ, которого нет у первого недопущенного; в
  * смене их нет (или смена вот-вот кончится) — «смена», а если кто-то из них в отпуске и сейчас был бы в смене — «в
  * отпуске» (Б4г).
  */
-function crewWait(db: ContentDb, s: PlantState, x: Pass, t: Task, need: readonly string[]): WaitCause {
+function crewWait(db: ContentDb, s: PlantState, x: Pass, t: Task, crew: Crew, need: readonly string[]): WaitCause {
   let on = 0;
   let ok = 0;
   let lack: string | undefined;
-  for (const p of x.people) {
-    if (!takes(x, p, t.roles) || !onShift(db, s, p)) continue;
+  for (const p of crew.people) {
+    if (!onShift(db, s, x, p)) continue;
     on++;
     const miss = lacking(db, p, need, x.day);
     if (miss !== undefined) lack ??= miss;
     else if (++ok >= t.count) return 'people';
   }
-  if (on === 0) return x.people.some(p => t.roles.includes(p.role) && p.away && awayOn(p, x.day) && shiftEndAt(db, s, { ...p, away: undefined }, s.t) !== undefined) ? 'leave' : 'shift';
+  if (on === 0) return offWait(db, s, x, crew);
   // допущенных меньше, чем нужно задаче: «люди» — только если допущены все, кто в смене
   if (ok === on) return 'people';
   t.lack = lack;
   return 'qual';
 }
 
+/** Никого из людей ролей нет в смене: «в отпуске», если кто-то своей роли в отпуске и сейчас был бы в смене, иначе «смена». */
+function offWait(db: ContentDb, s: PlantState, x: Pass, c: Crew): WaitCause {
+  // люди своей роли — среди тех, кто берёт работу ролей
+  c.away ??= c.people.some(p => c.roles.includes(p.role) && p.away && awayOn(p, x.day) && shiftEndAt(db, s, { ...p, away: undefined }, s.t) !== undefined);
+  return c.away ? 'leave' : 'shift';
+}
+
 /**
  * Свободной технике не нашлось водителя: если люди работы есть и допущены к ней, но ни один из них в смене не допущен ни
- * к одной свободной технике, — «нет допуска» к технике.
+ * к одной свободной технике, — «нет допуска» к технике; техника — по порядку раздачи (`order`).
  */
-function driverWait(db: ContentDb, s: PlantState, x: Pass, t: Task, need: readonly string[], free: readonly Vehicle[]): WaitCause {
-  const why = crewWait(db, s, x, t, need);
+function driverWait(db: ContentDb, s: PlantState, x: Pass, t: Task, crew: Crew, need: readonly string[], order: () => readonly Vehicle[]): WaitCause {
+  const why = crewWait(db, s, x, t, crew, need);
   if (why !== 'people') return why;
   let lack: string | undefined;
-  for (const v of free) {
+  for (const v of order()) {
     const drive = vehicleNeed(db, v.type);
-    for (const p of x.people) {
-      if (!takes(x, p, t.roles) || !onShift(db, s, p) || !admitted(db, p, need, x.day)) continue;
+    for (const p of crew.people) {
+      if (!onShift(db, s, x, p) || !admitted(db, p, need, x.day)) continue;
       const miss = lacking(db, p, drive, x.day);
       if (miss === undefined) return 'people';
       lack ??= miss;
@@ -257,13 +365,31 @@ function closedStores(db: ContentDb, s: PlantState, plan: PlantPlan, day: number
   return out;
 }
 
+/** Закрытые зоны хранения прохода — когда задаче впервые понадобилось место. */
+const closedOf = (db: ContentDb, s: PlantState, x: Pass) => (x.closed ??= closedStores(db, s, x.plan, x.day));
+
+/** Никого не пропускать (`skip`). */
+const NONE: ReadonlySet<string> = new Set();
+
+/** Свободная техника видов задачи, которой по силам ярус груза. */
+function freeVehicles(db: ContentDb, s: PlantState, x: Pass, t: Task, fromLevel: number): Vehicle[] {
+  return (x.vehicles ??= Object.values(s.vehicles)).filter(v => !v.task && t.veh!.includes(v.type) && db.vehicles[v.type].levels >= fromLevel);
+}
+
+/** Техника по порядку раздачи: ближе к грузу — раньше, при равенстве — меньший номер; расстояние у каждой — один раз. */
+function nearestFirst(x: Pass, free: Vehicle[], from: Point): Vehicle[] {
+  if (free.length < 2) return free;
+  const d = new Map(free.map(v => [v, dist(x.plan, v, from, 'drive')] as const));
+  return free.sort((a, b) => d.get(a)! - d.get(b)! || idNum(a.id) - idNum(b.id));
+}
+
 /** Назначить задачу; не вышло — причина: прибор, техника, место назначения, люди, допуск, актив. */
 function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | undefined {
   const plan = x.plan;
   // обучение — только того, кто учится: ни техники, ни прибора, ни допуска; ждёт, пока он свободен и в смене
   if (t.kind === 'train') {
     const p = s.people[t.trainee!];
-    if (!p || !canTake(db, s, p)) return p && onShift(db, s, p) ? 'people' : 'shift';
+    if (!p || !free(db, s, x, p)) return p && onShift(db, s, x, p) ? 'people' : 'shift';
     if (!fitsAll(db, s, x, t, [p], undefined, undefined)) return 'hours';
     start(db, s, plan, t, [p], undefined, undefined, undefined);
     return undefined;
@@ -277,7 +403,7 @@ function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | und
   if (t.inst) {
     let held = false;
     let bad: string | undefined;
-    for (const i of Object.values(s.instruments)) {
+    for (const i of (x.instruments ??= Object.values(s.instruments))) {
       if (!t.inst.includes(i.type)) continue;
       if (unfit(db, s, i.id, x.day)) bad ??= i.id;
       else if (i.test) held = true;
@@ -292,21 +418,31 @@ function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | und
       return 'asset';
     }
   }
-  // место хранения (Б3в): зона принимает режим материала и открыта; не нашлось только из-за закрытой зоны — ждёт её датчик
-  const fit = t.toKind ? slotFit(db, s, x.plan, t, x.closed) : undefined;
+  // люди ролей; в смене никого — ждёт «смену» или «в отпуске» (`crewWait`): ни допуск, ни техника, ни места не нужны
+  const crew = crewOf(x, t.roles);
+  const off = !anyOn(db, s, x, crew);
   if (t.veh) {
     // техника, ближайшая к грузу, с водителем; место назначения — по силам этой технике
-    const free = Object.values(s.vehicles)
-      .filter(v => !v.task && t.veh!.includes(v.type) && db.vehicles[v.type].levels >= fromLevel)
-      .sort((a, b) => dist(plan, a, from, 'drive') - dist(plan, b, from, 'drive') || idNum(a.id) - idNum(b.id));
+    const free = freeVehicles(db, s, x, t, fromLevel);
     if (free.length === 0) return 'vehicle';
+    if (off) return offWait(db, s, x, crew);
+    // кто может взять задачу сейчас; никто — ни техники, ни мест не перебирать: почему ждёт, скажут люди, как и с перебором
+    const pool = poolOf(db, s, x, t, crew, need);
+    let sorted: Vehicle[] | undefined;
+    const order = () => (sorted ??= nearestFirst(x, free, from));
+    if (pool.length === 0) return driverWait(db, s, x, t, crew, need, order);
+    // место хранения (Б3в): зона принимает режим материала и открыта; не нашлось только из-за закрытой зоны — ждёт её датчик
+    const fit = t.toKind ? slotFit(db, s, plan, t, closedOf(db, s, x)) : undefined;
     let place = false;
     let short = false;
     let closedBy: string | undefined;
-    for (const v of free) {
+    // места не нашлось до этого яруса: технике не выше его места не найти тоже, а ждать место задача уже ждёт
+    let none = -1;
+    for (const v of order()) {
       const vt = db.vehicles[v.type];
+      if (t.toKind && vt.levels <= none) continue;
       const drive = vehicleNeed(db, v.type);
-      const near = nearestPerson(db, s, x, t, v, need, new Set(), drive);
+      const near = nearestPerson(db, x, pool, v, NONE, drive);
       if (!near) continue;
       let to: string | undefined;
       if (t.toKind) {
@@ -314,12 +450,13 @@ function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | und
         if (!sl) {
           if (!place && fit) closedBy = findSlot(s, plan, t.toKind, t.near ?? from, vt.levels, 'drive', fit.open)?.store;
           place = true;
+          none = vt.levels;
           continue;
         }
         to = sl.id;
       }
       // ближайшему водителю задача не помещается в часы — ближайший, у кого помещается (Б4а)
-      const driver = fitsAll(db, s, x, t, [near], v, to) ? near : nearestPerson(db, s, x, t, v, need, new Set([near.id]), drive, p => fitsAll(db, s, x, t, [p], v, to));
+      const driver = fitsAll(db, s, x, t, [near], v, to) ? near : nearestPerson(db, x, pool, v, new Set([near.id]), drive, p => fitsAll(db, s, x, t, [p], v, to));
       if (!driver) {
         short = true;
         continue;
@@ -328,13 +465,17 @@ function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | und
       return undefined;
     }
     if (place && closedBy) {
-      t.unfit = x.closed.get(closedBy);
+      t.unfit = closedOf(db, s, x).get(closedBy);
       return 'asset';
     }
-    return place ? 'place' : short ? 'hours' : driverWait(db, s, x, t, need, free);
+    return place ? 'place' : short ? 'hours' : driverWait(db, s, x, t, crew, need, order);
   }
+  if (off && t.count > 0) return offWait(db, s, x, crew);
+  const pool = poolOf(db, s, x, t, crew, need);
+  if (pool.length === 0 && t.count > 0) return crewWait(db, s, x, t, crew, need);
   // пешком, но с местом назначения на полу (возврат остатков в шлюз): место — ближе к началу задачи; его нет — задача
   // ждёт место, но сначала — людей
+  const fit = t.toKind ? slotFit(db, s, plan, t, closedOf(db, s, x)) : undefined;
   const sl = t.toKind ? findSlot(s, plan, t.toKind, t.near ?? from, 0, 'walk', fit?.ok) : undefined;
   const people: Person[] = [];
   const skip = new Set<string>();
@@ -343,15 +484,15 @@ function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | und
     // у каждого следующего — задача всей группы с ним помещается в часы у всех (Б4а)
     const ok = noPlace ? undefined : (p: Person) => fitsAll(db, s, x, t, [...people, p], undefined, sl?.id);
     const miss = { hours: false };
-    const p = nearestPerson(db, s, x, t, from, need, skip, [], ok, miss);
-    if (!p) return miss.hours ? 'hours' : crewWait(db, s, x, t, need);
+    const p = nearestPerson(db, x, pool, from, skip, [], ok, miss);
+    if (!p) return miss.hours ? 'hours' : crewWait(db, s, x, t, crew, need);
     people.push(p);
     skip.add(p.id);
   }
   if (noPlace) {
     const by = fit ? findSlot(s, plan, t.toKind!, t.near ?? from, 0, 'walk', fit.open)?.store : undefined;
     if (!by) return 'place';
-    t.unfit = x.closed.get(by);
+    t.unfit = closedOf(db, s, x).get(by);
     return 'asset';
   }
   start(db, s, plan, t, people, undefined, sl?.id, inst);

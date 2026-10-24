@@ -139,7 +139,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   not hold the quality post; the debrief after the decision — `debrief`), `mes.ts` (batch orders on the recipe revision
   in force at their not-before, FEFO reservation with potency — tried without writing by `kitPlan`, shared with the
   schedule run, kitting through the airlock, stages in rooms with equipment and people, cleaning in two works — the
-  equipment washed by operators, then the room by a cleaner by its floor area —, process parameters,
+  equipment washed by those who work on it, operators, and with Б1е the machines of a line that touch tablets by the
+  line's crew (`washRoles`), then the room by a cleaner by its floor area —, a room for a batch's work — a stage or,
+  with Б1е, the packing — clean for its product, otherwise into cleaning (`roomFor`), process parameters,
   true batch quality with causes, IPC, the bulk lot; with Б1д — the components of a stage loaded by the recipe and the
   mass at a stage's input, the batch mass less what later stages load (`stageMass`, shared with the schedule run,
   «Сейчас» and the reference); the packing job and its packaging kit — a container of it already
@@ -156,7 +158,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   twin, the variant's commands, the horizon, the outcome — orders, batches, cash, OEE, load, general cleanings and line
   changeovers with their hours; per variant — lowest, median and highest over seeds), `line.ts` (the packaging line as
   flow between events: machines, buffers, micro-stops, camera rejects by count, codes in cases, FG pallets, changeover
-  and line clearance, the crew, the end of a batch with
+  and line clearance — with Б1е before every job, the first too, and again after a cleaning of the line's room; a free
+  line takes a job at once, the changeover goes on while its room is cleaned, the clearance waits for a room clean for
+  the job's product (`roomReady`), the job holds the room from the first tablet and leaves it dirty with its product —,
+  the crew, the end of a batch with
   reconciliation, the packing record — the people of its works and the line clearance before it, who cleared and who
   checked (with Б1д), the materials a job used by machine count at a moment — `usedByCount`, machine times for OEE, a
   machine part failing at a flow boundary, jams of the cartoner; the flow at a
@@ -264,8 +269,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   clock dropped), packed slice (`pack.ts`, format 7: rooms, trucks with their open body, changed pallets, tasks in
   progress, people with their walk to a post, vehicles, lines with their machines, equipment, and whether a machine or
   equipment is in calibration or qualification; no truth fields — not the next micro-stop, not a part's budget), views
-  for panels — the warehouse and the card of a thing with what a pallet holds, built here on request and sent with the
-  slice only when they changed, without truth fields (`views.ts`); the deviation card, the batch decision at release and
+  for panels — the warehouse and the card of a thing with what a pallet holds, with Б1е a room's cleanliness — clean
+  for which product and until when, or dirty after which product and which cleaning it needs — and a line machine's job
+  waiting for the room's cleaning, built here on request and sent with the slice only when they changed, without truth
+  fields (`views.ts`); the deviation card, the batch decision at release and
   the stage parameters of a room or equipment card (`devs.ts`); with Б1д, the batch record — what was weighed by lots,
   who weighed and who checked, what each stage loaded, mass in and out, the packing with the line's people, the
   clearance and the reconciliation, deviations and decisions —, what is inside equipment now and a line machine's
@@ -362,7 +369,7 @@ first, or copy the working code of Bolnitsa on the same versions.
   labor market `labor`, the terms of the labor law in the profile and the plan's cleaning seconds per m² by grade; with
   Б4г — the vacation numbers of the law in the profile, the scenario's rule of the draft `leave`, related professions
   `also` of the staff rows and `same` of a role only another person of it replaces; with Б1д — the stage that loads each
-  line of a recipe's composition);
+  line of a recipe's composition; with Б1е — the minor and general cleaning of a line machine that touches tablets);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a

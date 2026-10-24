@@ -38,8 +38,12 @@
 // с материалом, партией и своим значком, в карточке грануляции — что в грануляторе, в досье из неё — отвешенное
 // по партиям, кто взвешивал и кто проверял, что загружено на грануляции и что — на опудривании; на шестые сутки —
 // материалы блистерной машины; после упаковки — досье первой серии щелчком по полосе расписания: люди линии и сверка;
-// досье выпущенной серии из карточки её ГП — и очистка линии, кто проверил. Найм, оценка пары, визит подрядчика
-// и отпуска идут по своим дням. Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
+// досье выпущенной серии из карточки её ГП — и очистка линии, кто проверил. Чистота линии (Б1е): утром 6 сентября
+// помещение упаковки чисто с начала игры, в карточке — «просрочено»; линия взяла задание — «грязно» и малая уборка;
+// в срезе — «грязно», «чисто», «занято»; после задания — «грязно», потом «чисто» для продукта задания и до какого часа;
+// на строке линии в расписании — мойка и уборка помещения; досье первой серии — после расследования: задание
+// кончилось 7 сентября. Найм, оценка пары, визит подрядчика и отпуска идут по своим дням. Ошибок в консоли и запросов
+// наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -114,6 +118,35 @@ const packOfDossier = () => {
 };
 /** Дождаться `n` кадров: программная отрисовка даёт несколько кадров в секунду, а камера и сцена меняются в кадре. */
 const frames = n => page.evaluate(k => new Promise(r => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
+/** Помещение упаковки (Б1е): его номер в плане. */
+const packRoom = () => page.evaluate(() => window.__game.layout.plan.plant.rooms.findIndex(r => r.id === window.__game.layout.plan.plant.lines[0].room));
+/**
+ * Чистота линии (Б1е): ×4 с пробой в каждом кадре, пока табличка помещения упаковки в срезе не станет `want`, и сразу
+ * пауза; не дольше 72 часов завода. Планёрку закрыть, на автопаузах места игрока — дальше.
+ */
+const untilPackRoom = async want => {
+  if (await page.evaluate(w => window.__packRoom.at(-1) === w, want)) return true;
+  const from = await gameT();
+  let hit = false;
+  for (let i = 0; i < 80 && !hit && (await gameT()) < from + 72 * 3600; i++) {
+    await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
+    await page.evaluate(() => window.__game.actions.setSpeed(4));
+    hit = await page
+      .waitForFunction(w => (window.__packRoom.at(-1) === w || window.__game.speed === 0 ? { hit: window.__packRoom.at(-1) === w } : false), want, { timeout: 30_000 })
+      .then(h => h.jsonValue().then(v => v.hit), () => false);
+    await page.evaluate(() => window.__game.actions.setSpeed(0));
+  }
+  return hit;
+};
+/** Карточка помещения упаковки, когда в ней чистота `k`: текст строками через « · »; Esc закрывает. */
+const packRoomCard = async k => {
+  await page.evaluate(i => window.__game.actions.select({ kind: 'room', i }), await packRoom());
+  await page.waitForFunction(k => window.__game.store.get().card?.card?.clean?.k === k, k, { timeout: 20_000 }).catch(() => {});
+  await frames(2);
+  const text = await page.evaluate(() => document.querySelector('[data-test=card]')?.innerText.replace(/\s*\n\s*/g, ' · ') ?? '');
+  await page.keyboard.press('Escape');
+  return text;
+};
 
 /**
  * «До утра» — до планёрки в 08:00; планёрку (3в) закрыть, чтобы она не заслоняла завод, — если не просят оставить. Встала
@@ -623,6 +656,19 @@ try {
     if (await page.evaluate(() => !!document.querySelector('#dossier') || !!document.querySelector('[data-test=card]') || !!document.querySelector('#now'))) fail('досье: Esc не закрыл досье, карточку и «Сейчас»');
   }
 
+  // чистота линии (Б1е): табличка помещения упаковки в срезе — с этой минуты по кадрам, каждая смена статуса
+  await page.evaluate(() => {
+    const g = window.__game;
+    const i = g.layout.plan.plant.rooms.findIndex(r => r.id === g.layout.plan.plant.lines[0].room);
+    const seen = (window.__packRoom = []);
+    const look = () => {
+      const st = g.view?.rooms.find(r => r.room === i)?.status;
+      if (st && seen.at(-1) !== st) seen.push(st);
+      requestAnimationFrame(look);
+    };
+    look();
+  });
+
   // первая упаковка (2в): «До утра» до шестых суток (сколько раз — зависит от того, ушли ли ×4 за 08:00), затем ×4 —
   // пока через линию не пошли штуки. Панель лаборатории (3г) открыта: в первое утро, когда в очереди есть партия, —
   // «Поднять»; команда доходит до движка и обратно в вид. Утром 6 сентября балк первой серии ещё ждёт решения
@@ -661,6 +707,16 @@ try {
   if (!rushed || rushed === 'нет') fail(`лаборатория: «Поднять» ${rushed ? 'не дошло до движка' : 'не проверено — в очереди ни разу не было партии'}`);
   else ok(`лаборатория: партия ${rushed} поднята — команда дошла до движка и вернулась в вид`);
   await page.keyboard.press('Escape');
+  // чистота линии (Б1е): утром 6 сентября помещение упаковки чисто с начала игры — в карточке «просрочено»; линия взяла
+  // задание — его убирают снова: «грязно» и малая уборка, если начать до такого-то часа
+  {
+    const old = await packRoomCard('clean');
+    if (!/Чисто для · любого продукта/.test(old) || !/просрочено/.test(old)) fail(`помещение упаковки утром: «${old}»`);
+    else ok(`помещение упаковки утром: «${old}»`);
+    const dirty = (await untilPackRoom('dirty')) ? await packRoomCard('dirty') : '';
+    if (!/Грязно/.test(dirty) || !/Уборка · малая, если начать до/.test(dirty)) fail(`помещение упаковки перед заданием: «${dirty || 'не дождались'}»`);
+    else ok(`помещение упаковки перед заданием: «${dirty}»`);
+  }
   await page.keyboard.press('Digit4');
   await page.waitForFunction(() => window.__game.view.lines[0]?.machines[1]?.items > 0, null, { timeout: 120_000 });
   await page.keyboard.press('Space');
@@ -675,6 +731,13 @@ try {
   });
   if (packing.lamps.every(l => l === 'off') || packing.items < 1) fail(`линия: лампы ${packing.lamps.join(', ')}, штук на лентах ${packing.items}`);
   else ok(`линия в ${packing.hour.toFixed(1)} ч: лампы ${packing.lamps.join(', ')}, штук на лентах и в накопителях ${packing.items}`);
+  // чистота линии (Б1е): помещение упаковки чисто с начала игры дольше 72 часов — перед первым заданием его убрали
+  // снова: табличка «грязно», потом «чисто» и «занято» серией
+  {
+    const seen = await page.evaluate(() => window.__packRoom.join(' → '));
+    if (!/dirty → clean → busy$/.test(seen)) fail(`помещение упаковки перед первым заданием: ${seen}`);
+    else ok(`помещение упаковки перед первым заданием: ${seen}`);
+  }
 
   // «Сейчас» (Б1б): N — работы по разделам; у упаковки — пачки и скорость. «Смотреть» — камера к линии, её карточка с той же
   // кнопкой, ×1 и «Смотрите: …» в полосе; «Перестать» — прежняя скорость, пауза; Esc закрывает карточку и панель
@@ -811,36 +874,6 @@ try {
   await lister.screenshot({ path: join(out, 'contact.png'), fullPage: true });
   await lister.close();
   ok(`контактный лист: ${sheet.length} снимков → ${join(out, 'contact.png')}`);
-
-  // досье после упаковки (Б1д): щелчок по полосе первой серии в расписании — досье поверх него; в «Упаковке» — кто
-  // работал у линии, материалы по машинам и сверка печатных; очистка не понадобилась — до первой серии линия
-  // не упаковывала (очистку с проверкой показывает досье серии в решении по серии ниже); Esc закрывает досье, потом
-  // расписание
-  {
-    await page.keyboard.press('KeyG');
-    await page.waitForFunction(() => !!window.__game.store.get().gantt.view, null, { timeout: 20_000 });
-    await frames(2);
-    const at = await page.evaluate(id => {
-      const bars = [...document.querySelectorAll(`[data-test=gbar][data-batch="${id}"]`)].map(e => e.getBoundingClientRect()).filter(b => b.width > 4);
-      const b = bars.sort((x, y) => y.width - x.width)[0];
-      return b ? { x: b.x + b.width / 2, y: b.y + b.height / 2, n: bars.length } : undefined;
-    }, `B${first}`);
-    if (!at) fail(`расписание: полос первой серии B${first} в окне нет`);
-    else {
-      await page.mouse.click(at.x, at.y);
-      const shown = await page
-        .waitForFunction(n => window.__game.store.get().dossier.view?.batch === n && window.__game.store.get().dossier.view.pack?.state === 'done', first, { timeout: 20_000 })
-        .then(() => true, () => false);
-      await frames(2);
-      const d = await page.evaluate(packOfDossier);
-      if (!shown || !d.gantt || d.crew.length < 1 || !d.none || d.mats.length !== 5 || d.recon.length !== 2)
-        fail(`досье после упаковки: открыто ${shown}, расписание ${d.gantt ? 'под ним' : 'закрыто'}, у линии «${d.crew.join(', ')}», очистка «${d.clear || d.none}», материалов ${d.mats.length}, сверка «${d.recon.join(' | ')}»`);
-      else ok(`${d.title} — щелчком по полосе в расписании: у линии ${d.crew.join(', ')}; «${d.none}»; материалов ${d.mats.length}; сверка — ${d.recon.join('; ')}`);
-    }
-    await page.keyboard.press('Escape');
-    await page.keyboard.press('Escape');
-    if (await page.evaluate(() => !!document.querySelector('#dossier') || !!document.querySelector('#gantt'))) fail('досье: Esc не закрыл досье и расписание');
-  }
 
   // автопаузы (Б2а): у производства и качества двенадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
   // вышел», с Б3г — «пара приостановлена», с Б4а — «сверхурочные года на исходе», с Б4в — «заявление об увольнении»),
@@ -1012,6 +1045,51 @@ try {
     await frames(2);
     const again = await alive();
     if (again.inv || !again.top || again.guard) fail(`расследование: Esc — доска ${again.inv ? 'открыта' : 'закрыта'}, полоса ${again.top ? 'на месте' : 'пропала'}${again.guard ? `, ограда: «${again.guard}»` : ''}`);
+  }
+
+  // чистота линии (Б1е): после первого задания помещение упаковки было «грязно», потом «чисто» — по табличке в срезе;
+  // в карточке — «чисто» для продукта задания и до какого часа годно. Занято следующим заданием — ×4 до «чисто»
+  {
+    const clean = (await untilPackRoom('clean')) ? await packRoomCard('clean') : '';
+    const seen = await page.evaluate(() => window.__packRoom.join(' → '));
+    if (!/busy → dirty → clean/.test(seen) || !/Чисто для · (Парацетамол|Лоратадин)/.test(clean) || !/Годно до · /.test(clean)) fail(`помещение упаковки после задания: ${seen}; «${clean || 'не дождались'}»`);
+    else ok(`помещение упаковки после задания: ${seen}; «${clean}»`);
+  }
+
+  // досье после упаковки (Б1д): щелчок по полосе первой серии в расписании — досье поверх него; в «Упаковке» — кто
+  // работал у линии, материалы по машинам и сверка печатных; очистка линии — перед первым заданием тоже, двумя
+  // упаковщиками с проверкой мастера (Б1е); на строке линии — полосы мойки и уборки её помещения (Б1е); Esc закрывает
+  // досье, потом расписание
+  {
+    await page.keyboard.press('KeyG');
+    await page.waitForFunction(() => !!window.__game.store.get().gantt.view, null, { timeout: 20_000 });
+    await frames(2);
+    const lineBars = await page.evaluate(() => {
+      const id = window.__game.layout.plan.plant.lines[0].id;
+      return [...document.querySelectorAll(`[data-test=gantt-row][data-row="${id}"] [data-test=gbar]`)].map(e => `${e.getAttribute('data-kind')}:${e.getAttribute('data-when')}`);
+    });
+    if (!lineBars.includes('clean:past') || !lineBars.includes('roomClean:past')) fail(`расписание, строка линии: ${lineBars.join(', ')}`);
+    else ok(`расписание, строка линии: ${lineBars.join(', ')}`);
+    const at = await page.evaluate(id => {
+      const bars = [...document.querySelectorAll(`[data-test=gbar][data-batch="${id}"]`)].map(e => e.getBoundingClientRect()).filter(b => b.width > 4);
+      const b = bars.sort((x, y) => y.width - x.width)[0];
+      return b ? { x: b.x + b.width / 2, y: b.y + b.height / 2, n: bars.length } : undefined;
+    }, `B${first}`);
+    if (!at) fail(`расписание: полос первой серии B${first} в окне нет`);
+    else {
+      await page.mouse.click(at.x, at.y);
+      const shown = await page
+        .waitForFunction(n => window.__game.store.get().dossier.view?.batch === n && window.__game.store.get().dossier.view.pack?.state === 'done', first, { timeout: 20_000 })
+        .then(() => true, () => false);
+      await frames(2);
+      const d = await page.evaluate(packOfDossier);
+      if (!shown || !d.gantt || d.crew.length < 1 || !d.clear || !d.checker || d.none || d.mats.length !== 5 || d.recon.length !== 2)
+        fail(`досье после упаковки: открыто ${shown}, расписание ${d.gantt ? 'под ним' : 'закрыто'}, у линии «${d.crew.join(', ')}», очистка «${d.clear || d.none}», проверка мастера ${d.checker ? 'есть' : 'нет'}, материалов ${d.mats.length}, сверка «${d.recon.join(' | ')}»`);
+      else ok(`${d.title} — щелчком по полосе в расписании: у линии ${d.crew.join(', ')}; очистка — «${d.clear}»; материалов ${d.mats.length}; сверка — ${d.recon.join('; ')}`);
+    }
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    if (await page.evaluate(() => !!document.querySelector('#dossier') || !!document.querySelector('#gantt'))) fail('досье: Esc не закрыл досье и расписание');
   }
 
   // решение по серии (Б1г): паллета ГП в карантине ГП; решение в её карточке — когда серия упакована (раньше команда

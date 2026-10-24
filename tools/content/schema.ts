@@ -891,6 +891,8 @@ export const machine = z
     reject: percent.default(0),
     /** переналадка на другой формат, минуты */
     changeover: minutes.default(0),
+    /** малая и генеральная уборка машины, которая касается таблеток, минуты (Б1е); прочим хватает очистки линии */
+    cleaning: z.strictObject({ minor: minutes, major: minutes }).optional(),
     /** мощность на ходу, кВт */
     kw: z.number().min(0).default(0),
     parts: z.array(part).default([]),

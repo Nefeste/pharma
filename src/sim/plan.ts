@@ -115,6 +115,9 @@ export function pastBars(db: ContentDb, s: PlantState): Bar[] {
     bars.push({ row: job.line, kind: 'setup', batch: b.id, from: job.taken, to: job.start ?? s.t, when: job.start !== undefined ? 'past' : 'now' });
     if (job.start !== undefined) bars.push({ row: job.line, kind: 'pack', batch: b.id, from: job.start, to: job.end ?? s.t, when: job.end !== undefined ? 'past' : 'now' });
   }
+  // уборка помещения линии — на строке линии (Б1е)
+  const lines = planOf(db, s.plant).plant.lines;
+  const rowOf = (roomId: string) => lines.find(l => l.room === roomId)?.id ?? roomId;
   for (const r of Object.values(s.rooms)) {
     if ((r.status !== 'clean' && r.status !== 'busy') || r.product === undefined) continue;
     const major = r.cleanFor === undefined;
@@ -122,8 +125,8 @@ export function pastBars(db: ContentDb, s: PlantState): Bar[] {
     const room = roomWork(db, s, r.id, major);
     const wash = washWork(db, s, r.id, major);
     const m = major ? { major: true as const } : {};
-    if (wash > 0) bars.push({ row: r.id, kind: 'clean', from: r.since - room - wash, to: r.since - room, when: 'past', ...m });
-    if (room > 0) bars.push({ row: r.id, kind: 'roomClean', from: r.since - room, to: r.since, when: 'past', ...m });
+    if (wash > 0) bars.push({ row: rowOf(r.id), kind: 'clean', from: r.since - room - wash, to: r.since - room, when: 'past', ...m });
+    if (room > 0) bars.push({ row: rowOf(r.id), kind: 'roomClean', from: r.since - room, to: r.since, when: 'past', ...m });
   }
   return bars;
 }

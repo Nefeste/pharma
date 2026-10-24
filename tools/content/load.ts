@@ -566,6 +566,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   for (const m of Object.values(raw.machines)) {
     need(raw.roles[m.crew.role], `машина ${m.id}: нет роли ${m.crew.role}`);
     if (m.micro) need(m.micro.duration < m.micro.every, `машина ${m.id}: микроостановка дольше промежутка между ними`);
+    if (m.cleaning) need(m.cleaning.minor <= m.cleaning.major, `машина ${m.id}: малая уборка дольше генеральной`);
     machines[m.id] = {
       id: m.id,
       name: m.name,
@@ -577,6 +578,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       ...(m.micro ? { micro: { every: sec(m.micro.every), duration: sec(m.micro.duration) } } : {}),
       reject: share(m.reject),
       changeover: sec(m.changeover),
+      ...(m.cleaning ? { cleaning: { minor: sec(m.cleaning.minor), major: sec(m.cleaning.major) } } : {}),
       kw: watt(m.kw),
       parts: partsOf(m.parts, `машина ${m.id}`, { micro: m.micro !== undefined }),
       ...(m.jam ? { jam: { cartons: m.jam.cartons, uncounted: share(m.jam.uncounted) } } : {}),
@@ -1316,7 +1318,8 @@ function learnErrors(raw: Raw, sops: Record<string, Sop>, tests: Record<string, 
     transfer: WMS.keepers,
     return: WMS.keepers,
     stage: stageRoles(() => true),
-    clean: MES.operators,
+    // мойка: аппаратчики, а машины линии, которые касаются таблеток, — их смена (Б1е; washRoles в mes.ts)
+    clean: uniq([...MES.operators, ...crewOf(Object.keys(raw.machines).filter(m => raw.machines[m].cleaning))]),
     roomClean: MES.cleaners,
     crew: crewOf(Object.keys(raw.machines)),
     changeover: LINE.setters,

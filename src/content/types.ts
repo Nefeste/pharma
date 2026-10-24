@@ -1002,6 +1002,8 @@ export interface Machine {
   micro?: { every: number; duration: number };
   reject: number;
   changeover: number;
+  /** малая и генеральная уборка, с (Б1е): только у машины, которая касается таблеток */
+  cleaning?: { minor: number; major: number };
   /** мощность на ходу, Вт */
   kw: number;
   parts: PartType[];

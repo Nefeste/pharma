@@ -463,10 +463,14 @@ function production(db: ContentDb, s: PlantState, bad: string[]) {
     if ((c.reserved ?? 0) > c.qty) bad.push(`тара ${c.id}: резерв ${c.reserved} больше остатка ${c.qty}`);
   }
   for (const lot of Object.values(s.lots)) if (lot.used !== (used[lot.id] ?? 0)) bad.push(`партия ${lot.id}: израсходовано ${lot.used}, а отвешено в серии ${used[lot.id] ?? 0}`);
-  // помещение занято серией — только «занято»; оборудование занято — только серией, которая в этом помещении
+  // помещение занято серией — только «занято»; оборудование занято — только серией, которая в этом помещении; помещение
+  // линии — серией, которую линия упаковывает (Б1е)
+  const lineRooms = new Map(planOf(db, s.plant).plant.lines.map(l => [l.id, l.room]));
   for (const room of Object.values(s.rooms)) {
     if ((room.status === 'busy') !== (room.batch !== undefined)) bad.push(`помещение ${room.id}: ${room.status}, серия ${room.batch ?? '—'}`);
-    if (room.batch && s.batches[room.batch]?.room !== room.id) bad.push(`помещение ${room.id}: серия ${room.batch} числится не здесь`);
+    const b = room.batch ? s.batches[room.batch] : undefined;
+    const at = b?.status === 'packing' && b.pack?.state === 'running' ? lineRooms.get(b.pack.line) : b?.room;
+    if (room.batch && at !== room.id) bad.push(`помещение ${room.id}: серия ${room.batch} числится не здесь`);
   }
   for (const e of Object.values(s.equipment)) {
     if (e.batch && s.batches[e.batch]?.room !== e.room) bad.push(`оборудование ${e.id}: занято серией ${e.batch}, а она не в этом помещении`);

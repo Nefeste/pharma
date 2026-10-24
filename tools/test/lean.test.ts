@@ -132,7 +132,10 @@ describe('серия от задания до выпуска', () => {
   test('упаковка — время работы линии; стадии — не меньше времени в досье; обработка — малая часть цикла', () => {
     expect(b.spent.packing).toBe(b.pack!.end! - b.pack!.start!);
     expect(b.spent.work!).toBeGreaterThanOrEqual(b.records.reduce((n, r) => n + r.end - r.start, 0));
-    expect((b.spent.work! + b.spent.packing!) * 2).toBeLessThan(sum);
+    // работа стадий — малая часть цикла; упаковка — от первой таблетки до последней, с ночью, когда смены у линии нет (Б1е:
+    // первую серию упаковывают после очистки линии)
+    expect(b.spent.work! * 2).toBeLessThan(sum);
+    expect(b.spent.work! + b.spent.packing!).toBeLessThan(sum);
   });
 
   test('дефекты суток: брак камер упаковки — в сутки конца упаковки', () => {

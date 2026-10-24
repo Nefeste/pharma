@@ -14,6 +14,7 @@ import { fitsIn, overLeft } from '../hours';
 import { coverWindows } from '../leave';
 import { blocked } from '../maint';
 import { DIRTY_HOLD, kitPlan, MES, newBatch, nominal, readyFor, roomWork, stageMass, stageNorm, stageTaskNorm, TRANSFER_WORK, washRoles, washWork } from '../mes';
+import { stageSetpoints } from '../modes';
 import { classOf, placesOf } from '../places';
 import { planOf } from '../plant';
 import { admitted, needFor } from '../quals';
@@ -404,7 +405,9 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
       }
       const repair = Object.values(s.equipment).some(e => e.room === roomId && st.equipment.includes(e.type) && blocked(s, e.id));
       if (repair) note(b.id, { why: 'repair', bar: st.id, room: roomId });
-      const work = nominal(db, b.recipe, st, stageMass(db, b, k));
+      // скорость ротора (Б1ж): стадия, которая ещё не началась, начнётся с нынешними уставками
+      const sp = k === b.stage && b.sp ? b.sp : stageSetpoints(db, s, b.recipe, st);
+      const work = nominal(db, b.recipe, st, stageMass(db, b, k), sp);
       // активы стадии (Б3в): срок вышел, а визита нет — дальше не предсказать; с часа визита — после его конца
       const mine = assetsOf(st, roomId);
       // срок вышел сейчас: стадия — только после визита, когда бы он ни был назначен
@@ -414,7 +417,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
         note(b.id, { why: 'unfit', bar: st.id, room: roomId, asset: dead, work: unfit(db, s, dead) as 'qual' | 'cal' });
         return;
       }
-      const [nom, max] = stageNorm(db, b.recipe, st, stageMass(db, b, k));
+      const [nom, max] = stageNorm(db, b.recipe, st, stageMass(db, b, k), sp);
       const job: Job = { kind: 'stage', nom, max };
       let c = take([st.staff.role], st.staff.n, t, needFor(db, 'stage', { stage: st }), job);
       if (!c) return;

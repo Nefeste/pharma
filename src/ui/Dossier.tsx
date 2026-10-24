@@ -185,10 +185,12 @@ function Stage({ st, first, start, actions }: { st: StageRow; first: boolean; st
       {st.params.length > 0 ? (
         <ul className="why">
           {st.params.map(p => (
-            <li key={p.id} className={p.dev !== undefined ? 'bad' : ''}>
+            <li key={p.id} className={p.dev !== undefined ? 'bad' : ''} data-test="dossier-param" data-param={p.id}>
               {p.value === undefined
                 ? T.regimes.target(T.ref.params[p.id] ?? p.id, paramText(p.unit, p.target), `${paramNum(p.unit, p.range[0])}–${paramText(p.unit, p.range[1])}`)
                 : T.regimes.value(T.ref.params[p.id] ?? p.id, paramText(p.unit, p.value), paramText(p.unit, p.target), `${paramNum(p.unit, p.range[0])}–${paramText(p.unit, p.range[1])}`)}
+              {p.sp !== undefined ? ` · ${T.regimes.sp(paramText(p.unit, p.sp))}` : null}
+              {st.state === 'done' && p.value === undefined ? ` · ${T.regimes.noFact}` : null}
               {p.dev !== undefined ? (
                 <>
                   {' · '}

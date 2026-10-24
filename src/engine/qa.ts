@@ -256,7 +256,7 @@ export function linkedTests(db: ContentDb, s: PlantState, d: Deviation): LinkedT
   if (!b || d.kind === 'oos' || d.kind === 'recon') return [];
   const r = db.recipes[b.recipe];
   let attrs: Set<Attr> | undefined;
-  if (d.kind === 'param') attrs = new Set(Object.values(db.causes).flatMap(c => ('param' in c.driver && c.driver.param === d.param ? c.effects.map(e => e.attr) : [])));
+  if (d.kind === 'param') attrs = new Set(Object.values(db.causes).flatMap(c => ('param' in c.driver && c.driver.param === d.param ? [...c.effects, ...(c.scatter ?? [])].map(e => e.attr) : [])));
   const out: LinkedTest[] = [];
   if (attrs) {
     const from = Math.max(0, r.stages.findIndex(st => st.id === d.stage));

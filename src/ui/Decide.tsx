@@ -5,7 +5,8 @@
 import type { ReactNode } from 'react';
 import { type Ymd, momentOf } from '../engine/core/calendar';
 import { dayText, named, num, qtyText, T, whenText } from '../i18n';
-import type { DevCard, Regimes, ReleaseView } from '../sim/devs';
+import type { DevCard, Knobs, Regimes, ReleaseView } from '../sim/devs';
+import type { SpeedView } from '../sim/views';
 import { db } from './db';
 import { type Actions, holds, type Hud } from './store';
 import { attrText, paramNum, paramText } from './units';
@@ -229,7 +230,10 @@ export function ReleaseBlock({ r, hud, actions }: { r: ReleaseView; hud: Hud; ac
   );
 }
 
-/** Режимы стадии: во время стадии — цель и диапазон по карте; после — факт из досье, вне диапазона — с отклонением. */
+/**
+ * Режимы стадии: во время стадии — цель и диапазон по карте и уставка, с которой она началась; после — уставка и факт
+ * из досье, вне диапазона — с отклонением (Б1г, Б1ж).
+ */
 export function RegimesBlock({ g, start, actions }: { g: Regimes; start: Ymd; actions: Actions }) {
   const stage = T.stages[g.stage] ?? g.stage;
   return (
@@ -240,6 +244,9 @@ export function RegimesBlock({ g, start, actions }: { g: Regimes; start: Ymd; ac
         {g.list.map(p => (
           <li key={p.id} className={p.dev !== undefined ? 'bad' : ''}>
             {p.value === undefined ? T.regimes.target(paramName(p.id), paramText(p.unit, p.target), rangeText(p)) : T.regimes.value(paramName(p.id), paramText(p.unit, p.value), paramText(p.unit, p.target), rangeText(p))}
+            {' · '}
+            {T.regimes.sp(paramText(p.unit, p.sp))}
+            {!g.now && p.value === undefined ? ` · ${T.regimes.noFact}` : null}
             {p.dev !== undefined ? (
               <>
                 {' · '}
@@ -251,7 +258,79 @@ export function RegimesBlock({ g, start, actions }: { g: Regimes; start: Ymd; ac
           </li>
         ))}
       </ul>
-      <div className="muted">{T.regimes.noKnobs}</div>
+    </>
+  );
+}
+
+/** «−» и «+» уставки шагом в пределах диапазона: у края — почему дальше нельзя; без поста — погашены. */
+function Steps({ set, step, range, edge, mine, label, apply, test }: { set: number; step: number; range: [number, number]; edge: string; mine: boolean; label: (v: number) => string; apply: (v: number) => void; test: string }) {
+  const less = set - step;
+  const more = set + step;
+  return (
+    <>
+      {' '}
+      <button type="button" disabled={!mine || less < range[0]} title={less < range[0] ? edge : T.regimes.stepTo(label(less))} onClick={() => apply(less)} data-test={`${test}-less`}>
+        {T.regimes.less}
+      </button>{' '}
+      <button type="button" disabled={!mine || more > range[1]} title={more > range[1] ? edge : T.regimes.stepTo(label(more))} onClick={() => apply(more)} data-test={`${test}-more`}>
+        {T.regimes.more}
+      </button>
+    </>
+  );
+}
+
+/**
+ * Уставки на следующую стадию (Б1ж): у каждой карты, чьи стадии с режимами идут здесь, — режимы с уставкой и «−» и «+»
+ * с шагом режима на посту технолога; без поста — кнопки погашены, как у чужих команд (3е).
+ */
+export function KnobsBlock({ list, hud, actions }: { list: Knobs[]; hud: Hud; actions: Actions }) {
+  const mine = holds(hud, 'quality');
+  return (
+    <>
+      <div className="csec">{T.regimes.knobs}</div>
+      {list.map(k => (
+        <div key={`${k.recipe}/${k.stage}`} data-test="card-knobs" data-recipe={k.recipe} data-stage={k.stage}>
+          <div className="muted">{`${named(db?.recipes[k.recipe]?.name, k.recipe)} · ${T.stages[k.stage] ?? k.stage}`}</div>
+          <ul className="why">
+            {k.list.map(x => (
+              <li key={x.id} data-test={`knob-${x.id}`}>
+                {T.regimes.knob(paramName(x.id), paramText(x.unit, x.set))}
+                {' · '}
+                {x.set === x.target ? T.regimes.atTarget : T.regimes.offTarget(paramText(x.unit, x.target))}
+                <Steps set={x.set} step={x.step} range={x.range} edge={T.regimes.edge} mine={mine} label={v => paramText(x.unit, v)} apply={value => actions.setpoint({ recipe: k.recipe, stage: k.stage, param: x.id, value })} test={`knob-${x.id}`} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      <div className="muted">{T.regimes.knobsWhy}</div>
+      {!mine ? <div className="warn">{T.levers.seat(T.seats.names.quality)}</div> : null}
+    </>
+  );
+}
+
+/**
+ * Скорость блистерной машины в её карточке (Б1ж): паспорт, с какой идёт задание на линии; у каждой позиции — уставка,
+ * цель и диапазон инструкции и «−» и «+» с шагом на посту технолога.
+ */
+export function SpeedBlock({ v, hud, actions }: { v: SpeedView; hud: Hud; actions: Actions }) {
+  const mine = holds(hud, 'quality');
+  const per = (n: number) => T.ref.perMin(num(n), T.ref.items.blister ?? '');
+  return (
+    <>
+      <div className="csec">{T.speed.title}</div>
+      <div className="muted">{T.speed.rated(per(v.rated))}</div>
+      {v.job ? <div className="muted">{T.speed.job(named(db?.skus[v.job.sku]?.name, v.job.sku), per(v.job.v))}</div> : null}
+      <ul className="why" data-test="card-speed">
+        {v.list.map(x => (
+          <li key={x.sku} data-test="speed-sku" data-sku={x.sku}>
+            {T.speed.set(named(db?.skus[x.sku]?.name, x.sku), per(x.set), x.set === x.target ? T.regimes.atTarget : T.regimes.offTarget(per(x.target)), `${num(x.range[0])}–${per(x.range[1])}`)}
+            <Steps set={x.set} step={x.step} range={x.range} edge={T.speed.edge} mine={mine} label={per} apply={value => actions.setpoint({ sku: x.sku, value })} test="speed" />
+          </li>
+        ))}
+      </ul>
+      <div className="muted">{T.speed.why}</div>
+      {!mine ? <div className="warn">{T.levers.seat(T.seats.names.quality)}</div> : null}
     </>
   );
 }

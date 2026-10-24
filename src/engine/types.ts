@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 27;
+export const SCHEMA = 28;
 
 // ---------------------------------------------------------------- склад
 
@@ -327,6 +327,8 @@ export interface StageRecord {
   equipment: string[];
   /** фактические режимы в единицах движка */
   params: Record<string, number>;
+  /** уставки режимов, с которыми стадия шла (Б1ж); у записей до схемы 28 нет — цель карты */
+  sp?: Record<string, number>;
   /** масса полупродукта на входе и на выходе и потери, мг */
   in: number;
   out: number;
@@ -483,6 +485,8 @@ export interface PackJob {
   expect?: number;
   /** партия ГП */
   fg?: string;
+  /** скорость блистерной машины, блистеров в минуту (Б1ж): уставка инструкции, когда линия взяла задание */
+  speed?: number;
   /** когда линия взяла задание, пошла первая таблетка, упаковка кончилась */
   taken?: number;
   start?: number;
@@ -579,6 +583,8 @@ export interface Batch {
   pack?: PackJob;
   /** стадия с узлами под износом, пока идёт */
   run?: StageRun;
+  /** уставки режимов начатой стадии (Б1ж): сняты, когда серия заняла помещение стадии */
+  sp?: Record<string, number>;
   /** время серии по состояниям, с (docs/specs/2026-10-engine.md, 1ж); нынешнее состояние и с какого момента */
   spent: Partial<Record<BatchPhase, number>>;
   phase?: BatchPhase;
@@ -1266,6 +1272,12 @@ export interface WageParts {
   comp?: number;
 }
 
+/** Уставка режима (Б1ж): значение в единицах движка и с какого мгновения. */
+export interface Setpoint {
+  v: number;
+  from: number;
+}
+
 export interface PlantState {
   schema: number;
   /** отпечаток базы, с которой начата партия */
@@ -1325,6 +1337,11 @@ export interface PlantState {
   contracts: Record<string, Contract>;
   /** политики отделов (Б4а): сверхурочные — «по потребности» или «только закончить начатое» (src/engine/hours.ts) */
   policy: Record<Dept, OvertimeMode>;
+  /**
+   * уставки режимов (Б1ж; src/engine/modes.ts): `<код карты>/<стадия>/<режим>` и `<код инструкции по упаковке>/speed`;
+   * ключа нет — цель документа
+   */
+  setpoints: Record<string, Setpoint>;
   /** узлы машин; склад ЗИП; заказы запчастей; журнал оборудования */
   parts: Record<string, Part>;
   spares: Record<Id, SpareStock>;
@@ -1410,7 +1427,13 @@ export type Command =
   | { kind: 'leave'; person: string; op: 'drop'; part: string; by?: string }
   | { kind: 'leave'; person: string; op: 'deputy'; part: string; deputy?: string; by?: string }
   /** смежная профессия (Б4г): обучить — задачи изучить документы строки её роли, которых у человека нет; снять */
-  | { kind: 'also'; person: string; role: Id; on: boolean; by?: string };
+  | { kind: 'also'; person: string; role: Id; on: boolean; by?: string }
+  /**
+   * уставка режима стадии карты или скорости блистерной машины по инструкции по упаковке позиции (Б1ж): в единицах
+   * движка, в диапазоне редакции в силе, на шаге от цели
+   */
+  | { kind: 'setpoint'; recipe: Id; stage: string; param: string; value: number; by?: string }
+  | { kind: 'setpoint'; sku: Id; value: number; by?: string };
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
@@ -1490,7 +1513,11 @@ export type Refusal =
   | 'noDeputy'
   | 'noRole'
   | 'ownRole'
-  | 'sameOnly';
+  | 'sameOnly'
+  /** уставка (Б1ж): нет такой стадии или режима в редакции в силе; вне её диапазона; не на шаге от цели */
+  | 'noParam'
+  | 'outOfRange'
+  | 'offStep';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
@@ -1566,6 +1593,8 @@ export type Notice =
   | { kind: 'overtimeLow'; person: string; role: Id; dept: Dept; tab: number; left: number }
   /** команда не выполнена */
   | { kind: 'refused'; cmd: Command['kind']; why: Refusal; detail?: string }
+  /** коллега технологии вернул уставки к цели (Б1ж): игрок ушёл с поста «Качество и технология»; сколько уставок */
+  | { kind: 'setpoints'; n: number; by: 'colleague' }
   /** результат вне спецификации — расследование открыто; шаг расследования сделан; расследование решено */
   /** результат вне спецификации — расследование; методика и номер серии — для слов извещения */
   | { kind: 'investigation'; id: string; batch: string; lot: string; method: Id; code: string }

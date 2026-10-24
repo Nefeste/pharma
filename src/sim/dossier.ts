@@ -50,6 +50,8 @@ export interface StageParam {
   unit: ParamUnit;
   target: number;
   range: [number, number];
+  /** уставка (Б1ж): сделанной стадии — по записи, идущей — с которой началась; записи до Б1ж её не знают — цель */
+  sp?: number;
   value?: number;
   dev?: number;
 }
@@ -231,7 +233,8 @@ export function dossierView(db: ContentDb, s: PlantState, q: DossierQuery): Doss
       in: rec ? rec.in : stageMass(db, b, k),
       params: st.params.map(p => {
         const dev = devs.find(d => d.kind === 'param' && d.stage === st.id && d.param === p.id);
-        return { id: p.id, unit: p.unit, target: p.target, range: [p.range[0], p.range[1]] as [number, number], ...(rec && rec.params[p.id] !== undefined ? { value: rec.params[p.id] } : {}), ...(dev ? { dev: num(dev.id) } : {}) };
+        const sp = rec ? (rec.sp?.[p.id] ?? p.target) : now ? b.sp?.[p.id] : undefined;
+        return { id: p.id, unit: p.unit, target: p.target, range: [p.range[0], p.range[1]] as [number, number], ...(sp !== undefined ? { sp } : {}), ...(rec && rec.params[p.id] !== undefined ? { value: rec.params[p.id] } : {}), ...(dev ? { dev: num(dev.id) } : {}) };
       }),
       ipc: st.ipc.map(c => {
         const pts = rec ? rec.ipc.filter(x => x.test === c.test) : [];

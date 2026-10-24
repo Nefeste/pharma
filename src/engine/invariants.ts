@@ -505,14 +505,14 @@ function packing(db: ContentDb, s: PlantState, bad: string[]) {
       bad.push(`линия ${line.id}: серия ${b.id} не на упаковке`);
       continue;
     }
-    const g = geo(db, s, line, job.sku);
+    const g = geo(db, s, line, job);
     const m = line.machines;
     m.forEach((mc, i) => {
       const t = mc.times;
       const spent = t.run + t.slow + t.micro + t.fail + t.wait + t.setup + t.off;
       if (spent !== line.t - job.taken!) bad.push(`линия ${line.id}, ${mc.id}: время состояний ${spent}, а задание идёт ${line.t - job.taken!}`);
       if (t.out !== mc.pos) bad.push(`линия ${line.id}, ${mc.id}: проход ${t.out}, а позиция ${mc.pos}`);
-      if (t.out !== g.nominal[i] * t.run + t.slowOut) bad.push(`линия ${line.id}, ${mc.id}: проход ${t.out} ≠ номинал × ${t.run} + ${t.slowOut}`);
+      if (t.out !== g.speed[i] * t.run + t.slowOut) bad.push(`линия ${line.id}, ${mc.id}: проход ${t.out} ≠ ход × ${t.run} + ${t.slowOut}`);
       if (i > 0 && mc.pos > m[i - 1].pos) bad.push(`линия ${line.id}, ${mc.id}: обогнала машину перед собой`);
       if (i < m.length - 1 && mc.pos - m[i + 1].pos > g.cap[i]) bad.push(`линия ${line.id}, ${mc.id}: накопитель переполнен`);
     });

@@ -8,12 +8,24 @@ import { civilFromDays, momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
 import { DEPT_SEAT } from '../engine/seats';
 import { dateText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
-import type { LineSum, MainLoss, MorningView, SeatSum } from '../sim/report';
+import type { LineSum, MainLoss, ModeRow, MorningView, SeatSum } from '../sim/report';
 import type { Thing } from '../sim/views';
 import { assetName, workName } from './assets';
 import { db } from './db';
 import { Levers } from './Levers';
 import type { Actions, Hud } from './store';
+import { paramText } from './units';
+
+/** Уставка не по цели (Б1ж): режим стадии карты или скорость блистерной позиции, уставка и цель, с какого часа. */
+function modeText(x: ModeRow, start: Ymd): string {
+  const when = whenText(start, x.from);
+  if (x.sku) {
+    const per = (n: number) => T.ref.perMin(num(n), T.ref.items.blister ?? '');
+    return T.morning.mode(`${T.speed.title} · ${named(db?.skus[x.sku]?.name, x.sku)}`, per(x.v), per(x.target), when);
+  }
+  const what = [T.ref.params[x.param] ?? x.param, T.stages[x.stage ?? ''] ?? x.stage, named(db?.recipes[x.recipe ?? '']?.name, x.recipe ?? '')].join(' · ');
+  return T.morning.mode(what, paramText(x.unit!, x.v), paramText(x.unit!, x.target), when);
+}
 
 /** Название машины или оборудования по виду; узлы — из той же записи. */
 function machineOf(thing: Thing | undefined, type: string): { name: string; parts: readonly PartType[] } {
@@ -231,6 +243,15 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
               {v.seats.map(x => (
                 <SeatBlock key={x.seat} x={x} start={start} />
               ))}
+            </Section>
+          ) : null}
+          {v.modes.length > 0 ? (
+            <Section title={T.morning.modesTitle}>
+              <ul className="mlist" data-test="morning-modes">
+                {v.modes.map(x => (
+                  <li key={`${x.recipe ?? x.sku}/${x.stage ?? ''}/${x.param}`}>{modeText(x, start)}</li>
+                ))}
+              </ul>
             </Section>
           ) : null}
           <Section title={T.morning.yesterday(T.date.full(yest.d, T.date.months[yest.m - 1], yest.y))}>

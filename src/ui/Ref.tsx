@@ -97,6 +97,13 @@ const codeOf = (material: string) => db?.materials[material]?.code ?? db?.spares
 /** Название документа: у инструкции по упаковке — имя позиции. */
 const docName = (kind: DocKind, id: string) => named((db?.[kind] as Record<string, { name: { ru: string; en?: string } }> | undefined)?.[id]?.name, id);
 
+/** Скорость блистерной позиции: «120 (100–135) блистеров/мин», уставка не по цели — рядом. */
+function speedText(k: RefSku): string {
+  const s = k.speed;
+  const base = T.ref.perMin(`${num(s.target)} (${num(s.range[0])}–${num(s.range[1])})`, T.ref.items.blister ?? '');
+  return s.set !== s.target ? `${base} · ${T.regimes.sp(num(s.set))}` : base;
+}
+
 function Products({ v, q }: { v: RefView; q: string }) {
   const c = T.ref.skuCols;
   const fg = (k: RefSku) => db?.skus[k.id]?.fg ?? '';
@@ -111,6 +118,8 @@ function Products({ v, q }: { v: RefView; q: string }) {
     { name: c.shelf, text: k => T.ref.months(k.shelf), num: k => k.shelf },
     { name: c.price, text: k => priceText(k.price), num: k => k.price },
     { name: c.regPrice, text: k => (k.regPrice !== undefined ? priceText(k.regPrice) : dash()), num: k => k.regPrice ?? -1 },
+    // скорость блистерной по инструкции (Б1ж): цель и диапазон, уставка — если не по цели
+    { name: c.speed, text: k => speedText(k), show: k => <span className="nw">{speedText(k)}</span>, num: k => k.speed.set },
     { name: c.pi, text: k => docText('skus', k.id), show: k => <span className="mono nw">{docText('skus', k.id)}</span> },
   ];
   return (
@@ -135,7 +144,9 @@ function ipcText(q: { test: string; min?: number; max?: number }): string {
 }
 
 const rangeOf = (p: RefStage['params'][number]) => T.ref.range(paramText(p.unit, p.target), paramNum(p.unit, p.range[0]), paramText(p.unit, p.range[1]));
-const paramLine = (p: RefStage['params'][number]) => `${T.ref.params[p.id] ?? p.id}: ${rangeOf(p)}`;
+/** уставка сейчас (Б1ж) — рядом с целью, если не по цели */
+const setOf = (p: RefStage['params'][number]) => (p.set !== p.target ? ` · ${T.regimes.sp(paramText(p.unit, p.set))}` : '');
+const paramLine = (p: RefStage['params'][number]) => `${T.ref.params[p.id] ?? p.id}: ${rangeOf(p)}${setOf(p)}`;
 const ipcLine = (c: RefStage['ipc'][number]) => `${named(db?.tests[c.test]?.name, c.test)}: ${ipcText(c)}`;
 const hasFact = (st: RefStage) => st.done > 0 && st.last !== undefined && st.mean !== undefined;
 
@@ -169,7 +180,18 @@ function Recipe({ r, t, q }: { r: RefRecipe; t: number; q: string }) {
     { name: c.equipment, text: st => st.equipment.map(e => named(db?.equipment[e]?.name, e)).join(', ') },
     { name: c.load, text: st => st.load.map(m => named(db?.materials[m]?.name, m)).join(', ') || dash() },
     { name: c.staff, text: st => T.ref.staff(named(db?.roles[st.staff.role]?.name, st.staff.role), st.staff.n) },
-    { name: c.plan, text: st => durText(st.nominal), show: st => <b className="nw">{durText(st.nominal)}</b>, num: st => st.nominal },
+    // по карте — при цели; с уставками кода карты сейчас (Б1ж) — если иначе: с ними начнётся следующая стадия
+    {
+      name: c.plan,
+      text: st => (st.atSet !== st.nominal ? `${durText(st.nominal)} ${T.ref.atSet(durText(st.atSet))}` : durText(st.nominal)),
+      show: st => (
+        <>
+          <b className="nw">{durText(st.nominal)}</b>
+          {st.atSet !== st.nominal ? <div className="nw muted small">{T.ref.atSet(durText(st.atSet))}</div> : null}
+        </>
+      ),
+      num: st => st.nominal,
+    },
     {
       name: c.fact,
       text: st => (hasFact(st) ? `${T.ref.last(durText(st.last!))} ${T.ref.mean(durText(st.mean!), st.done)}` : T.ref.none),
@@ -205,6 +227,7 @@ function Recipe({ r, t, q }: { r: RefRecipe; t: number; q: string }) {
           ? st.params.map(p => (
               <div key={p.id}>
                 {T.ref.params[p.id] ?? p.id}: <span className="nw">{rangeOf(p)}</span>
+                {setOf(p) ? <b className="nw">{setOf(p)}</b> : null}
               </div>
             ))
           : dash(),
@@ -223,7 +246,7 @@ function Recipe({ r, t, q }: { r: RefRecipe; t: number; q: string }) {
     },
   ];
   return (
-    <section className="rsec">
+    <section className="rsec" data-test="ref-recipe" data-recipe={r.id}>
       <div className="msec">{named(db?.recipes[r.id]?.name, r.id)}</div>
       {head ? <div className="muted" data-test="ref-recipe-doc">{T.ref.recipeHead(docText('recipes', r.id), dayText(head.from), named(db?.roles[head.approved]?.name, head.approved))}</div> : null}
       <div className="muted">{T.ref.batch(qtyText(r.mass, 'mass'), T.ref.tablets(r.units))}</div>

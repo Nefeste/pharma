@@ -16,14 +16,19 @@ customers: [cus.national, cus.regional]
 # штат — под загрузку плана (Б2в): серия в рабочий день отвешивается в первую смену вдвоём, во вторую стадии ведёт один
 # аппаратчик; линия упаковывает серию за 3–4 часа — её смена только первая; при прежнем штате люди были заняты задачами
 # пятую часть смены (замер Б2в). Уборщики (Б4в) — по одному в каждой смене аппаратчиков: помещение убирают после мойки
-# оборудования. Гипотезы
+# оборудования. Запас на отпуска (Б4г) — последние три строки: аппаратчик и упаковщик первой смены — отвешиванию и линии
+# нужны двое, — и второе уполномоченное лицо — его заменяет только другое (GMP ЕАЭС, ч. I, п. 2.6). Смежные профессии
+# (`also`, Б4г) — кому замещать единственных в роли на время отпуска: кладовщик и водитель погрузчика, пробоотборщик и
+# химик-аналитик, начальник ОКК и специалист ООК — друг у друга; у наладчика — оператор линии, у слесаря-ремонтника первой
+# смены — наладчик. Гипотезы
 staff:
-  - { role: role.storekeeper, shift: shift.day, skill: 3, n: 1 }
-  - { role: role.driver, shift: shift.day, skill: 3, n: 1 }
-  - { role: role.sampler, shift: shift.day, skill: 3, n: 1 }
-  - { role: role.analyst, shift: shift.day, skill: 3, n: 2 }
-  - { role: role.qc-head, shift: shift.day, skill: 4, n: 1 }
-  - { role: role.qa, shift: shift.day, skill: 3, n: 1 }
+  - { role: role.storekeeper, shift: shift.day, skill: 3, n: 1, also: [role.driver] }
+  - { role: role.driver, shift: shift.day, skill: 3, n: 1, also: [role.storekeeper] }
+  - { role: role.sampler, shift: shift.day, skill: 3, n: 1, also: [role.analyst] }
+  - { role: role.analyst, shift: shift.day, skill: 3, n: 1, also: [role.sampler] }
+  - { role: role.analyst, shift: shift.day, skill: 3, n: 1 }
+  - { role: role.qc-head, shift: shift.day, skill: 4, n: 1, also: [role.qa] }
+  - { role: role.qa, shift: shift.day, skill: 3, n: 1, also: [role.qc-head] }
   - { role: role.qp, shift: shift.day, skill: 4, n: 1 }
   - { role: role.operator, shift: shift.a, skill: 3, n: 2 }
   - { role: role.operator, shift: shift.b, skill: 3, n: 1 }
@@ -31,11 +36,14 @@ staff:
   - { role: role.master, shift: shift.b, skill: 3, n: 1 }
   - { role: role.line-operator, shift: shift.a, skill: 3, n: 2 }
   - { role: role.packer, shift: shift.a, skill: 3, n: 2 }
-  - { role: role.mechanic, shift: shift.a, skill: 3, n: 1 }
+  - { role: role.mechanic, shift: shift.a, skill: 3, n: 1, also: [role.setter] }
   - { role: role.mechanic, shift: shift.b, skill: 3, n: 1 }
-  - { role: role.setter, shift: shift.day, skill: 3, n: 1 }
+  - { role: role.setter, shift: shift.day, skill: 3, n: 1, also: [role.line-operator] }
   - { role: role.cleaner, shift: shift.a, skill: 3, n: 1 }
   - { role: role.cleaner, shift: shift.b, skill: 3, n: 1 }
+  - { role: role.operator, shift: shift.a, skill: 3, n: 1 }
+  - { role: role.packer, shift: shift.a, skill: 3, n: 1 }
+  - { role: role.qp, shift: shift.day, skill: 4, n: 1 }
 vehicles:
   - { type: veh.jack, n: 2 }
   - { type: veh.reach, n: 1 }
@@ -89,6 +97,19 @@ account: 3
 fg: { days: 14, age: [10, 40] }
 # отклонения (Б1г; геймдизайн, §6.4): срок расследования по процедуре завода, сутки
 deviations: { term: 30 }
+# отпуска (Б4г; src/engine/leave.ts): черновик графика на следующий год кадры составляют в первый рабочий день не раньше
+# 1 декабря, в 09:00; утверждают в последний рабочий день не позже 17 декабря — за две недели до года (ст. 123 ТК РФ).
+# Части у каждого — 14 и 14 дней (ст. 125): первая — летом, с 1 июня по 31 августа, вторая — с 9 января по 17 декабря,
+# без новогодних праздников и двух последних недель года; из отдела в отпуске сразу — не больше двух человек; доплата
+# заместителю — % оклада ушедшего за дни замещения (ст. 151: по соглашению сторон). Гипотезы
+leave:
+  draft: [12, 1]
+  approve: [12, 17]
+  parts: [14, 14]
+  summer: [[6, 1], [8, 31]]
+  rest: [[1, 9], [12, 17]]
+  dept: 2
+  cover: 30
 # рынок труда города (Б4в; геймдизайн, §8.4): уровень оплаты роли — её оклад в базе. Объявление — ₽ в неделю; кадровое
 # агентство — % годового оклада принятого, опытный кандидат (навык от и до) через столько-то суток; медосмотр при приёме —
 # рабочих дней и ₽; кандидат ищет работу `wait` суток; ожидание — уровень роли, выше на `step` % за ступень навыка выше 3

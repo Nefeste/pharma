@@ -16,6 +16,7 @@ import { schedule } from './core/agenda';
 import { civilFromDays, daysFromCivil, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { changedOver, defect, lineDay, NO_TIMES } from './lean';
+import { coversOn } from './leave';
 import { blocked, consume, failPart, partsOf, partType, pending, untilFail, wearAt } from './maint';
 import { deviate, returnTask } from './mes';
 import { type PlantPlan, planOf, type Point } from './plant';
@@ -151,9 +152,14 @@ function crewHere(s: PlantState, line: Line, role: Id): boolean {
   return tasksOf(s, line, 'crew').some(t => t.roles[0] === role && t.state === 'busy' && t.times![1] <= s.t);
 }
 
-/** Идёт ли сейчас смена у кого-нибудь из этой роли — иначе время линии не плановое. */
+/**
+ * Идёт ли сейчас смена у кого-нибудь из этой роли или у того, кто её сегодня замещает (Б4г), — иначе время линии не
+ * плановое.
+ */
 function shiftOn(db: ContentDb, s: PlantState, role: Id): boolean {
-  return Object.values(s.people).some(p => p.role === role && shiftEnd(db, s, p) !== undefined);
+  if (Object.values(s.people).some(p => p.role === role && shiftEnd(db, s, p) !== undefined)) return true;
+  for (const [who, roles] of coversOn(s, momentOf(s.start, s.t).day)) if (roles.includes(role) && shiftEnd(db, s, s.people[who]) !== undefined) return true;
+  return false;
 }
 
 /** Места зоны паллетирования линии: свободные — по порядку плана. */

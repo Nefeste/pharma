@@ -29,6 +29,8 @@ function words(l: Exclude<Lever, { k: 'later' }>): [string, string] {
       return [T.levers.inv, T.levers.invWhat];
     case 'staff':
       return [T.levers.staff, T.levers.staffWhat];
+    case 'leave':
+      return [T.levers.leave, T.levers.leaveWhat];
     case 'person':
       return [T.levers.person(T.card.person(named(db?.roles[l.role]?.name, l.role), l.tab)), T.levers.personWhat];
   }
@@ -66,6 +68,7 @@ function run(l: Lever, hud: Hud, actions: Actions) {
       actions.openInv(l.id);
       return;
     case 'staff':
+    case 'leave':
       if (!hud.ref.open) actions.toggleRef();
       actions.setRefTab('people');
       return;

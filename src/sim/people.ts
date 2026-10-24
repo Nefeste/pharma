@@ -1,10 +1,10 @@
 // Люди и допуски для видов окна (Б3б; docs/specs/2026-10-vertical-slice.md, «Б3б»): допуск человека сегодня, строки
-// обучения в карточке, матрица обучения справочника и сводка планёрки. Записи обучения — знание завода, а не истина:
-// окно видит их как есть. Правила допуска — движка (src/engine/quals.ts).
+// обучения в карточке — его роли и смежных профессий (Б4г), матрица обучения справочника и сводка планёрки. Записи
+// обучения — знание завода, а не истина: окно видит их как есть. Правила допуска — движка (src/engine/quals.ts).
 import type { ContentDb, Id } from '../content/types';
 import { momentOf } from '../engine/core/calendar';
 import { headOf, inForce, revisions } from '../engine/docs';
-import { knows, learnable, learnCodes, matrixOf } from '../engine/quals';
+import { knows, learnable, learnCodes, matrixOf, rowsOf } from '../engine/quals';
 import type { Person, PlantState } from '../engine/types';
 
 /** Документ: код, раздел базы и редакция, действующая в день, — id записи и номер. */
@@ -71,7 +71,7 @@ export interface TrainRow {
 
 export function trainRows(db: ContentDb, s: PlantState, p: Person): TrainRow[] {
   const day = momentOf(s.start, s.t).day;
-  return matrixOf(db, p.role).map(code => {
+  return rowsOf(db, p).map(code => {
     const r = p.train[code];
     const d = learnable(db, code)!;
     const h = r ? headOf(db, d.kind, r.rev) : undefined;
@@ -81,12 +81,13 @@ export function trainRows(db: ContentDb, s: PlantState, p: Person): TrainRow[] {
 
 /**
  * Матрица обучения справочника: документы — процедуры и методики по коду, с редакцией, действующей сегодня; роли, у
- * которых есть люди; в клетке — сколько людей роли допущено по документу из скольких, а если роли он не нужен, — `null`.
+ * которых есть люди; в клетке — сколько людей роли допущено по документу из скольких и сколько людей других ролей
+ * допущено по нему как по смежной профессии этой роли (Б4г), а если роли он не нужен, — `null`.
  */
 export interface Matrix {
   docs: DocNow[];
   roles: Id[];
-  cells: ({ ok: number; all: number } | null)[][];
+  cells: ({ ok: number; all: number; also: number } | null)[][];
 }
 
 export function matrix(db: ContentDb, s: PlantState): Matrix {
@@ -98,7 +99,8 @@ export function matrix(db: ContentDb, s: PlantState): Matrix {
     roles.map(r => {
       if (!matrixOf(db, r).includes(d.code)) return null;
       const mine = people.filter(p => p.role === r);
-      return { ok: mine.filter(p => knows(db, p, d.code, day)).length, all: mine.length };
+      const also = people.filter(p => p.also?.includes(r) && knows(db, p, d.code, day)).length;
+      return { ok: mine.filter(p => knows(db, p, d.code, day)).length, all: mine.length, also };
     }),
   );
   return { docs, roles, cells };

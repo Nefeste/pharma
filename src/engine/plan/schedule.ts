@@ -9,8 +9,9 @@
 // другим, на отказы и ремонты и на комплекты упаковки, которые появятся позже, — их прогон не предсказывает.
 import type { ContentDb, Id, TaskKind } from '../../content/types';
 import { stageMeters, unfit } from '../assets';
-import { DAY, HOUR, isWorkday, momentOf } from '../core/calendar';
+import { DAY, daysFromCivil, HOUR, isWorkday, momentOf } from '../core/calendar';
 import { fitsIn, overLeft } from '../hours';
+import { coverWindows } from '../leave';
 import { blocked } from '../maint';
 import { DIRTY_HOLD, kitPlan, MES, newBatch, nominal, readyFor, roomWork, stageNorm, stageTaskNorm, TRANSFER_WORK, washWork } from '../mes';
 import { classOf, placesOf } from '../places';
@@ -124,17 +125,21 @@ const idNum = (id: string) => Number(id.slice(1));
 
 /**
  * Люди по ролям: роль → люди и сколько сверхурочных ещё можно каждому на начало прогона, с (Б4а). Смена — у человека: его
- * график с переводами и дополнительными выходными (Б4б).
+ * график с переводами, дополнительными выходными (Б4б) и отпусками (Б4г). Заместитель — и в роли ушедшего, в дни
+ * замещения (`days`, номера дней с и по).
  */
-type Crew = Map<Id, { p: Person; left: number }[]>;
+type Crew = Map<Id, { p: Person; left: number; days?: [number, number] }[]>;
 
-/** Люди, допущенные сейчас к работе с документами `need`. */
+/** Люди, допущенные сейчас к работе с документами `need`; заместители — и в ролях тех, кого замещают (как раздатчик). */
 function crewOf(db: ContentDb, s: PlantState, need: readonly string[]): Crew {
   const day = momentOf(s.start, s.t).day;
   const c: Crew = new Map();
+  const cover = coverWindows(s, day);
   for (const p of Object.values(s.people)) {
     if (!admitted(db, p, need, day)) continue;
-    c.set(p.role, [...(c.get(p.role) ?? []), { p, left: overLeft(db, s, p, s.t) }]);
+    const left = overLeft(db, s, p, s.t);
+    c.set(p.role, [...(c.get(p.role) ?? []), { p, left }]);
+    for (const w of cover.get(p.id) ?? []) c.set(w.role, [...(c.get(w.role) ?? []), { p, left, days: [w.from, w.to] }]);
   }
   return c;
 }
@@ -153,11 +158,16 @@ interface Job {
  */
 function firstTake(db: ContentDb, s: PlantState, crew: Crew, roles: readonly Id[], n: number, t: number, job: Job): { t: number; n: number; hours: boolean } | undefined {
   const people = roles.flatMap(r => crew.get(r) ?? []);
+  const base = daysFromCivil(s.start);
   let hours = false;
   for (let at = t; at <= t + LOOK; at = Math.floor(at / HOUR) * HOUR + HOUR) {
     let k = 0;
     let on = 0;
-    for (const { p, left } of people) {
+    const day = base + Math.floor(at / DAY);
+    const seen = new Set<string>();
+    for (const { p, left, days } of people) {
+      if (seen.has(p.id) || (days && (day < days[0] || day > days[1]))) continue;
+      seen.add(p.id);
       const end = shiftEndAt(db, s, p, at);
       if (end === undefined || end - at < LAST_CALL) continue;
       on++;
@@ -169,12 +179,18 @@ function firstTake(db: ContentDb, s: PlantState, crew: Crew, roles: readonly Id[
   return undefined;
 }
 
-/** Паллет с тарой комплекта, которых ещё нет на пластиковой паллете комплекта. */
-function palletsOf(s: PlantState, kit: KitLine[], kitUnit: string | undefined): number {
+/**
+ * Паллет с тарой комплекта, которых ещё нет на пластиковой паллете комплекта; у комплекта упаковки — и не в помещении
+ * линии `room`: та тара на месте (Б4г, mes.ts).
+ */
+function palletsOf(s: PlantState, kit: KitLine[], kitUnit: string | undefined, room?: string): number {
   const units = new Set<string>();
   for (const k of kit) {
     const c = s.containers[k.container];
-    if (c && c.unit !== kitUnit) units.add(c.unit);
+    if (!c || c.unit === kitUnit) continue;
+    const w = s.units[c.unit]?.where;
+    if (room && w?.kind === 'room' && w.id === room) continue;
+    units.add(c.unit);
   }
   return units.size;
 }
@@ -210,6 +226,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     if (!crew) crews.set(key, (crew = crewOf(db, s, need)));
     return firstTake(db, s, crew, roles, n, t, job);
   };
+  const lineRoom = (id: string) => plan.plant.lines.find(l => l.id === id)?.room;
   const cleanNeed = needFor(db, 'clean');
   const roomNeed = needFor(db, 'roomClean');
   const kitNeed = needFor(db, 'transfer');
@@ -477,7 +494,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
   for (const b of order) {
     const job = b.status === 'packing' ? b.pack : undefined;
     if (job?.state !== 'kitting') continue;
-    const end = kitWork(undefined, palletsOf(s, job.kit, job.kitUnit), now) ?? now;
+    const end = kitWork(undefined, palletsOf(s, job.kit, job.kitUnit, lineRoom(job.line)), now) ?? now;
     out.bars.push({ row: 'kit', kind: 'kit', batch: b.id, from: now, to: end, when: 'now', pack: true });
     slot = Math.max(slot, end);
     holder = { batch: b.id, pack: true };
@@ -524,7 +541,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
   // очередь комплектовки: задания, ещё не начавшие её, и зарезервированные комплекты упаковки — в порядке создания
   const queue: { b: Batch; at: number; pallets: number; pack: boolean; material: boolean }[] = [];
   for (const b of order) {
-    if (b.status === 'packing' && b.pack?.state === 'reserved') queue.push({ b, at: now, pallets: palletsOf(s, b.pack.kit, b.pack.kitUnit), pack: true, material: false });
+    if (b.status === 'packing' && b.pack?.state === 'reserved') queue.push({ b, at: now, pallets: palletsOf(s, b.pack.kit, b.pack.kitUnit, lineRoom(b.pack.line)), pack: true, material: false });
     if (b.status !== 'waiting' && b.status !== 'reserved') continue;
     const want = asked.get(b.id) ?? b.notBefore;
     if (asked.has(b.id) && want < now) note(b.id, { why: 'past', bar: 'kit' });

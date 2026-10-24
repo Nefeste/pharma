@@ -70,6 +70,23 @@ export const profile = z.strictObject({
    * желанию, дней; на испытании — дней; не выдержавшего испытание предупреждают не позже чем за столько дней
    */
   labor: z.strictObject({ probation: z.number().int().min(0).max(12), notice: z.number().int().min(1).max(60), trial: z.number().int().min(1).max(30) }),
+  /**
+   * отпуска (Б4г): календарных дней за рабочий год; одна часть — не меньше `part` дней; право за первый год — через
+   * `first` месяцев работы; график утверждают не позже чем за `approve` дней до года, о начале отпуска извещают не позже
+   * чем за `notice` дней, отпускные платят не позже чем за `pay` дней; средний заработок — за `months` месяцев,
+   * среднемесячное число дней — `avg`; при увольнении `full` месяцев рабочего года и больше — полная компенсация
+   */
+  leave: z.strictObject({
+    days: z.number().int().min(1).max(60),
+    part: z.number().int().min(1).max(60),
+    first: z.number().int().min(0).max(12),
+    approve: z.number().int().min(1).max(60),
+    notice: z.number().int().min(1).max(60),
+    pay: z.number().int().min(1).max(30),
+    months: z.number().int().min(1).max(24),
+    avg: z.number().positive().max(31),
+    full: z.number().int().min(1).max(12),
+  }),
   source: sources,
   review,
 });
@@ -116,7 +133,7 @@ export const scenario = z.strictObject({
   energy: z.strictObject({ price: z.number().positive() }),
   /** покупатели сценария */
   customers: z.array(id).default([]),
-  staff: z.array(z.strictObject({ role: id, shift: id, skill: z.number().int().min(1).max(5), n: z.number().int().min(1).max(50) })).min(1),
+  staff: z.array(z.strictObject({ role: id, shift: id, skill: z.number().int().min(1).max(5), n: z.number().int().min(1).max(50), also: z.array(id).min(1).optional() })).min(1),
   vehicles: z.array(z.strictObject({ type: id, n: z.number().int().min(1).max(20) })),
   orders: z.array(z.strictObject({ supplier: id, lines: z.array(z.strictObject({ material: id, qty })).min(1) })).default([]),
   /** задания на серию: карта, день «не раньше» от начала партии и товарная позиция, в которую упаковать балк */
@@ -248,6 +265,23 @@ export const scenario = z.strictObject({
     })
     .optional(),
   /**
+   * отпуска (Б4г): черновик графика на следующий год — в первый рабочий день не раньше этого месяца и числа, в 09:00;
+   * утверждение — в последний рабочий день не позже этого; части у каждого — дней по порядку, первая летом (`summer`,
+   * месяц и число с и по), остальные — в `rest`; из отдела в отпуске — не больше `dept` человек сразу; доплата
+   * заместителю — % оклада ушедшего за дни замещения. Нет записи — отпусков нет
+   */
+  leave: z
+    .strictObject({
+      draft: z.tuple([z.number().int().min(1).max(12), z.number().int().min(1).max(31)]),
+      approve: z.tuple([z.number().int().min(1).max(12), z.number().int().min(1).max(31)]),
+      parts: z.array(z.number().int().min(1).max(60)).min(1).max(4),
+      summer: z.tuple([z.tuple([z.number().int().min(1).max(12), z.number().int().min(1).max(31)]), z.tuple([z.number().int().min(1).max(12), z.number().int().min(1).max(31)])]),
+      rest: z.tuple([z.tuple([z.number().int().min(1).max(12), z.number().int().min(1).max(31)]), z.tuple([z.number().int().min(1).max(12), z.number().int().min(1).max(31)])]),
+      dept: z.number().int().min(1).max(20),
+      cover: percent,
+    })
+    .optional(),
+  /**
    * происшествие прототипа (docs/specs/2026-10-investigation.md): задание на серию по номеру с 1, модель расследования,
    * веса корней, %, и величина неисправности — от и до: ошибка лаборатории — % ниже истинного, опудривание — мин сверх
    * цели, сила прессования — кН сверх цели, сито — мм крупнее карты
@@ -376,6 +410,8 @@ export const role = z.strictObject({
   dept: z.enum(['wms', 'qc', 'qa', 'mes', 'line', 'maint']),
   /** ₽ в месяц */
   salary: z.number().int().positive(),
+  /** заменить может только человек той же роли (Б4г): смежной профессией эта роль не бывает */
+  same: z.literal(true).optional(),
 });
 
 export const vehicle = z.strictObject({

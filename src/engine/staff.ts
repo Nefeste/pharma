@@ -9,12 +9,13 @@ import { DAY, daysFromCivil, HOUR, MIN } from './core/calendar';
 import { walked } from './lean';
 import { pointAlong, route } from './nav';
 import { dist, type PlantPlan, planOf, type Point, travel } from './plant';
+import { awayOn } from './leave';
 import { employedOn, shiftAt } from './shifts';
 import type { Person, PlantState } from './types';
 import { calOf, type Clock, shiftTo, worksOn } from './workdays';
 
 /** Графики человека — для смены в мгновение (shifts.ts). */
-type Rostered = Pick<Person, 'shift' | 'roster'> & Partial<Pick<Person, 'hired' | 'quit'>>;
+type Rostered = Pick<Person, 'shift' | 'roster'> & Partial<Pick<Person, 'hired' | 'quit' | 'away'>>;
 
 /** Человек пешком, см/с. */
 export const WALK = 120;
@@ -24,7 +25,7 @@ export const LAST_CALL = 15 * MIN;
 
 /**
  * Конец смены человека в мгновение `t`, если оно в его смене, — игровые секунды; иначе `undefined`. Смена — по графику с
- * переводами, ночная — через полночь (shifts.ts, Б4б).
+ * переводами, ночная — через полночь (shifts.ts, Б4б); в дни отпуска смены нет (Б4г).
  */
 export function shiftEndAt(db: ContentDb, s: Clock, p: Rostered, t: number): number | undefined {
   const sh = db.shifts[p.shift];
@@ -33,7 +34,7 @@ export function shiftEndAt(db: ContentDb, s: Clock, p: Rostered, t: number): num
     const day = daysFromCivil(s.start) + Math.floor(t / DAY);
     const sec = ((t % DAY) + DAY) % DAY;
     const cal = calOf(db, s);
-    if (!employedOn(p, day) || !worksOn(cal, sh, day) || sec < sh.from * HOUR) return undefined;
+    if (!employedOn(p, day) || !worksOn(cal, sh, day) || sec < sh.from * HOUR || (p.away && awayOn(p, day))) return undefined;
     const to = shiftTo(db, s, cal, sh, day);
     return sec < to ? t - sec + to : undefined;
   }

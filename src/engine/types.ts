@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 24;
+export const SCHEMA = 25;
 
 // ---------------------------------------------------------------- склад
 
@@ -678,6 +678,48 @@ export interface Person {
    * доля оклада за месяц минус она
    */
   half?: { y: number; m: number; base: number };
+  /** смежные профессии (Б4г): роли, по строкам матрицы которых он учится наряду со своей и замещает людей этих ролей */
+  also?: Id[];
+  /** части отпуска (Б4г): все годы, по порядку начала */
+  away?: Away[];
+  /** дней отпуска, данных черновиками графиков (Б4г): год графика и дни закона — за каждый черновик, где он был */
+  given?: [number, number][];
+  /**
+   * начислено за месяц (Б4г; средний заработок, ст. 139): номер месяца — год × 12 + месяц − 1 — и копейки оплаты труда,
+   * без отпускных, компенсации и выплаты по соглашению; за 13 последних месяцев
+   */
+  earn?: [number, number][];
+}
+
+/**
+ * Часть отпуска (Б4г; ст. 120, 123, 125 ТК РФ): год графика; первый и последний день — номера дней от 1970-01-01
+ * (праздник внутри удлиняет часть); календарных дней отпуска; заместитель — человек со смежной профессией роли ушедшего;
+ * прежние заместители начатой части — кто и по какой день (пустой — без заместителя), для доплаты; извещён ли под
+ * роспись; отпускные, копейки, — когда заплачены.
+ */
+export interface Away {
+  id: string;
+  y: number;
+  from: number;
+  to: number;
+  days: number;
+  deputy?: string;
+  prev?: [string, number][];
+  told?: true;
+  paid?: number;
+}
+
+/** Заместитель в извещении (Б4г): человек, его роль и табельный номер — для слов. */
+export interface Deputy {
+  person: string;
+  role: Id;
+  tab: number;
+}
+
+/** График отпусков года (Б4г): черновик или утверждён; кому части не нашлось места по правилу — люди. */
+export interface LeaveYear {
+  st: 'draft' | 'approved';
+  miss?: string[];
 }
 
 /**
@@ -762,10 +804,11 @@ export type { TaskKind } from '../content/types';
 /**
  * Почему задача ждёт (1ж): люди её ролей в смене, но заняты; людей её ролей нет в смене; нет свободной техники; нет
  * свободного прибора; нет свободного места назначения; люди её ролей в смене есть, но ни один не допущен (Б3б); прибор
- * не откалиброван или у подрядчика, зона хранения не принимает паллет — поверка её датчика вышла или он у подрядчика (Б3в). В потерях
+ * не откалиброван или у подрядчика, зона хранения не принимает паллет — поверка её датчика вышла или он у подрядчика (Б3в); люди её
+ * ролей, которые были бы в смене, в отпуске, а заместителя в смене нет (Б4г). В потерях
  * суток есть ещё ожидание фуры: рампа занята (3а) — это ждёт не задача, а фура во дворе.
  */
-export type WaitCause = 'people' | 'shift' | 'vehicle' | 'instrument' | 'place' | 'dock' | 'qual' | 'asset' | 'hours';
+export type WaitCause = 'people' | 'shift' | 'vehicle' | 'instrument' | 'place' | 'dock' | 'qual' | 'asset' | 'hours' | 'leave';
 
 /** Место задачи: место паллеты, рампа с фурой или точка. */
 export type Place = { kind: 'slot'; id: string } | { kind: 'truck'; id: string } | { kind: 'point'; x: number; z: number };
@@ -934,7 +977,7 @@ export interface Shipment {
   vat: number;
 }
 
-export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle';
+export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle' | 'vacation';
 
 // ---------------------------------------------------------------- техслужба
 
@@ -1202,6 +1245,12 @@ export interface WageParts {
   period?: number;
   /** выплата по соглашению сторон в расчёте при увольнении (Б4в) */
   leave?: number;
+  /** доплата за исполнение обязанностей ушедшего в отпуск (Б4г, ст. 151) */
+  cover?: number;
+  /** отпускные (Б4г) — у строки части отпуска */
+  vac?: number;
+  /** компенсация за неиспользованный отпуск в расчёте при увольнении (Б4г, ст. 127) */
+  comp?: number;
 }
 
 export interface PlantState {
@@ -1278,6 +1327,8 @@ export interface PlantState {
   candidates: Record<string, Candidate>;
   hires: Record<string, Hire>;
   former: Record<string, Person>;
+  /** графики отпусков по годам (Б4г): черновик или утверждён; части — у людей */
+  leave: Record<number, LeaveYear>;
 }
 
 /** Запись журнала мест: место игрока, с какого мгновения и по какое; держит его сейчас — без конца. */
@@ -1336,7 +1387,17 @@ export type Command =
    * уволить (Б4в): по соглашению сторон — сегодня, с выплатой (ст. 78); не выдержал испытание — через три дня, в срок
    * испытания (ст. 71); отпустить раньше — того, кто подал заявление, сегодня (ст. 80, ч. 2)
    */
-  | { kind: 'dismiss'; person: string; why: 'agree' | 'trial' | 'early'; by?: string };
+  | { kind: 'dismiss'; person: string; why: 'agree' | 'trial' | 'early'; by?: string }
+  /**
+   * часть отпуска (Б4г): добавить с дня на столько дней, перенести на другой день, убрать — только в черновике, сменить
+   * или снять заместителя; после утверждения — по соглашению, начало не раньше чем через срок извещения (ст. 123, 124)
+   */
+  | { kind: 'leave'; person: string; op: 'add'; from: number; days: number; by?: string }
+  | { kind: 'leave'; person: string; op: 'move'; part: string; from: number; by?: string }
+  | { kind: 'leave'; person: string; op: 'drop'; part: string; by?: string }
+  | { kind: 'leave'; person: string; op: 'deputy'; part: string; deputy?: string; by?: string }
+  /** смежная профессия (Б4г): обучить — задачи изучить документы строки её роли, которых у человека нет; снять */
+  | { kind: 'also'; person: string; role: Id; on: boolean; by?: string };
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
@@ -1396,7 +1457,27 @@ export type Refusal =
   | 'notTrial'
   | 'tooLate'
   | 'leaving'
-  | 'noNotice';
+  | 'noNotice'
+  /**
+   * отпуска (Б4г): у сценария нет правила отпусков; такой части нет; в году нет графика или день — не в году части; дней
+   * больше, чем осталось; нет части не короче предела профиля; ближе срока извещения; часть уже началась (или кончилась);
+   * убрать после утверждения нельзя; до права за первый год; часть пересекается с другой его частью; не годится в
+   * заместители; нет такой роли; смежная профессия — своя роль или роль, которую заменяет только человек той же роли
+   */
+  | 'noLeave'
+  | 'noAway'
+  | 'leaveYear'
+  | 'leaveDays'
+  | 'leaveShort'
+  | 'leaveSoon'
+  | 'leaveStarted'
+  | 'leaveApproved'
+  | 'leaveRight'
+  | 'leaveOverlap'
+  | 'noDeputy'
+  | 'noRole'
+  | 'ownRole'
+  | 'sameOnly';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
@@ -1411,6 +1492,15 @@ export type Notice =
   | { kind: 'resign'; person: string; role: Id; tab: number; dept: Dept; last: number }
   | { kind: 'dismissed'; person: string; role: Id; tab: number; why: Quit['why']; last: number }
   | { kind: 'left'; person: string; role: Id; tab: number; why: Quit['why'] }
+  /**
+   * отпуска (Б4г): черновик графика года готов — у скольких людей не всем частям нашлось место; график утверждён;
+   * извещение за срок до начала; ушёл в отпуск — по какой день и кто замещает; вышел; роль и номер — для слов
+   */
+  | { kind: 'leaveDraft'; y: number; miss: number }
+  | { kind: 'leaveApproved'; y: number }
+  | { kind: 'leaveNotice'; person: string; role: Id; tab: number; from: number; to: number; deputy?: Deputy }
+  | { kind: 'leaveStart'; person: string; role: Id; tab: number; to: number; deputy?: Deputy }
+  | { kind: 'leaveEnd'; person: string; role: Id; tab: number }
   /** перевод на другой график (Б4б): с какого дня; отмена ждущего перевода — `cancel` */
   | { kind: 'rostered'; person: string; role: Id; tab: number; shift: Id; from: number; cancel?: true }
   /** планёрка: начались сутки `day` */

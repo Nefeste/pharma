@@ -9,10 +9,11 @@
 import type { ContentDb, Dept, Id, Labor } from '../content/types';
 import { addMonths, addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf } from './core/calendar';
 import { hiringPay, salaryOf, settle } from './cash';
+import { deputyGone, dropAfter } from './leave';
 import { planOf } from './plant';
 import { normal, roll, spread } from './random';
 import { playerHolds } from './seats';
-import { spanOn } from './shifts';
+import { graphSpan, spanOn } from './shifts';
 import { dropTask } from './tasks';
 import { trainNow } from './train';
 import type { Command, Hire, Notice, Person, PlantState, Quit } from './types';
@@ -206,11 +207,12 @@ function start(db: ContentDb, s: PlantState, h: Hire, notices: Notice[]) {
 
 /**
  * Последний день по собственному желанию (ст. 80, ч. 1; ст. 14, ч. 3–4): срок — со следующего дня после заявления, через
- * `days` суток; выпал на день без смены человека — ближайший день с его сменой (гипотеза: «нерабочий» — по его графику).
+ * `days` суток; выпал на день без смены человека — ближайший день с его сменой (гипотеза: «нерабочий» — по его графику,
+ * отпуск срока не меняет — Б4г).
  */
 function noticeEnd(db: ContentDb, s: PlantState, p: Person, day: number, days: number): number {
   let z = day + days;
-  for (let i = 0; i < 31 && !spanOn(db, s, p, z); i++) z++;
+  for (let i = 0; i < 31 && !graphSpan(db, s, p, z); i++) z++;
   return z;
 }
 
@@ -229,13 +231,15 @@ function laborDay(db: ContentDb, s: PlantState, lab: Labor, z: number, notices: 
     if (!hit) continue;
     const last = p.trial !== undefined ? Math.min(noticeEnd(db, s, p, z, law.trial), Math.max(z, p.trial)) : noticeEnd(db, s, p, z, law.notice);
     p.quit = { why: 'own', day: z, last };
+    dropAfter(p, last);
     notices.push({ kind: 'resign', person: p.id, role: p.role, tab: p.tab, dept: deptOf(db, p.role), last });
   }
 }
 
 /**
  * Ушёл ли человек: последний день настал, его смена в этот день кончилась (ночная — утром следующего) или её нет, и задачи
- * у него нет. Записи остаются — в `former`: табель, обучение, история.
+ * у него нет. Записи остаются — в `former`: табель, обучение, история. Был заместителем в частях отпуска, которые ещё
+ * идут, — с завтрашнего дня следующий по правилу (Б4г).
  */
 function leaveStep(db: ContentDb, s: PlantState, notices: Notice[]) {
   const z = today(s);
@@ -249,6 +253,7 @@ function leaveStep(db: ContentDb, s: PlantState, notices: Notice[]) {
     delete p.walk;
     delete s.people[p.id];
     s.former[p.id] = p;
+    deputyGone(db, s, p.id, z + 1);
     notices.push({ kind: 'left', person: p.id, role: p.role, tab: p.tab, why: q.why });
   }
 }
@@ -333,6 +338,7 @@ export function hireCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
       if (cmd.why === 'early') {
         if (p.quit?.why !== 'own') return refuse('noNotice');
         p.quit.last = Math.min(p.quit.last, z);
+        dropAfter(p, p.quit.last);
         notices.push({ kind: 'dismissed', person: p.id, role: p.role, tab: p.tab, why: 'own', last: p.quit.last });
         return;
       }
@@ -347,6 +353,7 @@ export function hireCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
         q = { why: 'agree', day: z, last: z, pay: terms.agree!.pay };
       }
       p.quit = q;
+      dropAfter(p, q.last);
       notices.push({ kind: 'dismissed', person: p.id, role: p.role, tab: p.tab, why: q.why, last: q.last });
       return;
     }

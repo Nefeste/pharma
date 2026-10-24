@@ -87,14 +87,18 @@ function Rows({ title, rows }: { title: string; rows: ReactNode[] }) {
 
 /**
  * Люди (Б4в): заявления за сутки — найм на место и карточка человека; кто выходит и кто уходит на неделе; испытания,
- * которые кончаются на неделе; новые кандидаты по вакансиям — найм.
+ * которые кончаются на неделе; новые кандидаты по вакансиям — найм. Отпуска (Б4г): кто в отпуске и кто замещает, кто
+ * уходит в отпуск в ближайшие две недели и кто выходит на неделе; черновик графика до утверждения — рычаг «График
+ * отпусков».
  */
 function PeopleBlock({ v, hud, actions, close, go }: { v: MorningView; hud: Hud; actions: Actions; close: () => void; go: (t: Thing | undefined) => (() => void) | undefined }) {
   const p = v.people;
+  const l = v.leave;
   const role = (id: string) => named(db?.roles[id]?.name, id);
   const who = (x: { role: string; tab: number }) => T.card.person(role(x.role), x.tab);
   const dept = (id: string) => db?.roles[id]?.dept ?? 'mes';
-  const empty = p.resigned.length + p.coming.length + p.leaving.length + p.trials.length + p.candidates.length === 0;
+  const leaves = l ? l.away.length + l.going.length + l.back.length + (l.draft ? 1 : 0) : 0;
+  const empty = p.resigned.length + p.coming.length + p.leaving.length + p.trials.length + p.candidates.length + leaves === 0;
   return (
     <div className="mblock" data-test="morning-people">
       <div className="mhead">{T.morning.people.title}</div>
@@ -126,6 +130,27 @@ function PeopleBlock({ v, hud, actions, close, go }: { v: MorningView; hud: Hud;
           <li key={`k${x.vacancy}`} data-test="morning-candidates">
             {T.morning.people.candidates(role(x.role), x.n)}
             <Levers list={[{ k: 'staff', seat: DEPT_SEAT[dept(x.role)] }]} hud={hud} actions={actions} close={close} />
+          </li>
+        ))}
+        {l?.draft ? (
+          <li className="warn" data-test="morning-leave-draft">
+            {T.morning.people.draft(l.draft.y, dayText(l.draft.approve), l.draft.problems, l.draft.miss)}
+            <Levers list={[{ k: 'leave', seat: 'director' }]} hud={hud} actions={actions} close={close} />
+          </li>
+        ) : null}
+        {l?.away.map(x => (
+          <li key={`a${x.n}`} className="go" onClick={go({ kind: 'person', n: x.n })} data-test="morning-away">
+            {T.morning.people.away(who(x), dayText(x.to), x.deputy && who(x.deputy))}
+          </li>
+        ))}
+        {l?.going.map(x => (
+          <li key={`g${x.n}-${x.from}`} className="go" onClick={go({ kind: 'person', n: x.n })} data-test="morning-going">
+            {T.morning.people.going(dayText(x.from), who(x), dayText(x.to), x.deputy && who(x.deputy))}
+          </li>
+        ))}
+        {l?.back.map(x => (
+          <li key={`b${x.n}-${x.day}`} className="go" onClick={go({ kind: 'person', n: x.n })} data-test="morning-back">
+            {T.morning.people.back(dayText(x.day), who(x))}
           </li>
         ))}
       </ul>

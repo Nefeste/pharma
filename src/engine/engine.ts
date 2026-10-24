@@ -17,6 +17,7 @@ import { rosterCommand, rosterDay } from './shifts';
 import { concludeCommand, invDone, investigateCommand, invStep, newIncident } from './investigation';
 import { labDone, runDone, rushCommand, startSampling } from './lab';
 import { leanHour, leanStep, newLoss } from './lean';
+import { leaveCommand, leaveHour } from './leave';
 import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from './line';
 import { maintainCommand, maintDone, maintStep, newParts, spareArrives } from './maint';
 import { marketDone, marketHour, marketStep, newCustomers, rznPublished, seedFg } from './market';
@@ -31,7 +32,7 @@ import { goHome, LAST_CALL, postArrive, toPosts } from './staff';
 import { createLot, findSlot } from './stock';
 import { placePo, supplyDay } from './supply';
 import { dispatch, release } from './tasks';
-import { seedTraining, trainDay, trainDone } from './train';
+import { alsoCommand, seedTraining, trainDay, trainDone } from './train';
 import { type Command, type Notice, type PlantEvent, type PlantState, SCHEMA } from './types';
 import { truckArrives, wmsDone } from './wms';
 
@@ -98,6 +99,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     candidates: {},
     hires: {},
     former: {},
+    leave: {},
   };
   s.losses.push(newLoss(momentOf(s.start, s.t).day));
   // люди — у входа, с табельными номерами по порядку приёма и записями обучения (Б3б); техника — на стоянке, приборы — в
@@ -106,7 +108,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   for (const row of sc.staff) {
     for (let i = 0; i < row.n; i++) {
       const n = (s.next.E = (s.next.E ?? 0) + 1);
-      const p = (s.people[`E${n}`] = { id: `E${n}`, role: row.role, shift: row.shift, skill: row.skill, tab: sc.training.tab + n - 1, train: {}, x: plan.entrance.x, z: plan.entrance.z, ot: [], otYear: { y: s.start.y, sec: 0 } });
+      const p = (s.people[`E${n}`] = { id: `E${n}`, role: row.role, shift: row.shift, skill: row.skill, tab: sc.training.tab + n - 1, train: {}, x: plan.entrance.x, z: plan.entrance.z, ot: [], otYear: { y: s.start.y, sec: 0 }, ...(row.also ? { also: [...row.also] } : {}) });
       seedTraining(db, sc, p, startDay);
     }
   }
@@ -274,6 +276,20 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       settle(db, s);
       return notices;
     }
+    case 'leave': {
+      // часть отпуска (Б4г): начинается не раньше завтрашнего дня — сейчас раздавать нечего, кроме смены заместителя
+      const notices: Notice[] = [];
+      leaveCommand(db, s, cmd, notices);
+      settle(db, s);
+      return notices;
+    }
+    case 'also': {
+      // смежная профессия (Б4г): задачи изучить документы её строки — сразу в раздачу
+      const notices: Notice[] = [];
+      alsoCommand(db, s, cmd, notices);
+      settle(db, s);
+      return notices;
+    }
   }
 }
 
@@ -345,6 +361,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       }
       // найм (Б4в): кандидаты, заявления, первые дни принятых, уход после последней смены — до раздачи задач часа
       hireHour(db, s, notices);
+      // отпуска (Б4г): кто ушёл в отпуск и вышел, черновик и утверждение графика, извещения; отпускные — в час банка
+      leaveHour(db, s, notices);
       startSampling(db, s);
       cashHour(db, s, notices);
       // места и оборудование (Б3в): в полночь — у кого вышел срок; коллега техслужбы назначает визиты; подрядчик

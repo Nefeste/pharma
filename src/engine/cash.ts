@@ -2,14 +2,15 @@
 // выпавший на выходной, — на следующий рабочий день, а зарплата — накануне (ст. 136 ТК РФ). Зарплата — дважды в месяц,
 // взносы и энергия — помесячно, НДС — за квартал, проценты по кредитной линии — за сутки. Рабочие дни — по
 // производственному календарю профиля, зарплата — по табелю (Б4а). Правила — из профиля (ADR 0004), цены и предел
-// кредита — из сценария.
+// кредита — из сценария. С Б4г — доплата заместителю, отпускные по среднему заработку и компенсация за отпуск.
 import type { ContentDb, Profile } from '../content/types';
 import { civilFromDays, DAY, daysFromCivil, HOUR, isWorkday, lastOfMonth, momentOf, normOf, workdayOnOrAfter, workdayOnOrBefore } from './core/calendar';
 import { pruneSheet, type SheetDay, sheetDays } from './hours';
+import { awayOn, compDays, deputyOn, lawOf, ruleOf } from './leave';
 import { planOf } from './plant';
-import { leaveResult, scheduleOn } from './shifts';
+import { employedOn, leaveResult, scheduleOn } from './shifts';
 import { nextId } from './stock';
-import type { Cash, CashItem, Notice, Person, PlantState, WageParts } from './types';
+import type { Away, Cash, CashItem, Notice, Person, PlantState, WageParts } from './types';
 import { calOf } from './workdays';
 
 /** Час банка: платежи и поступления дня. */
@@ -77,7 +78,7 @@ export function baseLoad(db: ContentDb, s: PlantState): number {
   return w;
 }
 
-/** Каждый час: в полночь — сутки и границы месяца и квартала; в час банка рабочего дня — платежи. */
+/** Каждый час: в полночь — сутки и границы месяца и квартала; в час банка рабочего дня — платежи и отпускные (Б4г). */
 export function cashHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   const now = momentOf(s.start, s.t);
   if (now.sec === 0) midnight(db, s, now.day);
@@ -86,6 +87,7 @@ export function cashHour(db: ContentDb, s: PlantState, notices: Notice[]) {
       const d = s.cash.dues.shift()!;
       post(s, d.sum, d.item, d.ref);
     }
+    vacationPay(db, s, now.day);
   }
   if (now.sec === 0 || now.sec === BANK_HOUR) lowCheck(db, s, now.day, notices);
 }
@@ -174,7 +176,7 @@ function midnight(db: ContentDb, s: PlantState, z: number) {
  * норма месяца — за вычетом часов смены по графику и РВ раньше в месяце). Часовая ставка — оклад на норму часов месяца
  * (гипотеза). Для кассы и для окна — одно.
  */
-export function extras(db: ContentDb, s: PlantState, p: Person, y: number, m: number, from: number, to: number): Required<Omit<WageParts, 'salary' | 'leave'>> {
+export function extras(db: ContentDb, s: PlantState, p: Person, y: number, m: number, from: number, to: number): Required<Pick<WageParts, 'night' | 'over' | 'off' | 'period'>> {
   const pr = profileOf(db, s).payroll;
   const cal = calOf(db, s);
   const salary = salaryOf(db, p);
@@ -203,8 +205,8 @@ export function extras(db: ContentDb, s: PlantState, p: Person, y: number, m: nu
 export const salaryOf = (db: ContentDb, p: Pick<Person, 'role' | 'salary'>): number => p.salary ?? db.roles[p.role].salary;
 
 /**
- * Оклад за дни `a`–`b` (номера дней) месяца, в котором человек работал не весь (Б4в): доля оклада по часам смен
- * по графику, отработанным в его дни, против нормы месяца (гипотеза).
+ * Оклад за дни `a`–`b` (номера дней) месяца, в котором человек работал не весь (Б4в) или был в отпуске (Б4г): доля оклада
+ * по часам смен по графику, отработанным в его дни, против нормы месяца (гипотеза).
  */
 function partOf(db: ContentDb, s: PlantState, p: Person, y: number, m: number, a: number, b: number): number {
   const salary = salaryOf(db, p);
@@ -220,14 +222,16 @@ function partOf(db: ContentDb, s: PlantState, p: Person, y: number, m: number, a
 }
 
 /**
- * Зарплата человека за дни `from`–`to` месяца и доплаты за эти дни по табелю (`extras`). Месяц весь — половина оклада:
- * первая — вниз до копейки, вторая — остаток, чтобы месяц сходился. В месяц приёма и увольнения (Б4в) — доля оклада
- * по отработанному (`partOf`): первая половина — за 1–15-е, вторая — за месяц по `to` минус начисленная 16-го.
+ * Зарплата человека за дни `from`–`to` месяца и доплаты за эти дни по табелю (`extras`) и за замещение (`coverPay`).
+ * Месяц весь — половина оклада: первая — вниз до копейки, вторая — остаток, чтобы месяц сходился. В месяц приёма и
+ * увольнения (Б4в) и в месяц с отпуском (Б4г) — доля оклада по отработанному (`partOf`): первая половина — за 1–15-е,
+ * вторая — за месяц по `to` минус начисленная 16-го.
  */
-function halfOf(db: ContentDb, s: PlantState, p: Person, y: number, m: number, from: number, to: number): WageParts {
+export function halfOf(db: ContentDb, s: PlantState, p: Person, y: number, m: number, from: number, to: number): WageParts {
   const salary = salaryOf(db, p);
   const first = daysFromCivil({ y, m, d: 1 });
-  const whole = (p.hired ?? 0) <= first && (p.quit === undefined || p.quit.last >= lastOfMonth(y, m));
+  const last = lastOfMonth(y, m);
+  const whole = (p.hired ?? 0) <= first && (p.quit === undefined || p.quit.last >= last) && !p.away?.some(a => a.from <= last && a.to >= first);
   const half = Math.floor(salary / 2);
   let base: number;
   if (from === 1) base = whole ? half : partOf(db, s, p, y, m, first, first + to - 1);
@@ -236,10 +240,33 @@ function halfOf(db: ContentDb, s: PlantState, p: Person, y: number, m: number, f
     base = whole ? salary - half : Math.max(0, partOf(db, s, p, y, m, first, first + to - 1) - done);
   }
   const x = extras(db, s, p, y, m, from, to);
-  return { salary: base, night: x.night, over: x.over, off: x.off, ...(x.period > 0 ? { period: x.period } : {}) };
+  const cover = coverPay(db, s, p, first + from - 1, first + to - 1);
+  return { salary: base, night: x.night, over: x.over, off: x.off, ...(x.period > 0 ? { period: x.period } : {}), ...(cover > 0 ? { cover } : {}) };
 }
 
-const grossOf = (w: WageParts) => w.salary + w.night + w.over + w.off + (w.period ?? 0) + (w.leave ?? 0);
+/**
+ * Доплата за замещение (Б4г; ст. 151; доля — гипотеза) за дни `a`–`b` (номера дней) одного месяца: по каждой части, где
+ * человек в эти дни заместитель, а сам на заводе и не в отпуске, — доля `cover` оклада ушедшего за календарный день, на
+ * число дней месяца.
+ */
+export function coverPay(db: ContentDb, s: PlantState, p: Person, a: number, b: number): number {
+  const rule = ruleOf(db, s);
+  if (!rule) return 0;
+  const { y, m } = civilFromDays(a);
+  const md = lastOfMonth(y, m) - daysFromCivil({ y, m, d: 1 }) + 1;
+  let sum = 0;
+  for (const q of [...Object.values(s.people), ...Object.values(s.former)]) {
+    for (const x of q.away ?? []) {
+      if (x.to < a || x.from > b) continue;
+      let n = 0;
+      for (let z = Math.max(a, x.from); z <= Math.min(b, x.to); z++) if (deputyOn(x, z) === p.id && employedOn(p, z) && !awayOn(p, z)) n++;
+      if (n > 0) sum += Math.floor((salaryOf(db, q) * rule.cover * n) / (P * md));
+    }
+  }
+  return sum;
+}
+
+const grossOf = (w: WageParts) => w.salary + w.night + w.over + w.off + (w.period ?? 0) + (w.leave ?? 0) + (w.cover ?? 0) + (w.vac ?? 0) + (w.comp ?? 0);
 
 function addParts(to: WageParts, w: WageParts) {
   to.salary += w.salary;
@@ -248,6 +275,90 @@ function addParts(to: WageParts, w: WageParts) {
   to.off += w.off;
   if (w.period) to.period = (to.period ?? 0) + w.period;
   if (w.leave) to.leave = (to.leave ?? 0) + w.leave;
+  if (w.cover) to.cover = (to.cover ?? 0) + w.cover;
+  if (w.vac) to.vac = (to.vac ?? 0) + w.vac;
+  if (w.comp) to.comp = (to.comp ?? 0) + w.comp;
+}
+
+/** Номер месяца для начисленного (Б4г): год × 12 + месяц − 1. */
+const monthNo = (y: number, m: number) => y * 12 + m - 1;
+
+/**
+ * Начислено человеку за месяц (Б4г; для среднего заработка, ст. 139): оплата труда без отпускных, компенсации и выплаты
+ * по соглашению; хранится 13 последних месяцев.
+ */
+function earned(p: Person, y: number, m: number, sum: number) {
+  const k = monthNo(y, m);
+  const list = (p.earn ??= []);
+  const row = list.find(x => x[0] === k);
+  if (row) row[1] += sum;
+  else list.push([k, sum]);
+  p.earn = list.filter(x => x[0] > k - 13);
+}
+
+/**
+ * Средний дневной заработок для отпускных и компенсации (Б4г; ст. 139; Положение № 922, пп. 4, 5, 10), копейки:
+ * начисленное за 12 календарных месяцев перед месяцем `y`-`m` на 29,3 × полные месяцы и дни неполных — 29,3 / дни месяца ×
+ * дни на заводе, не в отпуске и с начисленной зарплатой (неначисленные дни последнего месяца — как неполный, гипотеза);
+ * отпускные и дни отпусков исключены. До начала завода и в месяцы без записи (сохранение схемы 24) — оклад (гипотеза);
+ * дней в периоде нет — оклад на 29,3 (гипотеза).
+ */
+export function avgDaily(db: ContentDb, s: PlantState, p: Person, y: number, m: number): number {
+  const law = lawOf(db, s);
+  const startNo = monthNo(s.start.y, s.start.m);
+  const k0 = monthNo(y, m);
+  let sum = 0;
+  // дни — тысячные дня
+  let den = 0;
+  for (let k = k0 - law.months; k < k0; k++) {
+    const yy = Math.floor(k / 12);
+    const mm = k - yy * 12 + 1;
+    const first = daysFromCivil({ y: yy, m: mm, d: 1 });
+    const last = lastOfMonth(yy, mm);
+    if (p.hired !== undefined && p.hired > last) continue;
+    if (k < startNo) {
+      sum += salaryOf(db, p);
+      den += law.avg;
+      continue;
+    }
+    let days = 0;
+    for (let z = first; z <= last; z++) if (employedOn(p, z) && (p.paid ?? first - 1) >= z && !awayOn(p, z)) days++;
+    if (days === 0) continue;
+    const md = last - first + 1;
+    // записи нет — месяц до сохранения схемы 25: оклад за дни (гипотеза, как до начала завода)
+    const e = p.earn?.find(x => x[0] === k);
+    sum += e ? e[1] : Math.floor((salaryOf(db, p) * days) / md);
+    den += Math.floor((law.avg * days) / md);
+  }
+  if (den === 0) return Math.floor((salaryOf(db, p) * 1000) / law.avg);
+  return Math.floor((sum * 1000) / den);
+}
+
+/**
+ * Отпускные (Б4г; ст. 136, ч. 9): в час банка рабочего дня не позже чем за `pay` дней до начала части — средний дневной
+ * заработок за 12 месяцев перед месяцем начала × дни части; со взносами месяца. Части, у которой этот день прошёл
+ * (добавлена позже), — сейчас, пока она не кончилась.
+ */
+function vacationPay(db: ContentDb, s: PlantState, z: number) {
+  if (!ruleOf(db, s)) return;
+  const law = lawOf(db, s);
+  const cal = calOf(db, s);
+  for (const p of Object.values(s.people)) {
+    for (const a of p.away ?? []) {
+      if (a.paid !== undefined || a.to < z || workdayOnOrBefore(cal, a.from - law.pay) > z) continue;
+      payPart(db, s, p, a);
+    }
+  }
+}
+
+function payPart(db: ContentDb, s: PlantState, p: Person, a: Away) {
+  const { y, m } = civilFromDays(a.from);
+  const sum = avgDaily(db, s, p, y, m) * a.days;
+  a.paid = sum;
+  const ref = `vac-${a.id}`;
+  s.cash.wages[ref] = { salary: 0, night: 0, over: 0, off: 0, vac: sum };
+  s.cash.gross[p.id] = (s.cash.gross[p.id] ?? 0) + sum;
+  post(s, -sum, 'vacation', ref);
 }
 
 /**
@@ -261,6 +372,7 @@ function wages(db: ContentDb, s: PlantState, y: number, m: number, from: number,
     const w = halfOf(db, s, p, y, m, from, to);
     addParts(parts, w);
     s.cash.gross[p.id] = (s.cash.gross[p.id] ?? 0) + grossOf(w);
+    earned(p, y, m, grossOf(w));
     p.paid = upTo;
     if (from === 1) p.half = { y, m, base: w.salary };
   }
@@ -278,8 +390,9 @@ export function hiringPay(s: PlantState, sum: number, ref: string) {
  * половина прошлого месяца (выплата 15-го) и первая половина этого (выплата в конце месяца) — из общей выплаты в расчёт,
  * взносы с него уже начислены; зарплата с дня после последнего начисления по последний день — доля оклада по
  * отработанному и доплаты по табелю; у сменного по циклу — итог учётного периода по последний день (shifts.ts, гипотеза:
- * как в конце периода); выплата по соглашению. Взносы — как с зарплаты, а с выплаты по соглашению — только сверх трёх
- * окладов (ст. 422 НК РФ; средний заработок — оклад, гипотеза).
+ * как в конце периода); компенсация за неиспользованный отпуск (Б4г; ст. 127) — дни (leave.ts) × средний дневной за 12
+ * месяцев перед месяцем ухода; выплата по соглашению. Взносы — как с зарплаты, а с выплаты по соглашению — только сверх
+ * трёх окладов (ст. 422 НК РФ; средний заработок — оклад, гипотеза).
  */
 export function settle(db: ContentDb, s: PlantState, p: Person) {
   const q = p.quit!;
@@ -307,6 +420,10 @@ export function settle(db: ContentDb, s: PlantState, p: Person) {
   if (from <= q.last) addParts(parts, halfOf(db, s, p, y, m, from - first + 1, d));
   const res = leaveResult(db, s, p, q.last);
   if (res > 0) parts.period = (parts.period ?? 0) + res;
+  if (ruleOf(db, s)) {
+    const comp = Math.floor((compDays(db, s, p, q.last) * avgDaily(db, s, p, y, m)) / 100);
+    if (comp > 0) parts.comp = comp;
+  }
   const pay = q.pay ?? 0;
   if (pay > 0) parts.leave = pay;
   const free = Math.min(pay, salaryOf(db, p) * 3);

@@ -53,11 +53,22 @@ export function rowTitle(r: NowRow): string {
   }
 }
 
-/** Где и кто: «Отвешивание · Аппаратчик × 2»; у прибора, который работает сам, — прибор. */
+/**
+ * Где и кто: «Отвешивание · Аппаратчик × 2»; у прибора, который работает сам, — прибор; заместитель ушедшего в отпуск
+ * (Б4г) — «за» и роль ушедшего.
+ */
 function rowWho(r: NowRow): string {
   const roles = new Map<string, number>();
-  for (const p of r.people) roles.set(p.role, (roles.get(p.role) ?? 0) + 1);
-  const who = [...roles].map(([role, n]) => `${named(db?.roles[role]?.name, role)} × ${n}`).join(', ');
+  for (const p of r.people) {
+    const k = p.for ? `${p.role}|${p.for}` : p.role;
+    roles.set(k, (roles.get(k) ?? 0) + 1);
+  }
+  const who = [...roles]
+    .map(([k, n]) => {
+      const [role, by] = k.split('|');
+      return `${named(db?.roles[role]?.name, role)} × ${n}${by ? ` ${T.now.for(named(db?.roles[by]?.name, by))}` : ''}`;
+    })
+    .join(', ');
   const where = r.room ? (T.roomTypes[r.room] ?? r.room) : r.inst ? named(db?.instruments[r.inst]?.name, r.inst) : '';
   const none = r.kind === 'test' && r.phase === 'run' ? '' : r.kind === 'visit' ? T.now.contractor : r.kind === 'audit' ? T.now.auditor : T.now.nobody;
   return [where, who || none].filter(Boolean).join(' · ');

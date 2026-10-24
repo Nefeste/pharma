@@ -9,18 +9,21 @@
 // лаборатории берётся только пригодный, а место хранения — в зоне, которая принимает режим материала и чей датчик в сроке
 // (Б3в, assets.ts): иначе задача ждёт актив и называет его. Задачу берёт только тот, у кого она с дорогой по норме и с
 // запасом на разброс помещается в остаток смены и в сверхурочные, которые ему ещё можно (Б4а, hours.ts): свободные
-// допущенные люди в смене есть, но ни у кого не помещается, — задача ждёт «нет часов».
+// допущенные люди в смене есть, но ни у кого не помещается, — задача ждёт «нет часов». Работу роли того, кто в отпуске,
+// берёт и его заместитель — в свои смены, по своим допускам (Б4г, leave.ts); людей роли в смене нет, а кто-то из них в
+// отпуске и был бы в смене, — задача ждёт «в отпуске».
 import type { ContentDb, Id, ZoneKind } from '../content/types';
 import { slotFit, unfit } from './assets';
 import { mixStart } from './batchno';
 import { schedule } from './core/agenda';
 import { momentOf } from './core/calendar';
 import { endTask, fits, startTask } from './hours';
+import { awayOn, coversOn } from './leave';
 import { moved, waitEnd, waitNote } from './lean';
 import { placesOf } from './places';
 import { dist, type PlantPlan, planOf, type Point, travel } from './plant';
 import { admitted, lacking, needOf, vehicleNeed } from './quals';
-import { canTake, goHome, here, LAST_CALL, shiftEnd, stopWalk, WALK } from './staff';
+import { canTake, goHome, here, LAST_CALL, shiftEnd, shiftEndAt, stopWalk, WALK } from './staff';
 import { findSlot, nextId } from './stock';
 import type { Instrument, Person, Place, PlantState, Task, TaskKind, Vehicle, WaitCause } from './types';
 
@@ -124,6 +127,15 @@ interface Pass {
   where: (p: Person) => Point;
   /** зоны хранения, которые не принимают новых паллет (Б3в): зона → её датчик */
   closed: ReadonlyMap<string, string>;
+  /** кого замещают сегодня (Б4г): заместитель → роли ушедших в отпуск */
+  cover: ReadonlyMap<string, readonly Id[]>;
+}
+
+/** Берёт ли человек работу этих ролей: своей роли или роли того, кого сегодня замещает (Б4г). */
+function takes(x: Pass, p: Person, roles: readonly Id[]): boolean {
+  if (roles.includes(p.role)) return true;
+  const c = x.cover.get(p.id);
+  return !!c && c.some(r => roles.includes(r));
 }
 
 /**
@@ -135,7 +147,7 @@ function nearestPerson(db: ContentDb, s: PlantState, x: Pass, t: Task, at: Point
   let best: Person | undefined;
   let bestD = 0;
   for (const p of x.people) {
-    if (skip.has(p.id) || !t.roles.includes(p.role) || t.not?.includes(p.id) || !canTake(db, s, p) || !admitted(db, p, need, x.day) || !admitted(db, p, more, x.day)) continue;
+    if (skip.has(p.id) || !takes(x, p, t.roles) || t.not?.includes(p.id) || !canTake(db, s, p) || !admitted(db, p, need, x.day) || !admitted(db, p, more, x.day)) continue;
     const d = dist(x.plan, x.where(p), at);
     if (!best || d < bestD || (d === bestD && idNum(p.id) < idNum(best.id))) {
       if (ok && !ok(p)) {
@@ -177,7 +189,7 @@ export function dispatch(db: ContentDb, s: PlantState) {
     return q;
   };
   const day = momentOf(s.start, s.t).day;
-  const x: Pass = { plan, day, people: Object.values(s.people), where, closed: closedStores(db, s, plan, day) };
+  const x: Pass = { plan, day, people: Object.values(s.people), where, closed: closedStores(db, s, plan, day), cover: coversOn(s, day) };
   for (const id of [...s.open]) {
     const t = s.tasks[id];
     const why = assign(db, s, x, t);
@@ -196,20 +208,21 @@ const onShift = (db: ContentDb, s: PlantState, p: Person) => (shiftEnd(db, s, p)
 /**
  * Люди ролей задачи в смене есть, допущенных среди них не меньше, чем задаче нужно (или чем людей в смене), но они заняты,
  * — «люди»; в смене есть, но допущенных не хватает — «нет допуска» и документ, которого нет у первого недопущенного; в
- * смене их нет (или смена вот-вот кончится) — «смена».
+ * смене их нет (или смена вот-вот кончится) — «смена», а если кто-то из них в отпуске и сейчас был бы в смене — «в
+ * отпуске» (Б4г).
  */
 function crewWait(db: ContentDb, s: PlantState, x: Pass, t: Task, need: readonly string[]): WaitCause {
   let on = 0;
   let ok = 0;
   let lack: string | undefined;
   for (const p of x.people) {
-    if (!t.roles.includes(p.role) || !onShift(db, s, p)) continue;
+    if (!takes(x, p, t.roles) || !onShift(db, s, p)) continue;
     on++;
     const miss = lacking(db, p, need, x.day);
     if (miss !== undefined) lack ??= miss;
     else if (++ok >= t.count) return 'people';
   }
-  if (on === 0) return 'shift';
+  if (on === 0) return x.people.some(p => t.roles.includes(p.role) && p.away && awayOn(p, x.day) && shiftEndAt(db, s, { ...p, away: undefined }, s.t) !== undefined) ? 'leave' : 'shift';
   // допущенных меньше, чем нужно задаче: «люди» — только если допущены все, кто в смене
   if (ok === on) return 'people';
   t.lack = lack;
@@ -227,7 +240,7 @@ function driverWait(db: ContentDb, s: PlantState, x: Pass, t: Task, need: readon
   for (const v of free) {
     const drive = vehicleNeed(db, v.type);
     for (const p of x.people) {
-      if (!t.roles.includes(p.role) || !onShift(db, s, p) || !admitted(db, p, need, x.day)) continue;
+      if (!takes(x, p, t.roles) || !onShift(db, s, p) || !admitted(db, p, need, x.day)) continue;
       const miss = lacking(db, p, drive, x.day);
       if (miss === undefined) return 'people';
       lack ??= miss;

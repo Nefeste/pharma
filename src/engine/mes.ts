@@ -354,16 +354,21 @@ function startKitting(db: ContentDb, s: PlantState, b: Batch): boolean {
 
 /**
  * Паллеты с тарой комплекта — к шлюзу, если их никто не везёт; весь комплект на пластиковой паллете — стадии (или линии
- * — для комплекта упаковки).
+ * — для комплекта упаковки). Тара комплекта упаковки, которая уже стоит в помещении линии, — на месте, на какой бы
+ * паллете она ни лежала (Б4г): остаток рулона или короба бывает в двух комплектах сразу, и если он на собранной паллете
+ * задания, которое ждёт линию, а линию взяло другое, — без этого они ждали бы друг друга до конца года.
  */
 function kitStep(db: ContentDb, s: PlantState, b: Batch) {
   const plan = planOf(db, s.plant);
   const h = holderOf(b);
+  const at = b.status === 'packing' ? s.units[h.kitUnit!]?.where : undefined;
   let pending = false;
   const seen = new Set<string>();
   for (const k of h.kit) {
     const c = s.containers[k.container];
     if (c.unit === h.kitUnit) continue;
+    const w = s.units[c.unit].where;
+    if (at?.kind === 'room' && w.kind === 'room' && w.id === at.id) continue;
     pending = true;
     const u = s.units[c.unit];
     if (seen.has(u.id) || u.where.kind !== 'slot' || busyUnit(s, u.id)) continue;

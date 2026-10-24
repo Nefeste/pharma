@@ -18,6 +18,7 @@ import type { RefCustomer, RefDoc, RefEquipment, RefInstrument, RefLine, RefMach
 import { assetClass, stateKey, untilText, unfitText, workName } from './assets';
 import { admText } from './Card';
 import { db, docText, headOf } from './db';
+import { LeavePlan } from './Leave';
 import { type Actions, type Hud, holds, REF_TABS } from './store';
 import { attrNum, attrText, paramNum, paramText } from './units';
 
@@ -765,11 +766,18 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
       name: named(db?.roles[r]?.name, r),
       text: (x: Doc) => {
         const c = cell(x, j);
-        return c ? T.ref.cell(c.ok, c.all) : '—';
+        return c ? T.ref.cell(c.ok, c.all) + (c.also > 0 ? T.ref.cellAlso(c.also) : '') : '—';
       },
       show: (x: Doc) => {
         const c = cell(x, j);
-        return c ? <span className={c.ok < c.all ? 'bad' : ''}>{T.ref.cell(c.ok, c.all)}</span> : <span className="muted">—</span>;
+        return c ? (
+          <span>
+            <span className={c.ok < c.all ? 'bad' : ''}>{T.ref.cell(c.ok, c.all)}</span>
+            {c.also > 0 ? <span className="muted">{T.ref.cellAlso(c.also)}</span> : null}
+          </span>
+        ) : (
+          <span className="muted">—</span>
+        );
       },
       num: (x: Doc) => cell(x, j)?.ok ?? -1,
     })),
@@ -783,6 +791,7 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
         <Table test="ref-people" cols={people} items={v.people} keyOf={x => String(x.person)} q={q} />
       </section>
       {v.hiring ? <Hiring h={v.hiring} q={q} hud={hud} actions={actions} /> : null}
+      {v.leave ? <LeavePlan v={v.leave} hud={hud} actions={actions} /> : null}
       <section className="rsec">
         <Table test="ref-shifts" cols={shifts} items={v.shifts} keyOf={x => x.id} q={q} />
       </section>

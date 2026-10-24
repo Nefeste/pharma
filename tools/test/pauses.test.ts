@@ -42,12 +42,12 @@ describe('автопаузы', () => {
     // сверхурочные года на исходе (Б4а) — пост отдела человека: производство, линия и техслужба — производства, ОКК и
     // ООК — качества, склад — снабжения и склада
     const ot = (...d: string[]) => d.map(x => `overtimeLow/${x}`);
-    // заявление об увольнении (Б4в) — тоже пост отдела человека
+    // заявление об увольнении (Б4в) — тоже пост отдела человека; черновик графика отпусков (Б4г) — каждого поста
     const rs = (...d: string[]) => d.map(x => `resign/${x}`);
-    expect(sorted(stopKinds([], ['production']))).toEqual(sorted(['failure', 'investigation', 'lotRejected', 'materialLate', 'morning', ...eq, ...ot('mes', 'line', 'maint'), ...rs('mes', 'line', 'maint')]));
-    expect(sorted(stopKinds([], ['quality']))).toEqual(sorted(['deviation', 'investigation', 'lotRejected', 'qualLost', 'morning', 'assetExpired/lab', 'pairSuspended', ...ot('qc', 'qa'), ...rs('qc', 'qa')]));
-    expect(stopKinds([], ['commerce'])).toEqual(['orderRisk', 'morning']);
-    expect(sorted(stopKinds([], ['supply']))).toEqual(sorted(['materialLate', 'morning', 'truckWait', 'assetExpired/sensor', 'pairSuspended', ...ot('wms'), ...rs('wms')]));
+    expect(sorted(stopKinds([], ['production']))).toEqual(sorted(['failure', 'investigation', 'lotRejected', 'materialLate', 'morning', 'leaveDraft', ...eq, ...ot('mes', 'line', 'maint'), ...rs('mes', 'line', 'maint')]));
+    expect(sorted(stopKinds([], ['quality']))).toEqual(sorted(['deviation', 'investigation', 'lotRejected', 'qualLost', 'morning', 'leaveDraft', 'assetExpired/lab', 'pairSuspended', ...ot('qc', 'qa'), ...rs('qc', 'qa')]));
+    expect(stopKinds([], ['commerce'])).toEqual(['orderRisk', 'leaveDraft', 'morning']);
+    expect(sorted(stopKinds([], ['supply']))).toEqual(sorted(['materialLate', 'morning', 'leaveDraft', 'truckWait', 'assetExpired/sensor', 'pairSuspended', ...ot('wms'), ...rs('wms')]));
     // директор и «место не выбрано» — всё
     const all = PAUSES.flatMap(p => PAUSE_NOTICES[p]);
     expect(stopKinds([], ['director'])).toEqual(all);
@@ -57,7 +57,7 @@ describe('автопаузы', () => {
   });
 
   test('отключённая автопауза не ставит мир на паузу', () => {
-    expect(stopKinds(['morning', 'oos'], ['quality'])).toEqual(['deviation', 'qualLost', 'overtimeLow/qc', 'overtimeLow/qa', 'resign/qc', 'resign/qa', 'assetExpired/lab', 'pairSuspended']);
+    expect(stopKinds(['morning', 'oos'], ['quality'])).toEqual(['deviation', 'qualLost', 'overtimeLow/qc', 'overtimeLow/qa', 'resign/qc', 'resign/qa', 'assetExpired/lab', 'pairSuspended', 'leaveDraft']);
     expect(stopKinds([...PAUSES], ['director'])).toEqual([]);
   });
 

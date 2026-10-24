@@ -149,7 +149,7 @@ A-03-2 в шлюз 1, 12:04:10 – 12:06:40». Время пути — длин�
 | `quality` | пробы, испытания, отклонения, выпуск, обучение | `testPriority`, `classify`, `release`, `capa` | `oos`, `deviation`, `released` |
 | `probe` | расследования | `probeStep`, `probeConclude` | `probeOpened`, `probeClosed` |
 | `maint` | узлы, ремонты, ЗИП, калибровка | `repair`, `pmPlan`, `spareOrder` | `failure`, `repaired` |
-| `staff` | люди, графики, найм | `hire`, `fire`, `roster`, `train` | `shiftStart`, `leaving` |
+| `staff` | люди, графики, найм, отпуска | `hire`, `fire`, `roster`, `train`, `leave`, `also` | `shiftStart`, `leaving`, `leaveStart` |
 | `market` | спрос, покупатели, заказы, тендеры | `allocate`, `bid`, `price`, `promo` | `saleIn`, `tender`, `complaint` |
 | `supply` | поставщики, заказы поставщикам | `po`, `qualify`, `expedite` | `poShipped`, `poLate` |
 | `money` | счета, касса, кредиты | `loan`, `pay` | `monthClosed` |

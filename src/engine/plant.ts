@@ -3,7 +3,7 @@
 // запоминается на запись (одна и та же база — один и тот же план). Окно берёт места и пути отсюда же, поэтому паллета на
 // экране стоит там, где её держит движок, и едет тем путём, который он посчитал.
 import type { ContentDb, Plant, ZoneKind } from '../content/types';
-import { buildNav, CELL_CM, type Mover, type Nav, pathLength, RACK } from './nav';
+import { buildNav, CELL_CM, type Mover, type Nav, pathLength, pointKey, RACK } from './nav';
 import { placesOf, roomAt } from './places';
 
 
@@ -123,14 +123,14 @@ export function planOf(db: ContentDb, plantId: string): PlantPlan {
   // клетка доступа места: на полу — своя, на стеллаже — клетка прохода перед ним (с его стороны); у ярусов — одна
   for (const sl of slots) {
     const at = (x: number, z: number) => z * nav.w + x;
-    if (sl.kind !== 'storage') nav.known.set(`${sl.x},${sl.z}`, at(Math.floor(sl.x / CELL_CM), Math.floor(sl.z / CELL_CM)));
+    if (sl.kind !== 'storage') nav.known.set(pointKey(sl), at(Math.floor(sl.x / CELL_CM), Math.floor(sl.z / CELL_CM)));
     else {
       const r = plant.racks.find(k => k.id === sl.group)!;
       // занятые ряды клеток — те, чья середина внутри стеллажа (начало включительно, конец — нет, как в nav.ts)
       const first = Math.ceil((r.z - CELL_CM / 2) / CELL_CM);
       const last = Math.ceil((r.z + RACK.depth - CELL_CM / 2) / CELL_CM) - 1;
       const row = r.face === 'n' ? first - 1 : last + 1;
-      nav.known.set(`${sl.x},${sl.z}`, at(Math.floor(sl.x / CELL_CM), row));
+      nav.known.set(pointKey(sl), at(Math.floor(sl.x / CELL_CM), row));
     }
   }
   const plan: PlantPlan = {
@@ -155,6 +155,15 @@ export function planOf(db: ContentDb, plantId: string): PlantPlan {
 /** Расстояние, см: длина маршрута по плану — пешком или на технике (nav.ts); пробок нет (ADR 0003). */
 export function dist(plan: PlantPlan, a: Point, b: Point, mover: Mover = 'walk'): number {
   return pathLength(plan.nav, a, b, mover);
+}
+
+/**
+ * Путь по прямым вдоль осей, см: путь по плану (`dist`) не короче — от точки к середине клетки, по клеткам и от середины к
+ * точке; точки плана — в целых сантиметрах, сумма без округления. Кто дальше лучшего уже по прямой, тот не ближе и по
+ * плану: путь ему можно не мерить.
+ */
+export function straight(a: Point, b: Point): number {
+  return Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
 }
 
 /** Секунды пути: расстояние в см / скорость в см/с, вверх до секунды. */

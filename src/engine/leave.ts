@@ -46,11 +46,11 @@ export function partEnd(cal: WorkCalendar, from: number, days: number): number {
 
 /**
  * Кого человек замещает в день `z` (раздатчик): заместитель части, которая идёт, сам не в отпуске, — роли ушедших.
- * Заместитель → роли.
+ * Заместитель → роли. `people` — люди завода по порядку, если они уже есть под рукой.
  */
-export function coversOn(s: PlantState, z: number): Map<string, Id[]> {
+export function coversOn(s: PlantState, z: number, people: readonly Person[] = Object.values(s.people)): Map<string, Id[]> {
   const out = new Map<string, Id[]>();
-  for (const p of Object.values(s.people)) {
+  for (const p of people) {
     const a = awayOn(p, z);
     const d = a && deputyOn(a, z);
     const dp = d ? s.people[d] : undefined;

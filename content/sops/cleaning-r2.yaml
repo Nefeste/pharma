@@ -4,7 +4,7 @@
 id: sop.cleaning-r2
 name: { ru: Уборка помещений и оборудования, en: Cleaning of rooms and equipment }
 doc: { code: SOP-0015, rev: 2, from: 2027-09-20, approved: role.production-head }
-roles: [role.operator]
+roles: [role.operator, role.line-operator]
 for: { tasks: [clean] }
 hours: 2
 every: 12

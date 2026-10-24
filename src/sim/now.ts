@@ -190,8 +190,10 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
         row.thing = { kind: 'room', i: roomIx(b.room) };
       }
     } else if ((t.kind === 'clean' || t.kind === 'roomClean') && t.room) {
-      // мойка оборудования — аппаратчики, уборка помещения — уборщик (Б4в): у каждой своя норма
+      // мойка оборудования — аппаратчики, уборка помещения — уборщик (Б4в): у каждой своя норма; помещение линии —
+      // в разделе упаковки (Б1е)
       const r = s.rooms[t.room];
+      row.dept = plan.plant.lines.some(l => l.room === t.room) ? 'line' : 'mes';
       row.room = roomType(t.room);
       row.major = !!r?.major;
       row.norm = (t.kind === 'clean' ? washWork : roomWork)(db, s, t.room, !!r?.major);

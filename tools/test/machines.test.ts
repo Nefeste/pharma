@@ -156,6 +156,8 @@ describe('срез линий и оборудования (формат 4)', () 
   });
 
   test('между событиями — прямая: к событию линии движок насчитывает то же, что обещал срез', () => {
+    // задание начато к концу смены линии: до утра, когда машины снова работают
+    while (line().machines.every(mc => mc.state === 'off')) apply(db, s, { kind: 'advance', seconds: 10 * MIN });
     let met = 0;
     for (let i = 0; i < 1800 && s.batches[line().batch ?? '']?.pack?.state === 'running'; i++) {
       const promised = flowAt(db, s, line(), s.t + 1);

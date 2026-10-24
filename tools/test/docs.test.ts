@@ -13,7 +13,7 @@ import { DAY, daysFromCivil, momentOf } from '../../src/engine/core/calendar';
 import { inForce, revisions, statusOf } from '../../src/engine/docs';
 import { apply, newPlant } from '../../src/engine/engine';
 import { check } from '../../src/engine/invariants';
-import type { PlantState } from '../../src/engine/types';
+import type { Batch, PlantState } from '../../src/engine/types';
 import { buildDb } from '../content/load';
 
 const SC = 'scn.proto';
@@ -149,19 +149,28 @@ describe('редакции по дате завода', () => {
   });
 
   test('задание на серию берёт карту, действующую на его «не раньше», — по любой редакции; начатая серия остаётся на своей', () => {
-    const d = withRecipe2(10);
-    const s = newPlant(d, { scenario: SC, seed: 3 });
-    const order = (recipe: string, day: number) => {
-      const before = new Set(Object.keys(s.batches));
-      apply(d, s, { kind: 'order', recipe, notBefore: day * DAY + 7 * 3600 });
-      return Object.values(s.batches).find(b => !before.has(b.id))!;
+    const plant = (d: ContentDb) => {
+      const s = newPlant(d, { scenario: SC, seed: 3 });
+      const order = (recipe: string, day: number) => {
+        const before = new Set(Object.keys(s.batches));
+        apply(d, s, { kind: 'order', recipe, notBefore: day * DAY + 7 * 3600 });
+        return Object.values(s.batches).find(b => !before.has(b.id))!.recipe;
+      };
+      return { s, took: [order(V1, 5), order(V2, 5), order(V1, 12)] };
     };
-    expect(order(V1, 5).recipe).toBe(V1);
-    expect(order(V2, 5).recipe).toBe(V1);
-    expect(order(V1, 12).recipe).toBe(V2);
+    // серия парацетамола начата до дня `after` и доделывается в него или позже
+    const spans = (s: PlantState, b: Batch, after: number) =>
+      b.product === 'prd.paracetamol500' && b.records.some(r => momentOf(s.start, r.start).day < start + after) && b.records.some(r => momentOf(s.start, r.end).day >= start + after);
+    // день ред. 2 — когда такая серия есть: по тому же заводу, где ред. 2 ещё не действует, — до её дня он живёт так же
+    const d0 = withRecipe2(365);
+    const base = plant(d0).s;
+    apply(d0, base, { kind: 'advance', seconds: 12 * DAY });
+    const after = [6, 7, 8, 9, 10, 11, 12].find(a => Object.values(base.batches).some(b => spans(base, b, a)))!;
+    const d = withRecipe2(after);
+    const { s, took: first } = plant(d);
+    expect(first).toEqual([V1, V1, V2]);
     // карта, взятая заданием, — до конца: у карты парацетамола — редакция на день «не раньше», и она не меняется
     const took = new Map<string, string>();
-    const started = new Set<string>();
     const end = s.t + 30 * DAY;
     while (s.t < end) {
       apply(d, s, { kind: 'advance', seconds: 6 * 3600 });
@@ -169,12 +178,11 @@ describe('редакции по дате завода', () => {
         if (!took.has(b.id)) took.set(b.id, b.recipe);
         expect(b.recipe).toBe(took.get(b.id)!);
         if (b.product === 'prd.paracetamol500') expect(b.recipe).toBe(inForce(d, 'recipes', V1, momentOf(s.start, b.notBefore).day));
-        if (b.status !== 'waiting' && b.status !== 'reserved' && momentOf(s.start, s.t).day < start + 10) started.add(b.id);
       }
     }
     // серия, начатая до ред. 2, доделана по ред. 1; задания коллеги планирования на сроки после — по ред. 2
-    const old = [...started].map(id => s.batches[id]).filter(b => b.recipe === V1);
-    expect(old.some(b => b.records.some(r => momentOf(s.start, r.end).day >= start + 10))).toBe(true);
+    const old = Object.values(s.batches).filter(b => spans(s, b, after));
+    expect(old.length > 0 && old.every(b => b.recipe === V1)).toBe(true);
     expect(Object.values(s.batches).some(b => b.by === 'head:plan' && b.recipe === V2 && b.records.length > 0)).toBe(true);
     expect(check(d, s)).toEqual([]);
   }, 60_000);

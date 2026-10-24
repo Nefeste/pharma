@@ -41,7 +41,9 @@ const ALLOWED = new Set(
     'kind dev what opened status batch code held unit lot material recipe stage at from to param id value target range ' +
     'ipc test n out min max yield units nominal alarm recon issued used spoiled returned tests method result equipment ' +
     'people role tab linked attr done assess verdict colleague t block none why inv due ' +
-    'review qp open reject now end list sku assessing'
+    'review qp open reject now end list sku assessing ' +
+    // Б1д: номер серии — к её досье
+    'bn'
   ).split(' '),
 );
 
@@ -85,8 +87,8 @@ describe('рычаги планёрки — по таблице специфик
     const sc = game.scenarios[SC];
     const risk = { order: 'O1', customer: 'cus.national', due: 0, missing: 5, pending: 3, short: [N20] };
     const held = [
-      { code: 'PA0070927', sku: N20, unit: 7, open: [1], reject: [] },
-      { code: 'LO0040927', sku: 'sku.loratadine10.n10', unit: 9, open: [2], reject: [] },
+      { code: 'PA0070927', bn: 1, sku: N20, unit: 7, open: [1], reject: [] },
+      { code: 'LO0040927', bn: 2, sku: 'sku.loratadine10.n10', unit: 9, open: [2], reject: [] },
     ];
     const l = riskLevers(risk, sc, held);
     expect(kinds(l)).toEqual(['urgent', 'batch', 'lab', 'later:sales', 'later:sop']);
@@ -99,7 +101,7 @@ describe('рычаги планёрки — по таблице специфик
   test('отклонение: оценить в карточке, а с расследованием — его доска; будут классификация и CAPA', () => {
     expect(devLevers({ dev: 3 })).toEqual([{ k: 'dev', n: 3, seat: 'quality' }, { k: 'later', what: 'capa' }]);
     expect(devLevers({ dev: 3, inv: 'I1' })[0]).toEqual({ k: 'inv', id: 'I1', seat: 'quality' });
-    expect(heldLevers({ code: 'PA0070927', sku: N20, unit: 7, open: [1], reject: [] })).toEqual([{ k: 'batch', unit: 7, code: 'PA0070927', seat: 'quality' }]);
+    expect(heldLevers({ code: 'PA0070927', bn: 1, sku: N20, unit: 7, open: [1], reject: [] })).toEqual([{ k: 'batch', unit: 7, code: 'PA0070927', seat: 'quality' }]);
   });
 });
 
@@ -178,8 +180,8 @@ describe('планёрка: что ждёт решения', () => {
     s.deviations.D900 = { id: 'D900', opened: s.t, kind: 'ipc', batch: b.id, stage: 'compress', test: 'test.ipc.mass', status: 'open' };
     live(s, 5, () => b.held === true);
     const v = morningView(bare, s, { view: 'morning', day: momentOf(s.start, s.t).day });
-    expect(v.pending).toEqual([{ dev: 900, kind: 'ipc', batch: expect.any(String), opened: s.deviations.D900.opened, due: s.deviations.D900.opened + 30 * DAY }]);
-    expect(v.held).toEqual([{ code: expect.any(String), sku: N20, unit: expect.any(Number), open: [900], reject: [] }]);
+    expect(v.pending).toEqual([{ dev: 900, kind: 'ipc', batch: expect.any(String), bn: Number(b.id.slice(1)), opened: s.deviations.D900.opened, due: s.deviations.D900.opened + 30 * DAY }]);
+    expect(v.held).toEqual([{ code: expect.any(String), bn: Number(b.id.slice(1)), sku: N20, unit: expect.any(Number), open: [900], reject: [] }]);
     expect(v.policy).toEqual(s.policy);
     expect([...keysOf([v.pending, v.held])].filter(k => !ALLOWED.has(k))).toEqual([]);
     // карточка первой паллеты ГП — решение по серии, держат

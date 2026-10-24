@@ -681,7 +681,10 @@ function finish(db: ContentDb, s: PlantState, line: Line, g: Geo, b: Batch, noti
   line.clear = false;
   line.packs += goodCartons;
   line.made = 0;
-  for (const t of tasksOf(s, line, 'crew')) dropTask(db, s, t);
+  for (const t of tasksOf(s, line, 'crew')) {
+    worked(job, t.people);
+    dropTask(db, s, t);
+  }
   line.machines.forEach((mc, i) => {
     syncParts(db, s, mc, g, i);
     for (const pt of partsOf(s, mc.id)) pt.mark = 0;
@@ -742,6 +745,8 @@ function book(db: ContentDb, s: PlantState, b: Batch, line: Line, g: Geo, notice
     const gap = Math.abs(r.issued - r.used - r.spoiled - r.returned);
     if (gap * P_ONE > RECON_LIMIT * r.issued) deviate(s, notices, { kind: 'recon', batch: b.id, material: r.material });
   }
+  // в записи по упаковке — что выдали (п. 4.21 h): комплекта больше нет, выдача остаётся
+  job.issued = job.kit.map(k => ({ ...k }));
   job.kit = [];
   const kit = job.kitUnit ? s.units[job.kitUnit] : undefined;
   if (kit) {
@@ -766,29 +771,77 @@ export function lineDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[
       // смена кончилась: линия стоит до следующей; задание идёт — новая смена у линии
       lineUpdate(db, s, line!, notices);
       const b = line!.batch ? s.batches[line!.batch] : undefined;
+      const mine = t.batch ? s.batches[t.batch]?.pack : undefined;
+      if (mine) worked(mine, t.people);
       if (b && b.id === t.batch && b.pack?.state === 'running' && !tasksOf(s, line!, 'crew').some(x => x.roles[0] === t.roles[0])) {
         addCrew(s, line!, b, t.roles[0], t.count, crewPoint(db, s, line!, t.roles[0]));
       }
       return true;
     }
-    case 'changeover':
-      line!.format = db.skus[s.batches[t.batch!].pack!.sku].format;
+    case 'changeover': {
+      const job = s.batches[t.batch!].pack!;
+      line!.format = db.skus[job.sku].format;
       changedOver(s, t.work);
+      worked(job, t.people);
       return true;
-    case 'clearance':
+    }
+    case 'clearance': {
+      // очистка линии перед заданием (п. 5.50) — в запись по упаковке: кто очищал и когда
+      const job = t.batch ? s.batches[t.batch]?.pack : undefined;
+      if (job) job.clear = { by: [...t.people], from: t.times?.[1] ?? t.created, to: s.t };
       addTask(s, { kind: 'clearCheck', roles: [...LINE.checkers], from: t.from, work: CHECK_WORK, prio: LINE_PRIO.clearCheck, batch: t.batch, line: t.line });
       return true;
-    case 'clearCheck':
+    }
+    case 'clearCheck': {
       line!.clear = true;
+      const c = t.batch ? s.batches[t.batch]?.pack?.clear : undefined;
+      if (c && t.people[0]) {
+        c.check = t.people[0];
+        c.at = s.t;
+      }
       return true;
+    }
     case 'feed': {
       const room = planOf(db, s.plant).plant.lines.find(l => l.id === t.line)!.room;
       s.units[t.unit!].where = { kind: 'room', id: room };
+      const job = t.batch ? s.batches[t.batch]?.pack : undefined;
+      if (job) worked(job, t.people);
       return true;
     }
     default:
       return false;
   }
+}
+
+/**
+ * Расход материалов задания по счёту машин на мгновение `t` и на наладку по инструкции (Б1д): у блистерной — по
+ * отформованным блистерам, у картонажной — по пачкам, у укладки — по ящикам, которые уложены и укладывают. Испорченное
+ * при заминках в счёт не входит: его и настоящий остаток считает сверка после задания. Состояние не меняет — для
+ * карточки машины.
+ */
+export function usedByCount(db: ContentDb, s: PlantState, line: Line, t: number): Map<Id, number> {
+  const out = new Map<Id, number>();
+  const job = jobOf(s, line);
+  if (!job || job.state !== 'running') return out;
+  const g = geo(db, s, line, job.sku);
+  const sku = g.sku;
+  const pos = flowAt(db, s, line, t);
+  const blisters = blistersAt(g, pos[0]) + sku.waste.blisters;
+  const cartons = cartonsAt(g, pos[1]) + sku.waste.cartons;
+  for (const l of sku.blister) out.set(l.material, blisters * l.qty);
+  for (const l of sku.carton) out.set(l.material, cartons * l.qty);
+  // ящик, который укладывают, уже взят из комплекта
+  out.set(sku.case.material, Math.ceil(goodCartonsAt(g, pos[pos.length - 1]) / g.perCase));
+  return out;
+}
+
+/**
+ * Кто работал на задание (Б1д): люди работы — в запись по упаковке, без повторов, по порядку. У задания из сохранения
+ * до схемы 26 записи нет и не будет: неполный список хуже, чем «не записано».
+ */
+function worked(job: PackJob, people: readonly string[]) {
+  if (!job.people) return;
+  for (const p of people) if (!job.people.includes(p)) job.people.push(p);
 }
 
 /** Задание, которое линия упаковывает сейчас. */

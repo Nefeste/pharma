@@ -48,6 +48,11 @@ export function rowTitle(r: NowRow): string {
       const who = mk ? T.now.maker(named(mk.name, r.maker), named(mk.country)) : (r.maker ?? '');
       return r.kind === 'audit' ? [T.now.audit, who].join(' · ') : [T.tasks.vendorReview, r.how ? T.now.how[r.how] : '', who].filter(Boolean).join(' · ');
     }
+    case 'pick':
+    case 'transfer':
+    case 'return':
+      // работы комплекта (Б1д): что везут или выносят — материал и партия, и чья серия
+      return [T.tasks[r.kind] ?? r.kind, r.material ? `${named(db?.materials[r.material]?.name, r.material)}, ${lot}` : lot, batch].filter(Boolean).join(' · ');
     default:
       return [T.tasks[r.kind] ?? r.kind, batch || lot, r.line ? T.now.line(r.line) : ''].filter(Boolean).join(' · ');
   }
@@ -135,6 +140,11 @@ export function Now({ hud, actions }: { hud: Hud; actions: Actions }) {
                       <button type="button" onClick={() => actions.watch(r.key)} title={T.now.watchHint} data-test="now-watch">
                         {T.now.watch}
                       </button>
+                      {r.bn !== undefined ? (
+                        <button type="button" onClick={() => actions.openDossier(r.bn!)} title={T.dossier.hint} data-test="now-dossier">
+                          {T.dossier.button}
+                        </button>
+                      ) : null}
                     </li>
                   ))}
               </ul>

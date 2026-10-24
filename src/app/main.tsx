@@ -78,6 +78,8 @@ const actions: Actions = {
   toggleRef: later('toggleRef'),
   setRefTab: later('setRefTab'),
   openInv: later('openInv'),
+  openDossier: later('openDossier'),
+  closeDossier: later('closeDossier'),
   investigate: later('investigate'),
   conclude: later('conclude'),
   openSeats: later('openSeats'),

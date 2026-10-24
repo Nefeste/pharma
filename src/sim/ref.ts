@@ -11,7 +11,7 @@ import { daysFromCivil, momentOf } from '../engine/core/calendar';
 import { DOC_KINDS, type DocKind, type DocStatus, inForce, statusOf } from '../engine/docs';
 import { geo, SIXTY } from '../engine/line';
 import { partType, wearAt } from '../engine/maint';
-import { nominal } from '../engine/mes';
+import { nominal, stageMass } from '../engine/mes';
 import { planOf } from '../engine/plant';
 import { pendingOf, scheduleOn } from '../engine/shifts';
 import { shiftEnd } from '../engine/staff';
@@ -65,6 +65,8 @@ export interface RefStage {
   params: { id: string; unit: ParamUnit; target: number; range: [number, number] }[];
   ipc: { test: Id; min?: number; max?: number }[];
   mix: boolean;
+  /** что на стадии загружают по карте (Б1д) */
+  load: Id[];
   done: number;
   last?: number;
   mean?: number;
@@ -78,7 +80,8 @@ export interface RefRecipe {
   /** мг и таблетки на серию */
   mass: number;
   units: number;
-  bom: { material: Id; qty: number; potency: boolean; qs: boolean }[];
+  /** у строки состава — стадия, на которой её загружают (Б1д) */
+  bom: { material: Id; qty: number; potency: boolean; qs: boolean; stage: string }[];
   stages: RefStage[];
 }
 
@@ -279,13 +282,14 @@ function stagesOf(db: ContentDb, s: PlantState, id: Id): RefStage[] {
       room: st.room,
       equipment: [...st.equipment],
       staff: { ...st.staff },
-      nominal: nominal(db, id, st, r.batch.mass),
+      nominal: nominal(db, id, st, stageMass(db, { recipe: id, mass: 0, dispensed: [] }, i)),
       params: st.params.map(p => ({ id: p.id, unit: p.unit, target: p.target, range: [...p.range] as [number, number] })),
       ipc: st.ipc.map(c => ({ test: c.test, ...(c.min !== undefined ? { min: c.min } : {}), ...(c.max !== undefined ? { max: c.max } : {}) })),
       mix: !!st.mix,
+      load: r.bom.filter(l => l.stage === st.id).map(l => l.material),
       done: times.length,
       ...(times.length ? { last: times[times.length - 1], mean: Math.round(times.reduce((n, x) => n + x, 0) / times.length) } : {}),
-      ...(busy && task ? { now: { batch: batchNo(busy.code), from: busy.run?.start ?? task.times![1], nominal: nominal(db, id, st, busy.mass) } } : {}),
+      ...(busy && task ? { now: { batch: batchNo(busy.code), from: busy.run?.start ?? task.times![1], nominal: nominal(db, id, st, stageMass(db, busy, i)) } } : {}),
     };
   });
 }
@@ -334,7 +338,7 @@ export function refView(db: ContentDb, s: PlantState): RefView {
     product: r.product,
     mass: r.batch.mass,
     units: r.batch.units,
-    bom: r.bom.map(l => ({ material: l.material, qty: l.qty, potency: !!l.potency, qs: !!l.qs })),
+    bom: r.bom.map(l => ({ material: l.material, qty: l.qty, potency: !!l.potency, qs: !!l.qs, stage: l.stage })),
     stages: stagesOf(db, s, r.id),
   }));
   const equipment = plan.plant.equipment.map(e => {

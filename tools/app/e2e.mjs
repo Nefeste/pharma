@@ -34,8 +34,12 @@
 // табельный номер, оклад и испытание в карточке; упаковщика — по соглашению: среди уволенных, расчёт в кассе. Отпуска
 // (Б4г): 1 декабря в 09:00 — черновик графика с автопаузой, график по неделям в справочнике, смежная профессия и новый
 // заместитель части; после утверждения — перенос части на январь; в январе — отпускные в кассе, «В отпуске» на планёрке
-// и в карточке, «Замещает» у заместителя. Найм, оценка пары, визит подрядчика и отпуска идут по своим дням. Ошибок
-// в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
+// и в карточке, «Замещает» у заместителя. Что в серии (Б1д): 2 сентября после отвешивания — в «Сейчас» возврат остатка
+// с материалом, партией и своим значком, в карточке грануляции — что в грануляторе, в досье из неё — отвешенное
+// по партиям, кто взвешивал и кто проверял, что загружено на грануляции и что — на опудривании; на шестые сутки —
+// материалы блистерной машины; после упаковки — досье первой серии щелчком по полосе расписания: люди линии и сверка;
+// досье выпущенной серии из карточки её ГП — и очистка линии, кто проверил. Найм, оценка пары, визит подрядчика
+// и отпуска идут по своим дням. Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -92,6 +96,22 @@ const ok = msg => console.log(`✓ ${msg}`);
 /** Часы завода в игровых секундах — из игры, а не из текста полосы: текст обновляется 10 раз в секунду. */
 const gameT = () => page.evaluate(() => window.__game.t + window.__game.lag);
 /** «До утра»: промотка до планёрки следующих суток. */
+/** Упаковка в досье серии (Б1д): кто работал у линии, очистка линии, материалы по машинам, сверка печатных. */
+const packOfDossier = () => {
+  const pack = document.querySelector('[data-test=dossier-pack]');
+  const clear = document.querySelector('[data-test=dossier-clear]');
+  return {
+    title: document.querySelector('#dossier-title')?.textContent ?? '',
+    gantt: !!document.querySelector('#gantt'),
+    crew: [...(pack?.querySelectorAll('[data-test=dossier-crew] [data-test=dossier-who]') ?? [])].map(x => x.textContent ?? ''),
+    clear: clear?.textContent ?? '',
+    checker: !!clear && /проверил/.test(clear.textContent ?? '') && clear.querySelectorAll('[data-test=dossier-who]').length >= 2,
+    none: document.querySelector('[data-test=dossier-clear-none]')?.textContent ?? '',
+    mats: [...document.querySelectorAll('[data-test=dossier-mat]')].map(x => x.getAttribute('data-material')),
+    recon: [...document.querySelectorAll('[data-test=dossier-recon] > div:not(.msec)')].map(x => x.textContent ?? ''),
+    decisions: document.querySelector('[data-test=dossier-decisions]')?.innerText.replace(/\s*\n\s*/g, ' · ') ?? '',
+  };
+};
 /** Дождаться `n` кадров: программная отрисовка даёт несколько кадров в секунду, а камера и сцена меняются в кадре. */
 const frames = n => page.evaluate(k => new Promise(r => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
 
@@ -524,6 +544,85 @@ try {
     else ok('стены: «вниз» и «срез»');
   }
 
+  // что в серии (Б1д): 2 сентября, когда первую серию отвесили и кладовщик выносит остатки, — в «Сейчас» возврат остатка
+  // с материалом, партией и своим значком «обратно на склад»; в карточке помещения грануляции — что в грануляторе
+  // по партиям; «Досье» из неё — пять строк «Отвешено» с партиями, кто взвешивал и кто проверял; на грануляции загружены
+  // четыре компонента, магния стеарат — на опудривании впереди. Мир — на ×4 с пробой в каждом кадре и сразу пауза
+  const GRAN = ['mat.api.paracetamol', 'mat.exc.starch', 'mat.exc.povidone', 'mat.exc.mcc'];
+  let first;
+  {
+    await page.keyboard.press('KeyN');
+    await page.waitForFunction(() => !!window.__game.store.get().now.view, null, { timeout: 20_000 });
+    // проба — без замыканий: функция уходит в страницу целиком. Срабатывает, когда в «Сейчас» и возврат остатка
+    // с материалом, и грануляция, или когда мир встал сам — на автопаузе места игрока
+    const probe = () => {
+      const g = window.__game;
+      const rows = g.store.get().now.view?.rows ?? [];
+      const hit = rows.some(r => r.kind === 'return' && !!r.material) && rows.some(r => r.kind === 'stage' && r.stage === 'granulate');
+      return hit || g.speed === 0 ? { hit } : false;
+    };
+    const from = await gameT();
+    let hit = false;
+    for (let i = 0; i < 60 && !hit && (await gameT()) < from + 12 * 3600; i++) {
+      await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
+      await page.evaluate(() => window.__game.actions.setSpeed(4));
+      hit = await page.waitForFunction(probe, null, { timeout: 30_000 }).then(h => h.jsonValue().then(v => v.hit), () => false);
+      await page.evaluate(() => window.__game.actions.setSpeed(0));
+    }
+    await frames(2);
+    const back = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-test=now-row][data-kind=return]')].map(r => ({
+        text: r.querySelector('.ntitle')?.textContent?.trim() ?? '',
+        icon: r.querySelector('.ntitle svg')?.getAttribute('data-icon') ?? '',
+      })),
+    );
+    const hour = await page.evaluate(() => (window.__game.t % 86400) / 3600);
+    if (!hit || back.length === 0 || !back.every(r => /^Возврат остатков · .+, П-\d{4}-\d{4} · серия [A-Z]{2}\d{3,}$/.test(r.text) && r.icon === 'back'))
+      fail(`«Сейчас» в ${hour.toFixed(1)} ч: возврат с грануляцией ${hit ? 'есть' : 'не дождались'}, строки возврата ${JSON.stringify(back)}`);
+    else ok(`«Сейчас» в ${hour.toFixed(1)} ч: «${back[0].text}», значок «${back[0].icon}»`);
+    const gi = await page.evaluate(() => window.__game.layout.plan.plant.rooms.findIndex(r => r.type === 'granulation'));
+    await page.evaluate(i => window.__game.actions.select({ kind: 'room', i }), gi);
+    await page.waitForFunction(() => !!window.__game.store.get().card?.card?.inside, null, { timeout: 20_000 }).catch(() => {});
+    await frames(2);
+    const room = await page.evaluate(() => ({
+      stage: document.querySelector('[data-test=card-inside]')?.getAttribute('data-stage') ?? '',
+      items: [...document.querySelectorAll('[data-test=card-inside-item]')].map(x => ({ m: x.getAttribute('data-material'), text: x.textContent ?? '' })),
+      bn: window.__game.store.get().card?.card?.bn,
+    }));
+    if (room.stage !== 'granulate' || room.items.map(x => x.m).join() !== GRAN.join() || !room.items.every(x => /П-\d{4}-\d{4}/.test(x.text)) || room.bn === undefined)
+      fail(`карточка грануляции: стадия «${room.stage}», в нём ${JSON.stringify(room.items)}, серия ${room.bn}`);
+    else ok(`карточка грануляции, «Что в нём»: ${room.items.map(x => x.text).join('; ')}`);
+    if (room.bn !== undefined) {
+      first = room.bn;
+      await page.click('[data-test=card-dossier]');
+      await page.waitForFunction(n => window.__game.store.get().dossier.view?.batch === n, room.bn, { timeout: 20_000 });
+      await frames(2);
+      const d = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('[data-test=dossier-disp-row]')];
+        const stage = id => document.querySelector(`[data-test=dossier-stage][data-stage=${id}]`);
+        const load = id => [...(stage(id)?.querySelectorAll('[data-test=dossier-load-item]') ?? [])].map(x => x.getAttribute('data-material'));
+        const weigh = document.querySelector('[data-test=dossier-weigh]');
+        return {
+          title: document.querySelector('#dossier-title')?.textContent ?? '',
+          rows: rows.length,
+          lots: rows.filter(r => r.querySelector('[data-test=dossier-lot]')).length,
+          weigh: weigh?.textContent ?? '',
+          who: [...(weigh?.querySelectorAll('[data-test=dossier-who]') ?? [])].map(x => x.textContent ?? ''),
+          gran: { state: stage('granulate')?.getAttribute('data-state'), load: load('granulate') },
+          blend: { state: stage('blend')?.getAttribute('data-state'), load: load('blend') },
+        };
+      });
+      if (d.rows !== 5 || d.lots !== 5 || !/взвешивал .+ · проверял .+/.test(d.weigh) || d.who.length !== 2 || d.who[0] === d.who[1])
+        fail(`${d.title}: строк «Отвешено» ${d.rows}, с партиями ${d.lots}, «${d.weigh}»`);
+      else if (d.gran.state !== 'now' || d.gran.load.join() !== GRAN.join() || d.blend.state !== 'plan' || d.blend.load.join() !== 'mat.exc.mgst')
+        fail(`${d.title}: грануляция ${JSON.stringify(d.gran)}, опудривание ${JSON.stringify(d.blend)}`);
+      else ok(`${d.title}: «Отвешено» — ${d.rows} строк с партиями; «${d.weigh}»; на грануляции загружены ${d.gran.load.length} компонента, на опудривании впереди — магния стеарат`);
+    }
+    // Esc: досье, выбор, «Сейчас»
+    for (let i = 0; i < 3; i++) await page.keyboard.press('Escape');
+    if (await page.evaluate(() => !!document.querySelector('#dossier') || !!document.querySelector('[data-test=card]') || !!document.querySelector('#now'))) fail('досье: Esc не закрыл досье, карточку и «Сейчас»');
+  }
+
   // первая упаковка (2в): «До утра» до шестых суток (сколько раз — зависит от того, ушли ли ×4 за 08:00), затем ×4 —
   // пока через линию не пошли штуки. Панель лаборатории (3г) открыта: в первое утро, когда в очереди есть партия, —
   // «Поднять»; команда доходит до движка и обратно в вид. Утром 6 сентября балк первой серии ещё ждёт решения
@@ -608,6 +707,22 @@ try {
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
     if (await page.evaluate(() => !!document.querySelector('#now') || !!document.querySelector('[data-test=card]'))) fail('«Сейчас»: Esc не закрыл карточку и панель');
+  }
+
+  // что на линии (Б1д): пока линия упаковывает первую серию, в карточке блистерной машины — плёнка и фольга: партия,
+  // выдано, израсходовано по счёту машины и на наладку, осталось у линии
+  {
+    await page.evaluate(() => window.__game.actions.select({ kind: 'machine', line: 0, k: 0 }));
+    await page.waitForFunction(() => (window.__game.store.get().card?.card?.materials?.length ?? 0) > 0, null, { timeout: 20_000 }).catch(() => {});
+    await frames(2);
+    const m = await page.evaluate(() => ({
+      list: (window.__game.store.get().card?.card?.materials ?? []).map(x => ({ m: x.material, issued: x.issued, used: x.used, left: x.left })),
+      text: [...document.querySelectorAll('[data-test=card-line-mat]')].map(x => x.innerText.replace(/\s*\n\s*/g, ' · ')),
+    }));
+    if (m.list.map(x => x.m).join() !== 'mat.pk.pvc,mat.pk.alu' || !m.list.every(x => x.used > 0 && x.left > 0 && x.used + x.left === x.issued) || m.text.length !== 2)
+      fail(`карточка блистерной машины: материалы ${JSON.stringify(m.list)}`);
+    else ok(`карточка блистерной машины: ${m.text.join('; ')}`);
+    await page.keyboard.press('Escape');
   }
 
   // посты (3а): свободные ждут на постах своих ролей, а не у входа
@@ -696,6 +811,36 @@ try {
   await lister.screenshot({ path: join(out, 'contact.png'), fullPage: true });
   await lister.close();
   ok(`контактный лист: ${sheet.length} снимков → ${join(out, 'contact.png')}`);
+
+  // досье после упаковки (Б1д): щелчок по полосе первой серии в расписании — досье поверх него; в «Упаковке» — кто
+  // работал у линии, материалы по машинам и сверка печатных; очистка не понадобилась — до первой серии линия
+  // не упаковывала (очистку с проверкой показывает досье серии в решении по серии ниже); Esc закрывает досье, потом
+  // расписание
+  {
+    await page.keyboard.press('KeyG');
+    await page.waitForFunction(() => !!window.__game.store.get().gantt.view, null, { timeout: 20_000 });
+    await frames(2);
+    const at = await page.evaluate(id => {
+      const bars = [...document.querySelectorAll(`[data-test=gbar][data-batch="${id}"]`)].map(e => e.getBoundingClientRect()).filter(b => b.width > 4);
+      const b = bars.sort((x, y) => y.width - x.width)[0];
+      return b ? { x: b.x + b.width / 2, y: b.y + b.height / 2, n: bars.length } : undefined;
+    }, `B${first}`);
+    if (!at) fail(`расписание: полос первой серии B${first} в окне нет`);
+    else {
+      await page.mouse.click(at.x, at.y);
+      const shown = await page
+        .waitForFunction(n => window.__game.store.get().dossier.view?.batch === n && window.__game.store.get().dossier.view.pack?.state === 'done', first, { timeout: 20_000 })
+        .then(() => true, () => false);
+      await frames(2);
+      const d = await page.evaluate(packOfDossier);
+      if (!shown || !d.gantt || d.crew.length < 1 || !d.none || d.mats.length !== 5 || d.recon.length !== 2)
+        fail(`досье после упаковки: открыто ${shown}, расписание ${d.gantt ? 'под ним' : 'закрыто'}, у линии «${d.crew.join(', ')}», очистка «${d.clear || d.none}», материалов ${d.mats.length}, сверка «${d.recon.join(' | ')}»`);
+      else ok(`${d.title} — щелчком по полосе в расписании: у линии ${d.crew.join(', ')}; «${d.none}»; материалов ${d.mats.length}; сверка — ${d.recon.join('; ')}`);
+    }
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    if (await page.evaluate(() => !!document.querySelector('#dossier') || !!document.querySelector('#gantt'))) fail('досье: Esc не закрыл досье и расписание');
+  }
 
   // автопаузы (Б2а): у производства и качества двенадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
   // вышел», с Б3г — «пара приостановлена», с Б4а — «сверхурочные года на исходе», с Б4в — «заявление об увольнении»),
@@ -932,6 +1077,17 @@ try {
         const done = await go4('released', 2);
         if (!done) fail(`решение по серии: «Выпустить» — серия не выпущена за ${went.hours} ч`);
         else ok('решение по серии: «Выпустить» из карточки ГП — серия выпущена');
+        // досье этой серии (Б1д) — кнопкой «Досье» из карточки ГП: у линии — люди, перед заданием — очистка линии,
+        // кто очищал и кто проверил; сверка печатных; в решениях — выпуск уполномоченным лицом
+        await page.click('[data-test=card-dossier]');
+        const open = await page.waitForFunction(() => window.__game.store.get().dossier.view?.pack?.state === 'done', null, { timeout: 20_000 }).then(() => true, () => false);
+        await frames(2);
+        const d = await page.evaluate(packOfDossier);
+        await page.screenshot({ path: join(out, 'e2e-dossier.png') });
+        if (!open || d.crew.length < 1 || !d.checker || d.mats.length !== 5 || d.recon.length !== 2 || !/выпущена уполномоченным лицом/.test(d.decisions))
+          fail(`досье выпущенной серии: открыто ${open}, у линии «${d.crew.join(', ')}», очистка «${d.clear}», материалов ${d.mats.length}, сверка «${d.recon.join(' | ')}», решения «${d.decisions}»`);
+        else ok(`${d.title} из карточки ГП: у линии ${d.crew.length}; «${d.clear}»; сверка — ${d.recon.join('; ')}; «${d.decisions}»; снимок ${join(out, 'e2e-dossier.png')}`);
+        await page.keyboard.press('Escape');
       }
       await page.keyboard.press('Escape');
     }
@@ -990,7 +1146,7 @@ try {
       [...document.querySelectorAll('[data-test=ref-stages]')].map(t => {
         const rows = [...t.querySelectorAll('tbody tr')];
         const cell = (r, i) => (r.children[i]?.innerText ?? '').replace(/\s+/g, ' ').trim();
-        return { rows: rows.length, plan: rows.filter(r => /\d/.test(cell(r, 5))).length, fact: rows.filter(r => /последняя/.test(cell(r, 6))).length, first: rows[0] ? `${cell(rows[0], 1)}: ${cell(rows[0], 5)}; ${cell(rows[0], 6)}` : '' };
+        return { rows: rows.length, plan: rows.filter(r => /\d/.test(cell(r, 6))).length, fact: rows.filter(r => /последняя/.test(cell(r, 7))).length, first: rows[0] ? `${cell(rows[0], 1)}: ${cell(rows[0], 6)}; ${cell(rows[0], 7)}` : '' };
       }),
     );
     const done = recs.find(r => r.fact === 6);
@@ -999,7 +1155,7 @@ try {
     await page.screenshot({ path: join(out, 'e2e-ref.png') });
     // порядок: «По карте» — короткие стадии вверху, ещё раз — длинные; первая строка — та, что по числу крайняя
     const firstStage = () => page.evaluate(() => document.querySelector('[data-test=ref-stages] tbody tr td:nth-child(2)')?.innerText.split('\n')[0] ?? '');
-    const planSort = '[data-test=ref-stages] thead th:nth-child(6) [data-test=ref-sort]';
+    const planSort = '[data-test=ref-stages] thead th:nth-child(7) [data-test=ref-sort]';
     const plans = await page.evaluate(() => {
       const v = window.__game.store.get().ref.view.recipes[0].stages;
       const by = [...v].sort((a, b) => a.nominal - b.nominal);

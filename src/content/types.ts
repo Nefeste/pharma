@@ -886,8 +886,11 @@ export interface Recipe {
   doc: DocHead;
   product: Id;
   batch: { mass: number; units: number };
-  /** состав на серию, мг: `potency` — с пересчётом на содержание партии; `qs` — добирает массу серии */
-  bom: { material: Id; qty: number; potency?: boolean; qs?: boolean }[];
+  /**
+   * состав на серию, мг: `potency` — с пересчётом на содержание партии; `qs` — добирает массу серии; `stage` — стадия, на
+   * которой компонент загружают (Б1д)
+   */
+  bom: { material: Id; qty: number; potency?: boolean; qs?: boolean; stage: string }[];
   stages: RecipeStage[];
   bulk: Id;
   /** показатели балка: номинал и разброс серии в единицах движка */

@@ -458,6 +458,17 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     // первое смешивание — одна стадия, и не отвешивание: от неё дата производства и месяц и год в номере серии
     need(r.stages.filter(st => st.mix).length === 1, `${where}: нужна ровно одна стадия первого смешивания (mix)`);
     need(!r.stages[0].mix, `${where}: первое смешивание — не отвешивание`);
+    // порядок загрузки (Б1д): каждый компонент — на стадии карты после отвешивания; АФС и хотя бы один другой компонент —
+    // на стадии первого смешивания: дата производства — первое смешивание субстанции с другими ингредиентами
+    for (const l of r.bom) {
+      const k = r.stages.findIndex(st => st.id === l.stage);
+      need(k >= 0, `${where}: ${l.material} загружают на стадии ${l.stage}, а её в карте нет`);
+      need(k !== 0, `${where}: ${l.material} загружают на отвешивании — компонент загружают на стадии после него`);
+    }
+    const mixId = r.stages.find(st => st.mix)?.id;
+    const atMix = r.bom.filter(l => l.stage === mixId);
+    need(r.bom.filter(l => l.potency).every(l => l.stage === mixId), `${where}: АФС загружают не на стадии первого смешивания`);
+    need(atMix.some(l => l.potency) && atMix.some(l => !l.potency), `${where}: на стадии первого смешивания — АФС и хотя бы один другой компонент`);
     const stages: RecipeStage[] = r.stages.map(st => {
       const at = `${where}, стадия ${st.id}`;
       for (const e of st.equipment) need(raw.equipment[e], `${at}: нет оборудования ${e}`);
@@ -521,7 +532,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       doc: headDoc(r.doc, where),
       product: r.product,
       batch: { mass: mg(r.batch.kg), units: r.batch.units },
-      bom: r.bom.map(l => ({ material: l.material, qty: mg(l.kg), ...(l.potency ? { potency: true } : {}), ...(l.qs ? { qs: true } : {}) })),
+      bom: r.bom.map(l => ({ material: l.material, qty: mg(l.kg), ...(l.potency ? { potency: true } : {}), ...(l.qs ? { qs: true } : {}), stage: l.stage })),
       stages,
       bulk: r.bulk,
       quality,

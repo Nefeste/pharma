@@ -8,7 +8,7 @@ import { db } from '../../src/content';
 import { watchFor } from '../../src/app/watch';
 import { apply } from '../../src/engine/engine';
 import { partType } from '../../src/engine/maint';
-import { nominal } from '../../src/engine/mes';
+import { nominal, stageMass } from '../../src/engine/mes';
 import { fromSave } from '../../src/engine/save';
 import type { PlantState } from '../../src/engine/types';
 import { NOW_DEPTS, type NowRow, type NowView, nowView } from '../../src/sim/now';
@@ -20,7 +20,8 @@ const FOLDED = new Set(['crew', 'prep', 'review', 'truckCheck', 'unload', 'load'
 
 /** Поля строки по src/sim/now.ts: новое — сначала сюда, с вопросом, знает ли его завод. */
 const ALLOWED = new Set(
-  'view rows key dept kind batch stage lot method phase inst machine part room line sku supplier customer major planned people n role from norm range done target rate rated thing i k over'.split(' '),
+  // с Б1д — номер серии к её досье и материал ходки комплекта
+  'view rows key dept kind batch stage lot method phase inst machine part room line sku supplier customer major planned people n role from norm range done target rate rated thing i k over bn material'.split(' '),
 );
 
 function keysOf(v: unknown, out = new Set<string>()): Set<string> {
@@ -72,7 +73,8 @@ function check(s: PlantState, v: NowView) {
     const t = s.tasks[r.key];
     if (r.kind === 'stage') {
       const b = s.batches[t.batch!];
-      expect(r.norm).toBe(nominal(db, b.recipe, db.recipes[b.recipe].stages[b.stage], b.mass));
+      // по карте — на массу на входе стадии (Б1д): без того, что загрузят на стадиях дальше
+      expect(r.norm).toBe(nominal(db, b.recipe, db.recipes[b.recipe].stages[b.stage], stageMass(db, b, b.stage)));
     }
     if (r.kind === 'repair') {
       const type = partType(db, s.parts[t.part!]);

@@ -206,7 +206,13 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         setTip(null);
         return;
       }
-      // щелчок без протяжки — к вещи на полу: окно закрывается, мир остаётся
+      // щелчок без протяжки по полосе серии — её досье поверх расписания (Б1д); по уборке или визиту — к вещи на полу:
+      // окно закрывается, мир остаётся
+      const label = d.bar.batch ? g.view?.batches[d.bar.batch] : undefined;
+      if (label && !label.fresh) {
+        actions.openDossier(label.n);
+        return;
+      }
       const t = thingOf(row);
       if (t) {
         actions.toggleGantt();

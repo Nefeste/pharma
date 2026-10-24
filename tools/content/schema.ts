@@ -780,9 +780,12 @@ export const recipe = z
     batch: z.strictObject({ kg: z.number().positive(), units: z.number().int().positive() }),
     /**
      * состав на серию, кг; `potency` — навеска пересчитывается на содержание партии; `qs` — «до массы»: этой строкой
-     * добирают массу серии, если навеска с пересчётом больше нормы
+     * добирают массу серии, если навеска с пересчётом больше нормы; `stage` — стадия, на которой компонент загружают
+     * (Б1д): порядок загрузки сырья — часть технологической инструкции (GMP ЕАЭС, ч. I, п. 4.18 d)
      */
-    bom: z.array(z.strictObject({ material: id, kg: z.number().positive(), potency: z.boolean().optional(), qs: z.boolean().optional() })).min(1),
+    bom: z
+      .array(z.strictObject({ material: id, kg: z.number().positive(), potency: z.boolean().optional(), qs: z.boolean().optional(), stage: z.string() }))
+      .min(1),
     stages: z
       .array(
         z.strictObject({

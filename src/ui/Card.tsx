@@ -11,6 +11,7 @@ import type { NowRow } from '../sim/now';
 import type { Admission, DocNow } from '../sim/people';
 import type { AssetInfo } from '../sim/places';
 import { firstOf } from '../app/firsts';
+import type { Inside, LineMaterial } from '../sim/dossier';
 import type { CardView, Hist, Holds, Why } from '../sim/views';
 import { assetName, untilText, unfitText, workName } from './assets';
 import { db, docText } from './db';
@@ -241,6 +242,10 @@ function histText(h: Hist, unit: 'mass' | 'pcs' | undefined, parts: readonly Par
       return T.hist.decided(T.status[h.status]);
     case 'kit':
       return T.hist.kit(h.batch, unit ? qtyText(h.qty, unit) : num(h.qty));
+    case 'weighed':
+      return T.hist.weighed(h.batch, unit ? qtyText(h.qty, unit, 3) : num(h.qty));
+    case 'pack':
+      return T.hist.pack(h.batch, h.qty === undefined ? undefined : unit ? qtyText(h.qty, unit) : num(h.qty), h.used === undefined ? undefined : unit ? qtyText(h.used, unit) : num(h.used));
     case 'shipped':
       return T.hist.shipped(named(db?.customers[h.customer]?.name, h.customer), unit ? qtyText(h.qty, unit) : num(h.qty));
     case 'maint':
@@ -330,6 +335,63 @@ function History({ list, start, unit, parts = [], asset }: { list: Hist[]; start
   );
 }
 
+/** Кнопка досье серии (Б1д): из карточки помещения, оборудования, машины линии и партии своей продукции. */
+function DossierButton({ n, actions }: { n: number | undefined; actions: Actions }) {
+  if (n === undefined) return null;
+  return (
+    <button type="button" onClick={() => actions.openDossier(n)} title={T.dossier.hint} data-test="card-dossier">
+      {T.dossier.button}
+    </button>
+  );
+}
+
+/**
+ * Что в оборудовании сейчас (Б1д; GMP ЕАЭС, ч. I, п. 5.12): продукт, серия и стадия; выход прошлой стадии по досье и что
+ * загружено на этой — по партиям; на отвешивании — что взвешивают.
+ */
+function InsideBlock({ x }: { x: Inside }) {
+  const unit = (m: string) => db?.materials[m]?.unit ?? 'mass';
+  return (
+    <>
+      <div className="csec">{T.inside.title}</div>
+      <div className="muted">
+        {named(db?.products[x.product]?.name, x.product)} · {T.inside.stage(T.stages[x.stage] ?? x.stage, x.code)}
+      </div>
+      <ul className="why" data-test="card-inside" data-stage={x.stage}>
+        {x.prev ? <li>{T.inside.prev(T.stages[x.prev.stage] ?? x.prev.stage, qtyText(x.prev.mass, 'mass', 3))}</li> : null}
+        {x.load.map(l => (
+          <li key={l.material} data-test="card-inside-item" data-material={l.material}>
+            {named(db?.materials[l.material]?.name, l.material)} — {qtyText(l.qty, unit(l.material), unit(l.material) === 'pcs' ? 0 : 3)}
+            {l.lots.length > 0 ? <span className="muted"> · {l.lots.map(c => T.lotCode(...c.code)).join(', ')}</span> : null}
+          </li>
+        ))}
+      </ul>
+      <div className="muted">{x.stage === 'dispense' ? T.inside.weighing : T.inside.mass(qtyText(x.mass, 'mass', 3))}</div>
+    </>
+  );
+}
+
+/** Материалы машины линии (Б1д): партия, выдано, израсходовано по счёту машины и на наладку, осталось у линии. */
+function LineMaterials({ list }: { list: readonly LineMaterial[] }) {
+  return (
+    <>
+      <div className="csec">{T.inside.lines}</div>
+      <ul className="why" data-test="card-line-mats" title={T.inside.useHint}>
+        {list.map(m => {
+          const u = db?.materials[m.material]?.unit ?? 'pcs';
+          const q = (v: number) => qtyText(v, u, u === 'pcs' ? 0 : 3);
+          return (
+            <li key={m.material} data-test="card-line-mat" data-material={m.material}>
+              {T.inside.material(named(db?.materials[m.material]?.name, m.material), m.lots.map(c => T.lotCode(...c)).join(', '))}
+              <div className="muted">{T.inside.use(q(m.issued), q(m.used), q(m.left))}</div>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
 /**
  * `beside` — открыта панель справа: карточка уже, чтобы не заходить под неё; `watch` — работа вещи в «Сейчас» (Б1б);
  * `hud` — чьи посты у игрока и какие пояснения он уже понял (Б1г).
@@ -414,6 +476,7 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
             ) : null}
           </dl>
           <Why list={c.why} start={start} />
+          <DossierButton n={c.lot?.batch} actions={actions} />
           {c.release ? (
             <ReleaseBlock r={c.release} hud={hud} actions={actions} />
           ) : (
@@ -448,7 +511,9 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
             ) : null}
             {c.stage ? <Row k={T.card.stage}>{T.stages[c.stage] ?? c.stage}</Row> : null}
           </dl>
+          {c.inside ? <InsideBlock x={c.inside} /> : null}
           {c.regimes ? <RegimesBlock g={c.regimes} start={start} actions={actions} /> : null}
+          <DossierButton n={c.bn} actions={actions} />
           <Why list={c.why} start={start} />
         </>
       );
@@ -487,7 +552,10 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
             ) : null}
             {c.asset ? <AssetRows a={c.asset} start={start} /> : null}
           </dl>
+          {c.kind === 'equipment' && c.inside ? <InsideBlock x={c.inside} /> : null}
+          {c.kind === 'machine' && c.materials ? <LineMaterials list={c.materials} /> : null}
           {c.kind === 'equipment' && c.regimes ? <RegimesBlock g={c.regimes} start={start} actions={actions} /> : null}
+          <DossierButton n={c.bn} actions={actions} />
           <Why list={c.why} start={start} />
           <History list={c.history} start={start} parts={rec?.parts} asset={c.asset} />
         </>
@@ -503,6 +571,12 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
               {c.doing.k === 'task' ? (
                 <>
                   <TaskIcon kind={c.doing.task} /> {T.why.taskBusy(T.tasks[c.doing.task] ?? c.doing.task)}
+                  {c.doing.item ? (
+                    <span data-test="card-item">
+                      {' — '}
+                      {named(db?.materials[c.doing.item.material]?.name, c.doing.item.material)}, {T.lotCode(...c.doing.item.lot)}
+                    </span>
+                  ) : null}
                   {c.learning ? <span data-test="card-learning"> — {T.card.learning(docName(c.learning))}</span> : null}
                 </>
               ) : c.doing.k === 'walk' ? (

@@ -47,6 +47,8 @@ export interface BatchLabel {
   n: number;
   status: BatchStatus;
   notBefore: number;
+  /** новое задание черновика (0.0.39): в учёте завода его ещё нет — и досье нет */
+  fresh?: true;
 }
 
 export interface GanttView {
@@ -146,7 +148,7 @@ export function labels(s: PlantState, ids: Iterable<string>, fresh: readonly Bat
   for (const id of ids) {
     const b = s.batches[id] ?? fresh.find(x => x.id === id);
     if (!b || out[id]) continue;
-    out[id] = { ...(b.code.n > 0 ? { code: batchNo(b.code) } : {}), n: Number(id.slice(1)), status: b.status, notBefore: b.notBefore };
+    out[id] = { ...(b.code.n > 0 ? { code: batchNo(b.code) } : {}), n: Number(id.slice(1)), status: b.status, notBefore: b.notBefore, ...(s.batches[id] ? {} : { fresh: true as const }) };
   }
   return out;
 }

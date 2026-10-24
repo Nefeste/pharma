@@ -9,12 +9,15 @@ name: { ru: "Парацетамол 500 мг, влажная грануляци�
 doc: { code: MF-0001, rev: 1, from: 2026-03-02, approved: role.production-head }
 product: prd.paracetamol500
 batch: { kg: 120, units: 200000 }
+# стадия загрузки (Б1д): порядок загрузки сырья — часть технологической инструкции (gmp-eaeu, ч. I, п. 4.18 d);
+# смазывающее вещество вносят в конце, во внешнюю фазу (li-wu-2014) — магния стеарат на опудривании, остальное — сухим
+# в гранулятор, вода очищенная — режимом стадии (гипотеза карты)
 bom:
-  - { material: mat.api.paracetamol, kg: 100, potency: true }
-  - { material: mat.exc.starch, kg: 12 }
-  - { material: mat.exc.povidone, kg: 3 }
-  - { material: mat.exc.mcc, kg: 4.2, qs: true }
-  - { material: mat.exc.mgst, kg: 0.8 }
+  - { material: mat.api.paracetamol, kg: 100, potency: true, stage: granulate }
+  - { material: mat.exc.starch, kg: 12, stage: granulate }
+  - { material: mat.exc.povidone, kg: 3, stage: granulate }
+  - { material: mat.exc.mcc, kg: 4.2, qs: true, stage: granulate }
+  - { material: mat.exc.mgst, kg: 0.8, stage: blend }
 stages:
   # отвешивание: взвешивает один, проверяет второй
   - id: dispense

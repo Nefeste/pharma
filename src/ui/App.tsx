@@ -14,6 +14,7 @@ import { Cash } from './Cash';
 import { db } from './db';
 import { Gantt } from './Gantt';
 import { Guard } from './Guard';
+import { Dossier } from './Dossier';
 import { Inv } from './Inv';
 import { Lab } from './Lab';
 import { Morning } from './Morning';
@@ -182,6 +183,10 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
         {s.selected && s.card && (
           <Card v={s.card} start={s.start} plant={plant} actions={actions} hud={s} beside={s.stock.open || s.cash.open || s.lab.open || s.now.open} watch={watchFor(s.selected, s.card.card, s.now.view?.rows)} />
         )}
+      </Guard>
+      {/* досье серии (Б1д) — поверх остальных окон, и карточки тоже: его открывают из неё */}
+      <Guard name={T.dossier.button} close={s.dossier.open ? actions.closeDossier : undefined}>
+        {s.dossier.open && <Dossier hud={s} actions={actions} />}
       </Guard>
       {s.debug && (
         <div className="debug panel">

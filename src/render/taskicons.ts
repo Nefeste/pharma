@@ -4,11 +4,12 @@
 // рядом в панели и в карточке, на полу — в карточке по щелчку. Пути — в синтаксисе SVG: их рисует и SVG, и холст (Path2D).
 import type { TaskKind } from '../engine/types';
 
-export type IconKind = 'move' | 'check' | 'sample' | 'lab' | 'decide' | 'process' | 'clean' | 'line' | 'repair' | 'inv' | 'truck' | 'learn';
+export type IconKind = 'move' | 'back' | 'check' | 'sample' | 'lab' | 'decide' | 'process' | 'clean' | 'line' | 'repair' | 'inv' | 'truck' | 'learn';
 
 /**
  * Значок каждого вида работы: перевозка, проверка, пробы, испытание, решение, стадия, уборка, линия, ремонт,
- * расследование, фура, обучение (Б3б); приёмка работы подрядчика (Б3в), аудит и оценка поставщика (Б3г) — проверка.
+ * расследование, фура, обучение (Б3б); приёмка работы подрядчика (Б3в), аудит и оценка поставщика (Б3г) — проверка;
+ * возврат остатка — свой, «обратно на склад» (Б1д): со значком доставки ходка за остатком казалась доставкой.
  */
 export const ICON_OF: Record<TaskKind | 'pack' | 'test' | 'truck' | 'visit' | 'audit', IconKind> = {
   unload: 'move',
@@ -25,7 +26,7 @@ export const ICON_OF: Record<TaskKind | 'pack' | 'test' | 'truck' | 'visit' | 'a
   decide: 'decide',
   pick: 'move',
   transfer: 'process',
-  return: 'move',
+  return: 'back',
   stage: 'process',
   clean: 'clean',
   roomClean: 'clean',
@@ -60,6 +61,8 @@ export const ICON_OF: Record<TaskKind | 'pack' | 'test' | 'truck' | 'visit' | 'a
 export const ICON_PATH: Record<IconKind, string> = {
   // стрелка вправо — везут
   move: 'M3.5 7h7M8 4.5l2.5 2.5L8 9.5',
+  // стрелка с поворотом назад — остаток обратно на склад
+  back: 'M10.5 9.5V6.5a2 2 0 0 0-2-2h-5M5.5 2.5l-2 2 2 2',
   // лист с двумя строками — проверка по записям
   check: 'M4.5 3.5h5v7h-5zM6 6h2M6 8.5h2',
   // пробоотборник — пробирка

@@ -142,6 +142,8 @@ export interface PendingDev {
   dev: number;
   kind: Deviation['kind'];
   batch?: string;
+  /** номер серии `B<n>` — к её досье (Б1д) */
+  bn?: number;
   opened: number;
   due: number;
   assessing?: true;
@@ -154,6 +156,8 @@ export interface PendingDev {
  */
 export interface HeldRow {
   code: string;
+  /** номер серии `B<n>` — к её досье (Б1д) */
+  bn: number;
   sku: Id;
   unit?: number;
   open: number[];
@@ -409,7 +413,7 @@ function pendingOf(db: ContentDb, s: PlantState): { pending: PendingDev[]; held:
       return {
         dev: num(d.id),
         kind: d.kind,
-        ...(b ? { batch: batchNo(b.code) } : {}),
+        ...(b ? { batch: batchNo(b.code), bn: num(b.id) } : {}),
         opened: d.opened,
         due: d.opened + term,
         ...(d.assess?.task !== undefined ? { assessing: true as const } : {}),
@@ -423,6 +427,7 @@ function pendingOf(db: ContentDb, s: PlantState): { pending: PendingDev[]; held:
       const first = unitsOfLot(s, b.pack!.fg!).sort((x, y) => num(x.id) - num(y.id))[0];
       return {
         code: batchNo(b.code),
+        bn: num(b.id),
         sku: b.pack!.sku,
         ...(first ? { unit: num(first.id) } : {}),
         open: openDevs(s, b).map(d => num(d.id)),

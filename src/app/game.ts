@@ -236,6 +236,9 @@ export class Game {
         if (draft !== g.draft) this.sendViews();
       } else if (d.view === 'inv') {
         if (hud.inv.open) this.store.set({ inv: { ...this.store.get().inv, view: d } });
+      } else if (d.view === 'dossier') {
+        const x = this.store.get().dossier;
+        if (x.open && x.batch === d.batch) this.store.set({ dossier: { ...x, view: d } });
       } else if (d.view === 'ref') {
         if (hud.ref.open) this.store.set({ ref: { ...this.store.get().ref, view: d } });
       } else if (d.view === 'now') {
@@ -649,6 +652,16 @@ export class Game {
       this.store.set({ inv: { open: true, id }, ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
+    // досье серии (Б1д) — поверх остальных окон: открыли из карточки, «Сейчас» или расписания — они остаются под ним
+    openDossier: batch => {
+      const x = this.store.get().dossier;
+      this.store.set({ dossier: { open: true, batch, ...(x.batch === batch && x.view ? { view: x.view } : {}) } });
+      this.sendViews();
+    },
+    closeDossier: () => {
+      this.store.set({ dossier: { open: false } });
+      this.sendViews();
+    },
     toggleRef: () => {
       // справочник — большое окно поверх карты, как доска расследования
       const r = this.store.get().ref;
@@ -863,6 +876,7 @@ export class Game {
     if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days), ...draft });
     if (h.gantt.open && h.gantt.drag) list.push({ id: 'ghost', view: 'ghost', ...h.gantt.drag, ...draft });
     if (h.inv.open) list.push({ id: 'inv', view: 'inv', ...(h.inv.id ? { inv: h.inv.id } : {}) });
+    if (h.dossier.open && h.dossier.batch !== undefined) list.push({ id: 'dossier', view: 'dossier', batch: h.dossier.batch });
     if (h.ref.open) list.push({ id: 'ref', view: 'ref' });
     // «Сейчас» — и при закрытой панели: карточке — для «Смотреть», смотрящему — чтобы знать, когда работа кончилась
     if (h.now.open || this.selected || this.watching) list.push({ id: 'now', view: 'now' });
@@ -1029,10 +1043,11 @@ export class Game {
         e.preventDefault();
         this.actions.toggleStock();
       } else if (k === 'Escape') {
-        // Esc: сначала то, что тянут в расписании, потом меню автопауз, выбор, верхнее окно — расписание (оно поверх
-        // планёрки), планёрка, затем панель справа
+        // Esc: сначала то, что тянут в расписании, потом досье серии (оно поверх всего), меню автопауз, выбор, верхнее
+        // окно — расписание (оно поверх планёрки), планёрка, затем панель справа
         const h = this.store.get();
         if (h.gantt.drag) this.actions.cancelDrag();
+        else if (h.dossier.open) this.actions.closeDossier();
         else if (h.pauses.open) this.actions.togglePauses();
         else if (this.selected) this.actions.select(undefined);
         else if (h.gantt.open) this.actions.toggleGantt();

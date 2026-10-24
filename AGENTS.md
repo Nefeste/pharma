@@ -140,7 +140,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   in force at their not-before, FEFO reservation with potency — tried without writing by `kitPlan`, shared with the
   schedule run, kitting through the airlock, stages in rooms with equipment and people, cleaning in two works — the
   equipment washed by operators, then the room by a cleaner by its floor area —, process parameters,
-  true batch quality with causes, IPC, the bulk lot; the packing job and its packaging kit — a container of it already
+  true batch quality with causes, IPC, the bulk lot; with Б1д — the components of a stage loaded by the recipe and the
+  mass at a stage's input, the batch mass less what later stages load (`stageMass`, shared with the schedule run,
+  «Сейчас» and the reference); the packing job and its packaging kit — a container of it already
   in the line room is in place, whatever pallet it lies on; a stage stopped by a part
   failure and resumed after the repair; a new not-before time of a batch order from the player — `shift`; room
   readiness, nominal stage time and cleaning time shared with the schedule run; new part budgets of a running stage for
@@ -155,7 +157,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   changeovers with their hours; per variant — lowest, median and highest over seeds), `line.ts` (the packaging line as
   flow between events: machines, buffers, micro-stops, camera rejects by count, codes in cases, FG pallets, changeover
   and line clearance, the crew, the end of a batch with
-  reconciliation, machine times for OEE, a machine part failing at a flow boundary, jams of the cartoner; the flow at a
+  reconciliation, the packing record — the people of its works and the line clearance before it, who cleared and who
+  checked (with Б1д), the materials a job used by machine count at a moment — `usedByCount`, machine times for OEE, a
+  machine part failing at a flow boundary, jams of the cartoner; the flow at a
   moment between events without writing the state — `flowAt`, for the slice; new part budgets for the twin —
   `lineRedraw`), `qa.ts` (QA check of finished goods with
   retention samples, the qualified person's decision — «hold» blocks the FG and puts it on the racks, FG shelf life;
@@ -262,14 +266,17 @@ first, or copy the working code of Bolnitsa on the same versions.
   equipment is in calibration or qualification; no truth fields — not the next micro-stop, not a part's budget), views
   for panels — the warehouse and the card of a thing with what a pallet holds, built here on request and sent with the
   slice only when they changed, without truth fields (`views.ts`); the deviation card, the batch decision at release and
-  the stage parameters of a room or equipment card (`devs.ts`);
+  the stage parameters of a room or equipment card (`devs.ts`); with Б1д, the batch record — what was weighed by lots,
+  who weighed and who checked, what each stage loaded, mass in and out, the packing with the line's people, the
+  clearance and the reconciliation, deviations and decisions —, what is inside equipment now and a line machine's
+  materials, records of the plant without truth (`dossier.ts`);
   the plant reference — how it should be by master data
   and how it is: products and SKUs, recipes with stages by plan and by the stage records, equipment and the line,
   instruments and methods, roles and shifts, suppliers and customers, materials with their OKEI unit codes and the spec
   in force, every document revision with its status by the plant date, without the model's hidden parameters, start
   moments of running work as numbers (`ref.ts`); what is going on now — running work by department, one row per work,
-  with the plant's norm and never the engine's drawn duration, a deputy's work with «за» and the absent's role
-  (`now.ts`); the 08:00 meeting — the player's places over
+  with the plant's norm and never the engine's drawn duration, a deputy's work with «за» and the absent's role, a kit
+  trip with its material and lot (`now.ts`); the 08:00 meeting — the player's places over
   their tenure, yesterday by calendar day with its cleanings and changeovers, events of the 24 hours before it, what
   waits now — the cash panel and the top-bar cash with the player's places (`report.ts`); the places and assets — the
   «Места» tab, an asset in a card, the meeting's calibration and qualification, which batch waits for which asset —
@@ -339,7 +346,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   план» and the run's outcome per variant (`Gantt.tsx`), the draft's pure rules — a row per batch order, gone once kitting
   starts, `shift` commands on approval (`draft.ts`), the «Кем вы будете» screen of places (`Seats.tsx`), the
   investigation board — steps, findings in words with numbers from the records, version bars, the decision, the
-  debrief (`Inv.tsx`), the levers of a row (`Levers.tsx`), the deviation card, the batch decision, stage parameters and
+  debrief (`Inv.tsx`), the batch record over the other windows — opened from a card, «Сейчас», the meeting and a click
+  on a batch bar of the schedule (`Dossier.tsx`), the levers of a row (`Levers.tsx`), the deviation card, the batch
+  decision, stage parameters and
   the first-event explanation in the card (`Decide.tsx`), status and work icons (`icons.tsx`), asset words — class and
   inventory number, the work's name, «until» and why it does not work
   (`assets.ts`), the content base for names (`db.ts`); `src/i18n/` — every player-facing string, Russian
@@ -352,7 +361,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   with Б4б — cyclic schedules in `shifts/` and the scenario's accounting period in months; with Б4в — the scenario's
   labor market `labor`, the terms of the labor law in the profile and the plan's cleaning seconds per m² by grade; with
   Б4г — the vacation numbers of the law in the profile, the scenario's rule of the draft `leave`, related professions
-  `also` of the staff rows and `same` of a role only another person of it replaces);
+  `also` of the staff rows and `same` of a role only another person of it replaces; with Б1д — the stage that loads each
+  line of a recipe's composition);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
@@ -362,7 +372,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   trial within the profile's limit, cleaning seconds for the grade of every room with equipment; the vacation rule —
   dates of the year, parts adding up to the year's days with one no shorter than the law's, the approval no later than
   the law's term before the year; a related profession — a role of the base, not one's own and not a `same` one; the
-  draft of the start staff fits whole (`leaveErrors`); plan rules in
+  draft of the start staff fits whole (`leaveErrors`); every line of a composition loaded on a stage of its recipe after
+  dispensing, the API and another component on the first mixing; plan rules in
   `plan.ts`: doors on walls, docks on outer walls, class D only through
   airlocks, reachability, posts on
   walkable floor; models in

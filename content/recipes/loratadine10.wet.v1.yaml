@@ -10,12 +10,13 @@ doc: { code: MF-0002, rev: 1, from: 2027-04-01, approved: role.production-head }
 product: prd.loratadine10
 # 300 000 таблеток по 200 мг
 batch: { kg: 60, units: 300000 }
+# стадия загрузки (Б1д): магния стеарат — на опудривании, после калибровки (meb-loratadine-2022), остальное — в гранулятор
 bom:
-  - { material: mat.api.loratadine, kg: 3, potency: true }
-  - { material: mat.exc.lactose, kg: 41.4 }
-  - { material: mat.exc.starch, kg: 4.2 }
-  - { material: mat.exc.mcc, kg: 10.8, qs: true }
-  - { material: mat.exc.mgst, kg: 0.6 }
+  - { material: mat.api.loratadine, kg: 3, potency: true, stage: granulate }
+  - { material: mat.exc.lactose, kg: 41.4, stage: granulate }
+  - { material: mat.exc.starch, kg: 4.2, stage: granulate }
+  - { material: mat.exc.mcc, kg: 10.8, qs: true, stage: granulate }
+  - { material: mat.exc.mgst, kg: 0.6, stage: blend }
 stages:
   # отвешивание: взвешивает один, проверяет второй
   - id: dispense

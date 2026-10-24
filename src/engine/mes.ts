@@ -243,7 +243,7 @@ function startPacking(db: ContentDb, s: PlantState, b: Batch) {
   const line = planOf(db, s.plant).plant.lines[0];
   if (!line) return;
   const tablets = (containersByLot(s).get(b.bulk!) ?? []).reduce((n, c) => n + c.qty, 0);
-  const job: PackJob = { sku: b.sku!, line: line.id, state: 'waiting', created: s.t, kit: [], used: [], tablets, checked: 0, rejected: [], retained: [] };
+  const job: PackJob = { sku: b.sku!, line: line.id, state: 'waiting', created: s.t, kit: [], used: [], tablets, checked: 0, rejected: [], retained: [], people: [] };
   b.pack = job;
   b.status = 'packing';
   reservePack(db, s, b);
@@ -435,7 +435,7 @@ function tryStart(db: ContentDb, s: PlantState, b: Batch) {
  * уже отработала (сам остаток — разыгранный, его завод не знает).
  */
 export function stageTaskNorm(db: ContentDb, b: Batch): [number, number] {
-  const [nom, max] = stageNorm(db, b.recipe, db.recipes[b.recipe].stages[b.stage], b.mass);
+  const [nom, max] = stageNorm(db, b.recipe, db.recipes[b.recipe].stages[b.stage], stageMass(db, b, b.stage));
   const done = b.run?.rest !== undefined ? worked(b.run) : 0;
   return [Math.max(0, nom - done), max - done];
 }
@@ -457,8 +457,8 @@ function stageEquipment(s: PlantState, b: Batch, st: RecipeStage): Equipment[] {
   return Object.values(s.equipment).filter(e => e.batch === b.id && e.room === b.room && st.equipment.includes(e.type));
 }
 
-/** Таблеток на стадию по массе полупродукта — как в длительности стадии. */
-const unitsOf = (db: ContentDb, b: Batch) => Math.floor((b.mass * db.recipes[b.recipe].batch.units) / db.recipes[b.recipe].batch.mass);
+/** Таблеток на стадию по массе на её входе — как в длительности стадии. */
+const unitsOf = (db: ContentDb, b: Batch) => Math.floor((stageMass(db, b, b.stage) * db.recipes[b.recipe].batch.units) / db.recipes[b.recipe].batch.mass);
 
 /**
  * Аппаратчик начал стадию с узлами под износом (событие `begin`). Отрезок прессования — от конца подготовки (её нет
@@ -556,6 +556,18 @@ export function pressFail(db: ContentDb, s: PlantState, ev: Extract<PlantEvent, 
   release(db, s, t);
 }
 
+/**
+ * Масса на входе стадии `k` по карте и досье (Б1д): масса серии без того, что загрузят на стадиях дальше. Масса серии —
+ * отвешенное за вычетом потерь стадий; отвешенное ждёт своей стадии вместе с серией. У задания, которое ещё не отвесили,
+ * — по составу карты. Одна функция для движка, прогона расписания (3д), «Сейчас» и справочника.
+ */
+export function stageMass(db: ContentDb, b: Pick<Batch, 'recipe' | 'mass' | 'dispensed'>, k: number): number {
+  const r = db.recipes[b.recipe];
+  const later = new Set(r.bom.filter(l => r.stages.findIndex(st => st.id === l.stage) > k).map(l => l.material));
+  if (b.dispensed.length === 0) return r.bom.reduce((n, l) => (later.has(l.material) ? n : n + l.qty), 0);
+  return b.dispensed.reduce((n, x) => (later.has(x.material) ? n - x.qty : n), b.mass);
+}
+
 /** Номинальная длительность стадии по карте: подготовка + загрузки + компоненты + масса / скорость; без разброса — для прогона расписания (3д). */
 export function nominal(db: ContentDb, recipe: Id, st: RecipeStage, mass: number): number {
   const r = db.recipes[recipe];
@@ -579,7 +591,7 @@ export function stageNorm(db: ContentDb, recipe: Id, st: RecipeStage, mass: numb
 /** Длительность стадии по карте: номинальная, с разбросом. */
 function duration(db: ContentDb, s: PlantState, b: Batch, st: RecipeStage, roomId: string): number {
   const t = st.time;
-  const sec = nominal(db, b.recipe, st, b.mass);
+  const sec = nominal(db, b.recipe, st, stageMass(db, b, b.stage));
   if (t.spread === 0) return sec;
   return Math.max(MIN, sec + roll(s, `mes/${roomId}`, rng => spread(Math.floor((sec * t.spread) / P_ONE), normal(rng))));
 }
@@ -744,7 +756,8 @@ function stageDone(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, notic
   const roomId = b.room!;
   const eqs = stageEquipment(s, b, st);
   addEnergy(s, eqs.reduce((w, e) => w + db.equipment[e.type].kw, 0), s.t - t.times![1]);
-  const rec: StageRecord = { stage: st.id, room: roomId, start: b.run?.start ?? t.times![1], end: s.t, people: [...(b.run?.people ?? t.people)], equipment: eqs.map(e => e.id), params: {}, in: b.mass, out: b.mass, loss: 0, ipc: [] };
+  const rec: StageRecord = { stage: st.id, room: roomId, start: b.run?.start ?? t.times![1], end: s.t, people: [...(b.run?.people ?? t.people)], equipment: eqs.map(e => e.id), params: {}, in: stageMass(db, b, b.stage), out: 0, loss: 0, ipc: [] };
+  rec.out = rec.in;
   // узлы: наработка остатка стадии; средний износ за стадию и простои — в досье. Запас кончился на последней таблетке —
   // стадия кончилась, узел отказывает после неё
   const worn: Part[] = [];
@@ -775,12 +788,16 @@ function stageDone(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, notic
   if (b.stage === 0) {
     dispense(s, b, rec);
     afterDispense(db, s, b);
-  } else if (st.loss[0] > 0) {
-    const share = Math.max(0, st.loss[0] + roll(s, `mes/${roomId}`, rng => spread(st.loss[1], normal(rng))));
-    rec.loss = Math.min(rec.in, Math.floor((rec.in * share) / P_ONE));
-    rec.out = rec.in - rec.loss;
+    b.mass = rec.out;
+  } else {
+    if (st.loss[0] > 0) {
+      const share = Math.max(0, st.loss[0] + roll(s, `mes/${roomId}`, rng => spread(st.loss[1], normal(rng))));
+      rec.loss = Math.min(rec.in, Math.floor((rec.in * share) / P_ONE));
+      rec.out = rec.in - rec.loss;
+    }
+    // на входе стадии — масса серии без того, что загрузят дальше: оно ждёт своей стадии и потерь этой не несёт (Б1д)
+    b.mass -= rec.loss;
   }
-  b.mass = rec.out;
   b.records.push(rec);
   // истинные показатели: те, что контролирует МОК этой стадии, а на последней — все остальные
   const last = b.stage === r.stages.length - 1;

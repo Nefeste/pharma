@@ -15,8 +15,9 @@ import { planOf } from '../engine/plant';
 import { pendingOf } from '../engine/shifts';
 import { shiftEnd } from '../engine/staff';
 import { TAG } from '../engine/stock';
-import type { AssetRec, Lot, LotStatus, MachineState, Person, PlantState, Quit, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
+import type { AssetRec, KitLine, Lot, LotStatus, MachineState, Person, PlantState, Quit, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
 import { type DevCard, devCard, type Regimes, regimesAt, type ReleaseView, releaseOf } from './devs';
+import { type DossierQuery, type DossierView, dossierView, type Inside, insideOf, type LineMaterial, lineMaterials } from './dossier';
 import { type SaView, type SheetView, saOf, sheetOf } from './hours';
 import { type InvQuery, type InvView, invView } from './inv';
 import { type ChartQuery, type ChartView, chartView, type LabQuery, type LabView, labView } from './lab';
@@ -26,7 +27,7 @@ import { lotDeal } from './partners';
 import { type Admission, admissionOf, type DocNow, docNow, docOfRev, type TrainRow, trainRows } from './people';
 import { type AssetInfo, assetInfo, assetWaits } from './places';
 import { type GanttQuery, type GanttView, type GhostQuery, type GhostView, ganttView, ghostView } from './plan';
-import { type NowQuery, type NowView, nowView } from './now';
+import { kitItem, type NowQuery, type NowView, nowView } from './now';
 import { type RefQuery, type RefView, refView } from './ref';
 import { type CashQuery, type CashView, cashView, type MorningQuery, type MorningView, morningView, type TopQuery, type TopView, topView } from './report';
 
@@ -61,7 +62,7 @@ export interface CardQuery {
   thing: Thing;
 }
 
-export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery);
+export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery);
 
 /** Место паллеты: место плана (номер по порядку), помещение (номер по порядку), фура. */
 export type PlaceRef = { k: 'slot'; i: number } | { k: 'room'; i: number } | { k: 'truck'; n: number; customer: boolean };
@@ -124,6 +125,13 @@ export type Hist =
   | { k: 'test'; t?: number; method: Id; result: number; pass: boolean }
   | { k: 'decided'; t?: number; status: LotStatus }
   | { k: 'kit'; t?: number; batch: string; qty: number }
+  /** отвешено на серию (Б1д): с досье отвешивания — и после него */
+  | { k: 'weighed'; t: number; batch: string; qty: number }
+  /**
+   * выдано на упаковку серии; после задания — и сколько списано по факту (Б1д); у задания, сделанного до Б1д, выдачи
+   * в записи нет — только списание
+   */
+  | { k: 'pack'; t?: number; batch: string; qty?: number; used?: number }
   | { k: 'shipped'; t: number; customer: Id; qty: number }
   | { k: 'maint'; t: number; part: string; what: 'failure' | 'repair' | 'replace'; wear: number }
   /** запись квалификации или калибровки (Б3в): мгновение — начало дня записи */
@@ -149,6 +157,8 @@ export interface LotInfo {
   /** своя продукция (Б3а): редакция карты серии; у готовой продукции — и позиция, чья инструкция по упаковке */
   recipe?: Id;
   sku?: Id;
+  /** своя продукция (Б1д): номер серии — к её досье */
+  batch?: number;
 }
 
 /**
@@ -157,9 +167,9 @@ export interface LotInfo {
  */
 export type CardData =
   | { kind: 'unit'; unit: number; tag: Tag; containers: number; holds?: Holds; where: PlaceRef; lot?: LotInfo; release?: ReleaseView; why: Why[]; history: Hist[] }
-  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; batch?: string; recipe?: Id; stage?: string; regimes?: Regimes; why: Why[] }
-  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; recipe?: Id; parts: PartInfo[]; asset?: AssetInfo; regimes?: Regimes; why: Why[]; history: Hist[] }
-  | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; sku?: Id; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[] }
+  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; batch?: string; bn?: number; recipe?: Id; stage?: string; inside?: Inside; regimes?: Regimes; why: Why[] }
+  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; bn?: number; recipe?: Id; inside?: Inside; parts: PartInfo[]; asset?: AssetInfo; regimes?: Regimes; why: Why[]; history: Hist[] }
+  | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; bn?: number; sku?: Id; materials?: LineMaterial[]; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[] }
   /** человек (Б3б): табельный номер, навык, допуск сегодня, обучение по матрице его роли, что изучает сейчас; табель месяца (Б4а) */
   /** с Б4б — ждущий перевод на другой график и учётный период сменного по циклу */
   /** с Б4в — оклад, день приёма, последний день испытания, увольнение; ушёл с завода — `gone` с днём и основанием */
@@ -223,8 +233,8 @@ function personLeaveOf(db: ContentDb, s: PlantState, p: Person, gone: boolean): 
   return l ? { leave: l } : {};
 }
 
-/** Что делает человек: задача, идёт на пост или к выходу, стоит на посту, вне смены. */
-export type Doing = { k: 'task'; task: TaskKind } | { k: 'walk'; exit: boolean } | { k: 'post' } | { k: 'off' };
+/** Что делает человек: задача (у работ комплекта — что везёт или выносит, Б1д), идёт на пост или к выходу, стоит на посту, вне смены. */
+export type Doing = { k: 'task'; task: TaskKind; item?: { material: Id; lot: [number, number, number] } } | { k: 'walk'; exit: boolean } | { k: 'post' } | { k: 'off' };
 
 export interface CardView {
   view: 'card';
@@ -232,7 +242,7 @@ export interface CardView {
   card: CardData;
 }
 
-export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView;
+export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView;
 
 const num = (id: string) => Number(id.slice(1));
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
@@ -344,7 +354,7 @@ function lotInfo(s: PlantState, lot: Lot, left: number): LotInfo {
     qty: lot.qty,
     left,
     expiry: lot.expiry,
-    ...(b ? { recipe: b.recipe } : {}),
+    ...(b ? { recipe: b.recipe, batch: num(b.id) } : {}),
     ...(b?.pack && lot.id === b.pack.fg ? { sku: b.pack.sku } : {}),
   };
 }
@@ -380,15 +390,28 @@ function lotHistory(s: PlantState, lot: Lot): Hist[] {
     out.push({ k: 'test', ...(q.done !== undefined ? { t: q.done } : {}), method: q.method, result: q.result, pass: !!q.pass });
   }
   if (lot.supplier !== 'start' && (lot.status === 'released' || lot.status === 'rejected')) out.push({ k: 'decided', ...(lot.since !== undefined ? { t: lot.since } : {}), status: lot.status });
-  // резерв заданий на серию — одной строкой: до комплектации номера серии ещё нет; выдача — с первой стадии
+  // резерв заданий на серию — одной строкой: до комплектации номера серии ещё нет; выдача — с комплектации; отвешено —
+  // по досье отвешивания (Б1д: раньше выдача пропадала, когда комплект отвешивали); на упаковку — комплект задания, после
+  // него — выдача и списание по факту
   const reserved = { orders: 0, qty: 0 };
   for (const b of Object.values(s.batches)) {
+    const weighed = b.dispensed.filter(k => k.lot === lot.id).reduce((n, k) => n + k.qty, 0);
+    if (weighed > 0 && b.records[0]) out.push({ k: 'weighed', t: b.records[0].start, batch: batchNo(b.code), qty: weighed });
     const qty = b.kit.filter(k => k.lot === lot.id).reduce((n, k) => n + k.qty, 0);
-    if (qty === 0) continue;
-    if (b.status === 'waiting' || b.status === 'reserved') {
-      reserved.orders++;
-      reserved.qty += qty;
-    } else out.push({ k: 'kit', ...(b.records[0] ? { t: b.records[0].start } : {}), batch: batchNo(b.code), qty });
+    if (qty > 0) {
+      if (b.status === 'waiting' || b.status === 'reserved') {
+        reserved.orders++;
+        reserved.qty += qty;
+      } else out.push({ k: 'kit', batch: batchNo(b.code), qty });
+    }
+    const job = b.pack;
+    if (job && job.state !== 'waiting' && job.state !== 'reserved') {
+      const of = (list: readonly KitLine[]) => list.filter(k => k.lot === lot.id).reduce((n, k) => n + k.qty, 0);
+      const done = job.state === 'done';
+      const issued = job.issued ? of(job.issued) : done ? undefined : of(job.kit);
+      const used = done ? of(job.used) : undefined;
+      if ((issued ?? used ?? 0) > 0) out.push({ k: 'pack', ...(job.start !== undefined ? { t: job.start } : {}), batch: batchNo(b.code), ...(issued !== undefined ? { qty: issued } : {}), ...(used !== undefined ? { used } : {}) });
+    }
   }
   if (reserved.orders > 0) out.push({ k: 'reserved', ...reserved });
   for (const sh of Object.values(s.shipments)) {
@@ -474,6 +497,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       const b = r.batch ? s.batches[r.batch] : undefined;
       const clean = Object.values(s.tasks).filter(t => t.kind === 'clean' && t.room === def.id);
       const regimes = regimesAt(db, s, def.id);
+      const inside = insideOf(db, s, def.id);
       return {
         kind: 'room',
         room: thing.i,
@@ -481,8 +505,9 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         grade: def.grade,
         status: r.status,
         since: r.since,
-        ...(b ? { batch: batchNo(b.code), recipe: b.recipe } : {}),
+        ...(b ? { batch: batchNo(b.code), bn: num(b.id), recipe: b.recipe } : {}),
         ...(b && r.status === 'busy' ? { stage: db.recipes[b.recipe].stages[b.stage]?.id } : {}),
+        ...(inside ? { inside } : {}),
         ...(regimes ? { regimes } : {}),
         why: [...clean.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.room === def.id)],
       };
@@ -494,13 +519,15 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       const b = e.batch ? s.batches[e.batch] : undefined;
       const repairs = Object.values(s.tasks).filter(t => t.kind === 'repair' && Object.values(s.parts).some(p => p.machine === def.id && p.task === t.id));
       const regimes = regimesAt(db, s, def.room);
+      const inside = b ? insideOf(db, s, def.room) : undefined;
       return {
         kind: 'equipment',
         eq: thing.i,
         type: def.type,
         room: plan.plant.rooms.findIndex(r => r.id === def.room),
         state: eqStateOf(db, s, def.id),
-        ...(b ? { batch: batchNo(b.code), recipe: b.recipe } : {}),
+        ...(b ? { batch: batchNo(b.code), bn: num(b.id), recipe: b.recipe } : {}),
+        ...(inside && inside.batch === num(b!.id) ? { inside } : {}),
         parts: partsOfMachine(db, s, def.id),
         ...(s.assets[def.id] ? { asset: assetInfo(db, s, def.id)! } : {}),
         ...(regimes ? { regimes } : {}),
@@ -516,14 +543,16 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       if (!ln || !line || !def || !mc) return { kind: 'gone' };
       const b = line.batch ? s.batches[line.batch] : undefined;
       const repairs = Object.values(s.tasks).filter(t => t.kind === 'repair' && Object.values(s.parts).some(p => p.machine === def.id && p.task === t.id));
+      const mats = lineMaterials(db, s, ln.id, thing.k);
       return {
         kind: 'machine',
         line: thing.line,
         k: thing.k,
         type: def.type,
         state: mc.state,
-        ...(b ? { batch: batchNo(b.code) } : {}),
+        ...(b ? { batch: batchNo(b.code), bn: num(b.id) } : {}),
         ...(b?.pack ? { sku: b.pack.sku } : {}),
+        ...(mats && mats.materials.length > 0 ? { materials: mats.materials } : {}),
         parts: partsOfMachine(db, s, def.id),
         ...(s.assets[def.id] ? { asset: assetInfo(db, s, def.id)! } : {}),
         why: [...repairs.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.asset === def.id)],
@@ -536,8 +565,9 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       const p = s.people[`E${thing.n}`] ?? s.former[`E${thing.n}`];
       if (!p) return { kind: 'gone' };
       const t = p.task ? s.tasks[p.task] : undefined;
+      const item = t ? kitItem(s, t) : undefined;
       const doing: Doing = t
-        ? { k: 'task', task: t.kind }
+        ? { k: 'task', task: t.kind, ...(item ? { item } : {}) }
         : gone || shiftEnd(db, s, p) === undefined
           ? { k: 'off' }
           : p.walk
@@ -620,6 +650,8 @@ export function viewOf(db: ContentDb, s: PlantState, q: ViewQuery): ViewData {
       return invView(db, s, q);
     case 'ref':
       return refView(db, s);
+    case 'dossier':
+      return dossierView(db, s, q);
     case 'now':
       return nowView(db, s);
   }

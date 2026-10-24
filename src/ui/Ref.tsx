@@ -149,6 +149,8 @@ function Recipe({ r, t, q }: { r: RefRecipe; t: number; q: string }) {
     { name: b.code, text: l => codeOf(l.material), show: l => <span className="mono">{codeOf(l.material)}</span> },
     { name: b.material, text: l => named(db?.materials[l.material]?.name, l.material) },
     { name: b.qty, text: l => qtyText(l.qty, unitOf(l.material)), num: l => l.qty },
+    // стадия загрузки (Б1д): порядок загрузки сырья — часть технологической инструкции
+    { name: b.stage, text: l => T.stages[l.stage] ?? l.stage, num: l => order.get(l.stage) ?? 0 },
     { name: b.how, text: l => [l.potency ? T.ref.potency : '', l.qs ? T.ref.qs : ''].filter(Boolean).join(', ') },
   ];
   const stages: Col<RefStage>[] = [
@@ -165,6 +167,7 @@ function Recipe({ r, t, q }: { r: RefRecipe; t: number; q: string }) {
     },
     { name: c.room, text: st => T.roomTypes[st.room] ?? st.room },
     { name: c.equipment, text: st => st.equipment.map(e => named(db?.equipment[e]?.name, e)).join(', ') },
+    { name: c.load, text: st => st.load.map(m => named(db?.materials[m]?.name, m)).join(', ') || dash() },
     { name: c.staff, text: st => T.ref.staff(named(db?.roles[st.staff.role]?.name, st.staff.role), st.staff.n) },
     { name: c.plan, text: st => durText(st.nominal), show: st => <b className="nw">{durText(st.nominal)}</b>, num: st => st.nominal },
     {

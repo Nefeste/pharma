@@ -31,7 +31,9 @@
 // по вакансии упаковщика есть кандидаты, упаковщик первой смены уже уволен по соглашению, аппаратчик второй — в свой
 // последний день; бригад здесь нет — их держит образец схемы 23. С схемы 25 — посреди отпуска: график 2028 года утверждён,
 // у одного человека идёт часть с заместителем и отпускные заплачены, другого уже известили о его части; найм — как в
-// образце схемы 24, до января он кончился.
+// образце схемы 24, до января он кончился. С схемы 26 — посреди записи упаковки: линия упаковывает, у задания — люди
+// своих работ и проверенная очистка линии, у сделанного задания — выдача; у другой серии стадия между отвешиванием
+// и опудриванием — магния стеарат ждёт своей стадии; отпусков здесь нет — их держит образец схемы 25.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { DAY, daysFromCivil, HOUR, MIN, momentOf } from '../../src/engine/core/calendar';
@@ -43,7 +45,7 @@ import { SCHEMA } from '../../src/engine/types';
 
 const s = newPlant(db, { scenario: 'scn.proto', seed: 1 });
 // отпуска (Б4г) — с января 2028 года: до 9 января — по часу
-const end = s.t + (SCHEMA >= 25 ? 160 : 120) * DAY;
+const end = s.t + ((SCHEMA as number) === 25 ? 160 : 120) * DAY;
 const jan9 = daysFromCivil({ y: 2028, m: 1, d: 9 });
 const packing = () => Object.values(s.lines).some(l => l.batch && s.batches[l.batch].pack?.state === 'running' && l.cases > 0 && l.pallet && l.machines.some(m => m.down !== undefined));
 const running = () => Object.values(s.tests).some(q => q.state === 'run');
@@ -83,8 +85,15 @@ const vacation = () => {
   const all = Object.values(s.people).flatMap(p => p.away ?? []);
   return Object.values(s.leave).some(y => y.st === 'approved') && all.some(a => a.from <= z && z <= a.to && a.deputy && a.paid !== undefined) && all.some(a => a.from > z && a.told);
 };
+// посреди записи упаковки (Б1д): линия упаковывает, у задания — люди и проверенная очистка, у сделанного — выдача; у
+// другой серии — стадия между отвешиванием и опудриванием
+const recorded = () => {
+  const jobs = Object.values(s.batches).flatMap(b => (b.pack ? [b.pack] : []));
+  const mid = Object.values(s.batches).some(b => b.status === 'process' && b.stage >= 1 && b.stage <= 3 && b.dispensed.length > 0);
+  return mid && jobs.some(j => j.state === 'running' && (j.people?.length ?? 0) > 0 && j.clear?.check !== undefined) && jobs.some(j => j.state === 'done' && j.issued);
+};
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : seated() && vacation();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : seated() && recorded();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 if (SCHEMA >= 13) apply(db, s, { kind: 'seat', seats: ['director'] });
@@ -127,7 +136,7 @@ while (s.t < end && !busy()) {
     const p = Object.values(s.people).find(x => x.role === 'role.mechanic' && x.shift === 'shift.a');
     if (p) apply(db, s, { kind: 'roster', person: p.id, shift: 'shift.c2', by: 'player' });
   }
-  apply(db, s, { kind: 'advance', seconds: SCHEMA < 6 ? 10 * MIN : SCHEMA >= 25 && momentOf(s.start, s.t).day < jan9 ? HOUR : MIN });
+  apply(db, s, { kind: 'advance', seconds: SCHEMA < 6 ? 10 * MIN : (SCHEMA as number) === 25 && momentOf(s.start, s.t).day < jan9 ? HOUR : MIN });
 }
 writeFileSync(new URL(`./fixtures/save-v${SCHEMA}.json`, import.meta.url), `${toSave(s)}\n`);
 console.log(`fixtures/save-v${SCHEMA}.json: сутки ${s.day}, испытаний ${Object.keys(s.tests).length}`);

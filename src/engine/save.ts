@@ -398,6 +398,18 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     }
     return raw;
   },
+  // 27 → 28 (Б1ж): уставки режимов — в состоянии, в прежнем сохранении их нет: всё по цели карты. У записей стадий
+  // уставок нет, у таблетирования нет и скорости ротора — запись читается с целью карты; серия, которая уже заняла
+  // помещение стадии, идёт по цели. Задание, которое линия уже взяла, — со скоростью блистерной по цели инструкции.
+  27: (raw, db) => {
+    const s = raw as unknown as PlantState;
+    s.setpoints = {};
+    for (const b of Object.values(s.batches)) {
+      const st = db.recipes[b.recipe]?.stages[b.stage];
+      if (b.status === 'process' && b.room && st && st.params.length > 0) b.sp = Object.fromEntries(st.params.map(p => [p.id, p.target]));
+    }
+    return raw;
+  },
 };
 
 export function toSave(s: PlantState): string {

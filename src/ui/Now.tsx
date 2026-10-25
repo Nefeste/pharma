@@ -9,6 +9,7 @@ import { assetClass, workName } from './assets';
 import { db } from './db';
 import { TaskIcon } from './icons';
 import type { Actions, Hud } from './store';
+import { paramText } from './units';
 
 const machineName = (id?: string) => (id ? named(db?.equipment[id]?.name ?? db?.machines[id]?.name, id) : '');
 const partName = (machine?: string, part?: string) => {
@@ -84,12 +85,13 @@ function rowWho(r: NowRow): string {
  * аудит — когда придёт отчёт.
  */
 export function rowWhen(r: NowRow, t: number, start?: Ymd): string {
-  if (r.kind === 'pack') return `${T.now.packs(num(r.done ?? 0), num(r.target ?? 0))} · ${T.now.rate(num(r.rate ?? 0), num(r.rated ?? 0))}`;
+  // уставка скорости (Б1ж): у упаковки — блистерной задания, у таблетирования — ротора; норма — по ней
+  if (r.kind === 'pack') return [T.now.packs(num(r.done ?? 0), num(r.target ?? 0)), T.now.rate(num(r.rate ?? 0), num(r.rated ?? 0)), r.speed !== undefined ? T.now.blister(num(r.speed)) : ''].filter(Boolean).join(' · ');
   if (t < r.from) return T.now.onWay;
   const gone = durText(t - r.from);
   if (r.kind === 'truck') return T.now.truckSince(gone);
   if (r.kind === 'audit' && r.until !== undefined && start) return T.now.auditUntil(gone, whenText(start, r.until));
-  if (r.norm !== undefined) return T.now.gone(gone, durText(r.norm));
+  if (r.norm !== undefined) return r.speed !== undefined ? `${T.now.gone(gone, durText(r.norm))} · ${T.now.rotor(paramText('rpm', r.speed))}${r.normAt !== undefined ? ` · ${T.now.atTarget(durText(r.normAt))}` : ''}` : T.now.gone(gone, durText(r.norm));
   if (r.range) return T.now.goneRange(gone, durText(r.range[0]), durText(r.range[1]));
   return T.now.goneOnly(gone);
 }

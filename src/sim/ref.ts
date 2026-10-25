@@ -12,6 +12,7 @@ import { DOC_KINDS, type DocKind, type DocStatus, inForce, statusOf } from '../e
 import { geo, SIXTY } from '../engine/line';
 import { partType, wearAt } from '../engine/maint';
 import { nominal, stageMass } from '../engine/mes';
+import { setpointOf, speedOf, stageSetpoints } from '../engine/modes';
 import { planOf } from '../engine/plant';
 import { pendingOf, scheduleOn } from '../engine/shifts';
 import { shiftEnd } from '../engine/staff';
@@ -38,6 +39,8 @@ export interface RefSku {
   shelf: number;
   price: number;
   regPrice?: number;
+  /** скорость блистерной по инструкции, блистеров в минуту (Б1ж): цель, диапазон, уставка сейчас */
+  speed: { target: number; range: [number, number]; set: number };
 }
 
 export interface RefProduct {
@@ -61,8 +64,11 @@ export interface RefStage {
   room: string;
   equipment: Id[];
   staff: { role: Id; n: number };
+  /** по карте: при цели; с уставками сейчас (Б1ж) — с ними начнётся следующая стадия */
   nominal: number;
-  params: { id: string; unit: ParamUnit; target: number; range: [number, number] }[];
+  atSet: number;
+  /** режимы: цель и диапазон по карте, уставка кода карты сейчас (Б1ж) */
+  params: { id: string; unit: ParamUnit; target: number; range: [number, number]; set: number }[];
   ipc: { test: Id; min?: number; max?: number }[];
   mix: boolean;
   /** что на стадии загружают по карте (Б1д) */
@@ -283,13 +289,14 @@ function stagesOf(db: ContentDb, s: PlantState, id: Id): RefStage[] {
       equipment: [...st.equipment],
       staff: { ...st.staff },
       nominal: nominal(db, id, st, stageMass(db, { recipe: id, mass: 0, dispensed: [] }, i)),
-      params: st.params.map(p => ({ id: p.id, unit: p.unit, target: p.target, range: [...p.range] as [number, number] })),
+      atSet: nominal(db, id, st, stageMass(db, { recipe: id, mass: 0, dispensed: [] }, i), stageSetpoints(db, s, id, st)),
+      params: st.params.map(p => ({ id: p.id, unit: p.unit, target: p.target, range: [...p.range] as [number, number], set: setpointOf(db, s, id, st.id, p) })),
       ipc: st.ipc.map(c => ({ test: c.test, ...(c.min !== undefined ? { min: c.min } : {}), ...(c.max !== undefined ? { max: c.max } : {}) })),
       mix: !!st.mix,
       load: r.bom.filter(l => l.stage === st.id).map(l => l.material),
       done: times.length,
       ...(times.length ? { last: times[times.length - 1], mean: Math.round(times.reduce((n, x) => n + x, 0) / times.length) } : {}),
-      ...(busy && task ? { now: { batch: batchNo(busy.code), from: busy.run?.start ?? task.times![1], nominal: nominal(db, id, st, stageMass(db, busy, i)) } } : {}),
+      ...(busy && task ? { now: { batch: batchNo(busy.code), from: busy.run?.start ?? task.times![1], nominal: nominal(db, id, st, stageMass(db, busy, i), busy.sp) } } : {}),
     };
   });
 }
@@ -319,6 +326,7 @@ export function refView(db: ContentDb, s: PlantState): RefView {
         shelf: db.materials[k.fg].shelf,
         price: k.price,
         ...(k.regPrice !== undefined ? { regPrice: k.regPrice } : {}),
+        speed: { target: k.speed.target, range: [k.speed.range[0], k.speed.range[1]] as [number, number], set: speedOf(db, s, k.id) },
       })),
   }));
   const materials: RefMaterial[] = [
@@ -358,7 +366,7 @@ export function refView(db: ContentDb, s: PlantState): RefView {
     const line = s.lines[l.id];
     const b = line?.batch ? s.batches[line.batch] : undefined;
     const job = b?.pack;
-    const g = line && job ? geo(db, s, line, job.sku) : undefined;
+    const g = line && job ? geo(db, s, line, job) : undefined;
     return {
       id: l.id,
       machines: l.machines.map((m, k) => {

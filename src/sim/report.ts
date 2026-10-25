@@ -2,9 +2,10 @@
 // (views.ts). Планёрка говорит о вчерашних календарных сутках — потери, смены и OEE движок ведёт по ним, — о событиях за
 // 24 часа до неё и о том, что ждёт сейчас. Данные — без слов и без истины: время машин, счётчики линии, ожидания задач,
 // записи отклонений, журнал оборудования, решения, заказы и проводки — то, что завод мог узнать.
-import type { ContentDb, Dept, Id, OvertimeMode, SeatId } from '../content/types';
+import type { ContentDb, Dept, Id, OvertimeMode, ParamUnit, SeatId } from '../content/types';
 import { batchNo } from '../engine/batchno';
 import { DAY, momentOf } from '../engine/core/calendar';
+import { inForce } from '../engine/docs';
 import { MORNING } from '../engine/engine';
 import { AREA, type Oee, oee, rhythm, shiftsOfDay, type Switches, switchesOf } from '../engine/lean';
 import { orderRisks, type OrderRisk } from '../engine/market';
@@ -205,6 +206,43 @@ export interface MorningView {
   cash: { balance: number; day: number; next?: { due: number; item: CashItem; sum: number } };
   /** ваше место (3е): итог каждого взятого места за время на нём */
   seats: SeatSum[];
+  /** уставки не по цели (Б1ж): какие и с какого мгновения */
+  modes: ModeRow[];
+}
+
+/**
+ * Уставка не по цели (Б1ж): режим стадии карты — карта в силе, стадия и единица режима — или скорость блистерной
+ * позиции; уставка и цель — в единицах движка (скорость блистерной — блистеров в минуту); с какого мгновения.
+ */
+export interface ModeRow {
+  recipe?: Id;
+  stage?: string;
+  unit?: ParamUnit;
+  sku?: Id;
+  param: string;
+  v: number;
+  target: number;
+  from: number;
+}
+
+/** Уставки не по цели — по ключам уставок завода, в редакциях, которые действуют сегодня; по порядку задания. */
+export function modeRows(db: ContentDb, s: PlantState): ModeRow[] {
+  const day = momentOf(s.start, s.t).day;
+  const rows: ModeRow[] = [];
+  for (const [key, sp] of Object.entries(s.setpoints)) {
+    const [code, stage, param] = key.split('/');
+    if (param !== undefined) {
+      const r = Object.values(db.recipes).find(x => x.doc.code === code);
+      const id = r && inForce(db, 'recipes', r.id, day);
+      const p = id ? db.recipes[id].stages.find(st => st.id === stage)?.params.find(x => x.id === param) : undefined;
+      if (id && p) rows.push({ recipe: id, stage, unit: p.unit, param, v: sp.v, target: p.target, from: sp.from });
+    } else {
+      const k = Object.values(db.skus).find(x => x.doc.code === code);
+      const id = k && inForce(db, 'skus', k.id, day);
+      if (id) rows.push({ sku: id, param: 'speed', v: sp.v, target: db.skus[id].speed.target, from: sp.from });
+    }
+  }
+  return rows.sort((a, b) => a.from - b.from);
 }
 
 const LOAD: (keyof MachineTimes)[] = ['run', 'slow', 'micro', 'fail', 'wait', 'setup'];
@@ -393,6 +431,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     ...leaveOf(db, s),
     cash: { balance: s.cash.balance, day: dayChange(s, s.t), ...(next ? { next: { due: next.due, item: next.item, sum: next.sum } } : {}) },
     seats: seatSums(db, s),
+    modes: modeRows(db, s),
   };
 }
 

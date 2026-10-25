@@ -146,8 +146,11 @@ describe('серия от задания до выпуска', () => {
 });
 
 test('сменное задание: меньшее из «осталось в заданиях линии» и «узкое место × смена × норма»; выпуск смены — годные пачки', () => {
-  // блистерная медленная — задание на упаковку длится несколько смен; норма 100 %
-  const base: ContentDb = { ...variant({ norm: P_ONE }), machines: { ...db.machines, 'mach.blister': { ...db.machines['mach.blister'], nominal: 10 } } };
+  // блистерная медленная — задание на упаковку длится несколько смен; норма 100 %. Ход блистерной — уставка инструкции
+  // позиции (Б1ж): цель 10 блистеров в минуту, паспорт тот же
+  const v = variant({ norm: P_ONE });
+  const slow = Object.fromEntries(Object.entries(v.skus).map(([k, x]) => [k, { ...x, speed: { target: 10, range: [10, 10] as [number, number], step: 1 } }]));
+  const base: ContentDb = { ...v, skus: slow, machines: { ...db.machines, 'mach.blister': { ...db.machines['mach.blister'], nominal: 10 } } };
   const s = plant(base);
   const b = order(base, s, N20);
   live(base, s, 30, () => b.pack?.state === 'done');

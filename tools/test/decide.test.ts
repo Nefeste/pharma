@@ -43,7 +43,9 @@ const ALLOWED = new Set(
     'people role tab linked attr done assess verdict colleague t block none why inv due ' +
     'review qp open reject now end list sku assessing ' +
     // Б1д: номер серии — к её досье
-    'bn'
+    'bn ' +
+    // Б1ж: уставка режима стадии — её задал завод
+    'sp'
   ).split(' '),
 );
 
@@ -119,7 +121,8 @@ describe('карточка отклонения', () => {
     const c = devCard(bare, s, 900)!;
     const st = bare.recipes[b.recipe].stages.find(x => x.id === 'blend')!;
     const p = st.params.find(x => x.id === 'lubeTime')!;
-    expect(c.param).toEqual({ id: 'lubeTime', unit: 'min', value: 8 * 60, target: p.target, range: p.range });
+    // уставка (Б1ж): у этой серии — цель карты
+    expect(c.param).toEqual({ id: 'lubeTime', unit: 'min', value: 8 * 60, target: p.target, range: p.range, sp: p.target });
     expect(c.batch).toMatchObject({ status: b.status, held: false });
     expect(c.equipment.length).toBeGreaterThan(0);
     expect(c.people.length).toBeGreaterThan(0);

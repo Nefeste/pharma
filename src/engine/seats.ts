@@ -3,6 +3,7 @@
 // Работа отделов идёт по правилам движка, как раньше: место даёт команды и мерило. Журнал мест — кто и когда что держал:
 // по нему считают итог поста за время на месте.
 import { type ContentDb, type Dept, SEATS, type SeatId } from '../content/types';
+import { colleagueTargets } from './modes';
 import type { Command, Notice, PlantState } from './types';
 
 /** Чья команда — пост, к которому она относится; ход времени и выбор места — ничьи; политика отдела — пост отдела. */
@@ -16,6 +17,7 @@ export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
   investigate: 'quality',
   conclude: 'quality',
   assess: 'quality',
+  setpoint: 'quality',
   po: 'supply',
 };
 
@@ -87,7 +89,10 @@ export function seatCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
   const offered = db.scenarios[s.scenario].seats;
   const bad = [...want].find(x => !SEATS.includes(x) || !offered.includes(x));
   if (bad) return notices.push({ kind: 'refused', cmd: 'seat', why: 'noSeat', detail: bad });
+  const had = playerHolds(s, 'qa');
   const log = (s.seats ??= []);
   for (const x of log) if (x.to === undefined && !want.has(x.seat)) x.to = s.t;
   for (const id of SEATS) if (want.has(id) && !log.some(x => x.seat === id && x.to === undefined)) log.push({ seat: id, from: s.t });
+  // игрок ушёл с поста «Качество и технология» — коллега технологии держит цель (Б1ж)
+  if (had && !playerHolds(s, 'qa')) colleagueTargets(s, notices);
 }

@@ -15,7 +15,7 @@ import type { Inside, LineMaterial } from '../sim/dossier';
 import type { CardView, Hist, Holds, RoomClean, Why } from '../sim/views';
 import { assetName, untilText, unfitText, workName } from './assets';
 import { db, docText } from './db';
-import { DevBody, First, RegimesBlock, ReleaseBlock } from './Decide';
+import { DevBody, First, KnobsBlock, RegimesBlock, ReleaseBlock, SpeedBlock } from './Decide';
 import { LeaveBlock } from './Leave';
 import { StatusIcon, TaskIcon } from './icons';
 import { placeText, supplierText } from './Stock';
@@ -535,6 +535,7 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
           </dl>
           {c.inside ? <InsideBlock x={c.inside} /> : null}
           {c.regimes ? <RegimesBlock g={c.regimes} start={start} actions={actions} /> : null}
+          {c.knobs ? <KnobsBlock list={c.knobs} hud={hud} actions={actions} /> : null}
           <DossierButton n={c.bn} actions={actions} />
           <Why list={c.why} start={start} />
         </>
@@ -576,7 +577,9 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
           </dl>
           {c.kind === 'equipment' && c.inside ? <InsideBlock x={c.inside} /> : null}
           {c.kind === 'machine' && c.materials ? <LineMaterials list={c.materials} /> : null}
+          {c.kind === 'machine' && c.speed ? <SpeedBlock v={c.speed} hud={hud} actions={actions} /> : null}
           {c.kind === 'equipment' && c.regimes ? <RegimesBlock g={c.regimes} start={start} actions={actions} /> : null}
+          {c.kind === 'equipment' && c.knobs ? <KnobsBlock list={c.knobs} hud={hud} actions={actions} /> : null}
           <DossierButton n={c.bn} actions={actions} />
           <Why list={c.why} start={start} />
           <History list={c.history} start={start} parts={rec?.parts} asset={c.asset} />

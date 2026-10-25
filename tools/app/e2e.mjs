@@ -46,7 +46,10 @@
 // карт, у блистерной — скорость каждой позиции, кнопки погашены; на посту «Качество и технология» скорость ротора
 // парацетамола на шаг выше цели — в справочнике уставка и норма с ней, следующее таблетирование в «Сейчас» короче, чем
 // по цели карты; уставку вернули к цели, в досье серии — уставка и факт. Найм, оценка пары, визит подрядчика и отпуска
-// идут по своим дням. Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
+// идут по своим дням. Журнал решений (Б5а): J — записи начальников отделов планирования и снабжения, у задания на серию —
+// запас, спрос и порог; «К вещи» — досье серии с «Кто решил», «Почему?» — журнал на этом решении; на планёрке — «Решения
+// за сутки» с рычагом «Журнал»; на экране «Кем вы будете» коллеги — по правилам движка. Ошибок в консоли и запросов наружу
+// нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -1679,6 +1682,53 @@ try {
       fail(`календарь бригад: ${cal.month}, бригады с людьми ${cal.crews.join()}, клеток ${cal.cells.length}: ${k}; 9-го ${JSON.stringify(ninth)}`);
     else ok(`календарь бригад: октябрь 2027 года — у бригады 2 ${k.replace(/,/g, ' ')}…, 9-го «${ninth.text}» — дополнительный выходной`);
     await page.keyboard.press('Escape');
+  }
+
+  // журнал решений (Б5а): J — журнал с записями начальников отделов планирования и снабжения; раскрыть задание на серию —
+  // запас, спрос и порог; «К вещи» — досье серии, в нём «Кто решил»; «Почему?» у задания — журнал на нём; на планёрке —
+  // «Решения за сутки»; экран «Кем вы будете» — коллеги по правилам движка
+  {
+    await page.keyboard.press('KeyJ');
+    await page.waitForSelector('[data-test=journal-row]', { timeout: 20_000 });
+    const rows = await page.evaluate(() => [...document.querySelectorAll('[data-test=journal-row]')].map(x => `${x.getAttribute('data-by')}/${x.getAttribute('data-kind')}`));
+    const order = page.locator('[data-test=journal-row][data-by=plan][data-kind=order]').first();
+    const n = Number(await order.getAttribute('data-n'));
+    await order.locator('[data-test=journal-more]').click();
+    await page.waitForSelector(`[data-test=journal-row][data-n="${n}"] [data-test=journal-why]`, { timeout: 10_000 });
+    const why = (await order.locator('[data-test=journal-why]').textContent()) ?? '';
+    await page.screenshot({ path: join(out, 'e2e-journal.png') });
+    await order.locator('[data-test=journal-go]').click();
+    await page.waitForSelector('#dossier [data-test=who-row]', { timeout: 20_000 });
+    const who = await page.evaluate(() => [...document.querySelectorAll('#dossier [data-test=who-row]')].map(x => (x.textContent ?? '').replace(/\s+/g, ' ').trim()));
+    await page.locator('#dossier [data-test=who-row][data-kind=order] [data-test=who-why]').click();
+    await page.waitForFunction(k => document.querySelector(`[data-test=journal-row][data-n="${k}"].on [data-test=journal-why]`) !== null && !document.querySelector('#dossier'), n, { timeout: 20_000 });
+    const plan = rows.includes('plan/order');
+    const supply = rows.includes('supply/po');
+    if (!plan || !supply || !/Запаса — .+ при спросе .+; порог — /.test(why) || !who.some(x => x.startsWith('Задание поставил: Начальник отдела планирования')))
+      fail(`журнал решений: строки ${[...new Set(rows)].join(', ')}; причина «${why}»; в досье «${who.join(' | ')}»`);
+    else ok(`журнал решений: ${rows.length} строк, среди них начальники отделов планирования и снабжения; «${why.slice(0, 120)}…»; в досье — «${who[0]}», «Почему?» открыл журнал на задании`);
+    await page.keyboard.press('Escape');
+    await page.click('[data-test=morning-open]');
+    await page.waitForSelector('[data-test=morning-heads]', { timeout: 20_000 });
+    await page.waitForFunction(() => window.__game.store.get().morning.view?.heads !== undefined, null, { timeout: 20_000 });
+    const heads = await page.evaluate(() => ({
+      rows: [...document.querySelectorAll('[data-test=morning-head]')].map(x => x.textContent ?? ''),
+      lever: !!document.querySelector('[data-test=morning-heads] [data-test=lever-journal]'),
+      view: window.__game.store.get().morning.view?.heads.length ?? -1,
+    }));
+    const names = ['Начальник отдела планирования', 'Начальник производства', 'Главный механик', 'Начальник ООК', 'Начальник ОКК', 'Уполномоченное лицо', 'Главный технолог', 'Начальник отдела снабжения', 'Заведующий складом', 'Начальник отдела продаж', 'Отдел кадров'];
+    if (heads.rows.length !== heads.view || heads.rows.length === 0 || !heads.lever || !heads.rows.every(r => names.some(x => r.startsWith(`${x}: `))))
+      fail(`планёрка, решения за сутки: «${heads.rows.join(' | ')}», в виде ${heads.view}, рычаг «Журнал» ${heads.lever ? 'есть' : 'нет'}`);
+    else ok(`планёрка, решения за сутки: ${heads.rows.join('; ')}`);
+    await page.keyboard.press('Escape');
+    await page.click('[data-test=seats-open]');
+    await page.waitForSelector('#seats', { timeout: 20_000 });
+    const tiles = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-test=seat-tile]')].map(x => [x.getAttribute('data-seat'), x.textContent ?? ''])));
+    await page.click('#seats .close');
+    await page.waitForFunction(() => !document.querySelector('#seats'), null, { timeout: 20_000 });
+    if (!/Начальник отдела планирования — задания на серии по запасу и спросу заказов/.test(tiles.production ?? '') || !/заказы поставщикам по точке заказа/.test(tiles.supply ?? '') || /по сценарию;/.test(`${tiles.production}${tiles.supply}`.replace(/Заказы покупателей — по сценарию;/, '')))
+      fail(`«Кем вы будете»: производство «${tiles.production}»; снабжение «${tiles.supply}»`);
+    else ok('«Кем вы будете»: задания на серии — по запасу и спросу заказов, заказы поставщикам — по точке заказа');
   }
 
   // найм и увольнение (Б4в): F1 → «Люди» — вакансия аппаратчика первой смены по объявлению; на планёрке после

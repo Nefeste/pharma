@@ -109,7 +109,8 @@ function measure(db: ContentDb, c: PlantState, from: number, to: number, seed: n
 
 /** Зерно `k` варианта: копия состояния, двойник (если не выключен), команды варианта по порядку, ход времени на горизонт. */
 export function runSeed(db: ContentDb, s: PlantState, variant: Command[], o: RunOpts, k: number): PlantState {
-  const c: PlantState = structuredClone(s);
+  // копия — без журнала решений (Б5а): будущему он не нужен, правила его не читают
+  const c: PlantState = structuredClone({ ...s, journal: [] });
   if (o.twin !== false) blind(db, c, k);
   for (const cmd of variant) apply(db, c, cmd);
   apply(db, c, { kind: 'advance', seconds: o.days * DAY });

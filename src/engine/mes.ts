@@ -13,6 +13,7 @@ import { HOUR, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { inForce } from './docs';
 import { incidentParams, incidentScreen } from './investigation';
+import { noteCmd } from './journal';
 import { cleaned, defect, recleaned } from './lean';
 import { blocked, consume, failPart, partsOf, partType, untilFail, wearAt } from './maint';
 import { stageSetpoints, unitsPerHour } from './modes';
@@ -21,7 +22,7 @@ import { measure, within } from './quality';
 import { normal, roll, spread } from './random';
 import { containersByLot, createLot, free, knownAssay, nextId, putUnit, stockChanged } from './stock';
 import { addTask, release } from './tasks';
-import type { Batch, Command, Container, Deviation, Equipment, KitLine, Lot, Notice, PackJob, Part, Place, PlantEvent, PlantState, Room, StageRecord, StageRun, Task, Unit } from './types';
+import type { Batch, Command, Container, Deviation, Equipment, KitLine, Lot, Notice, OrderWhy, PackJob, Part, Place, PlantEvent, PlantState, Room, StageRecord, StageRun, Task, Unit } from './types';
 import { PRIO, WMS } from './wms';
 
 /** Роли производства. */
@@ -49,7 +50,7 @@ const roomPlace = (plan: PlantPlan, roomId: string): Place => ({ kind: 'point', 
  * Задание на серию: серия ждёт резерва и своей даты. Нет карты — отказ. Карта — редакция, действующая в день «не раньше»
  * (Б3а): задание держит её до конца — ни новая редакция, ни сдвиг срока её не меняют.
  */
-export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'order' }>, notices: Notice[]) {
+export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'order' }>, notices: Notice[], why?: OrderWhy) {
   if (!db.recipes[cmd.recipe]) {
     notices.push({ kind: 'refused', cmd: 'order', why: 'noRecipe', detail: cmd.recipe });
     return;
@@ -59,6 +60,8 @@ export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, {
   s.batches[b.id] = b;
   schedule(s.agenda, b.notBefore, { kind: 'batch', id: b.id });
   reserve(db, s, b);
+  // журнал решений (Б5а): игрок или начальник отдела планирования — с причиной коллеги
+  noteCmd(s, cmd, { kind: 'order', batch: b.id, recipe: b.recipe, ...(b.sku ? { sku: b.sku } : {}), notBefore: b.notBefore, ...(why ? { why } : {}) });
 }
 
 /**

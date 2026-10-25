@@ -18,6 +18,7 @@ import { db, docText } from './db';
 import { DevBody, First, KnobsBlock, RegimesBlock, ReleaseBlock, SpeedBlock } from './Decide';
 import { LeaveBlock } from './Leave';
 import { StatusIcon, TaskIcon } from './icons';
+import { WhoList } from './Journal';
 import { placeText, supplierText } from './Stock';
 import { type Actions, type Hud, holds } from './store';
 
@@ -506,6 +507,7 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
               <div className="muted">{T.card.nothing}</div>
             </>
           )}
+          <WhoList rows={c.who} start={start} actions={actions} />
           <History list={c.history} start={start} unit={mat?.unit} />
         </>
       );
@@ -582,6 +584,7 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
           {c.kind === 'equipment' && c.knobs ? <KnobsBlock list={c.knobs} hud={hud} actions={actions} /> : null}
           <DossierButton n={c.bn} actions={actions} />
           <Why list={c.why} start={start} />
+          <WhoList rows={c.who} start={start} actions={actions} />
           <History list={c.history} start={start} parts={rec?.parts} asset={c.asset} />
         </>
       );
@@ -641,6 +644,7 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
             </Row>
           </dl>
           {c.terms ? <Dismiss c={c} hud={hud} actions={actions} /> : null}
+          <WhoList rows={c.who} start={start} actions={actions} />
           <div className="csec">{T.card.training}</div>
           <ol className="hist" data-test="card-train">
             {c.train.map(r => (

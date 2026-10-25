@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 28;
+export const SCHEMA = 29;
 
 // ---------------------------------------------------------------- склад
 
@@ -686,6 +686,8 @@ export interface Person {
   salary?: number;
   /** день приёма — номер дня от 1970-01-01 (Б4в); нет — с начала завода */
   hired?: number;
+  /** кандидат, которым его приняли (Б5а): по нему журнал находит приём и вакансию; люди сценария — нет */
+  cand?: string;
   /** последний день испытания (Б4в); без испытания или выдержал — нет */
   trial?: number;
   /** увольнение (Б4в): основание, день заявления или решения, последний день, выплата по соглашению */
@@ -1278,6 +1280,149 @@ export interface Setpoint {
   from: number;
 }
 
+// ---------------------------------------------------------------- журнал решений (Б5а)
+
+/**
+ * Руководитель отдела (Б5а; docs/specs/2026-10-vertical-slice.md, «Б5а»): должность, а не человек — людьми с навыком
+ * они станут в Б5в. Начальники отдела планирования и производства, главный механик; начальники ООК и ОКК, уполномоченное
+ * лицо, главный технолог; начальник отдела снабжения и заведующий складом; начальник отдела продаж; отдел кадров.
+ */
+export type Head = 'plan' | 'mes' | 'maint' | 'qa' | 'qc' | 'qp' | 'tech' | 'supply' | 'wms' | 'sales' | 'hr';
+
+/**
+ * Положение позиции в причине задания на серию: ящиков запаса — ГП и серий в работе за вычетом открытых заказов;
+ * заказано покупателями за окно спроса и рабочих дней в нём; спроса не видно — 0 и 0.
+ */
+export interface SkuWhy {
+  sku: Id;
+  cases: number;
+  ordered: number;
+  work: number;
+}
+
+/**
+ * Почему коллега планирования поставил задание (Б2в, Б2г): по очереди — спроса ещё не видно, заказы идут меньше `seen`
+ * суток; позиции ниже порога — у этой меньше всего запаса в днях спроса; кампания — продукт прошлого задания идёт дальше;
+ * срочно — другому продукту не хватит и на срок `soon`. Положение всех позиций плана и порог — тысячных рабочего дня;
+ * продукт прошлого задания.
+ */
+export interface OrderWhy {
+  rule: 'turn' | 'need' | 'campaign' | 'urgent';
+  items: SkuWhy[];
+  ahead: number;
+  seen?: number;
+  soon?: number;
+  prev?: Id;
+}
+
+/**
+ * Строка заказа в причине коллеги снабжения (Б2в): есть и в пути за вычетом того, чего ждут задания; расход — на 1000
+ * суток; точка заказа — расход на наибольший срок поставки, входной контроль и страховой запас, суток; хотели — до точки
+ * и ещё `every` суток расхода, не меньше наименьшей партии; урезано до половины зоны карантина — `cut`. Мг или шт.
+ */
+export interface PoWhy {
+  material: Id;
+  maker: Id;
+  have: number;
+  per: number;
+  point: number;
+  lead: number;
+  qc: number;
+  safety: number;
+  every: number;
+  moq: number;
+  want: number;
+  cut?: true;
+}
+
+/**
+ * Почему начальник ООК попросил шаг расследования (часть 4): сначала лаборатория — шаг проверяет отметку; повтор пробы —
+ * впереди версия ошибки лаборатории; иначе — больше всего знания за час: прирост — тысячных бита, часы — минуты. Версия
+ * впереди и её вероятность — доли 1/10 000 — по уликам, которые завод уже знает.
+ */
+export interface StepWhy {
+  rule: 'lab' | 'retest' | 'gain';
+  gain?: number;
+  min?: number;
+  top: string;
+  p: number;
+}
+
+/** Испытание в причине: методика, сколько точек или результатов и сколько вне пределов, результат и пределы. */
+export interface TestWhy {
+  test: Id;
+  kind?: 'ipc' | 'lab';
+  n?: number;
+  out?: number;
+  result?: number;
+  min?: number;
+  max?: number;
+  pass?: boolean;
+}
+
+/**
+ * Что решено и о какой вещи завода (Б5а) — и почему, у решения руководителя: числа причины — только то, что знает завод.
+ * У решения игрока причины нет: её знает сам игрок.
+ */
+export type Decided =
+  /** задание на серию: позиция, карта и «не раньше» */
+  | { kind: 'order'; batch: string; recipe: Id; sku?: Id; notBefore: number; why?: OrderWhy }
+  /** заказ поставщику: предоплата; по каждой строке — положение материала */
+  | { kind: 'po'; po: string; supplier: Id; prepaid: number; why?: PoWhy[] }
+  /** шаг расследования */
+  | { kind: 'step'; inv: string; step: string; why?: StepWhy }
+  /** вывод расследования: версия, её вероятность и порог, доли 1/10 000; ошибка лаборатории доказана */
+  | { kind: 'conclude'; inv: string; cause: string; fate: 'reject' | 'release'; why?: { p: number; threshold: number; proven: boolean } }
+  /** оценка влияния отклонения: связанные испытания серии */
+  | { kind: 'assess'; dev: string; verdict: 'none' | 'reject'; why?: { tests: TestWhy[] } }
+  /** оценка пары «поставщик — изготовитель»: до какого дня одобрение и срок предупреждения, суток */
+  | { kind: 'pairEval'; pair: string; how: 'audit' | 'docs'; why: { until: number; ahead: number } }
+  /** визит подрядчика: работа и её мгновение; до какого дня запись (нет — `until` нет) и срок предупреждения, суток */
+  | { kind: 'visit'; asset: string; work: 'qual' | 'cal'; at: number; why: { until?: number; ahead: number } }
+  /** ремонт после отказа: когда отказал узел, запчасть и сколько её свободно в мастерской */
+  | { kind: 'repair'; part: string; why: { failed: number; spare: Id; free: number } }
+  /** замена узла: по наработке — износ и порог сценария, доли 1/10 000 */
+  | { kind: 'replace'; part: string; why?: { wear: number; at: number } }
+  /** заказ ЗИП: свободно и в пути против неснижаемого запаса — заказ до начального уровня */
+  | { kind: 'spare'; order: string; spare: Id; qty: number; why: { level: number; min: number; max: number } }
+  /**
+   * вакансия: вместо кого — человек, табельный номер и день заявления; канал — объявление, сразу агентство (по
+   * объявлению такую роль в городе не найти) или агентство после стольких суток без подходящего
+   */
+  | { kind: 'vacancy'; vacancy: string; role: Id; via: 'ad' | 'agency'; why?: { instead: string; tab: number; day: number; rule: 'ad' | 'city' | 'late'; days?: number } }
+  /** приём: навык против наименьшего, ожидание против цены рынка за навык с надбавкой `over`, доли 1/10 000 */
+  | { kind: 'hire'; cand: string; vacancy: string; role: Id; why?: { skill: number; min: number; salary: number; price: number; over: number } }
+  /** черновик графика отпусков года: у скольких людей из скольких не всем частям нашлось место */
+  | { kind: 'leaveDraft'; y: number; why: { people: number; miss: number } }
+  /** уставки к цели карты: игрок ушёл с поста «Качество и технология» — сколько уставок */
+  | { kind: 'targets'; why: { n: number } }
+  /** уставка игрока: ключ уставки, значение и цель документа */
+  | { kind: 'setpoint'; key: string; value: number; target: number }
+  /** решение по партии: испытания по спецификации; вне пределов у своей продукции — расследование */
+  | { kind: 'lot'; lot: string; verdict: 'release' | 'reject' | 'investigate'; dev?: string; inv?: string; why: { tests: TestWhy[] } }
+  /**
+   * решение по серии: у уполномоченного лица — по решению игрока или оценки отклонения; неоценённые отклонения держат
+   * серию; иначе выпуск
+   */
+  | { kind: 'batch'; batch: string; decision: 'release' | 'hold' | 'reject'; why?: { rule: 'player' | 'assess' | 'open' | 'clear'; devs?: string[] } }
+  /** новый рамочный договор поставщика: прежний и его последний день; день конца нового */
+  | { kind: 'contract'; contract: string; party: Id; to: number; why: { prev?: string; end?: number } }
+  /** продлён договор поставки покупателя: прежний последний день и новый */
+  | { kind: 'extend'; contract: string; party: Id; to: number; why: { end: number } };
+
+/**
+ * Запись журнала решений (Б5а): номер по порядку, мгновение, кто решил — руководитель или игрок, у игрока — место, с
+ * которого отдана команда (мест не выбрано — нет), что решено и почему. Журнал движок только пишет: правила его не
+ * читают.
+ */
+export interface Decision {
+  n: number;
+  t: number;
+  by: Head | 'player';
+  seat?: SeatId;
+  d: Decided;
+}
+
 export interface PlantState {
   schema: number;
   /** отпечаток базы, с которой начата партия */
@@ -1359,6 +1504,8 @@ export interface PlantState {
   former: Record<string, Person>;
   /** графики отпусков по годам (Б4г): черновик или утверждён; части — у людей */
   leave: Record<number, LeaveYear>;
+  /** журнал решений (Б5а; src/engine/journal.ts): по порядку, за срок геймдизайна (§8.5) */
+  journal: Decision[];
 }
 
 /** Запись журнала мест: место игрока, с какого мгновения и по какое; держит его сейчас — без конца. */

@@ -249,7 +249,12 @@ first, or copy the working code of Bolnitsa on the same versions.
   approval on 17 December or the last workday before it, then a move by agreement no closer than two weeks; the notice
   two weeks ahead; away and back at midnight; a deputy — the first by personnel number with the related profession of
   the absent's role, of the same shift if any; who covers whom on a day; days earned and used, the compensation days;
-  the `leave` command), `seats.ts` (the player's places — the director and four posts: whose each command is — a
+  the `leave` command), `journal.ts` (with Б5а, the decision journal: a record for each decision a rule makes for a
+  department head — the head by position, what was decided about which thing, the reason with the plant's numbers and
+  never the truth; the player's command of the same kinds — «you» with the place it came from; a colleague's command —
+  the record of its head; a scenario's or a refused command — none; no rule reads it; records older than the term go
+  at midnight; the plan run's copy starts without it), `seats.ts` (the player's places — the director and four posts:
+  whose each command is — a
   transfer, a vacancy, a hire, a dismissal, a vacation part or a related profession is the post of the role's
   department —, the `seat` command, the log of places; a player's command of another's post is refused),
   `batchno.ts` (the batch number `PPNNNMMYY`: the short `PPNNN` when the batch record is issued, month and year when the
@@ -321,7 +326,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   meeting's «Люди» — candidates as they came, records of the plant (`hire.ts`); vacations — the schedule of this and the
   next year by people and weeks with what hinders it, a person's days earned, used and left, the parts with their
   deputies and whom one may choose, whom a person covers, the meeting's away, leaving soon and back — records of the
-  plant (`leave.ts`); the schedule — the Gantt of the past, the running and the schedule run with the player's draft —
+  plant (`leave.ts`); with Б5а, the decision journal — pages newest first, filters by post and author, the numbers
+  and codes of a record's things, «Кто решил» of the cards and the batch record, the meeting's decisions of the day by
+  head — records of the plant (`journal.ts`); the schedule — the Gantt of the past, the running and the schedule run
+  with the player's draft —
   new not-before times and new urgent batch orders, the old bars of what the draft moves, and the ghost of a dragged
   batch order (`plan.ts`), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how far the window's
   clock ran ahead of the last slice; at most one `tick` in flight); the plan run's own thread — a second Web Worker over
@@ -361,7 +369,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   (`Guard.tsx`), the card of a
   thing — what it is, state, why, what can be done, history; a person's dismissal (`Card.tsx`), the plant reference with
   its tabs, sortable columns and search, hiring in «Люди» (`Ref.tsx`, F1), the vacation schedule in «Люди» and the
-  vacation block of a person's card — parts, deputies, the related profession (`Leave.tsx`), quality attribute and
+  vacation block of a person's card — parts, deputies, the related profession (`Leave.tsx`), the decision journal —
+  the right panel, J, a row with its reason in words, filters and pages, and the «Кто решил» rows with «Почему?»
+  (`Journal.tsx`), quality attribute and
   process parameter
   values in words (`units.ts`), what is going on now with «Смотреть»
   (`Now.tsx`, N), the 08:00 meeting (`Morning.tsx`), the cash

@@ -9,6 +9,7 @@ import { batchNo } from './batchno';
 import { MIN } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { expectedGain, posterior, quantize } from './infer';
+import { note, noteCmd } from './journal';
 import { labPlace, LAB_PRIO, QC, settleLot } from './lab';
 import { defect } from './lean';
 import { planOf } from './plant';
@@ -17,7 +18,7 @@ import { roll } from './random';
 import { held } from './seats';
 import { nextId, setLotStatus, stockChanged, unitsOfLot } from './stock';
 import { addTask } from './tasks';
-import { type Batch, type Command, INSTRUMENT_FAULTS, type InstrumentFault, type Investigation, type LabTest, type Lot, type Notice, type Place, type PlantState, type StageRecord, type Task } from './types';
+import { type Batch, type Command, INSTRUMENT_FAULTS, type InstrumentFault, type Investigation, type LabTest, type Lot, type Notice, type Place, type PlantState, type StageRecord, type StepWhy, type Task } from './types';
 
 /**
  * Номер неисправности прибора в числах улики — для слов окна: 0–3 — сбой, 4 — описка в журнале прибора (до Б3в — 4 значило
@@ -200,8 +201,10 @@ export function openInvestigation(db: ContentDb, s: PlantState, m: InvModel, lot
   defect(s, 'deviations');
   const inc = s.incident;
   const truth = inc && inc.batch === b.id && inc.inv === m.id ? { root: inc.root, fired: { ...inc.fired } } : truthOf(db, s, m, b, lot);
-  s.investigations[id] = { id, model: m.id, deviation: d.id, batch: b.id, lot: lot.id, test: out[0], opened: s.t, runs: [], obs: [], status: 'open', truth };
+  const inv: Investigation = { id, model: m.id, deviation: d.id, batch: b.id, lot: lot.id, test: out[0], opened: s.t, runs: [], obs: [], status: 'open', truth };
+  s.investigations[id] = inv;
   notices.push({ kind: 'investigation', id, batch: b.id, lot: lot.id, method: m.test, code: batchNo(b.code) });
+  return inv;
 }
 
 // ---------------------------------------------------------------- шаги
@@ -217,9 +220,14 @@ function placeOf(db: ContentDb, s: PlantState, st: InvStep): Place {
   return post ? { kind: 'point', x: post.x, z: post.z } : labPlace(plan);
 }
 
-/** Начать шаг: задача человека роли или испытание лаборатории (повтор — той же пробы другим аналитиком). */
-function startStep(db: ContentDb, s: PlantState, inv: Investigation, st: InvStep, by: string) {
+/**
+ * Начать шаг: задача человека роли или испытание лаборатории (повтор — той же пробы другим аналитиком). В журнал решений
+ * (Б5а) — игрок с командой, начальник ООК — с причиной.
+ */
+function startStep(db: ContentDb, s: PlantState, inv: Investigation, st: InvStep, by: string, cmd?: Command, why?: StepWhy) {
   const run: Investigation['runs'][number] = { step: st.id, from: s.t, by };
+  if (cmd) noteCmd(s, cmd, { kind: 'step', inv: inv.id, step: st.id });
+  else note(s, 'qa', { kind: 'step', inv: inv.id, step: st.id, ...(why ? { why } : {}) });
   if (st.test) {
     const first = s.tests[inv.test];
     const m = db.tests[st.test];
@@ -263,7 +271,7 @@ export function investigateCommand(db: ContentDb, s: PlantState, cmd: Extract<Co
   const st = modelOf(db, inv).steps.find(x => x.id === cmd.step);
   if (!st) return notices.push({ kind: 'refused', cmd: 'investigate', why: 'noStep', detail: cmd.step });
   if (inv.runs.some(r => r.step === st.id)) return notices.push({ kind: 'refused', cmd: 'investigate', why: 'already', detail: cmd.step });
-  startStep(db, s, inv, st, cmd.by ?? 'player');
+  startStep(db, s, inv, st, cmd.by ?? 'player', cmd);
 }
 
 /** Стадии серии с режимом или с ситом по карте. */
@@ -450,6 +458,7 @@ export function concludeCommand(db: ContentDb, s: PlantState, cmd: Extract<Comma
   const m = modelOf(db, inv);
   if (!m.candidates.some(c => c.id === cmd.cause)) return notices.push({ kind: 'refused', cmd: 'conclude', why: 'noCause', detail: cmd.cause });
   if (cmd.fate === 'release' && !(isLab(m, cmd.cause) && labProven(db, inv))) return notices.push({ kind: 'refused', cmd: 'conclude', why: 'notProven', detail: cmd.inv });
+  noteCmd(s, cmd, { kind: 'conclude', inv: inv.id, cause: cmd.cause, fate: cmd.fate });
   close(db, s, inv, cmd.cause, cmd.fate, cmd.by ?? 'player', notices);
 }
 
@@ -482,13 +491,16 @@ export function invStep(db: ContentDb, s: PlantState, notices: Notice[]): boolea
     // шаги лаборатории, которых ещё не было: записи и прибор — всегда, повтор — если лучшая — ошибка лаборатории
     const marks = (x: InvStep) => x.checks.some(c => 'mark' in (m.findings.find(f => f.id === c.f)?.read ?? {}));
     const lab = m.steps.find(x => !done.has(x.id) && (marks(x) || (!!x.retest && isLab(m, top.id))));
+    // версия впереди и её вероятность — для журнала решений (Б5а): доли 1/10 000 по уликам, которые завод знает
+    const p = Math.round(top.p * P_ONE);
     if (lab) {
-      startStep(db, s, inv, lab, 'head:quality');
+      startStep(db, s, inv, lab, 'head:quality', undefined, { rule: marks(lab) ? 'lab' : 'retest', top: top.id, p });
       continue;
     }
     if (top.p * P_ONE < m.threshold) {
       let best: InvStep | undefined;
       let score = -1;
+      let gain = 0;
       for (const st of m.steps) {
         if (done.has(st.id)) continue;
         const g = expectedGain(m, st.id, beliefs, observed);
@@ -497,14 +509,17 @@ export function invStep(db: ContentDb, s: PlantState, notices: Notice[]): boolea
         if (x > score) {
           best = st;
           score = x;
+          gain = g;
         }
       }
       if (best) {
-        startStep(db, s, inv, best, 'head:quality');
+        startStep(db, s, inv, best, 'head:quality', undefined, { rule: 'gain', gain: Math.round(quantize(gain) / 1e6), min: Math.round(hoursOf(db, best) * 60), top: top.id, p });
         continue;
       }
     }
-    close(db, s, inv, top.id, isLab(m, top.id) && labProven(db, inv) ? 'release' : 'reject', 'head:quality', notices);
+    const fate = isLab(m, top.id) && labProven(db, inv) ? 'release' : 'reject';
+    note(s, 'qa', { kind: 'conclude', inv: inv.id, cause: top.id, fate, why: { p, threshold: m.threshold, proven: labProven(db, inv) } });
+    close(db, s, inv, top.id, fate, 'head:quality', notices);
   }
   return acted;
 }

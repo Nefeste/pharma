@@ -8,7 +8,7 @@ import { recOf } from '../engine/assets';
 import { batchNo } from '../engine/batchno';
 import { posterior } from '../engine/infer';
 import { type Debrief, debrief, labProven } from '../engine/investigation';
-import type { Investigation, InvObs, PlantState } from '../engine/types';
+import type { Investigation, InvObs, PlantState, StepWhy } from '../engine/types';
 import { nowOf, type TaskNow } from './lab';
 
 export interface InvQuery {
@@ -30,7 +30,10 @@ export interface InvListRow {
   fate?: 'reject' | 'release';
 }
 
-/** Шаг на доске: можно сделать, идёт или сделан; кто попросил; с какого и по какое мгновение; задача, пока идёт. */
+/**
+ * Шаг на доске: можно сделать, идёт или сделан; кто попросил; с какого и по какое мгновение; задача, пока идёт; запись
+ * журнала решений (Б5а) и причина, по которой шаг попросил начальник ООК.
+ */
 export interface InvStepRow {
   id: string;
   state: 'can' | 'running' | 'done';
@@ -38,6 +41,8 @@ export interface InvStepRow {
   from?: number;
   to?: number;
   now?: TaskNow;
+  jn?: number;
+  why?: StepWhy;
 }
 
 /** Что случилось: методика, результат и пределы, партия и материал, серия и карта, когда результат проверен. */
@@ -76,6 +81,8 @@ export interface InvBoard {
   /** «выпустить» можно: ошибка лаборатории доказана */
   release: boolean;
   conclusion?: Investigation['conclusion'];
+  /** вывод в журнале решений (Б5а): запись и, у начальника ООК, причина — вероятность версии и порог */
+  concluded?: { n: number; why?: { p: number; threshold: number; proven: boolean } };
   /** только у решённого */
   debrief?: Debrief;
 }
@@ -97,12 +104,18 @@ function boardOf(db: ContentDb, s: PlantState, inv: Investigation): InvBoard {
   const b = s.batches[inv.batch];
   const lot = s.lots[inv.lot];
   const first = s.tests[inv.test];
+  // журнал решений (Б5а): шаги и вывод этого расследования
+  const notes = s.journal.filter(x => (x.d.kind === 'step' || x.d.kind === 'conclude') && x.d.inv === inv.id);
   const steps: InvStepRow[] = m.steps.map(st => {
     const r = inv.runs.find(x => x.step === st.id);
     if (!r) return { id: st.id, state: 'can' };
     const now = r.to === undefined ? nowOfRun(s, r) : undefined;
-    return { id: st.id, state: r.to === undefined ? 'running' : 'done', by: r.by, from: r.from, ...(r.to !== undefined ? { to: r.to } : {}), ...(now ? { now } : {}) };
+    const j = notes.find(x => x.d.kind === 'step' && x.d.step === st.id);
+    const why = j?.d.kind === 'step' ? j.d.why : undefined;
+    return { id: st.id, state: r.to === undefined ? 'running' : 'done', by: r.by, from: r.from, ...(r.to !== undefined ? { to: r.to } : {}), ...(now ? { now } : {}), ...(j ? { jn: j.n } : {}), ...(why ? { why } : {}) };
   });
+  const cj = notes.find(x => x.d.kind === 'conclude');
+  const cwhy = cj?.d.kind === 'conclude' ? cj.d.why : undefined;
   const lots = [...new Set(b.dispensed.map(k => k.lot))].map(id => ({ code: code(s.lots[id].code), material: s.lots[id].material }));
   const stages = b.records.map(rec => ({
     stage: rec.stage,
@@ -139,6 +152,7 @@ function boardOf(db: ContentDb, s: PlantState, inv: Investigation): InvBoard {
     beliefs,
     release: labProven(db, inv),
     ...(inv.conclusion ? { conclusion: { ...inv.conclusion } } : {}),
+    ...(cj ? { concluded: { n: cj.n, ...(cwhy ? { why: cwhy } : {}) } } : {}),
     ...(d ? { debrief: d } : {}),
   };
 }

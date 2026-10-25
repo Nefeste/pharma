@@ -236,6 +236,8 @@ export class Game {
         if (draft !== g.draft) this.sendViews();
       } else if (d.view === 'inv') {
         if (hud.inv.open) this.store.set({ inv: { ...this.store.get().inv, view: d } });
+      } else if (d.view === 'journal') {
+        if (hud.journal.open) this.store.set({ journal: { ...this.store.get().journal, view: d } });
       } else if (d.view === 'dossier') {
         const x = this.store.get().dossier;
         if (x.open && x.batch === d.batch) this.store.set({ dossier: { ...x, view: d } });
@@ -758,6 +760,28 @@ export class Game {
       this.store.set({ now: { ...n, open: !n.open }, ...this.rightClosed('now') });
       this.sendViews();
     },
+    toggleJournal: () => {
+      // закрыли — запись, на которой открывали, больше не раскрыта; отбор остаётся
+      const { focus, ...j } = this.store.get().journal;
+      const open = !j.open;
+      this.store.set({ journal: { ...j, open, ...(open && focus !== undefined ? { focus } : {}) }, ...this.rightClosed('journal'), ...(open ? this.bigClosed() : {}) });
+      this.sendViews();
+    },
+    openJournal: focus => {
+      // «Почему?» (Б5а): журнал на этой записи — без отбора, чтобы она была видна; запись раскрыта. Досье серии — поверх
+      // всего: его закрывают, к серии ведёт «К вещи»
+      const j = this.store.get().journal;
+      const keep = focus !== undefined ? { focus } : { ...(j.seat ? { seat: j.seat } : {}), ...(j.who ? { who: j.who } : {}) };
+      this.store.set({ journal: { open: true, page: 0, ...keep, ...(j.view ? { view: j.view } : {}) }, ...this.rightClosed('journal'), ...this.bigClosed(), ...(this.store.get().dossier.open ? { dossier: { open: false } } : {}) });
+      this.sendViews();
+    },
+    setJournal: patch => {
+      const j = this.store.get().journal;
+      const seat = patch.seat === null ? undefined : (patch.seat ?? j.seat);
+      const who = patch.who === null ? undefined : (patch.who ?? j.who);
+      this.store.set({ journal: { open: j.open, page: patch.page ?? 0, ...(seat ? { seat } : {}), ...(who ? { who } : {}), ...(j.view ? { view: j.view } : {}) } });
+      this.sendViews();
+    },
     watch: key => {
       const row = this.store.get().now.view?.rows.find(r => r.key === key);
       if (!row || this.store.get().seats.open) return;
@@ -826,13 +850,23 @@ export class Game {
    * Справа — одна панель: открыть одну — значит закрыть две другие и расписание (оно во всю ширину); без `keep` — закрыть
    * все три.
    */
-  private rightClosed(keep?: 'stock' | 'cash' | 'lab' | 'now'): Partial<Hud> {
+  /**
+   * Большие окна во всю ширину — доска расследования и справочник — закрыты (Б5а): журнал справа открывают из них, а под
+   * ними его не видно; к ним ведёт «К вещи».
+   */
+  private bigClosed(): Partial<Hud> {
+    const h = this.store.get();
+    return { ...(h.inv.open ? { inv: { open: false } } : {}), ...(h.ref.open ? { ref: { ...h.ref, open: false } } : {}) };
+  }
+
+  private rightClosed(keep?: 'stock' | 'cash' | 'lab' | 'now' | 'journal'): Partial<Hud> {
     const h = this.store.get();
     return {
       ...(keep !== 'stock' ? { stock: { ...h.stock, open: false } } : {}),
       ...(keep !== 'cash' ? { cash: { ...h.cash, open: false } } : {}),
       ...(keep !== 'lab' ? { lab: { ...h.lab, open: false } } : {}),
       ...(keep !== 'now' ? { now: { ...h.now, open: false } } : {}),
+      ...(keep !== 'journal' ? { journal: { ...h.journal, open: false } } : {}),
       ...(keep && h.gantt.open ? { gantt: { open: false, days: h.gantt.days, draft: h.gantt.draft, urgent: h.gantt.urgent, ...(h.gantt.from !== undefined ? { from: h.gantt.from } : {}) } } : {}),
     };
   }
@@ -878,6 +912,7 @@ export class Game {
     if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days), ...draft });
     if (h.gantt.open && h.gantt.drag) list.push({ id: 'ghost', view: 'ghost', ...h.gantt.drag, ...draft });
     if (h.inv.open) list.push({ id: 'inv', view: 'inv', ...(h.inv.id ? { inv: h.inv.id } : {}) });
+    if (h.journal.open) list.push({ id: 'journal', view: 'journal', page: h.journal.page, ...(h.journal.seat ? { seat: h.journal.seat } : {}), ...(h.journal.who ? { who: h.journal.who } : {}), ...(h.journal.focus !== undefined ? { focus: h.journal.focus } : {}) });
     if (h.dossier.open && h.dossier.batch !== undefined) list.push({ id: 'dossier', view: 'dossier', batch: h.dossier.batch });
     if (h.ref.open) list.push({ id: 'ref', view: 'ref' });
     // «Сейчас» — и при закрытой панели: карточке — для «Смотреть», смотрящему — чтобы знать, когда работа кончилась
@@ -1038,6 +1073,7 @@ export class Game {
       else if (k === 'KeyG') this.actions.toggleGantt();
       else if (k === 'KeyI') this.actions.toggleInv();
       else if (k === 'KeyN') this.actions.toggleNow();
+      else if (k === 'KeyJ') this.actions.toggleJournal();
       else if (k === 'F1') {
         e.preventDefault();
         this.actions.toggleRef();
@@ -1059,6 +1095,7 @@ export class Game {
         else if (h.cash.open) this.actions.toggleCash();
         else if (h.lab.open) this.actions.toggleLab();
         else if (h.now.open) this.actions.toggleNow();
+        else if (h.journal.open) this.actions.toggleJournal();
         else if (h.stock.open) this.actions.toggleStock();
       } else this.mouse.keys.add(k);
     });

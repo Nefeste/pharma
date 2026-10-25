@@ -33,6 +33,8 @@ function words(l: Exclude<Lever, { k: 'later' }>): [string, string] {
       return [T.levers.leave, T.levers.leaveWhat];
     case 'person':
       return [T.levers.person(T.card.person(named(db?.roles[l.role]?.name, l.role), l.tab)), T.levers.personWhat];
+    case 'journal':
+      return [T.levers.journal, T.levers.journalWhat];
   }
 }
 
@@ -74,6 +76,9 @@ function run(l: Lever, hud: Hud, actions: Actions) {
       return;
     case 'person':
       actions.show({ kind: 'person', n: l.n });
+      return;
+    case 'journal':
+      actions.openJournal(l.n);
       return;
     case 'later':
       return;

@@ -8,6 +8,7 @@ import { dayText, named, num, qtyText, T, whenText } from '../i18n';
 import type { DevCard, Knobs, Regimes, ReleaseView } from '../sim/devs';
 import type { SpeedView } from '../sim/views';
 import { db } from './db';
+import { WhoList } from './Journal';
 import { type Actions, holds, type Hud } from './store';
 import { attrText, paramNum, paramText } from './units';
 
@@ -165,6 +166,7 @@ export function DevBody({ c, start, hud, actions }: { c: DevCard; start: Ymd; hu
           {!mine ? <div className="warn">{T.levers.seat(T.seats.names.quality)}</div> : null}
         </div>
       ) : null}
+      <WhoList rows={c.who} start={start} actions={actions} />
     </>
   );
 }

@@ -410,6 +410,11 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     }
     return raw;
   },
+  // 28 → 29 (Б5а): журнал решений — в состоянии; в прежнем сохранении он пуст: до этой версии решения не записывались
+  28: raw => {
+    (raw as unknown as PlantState).journal = [];
+    return raw;
+  },
 };
 
 export function toSave(s: PlantState): string {

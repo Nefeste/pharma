@@ -11,6 +11,7 @@ import type { InvBoard } from '../sim/inv';
 import type { TaskNow } from '../sim/lab';
 import { causeText } from './Lab';
 import { db } from './db';
+import { whyLines } from './Journal';
 import { type Actions, type Hud, holds } from './store';
 import { attrText, paramText } from './units';
 
@@ -146,7 +147,20 @@ function Steps({ b, m, start, actions, mine }: { b: InvBoard; m: InvModel; start
                   <span className="muted nowrap">{T.inv.done(whenText(start, row.to!))}</span>
                 )}
               </div>
-              {row.by ? <div className="muted small">{row.by === 'player' ? T.inv.byYou : T.inv.byColleague}</div> : null}
+              {row.by ? (
+                <div className="muted small">
+                  {row.by === 'player' ? T.inv.byYou : T.inv.byColleague}
+                  {row.why ? <span className="iwhy"> — {whyLines({ kind: 'step', inv: b.id, step: row.id, why: row.why }, { model: b.model }, 0, start).join('; ')}</span> : null}
+                  {row.jn !== undefined ? (
+                    <>
+                      {' '}
+                      <button type="button" className="small" onClick={() => actions.openJournal(row.jn)} title={T.journal.whyHint} data-test="inv-why">
+                        {T.journal.why}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
               {obs.length > 0 ? (
                 <ul className="iobs">
                   {obs.map(o => {
@@ -230,7 +244,7 @@ function Decide({ b, m, actions, mine }: { b: InvBoard; m: InvModel; actions: Ac
   );
 }
 
-function Debrief({ b, m, start }: { b: InvBoard; m: InvModel; start: Ymd }) {
+function Debrief({ b, m, start, actions }: { b: InvBoard; m: InvModel; start: Ymd; actions: Actions }) {
   const d = b.debrief!;
   const c = b.conclusion!;
   const nameOf = (id: string) => named(m.candidates.find(x => x.id === id)?.name, id);
@@ -256,7 +270,17 @@ function Debrief({ b, m, start }: { b: InvBoard; m: InvModel; start: Ymd }) {
   return (
     <div className="isec idebrief" ref={ref} data-test="inv-debrief" data-root={d.root} data-cause={d.cause ? '1' : '0'} data-fate={d.fate ? '1' : '0'}>
       <div className="msec">{T.inv.debrief}</div>
-      <div>{T.inv.concluded(nameOf(c.cause), T.inv.fates[c.fate], who, whenText(start, c.t))}</div>
+      <div>
+        {T.inv.concluded(nameOf(c.cause), T.inv.fates[c.fate], who, whenText(start, c.t))}
+        {b.concluded ? (
+          <>
+            {b.concluded.why ? <span className="muted iwhy"> — {whyLines({ kind: 'conclude', inv: b.id, cause: c.cause, fate: c.fate, why: b.concluded.why }, { model: b.model }, 0, start).join('; ')}</span> : null}{' '}
+            <button type="button" className="small" onClick={() => actions.openJournal(b.concluded!.n)} title={T.journal.whyHint} data-test="inv-conclude-why">
+              {T.journal.why}
+            </button>
+          </>
+        ) : null}
+      </div>
       <div className="ihead2">{T.inv.truth(nameOf(d.root))}</div>
       <div className={d.cause ? '' : 'bad'}>{d.cause ? T.inv.causeRight : T.inv.causeWrong(nameOf(c.cause))}</div>
       <div className={d.fate && !(d.good && c.fate === 'reject') ? '' : 'bad'}>{fateText}</div>
@@ -326,7 +350,7 @@ export function Inv({ hud, actions }: { hud: Hud; actions: Actions }) {
             <Steps b={b} m={m} start={start} actions={actions} mine={mine} />
             <Versions b={b} m={m} />
           </div>
-          {b.status === 'open' ? <Decide b={b} m={m} actions={actions} mine={mine} /> : b.debrief && b.conclusion ? <Debrief b={b} m={m} start={start} /> : null}
+          {b.status === 'open' ? <Decide b={b} m={m} actions={actions} mine={mine} /> : b.debrief && b.conclusion ? <Debrief b={b} m={m} start={start} actions={actions} /> : null}
         </>
       ) : null}
     </div>

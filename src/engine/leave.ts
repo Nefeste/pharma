@@ -6,6 +6,7 @@
 // заработку и компенсация при увольнении — cash.ts. График — знание завода: его видят окно и двойник прогона.
 import { type ContentDb, DEPTS, type Id, type LeaveRule } from '../content/types';
 import { addMonths, civilFromDays, daysFromCivil, HOUR, isHoliday, isWorkday, momentOf, weekday, workdayOnOrAfter, workdayOnOrBefore, type WorkCalendar } from './core/calendar';
+import { note } from './journal';
 import type { Away, Command, Deputy, Notice, Person, PlantState } from './types';
 import { calOf, type Clock } from './workdays';
 
@@ -327,6 +328,8 @@ function draftYear(db: ContentDb, s: PlantState, y: number, notices: Notice[]) {
   putDraft(db, s, y, people, d);
   s.leave[y] = { st: 'draft', ...(d.miss.length > 0 ? { miss: d.miss } : {}) };
   notices.push({ kind: 'leaveDraft', y, miss: d.miss.length });
+  // журнал решений (Б5а): отдел кадров — у скольких людей не всем частям нашлось место
+  note(s, 'hr', { kind: 'leaveDraft', y, why: { people: people.length, miss: d.miss.length } });
 }
 
 /**

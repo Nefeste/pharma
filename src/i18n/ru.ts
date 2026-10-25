@@ -14,6 +14,12 @@ const TARE_RU: Record<string, [string, string, string]> = {
 };
 /** Число с разрядами, как `num` в index.ts (он сам читает эти строки). */
 const groupRu = (n: number) => new Intl.NumberFormat('ru-RU').format(n);
+/** Число с одним знаком после запятой: «24,9». */
+const dec1Ru = (n: number) => new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n);
+/** Журнал решений (Б5а): ящики, рабочие дни — у дробного числа «рабочего дня», сутки. */
+const casesRu = (n: number) => `${groupRu(n)} ${pluralRu(n, 'ящик', 'ящика', 'ящиков')}`;
+const workRu = (x: number) => (Number.isInteger(x) ? `${groupRu(x)} ${pluralRu(x, 'рабочий день', 'рабочих дня', 'рабочих дней')}` : `${dec1Ru(x)} рабочего дня`);
+const daysRu = (n: number) => `${groupRu(n)} ${pluralRu(n, 'сутки', 'суток', 'суток')}`;
 const tareRu = (n: number, kind: string) => {
   const f = TARE_RU[kind];
   return f ? pluralRu(n, f[0], f[1], f[2]) : pluralRu(n, 'тара', 'тары', 'тар');
@@ -105,7 +111,7 @@ export const ru = {
     rostered: (who: string, shift: string, day: string) => `${who}: с ${day} — в графике «${shift}»`,
     rosterCancel: (who: string) => `${who}: перевод на другой график отменён`,
     /** найм и увольнение (Б4в) */
-    vacancy: (what: string, via: string, colleague: boolean) => `Вакансия открыта${colleague ? ' коллегой' : ''}: ${what} — ${via}`,
+    vacancy: (what: string, via: string, colleague: boolean) => `Вакансия открыта${colleague ? ' руководителем отдела' : ''}: ${what} — ${via}`,
     candidates: (role: string, n: number) => (n === 1 ? `Новый кандидат: ${role}` : `Новые кандидаты: ${role} — ${n}`),
     accepted: (role: string, day: string) => `Кандидат принят: ${role} — медосмотр, первый день ${day}`,
     hired: (who: string) => `Вышел на работу: ${who} — учится по матрице роли`,
@@ -120,7 +126,7 @@ export const ru = {
     leaveStart: (who: string, to: string, deputy?: string) => `Ушёл в отпуск: ${who} — по ${to}${deputy ? `, замещает ${deputy}` : ''}`,
     leaveEnd: (who: string) => `Вышел из отпуска: ${who}`,
     pairSuspended: (supplier: string, maker: string) => `Пара приостановлена: ${supplier} — ${maker}. Срок одобрения вышел, по ней не заказывают`,
-    setpoints: (n: number) => `Вы ушли с поста «Качество и технология»: коллега технологии вернул уставки к цели карты (уставок: ${n}). Начатые стадии и задания идут со своими`,
+    setpoints: (n: number) => `Вы ушли с поста «Качество и технология»: главный технолог вернул уставки к цели карты (уставок: ${n}). Начатые стадии и задания идут со своими`,
     assetExpired: (work: string, what: string, inv: string) => `${work}: срок вышел — ${what}, ${inv} не работает`,
     invStep: 'Шаг расследования сделан',
     concluded: (fate: 'reject' | 'release'): string => (fate === 'release' ? 'Расследование решено: ошибка лаборатории доказана, партия разрешена' : 'Расследование решено: серия отклонена'),
@@ -481,6 +487,10 @@ export const ru = {
   },
   /** планёрка в 08:00 (docs/specs/2026-10-panels.md, 3в): сутки в цифрах, одна главная потеря, одна подсказка */
   morning: {
+    /** решения за сутки (Б5а): строка на руководителя */
+    heads: 'Решения за сутки',
+    headsNone: 'За сутки руководители ничего не решали',
+    headRow: (head: string, what: string) => `${head}: ${what}`,
     modesTitle: 'Уставки не по цели',
     mode: (what: string, v: string, target: string, from: string) => `${what}: ${v} при цели ${target} — с ${from}`,
     button: 'Планёрка',
@@ -641,7 +651,7 @@ export const ru = {
       coming: (day: string, role: string, shift: string) => `${day} — выходит ${role}, «${shift}»`,
       leaving: (day: string, who: string, why: string) => `${day} — последний день: ${who}, ${why}`,
       resigned: (who: string, last: string) => `Заявление об увольнении: ${who} — последний день ${last}`,
-      colleague: 'коллега открыл вакансию на его место',
+      colleague: 'руководитель отдела открыл вакансию на его место',
       trial: (day: string, who: string) => `${day} — кончается испытание: ${who}`,
       candidates: (role: string, n: number) => `Новые кандидаты: ${role} — ${n}`,
       /** отпуска (Б4г) */
@@ -780,7 +790,7 @@ export const ru = {
     do: 'Сделать',
     running: 'идёт',
     done: (when: string) => `сделан ${when}`,
-    byColleague: 'попросил коллега качества',
+    byColleague: 'попросил начальник ООК',
     byYou: 'попросили вы',
     shown: 'есть',
     notShown: 'нет',
@@ -793,10 +803,10 @@ export const ru = {
     releaseNo: 'Выпустить можно, только если найдена лабораторная причина и повтор той же пробы — в пределах',
     conclude: 'Решить',
     pickCause: 'Отметьте причину и судьбу серии',
-    colleague: 'Пока вы не держите пост качества, расследование ведёт коллега',
+    colleague: 'Пока вы не держите пост качества, расследование ведёт начальник ООК',
     concluded: (cause: string, fate: string, who: string, when: string) => `${when}: ${cause} — ${fate}. ${who}`,
     fates: { reject: 'серия отклонена', release: 'партия выпущена' },
-    whoDecided: { player: 'Решили вы', colleague: 'Решил коллега качества' },
+    whoDecided: { player: 'Решили вы', colleague: 'Решил начальник ООК' },
     // слова улик: числа из записей
     calc: (cause: boolean): string => (cause ? 'ошибка расчёта — она исказила результат' : 'описка — на результат не влияет'),
     faults: ['лопасть не на 23–27\u00a0мм от дна сосуда', 'ось вала смещена больше чем на 2\u00a0мм', 'среда не деаэрирована', 'вибрация', 'описка в журнале прибора — на результат не влияет'],
@@ -834,7 +844,7 @@ export const ru = {
     via: { ad: 'по объявлению', agency: 'через кадровое агентство' } as Record<string, string>,
     vacancy: (role: string, shift: string, via: string, day: string) => `${role} · ${shift} · ${via}, с ${day}`,
     vacancyWhat: (role: string, shift: string) => `${role}, «${shift}»`,
-    byColleague: (tab: number) => `открыл коллега вместо таб. №\u00a0${tab}`,
+    byColleague: (tab: number) => `открыл руководитель отдела вместо таб. №\u00a0${tab}`,
     candCols: { id: 'Кандидат', skill: 'Навык', salary: 'Ожидание оклада', until: 'Ищет работу до', fee: 'Агентству при приёме', hire: '' },
     candidate: (n: number) => `Кандидат ${n}`,
     waitAd: 'Откликов пока нет: объявление приносит их по понедельникам в 09:00',
@@ -1076,7 +1086,7 @@ export const ru = {
     vehicles: 'Техника участка',
     common: (rooms: string) => `Общие помещения площадки: ${rooms}`,
     rooms: (rooms: string) => `Помещения: ${rooms}`,
-    ahead: (days: number) => `Визит назначает коллега техслужбы за ${days}\u00a0${pluralRu(days, 'сутки', 'суток', 'суток')} до конца записи`,
+    ahead: (days: number) => `Визит назначает главный механик за ${days}\u00a0${pluralRu(days, 'сутки', 'суток', 'суток')} до конца записи`,
     cols: { place: 'Код места', inv: 'Инв. №', what: 'Что', family: 'Род', critical: 'Критическое', qual: 'Квалификация', cal: 'Калибровка', state: 'Состояние' },
     state: { ok: 'В сроке', visit: 'Визит назначен', working: 'Подрядчик работает', accepting: 'Ждёт приёмки', expired: 'Не работает: срок вышел', none: '—' },
     morningTitle: 'Калибровка и квалификация',
@@ -1160,11 +1170,13 @@ export const ru = {
     } as Record<string, string>,
     /** что делают коллеги, если место не взято */
     theirs: {
-      director: 'Платежи по календарю; при минусе — кредитная линия',
-      production: 'Задания на серии — по сценарию; комплектовка и стадии — по сроку «не раньше»; ремонт при отказе, замена узла по наработке',
-      quality: 'Пробы — по очереди; уполномоченное лицо: есть открытое отклонение — держать серию, нет — выпустить',
-      supply: 'Заказы поставщикам — по сценарию; приёмка, карантин, размещение по FEFO, комплекты к шлюзу',
-      commerce: 'Заказы покупателей — по сценарию; отгрузка по FEFO с остаточным сроком',
+      director: 'Платежи по календарю; при минусе — кредитная линия; отдел кадров — черновик графика отпусков',
+      production:
+        'Начальник отдела планирования — задания на серии по запасу и спросу заказов; главный механик — ремонт при отказе, замена узла по наработке, ЗИП, визиты подрядчика; комплектовка и стадии — по сроку «не раньше»',
+      quality:
+        'Начальник ОКК — партии по испытаниям; начальник ООК — расследования и оценка отклонений; уполномоченное лицо: неоценённое отклонение — держать серию, нет — выпустить; пробы — по очереди',
+      supply: 'Начальник отдела снабжения — заказы поставщикам по точке заказа, рамочные договоры; приёмка, карантин, размещение по FEFO, комплекты к шлюзу',
+      commerce: 'Заказы покупателей — по сценарию; начальник отдела продаж — продление договоров поставки; отгрузка по FEFO с остаточным сроком',
     } as Record<string, string>,
     /** чем меряют */
     measures: {
@@ -1326,6 +1338,8 @@ export const ru = {
     leaveWhat: 'перенести часть или сменить заместителя — справочник, «Люди»',
     person: (who: string) => who,
     personWhat: 'в карточке — «Отпустить раньше»: по соглашению, последний день сегодня',
+    journal: 'Журнал',
+    journalWhat: 'кто что решил и почему — с числами завода',
     seat: (seat: string) => `пост «${seat}» — его ведёт коллега`,
     later: {
       build: 'Будет в Б7: переставить пост или помещение — стройка',
@@ -1370,7 +1384,7 @@ export const ru = {
     reject: 'Отклонить серию',
     rejectWhat: 'серию отклонят: ГП — в зону отклонённого',
     work: 'Работу делает специалист ООК — час по досье и результатам серии.',
-    who_: { player: 'Вы', colleague: 'Коллега качества' },
+    who_: { player: 'Вы', colleague: 'Начальник ООК' },
     assessing: (verdict: 'none' | 'reject', who: string) => `${who}: ${verdict === 'none' ? '«без влияния на качество»' : '«отклонить серию»'} — специалист ООК делает оценку`,
     assessed: (verdict: 'none' | 'reject', who: string, when: string) => `${who}, ${when}: ${verdict === 'none' ? 'без влияния на качество' : 'отклонить серию'}`,
     board: 'Доска расследования',
@@ -1547,6 +1561,201 @@ export const ru = {
       'Результат испытания вне спецификации. Его решает расследование: на доске расследования ищут причину и решают судьбу серии.',
     held: 'Уполномоченное лицо держит серию: её ГП заблокирована и ждёт на стеллажах. Держат по вашему решению или потому, что у серии есть неоценённое отклонение: оцените его — и серию решат снова. Здесь серию можно выпустить, отклонить или держать дальше; выпустить — только когда все её отклонения оценены «без влияния».',
   } as Record<string, string>,
+  /** журнал решений (Б5а; геймдизайн, §8.5): кто что решил и почему */
+  journal: {
+    button: 'Журнал',
+    hint: 'Журнал решений: кто что решил и почему (J)',
+    title: 'Журнал решений',
+    question: 'Кто что решил и почему',
+    all: 'Все',
+    heads: 'Руководители',
+    you: 'Вы',
+    seatFilter: 'Пост',
+    whoFilter: 'Кто',
+    empty: 'Решений с таким отбором нет',
+    since: (date: string, days: number) => `Журнал помнит решения за ${daysRu(days)} — с ${date}; дольше их будет помнить хроника`,
+    page: (p: number, n: number) => `${p} из ${n}`,
+    prev: 'Новее',
+    next: 'Старше',
+    why: 'Почему?',
+    whyHint: 'Открыть журнал на этом решении: причина с числами завода',
+    go: 'К вещи',
+    goHint: 'Открыть карточку вещи, о которой решение',
+    who: 'Кто решил',
+    /** руководители — должности (Б5а): людьми они станут в Б5в */
+    names: {
+      plan: 'Начальник отдела планирования',
+      mes: 'Начальник производства',
+      maint: 'Главный механик',
+      qa: 'Начальник ООК',
+      qc: 'Начальник ОКК',
+      qp: 'Уполномоченное лицо',
+      tech: 'Главный технолог',
+      supply: 'Начальник отдела снабжения',
+      wms: 'Заведующий складом',
+      sales: 'Начальник отдела продаж',
+      hr: 'Отдел кадров',
+    } as Record<string, string>,
+    player: (seat: string) => (seat ? `Вы, ${seat}` : 'Вы'),
+    /** что решено */
+    what: {
+      order: (sku: string, nb: string) => `Задание на серию: ${sku}, не раньше ${nb}`,
+      po: (supplier: string, lines: string) => `Заказ поставщику: ${supplier} — ${lines}`,
+      step: (step: string) => `Шаг расследования: ${step}`,
+      conclude: (cause: string, release: boolean) => `Вывод расследования: ${cause} — ${release ? 'выпустить серию' : 'отклонить серию'}`,
+      assess: (dev: string, none: boolean) => `Оценка влияния: ${dev} — ${none ? 'без влияния на качество' : 'отклонить серию'}`,
+      pairEval: (pair: string, audit: boolean) => `Оценка пары ${pair}: ${audit ? 'аудит изготовителя' : 'проверка документов'}`,
+      visit: (work: string, asset: string, at: string) => `Визит подрядчика: ${work} — ${asset}, ${at}`,
+      repair: (part: string, machine: string) => `Ремонт после отказа: ${part} · ${machine}`,
+      replace: (part: string, machine: string, policy: boolean) => `${policy ? 'Замена узла по наработке' : 'Замена узла'}: ${part} · ${machine}`,
+      spare: (spare: string, n: number) => `Заказ ЗИП: ${spare} — ${groupRu(n)} шт.`,
+      vacancy: (role: string, agency: boolean) => `Вакансия: ${role} — ${agency ? 'через агентство' : 'по объявлению'}`,
+      hire: (role: string) => `Приём: ${role}`,
+      leaveDraft: (y: number) => `Черновик графика отпусков на ${y} год`,
+      targets: 'Уставки — к цели карты',
+      setpoint: (what: string, v: string, target: string) => `Уставка: ${what} — ${v} при цели ${target}`,
+      lot: (lot: string, verdict: string) => `Решение по партии ${lot}: ${verdict}`,
+      batch: (code: string, decision: string) => `Решение по серии ${code}: ${decision}`,
+      contract: (no: string, party: string, to: string) => `Новый рамочный договор ${no}: ${party}, до ${to}`,
+      extend: (no: string, party: string, to: string) => `Договор поставки ${no} продлён: ${party}, до ${to}`,
+    },
+    verdict: { release: 'разрешить', reject: 'отклонить', investigate: 'расследование' } as Record<string, string>,
+    decision: { release: 'выпустить', hold: 'держать', reject: 'отклонить' } as Record<string, string>,
+    none: 'без влияния',
+    tab: (tab: number) => `таб. №\u00a0${tab}`,
+    via: { ad: 'по объявлению', agency: 'через агентство' } as Record<string, string>,
+    /** почему — числа завода и правило */
+    order: {
+      turn: (seen: number) => `Спроса ещё не видно: заказы покупателей идут меньше ${daysRu(seen)} — позиции по очереди; у этой дольше всех не было серии`,
+      stock: (cases: number, days: number, ordered: number, work: number) => `Запаса — ${casesRu(cases)}: на ${workRu(days)} при спросе ${casesRu(ordered)} за ${workRu(work)}`,
+      noDemand: (cases: number) => `Запаса — ${casesRu(cases)}; заказов покупателей за окно спроса нет`,
+      threshold: (ahead: number) => `порог — ${workRu(ahead)}`,
+      need: 'ниже порога — и меньше всех в днях спроса',
+      campaign: (product: string, soon: number) => `кампания: продукт прошлого задания — ${product} — идёт дальше; другим продуктам запаса хватит больше чем на ${workRu(soon)}`,
+      urgent: (product: string, soon: number) => `другому продукту не хватит и на ${workRu(soon)}: кампания продукта ${product} уступает; из позиций ниже порога у этой меньше всех в днях спроса`,
+      change: (product: string) => `у позиций продукта прошлого задания — ${product} — запас выше порога; из позиций ниже порога у этой меньше всех в днях спроса`,
+      others: (list: string) => `Ниже порога и другие: ${list}`,
+      alone: 'Других позиций ниже порога нет',
+      other: (sku: string, days: number) => `${sku} — на ${workRu(days)}`,
+    },
+    po: {
+      line: (material: string, have: string, point: string, per: string, lead: number, qc: number, safety: number) =>
+        `${material}: есть и в пути ${have} при точке заказа ${point} — расход ${per} в сутки на срок поставки ${daysRu(lead)}, входной контроль ${qc} и страховой запас ${safety}`,
+      qty: (every: number, want: string) => `заказано до точки и ещё ${daysRu(every)} расхода — ${want}`,
+      moq: (moq: string) => `не меньше наименьшей партии — ${moq}`,
+      cut: 'урезано до половины зоны карантина',
+      tare: (n: number, kind: string, cap: string) => `до целой тары — ${groupRu(n)} ${tareRu(n, kind)} по ${cap}`,
+      prepaid: (sum: string) => `Предоплата ${sum}`,
+    },
+    step: {
+      lab: 'Сначала лаборатория (фаза I процедуры OOS): шаг проверяет отметки у записи испытания и у прибора',
+      retest: (top: string, p: string) => `Впереди версия «${top}» — ${p}: повтор той же пробы другим аналитиком`,
+      gain: (gain: string, min: string, top: string, p: string) => `Больше всего знания за час: ${gain} бита за ${min}; впереди версия «${top}» — ${p}`,
+    },
+    conclude: {
+      top: (cause: string, p: string, threshold: string) => `Версия «${cause}» — ${p} при пороге ${threshold}`,
+      none: (cause: string, p: string, threshold: string) => `Полезных шагов больше нет: версия «${cause}» — ${p}, порог — ${threshold}`,
+      release: 'ошибка лаборатории доказана — выпустить серию',
+      reject: 'выпуск — только при доказанной ошибке лаборатории: серию отклонить',
+    },
+    assess: {
+      tests: (list: string) => `Связанные испытания серии: ${list}`,
+      ipc: (test: string, n: number, out: number) => `${test} — ${groupRu(n)} ${pluralRu(n, 'точка', 'точки', 'точек')}, вне пределов ${groupRu(out)}`,
+      lab: (test: string, result: string, out: boolean) => `${test} — ${result}, ${out ? 'вне пределов' : 'в пределах'}`,
+      none: 'все готовы и в пределах — без влияния на качество',
+      reject: 'есть вне пределов — отклонить серию',
+      empty: 'Связанных испытаний нет',
+    },
+    until: (until: string, left: number, ahead: number) => (left < 0 ? `кончилась ${until}` : `до ${until}: осталось ${daysRu(left)} при сроке предупреждения ${daysRu(ahead)}`),
+    pair: (u: string) => `Одобрение пары ${u}`,
+    rec: (u: string) => `Запись ${u}`,
+    noRec: 'Записи нет',
+    audit: 'у АФС и вспомогательных веществ — аудит изготовителя',
+    docs: 'у упаковки — проверка документов',
+    repair: (when: string, spare: string, free: number) => `Узел отказал ${when}; запчасть «${spare}» — в мастерской, свободно ${groupRu(free)}`,
+    replace: (wear: string, at: string) => `Наработка — ${wear} ресурса при пороге сценария ${at}; машина свободна`,
+    spare: (level: number, min: number, max: number) => `Свободно и в пути — ${groupRu(level)} при неснижаемом запасе ${groupRu(min)}: заказ до ${groupRu(max)}`,
+    vacancy: {
+      instead: (who: string, day: string) => `Вместо ${who}: заявление ${day}`,
+      ad: 'по объявлению',
+      city: 'по объявлению такую роль в городе не найти — сразу агентство',
+      late: (days: number) => `по объявлению за ${daysRu(days)} подходящий не нашёлся — агентство`,
+    },
+    hire: (skill: number, min: number, salary: string, price: string, over: string) => `Навык ${skill} при наименьшем ${min}; ожидание ${salary} при цене рынка за навык ${price} и надбавке до ${over} — первый подходящий`,
+    leaveDraft: (people: number, miss: number) =>
+      `В графике ${groupRu(people)} ${pluralRu(people, 'человек', 'человека', 'человек')}: ${miss > 0 ? `не всем частям нашлось место — у ${groupRu(miss)}` : 'место нашлось всем частям'}`,
+    targets: (n: number) => `Вы ушли с поста «Качество и технология»: к цели вернули уставок — ${groupRu(n)}`,
+    lot: {
+      test: (name: string, result: string, lim: string, pass: boolean) => `${name} — ${result}${lim ? ` (${lim})` : ''}: ${pass ? 'в пределах' : 'вне пределов'}`,
+      release: 'Все испытания по спецификации — в пределах',
+      investigate: 'Вне пределов у своей продукции — расследование',
+      reject: 'Вне пределов — партию отклонить, отклонение открыто',
+    },
+    batch: {
+      player: 'По вашему решению',
+      assess: (dev: string) => `По оценке отклонения ${dev}: отклонить серию`,
+      open: (devs: string) => `Неоценённые отклонения держат серию: ${devs}`,
+      clear: 'Проверка ГП сделана, неоценённых отклонений нет — выпуск',
+    },
+    contract: (prev: string, end: string) => `Прежний договор ${prev} кончился ${end}`,
+    contractNew: 'Действующего договора не было — пара снова одобрена',
+    extend: (end: string) => `Прежний срок кончился ${end}`,
+    /** «Кто решил» в карточке: что решено о вещи */
+    kinds: {
+      order: 'Задание поставил',
+      po: 'Заказ поставщику',
+      step: 'Шаг расследования',
+      conclude: 'Вывод расследования',
+      assess: 'Оценка влияния',
+      pairEval: 'Оценка пары',
+      visit: 'Визит подрядчика',
+      repair: 'Ремонт',
+      replace: 'Замена узла',
+      spare: 'Заказ ЗИП',
+      vacancy: 'Вакансию открыл',
+      hire: 'Принял',
+      leaveDraft: 'Черновик графика отпусков',
+      targets: 'Уставки к цели',
+      setpoint: 'Уставка',
+      lot: 'Решение по партии',
+      batch: 'Решение по серии',
+      contract: 'Рамочный договор',
+      extend: 'Договор поставки',
+    } as Record<string, string>,
+    /** решения за сутки на планёрке: сколько каких */
+    count: {
+      order: (n: number) => `${groupRu(n)} ${pluralRu(n, 'задание', 'задания', 'заданий')} на серию`,
+      po: (n: number) => `${groupRu(n)} ${pluralRu(n, 'заказ', 'заказа', 'заказов')} поставщикам`,
+      step: (n: number) => `${groupRu(n)} ${pluralRu(n, 'шаг', 'шага', 'шагов')} расследования`,
+      conclude: (n: number) => `${groupRu(n)} ${pluralRu(n, 'вывод', 'вывода', 'выводов')} расследования`,
+      assess: (n: number) => `${groupRu(n)} ${pluralRu(n, 'оценка', 'оценки', 'оценок')} влияния`,
+      pairEval: (n: number) => `${groupRu(n)} ${pluralRu(n, 'оценка', 'оценки', 'оценок')} пар`,
+      visit: (n: number) => `${groupRu(n)} ${pluralRu(n, 'визит', 'визита', 'визитов')} подрядчика`,
+      repair: (n: number) => `${groupRu(n)} ${pluralRu(n, 'ремонт', 'ремонта', 'ремонтов')}`,
+      replace: (n: number) => `${groupRu(n)} ${pluralRu(n, 'замена', 'замены', 'замен')} узлов`,
+      spare: (n: number) => `${groupRu(n)} ${pluralRu(n, 'заказ', 'заказа', 'заказов')} ЗИП`,
+      vacancy: (n: number) => `${groupRu(n)} ${pluralRu(n, 'вакансия', 'вакансии', 'вакансий')}`,
+      hire: (n: number) => `${groupRu(n)} ${pluralRu(n, 'приём', 'приёма', 'приёмов')}`,
+      leaveDraft: () => 'черновик графика отпусков',
+      targets: () => 'уставки к цели',
+      setpoint: (n: number) => `${groupRu(n)} ${pluralRu(n, 'уставка', 'уставки', 'уставок')}`,
+      lot: (n: number, v?: string) =>
+        v === 'release'
+          ? `${groupRu(n)} ${pluralRu(n, 'партия разрешена', 'партии разрешены', 'партий разрешено')}`
+          : v === 'reject'
+            ? `${groupRu(n)} ${pluralRu(n, 'партия отклонена', 'партии отклонены', 'партий отклонено')}`
+            : `${groupRu(n)} ${pluralRu(n, 'партия', 'партии', 'партий')} — в расследование`,
+      batch: (n: number, v?: string) =>
+        v === 'release'
+          ? `${groupRu(n)} ${pluralRu(n, 'серия выпущена', 'серии выпущены', 'серий выпущено')}`
+          : v === 'hold'
+            ? `держать — ${groupRu(n)} ${pluralRu(n, 'серию', 'серии', 'серий')}`
+            : `${groupRu(n)} ${pluralRu(n, 'серия отклонена', 'серии отклонены', 'серий отклонено')}`,
+      contract: (n: number) => `${groupRu(n)} ${pluralRu(n, 'рамочный договор', 'рамочных договора', 'рамочных договоров')}`,
+      extend: (n: number) => `${groupRu(n)} ${pluralRu(n, 'договор поставки продлён', 'договора поставки продлены', 'договоров поставки продлено')}`,
+    } as Record<string, (n: number, v?: string) => string>,
+    prepaid: (sum: string) => `предоплата ${sum}`,
+  },
   /** срочное задание на серию (Б1г) */
   urgent: {
     button: 'Срочное задание',

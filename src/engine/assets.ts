@@ -10,6 +10,7 @@ import { part, post } from './cash';
 import { schedule } from './core/agenda';
 import { addMonths, addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf } from './core/calendar';
 import { fnv1a } from './core/hash';
+import { note } from './journal';
 import { accepts, classOf, placesOf, roomAt } from './places';
 import { type PlantPlan, planOf, type Slot } from './plant';
 import { addTask } from './tasks';
@@ -177,7 +178,10 @@ function book(db: ContentDb, s: PlantState, today: number) {
       const until = recOf(a, work)?.until ?? Number.NEGATIVE_INFINITY;
       if (until - today <= sc.assets.ahead && (!due || until < due.until)) due = { work, until };
     }
-    if (due) a.visit = { work: due.work, at, booked: s.t, v: 0 };
+    if (!due) continue;
+    a.visit = { work: due.work, at, booked: s.t, v: 0 };
+    // журнал решений (Б5а): главный механик — до какого дня запись и срок предупреждения
+    note(s, 'maint', { kind: 'visit', asset: a.id, work: due.work, at, why: { ...(Number.isFinite(due.until) ? { until: due.until } : {}), ahead: sc.assets.ahead } });
   }
 }
 

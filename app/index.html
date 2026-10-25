@@ -211,6 +211,21 @@
     .ntitle .sicon { flex: none; }
     .ntime { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
     .cwatch { margin-top: 6px; }
+    /* журнал решений (Б5а): справа, как «Сейчас»; строка — когда и кто, что решено, причина раскрывается */
+    .journal { width: min(620px, calc(100% - 16px)); }
+    ul.jlist { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+    ul.jlist li.jrow { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+    ul.jlist li.jrow.on { background: rgba(47,181,201,.08); }
+    .jline { display: flex; align-items: baseline; gap: 8px; }
+    .jline > button.link { flex: 1 1 auto; min-width: 0; text-decoration: none; }
+    .jline > button.link:hover { text-decoration: underline; text-decoration-color: var(--accent); }
+    .jline > button.small { flex: none; }
+    ul.jwhy { margin: 2px 0 2px 14px; padding-left: 12px; font-size: 12px; color: var(--muted); border-left: 2px solid var(--accent); }
+    ul.jwhy li { margin: 1px 0; list-style: none; }
+    .who ul.whol { margin: 0; padding-left: 0; list-style: none; font-size: 12px; }
+    .who ul.whol li { margin: 1px 0; }
+    .who ul.whol button { font-size: 11px; padding: 0 5px; }
+    .inv .iwhy { font-size: 12px; }
     /* «Смотрите: …» — текст сокращается, «Перестать» видна всегда */
     .watching { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 45%; color: var(--accent); }
     .watching .wtext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -11,6 +11,7 @@ import { stageMass } from '../engine/mes';
 import { planOf } from '../engine/plant';
 import { unitsOfLot } from '../engine/stock';
 import type { Batch, BatchStatus, Deviation, KitLine, LotStatus, PackJob, PlantState, Recon } from '../engine/types';
+import { whoBatch, type WhoRow } from './journal';
 
 export interface DossierQuery {
   view: 'dossier';
@@ -153,6 +154,8 @@ export interface DossierView {
   decision?: 'release' | 'reject' | 'hold';
   held?: boolean;
   released?: number;
+  /** кто решил (Б5а): задание, решение по балку, вывод расследования, решения уполномоченного лица */
+  who?: WhoRow[];
 }
 
 const num = (id: string) => Number(id.slice(1));
@@ -290,6 +293,8 @@ export function dossierView(db: ContentDb, s: PlantState, q: DossierQuery): Doss
     view.bulk = { code: codeOf(bulk.code), status: bulk.status, ...(bulk.since !== undefined ? { since: bulk.since } : {}), ...(u ? { unit: num(u.id) } : {}) };
   }
   if (b.pack) view.pack = packOf(db, s, b, b.pack);
+  const who = whoBatch(s, b);
+  if (who.length > 0) view.who = who;
   return view;
 }
 

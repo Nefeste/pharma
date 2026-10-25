@@ -11,13 +11,15 @@ import { salaryOf } from '../engine/cash';
 import { dismissTerms, laborOf } from '../engine/hire';
 import { momentOf } from '../engine/core/calendar';
 import { partType, wearAt } from '../engine/maint';
+import { inForce } from '../engine/docs';
 import { CLEAN_HOLD, DIRTY_HOLD } from '../engine/mes';
+import { speedOf } from '../engine/modes';
 import { planOf } from '../engine/plant';
 import { pendingOf } from '../engine/shifts';
 import { shiftEnd } from '../engine/staff';
 import { TAG } from '../engine/stock';
 import type { AssetRec, KitLine, Lot, LotStatus, MachineState, Person, PlantState, Quit, Room, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
-import { type DevCard, devCard, type Regimes, regimesAt, type ReleaseView, releaseOf } from './devs';
+import { type DevCard, devCard, type Knobs, knobsAt, type Regimes, regimesAt, type ReleaseView, releaseOf } from './devs';
 import { type DossierQuery, type DossierView, dossierView, type Inside, insideOf, type LineMaterial, lineMaterials } from './dossier';
 import { type SaView, type SheetView, saOf, sheetOf } from './hours';
 import { type InvQuery, type InvView, invView } from './inv';
@@ -172,14 +174,25 @@ export interface LotInfo {
 export type RoomClean = { k: 'clean'; product?: Id; until: number; expired?: true } | { k: 'dirty'; product?: Id; major: boolean; until?: number };
 
 /**
+ * Скорость блистерной машины в её карточке (Б1ж), блистеров в минуту: паспорт машины; с какой скоростью идёт задание
+ * на линии; у каждой позиции — цель, диапазон и шаг инструкции по упаковке в силе и уставка сейчас: с ней пойдёт
+ * следующее задание этой позиции.
+ */
+export interface SpeedView {
+  rated: number;
+  job?: { sku: Id; v: number };
+  list: { sku: Id; target: number; range: [number, number]; step: number; set: number }[];
+}
+
+/**
  * Карточка вещи. У паллеты ГП своей серии, ещё не решённой, — решение по серии (Б1г); у помещения и оборудования —
  * режимы стадии (Б1г); отклонение — своя карточка (`DevCard`).
  */
 export type CardData =
   | { kind: 'unit'; unit: number; tag: Tag; containers: number; holds?: Holds; where: PlaceRef; lot?: LotInfo; release?: ReleaseView; why: Why[]; history: Hist[] }
-  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; clean?: RoomClean; batch?: string; bn?: number; recipe?: Id; stage?: string; inside?: Inside; regimes?: Regimes; why: Why[] }
-  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; bn?: number; recipe?: Id; inside?: Inside; parts: PartInfo[]; asset?: AssetInfo; regimes?: Regimes; why: Why[]; history: Hist[] }
-  | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; bn?: number; sku?: Id; materials?: LineMaterial[]; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[] }
+  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; clean?: RoomClean; batch?: string; bn?: number; recipe?: Id; stage?: string; inside?: Inside; regimes?: Regimes; knobs?: Knobs[]; why: Why[] }
+  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; bn?: number; recipe?: Id; inside?: Inside; parts: PartInfo[]; asset?: AssetInfo; regimes?: Regimes; knobs?: Knobs[]; why: Why[]; history: Hist[] }
+  | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; bn?: number; sku?: Id; materials?: LineMaterial[]; speed?: SpeedView; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[] }
   /** человек (Б3б): табельный номер, навык, допуск сегодня, обучение по матрице его роли, что изучает сейчас; табель месяца (Б4а) */
   /** с Б4б — ждущий перевод на другой график и учётный период сменного по циклу */
   /** с Б4в — оклад, день приёма, последний день испытания, увольнение; ушёл с завода — `gone` с днём и основанием */
@@ -517,6 +530,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       const b = r.batch ? s.batches[r.batch] : undefined;
       const clean = Object.values(s.tasks).filter(t => (t.kind === 'clean' || t.kind === 'roomClean') && t.room === def.id);
       const regimes = regimesAt(db, s, def.id);
+      const knobs = knobsAt(db, s, def.id);
       const inside = insideOf(db, s, def.id);
       const tidy = cleanOf(s, r);
       return {
@@ -531,6 +545,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(b && r.status === 'busy' ? { stage: db.recipes[b.recipe].stages[b.stage]?.id } : {}),
         ...(inside ? { inside } : {}),
         ...(regimes ? { regimes } : {}),
+        ...(knobs.length > 0 ? { knobs } : {}),
         why: [...clean.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.room === def.id)],
       };
     }
@@ -541,6 +556,8 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       const b = e.batch ? s.batches[e.batch] : undefined;
       const repairs = Object.values(s.tasks).filter(t => t.kind === 'repair' && Object.values(s.parts).some(p => p.machine === def.id && p.task === t.id));
       const regimes = regimesAt(db, s, def.room);
+      // уставки (Б1ж): стадии на этом оборудовании
+      const knobs = knobsAt(db, s, def.room).filter(k => db.recipes[k.recipe].stages.find(st => st.id === k.stage)!.equipment.includes(def.type));
       const inside = b ? insideOf(db, s, def.room) : undefined;
       return {
         kind: 'equipment',
@@ -553,6 +570,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         parts: partsOfMachine(db, s, def.id),
         ...(s.assets[def.id] ? { asset: assetInfo(db, s, def.id)! } : {}),
         ...(regimes ? { regimes } : {}),
+        ...(knobs.length > 0 ? { knobs } : {}),
         why: [...repairs.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.asset === def.id)],
         history: maintHistory(s, def.id),
       };
@@ -569,6 +587,9 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       const cleans = Object.values(s.tasks).filter(t => (t.kind === 'clean' || t.kind === 'roomClean') && t.room === ln.room);
       const held: Why[] = b?.pack && b.pack.state !== 'running' && cleans.length > 0 ? [{ k: 'room', code: batchNo(b.code) }] : [];
       const mats = lineMaterials(db, s, ln.id, thing.k);
+      // скорость блистерной (Б1ж): задание на линии и уставки всех позиций — в инструкциях в силе
+      const day = momentOf(s.start, s.t).day;
+      const skus = db.machines[def.type].fast ? [...new Set(Object.keys(db.skus).map(id => inForce(db, 'skus', id, day)))].map(id => db.skus[id]) : [];
       return {
         kind: 'machine',
         line: thing.line,
@@ -578,6 +599,15 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(b ? { batch: batchNo(b.code), bn: num(b.id) } : {}),
         ...(b?.pack ? { sku: b.pack.sku } : {}),
         ...(mats && mats.materials.length > 0 ? { materials: mats.materials } : {}),
+        ...(skus.length > 0
+          ? {
+              speed: {
+                rated: db.machines[def.type].nominal,
+                ...(b?.pack?.speed !== undefined ? { job: { sku: b.pack.sku, v: b.pack.speed } } : {}),
+                list: skus.map(k => ({ sku: k.id, target: k.speed.target, range: [k.speed.range[0], k.speed.range[1]] as [number, number], step: k.speed.step, set: speedOf(db, s, k.id) })),
+              },
+            }
+          : {}),
         parts: partsOfMachine(db, s, def.id),
         ...(s.assets[def.id] ? { asset: assetInfo(db, s, def.id)! } : {}),
         why: [...repairs.map(t => taskWhy(db, s, t)), ...held, ...cleans.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.asset === def.id)],

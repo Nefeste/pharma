@@ -35,7 +35,10 @@
 // своих работ и проверенная очистка линии, у сделанного задания — выдача; у другой серии стадия между отвешиванием
 // и опудриванием — магния стеарат ждёт своей стадии; отпусков здесь нет — их держит образец схемы 25. С схемы 27 —
 // посреди уборки помещения упаковки: оператор линии моет блистерную машину, а задание следующей серии уже на линии
-// и ждёт, когда помещение будет чисто; записи упаковки посреди дела здесь нет — её держит образец схемы 26.
+// и ждёт, когда помещение будет чисто; записи упаковки посреди дела здесь нет — её держит образец схемы 26. С схемы 28 —
+// посреди таблетирования с уставкой: игрок на посту качества поднял скорость ротора и блистерной, таблетирование идёт
+// со своей уставкой, у сделанной стадии в записи — уставка не по цели, линия упаковывает со скоростью задания; уборки
+// помещения упаковки здесь нет — её держит образец схемы 27.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { DAY, daysFromCivil, HOUR, MIN, momentOf } from '../../src/engine/core/calendar';
@@ -101,8 +104,15 @@ const lineRoom = planOf(db, s.plant).plant.lines[0].room;
 const lineCleaning = () =>
   Object.values(s.tasks).some(t => t.kind === 'clean' && t.room === lineRoom && t.state === 'busy') &&
   Object.values(s.lines).some(l => l.batch !== undefined && s.batches[l.batch].pack?.state !== 'running');
+// посреди таблетирования с уставкой (Б1ж): идёт стадия со своей уставкой скорости, у сделанной — уставка не по цели,
+// линия упаковывает со скоростью задания не по цели
+const off = (b: { recipe: string }, v: number | undefined) => v !== undefined && v !== db.recipes[b.recipe].stages.find(x => x.id === 'compress')!.params.find(x => x.id === 'speed')!.target;
+const moded = () =>
+  Object.values(s.batches).some(b => b.room && off(b, b.sp?.speed)) &&
+  Object.values(s.batches).some(b => b.records.some(r => off(b, r.sp?.speed))) &&
+  Object.values(s.lines).some(l => l.batch && s.batches[l.batch].pack?.state === 'running' && s.batches[l.batch].pack!.speed !== db.skus[s.batches[l.batch].pack!.sku].speed.target);
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : seated() && lineCleaning();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : seated() && moded();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 if (SCHEMA >= 13) apply(db, s, { kind: 'seat', seats: ['director'] });
@@ -111,7 +121,17 @@ if (SCHEMA >= 13) apply(db, s, { kind: 'seat', seats: ['director'] });
 if ((SCHEMA as number) === 23) for (const p of Object.values(s.people)) if (p.shift === 'shift.b') apply(db, s, { kind: 'roster', person: p.id, shift: 'shift.c1', by: 'player' });
 if (SCHEMA >= 24) for (const role of ['role.operator', 'role.packer']) apply(db, s, { kind: 'vacancy', role, shift: 'shift.a', via: 'ad', by: 'player' });
 while (s.t < end && !busy()) {
-  if (SCHEMA >= 13 && s.t >= t0 + DAY && s.seats?.some(x => x.seat === 'director' && x.to === undefined)) apply(db, s, { kind: 'seat', seats: ['production', 'quality'] });
+  if (SCHEMA >= 13 && s.t >= t0 + DAY && s.seats?.some(x => x.seat === 'director' && x.to === undefined)) {
+    apply(db, s, { kind: 'seat', seats: ['production', 'quality'] });
+    // с схемы 28 — на посту качества: скорость ротора обеих карт на шаг выше цели, блистерной у всех позиций — тоже
+    if (SCHEMA >= 28) {
+      for (const r of Object.values(db.recipes)) {
+        const p = r.stages.find(x => x.id === 'compress')!.params.find(x => x.id === 'speed')!;
+        apply(db, s, { kind: 'setpoint', recipe: r.id, stage: 'compress', param: 'speed', value: p.target + p.step, by: 'player' });
+      }
+      for (const k of Object.values(db.skus)) apply(db, s, { kind: 'setpoint', sku: k.id, value: k.speed.target + k.speed.step, by: 'player' });
+    }
+  }
   // с схемы 12 — поднять первую партию, которая ждёт лабораторию с пробами
   if (SCHEMA >= 12 && !Object.values(s.lots).some(l => l.rush)) {
     const lot = Object.values(s.lots).find(l => l.status === 'quarantine' && l.supplier !== 'start' && l.sample);

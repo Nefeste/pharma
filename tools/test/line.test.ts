@@ -107,7 +107,7 @@ describe('серия от разрешённого балка до выпуск�
   });
 
   test('коды: в ящике — отрезки без брака; брак камеры — по счёту; первый ящик начинается с кода 1', () => {
-    const g = geo(bare, s, s.lines['line-1'], N20);
+    const g = geo(bare, s, s.lines['line-1'], { sku: N20 });
     expect(job.rejected.length).toBe(job.cartonRejects!);
     expect(job.rejected.length).toBe(job.cartons! - good(job.cartons!, g.rej[1]));
     const cases = containersByLot(s).get(lot.id)!;
@@ -184,7 +184,7 @@ describe('места для паллет кончились — линия ст�
     const busy = [...fgq, plan.byKind.palletizing[0]];
     const { lot } = createLot(bare, s, { material: 'mat.pk.case', supplier: 'sup.pack', qty: busy.length * 2000, status: 'released', where: i => ({ kind: 'slot', id: busy[i].id }) });
     const line = s.lines['line-1'];
-    const g = geo(bare, s, line, N20);
+    const g = geo(bare, s, line, { sku: N20 });
     let blocked = false;
     live(s, 5, undefined, () => {
       const m = line.machines;
@@ -323,7 +323,9 @@ describe('срок годности ГП (Рекомендация Коллег�
 });
 
 test('позиции и накопители — в шестидесятых долях таблетки', () => {
-  const g = geo(bare, newPlant(bare, { scenario: SC }), newPlant(bare, { scenario: SC }).lines['line-1'], N20);
-  expect(g.nominal).toEqual([120 * 10, 70 * 20, 100 * 20]);
+  const g = geo(bare, newPlant(bare, { scenario: SC }), newPlant(bare, { scenario: SC }).lines['line-1'], { sku: N20 });
+  // паспорт — для OEE, ход — по уставке инструкции, на старте — её цель (Б1ж)
+  expect(g.nominal).toEqual([135 * 10, 70 * 20, 100 * 20]);
+  expect(g.speed).toEqual([120 * 10, 70 * 20, 100 * 20]);
   expect(g.cap).toEqual([600 * 10 * SIXTY, 400 * 20 * SIXTY]);
 });

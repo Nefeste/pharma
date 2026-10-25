@@ -276,6 +276,8 @@ export interface Actions {
    */
   release(batch: string, decision: 'release' | 'reject' | 'hold'): void;
   assess(dev: string, verdict: 'none' | 'reject'): void;
+  /** уставка режима стадии карты или скорости блистерной позиции (Б1ж) — команда `setpoint` */
+  setpoint(x: { recipe: Id; stage: string; param: string; value: number } | { sku: Id; value: number }): void;
   urgent(recipe: Id, sku: Id): void;
   toggleFlows(): void;
   understood(kind: string): void;

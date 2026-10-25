@@ -11,6 +11,7 @@ import { coversOn } from '../engine/leave';
 import { geo, SIXTY } from '../engine/line';
 import { partType } from '../engine/maint';
 import { nominal, roomWork, stageMass, washWork } from '../engine/mes';
+import { SPEED } from '../engine/modes';
 import { classOf } from '../engine/places';
 import { planOf } from '../engine/plant';
 import { scheduleOn } from '../engine/shifts';
@@ -83,6 +84,12 @@ export interface NowRow {
   target?: number;
   rate?: number;
   rated?: number;
+  /**
+   * уставка скорости (Б1ж): у таблетирования — скорость ротора, с которой стадия началась, единиц движка; у упаковки —
+   * скорость блистерной задания, блистеров в минуту; норма — по ней, а не по цели — и норма по цели карты
+   */
+  speed?: number;
+  normAt?: number;
   /** где работа — камера и карточка */
   thing?: Thing;
 }
@@ -184,7 +191,12 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
       row.stage = st.id;
       // после отказа стадия идёт дальше с того же начала; по карте — на массу серии
       row.from = b.run?.start ?? row.from;
-      row.norm = nominal(db, b.recipe, st, stageMass(db, b, b.stage));
+      row.norm = nominal(db, b.recipe, st, stageMass(db, b, b.stage), b.sp);
+      if (b.sp?.[SPEED] !== undefined) {
+        row.speed = b.sp[SPEED];
+        const at = nominal(db, b.recipe, st, stageMass(db, b, b.stage));
+        if (at !== row.norm) row.normAt = at;
+      }
       if (b.room) {
         row.room = roomType(b.room);
         row.thing = { kind: 'room', i: roomIx(b.room) };
@@ -257,7 +269,7 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
     const job = b?.pack;
     if (!line || !b || !job || job.state !== 'running') continue;
     const sku = db.skus[job.sku];
-    const g = geo(db, s, line, job.sku);
+    const g = geo(db, s, line, job);
     const k = l.machines.findIndex(m => db.machines[m.type].item === 'carton');
     const mc = line.machines[k];
     const crewTasks = busy.filter(t => (t.kind === 'crew' || t.kind === 'feed') && t.line === l.id);
@@ -276,6 +288,7 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
       target: Math.floor(job.tablets / (sku.perBlister * sku.blisters)),
       rate: mc ? Math.round((mc.rate * 60) / (g.unit[k] * SIXTY)) : 0,
       rated: db.machines[l.machines[k].type].nominal,
+      ...(job.speed !== undefined ? { speed: job.speed } : {}),
       thing: { kind: 'machine', line: li, k: Math.max(0, k) },
     });
   }

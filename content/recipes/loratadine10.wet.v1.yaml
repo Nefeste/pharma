@@ -32,10 +32,10 @@ stages:
     staff: { role: role.operator, n: 1 }
     time: { setup: 15, perLoad: 30, loads: 1, spread: 5 }
     params:
-      - { id: impeller, unit: rpm, target: 150, range: [120, 180], sd: 8 }
-      - { id: wetMassing, unit: min, target: 3, range: [2, 5], sd: 0.3 }
+      - { id: impeller, unit: rpm, target: 150, range: [120, 180], sd: 8, step: 10 }
+      - { id: wetMassing, unit: min, target: 3, range: [2, 5], sd: 0.3, step: 0.5 }
       # вода очищенная на серию
-      - { id: water, unit: kg, target: 12, range: [10.5, 13.5], sd: 0.3 }
+      - { id: water, unit: kg, target: 12, range: [10.5, 13.5], sd: 0.3, step: 0.5 }
     loss: [0.5, 0.2]
   - id: dry
     room: granulation
@@ -43,7 +43,7 @@ stages:
     staff: { role: role.operator, n: 1 }
     time: { setup: 10, perLoad: 70, loads: 1, spread: 5 }
     params:
-      - { id: inletTemp, unit: C, target: 55, range: [50, 60], sd: 1.5 }
+      - { id: inletTemp, unit: C, target: 55, range: [50, 60], sd: 1.5, step: 1 }
     ipc:
       - { test: test.lod, max: 3.0 }
     loss: [0.5, 0.2]
@@ -62,16 +62,19 @@ stages:
     staff: { role: role.operator, n: 1 }
     time: { setup: 10, perLoad: 15, loads: 1, spread: 5 }
     params:
-      - { id: lubeTime, unit: min, target: 4, range: [3, 6], sd: 0.4 }
+      - { id: lubeTime, unit: min, target: 4, range: [3, 6], sd: 0.4, step: 0.5 }
     loss: [0.1, 0.05]
   # таблетирование: таблетка меньше и легче, пресс идёт быстрее, сила — меньше
   - id: compress
     room: compression
     equipment: [eq.press, eq.deduster]
     staff: { role: role.operator, n: 1 }
+    # производительность — при скорости ротора по цели; с уставкой скорости она растёт и падает вместе с ней (Б1ж)
     time: { setup: 30, unitsPerHour: 120000, spread: 5 }
     params:
-      - { id: force, unit: kN, target: 8, range: [6, 10], sd: 0.4 }
+      - { id: force, unit: kN, target: 8, range: [6, 10], sd: 0.4, step: 0.5 }
+      # скорость ротора (Б1ж): о лоратадине источников нет — направление как у парацетамола; числа — гипотезы
+      - { id: speed, unit: rpm, target: 60, range: [50, 70], sd: 1, step: 2 }
     ipc:
       - { test: test.ipc.mass, every: 30, min: 97, max: 103 }
       - { test: test.ipc.hardness, every: 30, min: 40, max: 90 }

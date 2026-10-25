@@ -383,6 +383,7 @@ export class Game {
       : n.kind === 'overtimeLow' ? T.notices.overtimeLow(named(this.db.roles[n.role]?.name, n.role), n.tab, durText(n.left), hText(this.db.profiles[this.scenario.profile].payroll.overtime.year))
       : n.kind === 'assetExpired' ? T.notices.assetExpired(workName(n, n.work), assetClass(n), T.assets.inv(n.inv))
       : n.kind === 'pairSuspended' ? T.notices.pairSuspended(named(this.db.suppliers[n.supplier]?.name, n.supplier), named(this.db.makers[n.maker]?.name, n.maker))
+      : n.kind === 'setpoints' ? T.notices.setpoints(n.n)
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;
@@ -673,6 +674,7 @@ export class Game {
     investigate: (inv, step) => this.client.command({ kind: 'investigate', inv, step, by: 'player' }),
     release: (batch, decision) => this.client.command({ kind: 'release', batch, decision }),
     assess: (deviation, verdict) => this.client.command({ kind: 'assess', deviation, verdict, by: 'player' }),
+    setpoint: x => this.client.command({ kind: 'setpoint', ...x, by: 'player' }),
     urgent: (recipe, sku) => {
       // срочное задание (Б1г) — строка черновика, его полосы — в расписании (0.0.39); «Прогнать план» — что оно изменит
       const g = this.store.get().gantt;

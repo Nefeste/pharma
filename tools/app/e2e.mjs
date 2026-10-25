@@ -42,8 +42,11 @@
 // помещение упаковки чисто с начала игры, в карточке — «просрочено»; линия взяла задание — «грязно» и малая уборка;
 // в срезе — «грязно», «чисто», «занято»; после задания — «грязно», потом «чисто» для продукта задания и до какого часа;
 // на строке линии в расписании — мойка и уборка помещения; досье первой серии — после расследования: задание
-// кончилось 7 сентября. Найм, оценка пары, визит подрядчика и отпуска идут по своим дням. Ошибок в консоли и запросов
-// наружу нет. Снимки — tools/app/out/e2e*.png.
+// кончилось 7 сентября. Режимы (Б1ж): на одном посту производства в карточке помещения таблетирования — уставки обеих
+// карт, у блистерной — скорость каждой позиции, кнопки погашены; на посту «Качество и технология» скорость ротора
+// парацетамола на шаг выше цели — в справочнике уставка и норма с ней, следующее таблетирование в «Сейчас» короче, чем
+// по цели карты; уставку вернули к цели, в досье серии — уставка и факт. Найм, оценка пары, визит подрядчика и отпуска
+// идут по своим дням. Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -138,6 +141,29 @@ const untilPackRoom = async want => {
   }
   return hit;
 };
+/** Карты двух продуктов (Б1ж). */
+const PARA = 'rcp.paracetamol500.wet.v1';
+const LORA = 'rcp.loratadine10.wet.v1';
+/**
+ * Уставки в карточке помещения таблетирования (Б1ж): карты с режимами здесь, строка скорости ротора парацетамола, сколько
+ * кнопок «−» и «+» и сколько из них нажимается, подсказка о посте. Карточка остаётся открытой.
+ */
+const knobsCard = async () => {
+  const ci = await page.evaluate(() => window.__game.layout.plan.plant.rooms.findIndex(r => r.type === 'compression'));
+  await page.evaluate(i => window.__game.actions.select({ kind: 'room', i }), ci);
+  await page.waitForSelector('[data-test=card-knobs]', { timeout: 20_000 });
+  await frames(2);
+  return page.evaluate(p => {
+    const buttons = [...document.querySelectorAll('[data-test=card-knobs] button')];
+    return {
+      recipes: [...document.querySelectorAll('[data-test=card-knobs]')].map(x => x.getAttribute('data-recipe')),
+      speed: document.querySelector(`[data-test=card-knobs][data-recipe="${p}"] [data-test=knob-speed]`)?.textContent?.replace(/\s*[−+]\s*[−+]?\s*$/, '').trim() ?? '',
+      buttons: buttons.length,
+      on: buttons.filter(b => !b.disabled).length,
+      warn: [...document.querySelectorAll('[data-test=card] .warn')].map(x => x.textContent ?? '').join(' '),
+    };
+  }, PARA);
+};
 /** Карточка помещения упаковки, когда в ней чистота `k`: текст строками через « · »; Esc закрывает. */
 const packRoomCard = async k => {
   await page.evaluate(i => window.__game.actions.select({ kind: 'room', i }), await packRoom());
@@ -194,6 +220,30 @@ try {
     const after = await page.evaluate(() => ({ open: !!document.querySelector('#seats'), speed: window.__game.speed, label: document.querySelector('[data-test=seats-open]')?.textContent ?? '' }));
     if (after.open || after.speed !== 1 || !/Производство/.test(after.label)) fail(`взяли «Производство»: экран ${after.open ? 'открыт' : 'закрыт'}, скорость ${after.speed}, кнопка «${after.label}»`);
     else ok(`взяли «Производство»: экран закрыт, ×1, на кнопке — «${after.label}»`);
+  }
+
+  // режимы (Б1ж): в карточке помещения таблетирования — уставки на следующую стадию у обеих карт, скорость ротора по цели;
+  // на одном посту производства «−» и «+» погашены — уставки задаёт пост «Качество и технология». Мир на паузе
+  {
+    await page.evaluate(() => window.__game.actions.setSpeed(0));
+    const k = await knobsCard();
+    if ([...k.recipes].sort().join() !== [LORA, PARA].join() || k.speed !== 'Скорость ротора: 50\u00a0об/мин · по цели' || k.on !== 0 || !/Качество и технология/.test(k.warn))
+      fail(`уставки без поста технолога: карты ${k.recipes.join(', ')}, скорость «${k.speed}», нажимается ${k.on} из ${k.buttons}, «${k.warn}»`);
+    else ok(`уставки без поста технолога: у ${k.recipes.length} карт, «${k.speed}», все ${k.buttons} кнопок погашены — «${k.warn}»`);
+    await page.keyboard.press('Escape');
+    // блистерная машина: паспорт и скорость по уставке инструкции у каждой позиции — по цели; кнопки погашены
+    await page.evaluate(() => window.__game.actions.select({ kind: 'machine', line: 0, k: 0 }));
+    await page.waitForSelector('[data-test=card-speed]', { timeout: 20_000 });
+    await frames(2);
+    const b = await page.evaluate(() => ({
+      rows: [...document.querySelectorAll('[data-test=speed-sku]')].map(x => (x.textContent ?? '').replace(/\s*[−+]\s*[−+]?\s*$/, '').trim()),
+      on: [...document.querySelectorAll('[data-test=card-speed] button')].filter(x => !x.disabled).length,
+    }));
+    if (b.rows.length < 2 || !b.rows.every(r => /: 120 блистеров\/мин · по цели, диапазон 100–135 блистеров\/мин$/.test(r)) || b.on !== 0)
+      fail(`скорость блистерной без поста технолога: ${JSON.stringify(b)}`);
+    else ok(`скорость блистерной без поста технолога: позиций ${b.rows.length}, «${b.rows[0]}», кнопки погашены`);
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.__game.actions.setSpeed(1));
   }
 
   // перевод (Б4б): в карточке аппаратчика первой смены «Перевести на график…» → «12 ч, бригада 2» — команда дошла до
@@ -1474,6 +1524,105 @@ try {
     else ok(`табель в карточке: ${c.days.length} дней — ${c.days.slice(0, 3).join(' · ')}…; ${c.sums}`);
     await page.screenshot({ path: join(out, 'e2e-person.png') });
     await page.keyboard.press('Escape');
+  }
+
+  // режимы (Б1ж): на посту «Качество и технология» скорость ротора таблетирования парацетамола — на шаг выше цели.
+  // В карточке помещения — уставка и цель; следующая такая стадия в «Сейчас» короче: норма по уставке и по цели карты.
+  // Её увидели — уставку «−» вернули к цели; стадия кончилась — в досье серии уставка и факт. Мир — на ×4 с пробой
+  // в каждом кадре и сразу пауза
+  {
+    await page.evaluate(() => window.__game.actions.setSpeed(0));
+    const k0 = await knobsCard();
+    await page.click(`[data-test=card-knobs][data-recipe="${PARA}"] [data-test=knob-speed-more]`);
+    const set = v => page.waitForFunction((p, v) => window.__game.store.get().card?.card?.knobs?.find(k => k.recipe === p)?.list.find(x => x.id === 'speed')?.set === v, [PARA, v], { timeout: 20_000 }).then(() => true, () => false);
+    const up = await set(52);
+    await frames(2);
+    const k1 = await knobsCard();
+    await page.screenshot({ path: join(out, 'e2e-modes.png') });
+    if (k0.on === 0 || !up || k1.speed !== 'Скорость ротора: 52\u00a0об/мин · цель 50\u00a0об/мин')
+      fail(`уставка на посту технолога: нажимается ${k0.on} из ${k0.buttons}, уставка ${up ? 'дошла' : 'не дошла'} до движка, «${k1.speed}»`);
+    else ok(`уставка на посту технолога: нажимается ${k0.on} из ${k0.buttons} кнопок; «${k1.speed}»; снимок ${join(out, 'e2e-modes.png')}`);
+    await page.keyboard.press('Escape');
+    // справочник: у таблетирования парацетамола — уставка рядом с целью, по карте — норма и норма с уставками. Вкладку
+    // справочник помнит — «Карты» выбрать
+    await page.keyboard.press('F1');
+    await page.waitForFunction(() => !!window.__game.store.get().ref.view, null, { timeout: 20_000 });
+    await page.click('[data-test=ref-tab][data-tab=recipes]');
+    await frames(2);
+    const r = await page.evaluate(p => {
+      const rows = [...document.querySelectorAll(`[data-test=ref-recipe][data-recipe="${p}"] [data-test=ref-stages] tbody tr`)];
+      const cells = rows.map(x => [...x.children].map(c => (c.innerText ?? '').replace(/\s+/g, ' ').trim()));
+      const row = cells.find(c => c[1]?.startsWith('Таблетирование')) ?? [];
+      return { plan: row[6] ?? '', speed: row.find(c => c.includes('Скорость ротора')) ?? '' };
+    }, PARA);
+    if (!/^\d.* с уставками — \d/.test(r.plan) || !/Скорость ротора: 50 об\/мин \(40–60 об\/мин\) · уставка 52 об\/мин/.test(r.speed))
+      fail(`справочник с уставкой: по карте «${r.plan}», режимы «${r.speed}»`);
+    else ok(`справочник с уставкой, таблетирование: по карте «${r.plan}»; «${r.speed}»`);
+    await page.keyboard.press('Escape');
+    // «Сейчас» — по состоянию панели, не клавишей: N её переключает, а Esc закрывает сначала другие окна. Вид в хранилище
+    // остаётся и у закрытой панели — свежий он, только пока она открыта
+    const now = on => page.evaluate(v => window.__game.store.get().now.open !== v && window.__game.actions.toggleNow(), on);
+    await now(true);
+    await page.waitForFunction(() => !!window.__game.store.get().now.view, null, { timeout: 20_000 });
+    /**
+     * ×4, пока в «Сейчас» не появится таблетирование со скоростью ротора `a` (`fast`) или не кончится работа `a` (`gone`), —
+     * и сразу пауза; планёрку закрыть, на автопаузах — дальше. Функцию из строки страница не соберёт: eval запрещён
+     */
+    const until = async (mode, arg) => {
+      const from = await gameT();
+      let hit = false;
+      for (let i = 0; i < 80 && !hit && (await gameT()) < from + 96 * 3600; i++) {
+        await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
+        await page.evaluate(() => window.__game.actions.setSpeed(4));
+        hit = await page
+          .waitForFunction(
+            ([m, a]) => {
+              const n = window.__game.store.get().now;
+              const v = n.open ? n.view : undefined;
+              const hit = !!v && (m === 'fast' ? v.rows.some(r => r.kind === 'stage' && r.stage === 'compress' && r.speed === a) : !v.rows.some(r => r.key === a));
+              return hit ? { hit } : window.__game.speed === 0 ? { hit } : false;
+            },
+            [mode, arg],
+            { timeout: 30_000 },
+          )
+          .then(h => h.jsonValue().then(v => v.hit), () => false);
+        await page.evaluate(() => window.__game.actions.setSpeed(0));
+      }
+      return hit;
+    };
+    const seen = await until('fast', 52);
+    await frames(2);
+    const row = await page.evaluate(() => {
+      const r = window.__game.store.get().now.view?.rows.find(x => x.kind === 'stage' && x.stage === 'compress' && x.speed === 52);
+      return r && { key: r.key, bn: r.bn, norm: r.norm, normAt: r.normAt, text: document.querySelector(`[data-test=now-row][data-key="${r.key}"]`)?.innerText.replace(/\s+/g, ' ').trim() ?? '' };
+    });
+    if (!seen || !row || !(row.norm < row.normAt) || !/норма по уставке ротора 52 об\/мин · по цели карты — /.test(row.text))
+      fail(`«Сейчас» с уставкой: ${seen ? `строка ${JSON.stringify(row)}` : 'таблетирования с 52 об/мин не дождались'}`);
+    else ok(`«Сейчас» с уставкой: «${row.text}» — норма ${Math.round(row.norm / 60)} мин против ${Math.round(row.normAt / 60)} по цели`);
+    await now(false);
+    const k2 = await knobsCard();
+    await page.click(`[data-test=card-knobs][data-recipe="${PARA}"] [data-test=knob-speed-less]`);
+    const back = await set(50);
+    await frames(2);
+    const k3 = await knobsCard();
+    if (!back || k3.speed !== 'Скорость ротора: 50\u00a0об/мин · по цели') fail(`уставка к цели: «${k2.speed}» → «${k3.speed}»`);
+    else ok(`уставка к цели: «${k2.speed}» → «${k3.speed}»`);
+    await page.keyboard.press('Escape');
+    if (row) {
+      await now(true);
+      const done = await until('gone', row.key);
+      await now(false);
+      await page.evaluate(n => window.__game.actions.openDossier(n), row.bn);
+      const open = await page
+        .waitForFunction(n => window.__game.store.get().dossier.view?.batch === n && window.__game.store.get().dossier.view.stages.find(x => x.stage === 'compress')?.state === 'done', row.bn, { timeout: 20_000 })
+        .then(() => true, () => false);
+      await frames(2);
+      const p = await page.evaluate(() => document.querySelector('[data-test=dossier-stage][data-stage=compress] [data-test=dossier-param][data-param=speed]')?.textContent?.trim() ?? '');
+      if (!done || !open || !/^Скорость ротора: \d+\u00a0об\/мин \(цель 50\u00a0об\/мин, диапазон 40–60\u00a0об\/мин\) · уставка 52\u00a0об\/мин$/.test(p))
+        fail(`досье серии с уставкой: стадия ${done ? 'кончилась' : 'не кончилась'}, досье ${open ? 'открыто' : 'не открылось'}, «${p}»`);
+      else ok(`досье серии с уставкой, таблетирование: «${p}»`);
+      await page.keyboard.press('Escape');
+    }
   }
 
   // бригада (Б4б): с 1 октября аппаратчик — в «12 ч, бригада 2». Утро 9 октября: на планёрке — дополнительный выходной

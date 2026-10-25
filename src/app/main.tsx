@@ -40,6 +40,7 @@ const actions: Actions = {
   show: later('show'),
   release: later('release'),
   assess: later('assess'),
+  setpoint: later('setpoint'),
   urgent: later('urgent'),
   toggleFlows: later('toggleFlows'),
   understood: later('understood'),

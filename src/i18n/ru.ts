@@ -120,6 +120,7 @@ export const ru = {
     leaveStart: (who: string, to: string, deputy?: string) => `Ушёл в отпуск: ${who} — по ${to}${deputy ? `, замещает ${deputy}` : ''}`,
     leaveEnd: (who: string) => `Вышел из отпуска: ${who}`,
     pairSuspended: (supplier: string, maker: string) => `Пара приостановлена: ${supplier} — ${maker}. Срок одобрения вышел, по ней не заказывают`,
+    setpoints: (n: number) => `Вы ушли с поста «Качество и технология»: коллега технологии вернул уставки к цели карты (уставок: ${n}). Начатые стадии и задания идут со своими`,
     assetExpired: (work: string, what: string, inv: string) => `${work}: срок вышел — ${what}, ${inv} не работает`,
     invStep: 'Шаг расследования сделан',
     concluded: (fate: 'reject' | 'release'): string => (fate === 'release' ? 'Расследование решено: ошибка лаборатории доказана, партия разрешена' : 'Расследование решено: серия отклонена'),
@@ -175,6 +176,9 @@ export const ru = {
       noRole: 'такой роли нет',
       ownRole: 'это его собственная роль',
       sameOnly: 'эту роль заменяет только человек той же роли',
+      noParam: 'такой стадии или режима нет в действующей редакции',
+      outOfRange: 'вне диапазона карты: новый диапазон — новой редакцией через управление изменениями',
+      offStep: 'уставку меняют шагом режима от цели',
     } as Partial<Record<string, string>>,
   },
   view: {
@@ -477,6 +481,8 @@ export const ru = {
   },
   /** планёрка в 08:00 (docs/specs/2026-10-panels.md, 3в): сутки в цифрах, одна главная потеря, одна подсказка */
   morning: {
+    modesTitle: 'Уставки не по цели',
+    mode: (what: string, v: string, target: string, from: string) => `${what}: ${v} при цели ${target} — с ${from}`,
     button: 'Планёрка',
     hint: 'Последняя планёрка в 08:00',
     title: (date: string) => `Планёрка · ${date}`,
@@ -919,7 +925,7 @@ export const ru = {
     tabs: { products: 'Продукты', materials: 'Материалы', recipes: 'Карты', equipment: 'Оборудование', places: 'Места', lab: 'Лаборатория', people: 'Люди', partners: 'Контрагенты', docs: 'Документы' },
     product: (form: string, mg: string, code: string) => `${form} ${mg}\u00a0мг · код препарата ${code}`,
     forms: { tablet: 'таблетки' } as Record<string, string>,
-    skuCols: { sku: 'Позиция', code: 'Код', blister: 'В блистере', blisters: 'Блистеров в пачке', perCase: 'Пачек в ящике', cases: 'Ящиков на паллете', packs: 'Пачек на паллете', shelf: 'Срок годности', price: 'Цена завода', regPrice: 'Предельная цена', pi: 'Инструкция по упаковке' },
+    skuCols: { sku: 'Позиция', code: 'Код', blister: 'В блистере', blisters: 'Блистеров в пачке', perCase: 'Пачек в ящике', cases: 'Ящиков на паллете', packs: 'Пачек на паллете', shelf: 'Срок годности', price: 'Цена завода', regPrice: 'Предельная цена', speed: 'Скорость блистерной', pi: 'Инструкция по упаковке' },
     tablets: (n: number) => `${groupRu(n)} ${pluralRu(n, 'таблетка', 'таблетки', 'таблеток')}`,
     months: (n: number) => `${n} ${pluralRu(n, 'месяц', 'месяца', 'месяцев')}`,
     batch: (mass: string, tablets: string) => `Серия — ${mass}, ${tablets}`,
@@ -933,9 +939,11 @@ export const ru = {
     mean: (d: string, n: number) => `в среднем ${d} · ${n} ${pluralRu(n, 'серия', 'серии', 'серий')}`,
     none: 'ещё не было',
     now: (gone: string, plan: string) => `идёт ${gone} из ${plan}`,
+    /** норма стадии с уставками кода карты сейчас (Б1ж), когда она не та, что по цели */
+    atSet: (norm: string) => `с уставками — ${norm}`,
     idle: '—',
     planNote: 'По карте — на размер серии по технологической карте; по факту — по записям стадий сделанных серий.',
-    params: { impeller: 'Скорость импеллера', wetMassing: 'Влажное перемешивание', water: 'Вода очищенная', inletTemp: 'Температура воздуха на входе', lubeTime: 'Время опудривания', force: 'Сила прессования' } as Record<string, string>,
+    params: { impeller: 'Скорость импеллера', wetMassing: 'Влажное перемешивание', water: 'Вода очищенная', inletTemp: 'Температура воздуха на входе', lubeTime: 'Время опудривания', force: 'Сила прессования', speed: 'Скорость ротора' } as Record<string, string>,
     range: (target: string, lo: string, hi: string) => `${target} (${lo}–${hi})`,
     eqCols: { name: 'Оборудование', room: 'Помещение', cleaning: 'Уборка: малая · генеральная', parts: 'Узлы: износ и ресурс', now: 'Сейчас' },
     part: (name: string, wear: string, life: string) => `${name}: износ ${wear} · ресурс ${life}`,
@@ -1112,6 +1120,9 @@ export const ru = {
     over: (at: string) => `сверхурочно с ${at}`,
     packs: (done: string, target: string) => `${done} из ${target} пачек`,
     rate: (rate: string, rated: string) => `${rate} пачек/мин из ${rated}`,
+    blister: (v: string) => `блистерная по уставке ${v}\u00a0блистеров/мин`,
+    rotor: (v: string) => `норма по уставке ротора ${v}`,
+    atTarget: (norm: string) => `по цели карты — ${norm}`,
     nobody: 'без людей',
     watch: 'Смотреть',
     watchHint: 'Камера к месту работы и скорость ×1, пока работа не кончится; потом — прежняя скорость',
@@ -1495,11 +1506,31 @@ export const ru = {
   /** режимы стадии в карточке помещения и оборудования (Б1г) */
   regimes: {
     title: 'Режимы стадии',
-    now: (stage: string, batch: string) => `${stage}, серия ${batch} — по карте`,
+    now: (stage: string, batch: string) => `${stage}, серия ${batch} — идёт`,
     fact: (stage: string, batch: string, when: string) => `${stage}, серия ${batch} — по досье, ${when}`,
     target: (name: string, target: string, range: string) => `${name}: цель ${target}, диапазон ${range}`,
     value: (name: string, value: string, target: string, range: string) => `${name}: ${value} (цель ${target}, диапазон ${range})`,
-    noKnobs: 'Ручек настройки нет: режимы задаёт технологическая карта, менять их — новой редакцией через управление изменениями.',
+    /** уставки (Б1ж): с какой шла или идёт стадия; уставки кода карты на следующую стадию; кнопки технолога */
+    sp: (sp: string) => `уставка ${sp}`,
+    noFact: 'факт не записан',
+    knobs: 'Уставки на следующую стадию',
+    knob: (name: string, set: string) => `${name}: ${set}`,
+    atTarget: 'по цели',
+    offTarget: (target: string) => `цель ${target}`,
+    less: '−',
+    more: '+',
+    stepTo: (v: string) => `Уставка ${v}`,
+    edge: 'Край диапазона карты: дальше — новой редакцией через управление изменениями',
+    knobsWhy: 'Уставку в пределах диапазона карты задаёт технолог; аппаратчик ведёт режим у неё с тем же разбросом. С ней начнётся следующая стадия, начатую она не трогает. Новый диапазон — новой редакцией через управление изменениями.',
+  },
+  /** скорость блистерной машины в её карточке (Б1ж) */
+  speed: {
+    title: 'Скорость блистерной',
+    rated: (v: string) => `Паспорт машины — ${v}`,
+    set: (sku: string, v: string, target: string, range: string) => `${sku}: ${v} · ${target}, диапазон ${range}`,
+    job: (sku: string, v: string) => `Задание на линии — ${sku}, идёт с ${v}`,
+    edge: 'Край диапазона инструкции по упаковке: дальше — новой редакцией через управление изменениями',
+    why: 'Быстрее — больше блистеров в час, но микроостановки чаще и брак камеры выше; медленнее — наоборот. Уставку задаёт технолог, с ней пойдёт следующее задание.',
   },
   /** пояснение при первом событии каждого вида (Б1г): что это и что делать; «Понятно» его убирает */
   first: {

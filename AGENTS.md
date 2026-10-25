@@ -141,8 +141,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   schedule run, kitting through the airlock, stages in rooms with equipment and people, cleaning in two works — the
   equipment washed by those who work on it, operators, and with Б1е the machines of a line that touch tablets by the
   line's crew (`washRoles`), then the room by a cleaner by its floor area —, a room for a batch's work — a stage or,
-  with Б1е, the packing — clean for its product, otherwise into cleaning (`roomFor`), process parameters,
-  true batch quality with causes, IPC, the bulk lot; with Б1д — the components of a stage loaded by the recipe and the
+  with Б1е, the packing — clean for its product, otherwise into cleaning (`roomFor`), process parameters — with Б1ж
+  at the setpoints a stage takes when its batch takes the room, the fact at the setpoint with the operator's spread, the
+  stage time and part wear by the turret speed —, true batch quality with causes, IPC, the bulk lot; with Б1д — the
+  components of a stage loaded by the recipe and the
   mass at a stage's input, the batch mass less what later stages load (`stageMass`, shared with the schedule run,
   «Сейчас» and the reference); the packing job and its packaging kit — a container of it already
   in the line room is in place, whatever pallet it lies on; a stage stopped by a part
@@ -163,8 +165,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   the job's product (`roomReady`), the job holds the room from the first tablet and leaves it dirty with its product —,
   the crew, the end of a batch with
   reconciliation, the packing record — the people of its works and the line clearance before it, who cleared and who
-  checked (with Б1д), the materials a job used by machine count at a moment — `usedByCount`, machine times for OEE, a
-  machine part failing at a flow boundary, jams of the cartoner; the flow at a
+  checked (with Б1д), the materials a job used by machine count at a moment — `usedByCount`, machine times for OEE —
+  with Б1ж the blister machine runs at the speed the line took with the job, and OEE measures speed against the rated
+  one —, a machine part failing at a flow boundary, jams of the cartoner; the flow at a
   moment between events without writing the state — `flowAt`, for the slice; new part budgets for the twin —
   `lineRedraw`), `qa.ts` (QA check of finished goods with
   retention samples, the qualified person's decision — «hold» blocks the FG and puts it on the racks, FG shelf life;
@@ -181,12 +184,19 @@ first, or copy the working code of Bolnitsa on the same versions.
   payment by agreement, the wages accrued but not yet paid and the compensation for unused vacation days, with Б4г —
   vacation pay at the bank hour three days before a part, the average daily earnings over twelve months × its days
   (`avgDaily`), contributions, energy, VAT by quarter, the credit line), `maint.ts` (machine
-  parts, wear by work done, failure by the hazard table of wear, repairs and planned replacement by the mechanic with a
+  parts, wear by work done — with Б1ж more per tablet for a stage parameter above its target (`stress`) —, failure by
+  the hazard table of wear, repairs and planned replacement by the mechanic with a
   spare from the workshop, spares replenished by level, the maintenance policy, `maintain`), `lean.ts` (losses per day
   by kind and department: waiting tasks by cause, a truck waiting for the dock, transport and walking, defects, room
   cleanings — general and minor — and line changeovers with their work; a line's
   day — machine times, rated output over loading and working time, good tablets — and `oee()`; a batch's time by state;
-  the line master's shift task — opened and closed with the crew's shifts — and the rhythm coefficient), `tasks.ts`
+  the line master's shift task — opened and closed with the crew's shifts — and the rhythm coefficient), `modes.ts`
+  (with Б1ж, setpoints: of a stage parameter by the recipe code, stage and parameter, of the blister machine speed by
+  the packaging instruction code; within the range of the revision in force and a whole number of steps from the target,
+  otherwise the `setpoint` command is refused; none — the target; the turret speed scales the recipe's rate
+  (`unitsPerHour`), a line machine's run speed (`machineSpeed`), micro-stops and camera rejects by speed
+  (`fastFactor`); the quality colleague holds the targets — the player left the quality post, the setpoints are gone),
+  `tasks.ts`
   (tasks and the dispatcher: people,
   vehicles, instruments; why a task waits; a person walking to a post is free and measured from where they are; only a
   person admitted to everything the work and the vehicle need takes it, otherwise the task waits «нет допуска» with the
@@ -271,21 +281,27 @@ first, or copy the working code of Bolnitsa on the same versions.
   equipment is in calibration or qualification; no truth fields — not the next micro-stop, not a part's budget), views
   for panels — the warehouse and the card of a thing with what a pallet holds, with Б1е a room's cleanliness — clean
   for which product and until when, or dirty after which product and which cleaning it needs — and a line machine's job
-  waiting for the room's cleaning, built here on request and sent with the slice only when they changed, without truth
+  waiting for the room's cleaning, with Б1ж the blister machine's speed — rated, the job's and each SKU's setpoint —,
+  built here on request and sent with the slice only when they changed, without truth
   fields (`views.ts`); the deviation card, the batch decision at release and
-  the stage parameters of a room or equipment card (`devs.ts`); with Б1д, the batch record — what was weighed by lots,
-  who weighed and who checked, what each stage loaded, mass in and out, the packing with the line's people, the
+  the stage parameters of a room or equipment card with their setpoints, and with Б1ж the setpoints for the next stage
+  of each recipe in force whose stages run there — `knobsAt` (`devs.ts`); with Б1д, the batch record — what was
+  weighed by lots, who weighed and who checked, what each stage loaded, mass in and out, with Б1ж each parameter's
+  setpoint and fact, the packing with the line's people, the
   clearance and the reconciliation, deviations and decisions —, what is inside equipment now and a line machine's
   materials, records of the plant without truth (`dossier.ts`);
   the plant reference — how it should be by master data
-  and how it is: products and SKUs, recipes with stages by plan and by the stage records, equipment and the line,
+  and how it is: products and SKUs — with Б1ж a SKU's blister speed —, recipes with stages by plan and by the stage
+  records — with Б1ж the setpoints next to the targets and the stage time at them —, equipment and the line,
   instruments and methods, roles and shifts, suppliers and customers, materials with their OKEI unit codes and the spec
   in force, every document revision with its status by the plant date, without the model's hidden parameters, start
   moments of running work as numbers (`ref.ts`); what is going on now — running work by department, one row per work,
   with the plant's norm and never the engine's drawn duration, a deputy's work with «за» and the absent's role, a kit
-  trip with its material and lot (`now.ts`); the 08:00 meeting — the player's places over
+  trip with its material and lot, with Б1ж a compression's turret speed with the norm at it and at the recipe target
+  and a packing job's blister speed (`now.ts`); the 08:00 meeting — the player's places over
   their tenure, yesterday by calendar day with its cleanings and changeovers, events of the 24 hours before it, what
-  waits now — the cash panel and the top-bar cash with the player's places (`report.ts`); the places and assets — the
+  waits now, with Б1ж the setpoints off target and since when — the cash panel and the top-bar cash with the player's
+  places (`report.ts`); the places and assets — the
   «Места» tab, an asset in a card, the meeting's calibration and qualification, which batch waits for which asset —
   records and visits are the plant's knowledge (`places.ts`); the partners — makers, pairs with their approval and
   evaluation, agreements and contracts in force for the «Контрагенты» tab, the meeting's suppliers, a lot's maker and
@@ -355,7 +371,7 @@ first, or copy the working code of Bolnitsa on the same versions.
   investigation board — steps, findings in words with numbers from the records, version bars, the decision, the
   debrief (`Inv.tsx`), the batch record over the other windows — opened from a card, «Сейчас», the meeting and a click
   on a batch bar of the schedule (`Dossier.tsx`), the levers of a row (`Levers.tsx`), the deviation card, the batch
-  decision, stage parameters and
+  decision, stage parameters, with Б1ж the setpoints with «−» and «+» and a blister machine's speed, and
   the first-event explanation in the card (`Decide.tsx`), status and work icons (`icons.tsx`), asset words — class and
   inventory number, the work's name, «until» and why it does not work
   (`assets.ts`), the content base for names (`db.ts`); `src/i18n/` — every player-facing string, Russian
@@ -369,7 +385,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   labor market `labor`, the terms of the labor law in the profile and the plan's cleaning seconds per m² by grade; with
   Б4г — the vacation numbers of the law in the profile, the scenario's rule of the draft `leave`, related professions
   `also` of the staff rows and `same` of a role only another person of it replaces; with Б1д — the stage that loads each
-  line of a recipe's composition; with Б1е — the minor and general cleaning of a line machine that touches tablets);
+  line of a recipe's composition; with Б1е — the minor and general cleaning of a line machine that touches tablets; with
+  Б1ж — a parameter's setpoint step, the turret speed of compression, a part's load by a parameter (`stress`), a cause's
+  IPC scatter, a line machine's rated speed and the blister machine's speed factors (`fast`), a SKU's blister speed);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
@@ -380,7 +398,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   dates of the year, parts adding up to the year's days with one no shorter than the law's, the approval no later than
   the law's term before the year; a related profession — a role of the base, not one's own and not a `same` one; the
   draft of the start staff fits whole (`leaveErrors`); every line of a composition loaded on a stage of its recipe after
-  dispensing, the API and another component on the first mixing; plan rules in
+  dispensing, the API and another component on the first mixing; with Б1ж a parameter's target inside its range and a
+  whole number of steps from both edges, a part's load by a parameter of a stage run on its equipment, a cause's scatter
+  only from a parameter, a SKU's blister speed within the machine's rated one; plan rules in
   `plan.ts`: doors on walls, docks on outer walls, class D only through
   airlocks, reachability, posts on
   walkable floor; models in

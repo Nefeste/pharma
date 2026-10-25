@@ -20,8 +20,9 @@ const FOLDED = new Set(['crew', 'prep', 'review', 'truckCheck', 'unload', 'load'
 
 /** Поля строки по src/sim/now.ts: новое — сначала сюда, с вопросом, знает ли его завод. */
 const ALLOWED = new Set(
-  // с Б1д — номер серии к её досье и материал ходки комплекта
-  'view rows key dept kind batch stage lot method phase inst machine part room line sku supplier customer major planned people n role from norm range done target rate rated thing i k over bn material'.split(' '),
+  // с Б1д — номер серии к её досье и материал ходки комплекта; с Б1ж — уставка скорости ротора стадии или скорость
+  // блистерной задания и норма по цели карты — их задал завод
+  'view rows key dept kind batch stage lot method phase inst machine part room line sku supplier customer major planned people n role from norm range done target rate rated thing i k over bn material speed normAt'.split(' '),
 );
 
 function keysOf(v: unknown, out = new Set<string>()): Set<string> {

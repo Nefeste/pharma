@@ -6,6 +6,7 @@ import type { ContentDb, Dept, Id } from '../content/types';
 import { lineUnfit, stageUnfit } from './assets';
 import { HOUR, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
+import { machineSpeed } from './modes';
 import { planOf } from './plant';
 import type { Batch, BatchPhase, DayLoss, Line, LineDay, MachineTimes, PlantState, ShiftTask, Task, TaskKind, WaitCause } from './types';
 import { scheduleOn, spanOn } from './shifts';
@@ -261,8 +262,9 @@ function openShift(db: ContentDb, s: PlantState, line: Line, shift: Id, len: num
   let plan = 0;
   if (jobs.length > 0) {
     const sku = db.skus[jobs[0].sku];
-    // пачек в минуту на номинале у каждой машины — ×10 000; узкое место — меньшая
-    const rate = Math.min(...line.machines.map(mc => Math.floor((db.machines[mc.type].nominal * P_ONE) / (db.machines[mc.type].item === 'blister' ? sku.blisters : 1))));
+    // пачек в минуту на ходу у каждой машины — ×10 000; блистерная — по уставке скорости первого задания (Б1ж); узкое
+    // место — меньшая
+    const rate = Math.min(...line.machines.map(mc => Math.floor((machineSpeed(db, s, mc.type, jobs[0]) * P_ONE) / (db.machines[mc.type].item === 'blister' ? sku.blisters : 1))));
     const cap = Math.floor(((len / 60) * rate * db.scenarios[s.scenario].norm) / (P_ONE * P_ONE));
     const left = jobs.reduce((n, j) => n + j.expect! - (j.state === 'running' ? line.made : 0), 0);
     plan = Math.max(0, Math.min(left, cap));

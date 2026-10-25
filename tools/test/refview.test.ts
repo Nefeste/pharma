@@ -105,7 +105,9 @@ const ALLOWED = new Set(
     'leave years draft approve miss earned used left deputy can told paid started ended problems right also law part ' +
     'notice pay rule cover ' +
     // Б1д: стадия загрузки строки состава и что загружают на стадии — по карте
-    'stage load'
+    'stage load ' +
+    // Б1ж: уставки режимов стадий и скорости блистерной, длительность стадии с ними — задал завод
+    'atSet set speed'
   ).split(' '),
 );
 

@@ -50,7 +50,7 @@ describe('сутки линии', () => {
     for (const d of days) {
       const skus = new Set(taken.filter(j => dayOf(j.taken!) <= d.day && dayOf(j.end ?? s.t) >= d.day).map(j => j.sku));
       if (skus.size !== 1) continue;
-      const g = geo(db, s, line, [...skus][0]);
+      const g = geo(db, s, line, { sku: [...skus][0] });
       const ld = d.lines[lineId];
       line.machines.forEach((_, i) => {
         expect(ld.ideal[i]).toBe(g.nominal[i] * sum(ld.times[i], LOAD));

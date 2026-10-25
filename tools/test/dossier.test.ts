@@ -276,7 +276,9 @@ describe('масса по стадиям и запись упаковки — п
       ('view batch gone code recipe product sku status mass units issued produced weighed disp material stage norm potency qs qty lots assay unit ' +
         'weigh scale type i inv by check from to n role tab stages state room roomIx equipment people load in out loss params id target range value dev ipc test ' +
         'stops part devs bulkUnits yield pack line taken start end clear at tablets result good scrap remainder blisters blisterRejects cartons cartonRejects cases pallets ' +
-        'materials machine k spoiled used returned recon reconLimit fg kind bulk since checked decision held released clearNone').split(' '),
+        'materials machine k spoiled used returned recon reconLimit fg kind bulk since checked decision held released clearNone ' +
+        // Б1ж: уставка режима стадии — её задал завод
+        'sp').split(' '),
     );
     expect([...keys].filter(k => !ALLOWED.has(k))).toEqual([]);
     for (const k of ['truth', 'noise', 'causes', 'screen', 'budget', 'lost', 'jammed', 'wear']) expect(keys.has(k)).toBe(false);

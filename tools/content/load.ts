@@ -404,6 +404,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       });
       if (line) {
         need(!p.scatter, `${at}: разброс МОК — у оборудования стадии, не у машины линии`);
+        need(!p.stress, `${at}: нагрузка от режима — у оборудования стадии, не у машины линии`);
         need(!p.micro || line.micro, `${at}: у машины нет микроостановок — им нечего учащаться`);
       } else need(!p.micro, `${at}: микроостановки — у машины линии, не у оборудования стадии`);
       const scatter: PartType['scatter'] = {};
@@ -421,6 +422,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         repair: [sec(p.repair[0]), sec(p.repair[1])] as [number, number],
         ...(p.scatter ? { scatter } : {}),
         ...(p.micro !== undefined ? { micro: share(p.micro * 100) } : {}),
+        // нагрузка — пока в % на единицу режима: единицу режима дают карты, ниже
+        ...(p.stress ? { stress: { param: p.stress.param, coef: p.stress.coef } } : {}),
       };
     });
   };
@@ -478,6 +481,9 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       need(!(t.kgPerHour && t.unitsPerHour), `${at}: скорость — либо кг, либо штуки в час`);
       for (const p of st.params) {
         need(p.range[0] <= p.target && p.target <= p.range[1], `${at}: цель режима ${p.id} вне диапазона`);
+        // уставка ходит шагом от цели и доходит до обоих краёв диапазона (Б1ж)
+        const steps = (a: number, b: number) => Math.round((b - a) * PARAM_SCALE[p.unit]) % Math.round(p.step * PARAM_SCALE[p.unit]) === 0;
+        need(Math.round(p.step * PARAM_SCALE[p.unit]) > 0 && steps(p.range[0], p.target) && steps(p.target, p.range[1]), `${at}: от цели режима ${p.id} шагом ${p.step} не дойти до краёв диапазона`);
         need(!paramUnits[p.id] || paramUnits[p.id] === p.unit, `${at}: режим ${p.id} в других единицах, чем в другой карте`);
         paramUnits[p.id] = p.unit;
       }
@@ -508,7 +514,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
           ...(t.unitsPerHour !== undefined ? { unitsPerHour: Math.round(t.unitsPerHour) } : {}),
           spread: share(t.spread),
         },
-        params: st.params.map(p => ({ id: p.id, unit: p.unit, target: sc(p.unit, p.target), range: [sc(p.unit, p.range[0]), sc(p.unit, p.range[1])] as [number, number], sd: sc(p.unit, p.sd) })),
+        params: st.params.map(p => ({ id: p.id, unit: p.unit, target: sc(p.unit, p.target), range: [sc(p.unit, p.range[0]), sc(p.unit, p.range[1])] as [number, number], sd: sc(p.unit, p.sd), step: sc(p.unit, p.step) })),
         ipc,
         loss: [share(st.loss[0]), share(st.loss[1])] as [number, number],
         // сито калибратора по карте: мм → мкм
@@ -559,7 +565,28 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       per = 1000;
     } else per = scaleOf(d.attr);
     for (const e of c.effects) need(!qual(e.attr), `${where}: ${e.attr} — качественное свойство`);
-    causes[c.id] = { ...c, effects: c.effects.map(e => ({ attr: e.attr, coef: (e.coef * scaleOf(e.attr)) / per })) };
+    for (const e of c.scatter ?? []) need(!qual(e.attr), `${where}: ${e.attr} — качественное свойство`);
+    need(!c.scatter || 'param' in d, `${where}: разброс МОК — от отхода режима стадии`);
+    causes[c.id] = {
+      ...c,
+      effects: c.effects.map(e => ({ attr: e.attr, coef: (e.coef * scaleOf(e.attr)) / per })),
+      ...(c.scatter ? { scatter: c.scatter.map(e => ({ attr: e.attr, coef: (e.coef * scaleOf(e.attr)) / per })) } : {}),
+    };
+  }
+  // нагрузка узла (Б1ж): режим — в картах, у оборудования стадии, где он есть; % на единицу режима → доли 1/10 000
+  // на единицу движка
+  for (const e of Object.values(equipment)) {
+    for (const pt of e.parts) {
+      if (!pt.stress) continue;
+      const at = `оборудование ${e.id}, узел ${pt.id}`;
+      const unit = paramUnits[pt.stress.param];
+      need(unit, `${at}: режима ${pt.stress.param} нет ни в одной карте`);
+      need(
+        Object.values(recipes).some(r => r.stages.some(st => st.equipment.includes(e.id) && st.params.some(x => x.id === pt.stress!.param))),
+        `${at}: режим ${pt.stress.param} — не у стадии на этом оборудовании`,
+      );
+      pt.stress = { param: pt.stress.param, coef: Math.round((pt.stress.coef * 100) / PARAM_SCALE[unit ?? 'rpm']) };
+    }
   }
   // машины линии: секунды и доли
   const machines: Record<string, Machine> = {};
@@ -567,6 +594,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     need(raw.roles[m.crew.role], `машина ${m.id}: нет роли ${m.crew.role}`);
     if (m.micro) need(m.micro.duration < m.micro.every, `машина ${m.id}: микроостановка дольше промежутка между ними`);
     if (m.cleaning) need(m.cleaning.minor <= m.cleaning.major, `машина ${m.id}: малая уборка дольше генеральной`);
+    need(!m.fast || m.item === 'blister', `машина ${m.id}: уставка скорости — у блистерной машины`);
     machines[m.id] = {
       id: m.id,
       name: m.name,
@@ -577,6 +605,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       crew: m.crew,
       ...(m.micro ? { micro: { every: sec(m.micro.every), duration: sec(m.micro.duration) } } : {}),
       reject: share(m.reject),
+      ...(m.fast ? { fast: { micro: share(m.fast.micro * 100), reject: share(m.fast.reject * 100) } } : {}),
       changeover: sec(m.changeover),
       ...(m.cleaning ? { cleaning: { minor: sec(m.cleaning.minor), major: sec(m.cleaning.major) } } : {}),
       kw: watt(m.kw),
@@ -611,6 +640,13 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     // цена ЖНВЛП — не выше зарегистрированной предельной (61-ФЗ, ст. 61, ч. 8)
     if (raw.products[k.product]?.jnvlp) need(k.regPrice !== undefined, `${where}: продукт в перечне ЖНВЛП — нужна зарегистрированная цена`);
     if (k.regPrice !== undefined) need(k.price <= k.regPrice, `${where}: цена ${k.price} ₽ выше зарегистрированной ${k.regPrice} ₽`);
+    // скорость блистерной (Б1ж): цель в диапазоне, шагом от цели — до обоих краёв, не быстрее паспорта блистерной машины
+    const sp = k.speed;
+    need(sp.range[0] <= sp.target && sp.target <= sp.range[1], `${where}: цель скорости вне диапазона`);
+    need((sp.target - sp.range[0]) % sp.step === 0 && (sp.range[1] - sp.target) % sp.step === 0, `${where}: от цели скорости шагом ${sp.step} не дойти до краёв диапазона`);
+    for (const m of Object.values(raw.machines)) {
+      if (m.item === 'blister') need(m.fast && sp.range[1] <= m.nominal, `${where}: скорость ${sp.range[1]} — быстрее паспорта машины ${m.id} или у неё нет уставки`);
+    }
     skus[k.id] = {
       ...k,
       doc: headDoc(k.doc, where),

@@ -19,6 +19,7 @@ import { changedOver, defect, lineDay, NO_TIMES } from './lean';
 import { coversOn } from './leave';
 import { blocked, consume, failPart, partsOf, partType, pending, untilFail, wearAt } from './maint';
 import { deviate, leaveRoom, returnTask, roomFor } from './mes';
+import { fastFactor, machineSpeed, speedOf } from './modes';
 import { type PlantPlan, planOf, type Point } from './plant';
 import { expo, roll } from './random';
 import { shiftEnd } from './staff';
@@ -65,8 +66,16 @@ export interface Geo {
   sku: Sku;
   /** таблеток в штуке машины: блистер или пачка */
   unit: number[];
-  /** номинал, долей в секунду */
+  /** паспорт, долей в секунду: от него OEE считает потерю скорости (Б1ж) */
   nominal: number[];
+  /** ход по уставке, долей в секунду: у блистерной — скорость задания, у прочих — паспорт (Б1ж) */
+  speed: number[];
+  /**
+   * микроостановки: ход по цели инструкции, долей в секунду, — от него средний проход между ними; во сколько чаще
+   * на штуку по скорости задания, доли 1/10 000 на 10 000 (Б1ж)
+   */
+  base: number[];
+  stops: number[];
   /** ёмкость накопителя после машины, долей */
   cap: number[];
   /** брак блистерной и картонажной, доли 1/10 000 */
@@ -78,17 +87,24 @@ export interface Geo {
   at: Point;
 }
 
-export function geo(db: ContentDb, s: PlantState, line: Line, skuId: Id): Geo {
+export function geo(db: ContentDb, s: PlantState, line: Line, job: Pick<PackJob, 'sku' | 'speed'>): Geo {
   const plan = planOf(db, s.plant);
   const def = plan.plant.lines.find(l => l.id === line.id)!;
-  const sku = db.skus[skuId];
-  const unit = def.machines.map(m => (db.machines[m.type].item === 'blister' ? sku.perBlister : sku.perBlister * sku.blisters));
+  const sku = db.skus[job.sku];
+  const types = def.machines.map(m => db.machines[m.type]);
+  const unit = types.map(m => (m.item === 'blister' ? sku.perBlister : sku.perBlister * sku.blisters));
+  const speed = def.machines.map(m => machineSpeed(db, s, m.type, job));
+  // уставка скорости (Б1ж): быстрее цели инструкции — микроостановок на штуку и брака камеры больше
+  const fast = (i: number, k: 'micro' | 'reject') => (types[i].fast ? fastFactor(types[i].fast![k], speed[i], sku.speed.target) : P_ONE);
   return {
     sku,
     unit,
-    nominal: def.machines.map((m, i) => db.machines[m.type].nominal * unit[i]),
+    nominal: types.map((m, i) => m.nominal * unit[i]),
+    speed: speed.map((v, i) => v * unit[i]),
+    base: types.map((m, i) => (m.fast ? sku.speed.target : m.nominal) * unit[i]),
+    stops: types.map((_, i) => fast(i, 'micro')),
     cap: def.machines.slice(0, -1).map((m, i) => m.buffer! * unit[i] * SIXTY),
-    rej: [db.machines[def.machines[0].type].reject, db.machines[def.machines[1].type].reject],
+    rej: [Math.floor((types[0].reject * fast(0, 'reject')) / P_ONE), Math.floor((types[1].reject * fast(1, 'reject')) / P_ONE)],
     perCase: sku.case.per,
     perPallet: sku.pallet.cases,
     out: def.out,
@@ -219,7 +235,7 @@ function advance(db: ContentDb, s: PlantState, line: Line, to: number) {
     line.t = to;
     return;
   }
-  const g = geo(db, s, line, job.sku);
+  const g = geo(db, s, line, job);
   // сутки линии (3в): отрезок — в сутки, в которые он начался; полночь он не переходит — в 00:00 линии досчитаны часом
   const day = lineDay(s, line.id, m.length, line.t);
   const load = (mc: LineMachine, i: number) => {
@@ -276,7 +292,7 @@ function project(db: ContentDb, s: PlantState, line: Line, job: PackJob, g: Geo,
 export function flowAt(db: ContentDb, s: PlantState, line: Line, t: number): number[] {
   const job = line.batch ? s.batches[line.batch]?.pack : undefined;
   if (t <= line.t || !job || job.state !== 'running') return line.machines.map(mc => mc.pos);
-  return project(db, s, line, job, geo(db, s, line, job.sku), t - line.t);
+  return project(db, s, line, job, geo(db, s, line, job), t - line.t);
 }
 
 /** Коды выбракованных пачек и уложенные ящики — до текущих позиций. Время ящика — когда укладка дошла до его последней пачки. */
@@ -353,7 +369,7 @@ function solve(db: ContentDb, s: PlantState, line: Line) {
     }
     return;
   }
-  const g = geo(db, s, line, job.sku);
+  const g = geo(db, s, line, job);
   const plan = planOf(db, s.plant);
   const n = m.length;
   m.forEach((mc, i) => {
@@ -369,7 +385,7 @@ function solve(db: ContentDb, s: PlantState, line: Line) {
       mc.rate = 0;
     } else {
       mc.state = 'run';
-      mc.rate = g.nominal[i];
+      mc.rate = g.speed[i];
     }
   });
   if (m[0].pos >= job.tablets * SIXTY) m[0].rate = 0;
@@ -378,7 +394,7 @@ function solve(db: ContentDb, s: PlantState, line: Line) {
   for (let i = n - 2; i >= 0; i--) if (m[i].pos - m[i + 1].pos >= g.cap[i]) m[i].rate = Math.min(m[i].rate, m[i + 1].rate);
   m.forEach((mc, i) => {
     if (mc.state !== 'run') return;
-    mc.state = mc.rate === g.nominal[i] ? 'run' : mc.rate > 0 ? 'slow' : 'wait';
+    mc.state = mc.rate === g.speed[i] ? 'run' : mc.rate > 0 ? 'slow' : 'wait';
   });
 }
 
@@ -387,7 +403,7 @@ function nextBoundary(db: ContentDb, s: PlantState, line: Line): number | undefi
   const b = line.batch ? s.batches[line.batch] : undefined;
   const job = b?.pack;
   if (!job || job.state !== 'running') return undefined;
-  const g = geo(db, s, line, job.sku);
+  const g = geo(db, s, line, job);
   const plan = planOf(db, s.plant);
   const m = line.machines;
   const n = m.length;
@@ -428,7 +444,8 @@ function drawNext(db: ContentDb, s: PlantState, mc: LineMachine, g: Geo, i: numb
     const ty = partType(db, pt);
     if (ty.micro) factor += Math.floor(((ty.micro - P_ONE) * wearAt(ty, pt.done + itemsAt(g, i, mc.pos) - itemsAt(g, i, pt.mark))) / P_ONE);
   }
-  mc.next = mc.pos + roll(s, `line/${mc.id}`, r => expo(r, Math.floor((micro.every * g.nominal[i] * P_ONE) / factor)));
+  factor = Math.max(1, Math.floor((factor * g.stops[i]) / P_ONE));
+  mc.next = mc.pos + roll(s, `line/${mc.id}`, r => expo(r, Math.floor((micro.every * g.base[i] * P_ONE) / factor)));
 }
 
 /** Наработка узлов машины — до её позиции: запас до отказа расходуется по таблице; учтено до этой позиции. */
@@ -477,10 +494,10 @@ export function lineUpdate(db: ContentDb, s: PlantState, line: Line, notices: No
   line.machines.forEach((mc, i) => {
     if (!mc.broken || blocked(s, mc.id)) return;
     delete mc.broken;
-    if (running) armParts(db, s, mc, geo(db, s, line, b.pack!.sku), i);
+    if (running) armParts(db, s, mc, geo(db, s, line, b.pack!), i);
   });
   if (running) {
-    const g = geo(db, s, line, b!.pack!.sku);
+    const g = geo(db, s, line, b!.pack!);
     line.machines.forEach((mc, i) => {
       const micro = db.machines[mc.type].micro;
       // отказ узла: наработка до этой позиции, авария до конца ремонта
@@ -517,7 +534,7 @@ export function lineUpdate(db: ContentDb, s: PlantState, line: Line, notices: No
 export function lineRedraw(db: ContentDb, s: PlantState, line: Line, redraw: (pt: Part) => number, notices: Notice[]) {
   lineUpdate(db, s, line, notices);
   const b = line.batch ? s.batches[line.batch] : undefined;
-  const g = b?.pack?.state === 'running' ? geo(db, s, line, b.pack.sku) : undefined;
+  const g = b?.pack?.state === 'running' ? geo(db, s, line, b.pack) : undefined;
   line.machines.forEach((mc, i) => {
     if (g) syncParts(db, s, mc, g, i);
     for (const pt of partsOf(s, mc.id)) if (pt.state === 'ok') pt.budget = redraw(pt);
@@ -552,7 +569,7 @@ export function lineStep(db: ContentDb, s: PlantState, notices: Notice[]) {
   // задания на упаковку линии: сколько годных пачек ждать из всех таблеток при браке камер — для сменного задания (1ж)
   for (const b of Object.values(s.batches)) {
     const job = b.pack;
-    if (b.status === 'packing' && job && job.expect === undefined && s.lines[job.line]) job.expect = goodCartonsAt(geo(db, s, s.lines[job.line], job.sku), job.tablets * SIXTY);
+    if (b.status === 'packing' && job && job.expect === undefined && s.lines[job.line]) job.expect = goodCartonsAt(geo(db, s, s.lines[job.line], job), job.tablets * SIXTY);
   }
   for (const line of Object.values(s.lines)) {
     if (!line.batch) {
@@ -561,6 +578,10 @@ export function lineStep(db: ContentDb, s: PlantState, notices: Notice[]) {
       lineUpdate(db, s, line, notices);
       line.batch = b.id;
       b.pack!.taken = s.t;
+      // скорость блистерной (Б1ж): задание идёт с уставкой инструкции, какой она была, когда линия его взяла; годных пачек
+      // ждать — по ней
+      b.pack!.speed = speedOf(db, s, b.pack!.sku);
+      b.pack!.expect = goodCartonsAt(geo(db, s, line, b.pack!), b.pack!.tablets * SIXTY);
       for (const mc of line.machines) mc.times = { ...NO_TIMES };
       lineUpdate(db, s, line, notices);
     }
@@ -568,7 +589,7 @@ export function lineStep(db: ContentDb, s: PlantState, notices: Notice[]) {
     const job = b.pack!;
     if (job.state === 'running') continue;
     const sku = db.skus[job.sku];
-    const g = geo(db, s, line, job.sku);
+    const g = geo(db, s, line, job);
     // помещение — в уборку, если оно не чисто для продукта задания (Б1е): переналадка идёт вместе с уборкой, очистка
     // линии и балк — после неё
     const ready = roomReady(db, s, line, b);
@@ -848,7 +869,7 @@ export function usedByCount(db: ContentDb, s: PlantState, line: Line, t: number)
   const out = new Map<Id, number>();
   const job = jobOf(s, line);
   if (!job || job.state !== 'running') return out;
-  const g = geo(db, s, line, job.sku);
+  const g = geo(db, s, line, job);
   const sku = g.sku;
   const pos = flowAt(db, s, line, t);
   const blisters = blistersAt(g, pos[0]) + sku.waste.blisters;

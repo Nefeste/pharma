@@ -22,6 +22,7 @@ import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from '.
 import { maintainCommand, maintDone, maintStep, newParts, spareArrives } from './maint';
 import { marketDone, marketHour, marketStep, newCustomers, rznPublished, seedFg } from './market';
 import { BATCH_HOUR, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
+import { setpointCommand } from './modes';
 import { auditDone, partnersDone, partnersHour, seedContracts, seedPairs, specPairs } from './partners';
 import { coldOf } from './places';
 import { planHour } from './planner';
@@ -92,6 +93,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     pairs: {},
     contracts: {},
     policy: newPolicy(db, sc.id),
+    setpoints: {},
     maintLog: [],
     losses: [],
     shiftTasks: [],
@@ -288,6 +290,12 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       const notices: Notice[] = [];
       alsoCommand(db, s, cmd, notices);
       settle(db, s);
+      return notices;
+    }
+    case 'setpoint': {
+      // уставка (Б1ж): её возьмёт ближайшая начатая стадия или задание — раздавать нечего
+      const notices: Notice[] = [];
+      setpointCommand(db, s, cmd, notices);
       return notices;
     }
   }

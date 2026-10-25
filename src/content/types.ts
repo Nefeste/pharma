@@ -798,6 +798,11 @@ export interface PartType {
   scatter?: Partial<Record<Attr, number>>;
   /** частота микроостановок машины при износе 100 %, доли 1/10 000 частоты нового узла */
   micro?: number;
+  /**
+   * нагрузка (Б1ж): уставка режима `param` стадии выше цели карты — наработка узла на таблетку больше на `coef` долей
+   * 1/10 000 за единицу движка режима сверх цели
+   */
+  stress?: { param: string; coef: number };
 }
 
 /**
@@ -847,10 +852,11 @@ export const PARAM_SCALE: Record<ParamUnit, number> = { rpm: 1, min: 60, C: 10, 
 export interface StageParam {
   id: string;
   unit: ParamUnit;
-  /** цель, допустимый диапазон, разброс от серии к серии — в единицах движка */
+  /** цель, допустимый диапазон, разброс от серии к серии и шаг уставки (Б1ж) — в единицах движка */
   target: number;
   range: [number, number];
   sd: number;
+  step: number;
 }
 
 /** Межоперационный контроль стадии: методика, как часто (с; нет — раз в конце), пределы в единицах движка. */
@@ -912,6 +918,8 @@ export interface Cause {
   name: Text;
   driver: CauseDriver;
   effects: { attr: Attr; coef: number }[];
+  /** разброс МОК по ходу стадии (Б1ж): на единицу отхода выше цели — столько единиц движка свойства; ниже цели — нет */
+  scatter?: { attr: Attr; coef: number }[];
   source?: string[];
   review?: Review;
 }
@@ -997,7 +1005,13 @@ export interface Machine {
   size: [number, number, number];
   model: ModelPart[];
   item: 'blister' | 'carton';
+  /** паспортная скорость, штук в минуту: от неё OEE считает потерю скорости; у машины без уставки — и ход (Б1ж) */
   nominal: number;
+  /**
+   * уставка скорости по инструкции по упаковке (Б1ж) — у машины, которая работает с блистерами: на каждую долю быстрее
+   * цели микроостановок на штуку и брака камеры больше во столько раз, медленнее — меньше; доли 1/10 000 на долю
+   */
+  fast?: { micro: number; reject: number };
   crew: { role: Id; n: number };
   micro?: { every: number; duration: number };
   reject: number;
@@ -1035,6 +1049,8 @@ export interface Sku {
   pallet: { cases: number };
   /** на наладку: блистеров и пачек; пачек в запас на заминки картонажной */
   waste: { blisters: number; cartons: number; jams: number };
+  /** скорость блистерной машины по инструкции (Б1ж), блистеров в минуту: цель, диапазон и шаг уставки */
+  speed: { target: number; range: [number, number]; step: number };
   /** цена завода за пачку и зарегистрированная предельная цена, копейки без НДС */
   price: number;
   regPrice?: number;

@@ -719,6 +719,11 @@ const part = z.strictObject({
   scatter: z.partialRecord(attr, z.number().min(0)).optional(),
   /** во сколько раз чаще микроостановки машины при износе 100 % (у машины линии) */
   micro: z.number().min(1).optional(),
+  /**
+   * нагрузка (Б1ж, у оборудования стадии): уставка режима `param` выше цели карты — на каждую единицу режима сверх цели
+   * наработка узла на таблетку больше на столько %
+   */
+  stress: z.strictObject({ param: z.string().regex(/^[a-z][a-zA-Z0-9]*$/), coef: z.number().positive() }).optional(),
 });
 
 /**
@@ -805,7 +810,7 @@ export const recipe = z
             unitsPerHour: z.number().positive().optional(),
             spread: percent.default(0),
           }),
-          /** режимы: цель, допустимый диапазон и разброс от серии к серии, в единицах режима */
+          /** режимы: цель, допустимый диапазон, разброс от серии к серии и шаг уставки (Б1ж), в единицах режима */
           params: z
             .array(
               z.strictObject({
@@ -814,6 +819,7 @@ export const recipe = z
                 target: z.number(),
                 range: z.tuple([z.number(), z.number()]),
                 sd: z.number().min(0),
+                step: z.number().positive(),
               }),
             )
             .default([]),
@@ -863,6 +869,8 @@ export const cause = z
     ]),
     /** вклад: показатель серии и коэффициент — единиц показателя на единицу отхода */
     effects: z.array(z.strictObject({ attr, coef: z.number() })).min(1),
+    /** разброс МОК по ходу стадии (Б1ж): единиц показателя на единицу отхода режима выше цели; ниже цели — нет */
+    scatter: z.array(z.strictObject({ attr, coef: z.number().positive() })).optional(),
     source: sources.optional(),
     review: review.optional(),
   })
@@ -881,9 +889,14 @@ export const machine = z
     size: size3,
     /** модель кодом из частей (2в) */
     model,
-    /** скорость — блистеров или пачек в минуту */
+    /** скорость — блистеров или пачек в минуту; паспортная — от неё OEE считает потерю скорости (Б1ж) */
     item: z.enum(['blister', 'carton']),
     nominal: z.number().int().positive(),
+    /**
+     * уставка скорости по инструкции по упаковке (Б1ж): на каждый % быстрее цели микроостановок на штуку и брака камеры
+     * больше на столько %, медленнее — меньше
+     */
+    fast: z.strictObject({ micro: z.number().min(0), reject: z.number().min(0) }).optional(),
     crew: z.strictObject({ role: id, n: z.number().int().min(1).max(5) }),
     /** микроостановки: в среднем раз в столько минут работы на номинале и столько минут длятся */
     micro: z.strictObject({ every: z.number().positive(), duration: z.number().positive() }).optional(),
@@ -932,6 +945,8 @@ export const sku = z.strictObject({
   pallet: z.strictObject({ cases: z.number().int().positive() }),
   /** на наладку в начале серии: блистеров и пачек — в брак; пачек в запас на заминки картонажной */
   waste: z.strictObject({ blisters: z.number().int().min(0), cartons: z.number().int().min(0), jams: z.number().int().min(0).default(0) }),
+  /** скорость блистерной машины (Б1ж), блистеров в минуту: цель, диапазон и шаг уставки */
+  speed: z.strictObject({ target: z.number().int().positive(), range: z.tuple([z.number().int().positive(), z.number().int().positive()]), step: z.number().int().positive() }),
   /** цена завода за пачку и зарегистрированная предельная цена (у ЖНВЛП), ₽ без НДС */
   price: z.number().positive(),
   regPrice: z.number().positive().optional(),

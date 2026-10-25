@@ -247,7 +247,7 @@ function taskRow(db: ContentDb, s: PlantState, ix: Index, t: Task): number[] {
 function lineRow(db: ContentDb, s: PlantState, ix: Index, i: number, line: Line): number[] {
   const b = line.batch ? s.batches[line.batch] : undefined;
   const job = b?.pack;
-  const g = job ? geo(db, s, line, job.sku) : undefined;
+  const g = job ? geo(db, s, line, job) : undefined;
   const pos = flowAt(db, s, line, s.t);
   const busy = (kind: Task['kind']) => Object.values(s.tasks).some(t => t.kind === kind && t.line === line.id && t.state === 'busy');
   const flags = (line.clear ? LINE_FLAG.clear : 0) | (busy('changeover') ? LINE_FLAG.changeover : 0) | (busy('clearance') ? LINE_FLAG.clearance : 0);

@@ -5,20 +5,23 @@
 // в карточке помещения и оборудования — во время стадии цель и диапазон по карте, после — факт из досье.
 import type { ContentDb, Id, ParamUnit } from '../content/types';
 import { batchNo } from '../engine/batchno';
-import { DAY } from '../engine/core/calendar';
+import { DAY, momentOf } from '../engine/core/calendar';
+import { inForce } from '../engine/docs';
+import { setpointOf } from '../engine/modes';
 import { assessBlock, devsOf, type LinkedTest, linkedTests, openDevs } from '../engine/qa';
 import { unitsOfLot } from '../engine/stock';
 import type { Batch, BatchStatus, Deviation, LotStatus, PlantState, Refusal } from '../engine/types';
 
 const num = (id: string) => Number(id.slice(1));
 
-/** Режим стадии: значение по досье, цель и диапазон по карте — в единицах движка. */
+/** Режим стадии: значение и уставка по досье (Б1ж; до неё — цель), цель и диапазон по карте — в единицах движка. */
 export interface ParamFact {
   id: string;
   unit: ParamUnit;
   value: number;
   target: number;
   range: [number, number];
+  sp: number;
 }
 
 /** Оценка отклонения: решение, кто решил — игрок или коллега качества, когда; работа специалиста ООК кончилась. */
@@ -96,7 +99,7 @@ export function devCard(db: ContentDb, s: PlantState, n: number): DevCard | unde
   if (d.stage) out.stage = d.stage;
   if (rec) out.at = { from: rec.start, to: rec.end };
   const p = d.param && st ? st.params.find(x => x.id === d.param) : undefined;
-  if (p && rec && rec.params[p.id] !== undefined) out.param = { id: p.id, unit: p.unit, value: rec.params[p.id], target: p.target, range: [p.range[0], p.range[1]] };
+  if (p && rec && rec.params[p.id] !== undefined) out.param = { id: p.id, unit: p.unit, value: rec.params[p.id], target: p.target, range: [p.range[0], p.range[1]], sp: rec.sp?.[p.id] ?? p.target };
   if (d.kind === 'ipc' && d.test) {
     const line = st?.ipc.find(x => x.test === d.test);
     const pts = rec ? rec.ipc.filter(x => x.test === d.test) : [];
@@ -162,8 +165,9 @@ export function releaseOf(s: PlantState, b: Batch): ReleaseView {
 }
 
 /**
- * Режимы стадии в карточке помещения и оборудования (Б1г): идёт стадия — цель и диапазон по карте; кончилась — факт из
- * досье последней стадии в этом помещении, вне диапазона — с номером отклонения. Ручек нет: режимы задаёт карта.
+ * Режимы стадии в карточке помещения и оборудования (Б1г): идёт стадия — цель и диапазон по карте и уставка, с которой
+ * она началась (Б1ж); кончилась — уставка и факт из досье последней стадии в этом помещении, вне диапазона — с номером
+ * отклонения. Записи до Б1ж уставок не знают — цель; факта скорости ротора у них нет.
  */
 export interface Regimes {
   batch: string;
@@ -171,7 +175,32 @@ export interface Regimes {
   stage: string;
   now: boolean;
   end?: number;
-  list: { id: string; unit: ParamUnit; target: number; range: [number, number]; value?: number; dev?: number }[];
+  list: { id: string; unit: ParamUnit; target: number; range: [number, number]; sp: number; value?: number; dev?: number }[];
+}
+
+/**
+ * Уставки стадии карты сейчас (Б1ж): с ними начнётся её следующая стадия; редакция в силе, её шаг и диапазон — для «−»
+ * и «+» на посту технолога.
+ */
+export interface Knobs {
+  recipe: Id;
+  stage: string;
+  list: { id: string; unit: ParamUnit; target: number; set: number; step: number; range: [number, number] }[];
+}
+
+/**
+ * Уставки в карточке помещения и оборудования (Б1ж): у каждой карты в силе — стадии с режимами, которые идут
+ * в помещении этого типа, — и до первой серии в нём, и у каждого продукта.
+ */
+export function knobsAt(db: ContentDb, s: PlantState, room: string): Knobs[] {
+  const type = s.rooms[room]?.type;
+  const day = momentOf(s.start, s.t).day;
+  const ids = [...new Set(Object.keys(db.recipes).map(id => inForce(db, 'recipes', id, day)))];
+  return ids.flatMap(id =>
+    db.recipes[id].stages
+      .filter(st => st.room === type && st.params.length > 0)
+      .map(st => ({ recipe: id, stage: st.id, list: st.params.map(p => ({ id: p.id, unit: p.unit, target: p.target, set: setpointOf(db, s, id, st.id, p), step: p.step, range: [p.range[0], p.range[1]] as [number, number] })) })),
+  );
 }
 
 export function regimesAt(db: ContentDb, s: PlantState, room: string): Regimes | undefined {
@@ -180,7 +209,13 @@ export function regimesAt(db: ContentDb, s: PlantState, room: string): Regimes |
   if (busy) {
     const st = db.recipes[busy.recipe].stages[busy.stage];
     if (st && st.params.length > 0 && !busy.records.some(x => x.stage === st.id)) {
-      return { batch: batchNo(busy.code), recipe: busy.recipe, stage: st.id, now: true, list: st.params.map(p => ({ id: p.id, unit: p.unit, target: p.target, range: [p.range[0], p.range[1]] })) };
+      return {
+        batch: batchNo(busy.code),
+        recipe: busy.recipe,
+        stage: st.id,
+        now: true,
+        list: st.params.map(p => ({ id: p.id, unit: p.unit, target: p.target, range: [p.range[0], p.range[1]], sp: busy.sp?.[p.id] ?? p.target })),
+      };
     }
   }
   // последняя записанная стадия в помещении — с режимами
@@ -204,7 +239,8 @@ export function regimesAt(db: ContentDb, s: PlantState, room: string): Regimes |
     end: rec.end,
     list: st.params.map(p => {
       const dev = devs.find(d => d.param === p.id);
-      return { id: p.id, unit: p.unit, target: p.target, range: [p.range[0], p.range[1]], ...(rec.params[p.id] !== undefined ? { value: rec.params[p.id] } : {}), ...(dev ? { dev: num(dev.id) } : {}) };
+      return { id: p.id, unit: p.unit, target: p.target, range: [p.range[0], p.range[1]], sp: rec.sp?.[p.id] ?? p.target, ...(rec.params[p.id] !== undefined ? { value: rec.params[p.id] } : {}), ...(dev ? { dev: num(dev.id) } : {}) };
     }),
+
   };
 }

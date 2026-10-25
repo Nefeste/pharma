@@ -2,7 +2,7 @@
 // автопауз (Б2а), стены, склад, планёрка, касса с изменением за сутки, извещение — на котором мир встал, помечено, и щелчок
 // по нему ведёт на место; панель склада и карточка выбранной вещи (docs/specs/2026-10-panels.md, 3б); планёрка и панель
 // кассы (3в); лаборатория (3г); расписание (3д); экран «Кем вы будете» и кнопка «Место» (3е); доска расследования (часть
-// 4б) — кнопка со счётом идущих; полоса отладки; состояние загрузки и ошибки. Панели только читают хранилище и зовут
+// 4б) — кнопка со счётом идущих; журнал решений (Б5а); полоса отладки; состояние загрузки и ошибки. Панели только читают хранилище и зовут
 // действия игры. Полоса и каждая панель — в своей ограде (Guard.tsx): ошибка одной панели остаётся на её месте.
 import { useLayoutEffect, useRef } from 'react';
 import { momentOf } from '../engine/core/calendar';
@@ -16,6 +16,7 @@ import { Gantt } from './Gantt';
 import { Guard } from './Guard';
 import { Dossier } from './Dossier';
 import { Inv } from './Inv';
+import { Journal } from './Journal';
 import { Lab } from './Lab';
 import { Morning } from './Morning';
 import { Now, rowTitle } from './Now';
@@ -109,6 +110,9 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
             <button type="button" className={s.now.open ? 'on' : ''} onClick={() => actions.toggleNow()} title={T.now.hint} data-test="now-open">
               {T.now.button}
             </button>
+            <button type="button" className={s.journal.open ? 'on' : ''} onClick={() => actions.toggleJournal()} title={T.journal.hint} data-test="journal-open">
+              {T.journal.button}
+            </button>
             <button type="button" className={s.gantt.open ? 'on' : ''} onClick={() => actions.toggleGantt()} title={T.gantt.hint} data-test="gantt-open">
               {T.gantt.button}
             </button>
@@ -164,6 +168,10 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
       <Guard name={T.now.button} close={s.now.open ? actions.toggleNow : undefined}>
         {s.now.open && <Now hud={s} actions={actions} />}
       </Guard>
+      <Guard name={T.journal.button} close={s.journal.open ? actions.toggleJournal : undefined}>
+        {/* «Почему?» открывает журнал на новой записи — раскрыта она, а не та, что раскрывали раньше */}
+        {s.journal.open && <Journal key={s.journal.focus ?? 'all'} hud={s} actions={actions} />}
+      </Guard>
       <Guard name={T.morning.button} close={s.morning.open ? () => actions.closeMorning(false) : undefined}>
         {s.morning.open && s.morning.day !== undefined && <Morning v={s.morning.view} day={s.morning.day} start={s.start} plant={plant} pause={!s.pauses.off.includes('morning')} actions={actions} hud={s} scenario={db?.scenarios[scenario]} />}
       </Guard>
@@ -181,7 +189,7 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
       </Guard>
       <Guard name={T.card.title} close={s.selected ? () => actions.select(undefined) : undefined}>
         {s.selected && s.card && (
-          <Card v={s.card} start={s.start} plant={plant} actions={actions} hud={s} beside={s.stock.open || s.cash.open || s.lab.open || s.now.open} watch={watchFor(s.selected, s.card.card, s.now.view?.rows)} />
+          <Card v={s.card} start={s.start} plant={plant} actions={actions} hud={s} beside={s.stock.open || s.cash.open || s.lab.open || s.now.open || s.journal.open} watch={watchFor(s.selected, s.card.card, s.now.view?.rows)} />
         )}
       </Guard>
       {/* досье серии (Б1д) — поверх остальных окон, и карточки тоже: его открывают из неё */}

@@ -9,20 +9,21 @@ import { schedule } from './core/agenda';
 import { DAY, HOUR, isWorkday, MIN, momentOf, workdayOnOrAfter } from './core/calendar';
 import { part, post, vatRate } from './cash';
 import { inForce } from './docs';
+import { noteCmd } from './journal';
 import { packNeeds } from './mes';
 import { approved, pairsFor, priceLine } from './partners';
 import { aheadMilli, casesOf, positionOf } from './planner';
 import { planOf } from './plant';
 import { roll } from './random';
 import { containersByLot, containersFor, free, nextId } from './stock';
-import type { Command, Notice, PackJob, PlantState, Po, PoLine } from './types';
+import type { Command, Notice, PackJob, PlantState, Po, PoLine, PoWhy } from './types';
 import { calOf } from './workdays';
 
 /** Окно прихода фур: рабочий день, с 09:00, плюс до шести часов. */
 const ARRIVE_FROM = 9 * HOUR;
 const ARRIVE_SPREAD = 6 * HOUR;
 
-export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'po' }>, notices: Notice[]): Po | undefined {
+export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'po' }>, notices: Notice[], why?: PoWhy[]): Po | undefined {
   const sup = db.suppliers[cmd.supplier];
   if (!sup) {
     notices.push({ kind: 'refused', cmd: 'po', why: 'noSupplier', detail: cmd.supplier });
@@ -68,6 +69,8 @@ export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { ki
   post(s, -po.prepaid!, 'prepay', po.id);
   schedule(s.agenda, eta, { kind: 'truck', po: po.id });
   notices.push({ kind: 'ordered', po: po.id, eta });
+  // журнал решений (Б5а): игрок или начальник отдела снабжения — с положением материалов
+  noteCmd(s, cmd, { kind: 'po', po: po.id, supplier: po.supplier, prepaid: po.prepaid ?? 0, ...(why ? { why } : {}) });
   return po;
 }
 
@@ -147,6 +150,8 @@ export function supplyDay(db: ContentDb, s: PlantState, notices: Notice[]) {
   const byLot = containersByLot(s);
   const per = planUse(db, s, 1000, byLot);
   const lines = new Map<Id, PoLine[]>();
+  // причина каждой строки — для журнала решений (Б5а)
+  const whys = new Map<Id, PoWhy[]>();
   // паллет под количество материала — по его таре: у строк одного заказа тара разная
   const palletsOf = (m: Id, qty: number) => {
     const k = db.containers[db.materials[m].container];
@@ -165,9 +170,13 @@ export function supplyDay(db: ContentDb, s: PlantState, notices: Notice[]) {
     const c = db.containers[db.materials[material].container];
     const pallet = c.perPallet * c.capacity;
     const taken = (lines.get(sup.id) ?? []).reduce((n, l) => n + palletsOf(l.material, l.qty), 0);
-    const qty = Math.min(Math.max(sup.items[material].moq, point + use(every) - have), (room - taken) * pallet);
-    if (qty < sup.items[material].moq) continue;
+    const moq = sup.items[material].moq;
+    const want = Math.max(moq, point + use(every) - have);
+    const qty = Math.min(want, (room - taken) * pallet);
+    if (qty < moq) continue;
     lines.set(sup.id, [...(lines.get(sup.id) ?? []), { material, qty, maker: pair.maker }]);
+    const why: PoWhy = { material, maker: pair.maker, have, per: per.get(material)!, point, lead: sup.lead[1], qc, safety, every, moq, want, ...(qty < want ? { cut: true as const } : {}) };
+    whys.set(sup.id, [...(whys.get(sup.id) ?? []), why]);
   }
-  for (const [supplier, l] of lines) placePo(db, s, { kind: 'po', supplier, lines: l, by: 'head:supply' }, notices);
+  for (const [supplier, l] of lines) placePo(db, s, { kind: 'po', supplier, lines: l, by: 'head:supply' }, notices, whys.get(supplier));
 }

@@ -12,6 +12,7 @@ import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import type { DossierView } from '../sim/dossier';
 import type { InvView } from '../sim/inv';
+import type { JournalView } from '../sim/journal';
 import type { ChartView, LabView } from '../sim/lab';
 import type { BatchLabel, GanttView, GhostView } from '../sim/plan';
 import type { NowRow, NowView } from '../sim/now';
@@ -69,6 +70,11 @@ export interface Hud {
   lab: { open: boolean; tab: 'queue' | 'chart'; view?: LabView; chart?: ChartView };
   /** «Сейчас» (Б1б): открыта ли панель; вид — и при закрытой, пока открыта карточка или игрок смотрит работу */
   now: { open: boolean; view?: NowView };
+  /**
+   * журнал решений (Б5а): открыт ли; отбор по посту и автору; страница; запись, на которой открыли («Почему?»), — она
+   * раскрыта; вид
+   */
+  journal: { open: boolean; seat?: SeatId; who?: 'heads' | 'player'; page: number; focus?: number; view?: JournalView };
   /** «Смотреть»: какую работу — строка «Сейчас» в мгновение, когда начали смотреть */
   watch?: NowRow;
   /**
@@ -168,6 +174,7 @@ export const initial: Hud = {
   cash: { open: false, page: 0 },
   lab: { open: false, tab: 'queue' },
   now: { open: false },
+  journal: { open: false, page: 0 },
   gantt: { open: false, days: 3, draft: [], urgent: [] },
   plan: NO_RUN,
   inv: { open: false },
@@ -214,6 +221,13 @@ export interface Actions {
   toggleLab(): void;
   /** «Сейчас»: открыть или закрыть (N) */
   toggleNow(): void;
+  /**
+   * журнал решений (Б5а): открыть или закрыть (J); открыть на записи — «Почему?» в карточке и на планёрке; отбор по посту и
+   * автору, страница
+   */
+  toggleJournal(): void;
+  openJournal(focus?: number): void;
+  setJournal(patch: { seat?: SeatId | null; who?: 'heads' | 'player' | null; page?: number }): void;
   /** «Смотреть» работу по ключу строки «Сейчас»: камера к месту, ×1, пока работа не кончится; затем — прежняя скорость */
   watch(key: string): void;
   unwatch(): void;

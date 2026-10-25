@@ -9,6 +9,7 @@
 import type { ContentDb, Dept, Id, Labor } from '../content/types';
 import { addMonths, addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf } from './core/calendar';
 import { hiringPay, salaryOf, settle } from './cash';
+import { DEPT_HEAD, note, noteCmd } from './journal';
 import { deputyGone, dropAfter } from './leave';
 import { planOf } from './plant';
 import { normal, roll, spread } from './random';
@@ -16,8 +17,11 @@ import { playerHolds } from './seats';
 import { graphSpan, spanOn } from './shifts';
 import { dropTask } from './tasks';
 import { trainNow } from './train';
-import type { Command, Hire, Notice, Person, PlantState, Quit } from './types';
+import type { Command, Decided, Hire, Notice, Person, PlantState, Quit } from './types';
 import { calOf } from './workdays';
+
+/** Причина приёма коллегой (Б5а). */
+type HireWhy = NonNullable<Extract<Decided, { kind: 'hire' }>['why']>;
 
 /** Час рынка труда: кандидаты по объявлению — в понедельник, коллеги — в рабочий день (гипотеза, как коллеги снабжения). */
 export const LABOR_HOUR = 9 * HOUR;
@@ -105,12 +109,19 @@ function agencyStep(db: ContentDb, s: PlantState, lab: Labor, notices: Notice[])
   }
 }
 
-/** Открыть вакансию: объявление — кандидаты с ближайшего понедельника; агентство — первый через свой срок. */
-function open(db: ContentDb, s: PlantState, lab: Labor, role: Id, shift: Id, via: 'ad' | 'agency', notices: Notice[], by?: { instead: string }): string {
+/**
+ * Открыть вакансию: объявление — кандидаты с ближайшего понедельника; агентство — первый через свой срок. В журнал
+ * решений (Б5а) — игрок с командой или руководитель отдела роли с причиной.
+ */
+function open(db: ContentDb, s: PlantState, lab: Labor, role: Id, shift: Id, via: 'ad' | 'agency', notices: Notice[], by?: { instead: string }, cmd?: Command): string {
   const id = `J${(s.next.J = (s.next.J ?? 0) + 1)}`;
   s.vacancies[id] = { id, role, shift, via, from: today(s), ...(by ? { by: 'colleague' as const, instead: by.instead } : {}) };
   if (via === 'agency') s.vacancies[id].next = agencyNext(s, lab, id);
   notices.push({ kind: 'vacancy', id, role, shift, via, ...(by ? { by: 'colleague' as const } : {}) });
+  const d = { kind: 'vacancy' as const, vacancy: id, role, via };
+  const p = by ? s.people[by.instead] : undefined;
+  if (cmd) noteCmd(s, cmd, d, deptOf(db, role));
+  else if (p) note(s, DEPT_HEAD[deptOf(db, role)], { ...d, why: { instead: p.id, tab: p.tab, day: p.quit?.day ?? today(s), rule: via === 'agency' ? 'city' : 'ad' } });
   return id;
 }
 
@@ -159,12 +170,18 @@ export function dismissTerms(db: ContentDb, s: PlantState, p: Person): { agree?:
   };
 }
 
-/** Принять кандидата: медосмотр — рабочие дни с завтрашнего, за счёт завода; первый день — первая смена после него. */
-function hireCandidate(db: ContentDb, s: PlantState, lab: Labor, id: string, trial: number, notices: Notice[]): boolean {
+/**
+ * Принять кандидата: медосмотр — рабочие дни с завтрашнего, за счёт завода; первый день — первая смена после него. В
+ * журнал решений (Б5а) — игрок с командой или руководитель отдела роли с причиной `why`.
+ */
+function hireCandidate(db: ContentDb, s: PlantState, lab: Labor, id: string, trial: number, notices: Notice[], cmd?: Command, why?: HireWhy): boolean {
   const c = s.candidates[id];
   const v = s.vacancies[c.vacancy];
   const { exam, first } = hireDays(db, s, v.shift);
   if (!first) return false;
+  const d = { kind: 'hire' as const, cand: c.id, vacancy: v.id, role: c.role };
+  if (cmd) noteCmd(s, cmd, d, deptOf(db, c.role));
+  else note(s, DEPT_HEAD[deptOf(db, c.role)], { ...d, ...(why ? { why } : {}) });
   const h: Hire = { id: c.id, vacancy: v.id, via: c.via, role: c.role, skill: c.skill, salary: c.salary, shift: v.shift, trial, exam, day: first.day, at: first.at };
   s.hires[h.id] = h;
   hiringPay(s, -lab.medical.price, `med-${h.id}`);
@@ -196,6 +213,7 @@ function start(db: ContentDb, s: PlantState, h: Hire, notices: Notice[]) {
     otYear: { y: momentOf(s.start, s.t).date.y, sec: 0 },
     salary: h.salary,
     hired: h.day,
+    cand: h.id,
     ...(db.shifts[h.shift].cycle ? { roster: [{ shift: h.shift, from: h.day }] } : {}),
     ...(h.trial > 0 ? { trial: addMonths(h.day, h.trial) - 1 } : {}),
   };
@@ -280,12 +298,15 @@ function colleagueStep(db: ContentDb, s: PlantState, lab: Labor, notices: Notice
     };
     const fit = Object.values(s.candidates).find(c => c.vacancy === v.id && c.skill >= lab.colleague.skill && c.salary <= price(c.skill));
     if (fit) {
-      hireCandidate(db, s, lab, fit.id, lab.probation, notices);
+      hireCandidate(db, s, lab, fit.id, lab.probation, notices, undefined, { skill: fit.skill, min: lab.colleague.skill, salary: fit.salary, price: marketPay(db, lab, v.role, fit.skill), over: lab.colleague.over });
       continue;
     }
     if (v.via === 'ad' && z - v.from >= lab.colleague.ad) {
       v.via = 'agency';
       v.next = agencyNext(s, lab, v.id);
+      // журнал решений (Б5а): по объявлению подходящий не нашёлся — агентство
+      const p = v.instead ? (s.people[v.instead] ?? s.former[v.instead]) : undefined;
+      if (p) note(s, DEPT_HEAD[deptOf(db, v.role)], { kind: 'vacancy', vacancy: v.id, role: v.role, via: 'agency', why: { instead: p.id, tab: p.tab, day: p.quit?.day ?? v.from, rule: 'late', days: z - v.from } });
     }
   }
 }
@@ -317,7 +338,7 @@ export function hireCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
     case 'vacancy': {
       if (!lab || !lab.roles[cmd.role]) return refuse('noLabor');
       if (!db.shifts[cmd.shift]) return refuse('noShift');
-      open(db, s, lab, cmd.role, cmd.shift, cmd.via, notices);
+      open(db, s, lab, cmd.role, cmd.shift, cmd.via, notices, undefined, cmd);
       return;
     }
     case 'close': {
@@ -329,7 +350,7 @@ export function hireCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
       if (!lab) return refuse('noLabor');
       if (!s.candidates[cmd.candidate]) return refuse('noCandidate');
       if (!Number.isInteger(cmd.trial) || cmd.trial < 0 || cmd.trial > law.probation) return refuse('trialLong');
-      if (!hireCandidate(db, s, lab, cmd.candidate, cmd.trial, notices)) refuse('noShift');
+      if (!hireCandidate(db, s, lab, cmd.candidate, cmd.trial, notices, cmd)) refuse('noShift');
       return;
     }
     case 'dismiss': {

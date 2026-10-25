@@ -9,6 +9,7 @@ import { schedule } from './core/agenda';
 import { MIN, momentOf } from './core/calendar';
 import { inForce } from './docs';
 import { incidentMeasured, invTestDone, modelFor, openInvestigation } from './investigation';
+import { note } from './journal';
 import { defect } from './lean';
 import { approved, pairKey } from './partners';
 import { coldOf } from './places';
@@ -17,7 +18,7 @@ import { openDevs } from './qa';
 import { measure, within } from './quality';
 import { containersByLot, nextId, putUnit, setLotStatus, stockChanged, unitsOfLot } from './stock';
 import { addTask, resort } from './tasks';
-import type { Command, Deviation, LabTest, Lot, Notice, Place, PlantState, Sample, Task, TaskKind, Unit } from './types';
+import type { Command, Deviation, LabTest, Lot, Notice, Place, PlantState, Sample, Task, TaskKind, TestWhy, Unit } from './types';
 import { PRIO, WMS } from './wms';
 
 /** Роли лаборатории. */
@@ -224,15 +225,23 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
     case 'decide': {
       // политика по умолчанию: все испытания в пределах — разрешить; иначе — отклонить и открыть отклонение
       const lot = s.lots[t.lot!];
-      const out = sampleOf(s, lot.id).tests.filter(id => !s.tests[id].pass);
+      const sm = sampleOf(s, lot.id);
+      const out = sm.tests.filter(id => !s.tests[id].pass);
       const model = modelFor(db, s, lot, out);
+      // журнал решений (Б5а): начальник ОКК — по испытаниям пробы, с результатами и пределами
+      const tests: TestWhy[] = sm.tests.map(id => {
+        const q = s.tests[id];
+        return { test: q.method, ...(q.result !== undefined ? { result: q.result } : {}), ...(q.min !== undefined ? { min: q.min } : {}), ...(q.max !== undefined ? { max: q.max } : {}), pass: !!q.pass };
+      });
       if (out.length === 0) {
         setLotStatus(s, lot, 'released');
         stockChanged(s);
+        note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'release', why: { tests } });
         notices.push({ kind: 'lotReleased', lot: lot.id });
       } else if (model) {
         // результат вне спецификации у своей продукции — расследование (часть 4): партия ждёт его решения
-        openInvestigation(db, s, model, lot, out, notices);
+        const inv = openInvestigation(db, s, model, lot, out, notices);
+        note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'investigate', inv: inv.id, dev: inv.deviation, why: { tests } });
         return true;
       } else {
         setLotStatus(s, lot, 'rejected');
@@ -242,6 +251,7 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
         s.deviations[d.id] = d;
         defect(s, 'deviations');
         defect(s, lot.batch ? 'batches' : 'lots');
+        note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'reject', dev: d.id, why: { tests } });
         notices.push({ kind: 'lotRejected', lot: lot.id, deviation: d.id });
       }
       for (const u of unitsOfLot(s, lot.id)) settleLot(db, s, lot, u);

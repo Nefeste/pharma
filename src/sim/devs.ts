@@ -11,6 +11,7 @@ import { setpointOf } from '../engine/modes';
 import { assessBlock, devsOf, type LinkedTest, linkedTests, openDevs } from '../engine/qa';
 import { unitsOfLot } from '../engine/stock';
 import type { Batch, BatchStatus, Deviation, LotStatus, PlantState, Refusal } from '../engine/types';
+import { whoDev, type WhoRow } from './journal';
 
 const num = (id: string) => Number(id.slice(1));
 
@@ -62,6 +63,8 @@ export interface DevCard {
   none?: { why: 'testPending' | 'outOfSpec'; test: Id };
   inv?: string;
   due: number;
+  /** кто решил (Б5а): оценка влияния, решение по партии, вывод расследования */
+  who?: WhoRow[];
 }
 
 /** Первая паллета ГП серии — к ней ведёт решение по серии. */
@@ -122,6 +125,8 @@ export function devCard(db: ContentDb, s: PlantState, n: number): DevCard | unde
   }
   const inv = d.inv ?? Object.values(s.investigations).find(i => i.batch === d.batch && i.status === 'open')?.id;
   if (inv) out.inv = inv;
+  const who = whoDev(s, d.id);
+  if (who.length > 0) out.who = who;
   return out;
 }
 

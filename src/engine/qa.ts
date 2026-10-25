@@ -10,6 +10,7 @@ import { part, post } from './cash';
 import { MIN, momentOf } from './core/calendar';
 import { inForce } from './docs';
 import { playerLeads } from './investigation';
+import { note, noteCmd } from './journal';
 import { defect } from './lean';
 import { fgExpiry, prodDay } from './line';
 import { toRzn } from './market';
@@ -127,6 +128,12 @@ function decide(db: ContentDb, s: PlantState, b: Batch, notices: Notice[]) {
   let decision = b.decision ?? (open.length > 0 ? 'hold' : 'release');
   if (decision === 'release' && open.length > 0) decision = 'hold';
   const mine = b.decision === 'hold' && open.length === 0;
+  // журнал решений (Б5а): по оценке отклонения «отклонить серию» или по решению игрока; «выпустить» и без решения при
+  // неоценённых отклонениях — держать; иначе — выпуск
+  const rejected = b.decision === 'reject' ? devsOf(s, b).find(d => d.assess?.verdict === 'reject' && d.assess.done !== undefined) : undefined;
+  const rule = rejected ? 'assess' : b.decision !== undefined && !(b.decision === 'release' && open.length > 0) ? 'player' : open.length > 0 ? 'open' : 'clear';
+  const devs = rejected ? [rejected.id] : open.map(d => d.id);
+  note(s, 'qp', { kind: 'batch', batch: b.id, decision, why: { rule, ...(devs.length > 0 ? { devs } : {}) } });
   delete b.decision;
   if (decision === 'hold') {
     b.held = true;
@@ -205,6 +212,7 @@ export function releaseCommand(db: ContentDb, s: PlantState, cmd: Extract<Comman
     if (no) return notices.push({ kind: 'refused', cmd: 'release', why: 'devReject', detail: no.id });
   }
   b.decision = cmd.decision;
+  noteCmd(s, cmd, { kind: 'batch', batch: b.id, decision: cmd.decision });
   // проверка ООК уже была (серию держат) — сразу к уполномоченному лицу; иначе решение дождётся проверки
   redecide(db, s, b);
 }
@@ -315,6 +323,7 @@ export function assessCommand(db: ContentDb, s: PlantState, cmd: Extract<Command
     const bad = tests.find(x => x.out > 0);
     if (bad) return notices.push({ kind: 'refused', cmd: 'assess', why: 'outOfSpec', detail: bad.test });
   }
+  noteCmd(s, cmd, { kind: 'assess', dev: d.id, verdict: cmd.verdict });
   startAssess(db, s, d, cmd.verdict, cmd.by ?? 'player');
 }
 
@@ -367,7 +376,10 @@ export function devHour(db: ContentDb, s: PlantState): boolean {
     if (d.status !== 'open' || assessBlock(s, d)) continue;
     const tests = linkedTests(db, s, d);
     if (tests.some(x => !x.done)) continue;
-    startAssess(db, s, d, tests.some(x => x.out > 0) ? 'reject' : 'none', 'head:quality');
+    const verdict = tests.some(x => x.out > 0) ? 'reject' : 'none';
+    // журнал решений (Б5а): начальник ООК — по связанным испытаниям серии
+    note(s, 'qa', { kind: 'assess', dev: d.id, verdict, why: { tests: tests.map(x => ({ test: x.test, kind: x.kind, n: x.n, out: x.out, ...(x.result !== undefined ? { result: x.result } : {}) })) } });
+    startAssess(db, s, d, verdict, 'head:quality');
     acted = true;
   }
   return acted;

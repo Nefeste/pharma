@@ -8,6 +8,7 @@ import type { ContentDb, Id, RecipeStage, StageParam } from '../content/types';
 import { momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { inForce } from './docs';
+import { note, noteCmd } from './journal';
 import type { Command, Notice, PlantState } from './types';
 
 /** Ключ уставки режима стадии: код карты, стадия, режим; скорости блистерной — код инструкции по упаковке. */
@@ -90,6 +91,8 @@ export function setpointCommand(db: ContentDb, s: PlantState, cmd: Extract<Comma
   if ((v - target) % step !== 0) return notices.push({ kind: 'refused', cmd: 'setpoint', why: 'offStep', detail: key });
   if (v === target) delete s.setpoints[key];
   else if (s.setpoints[key]?.v !== v) s.setpoints[key] = { v, from: s.t };
+  // журнал решений (Б5а): уставка игрока
+  noteCmd(s, cmd, { kind: 'setpoint', key, value: v, target });
 }
 
 /**
@@ -101,4 +104,6 @@ export function colleagueTargets(s: PlantState, notices: Notice[]) {
   if (n === 0) return;
   s.setpoints = {};
   notices.push({ kind: 'setpoints', n, by: 'colleague' });
+  // журнал решений (Б5а): главный технолог — сколько уставок вернули к цели
+  note(s, 'tech', { kind: 'targets', why: { n } });
 }

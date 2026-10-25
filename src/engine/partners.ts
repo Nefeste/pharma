@@ -13,6 +13,7 @@ import { schedule } from './core/agenda';
 import { addMonths, addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf } from './core/calendar';
 import { fnv1a } from './core/hash';
 import { type DocKind, inForce, revisions } from './docs';
+import { note } from './journal';
 import { planOf } from './plant';
 import { QA } from './qa';
 import { planUse } from './supply';
@@ -232,6 +233,8 @@ function book(db: ContentDb, s: PlantState, today: number) {
     const last = p.recs[p.recs.length - 1];
     if (p.eval || !last || !live.has(p.id) || last.until - today > sc.partners.ahead) continue;
     const how = howOf(db, p.supplier, p.maker);
+    // журнал решений (Б5а): начальник ООК — до какого дня одобрение и срок предупреждения
+    note(s, 'qa', { kind: 'pairEval', pair: p.id, how, why: { until: last.until, ahead: sc.partners.ahead } });
     if (how === 'audit') {
       const cal = calOf(db, s);
       const from = base(addWorkdays(cal, today, 1)) + AUDIT_FROM;
@@ -308,7 +311,10 @@ function contractsDay(db: ContentDb, s: PlantState, day: number) {
   for (const c of Object.values(s.contracts)) {
     if (c.closed || c.to >= day) continue;
     if (c.kind === 'supply') {
+      const end = c.to;
       c.to = termOf(sc, c.to + 1);
+      // журнал решений (Б5а): начальник отдела продаж продлил договор поставки
+      note(s, 'sales', { kind: 'extend', contract: c.id, party: c.party, to: c.to, why: { end } });
       continue;
     }
     for (const maker of new Set(c.lines.map(l => l.maker))) {
@@ -333,6 +339,9 @@ function contractsDay(db: ContentDb, s: PlantState, day: number) {
   for (const id of Object.keys(db.suppliers).sort()) {
     if (contractOf(s, id, day) || !Object.entries(db.suppliers[id].items).some(([m, it]) => approved(db, s, id, it.maker, m, day))) continue;
     use ??= useFor(db, s, day);
-    frameContract(db, s, id, day, use);
+    const prev = Object.values(s.contracts).filter(x => x.party === id && x.kind === 'frame' && x.closed).pop();
+    const c = frameContract(db, s, id, day, use);
+    // журнал решений (Б5а): начальник отдела снабжения — новый рамочный договор вместо кончившегося
+    if (c) note(s, 'supply', { kind: 'contract', contract: c.id, party: id, to: c.to, why: prev ? { prev: prev.id, end: prev.to } : {} });
   }
 }

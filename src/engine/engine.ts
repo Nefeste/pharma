@@ -15,6 +15,7 @@ import { hireCommand, hireHour } from './hire';
 import { hoursHour, newPolicy, overtimeCommand } from './hours';
 import { rosterCommand, rosterDay } from './shifts';
 import { concludeCommand, invDone, investigateCommand, invStep, newIncident } from './investigation';
+import { trimJournal } from './journal';
 import { labDone, runDone, rushCommand, startSampling } from './lab';
 import { leanHour, leanStep, newLoss } from './lean';
 import { leaveCommand, leaveHour } from './leave';
@@ -102,6 +103,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     hires: {},
     former: {},
     leave: {},
+    journal: [],
   };
   s.losses.push(newLoss(momentOf(s.start, s.t).day));
   // люди — у входа, с табельными номерами по порядку приёма и записями обучения (Б3б); техника — на стоянке, приборы — в
@@ -366,6 +368,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       if (momentOf(s.start, s.t).sec === 0) {
         trainDay(db, s, notices);
         rosterDay(db, s, momentOf(s.start, s.t).day);
+        // журнал решений (Б5а): записи старше срока уходят
+        trimJournal(s);
       }
       // найм (Б4в): кандидаты, заявления, первые дни принятых, уход после последней смены — до раздачи задач часа
       hireHour(db, s, notices);

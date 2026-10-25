@@ -16,6 +16,7 @@ import type { AssetFamily, Batch, CashItem, DayLoss, Deviation, LineDay, Machine
 import { type PeopleMeeting, peopleMeeting } from './hire';
 import { type LeaveMeeting, leaveMeeting } from './leave';
 import { type HoursMeeting, hoursMeeting } from './hours';
+import { type HeadDay, headDays } from './journal';
 import { type PartnerSum, partnerSum } from './partners';
 import { type TrainSum, trainSum } from './people';
 import { type AssetSum, assetSum } from './places';
@@ -208,6 +209,8 @@ export interface MorningView {
   seats: SeatSum[];
   /** уставки не по цели (Б1ж): какие и с какого мгновения */
   modes: ModeRow[];
+  /** решения за сутки (Б5а): строка на руководителя — сколько, какие, у заказов поставщикам — предоплата */
+  heads: HeadDay[];
 }
 
 /**
@@ -432,6 +435,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     cash: { balance: s.cash.balance, day: dayChange(s, s.t), ...(next ? { next: { due: next.due, item: next.item, sum: next.sum } } : {}) },
     seats: seatSums(db, s),
     modes: modeRows(db, s),
+    heads: headDays(s, from, at),
   };
 }
 

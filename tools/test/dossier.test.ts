@@ -278,7 +278,9 @@ describe('масса по стадиям и запись упаковки — п
         'stops part devs bulkUnits yield pack line taken start end clear at tablets result good scrap remainder blisters blisterRejects cartons cartonRejects cases pallets ' +
         'materials machine k spoiled used returned recon reconLimit fg kind bulk since checked decision held released clearNone ' +
         // Б1ж: уставка режима стадии — её задал завод
-        'sp').split(' '),
+        'sp ' +
+        // Б5а: «Кто решил» — записи журнала решений
+        'who t v seat').split(' '),
     );
     expect([...keys].filter(k => !ALLOWED.has(k))).toEqual([]);
     for (const k of ['truth', 'noise', 'causes', 'screen', 'budget', 'lost', 'jammed', 'wear']) expect(keys.has(k)).toBe(false);

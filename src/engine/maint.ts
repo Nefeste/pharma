@@ -9,6 +9,7 @@ import type { ContentDb, Id, PartType } from '../content/types';
 import { dueIn, owe, part, post } from './cash';
 import { schedule } from './core/agenda';
 import { P_ONE } from './core/rng';
+import { note, noteCmd } from './journal';
 import { planOf } from './plant';
 import { expo, roll } from './random';
 import { nextId } from './stock';
@@ -124,12 +125,18 @@ export function maintStep(db: ContentDb, s: PlantState) {
     if (pt.task) continue;
     const t = partType(db, pt);
     if (pt.state === 'failed') {
-      if (free(s, t.spare) > 0) repairTask(db, s, pt, false);
-      else replenish(db, s, t.spare);
+      if (free(s, t.spare) > 0) {
+        // журнал решений (Б5а): главный механик — ремонт после отказа, запчасть из мастерской
+        note(s, 'maint', { kind: 'repair', part: pt.id, why: { failed: pt.failed ?? s.t, spare: t.spare, free: free(s, t.spare) } });
+        repairTask(db, s, pt, false);
+      } else replenish(db, s, t.spare);
       continue;
     }
     const at = policy[pt.id];
-    if (!pt.plan && at !== undefined && idle(s, pt) && wearAt(t, pt.done) >= at) pt.plan = 'policy';
+    if (!pt.plan && at !== undefined && idle(s, pt) && wearAt(t, pt.done) >= at) {
+      pt.plan = 'policy';
+      note(s, 'maint', { kind: 'replace', part: pt.id, why: { wear: wearAt(t, pt.done), at } });
+    }
     if (!pt.plan || !idle(s, pt)) continue;
     if (free(s, t.spare) > 0) repairTask(db, s, pt, true);
     else replenish(db, s, t.spare);
@@ -161,11 +168,12 @@ function replenish(db: ContentDb, s: PlantState, spare: Id) {
   let level = free(s, spare);
   for (const o of Object.values(s.spareOrders)) if (o.spare === spare && o.status === 'ordered') level += o.qty;
   if (level > rec.stock.min) return;
-  orderSpare(db, s, spare, rec.stock.max - level);
+  const id = orderSpare(db, s, spare, rec.stock.max - level);
+  note(s, 'maint', { kind: 'spare', order: id, spare, qty: rec.stock.max - level, why: { level, min: rec.stock.min, max: rec.stock.max } });
 }
 
 /** Заказ запчасти — как заказ поставщику (1д): предоплата сейчас, остаток с НДС — через `payDays` после поставки. */
-function orderSpare(db: ContentDb, s: PlantState, spare: Id, qty: number) {
+function orderSpare(db: ContentDb, s: PlantState, spare: Id, qty: number): string {
   const rec = db.spares[spare];
   const sup = db.suppliers[rec.supplier];
   const net = rec.price * qty;
@@ -175,6 +183,7 @@ function orderSpare(db: ContentDb, s: PlantState, spare: Id, qty: number) {
   s.spareOrders[id] = { id, spare, qty, ordered: s.t, eta, sum: net + vat, vat, prepaid: part(net + vat, sup.prepay), status: 'ordered', by: 'head:maint' };
   post(s, -s.spareOrders[id].prepaid, 'prepay', id);
   schedule(s.agenda, eta, { kind: 'spare', order: id });
+  return id;
 }
 
 /** Запчасть пришла в мастерскую: на склад ЗИП; НДС — к вычету, остаток — в счета к оплате. */
@@ -219,4 +228,5 @@ export function maintainCommand(db: ContentDb, s: PlantState, cmd: Extract<Comma
   if (pt.state !== 'ok' || pt.task || pt.plan) return notices.push({ kind: 'refused', cmd: 'maintain', why: 'busy', detail: pt.id });
   if (free(s, partType(db, pt).spare) <= 0) return notices.push({ kind: 'refused', cmd: 'maintain', why: 'noSpare', detail: pt.id });
   pt.plan = 'player';
+  noteCmd(s, cmd, { kind: 'replace', part: pt.id });
 }

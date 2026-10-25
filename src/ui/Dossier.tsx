@@ -9,6 +9,7 @@ import type { Thing } from '../sim/views';
 import { dayText, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { DispRow, DossierView, LotQty, PackDossier, StageRow, Who } from '../sim/dossier';
 import { db, docText } from './db';
+import { WhoList } from './Journal';
 import type { Actions, Hud } from './store';
 import { paramNum, paramText } from './units';
 
@@ -409,6 +410,7 @@ export function Dossier({ hud, actions }: { hud: Hud; actions: Actions }) {
           </div>
           {v.pack ? <Pack p={v.pack} start={start} actions={actions} /> : null}
           <Decisions v={v} start={start} actions={actions} />
+          <WhoList rows={v.who} start={start} actions={actions} />
         </>
       ) : null}
     </div>

@@ -12,7 +12,7 @@ import type { ContentDb, Id, Recipe, Sku } from '../content/types';
 import { addWorkdays, DAY, isWorkday, momentOf } from './core/calendar';
 import { BATCH_HOUR, placeOrder } from './mes';
 import { containersByLot } from './stock';
-import type { Notice, PlantState } from './types';
+import type { Notice, OrderWhy, PlantState } from './types';
 import { calOf } from './workdays';
 
 /** Замороженные две недели (геймдизайн, §9.3): спрос — на столько суток; задание — через столько рабочих дней (Б4а). */
@@ -91,8 +91,8 @@ export function planHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   const day = addWorkdays(cal, now.day, AHEAD_WORK);
   const at = s.t + (day - now.day) * DAY;
   if (Object.values(s.batches).some(b => momentOf(s.start, b.notBefore).day === day)) return;
-  const it = pick(db, s, plan.items, plan.cover, plan.window, plan.urgent, at);
-  if (it) placeOrder(db, s, { kind: 'order', recipe: it.recipe, notBefore: at, by: 'head:plan', sku: it.sku }, notices);
+  const got = pick(db, s, plan.items, plan.cover, plan.window, plan.urgent, at);
+  if (got) placeOrder(db, s, { kind: 'order', recipe: got.it.recipe, notBefore: at, by: 'head:plan', sku: got.it.sku }, notices, got.why);
 }
 
 /**
@@ -101,22 +101,24 @@ export function planHour(db: ContentDb, s: PlantState, notices: Notice[]) {
  * не видно — позицию, чьё последнее задание старше; поровну — первую в плане. Нужной нет — никакую. С `urgent` —
  * кампании (Б2г, геймдизайн, §9.4): продукт последнего задания до `at` идёт дальше, пока его позициям нужна серия, а ни
  * одной позиции другого продукта не хватит меньше чем на две недели и ещё `urgent` суток, — генеральных уборок меньше.
+ * С позицией — причина для журнала решений (Б5а): правило, положение всех позиций плана и пороги.
  */
-function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], cover: number, window: number, urgent: number | undefined, at: number) {
+function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], cover: number, window: number, urgent: number | undefined, at: number): { it: { recipe: Id; sku: Id }; why: OrderWhy } | undefined {
   const byLot = containersByLot(s);
   const pos = items.map(it => ({ it, p: positionOf(db, s, it.sku, window, byLot) }));
-  if (pos.some(x => x.p.span === 0)) {
-    const last = (sku: Id) => Math.max(-1, ...Object.values(s.batches).filter(b => b.sku === sku).map(b => idNum(b.id)));
-    return pos.reduce((a, b) => (last(b.it.sku) < last(a.it.sku) ? b : a)).it;
-  }
   // запас < заказано за рабочий день окна × рабочих дней пятидневки в AHEAD + cover суток (Б4а)
   const ahead = aheadMilli(AHEAD + cover);
+  const why = (rule: OrderWhy['rule'], extra: Partial<OrderWhy> = {}): OrderWhy => ({ rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work })), ahead, ...extra });
+  if (pos.some(x => x.p.span === 0)) {
+    const last = (sku: Id) => Math.max(-1, ...Object.values(s.batches).filter(b => b.sku === sku).map(b => idNum(b.id)));
+    return { it: pos.reduce((a, b) => (last(b.it.sku) < last(a.it.sku) ? b : a)).it, why: why('turn', { seen: SEEN }) };
+  }
   const need = pos.filter(x => x.p.cases * x.p.work * 1000 < x.p.ordered * ahead);
   if (need.length === 0) return undefined;
   // у кого запаса меньше суток спроса: cases_a / ordered_a < cases_b / ordered_b; без заказов позиция — последней
   const less = (a: SkuPosition, b: SkuPosition) => (a.ordered === 0 ? false : b.ordered === 0 ? true : a.cases * b.ordered < b.cases * a.ordered);
   const neediest = (xs: typeof need) => xs.reduce((a, b) => (less(b.p, a.p) ? b : a)).it;
-  if (urgent === undefined) return neediest(need);
+  if (urgent === undefined) return { it: neediest(need), why: why('need') };
   // продукт кампании — у задания, которое пойдёт последним перед этим
   const prev = Object.values(s.batches)
     .filter(b => b.notBefore < at)
@@ -125,5 +127,7 @@ function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], co
   const mine = need.filter(x => product(x) === prev?.product);
   const soon = aheadMilli(AHEAD + urgent);
   const hurry = need.some(x => product(x) !== prev?.product && x.p.cases * x.p.work * 1000 < x.p.ordered * soon);
-  return mine.length > 0 && !hurry ? neediest(mine) : neediest(need);
+  const extra = { soon, ...(prev ? { prev: prev.product } : {}) };
+  if (mine.length > 0 && !hurry) return { it: neediest(mine), why: why('campaign', extra) };
+  return { it: neediest(need), why: why(mine.length > 0 ? 'urgent' : 'need', extra) };
 }

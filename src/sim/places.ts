@@ -101,7 +101,7 @@ export function assetInfo(db: ContentDb, s: PlantState, id: string): AssetInfo |
 }
 
 /** Вещь на полу актива: машина линии, оборудование, техника; прибор — его помещение. */
-function thingOf(db: ContentDb, s: PlantState, id: string, plan = planOf(db, s.plant)): Thing | undefined {
+export function thingOf(db: ContentDb, s: PlantState, id: string, plan = planOf(db, s.plant)): Thing | undefined {
   for (const [line, l] of plan.plant.lines.entries()) {
     const k = l.machines.findIndex(m => m.id === id);
     if (k >= 0) return { kind: 'machine', line, k };

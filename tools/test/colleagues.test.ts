@@ -191,8 +191,17 @@ describe('год завода прототипа', () => {
     const busy: Record<string, number> = {};
     const shift: Record<string, number> = {};
     const bad: string[] = [];
+    // журнал решений (Б5а): записи по руководителям и видам — новые за каждый час, журнал режет старое в полночь
+    const notes: Record<string, number> = {};
+    let seen = 0;
     while (s.t < end) {
       apply(db, s, { kind: 'advance', seconds: HOUR });
+      for (const r of s.journal) {
+        if (r.n <= seen) continue;
+        seen = r.n;
+        const k = `${r.by}/${r.d.kind}${r.d.kind === 'lot' ? `:${r.d.verdict}` : r.d.kind === 'batch' ? `:${r.d.decision}` : ''}`;
+        notes[k] = (notes[k] ?? 0) + 1;
+      }
       if (s.t > 30 * DAY)
         for (const p of Object.values(s.people)) {
           if (!takesAt(db, s, p, s.t)) continue;
@@ -225,6 +234,19 @@ describe('год завода прототипа', () => {
     expect(orders.filter(o => o.status === 'shipped').length / orders.length).toBeGreaterThan(0.9);
     // аппаратчики и кладовщик на смене заняты задачами не меньше трети времени
     for (const r of ['role.operator', 'role.storekeeper']) expect([r, (busy[r] ?? 0) / shift[r] > 0.33]).toEqual([r, true]);
+    // журнал решений (Б5а): записей руководителей — столько же, сколько решений в замере «Как сейчас» спецификации Б5:
+    // 201 задание, 112 заказов, 330 решений ОКК по партиям — разрешить или отклонить (решение «расследование» замер
+    // считал с расследованием), 196 выпусков, 17 визитов подрядчика
+    expect({
+      orders: notes['plan/order'],
+      pos: notes['supply/po'],
+      lots: (notes['qc/lot:release'] ?? 0) + (notes['qc/lot:reject'] ?? 0),
+      releases: notes['qp/batch:release'],
+      visits: notes['maint/visit'],
+    }).toEqual({ orders: 201, pos: 112, lots: 330, releases: 196, visits: 17 });
+    // за срок журнала — около 220 записей разом (спецификация Б5а)
+    expect(s.journal.length).toBeGreaterThan(180);
+    expect(s.journal.length).toBeLessThan(270);
     // год загруженного завода — секунды счёта, а не пять по умолчанию
   }, 120_000);
 });

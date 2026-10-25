@@ -23,6 +23,7 @@ import { type DevCard, devCard, type Knobs, knobsAt, type Regimes, regimesAt, ty
 import { type DossierQuery, type DossierView, dossierView, type Inside, insideOf, type LineMaterial, lineMaterials } from './dossier';
 import { type SaView, type SheetView, saOf, sheetOf } from './hours';
 import { type InvQuery, type InvView, invView } from './inv';
+import { type JournalQuery, type JournalView, journalView, whoAsset, whoBatch, whoLot, whoMachine, whoPerson, type WhoRow } from './journal';
 import { type ChartQuery, type ChartView, chartView, type LabQuery, type LabView, labView } from './lab';
 import { type EqState, eqStateOf } from './pack';
 import { type PersonLeave, personLeave } from './leave';
@@ -65,7 +66,7 @@ export interface CardQuery {
   thing: Thing;
 }
 
-export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery);
+export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery);
 
 /** Место паллеты: место плана (номер по порядку), помещение (номер по порядку), фура. */
 export type PlaceRef = { k: 'slot'; i: number } | { k: 'room'; i: number } | { k: 'truck'; n: number; customer: boolean };
@@ -189,10 +190,10 @@ export interface SpeedView {
  * режимы стадии (Б1г); отклонение — своя карточка (`DevCard`).
  */
 export type CardData =
-  | { kind: 'unit'; unit: number; tag: Tag; containers: number; holds?: Holds; where: PlaceRef; lot?: LotInfo; release?: ReleaseView; why: Why[]; history: Hist[] }
+  | { kind: 'unit'; unit: number; tag: Tag; containers: number; holds?: Holds; where: PlaceRef; lot?: LotInfo; release?: ReleaseView; why: Why[]; history: Hist[]; who?: WhoRow[] }
   | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; clean?: RoomClean; batch?: string; bn?: number; recipe?: Id; stage?: string; inside?: Inside; regimes?: Regimes; knobs?: Knobs[]; why: Why[] }
-  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; bn?: number; recipe?: Id; inside?: Inside; parts: PartInfo[]; asset?: AssetInfo; regimes?: Regimes; knobs?: Knobs[]; why: Why[]; history: Hist[] }
-  | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; bn?: number; sku?: Id; materials?: LineMaterial[]; speed?: SpeedView; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[] }
+  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; bn?: number; recipe?: Id; inside?: Inside; parts: PartInfo[]; asset?: AssetInfo; regimes?: Regimes; knobs?: Knobs[]; why: Why[]; history: Hist[]; who?: WhoRow[] }
+  | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; bn?: number; sku?: Id; materials?: LineMaterial[]; speed?: SpeedView; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[]; who?: WhoRow[] }
   /** человек (Б3б): табельный номер, навык, допуск сегодня, обучение по матрице его роли, что изучает сейчас; табель месяца (Б4а) */
   /** с Б4б — ждущий перевод на другой график и учётный период сменного по циклу */
   /** с Б4в — оклад, день приёма, последний день испытания, увольнение; ушёл с завода — `gone` с днём и основанием */
@@ -223,6 +224,8 @@ export type CardData =
        * день и успеть ли в срок испытания; подал заявление — отпустить раньше, последний день — сегодня
        */
       terms?: { agree?: { last: number; pay: number }; trial?: { last: number; ok: boolean }; early?: { last: number } };
+      /** кто решил (Б5а): вакансия и приём */
+      who?: WhoRow[];
     }
   | { kind: 'vehicle'; vehicle: number; type: Id; task?: TaskKind }
   | { kind: 'truck'; truck: number; customer?: Id; supplier?: Id; po?: string; docked: boolean; open: boolean; units: number; arrived: number }
@@ -249,6 +252,12 @@ export interface PartInfo {
   repair: boolean;
 }
 
+/** «Кто решил» (Б5а): записей журнала о вещи нет — поля нет. */
+const whoOf = (rows: WhoRow[]): { who?: WhoRow[] } => (rows.length > 0 ? { who: rows } : {});
+
+/** Решения об оборудовании и машине линии (Б5а): визиты подрядчика к активу, ремонты и замены узлов, ЗИП. */
+const thingWho = (db: ContentDb, s: PlantState, id: string): WhoRow[] => [...whoAsset(s, id), ...whoMachine(db, s, id)].sort((a, b) => a.n - b.n);
+
 /** Отпуска в карточке человека (Б4г): ушёл с завода или у сценария нет отпусков — нет. */
 function personLeaveOf(db: ContentDb, s: PlantState, p: Person, gone: boolean): { leave?: PersonLeave } {
   if (gone) return {};
@@ -265,7 +274,7 @@ export interface CardView {
   card: CardData;
 }
 
-export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView;
+export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView;
 
 const num = (id: string) => Number(id.slice(1));
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
@@ -521,6 +530,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(release ? { release } : {}),
         why: [...tasks.map(t => taskWhy(db, s, t)), ...(lot ? lotWhy(s, lot) : [])],
         history: lot ? lotHistory(s, lot) : [],
+        ...whoOf(lot ? (b ? whoBatch(s, b) : whoLot(s, lot)) : []),
       };
     }
     case 'room': {
@@ -573,6 +583,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(knobs.length > 0 ? { knobs } : {}),
         why: [...repairs.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.asset === def.id)],
         history: maintHistory(s, def.id),
+        ...whoOf(thingWho(db, s, def.id)),
       };
     }
     case 'machine': {
@@ -612,6 +623,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(s.assets[def.id] ? { asset: assetInfo(db, s, def.id)! } : {}),
         why: [...repairs.map(t => taskWhy(db, s, t)), ...held, ...cleans.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.asset === def.id)],
         history: maintHistory(s, def.id),
+        ...whoOf(thingWho(db, s, def.id)),
       };
     }
     case 'person': {
@@ -653,6 +665,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(p.also ? { also: [...p.also] } : {}),
         ...(personLeaveOf(db, s, p, gone)),
         ...(gone || !laborOf(db, s) ? {} : p.quit ? (p.quit.why === 'own' && p.quit.last > momentOf(s.start, s.t).day ? { terms: { early: { last: momentOf(s.start, s.t).day } } } : {}) : { terms: dismissTerms(db, s, p) }),
+        ...whoOf(whoPerson(s, p)),
       };
     }
     case 'vehicle': {
@@ -709,6 +722,8 @@ export function viewOf(db: ContentDb, s: PlantState, q: ViewQuery): ViewData {
       return dossierView(db, s, q);
     case 'now':
       return nowView(db, s);
+    case 'journal':
+      return journalView(db, s, q);
   }
 }
 

@@ -8,6 +8,7 @@ import { civilFromDays, momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
 import { DEPT_SEAT } from '../engine/seats';
 import { dateText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
+import type { HeadDay } from '../sim/journal';
 import type { LineSum, MainLoss, ModeRow, MorningView, SeatSum } from '../sim/report';
 import type { Thing } from '../sim/views';
 import { assetName, workName } from './assets';
@@ -67,6 +68,29 @@ function mainText(plant: string, m: MainLoss): string {
 }
 
 const hintOf = (m: MainLoss): string => (m.k === 'wait' ? T.morning.hints[m.cause] : m.k === 'line' ? T.morning.hints[m.loss.what] : T.morning.hints[m.k]);
+
+/**
+ * Решения за сутки (Б5а): строка на руководителя — сколько решений каких видов, у заказов поставщикам — предоплата;
+ * щелчок по строке — журнал на последнем решении этого руководителя; рычаг — «Журнал».
+ */
+function HeadsBlock({ list, hud, actions, close }: { list: readonly HeadDay[]; hud: Hud; actions: Actions; close: () => void }) {
+  if (list.length === 0) return <div className="muted" data-test="morning-heads">{T.morning.headsNone}</div>;
+  return (
+    <div className="mblock" data-test="morning-heads">
+      <ul className="mlist">
+        {list.map(h => {
+          const what = [...h.kinds.map(k => T.journal.count[k.kind]?.(k.n, k.v) ?? `${k.kind} ${k.n}`), ...(h.prepaid ? [T.journal.prepaid(money(h.prepaid))] : [])].join(', ');
+          return (
+            <li key={h.head} className="go" role="link" tabIndex={0} onClick={() => (close(), actions.openJournal(h.last))} onKeyDown={e => e.key === 'Enter' && (close(), actions.openJournal(h.last))} data-test="morning-head" data-head={h.head}>
+              {T.morning.headRow(T.journal.names[h.head] ?? h.head, what)}
+            </li>
+          );
+        })}
+      </ul>
+      <Levers list={[{ k: 'journal' }]} hud={hud} actions={actions} close={close} />
+    </div>
+  );
+}
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -328,6 +352,9 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                 </div>
               </>
             )}
+          </Section>
+          <Section title={T.morning.heads}>
+            <HeadsBlock list={v.heads} hud={hud} actions={actions} close={close} />
           </Section>
           <Section title={T.morning.since}>
             {v.deviations.length + v.decisions.length + v.maint.length + v.shipments.length + v.closed.length === 0 ? <div className="muted">{T.morning.nothing}</div> : null}

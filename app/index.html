@@ -44,6 +44,18 @@
     .nowrap { white-space: nowrap; }
     .sicon { vertical-align: -2px; }
     .close { margin-left: auto; }
+    /* слои слева (Б1и; геймдизайн, §18): обычный вид, «Загрузка и OEE», «Потоки — люди»; окно и цвета частей словами */
+    .layers { position: absolute; left: 8px; top: calc(var(--top-h, 48px) + 8px); width: 176px; padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; }
+    .layers .lhead { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+    .layers > button { text-align: left; }
+    .lwin { display: inline-flex; flex-wrap: wrap; gap: 2px; margin: 2px 0; }
+    .lwin button { padding: 1px 6px; font-size: 11px; }
+    ul.legend, ul.loadrows, .floortip ul { list-style: none; margin: 2px 0; padding: 0; }
+    ul.legend li, ul.loadrows li, .floortip li { display: flex; align-items: center; gap: 6px; margin: 1px 0; }
+    ul.legend { font-size: 12px; }
+    .sw { flex: none; width: 10px; height: 10px; border-radius: 2px; border: 1px solid rgba(255,255,255,.35); }
+    .floortip { position: fixed; z-index: 6; pointer-events: none; max-width: 340px; padding: 6px 10px; font-size: 12px; }
+    #ui > .floortip { pointer-events: none; }
     /* карточка вещи (3б) — снизу слева: справа — панель склада */
     .card { position: absolute; left: 8px; bottom: 10px; min-width: 380px; max-width: min(600px, calc(100% - 16px)); max-height: 46%; overflow: auto; padding: 8px 12px; }
     /* склад открыт: карточка — слева от него, под панель не заходит */

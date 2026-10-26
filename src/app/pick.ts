@@ -106,14 +106,8 @@ export function roomAt(l: Layout, x: number, z: number): number | undefined {
   return r >= 0 ? r : undefined;
 }
 
-/**
- * Что под курсором: человек или техника ближе `NEAR_PX` точек — ближайший; иначе — первая вещь по лучу; иначе —
- * помещение под точкой пола; иначе — ничего.
- */
-export function pick(spots: readonly Spot[], r: Ray, boxes: readonly Box[], l: Layout): Thing | undefined {
-  let near: Spot | undefined;
-  for (const s of spots) if (s.px <= NEAR_PX && (!near || s.px < near.px)) near = s;
-  if (near) return near.thing;
+/** Первый короб по лучу; мимо всех — `undefined`. */
+export function nearest(r: Ray, boxes: readonly Box[]): Box | undefined {
   let best: Box | undefined;
   let bestT = Number.POSITIVE_INFINITY;
   for (const b of boxes) {
@@ -123,6 +117,18 @@ export function pick(spots: readonly Spot[], r: Ray, boxes: readonly Box[], l: L
       best = b;
     }
   }
+  return best;
+}
+
+/**
+ * Что под курсором: человек или техника ближе `NEAR_PX` точек — ближайший; иначе — первая вещь по лучу; иначе —
+ * помещение под точкой пола; иначе — ничего.
+ */
+export function pick(spots: readonly Spot[], r: Ray, boxes: readonly Box[], l: Layout): Thing | undefined {
+  let near: Spot | undefined;
+  for (const s of spots) if (s.px <= NEAR_PX && (!near || s.px < near.px)) near = s;
+  if (near) return near.thing;
+  const best = nearest(r, boxes);
   if (best) return best.thing;
   const f = floorHit(r);
   const room = f ? roomAt(l, f.x, f.z) : undefined;

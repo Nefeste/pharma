@@ -48,8 +48,12 @@
 // по цели карты; уставку вернули к цели, в досье серии — уставка и факт. Найм, оценка пары, визит подрядчика и отпуска
 // идут по своим дням. Журнал решений (Б5а): J — записи начальников отделов планирования и снабжения, у задания на серию —
 // запас, спрос и порог; «К вещи» — досье серии с «Кто решил», «Почему?» — журнал на этом решении; на планёрке — «Решения
-// за сутки» с рычагом «Журнал»; на экране «Кем вы будете» коллеги — по правилам движка. Ошибок в консоли и запросов наружу
-// нет. Снимки — tools/app/out/e2e*.png.
+// за сутки» с рычагом «Журнал»; на экране «Кем вы будете» коллеги — по правилам движка. Данные на полу (Б1и): слои
+// слева, «Потоки — люди» с рычага планёрки отмечен в них; на шестые сутки L — столбики в помещениях производства и у машин
+// линии, у каждого число, без стрелок участка; наведение — часы частей, щелчок по грануляции — блок «Загрузка» с теми же
+// часами; окно «вчера» — полные сутки; доска «План — факт» по часам смены; слой — не больше четырёх вызовов отрисовки;
+// снимок — в контактном листе; 9 октября за вчера у ключевой машины — OEE с множителями, как на планёрке. Ошибок в
+// консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -367,13 +371,13 @@ try {
     else {
       await page.click('[data-test=morning-main] [data-test=lever-flows] button');
       await frames(3);
-      const on = await page.evaluate(() => ({ morning: window.__game.store.get().morning.open, flows: window.__game.store.get().flows, chip: !!document.querySelector('[data-test=flows-on]'), layer: window.__game.stage.overlay.group.visible }));
-      if (on.morning || !on.flows || !on.chip || !on.layer) fail(`слой «Потоки — люди»: ${JSON.stringify(on)}`);
-      else ok(`планёрка: у потери «люди много ходили» — «Потоки — люди» и «${lv.later[0]}»; слой включён, планёрка закрыта`);
-      await page.click('[data-test=flows-off]');
+      const on = await page.evaluate(() => ({ morning: window.__game.store.get().morning.open, layer: window.__game.store.get().layer, menu: !!document.querySelector('[data-test=layer-people].on'), arrows: window.__game.stage.overlay.group.visible }));
+      if (on.morning || on.layer !== 'people' || !on.menu || !on.arrows) fail(`слой «Потоки — люди»: ${JSON.stringify(on)}`);
+      else ok(`планёрка: у потери «люди много ходили» — «Потоки — люди» и «${lv.later[0]}»; слой включён и отмечен слева, планёрка закрыта`);
+      await page.click('[data-test=layer-plain]');
       await frames(2);
-      const off = await page.evaluate(() => ({ flows: window.__game.store.get().flows, chip: !!document.querySelector('[data-test=flows-on]') }));
-      if (off.flows || off.chip) fail(`слой «Потоки — люди»: после «Скрыть слой» — ${JSON.stringify(off)}`);
+      const off = await page.evaluate(() => ({ layer: window.__game.store.get().layer, menu: !!document.querySelector('[data-test=layer-plain].on') }));
+      if (off.layer !== 'plain' || !off.menu) fail(`слой «Потоки — люди»: после «Обычный вид» — ${JSON.stringify(off)}`);
     }
   }
 
@@ -887,6 +891,97 @@ try {
   if (hall.people < 1 || hall.layer || hall.badges < 1 || hall.badges > hall.busy) fail(`цех: людей ${hall.people}, слой участка ${hall.layer ? 'виден' : 'скрыт'}, значков работ ${hall.badges} при занятых ${hall.busy}`);
   else ok(`цех: по одному — людей ${hall.people}, значков работ ${hall.badges} (занятых ${hall.busy}), слой участка скрыт`);
 
+  // данные на полу (Б1и): L — «Загрузка и OEE»: столбики в помещениях производства и у машин линии, у каждого число;
+  // стрелки участка не проступают, светильников под потолком нет, люди остаются; слой — не больше четырёх вызовов
+  // отрисовки; наведение — часы частей; щелчок по столбику грануляции — блок «Загрузка» с теми же часами; окно «вчера» —
+  // полные сутки; доска «План — факт» у линии — план и годные пачки текущей смены; «Обычный вид» — столбиков нет,
+  // светильники снова видны. Снимок — в контактный лист
+  let floorShot;
+  {
+    await page.evaluate(() => window.__game.actions.select(undefined));
+    await camAt({ x: 39, z: 9, half: 10 });
+    await settle(1);
+    await frames(3);
+    const off = await page.evaluate(() => window.__game.stage.calls);
+    await page.keyboard.press('KeyL');
+    await page.waitForFunction(() => window.__game.store.get().layer === 'load' && !!window.__game.store.get().floor.view, null, { timeout: 20_000 });
+    await frames(4);
+    const v = await page.evaluate(() => {
+      const g = window.__game;
+      const plant = g.layout.plan.plant;
+      const bars = g.stage.floor.bars;
+      return {
+        calls: g.stage.calls,
+        rooms: bars.filter(b => b.thing.kind === 'room').map(b => plant.rooms[b.thing.i].type),
+        machines: bars.filter(b => b.thing.kind === 'machine').length,
+        want: plant.lines.reduce((n, l) => n + l.machines.length, 0),
+        labels: bars.every(b => b.label && (b.label.k === 'key' || b.label.share !== undefined)),
+        key: bars.filter(b => b.label.k === 'key').length,
+        arrows: g.stage.overlay.group.visible,
+        lamps: g.stage.lamps.mesh.visible,
+        people: g.stage.peopleShown,
+        boards: g.stage.floor.boardsShown,
+        legend: document.querySelectorAll('[data-test=floor-legend] li').length,
+      };
+    });
+    const ROOMS = ['dispensing', 'granulation', 'blending', 'compression', 'packaging'];
+    if (v.rooms.join() !== ROOMS.join() || v.machines !== v.want || !v.labels || v.key !== 1 || v.arrows || v.lamps || v.people < 1 || v.boards !== 1 || v.legend !== 6 || v.calls - off > 4)
+      fail(`слой «Загрузка и OEE»: ${JSON.stringify(v)}, вызовов без слоя ${off}`);
+    else ok(`слой «Загрузка и OEE»: столбики в ${v.rooms.join(', ')} и у ${v.machines} машин, у каждого число, OEE — у одной; доска у линии; стрелок и светильников нет, людей ${v.people}; вызовов отрисовки ${v.calls - off >= 0 ? '+' : ''}${v.calls - off}`);
+    await page.screenshot({ path: join(out, 'e2e-floor.png') });
+    floorShot = { file: join(out, 'e2e-floor.png'), label: `Б1и · «Загрузка и OEE» · цех · ${v.calls} вызовов` };
+    // наведение и щелчок — по столбику грануляции
+    const at = await page.evaluate(() => {
+      const g = window.__game;
+      const b = g.stage.floor.spots.bars.find(x => x.thing.kind === 'room' && g.layout.rooms[x.thing.i].type === 'granulation');
+      return { sp: g.stage.screen(b.x, 1.2, b.z), i: b.thing.i };
+    });
+    if (!at.sp) fail('столбик грануляции не на экране');
+    else {
+      await page.mouse.move(at.sp.x, at.sp.y);
+      await page.waitForSelector('[data-test=floor-tip]', { timeout: 10_000 }).catch(() => {});
+      const tip = await page.evaluate(i => {
+        const r = window.__game.store.get().floor.view.rooms.find(x => x.i === i);
+        return { rows: document.querySelectorAll('[data-test=floor-tip-row]').length, want: Object.values(r.times).filter(x => x > 0).length, text: document.querySelector('[data-test=floor-tip]')?.textContent ?? '' };
+      }, at.i);
+      if (tip.rows < 1 || tip.rows !== tip.want || !/Грануляция/.test(tip.text)) fail(`подсказка у столбика грануляции: ${JSON.stringify(tip)}`);
+      else ok(`подсказка у столбика грануляции: ${tip.text}`);
+      await page.mouse.click(at.sp.x, at.sp.y);
+      await page.waitForSelector('[data-test=card-load-row]', { timeout: 20_000 }).catch(() => {});
+      const card = await page.evaluate(i => {
+        const g = window.__game;
+        const r = g.store.get().floor.view.rooms.find(x => x.i === i);
+        const rows = [...document.querySelectorAll('[data-test=card-load-row]')].map(x => [x.getAttribute('data-part'), Number(x.getAttribute('data-sec'))]);
+        return { sel: g.selected, rows, times: r.times };
+      }, at.i);
+      const same = card.rows.length === 5 && card.rows.every(([p, sec]) => card.times[p] === sec);
+      if (card.sel?.kind !== 'room' || card.sel.i !== at.i || !same) fail(`карточка грануляции, «Загрузка»: ${JSON.stringify(card)}`);
+      else ok(`карточка грануляции: блок «Загрузка» — те же часы, ${card.rows.map(([p, sec]) => `${p} ${Math.round(sec / 60)} мин`).join(', ')}`);
+      await page.mouse.move(5, 400);
+    }
+    // окно — вчера: полные календарные сутки; OEE с планёркой сверяется 9 октября, когда вчера линия упаковывала
+    await page.click('[data-test=floor-win-yesterday]');
+    await page.waitForFunction(() => window.__game.store.get().floor.view?.win === 'yesterday', null, { timeout: 20_000 });
+    const span = await page.evaluate(() => window.__game.store.get().floor.view.span);
+    if (span !== 86400) fail(`окно «вчера»: ${span} с`);
+    else ok('окно «вчера»: полные сутки, 86 400 с');
+    await page.click('[data-test=floor-win-today]');
+    // доска «План — факт»: сменное задание по часам; план часов — задание поровну, годные — по прошедшим часам
+    const board = await page.evaluate(() => window.__game.store.get().floor.view.lines[0].board);
+    const hours = board ? (board.ends - board.from) / 3600 : 0;
+    if (!board || board.hours.length !== hours || board.hours.reduce((n, h) => n + h.plan, 0) !== board.plan || board.hours.reduce((n, h) => n + (h.fact ?? 0), 0) !== board.fact)
+      fail(`доска «План — факт»: ${JSON.stringify(board)}`);
+    else ok(`доска «План — факт»: смена ${new Date(board.from * 1000).toISOString().slice(11, 16)}–${new Date(board.ends * 1000).toISOString().slice(11, 16)}, задание ${board.plan}, годных ${board.fact}, по часам ${board.hours.map(h => h.fact ?? '·').join(' ')}`);
+    await page.keyboard.press('Escape');
+    // L — «Потоки — люди», L — «Обычный вид»: столбиков нет
+    await page.keyboard.press('KeyL');
+    await page.keyboard.press('KeyL');
+    await frames(2);
+    const plain = await page.evaluate(() => ({ layer: window.__game.store.get().layer, shown: window.__game.stage.floor.group.visible, lamps: window.__game.stage.lamps.mesh.visible }));
+    if (plain.layer !== 'plain' || plain.shown || !plain.lamps) fail(`«Обычный вид»: ${JSON.stringify(plain)}`);
+    else ok('«Обычный вид»: столбиков и досок нет, светильники снова видны');
+  }
+
   // контактный лист (13-art.md, §17): три высоты камеры днём (час упаковки) и ночью на трёх пресетах
   const heights = [
     ['site', null, 3],
@@ -918,6 +1013,8 @@ try {
   await page.keyboard.press('Space');
   await page.waitForTimeout(300);
   await shoot('night');
+  // и слой «Загрузка и OEE» (Б1и) — днём, в час упаковки
+  if (floorShot) sheet.push(floorShot);
   // один лист: строки — пресет и время суток, столбцы — высота
   const cells = sheet.map(c => `<figure><img src="data:image/png;base64,${readFileSync(c.file).toString('base64')}"><figcaption>${c.label}</figcaption></figure>`).join('');
   const lister = await browser.newPage({ viewport: { width: 1290, height: 800 } });
@@ -1644,6 +1741,28 @@ try {
     }, null, { timeout: 20_000 });
     const day = await today();
     const extra = await page.evaluate(() => [...document.querySelectorAll('[data-test=morning-extra]')].map(x => x.textContent ?? ''));
+    // данные на полу (Б1и): слой «Загрузка и OEE» за вчера — у ключевой машины OEE с множителями, как на этой планёрке
+    {
+      await page.evaluate(() => {
+        window.__game.actions.setLayer('load');
+        window.__game.actions.setFloorWin('yesterday');
+      });
+      await page.waitForFunction(() => window.__game.store.get().floor.view?.win === 'yesterday', null, { timeout: 20_000 });
+      await frames(2);
+      const oee = await page.evaluate(() => {
+        const g = window.__game;
+        const bar = g.stage.floor.bars.find(b => b.label.k === 'key');
+        const m = g.store.get().morning.view.lines[0];
+        return { key: bar?.label, k: bar?.thing.k, meeting: m.oee ?? null, mk: m.key ?? null };
+      });
+      await page.evaluate(() => {
+        window.__game.actions.setFloorWin('today');
+        window.__game.actions.setLayer('plain');
+      });
+      if (!oee.key || !oee.meeting || oee.key.oee !== oee.meeting.oee || oee.key.a !== oee.meeting.a || oee.key.p !== oee.meeting.p || oee.key.q !== oee.meeting.q || oee.k !== oee.mk)
+        fail(`OEE ключевой машины вчера: ${JSON.stringify(oee)}`);
+      else ok(`слой за вчера: у ключевой машины OEE ${(oee.key.oee / 100).toFixed(1)} % — доступность ${(oee.key.a / 100).toFixed(1)}, производительность ${(oee.key.p / 100).toFixed(1)}, качество ${(oee.key.q / 100).toFixed(1)} %, как на планёрке`);
+    }
     await page.keyboard.press('Escape');
     const who = { kind: 'person', n: 9 };
     await page.evaluate(x => window.__game.actions.select(x), who);

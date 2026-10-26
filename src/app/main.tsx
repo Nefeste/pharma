@@ -1,6 +1,7 @@
 // Страница игры (docs/02-architecture.md, §10): панели React и 3D-вид. Параметры адреса — для проверок:
 //   ?q=low|medium|high — пресет качества; ?lang=en — язык; ?bench=1 (&secs=15&warm=3&qualities=low,high&shots=0) —
-//   авто-бенч сцены (docs/specs/2026-10-view.md, 2г). В Electron — те же ключи: --q low, --bench, --secs 15.
+//   авто-бенч сцены (docs/specs/2026-10-view.md, 2г), &layer=load — со слоем «Загрузка и OEE» (Б1и). В Electron — те же
+//   ключи: --q low, --bench, --secs 15, --layer load.
 import { createRoot } from 'react-dom/client';
 import { setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
@@ -43,6 +44,9 @@ const actions: Actions = {
   setpoint: later('setpoint'),
   urgent: later('urgent'),
   toggleFlows: later('toggleFlows'),
+  setLayer: later('setLayer'),
+  nextLayer: later('nextLayer'),
+  setFloorWin: later('setFloorWin'),
   understood: later('understood'),
   openMorning: later('openMorning'),
   closeMorning: later('closeMorning'),
@@ -148,7 +152,7 @@ Game.create(document.getElementById('view')!, store, quality)
       const { runBench } = await import('./bench');
       const num = (k: string) => (val(k) ? Number(val(k)) : undefined);
       const qs = val('qualities')?.split(',') as Quality[] | undefined;
-      await runBench(g, { secs: num('secs'), warm: num('warm'), qualities: qs, shots: val('shots') !== '0' });
+      await runBench(g, { secs: num('secs'), warm: num('warm'), qualities: qs, shots: val('shots') !== '0', ...(val('layer') === 'load' ? { layer: 'load' as const } : {}) });
     } else if (!asked && !kept(windowKeep())) void firstPreset(g);
   })
   .catch(e => {

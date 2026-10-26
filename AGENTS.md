@@ -190,7 +190,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   by kind and department: waiting tasks by cause, a truck waiting for the dock, transport and walking, defects, room
   cleanings — general and minor — and line changeovers with their work; a line's
   day — machine times, rated output over loading and working time, good tablets — and `oee()`; a batch's time by state;
-  the line master's shift task — opened and closed with the crew's shifts — and the rhythm coefficient), `modes.ts`
+  the line master's shift task — opened and closed with the crew's shifts — and the rhythm coefficient; with Б1и the
+  room accounting — seconds a day of each production and packaging room working, cleaned and set up, held by a batch
+  without work, dirty and free, spans closed every hour, a full day 86 400 s — and the good packs of each hour of a
+  shift task), `modes.ts`
   (with Б1ж, setpoints: of a stage parameter by the recipe code, stage and parameter, of the blister machine speed by
   the packaging instruction code; within the range of the revision in force and a whole number of steps from the target,
   otherwise the `setpoint` command is refused; none — the target; the turret speed scales the recipe's rate
@@ -328,7 +331,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   deputies and whom one may choose, whom a person covers, the meeting's away, leaving soon and back — records of the
   plant (`leave.ts`); with Б5а, the decision journal — pages newest first, filters by post and author, the numbers
   and codes of a record's things, «Кто решил» of the cards and the batch record, the meeting's decisions of the day by
-  head — records of the plant (`journal.ts`); the schedule — the Gantt of the past, the running and the schedule run
+  head — records of the plant (`journal.ts`); with Б1и, the floor — rooms and line machines over today, yesterday or
+  seven days, the key machine and OEE by the meeting's `lineSum`, the plan-vs-actual board of the shift by hours, the
+  batch a held room leads to — records of the plant (`floor.ts`); the schedule — the Gantt of the past, the running and
+  the schedule run
   with the player's draft —
   new not-before times and new urgent batch orders, the old bars of what the draft moves, and the ghost of a dragged
   batch order (`plan.ts`), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how far the window's
@@ -348,7 +354,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   driving off, a picture only (`yard.ts`); what is under the cursor — people by their point on screen, pallets, machines
   and trucks by the camera ray, the room by the floor (`pick.ts`); pallet moves between zones seen from the slice, their
   rates, arrows and the fill of warehouse places, people moving between rooms for the «Потоки — люди» layer
-  (`flows.ts`); the scene bench, a copy of Bolnitsa's (`bench.ts`,
+  (`flows.ts`); with Б1и the layers on the left and L, where the load columns and the boards stand, part heights as
+  shares of the window, the number over each column, the board rows, the palette (`floor.ts`); the scene bench, a copy
+  of Bolnitsa's, with `--layer load` also with the layer on (`bench.ts`,
   `stats.ts`).
 - `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa); the plant
   from the plan (`layout.ts` — rooms, walls, doors and spots from `planOf`), floors, zone markings, ground and yard,
@@ -360,7 +368,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   level by speed and camera height with its soft change (`detail.ts`), the site layer — arrows above the walls and the
   fill of places (`overlay.ts`), colour checks — colour-blindness simulation, ΔE and icon contrast (`color.ts`), the
   outline of the selected thing (`select.ts`), the work icons — paths shared by SVG and canvas (`taskicons.ts`) and the
-  icons above heads, one instanced draw call (`badges.ts`), people
+  icons above heads, one instanced draw call (`badges.ts`), the «Загрузка и OEE» layer — column parts, full-height
+  frames, numbers and plan-vs-actual boards in four draw calls (`floor.ts`), people
   — Bolnitsa's crowd on the GPU (`bake.ts`, `people.ts`, copies) with looks and clothes by role (`cast.ts`), the
   composition (`stage.ts`).
 - `src/ui/` — panels (React) and their store: the top bar with «До утра», «До события» and the latest notice — the one
@@ -371,7 +380,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   its tabs, sortable columns and search, hiring in «Люди» (`Ref.tsx`, F1), the vacation schedule in «Люди» and the
   vacation block of a person's card — parts, deputies, the related profession (`Leave.tsx`), the decision journal —
   the right panel, J, a row with its reason in words, filters and pages, and the «Кто решил» rows with «Почему?»
-  (`Journal.tsx`), quality attribute and
+  (`Journal.tsx`), the layers menu on the left with the window and the legend, the column tooltip and the card's
+  «Загрузка» block (`Layers.tsx`), quality attribute and
   process parameter
   values in words (`units.ts`), what is going on now with «Смотреть»
   (`Now.tsx`, N), the 08:00 meeting (`Morning.tsx`), the cash

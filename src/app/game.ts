@@ -28,12 +28,13 @@ import { useDb } from '../ui/db';
 import { commandsOf, draftKey, ordersOf, prune, upsert } from '../ui/draft';
 import { type Actions, holds, type Hud, LIVE, NO_RUN, PLAN_RUN, type Speed, type Store } from '../ui/store';
 import { keepFirsts, keptFirsts } from './firsts';
+import { barBoxes, nextLayer } from './floor';
 import { fillsOf, Flows, lineArrows, moveArrows, movesOf, peopleMoves } from './flows';
 import { type Movers, moversAt, taskIcons } from './movers';
 import { stopKey } from '../sim/protocol';
 import { EVENT_CAP, type Go, goOf, keepOff, keptOff, stopKinds } from './pauses';
 import { keep, windowKeep } from './preset';
-import { type Box, machineBoxes, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
+import { type Box, machineBoxes, nearest, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
 import { carriedOf, dockFront, palletsOf, SceneState } from './scene';
 import { type TruckPose, Yard } from './yard';
 
@@ -209,7 +210,7 @@ export class Game {
     this.lag = s.lag;
     this.view.apply(sl);
     // слой «Потоки — люди» (Б1г) — стрелки переходов людей вместо перевозок паллет и линии
-    const arrows = this.store.get().flows ? moveArrows(this.layout, this.peopleFlows) : [...moveArrows(this.layout, this.flows), ...lineArrows(this.db, this.layout, sl.lines)];
+    const arrows = this.store.get().layer === 'people' ? moveArrows(this.layout, this.peopleFlows) : [...moveArrows(this.layout, this.flows), ...lineArrows(this.db, this.layout, sl.lines)];
     this.stage.setOverlay(arrows, fillsOf(this.layout.plan, this.view.units.values()));
     this.showPallets();
     this.yard.update(this.view.trucks, d => dockFront(this.layout, d), sl.t);
@@ -247,6 +248,10 @@ export class Game {
         this.store.set({ now: { ...this.store.get().now, view: d } });
         // смотрели работу — её строки больше нет: работа кончилась, прежняя скорость
         if (this.watching && !d.rows.some(r => r.key === this.watching!.key)) this.actions.setSpeed(this.watching.resume);
+      } else if (d.view === 'floor') {
+        // вид «Пол» (Б1и): столбики и доски на полу, блок «Загрузка» в карточке, подсказка
+        this.store.set({ floor: { ...this.store.get().floor, view: d } });
+        this.stage.setFloor(d);
       } else if (d.view === 'ghost') {
         // призрак того, что тянут сейчас; прежний запрос — не показываем
         const g = this.store.get().gantt;
@@ -684,10 +689,18 @@ export class Game {
       if (!g.open) this.actions.toggleGantt();
       else this.sendViews();
     },
-    toggleFlows: () => {
-      const on = !this.store.get().flows;
-      this.stage.forceLayer(on);
-      this.store.set({ flows: on });
+    toggleFlows: () => this.actions.setLayer(this.store.get().layer === 'people' ? 'plain' : 'people'),
+    setLayer: l => {
+      // слой данных один (Б1и): с ним стрелки перевозок не проступают; «Потоки — люди» — стрелки переходов людей
+      this.stage.forceLayer(l === 'people');
+      this.stage.setFloorOn(l === 'load');
+      this.store.set({ layer: l, floor: { ...this.store.get().floor, hover: undefined } });
+      this.sendViews();
+    },
+    nextLayer: () => this.actions.setLayer(nextLayer(this.store.get().layer)),
+    setFloorWin: win => {
+      this.store.set({ floor: { ...this.store.get().floor, win } });
+      this.sendViews();
     },
     understood: kind => {
       const list = this.store.get().firsts;
@@ -917,6 +930,8 @@ export class Game {
     if (h.ref.open) list.push({ id: 'ref', view: 'ref' });
     // «Сейчас» — и при закрытой панели: карточке — для «Смотреть», смотрящему — чтобы знать, когда работа кончилась
     if (h.now.open || this.selected || this.watching) list.push({ id: 'now', view: 'now' });
+    // «Пол» (Б1и) — пока включён слой и пока открыта карточка помещения или машины: в ней блок «Загрузка»
+    if (h.layer === 'load' || this.selected?.kind === 'room' || this.selected?.kind === 'machine') list.push({ id: 'floor', view: 'floor', win: h.floor.win });
     const key = JSON.stringify(list);
     if (key === this.viewsSent) return;
     this.viewsSent = key;
@@ -955,8 +970,24 @@ export class Game {
       for (const f of this.moversNow.people) near(f.x, 0.9, f.z, { kind: 'person', n: f.person });
       for (const v of this.moversNow.vehicles) near(v.x, 1, v.z, { kind: 'vehicle', n: v.vehicle });
     }
-    const boxes = [...palletBoxes([...this.pallets, ...this.carriedNow]), ...this.machineBoxes, ...truckBoxes(this.trucksNow)];
+    // столбики слоя «Загрузка и OEE» (Б1и) выбирают своё помещение или машину
+    const bars = this.store.get().layer === 'load' ? barBoxes(this.stage.floor.spots) : [];
+    const boxes = [...bars, ...palletBoxes([...this.pallets, ...this.carriedNow]), ...this.machineBoxes, ...truckBoxes(this.trucksNow)];
     return pick(spots, this.stage.ray(clientX, clientY), boxes, this.layout);
+  }
+
+  /** Столбик слоя под курсором (Б1и) — для подсказки с часами частей; слой снят или мимо — `undefined`. */
+  private barAt(clientX: number, clientY: number): Thing | undefined {
+    if (this.store.get().layer !== 'load') return undefined;
+    return nearest(this.stage.ray(clientX, clientY), barBoxes(this.stage.floor.spots))?.thing;
+  }
+
+  /** Наведение на столбик: подсказка — у курсора, где он был, когда навели; ушли со столбика — подсказки нет. */
+  private hover(clientX: number, clientY: number) {
+    const f = this.store.get().floor;
+    const t = this.barAt(clientX, clientY);
+    if (same(t, f.hover?.thing) || (!t && !f.hover)) return;
+    this.store.set({ floor: { ...f, hover: t ? { thing: t, x: clientX, y: clientY } : undefined } });
   }
 
   /** Рамка выбранного в этом кадре: след паллеты, машины, фуры, помещения; круг у человека и техники. */
@@ -1027,6 +1058,7 @@ export class Game {
       this.mouse.x = e.clientX;
       this.mouse.y = e.clientY;
       this.mouse.inside = true;
+      this.hover(e.clientX, e.clientY);
       if (!this.mouse.drag) return;
       const dx = e.clientX - this.mouse.drag.x;
       const dy = e.clientY - this.mouse.drag.y;
@@ -1040,6 +1072,7 @@ export class Game {
     });
     el.addEventListener('pointerleave', () => {
       this.mouse.inside = false;
+      if (this.store.get().floor.hover) this.store.set({ floor: { ...this.store.get().floor, hover: undefined } });
     });
     el.addEventListener('contextmenu', e => e.preventDefault());
     window.addEventListener('blur', () => {
@@ -1074,6 +1107,7 @@ export class Game {
       else if (k === 'KeyI') this.actions.toggleInv();
       else if (k === 'KeyN') this.actions.toggleNow();
       else if (k === 'KeyJ') this.actions.toggleJournal();
+      else if (k === 'KeyL') this.actions.nextLayer();
       else if (k === 'F1') {
         e.preventDefault();
         this.actions.toggleRef();

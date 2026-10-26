@@ -415,6 +415,14 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     (raw as unknown as PlantState).journal = [];
     return raw;
   },
+  // 29 → 30 (Б1и): учёт помещений по суткам — с мгновения сохранения, у прошлых суток его нет; у сменных заданий,
+  // открытых и закрытых, выпуска по часам нет
+  29: (raw, db) => {
+    const s = raw as unknown as PlantState;
+    for (const d of s.losses) d.rooms ??= {};
+    leanStep(db, s);
+    return raw;
+  },
 };
 
 export function toSave(s: PlantState): string {

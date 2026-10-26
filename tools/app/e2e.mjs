@@ -892,9 +892,10 @@ try {
   else ok(`цех: по одному — людей ${hall.people}, значков работ ${hall.badges} (занятых ${hall.busy}), слой участка скрыт`);
 
   // данные на полу (Б1и): L — «Загрузка и OEE»: столбики в помещениях производства и у машин линии, у каждого число;
-  // стрелки участка не проступают, люди остаются; слой — не больше четырёх вызовов отрисовки; наведение — часы частей;
-  // щелчок по столбику грануляции — блок «Загрузка» с теми же часами; окно «вчера» — полные сутки; доска «План — факт» у
-  // линии — план и годные пачки текущей смены; «Обычный вид» — столбиков нет. Снимок — в контактный лист
+  // стрелки участка не проступают, светильников под потолком нет, люди остаются; слой — не больше четырёх вызовов
+  // отрисовки; наведение — часы частей; щелчок по столбику грануляции — блок «Загрузка» с теми же часами; окно «вчера» —
+  // полные сутки; доска «План — факт» у линии — план и годные пачки текущей смены; «Обычный вид» — столбиков нет,
+  // светильники снова видны. Снимок — в контактный лист
   let floorShot;
   {
     await page.evaluate(() => window.__game.actions.select(undefined));
@@ -917,15 +918,16 @@ try {
         labels: bars.every(b => b.label && (b.label.k === 'key' || b.label.share !== undefined)),
         key: bars.filter(b => b.label.k === 'key').length,
         arrows: g.stage.overlay.group.visible,
+        lamps: g.stage.lamps.mesh.visible,
         people: g.stage.peopleShown,
         boards: g.stage.floor.boardsShown,
         legend: document.querySelectorAll('[data-test=floor-legend] li').length,
       };
     });
     const ROOMS = ['dispensing', 'granulation', 'blending', 'compression', 'packaging'];
-    if (v.rooms.join() !== ROOMS.join() || v.machines !== v.want || !v.labels || v.key !== 1 || v.arrows || v.people < 1 || v.boards !== 1 || v.legend !== 6 || v.calls - off > 4)
+    if (v.rooms.join() !== ROOMS.join() || v.machines !== v.want || !v.labels || v.key !== 1 || v.arrows || v.lamps || v.people < 1 || v.boards !== 1 || v.legend !== 6 || v.calls - off > 4)
       fail(`слой «Загрузка и OEE»: ${JSON.stringify(v)}, вызовов без слоя ${off}`);
-    else ok(`слой «Загрузка и OEE»: столбики в ${v.rooms.join(', ')} и у ${v.machines} машин, у каждого число, OEE — у одной; доска у линии; стрелок нет, людей ${v.people}; вызовов отрисовки +${v.calls - off}`);
+    else ok(`слой «Загрузка и OEE»: столбики в ${v.rooms.join(', ')} и у ${v.machines} машин, у каждого число, OEE — у одной; доска у линии; стрелок и светильников нет, людей ${v.people}; вызовов отрисовки ${v.calls - off >= 0 ? '+' : ''}${v.calls - off}`);
     await page.screenshot({ path: join(out, 'e2e-floor.png') });
     floorShot = { file: join(out, 'e2e-floor.png'), label: `Б1и · «Загрузка и OEE» · цех · ${v.calls} вызовов` };
     // наведение и щелчок — по столбику грануляции
@@ -975,9 +977,9 @@ try {
     await page.keyboard.press('KeyL');
     await page.keyboard.press('KeyL');
     await frames(2);
-    const plain = await page.evaluate(() => ({ layer: window.__game.store.get().layer, shown: window.__game.stage.floor.group.visible }));
-    if (plain.layer !== 'plain' || plain.shown) fail(`«Обычный вид»: ${JSON.stringify(plain)}`);
-    else ok('«Обычный вид»: столбиков и досок нет');
+    const plain = await page.evaluate(() => ({ layer: window.__game.store.get().layer, shown: window.__game.stage.floor.group.visible, lamps: window.__game.stage.lamps.mesh.visible }));
+    if (plain.layer !== 'plain' || plain.shown || !plain.lamps) fail(`«Обычный вид»: ${JSON.stringify(plain)}`);
+    else ok('«Обычный вид»: столбиков и досок нет, светильники снова видны');
   }
 
   // контактный лист (13-art.md, §17): три высоты камеры днём (час упаковки) и ночью на трёх пресетах

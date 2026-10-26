@@ -216,6 +216,8 @@ export class Stage {
   setFloorOn(on: boolean) {
     this.dataOn = on;
     this.floor.setShown(on);
+    // светильники под потолком сверху закрывают числа, доску и верх столбиков: в слое данных их нет, свет на полу — есть
+    this.lamps.mesh.visible = !on;
   }
 
   /** Вид «Пол» из потока расчёта: столбики, числа и доски — заново. */

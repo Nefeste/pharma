@@ -1,7 +1,7 @@
 // Б1и: учёт помещений по суткам и выпуск сменного задания по часам (src/engine/lean.ts). У полных суток помещения сумма
 // состояний — 86 400 с; состояние — по правилу спецификации, его проверяет срез каждую минуту своим кодом; работа
 // упаковки — ход её заданий; часы смены в сумме — её выпуск; образец схемы 29 читается и живёт дальше — учёт с мгновения
-// загрузки, у прошлых суток его нет.
+// загрузки, у прошлых суток его нет; образец схемы 30 — как есть, отрезки и часы смены идут дальше.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { DAY, HOUR, MIN, momentOf } from '../../src/engine/core/calendar';
@@ -167,5 +167,30 @@ describe('сохранения', () => {
     for (const t of fresh.filter(x => x.to !== undefined)) expect(t.hours!.reduce((m, x) => m + x, 0)).toBe(t.fact!);
     // задание, открытое до загрузки, закрывается без часов
     expect(s.shiftTasks.slice(0, old).every(t => t.hours === undefined)).toBe(true);
+  });
+
+  test('образец схемы 30 читается как есть: отрезки, которые шли, и выпуск по часам идут дальше', async () => {
+    const json = await Bun.file(new URL('./fixtures/save-v30.json', import.meta.url)).text();
+    const s = fromSave(db, json);
+    const raw = JSON.parse(json) as PlantState;
+    const ids = roomsOf(plan).rooms;
+    const day0 = momentOf(s.start, s.t).day;
+    const open = s.shiftTasks.filter(t => t.to === undefined && t.hours !== undefined);
+    // посреди учёта: серия держит помещение без работы, другое убирают или налаживают, линия упаковывает
+    const phases = new Set(ids.map(id => s.rooms[id].phase));
+    for (const p of ['held', 'clean', 'work'] as const) expect(phases.has(p)).toBe(true);
+    expect(open.some(t => t.hours!.length >= 2)).toBe(true);
+    for (const id of ids) expect([s.rooms[id].phase, s.rooms[id].phaseAt]).toEqual([raw.rooms[id].phase, raw.rooms[id].phaseAt]);
+    expect(s.losses.map(d => d.rooms)).toEqual(raw.losses.map(d => d.rooms));
+    apply(db, s, { kind: 'advance', seconds: 2 * DAY });
+    // сутки сохранения и следующие — полные: отрезок, который шёл при сохранении, закрыт в свои сутки
+    for (const d of s.losses.filter(x => x.day >= day0 && x.day < momentOf(s.start, s.t).day)) {
+      for (const id of ids) expect(PHASES.reduce((n, k) => n + d.rooms[id][k], 0)).toBe(DAY);
+    }
+    for (const t of open) {
+      const x = s.shiftTasks.find(y => y.line === t.line && y.from === t.from)!;
+      expect(x.hours!.slice(0, t.hours!.length)).toEqual(t.hours!);
+      expect(x.hours!.reduce((m, h) => m + h, 0)).toBe(x.fact!);
+    }
   });
 });

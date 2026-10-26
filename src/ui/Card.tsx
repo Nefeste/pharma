@@ -17,6 +17,7 @@ import { assetName, untilText, unfitText, workName } from './assets';
 import { db, docText } from './db';
 import { DevBody, First, KnobsBlock, RegimesBlock, ReleaseBlock, SpeedBlock } from './Decide';
 import { LeaveBlock } from './Leave';
+import { LoadBlock } from './Layers';
 import { StatusIcon, TaskIcon } from './icons';
 import { WhoList } from './Journal';
 import { placeText, supplierText } from './Stock';
@@ -540,6 +541,7 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
           {c.knobs ? <KnobsBlock list={c.knobs} hud={hud} actions={actions} /> : null}
           <DossierButton n={c.bn} actions={actions} />
           <Why list={c.why} start={start} />
+          {hud.selected ? <LoadBlock key={JSON.stringify(hud.selected)} hud={hud} thing={hud.selected} plant={plant} actions={actions} /> : null}
         </>
       );
       break;
@@ -580,6 +582,7 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
           {c.kind === 'equipment' && c.inside ? <InsideBlock x={c.inside} /> : null}
           {c.kind === 'machine' && c.materials ? <LineMaterials list={c.materials} /> : null}
           {c.kind === 'machine' && c.speed ? <SpeedBlock v={c.speed} hud={hud} actions={actions} /> : null}
+          {c.kind === 'machine' && hud.selected ? <LoadBlock key={JSON.stringify(hud.selected)} hud={hud} thing={hud.selected} plant={plant} actions={actions} /> : null}
           {c.kind === 'equipment' && c.regimes ? <RegimesBlock g={c.regimes} start={start} actions={actions} /> : null}
           {c.kind === 'equipment' && c.knobs ? <KnobsBlock list={c.knobs} hud={hud} actions={actions} /> : null}
           <DossierButton n={c.bn} actions={actions} />

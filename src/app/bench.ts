@@ -5,7 +5,7 @@
 //
 // Авто-бенч в игре: дальше часы идут на ×1. Пресеты × два плана камеры: общий план и проход крупным планом. Числа — как у
 // «Больницы»: кадр, процессор, видеокарта, поток расчёта, вызовы отрисовки, треугольники, люди полной и упрощённой
-// моделью. В конце — четыре снимка 1920×1080 на «высоком».
+// моделью. В конце — четыре снимка 1920×1080 на «высоком». Со слоем «Загрузка и OEE» (Б1и) — тот же замер с ним.
 import * as THREE from 'three';
 import { T } from '../i18n';
 import { AT, camDetail, speedDetail } from '../render/detail';
@@ -22,6 +22,8 @@ export interface BenchOpts {
   warm?: number;
   qualities?: Quality[];
   shots?: boolean;
+  /** слой слева (Б1и): «Загрузка и OEE» — замер с включённым слоем, рядом с прежним */
+  layer?: 'load';
 }
 
 /**
@@ -124,6 +126,11 @@ export async function runBench(g: Game, opts: BenchOpts) {
     g.stage.reserve(g.layout.plan.slots.length + SCENE.extra + 256);
     g.extra = stressPallets(g, SCENE.extra);
     g.refreshPallets();
+    // слой данных (Б1и): включён до замеров — столбики, числа и доски на полу из вида «Пол»
+    if (opts.layer) {
+      g.actions.setLayer(opts.layer);
+      for (let i = 0; i < 100 && !store.get().floor.view; i++) await sleep(100);
+    }
     g.actions.setSpeed(1);
     const path = route(g);
     for (const q of qualities) {
@@ -222,7 +229,7 @@ export async function runBench(g: Game, opts: BenchOpts) {
       cores: navigator.hardwareConcurrency,
       viewport: { w: g.host.clientWidth, h: g.host.clientHeight, dpr: window.devicePixelRatio || 1 },
       settings: {
-        secs, warm, qualities, cameras: cams, scenario: g.scenario.id, scene: SCENE, walls: 'cut',
+        secs, warm, qualities, cameras: cams, scenario: g.scenario.id, scene: SCENE, walls: 'cut', layer: opts.layer ?? 'plain',
         camera: 'perspective 20°, pitch 52°; overview and a close pass along the racks and the line (half-height 6 m)',
       },
       scene: {

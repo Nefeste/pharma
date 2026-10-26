@@ -2,6 +2,7 @@
 // Хранилище панелей: игра пишет сюда не чаще 10 раз в секунду, панели читают через `useSyncExternalStore`. Снимок
 // неизменяемый: каждое `set` — новый объект.
 import { useSyncExternalStore } from 'react';
+import type { Layer } from '../app/floor';
 import type { Go, Pause } from '../app/pauses';
 import type { Dept, Id, OvertimeMode, SeatId } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
@@ -11,6 +12,7 @@ import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import type { DossierView } from '../sim/dossier';
+import type { FloorView, FloorWin } from '../sim/floor';
 import type { InvView } from '../sim/inv';
 import type { JournalView } from '../sim/journal';
 import type { ChartView, LabView } from '../sim/lab';
@@ -103,8 +105,16 @@ export interface Hud {
   seats: { open: boolean; pick: SeatId[] };
   /** справочник завода (этап Б, Б1а): открыт ли, вкладка, вид */
   ref: { open: boolean; tab: RefTab; view?: RefView };
-  /** слой «Потоки — люди» (Б1г): стрелки переходов людей между помещениями вместо перевозок паллет */
-  flows: boolean;
+  /**
+   * слой слева (Б1и; геймдизайн, §3.6, §18): обычный вид; «Загрузка и OEE» — столбики, числа, доски «План — факт»;
+   * «Потоки — люди» (Б1г) — стрелки переходов людей между помещениями вместо перевозок паллет
+   */
+  layer: Layer;
+  /**
+   * вид «Пол» (Б1и): окно слоя — сегодня, вчера, 7 суток; последний вид; столбик под курсором и где был курсор, когда
+   * на него навели
+   */
+  floor: { win: FloorWin; view?: FloorView; hover?: { thing: Thing; x: number; y: number } };
   /** пояснения при первом событии (Б1г): виды, которые игрок уже понял, — запоминаются в окне (src/app/firsts.ts) */
   firsts: readonly string[];
 }
@@ -181,7 +191,8 @@ export const initial: Hud = {
   dossier: { open: false },
   seats: { open: false, pick: [] },
   ref: { open: false, tab: 'recipes' },
-  flows: false,
+  layer: 'plain',
+  floor: { win: 'today' },
   firsts: [],
 };
 
@@ -294,6 +305,10 @@ export interface Actions {
   setpoint(x: { recipe: Id; stage: string; param: string; value: number } | { sku: Id; value: number }): void;
   urgent(recipe: Id, sku: Id): void;
   toggleFlows(): void;
+  /** слой слева (Б1и): выбрать; следующий по кругу — клавиша L; окно слоя данных */
+  setLayer(l: Layer): void;
+  nextLayer(): void;
+  setFloorWin(w: FloorWin): void;
   understood(kind: string): void;
   /** экран «Кем вы будете»: открыть — мир на паузе; отметить место; взять отмеченные — команда `seat`; закрыть без смены */
   openSeats(): void;

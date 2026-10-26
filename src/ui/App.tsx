@@ -17,6 +17,7 @@ import { Guard } from './Guard';
 import { Dossier } from './Dossier';
 import { Inv } from './Inv';
 import { Journal } from './Journal';
+import { FloorTip, Layers } from './Layers';
 import { Lab } from './Lab';
 import { Morning } from './Morning';
 import { Now, rowTitle } from './Now';
@@ -141,16 +142,13 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
               </button>
             </span>
           ) : null}
-          {s.flows ? (
-            <span className="watching" data-test="flows-on">
-              <span className="wtext">{T.flows.people}</span>
-              <button type="button" onClick={() => actions.toggleFlows()} data-test="flows-off">
-                {T.flows.off}
-              </button>
-            </span>
-          ) : null}
           <NoticeLine n={s.notices[0]} actions={actions} />
         </div>
+      </Guard>
+      {/* слои слева (Б1и; геймдизайн, §18) и подсказка у столбика под курсором */}
+      <Guard name={T.floor.layers}>
+        <Layers hud={s} actions={actions} />
+        <FloorTip hud={s} plant={plant} />
       </Guard>
       {/* ограда — и вокруг закрытой панели: ошибку уборки при снятии панели React отдаёт той, что осталась на экране */}
       <Guard name={T.pauses.button} close={s.pauses.open ? actions.togglePauses : undefined}>

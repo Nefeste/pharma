@@ -7,6 +7,9 @@ import * as THREE from 'three';
 import type { Movers } from '../app/movers';
 import type { Ray } from '../app/pick';
 import type { ContentDb } from '../content/types';
+import { roomsOf } from '../engine/lean';
+import { T } from '../i18n';
+import type { FloorView } from '../sim/floor';
 import type { TruckPose } from '../app/yard';
 import type { EquipmentRow, LineRow, RoomRow } from '../sim/pack';
 import type { Arrow, Fill } from '../app/flows';
@@ -15,6 +18,7 @@ import type { People } from './bake';
 import { dressOf, lookOf, skinOf } from './cast';
 import { AT, shownOf, type Weights } from './detail';
 import { buildDoors, type Doors } from './doors';
+import { FloorLayer } from './floor';
 import { GpuTimer } from './gpu';
 import { buildLamps, type Lamps } from './lamps';
 import type { Layout } from './layout';
@@ -66,6 +70,8 @@ export class Stage {
   readonly machines: Machines;
   /** слой участка: стрелки и загрузка мест (2г) */
   readonly overlay: Overlay;
+  /** слой «Загрузка и OEE» (Б1и): столбики, числа, доски «План — факт» */
+  readonly floor: FloorLayer;
   /** что видно при нынешней крупности показа (detail.ts) */
   private shownD = shownOf(AT[1]);
   private lineRows: readonly LineRow[] = [];
@@ -127,6 +133,8 @@ export class Stage {
     this.overlay = new Overlay(layout);
     this.overlay.setShown(0);
     this.scene.add(this.overlay.group);
+    this.floor = new FloorLayer(init.db, layout, roomsOf(layout.plan).rooms, n => T.morning.line(n + 1));
+    this.scene.add(this.floor.group);
     this.loads = new Loads(init.capacity);
     this.scene.add(this.loads.group);
     this.scene.add(this.trucks.group);
@@ -185,9 +193,13 @@ export class Stage {
     this.gameRate = gameRate;
   }
 
-  /** Крупность показа кадра — веса уровней (detail.ts): люди и техника уходят в пол, штуки — в полосу, слой проступает. */
+  /**
+   * Крупность показа кадра — веса уровней (detail.ts): люди и техника уходят в пол, штуки — в полосу, слой проступает. Со
+   * слоем данных (Б1и) стрелки не проступают, а люди и техника остаются.
+   */
   setDetail(w: Weights) {
-    this.shownD = shownOf(w);
+    this.siteW = w[2];
+    this.shownD = this.dataOn ? { ...shownOf(w), movers: 1, layer: 0 } : shownOf(w);
     this.overlay.setShown(this.layerOn ? 1 : this.shownD.layer);
   }
 
@@ -196,6 +208,19 @@ export class Stage {
   forceLayer(on: boolean) {
     this.layerOn = on;
     this.overlay.setShown(on ? 1 : this.shownD.layer);
+  }
+
+  /** Слой «Загрузка и OEE» (Б1и): виден или нет; вес уровня участка — числа с высоты участка крупнее. */
+  private dataOn = false;
+  private siteW = 0;
+  setFloorOn(on: boolean) {
+    this.dataOn = on;
+    this.floor.setShown(on);
+  }
+
+  /** Вид «Пол» из потока расчёта: столбики, числа и доски — заново. */
+  setFloor(v: FloorView | undefined) {
+    this.floor.set(v);
   }
 
   /** Стрелки перевозок и линии, загрузка мест склада — слой участка (2г). */
@@ -334,6 +359,7 @@ export class Stage {
     this.badges.set(this.people ? this.badgeList : [], this.shownD.movers, cam.half, this.renderer.domElement.clientHeight);
     this.machines.update(dt, this.gameRate, this.lineRows, this.eqRows, this.shownD);
     this.signs.update(u, cam.half);
+    this.floor.update(cam.camera, this.siteW);
     this.draw();
   }
 

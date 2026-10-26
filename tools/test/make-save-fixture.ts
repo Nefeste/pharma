@@ -40,7 +40,10 @@
 // со своей уставкой, у сделанной стадии в записи — уставка не по цели, линия упаковывает со скоростью задания; уборки
 // помещения упаковки здесь нет — её держит образец схемы 27. С схемы 29 — посреди журнала решений: записи игрока с поста
 // качества — уставки и шаги расследования — и руководителей: задания на серии, заказы поставщикам, решения по партиям;
-// уставки посреди стадии здесь тоже есть, но их держит образец схемы 28.
+// уставки посреди стадии здесь тоже есть, но их держит образец схемы 28. С схемы 30 — посреди учёта помещений: у
+// помещений учёта отрезки в разных состояниях — серия держит помещение без работы, другое убирают или налаживают, линия
+// упаковывает, — а у сменного задания, которое идёт, уже есть выпуск по часам; журнал здесь тоже есть, но его держит
+// образец схемы 29.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { DAY, daysFromCivil, HOUR, MIN, momentOf } from '../../src/engine/core/calendar';
@@ -116,8 +119,14 @@ const moded = () =>
 // посреди журнала решений (Б5а): записи игрока с поста — уставки и шаги расследования — и руководителей: задания на серии,
 // заказы поставщикам, решения по партиям
 const journaled = () => s.journal.some(r => r.by === 'player' && r.seat !== undefined) && (['plan', 'supply', 'qc'] as const).every(h => s.journal.some(r => r.by === h));
+// посреди учёта помещений (Б1и): серия держит помещение без работы, другое убирают или налаживают, линия упаковывает; у
+// сменного задания, которое идёт, — выпуск уже за два часа и больше
+const floored = () => {
+  const ph = new Set(Object.values(s.rooms).map(r => r.phase));
+  return ph.has('held') && ph.has('clean') && ph.has('work') && s.shiftTasks.some(t => t.to === undefined && (t.hours?.length ?? 0) >= 2);
+};
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : seated() && journaled();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : seated() && floored();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 if (SCHEMA >= 13) apply(db, s, { kind: 'seat', seats: ['director'] });

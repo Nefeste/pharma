@@ -4,11 +4,12 @@
 // движка, кроме вопросов о пригодности активов (Б3в): его зовут они.
 import type { ContentDb, Dept, Id } from '../content/types';
 import { lineUnfit, stageUnfit } from './assets';
-import { HOUR, momentOf } from './core/calendar';
+import { DAY, HOUR, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { machineSpeed } from './modes';
 import { planOf } from './plant';
-import type { Batch, BatchPhase, DayLoss, Line, LineDay, MachineTimes, PlantState, ShiftTask, Task, TaskKind, WaitCause } from './types';
+import type { PlantPlan } from './plant';
+import type { Batch, BatchPhase, DayLoss, Line, LineDay, MachineTimes, PlantState, Room, RoomPhase, RoomTimes, ShiftTask, Task, TaskKind, WaitCause } from './types';
 import { scheduleOn, spanOn } from './shifts';
 
 /** Участок задачи — отдел, чья это работа; отгрузку делает склад. */
@@ -67,6 +68,7 @@ export function newLoss(day: number): DayLoss {
     cleans: { major: 0, majorSec: 0, minor: 0, minorSec: 0 },
     changes: { n: 0, sec: 0 },
     lines: {},
+    rooms: {},
   };
 }
 
@@ -201,7 +203,8 @@ export function switchesOf(days: DayLoss[]): Switches {
 }
 
 /**
- * Каждый час: в полночь ожидание открытых задач закрывается в ушедшие сутки и начинается в новых; у линий — конец и
+ * Каждый час: в полночь ожидание открытых задач закрывается в ушедшие сутки и начинается в новых; отрезки помещений
+ * учёта закрываются — так ни один не идёт через полночь (Б1и); у линий — выпуск часа у открытых сменных заданий, конец и
  * начало смен упаковщиков: выпуск смены и новое сменное задание. Звать после линий (их выпуск посчитан до часа).
  */
 export function leanHour(db: ContentDb, s: PlantState) {
@@ -216,23 +219,34 @@ export function leanHour(db: ContentDb, s: PlantState) {
     }
     dayOf(s, now.day);
   }
+  for (const id of roomsOf(planOf(db, s.plant)).rooms) roomSpan(s, s.rooms[id]);
+  // годные пачки часа — у каждого открытого задания с часами (доска «План — факт», Б1и): до конца смены, чтобы их сумма
+  // была выпуском смены
+  // смена короче суток: задания старше двух суток закрыты
+  for (let i = s.shiftTasks.length - 1; i >= 0 && s.t - s.shiftTasks[i].from < 2 * DAY; i--) {
+    const t = s.shiftTasks[i];
+    if (t.to !== undefined || !t.hours) continue;
+    const line = s.lines[t.line];
+    t.hours.push(line.packs + line.made - t.start - t.hours.reduce((n, x) => n + x, 0));
+  }
   // смены людей у машин линии — их смены по графикам (Б4б): у пятидневки — по производственному календарю, в праздник её
   // нет, накануне праздника она короче (Б4а); у сменного по циклу — по рисунку, ночная через полночь
   for (const line of Object.values(s.lines)) {
     for (const [id, x] of shiftsOf(db, s, line, now.day)) {
       if (x.end) closeShift(s, line, id);
-      if (x.len !== undefined) openShift(db, s, line, id, x.len);
+      if (x.len !== undefined) openShift(db, s, line, id, x.len, x.ends!);
     }
   }
 }
 
 /**
  * Графики людей, которые стоят у машин линии, по порядку штата: у какого смена кончается в это мгновение (`end`) и у
- * какого начинается — с её длиной для задания (`len`): у пятидневки — по графику, у сменного по циклу — по рисунку.
+ * какого начинается — с её длиной для задания (`len`): у пятидневки — по графику, у сменного по циклу — по рисунку; и
+ * когда она кончится (`ends`).
  */
-function shiftsOf(db: ContentDb, s: PlantState, line: Line, day: number): Map<Id, { end: boolean; len?: number }> {
+function shiftsOf(db: ContentDb, s: PlantState, line: Line, day: number): Map<Id, { end: boolean; len?: number; ends?: number }> {
   const roles = new Set(line.machines.map(mc => db.machines[mc.type].crew.role));
-  const out = new Map<Id, { end: boolean; len?: number }>();
+  const out = new Map<Id, { end: boolean; len?: number; ends?: number }>();
   for (const p of Object.values(s.people)) {
     if (!roles.has(p.role)) continue;
     for (const z of [day - 1, day]) {
@@ -242,7 +256,10 @@ function shiftsOf(db: ContentDb, s: PlantState, line: Line, day: number): Map<Id
       const sh = db.shifts[id];
       const x = out.get(id) ?? { end: false };
       if (span[1] === s.t) x.end = true;
-      if (span[0] === s.t) x.len = sh.cycle ? span[1] - span[0] : (sh.to - sh.from) * HOUR;
+      if (span[0] === s.t) {
+        x.len = sh.cycle ? span[1] - span[0] : (sh.to - sh.from) * HOUR;
+        x.ends = span[1];
+      }
       out.set(id, x);
     }
   }
@@ -257,7 +274,7 @@ const queueOf = (s: PlantState, line: Line) =>
  * Сменное задание: меньшее из «осталось годных пачек в заданиях на упаковку линии с материалами в резерве» и «скорость
  * узкого места × время смены × норма мастера»; скорость — у первого задания. Заданий нет — задание смены 0.
  */
-function openShift(db: ContentDb, s: PlantState, line: Line, shift: Id, len: number) {
+function openShift(db: ContentDb, s: PlantState, line: Line, shift: Id, len: number, ends: number) {
   const jobs = queueOf(s, line).map(b => b.pack!);
   let plan = 0;
   if (jobs.length > 0) {
@@ -269,7 +286,7 @@ function openShift(db: ContentDb, s: PlantState, line: Line, shift: Id, len: num
     const left = jobs.reduce((n, j) => n + j.expect! - (j.state === 'running' ? line.made : 0), 0);
     plan = Math.max(0, Math.min(left, cap));
   }
-  s.shiftTasks.push({ line: line.id, shift, from: s.t, plan, start: line.packs + line.made });
+  s.shiftTasks.push({ line: line.id, shift, from: s.t, plan, start: line.packs + line.made, ends, hours: [] });
 }
 
 function closeShift(s: PlantState, line: Line, shift: Id) {
@@ -284,9 +301,10 @@ function closeShift(s: PlantState, line: Line, shift: Id) {
 
 /**
  * Коэффициент ритмичности смен (`bse-rhythm`, `savitskaya`), доли 1/10 000: выпуск каждой смены, но не больше её
- * задания, против суммы заданий. Смены без задания и незакрытые — не в счёт; считать нечего — `undefined`.
+ * задания, против суммы заданий. Смены без задания и незакрытые — не в счёт; считать нечего — `undefined`. Тем же счётом —
+ * часы смены на доске «План — факт» (Б1и).
  */
-export function rhythm(tasks: ShiftTask[]): number | undefined {
+export function rhythm(tasks: readonly Pick<ShiftTask, 'plan' | 'fact'>[]): number | undefined {
   let plan = 0;
   let got = 0;
   for (const t of tasks) {
@@ -362,7 +380,7 @@ export function phaseOf(db: ContentDb, s: PlantState, b: Batch): BatchPhase | un
   }
 }
 
-/** После раздачи задач: у каждой серии, чьё состояние сменилось, прошлый отрезок — в его состояние. */
+/** После раздачи задач: у каждой серии, чьё состояние сменилось, прошлый отрезок — в его состояние; так же у помещений. */
 export function leanStep(db: ContentDb, s: PlantState) {
   for (const b of Object.values(s.batches)) {
     const ph = phaseOf(db, s, b);
@@ -372,4 +390,64 @@ export function leanStep(db: ContentDb, s: PlantState) {
     else delete b.phase;
     b.phaseAt = s.t;
   }
+  roomsStep(db, s);
+}
+
+/** Помещения учёта (Б1и) — помещения производства и упаковки: где по плану стоит оборудование или линия; по порядку плана. */
+export interface RoomsOf {
+  rooms: string[];
+  /** помещение линии */
+  lineRoom: Record<string, string>;
+}
+
+const roomsCache = new WeakMap<PlantPlan, RoomsOf>();
+
+export function roomsOf(plan: PlantPlan): RoomsOf {
+  const hit = roomsCache.get(plan);
+  if (hit) return hit;
+  const p = plan.plant;
+  const used = new Set([...p.equipment.map(e => e.room), ...p.lines.map(l => l.room)]);
+  const out: RoomsOf = { rooms: p.rooms.filter(r => used.has(r.id)).map(r => r.id), lineRoom: Object.fromEntries(p.lines.map(l => [l.id, l.room])) };
+  roomsCache.set(plan, out);
+  return out;
+}
+
+/** Задачи уборки и наладки помещения: мойка оборудования, уборка помещения, переналадка, очистка линии и её проверка. */
+const PREP: ReadonlySet<TaskKind> = new Set(['clean', 'roomClean', 'changeover', 'clearance', 'clearCheck']);
+
+/** Пустое время помещения за сутки. */
+export const NO_ROOM: RoomTimes = { work: 0, clean: 0, held: 0, dirty: 0, free: 0 };
+
+/**
+ * Состояние помещений учёта сейчас (Б1и): работа — идёт задача стадии серии, которая держит помещение, или линия
+ * упаковывает её задание; уборка и наладка — идёт задача уборки и наладки помещения или его линии; серия держит
+ * помещение без работы — «серия ждёт»; иначе — грязно или свободно по статусу помещения. Сменилось — прошлый отрезок
+ * в прошлое состояние.
+ */
+function roomsStep(db: ContentDb, s: PlantState) {
+  const of = roomsOf(planOf(db, s.plant));
+  const staged = new Set<string>();
+  const prep = new Set<string>();
+  for (const t of Object.values(s.tasks)) {
+    if (t.state !== 'busy') continue;
+    if (t.kind === 'stage') staged.add(t.batch!);
+    else if (PREP.has(t.kind)) prep.add(t.room ?? of.lineRoom[t.line!]);
+  }
+  for (const id of of.rooms) {
+    const room = s.rooms[id];
+    const b = room.batch;
+    const ph: RoomPhase = b && (staged.has(b) || s.batches[b]?.pack?.state === 'running') ? 'work' : prep.has(id) ? 'clean' : b ? 'held' : room.status === 'dirty' ? 'dirty' : 'free';
+    if (ph === room.phase) continue;
+    roomSpan(s, room);
+    room.phase = ph;
+  }
+}
+
+/** Отрезок помещения от `phaseAt` до сейчас — в сутки его начала: каждый час отрезки закрываются, через полночь их нет. */
+function roomSpan(s: PlantState, room: Room) {
+  if (room.phase && room.phaseAt !== undefined && s.t > room.phaseAt) {
+    const x = (dayOf(s, momentOf(s.start, room.phaseAt).day).rooms[room.id] ??= { ...NO_ROOM });
+    x[room.phase] += s.t - room.phaseAt;
+  }
+  room.phaseAt = s.t;
 }

@@ -251,7 +251,7 @@ function SessionBlock({ x, real }: { x: SessionSum; real: number }) {
   ];
   return (
     <div className="mblock" data-test="morning-session">
-      <div>{T.morning.session.head(durText(min * 60), plant)}</div>
+      <div data-test="session-head">{T.morning.session.head(durText(min * 60), plant)}</div>
       <ul className="mlist">
         {rows.map((r, i) => (
           <li key={i}>{r}</li>

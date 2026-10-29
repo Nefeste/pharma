@@ -255,7 +255,7 @@ export async function weekPart({ browser, port, out, ok, fail, errors, requests,
     }
     await page.waitForSelector('[data-test=morning-session]', { timeout: 20_000 }).catch(() => {});
     const sum = await page.evaluate(() => ({
-      text: [...(document.querySelector('[data-test=morning-session]')?.querySelectorAll('.mhead, li') ?? [])].map(x => x.textContent ?? '').join(' · '),
+      text: [...(document.querySelector('[data-test=morning-session]')?.querySelectorAll('[data-test=session-head], li') ?? [])].map(x => x.textContent ?? '').join(' · '),
       v: window.__game.store.get().morning.view?.session,
       date: document.querySelector('[data-test=date]')?.textContent ?? '',
     }));

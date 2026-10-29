@@ -8,3 +8,5 @@ release/
 tools/app/out/
 bench-electron-*
 bench-browser-*
+tools/blender/out/
+__pycache__/

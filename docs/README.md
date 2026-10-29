@@ -45,6 +45,8 @@
 10. [`adr/`](adr/README.md) — решения, которые дорого менять; первым — какие ADR студии
     действуют здесь.
 11. [`journal/`](journal/) — журнал по месяцам.
+12. [`reports/`](reports/) — отчёты: пилот Blender
+    ([`reports/2026-11-blender-pilot.md`](reports/2026-11-blender-pilot.md)).
 
 Как ведётся работа и собирается игра — [`05-process.md`](05-process.md); что проверяется — [`06-testing.md`](06-testing.md).
 

@@ -48,6 +48,8 @@ export interface Hud {
   notices: { t: number; text: string; stop?: true; go?: Go }[];
   debug: boolean;
   quality: Quality;
+  /** модели машин и пол: детальные из Blender или простые кодом (#109) */
+  art: 'blender' | 'code';
   /** стены: целые, срез у камеры, вниз */
   walls: WallMode;
   fps: number;
@@ -173,6 +175,7 @@ export const initial: Hud = {
   notices: [],
   debug: false,
   quality: 'medium',
+  art: 'code',
   walls: 'cut',
   fps: 0,
   cpuMs: 0,
@@ -210,6 +213,8 @@ export interface Actions {
   /** пресет, выбранный игроком: применить и запомнить (src/app/preset.ts) */
   pickQuality(q: Quality): void;
   setWalls(m: WallMode): void;
+  /** модели: детальные из Blender или простые кодом — машины и пол пересобираются */
+  setArt(a: 'blender' | 'code'): void;
   toggleDebug(): void;
   /** авто-бенч; без vsync — перезапуск оболочки с ключом `--uncapped` */
   bench(uncapped: boolean): void;

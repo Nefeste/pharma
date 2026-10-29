@@ -17,6 +17,7 @@ import { type Badge, Badges } from './badges';
 import type { People } from './bake';
 import { dressOf, lookOf, skinOf } from './cast';
 import { AT, shownOf, type Weights } from './detail';
+import { bakeRect } from './blender';
 import { buildDoors, type Doors } from './doors';
 import { FloorLayer } from './floor';
 import { GpuTimer } from './gpu';
@@ -34,7 +35,7 @@ import type { FloorKind, FloorTex } from './textures';
 import { Trucks } from './trucks';
 import { Fleet } from './vehicles';
 import { createRenderer, Daylight, gpuString, IsoCamera, PRESETS, type Quality } from './view';
-import { buildFloors, buildGround, buildMarkings, buildWalls, type WallMode, type Walls } from './world';
+import { buildFloors, buildGround, buildMarkings, buildWalls, type FloorBake, type WallMode, type Walls } from './world';
 
 /** Сколько людей рисуется самое большее (на вид). */
 const MAX_PEOPLE = 64;
@@ -47,6 +48,15 @@ interface Shown extends Body {
   person: number;
 }
 
+/**
+ * Модели и запечка из Blender (#109, src/app/art.ts): машина — сцена .glb по виду записи (узлы — части), помещение — карты
+ * света и затенения пола по его id в плане. Нет — всё кодом, как прежде.
+ */
+export interface Art {
+  machines: Map<string, THREE.Object3D>;
+  rooms: Map<string, { light: THREE.Texture; ao: THREE.Texture }>;
+}
+
 export interface StageInit {
   host: HTMLElement;
   layout: Layout;
@@ -54,6 +64,7 @@ export interface StageInit {
   quality: Quality;
   /** сколько паллет помещается в сцену */
   capacity: number;
+  art?: Art;
 }
 
 export class Stage {
@@ -67,7 +78,7 @@ export class Stage {
   readonly lamps: Lamps;
   readonly trucks = new Trucks();
   readonly fleet: Fleet;
-  readonly machines: Machines;
+  machines: Machines;
   /** слой участка: стрелки и загрузка мест (2г) */
   readonly overlay: Overlay;
   /** слой «Загрузка и OEE» (Б1и): столбики, числа, доски «План — факт» */
@@ -89,7 +100,8 @@ export class Stage {
   /** где сейчас люди и техника — двери открываются перед ними */
   private near: { x: number; z: number }[] = [];
   private paint = new Map<string, { clothes: THREE.Color; skin: THREE.Color }>();
-  private floors: THREE.Mesh[];
+  /** полы по виду и запечке (сценарий в браузере считает запечённые) */
+  floors: THREE.Mesh[];
   private floorTex = new Map<FloorKind, FloorTex>();
   private post: Post | null = null;
   quality: Quality;
@@ -105,6 +117,7 @@ export class Stage {
   readonly selection = new Selection();
   private hourShown = -1;
   private host: HTMLElement;
+  private aniso = 1;
 
   constructor(readonly init: StageInit) {
     const { layout, host } = init;
@@ -117,9 +130,10 @@ export class Stage {
     this.gpu = new GpuTimer(this.renderer.getContext() as WebGL2RenderingContext);
     this.gpuName = gpuString(this.renderer);
     const aniso = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+    this.aniso = aniso;
     for (const m of buildGround(layout, aniso)) this.scene.add(m);
     this.lamps = buildLamps(layout);
-    this.floors = buildFloors(layout, aniso, this.lamps.lightMap, this.floorTex);
+    this.floors = buildFloors(layout, aniso, this.lamps.lightMap, this.floorTex, this.bakesOf(init.art));
     for (const m of this.floors) this.scene.add(m);
     this.scene.add(buildMarkings(layout, aniso));
     this.walls = buildWalls(layout);
@@ -128,7 +142,7 @@ export class Stage {
     this.scene.add(this.doors.mesh);
     this.scene.add(this.lamps.mesh);
     this.scene.add(buildRacks(layout.plan.plant.racks.map(r => ({ x: r.x / 100, z: r.z / 100, bays: r.bays, levels: r.levels }))));
-    this.machines = new Machines(layout, init.db);
+    this.machines = new Machines(layout, init.db, init.art?.machines);
     this.scene.add(this.machines.group);
     this.overlay = new Overlay(layout);
     this.overlay.setShown(0);
@@ -147,6 +161,27 @@ export class Stage {
     this.scene.add(this.badges.mesh);
     this.applyQuality(init.quality);
     this.walls.setMode(this.wallMode);
+  }
+
+  /** Запечки пола из `art` — у помещений плана, для которых они есть. */
+  private bakesOf(art?: Art): FloorBake[] {
+    return art ? this.init.layout.rooms.flatMap(r => (art.rooms.has(r.id) ? [{ rect: bakeRect(r), ...art.rooms.get(r.id)! }] : [])) : [];
+  }
+
+  /** Модели из Blender или кодом (панель отладки, «Модели»): машины и пол — заново; карта света — по часу заново. */
+  setArt(art: Art | undefined) {
+    this.scene.remove(this.machines.group);
+    this.machines.dispose();
+    this.machines = new Machines(this.init.layout, this.init.db, art?.machines);
+    this.scene.add(this.machines.group);
+    for (const m of this.floors) {
+      this.scene.remove(m);
+      m.geometry.dispose();
+      (m.material as THREE.Material).dispose();
+    }
+    this.floors = buildFloors(this.init.layout, this.aniso, this.lamps.lightMap, this.floorTex, this.bakesOf(art));
+    for (const m of this.floors) this.scene.add(m);
+    this.hourShown = -1;
   }
 
   setPallets(list: readonly PalletView[]) {

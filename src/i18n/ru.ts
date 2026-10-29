@@ -226,6 +226,8 @@ export const ru = {
     gpu: (ms: string) => `видеокарта ${ms} мс`,
     quality: 'Качество',
     qualities: { low: 'низкое', medium: 'среднее', high: 'высокое' },
+    art: 'Модели',
+    arts: { blender: 'детальные', code: 'простые' },
     bench: 'Авто-бенч',
     benchUncapped: 'Авто-бенч без vsync (перезапуск)',
     benchRunning: 'Авто-бенч идёт…',

@@ -33,7 +33,7 @@ describe('модели кодом', () => {
     for (const e of Object.values(db.equipment)) expect(e.model.some(p => p.shape === 'belt')).toBe(false);
   });
 
-  test('сборка ловит: часть за следом и выше машины, цилиндр не круглый, бункер не вертикальный, штуки не у ленты', () => {
+  test('сборка ловит: часть за следом и выше машины, цилиндр не круглый, бункер не вертикальный, штуки не у ленты, имя части дважды', () => {
     const box: ModelPart = { shape: 'box', x: 0, z: 0, y: 0.5, w: 1, d: 1, h: 1 };
     const foot: [number, number, number] = [2, 2, 2];
     const bad = (p: Partial<ModelPart>) => modelErrors([{ ...box, ...p }], foot, 'проба');
@@ -47,6 +47,9 @@ describe('модели кодом', () => {
     expect(bad({ shape: 'cone' })[0]).toContain('бункер');
     expect(bad({ shape: 'belt', h: 0.04, y: 0.9 })[0]).toContain('штуки');
     expect(bad({ item: 'carton' })[0]).toContain('штуки');
+    // имя части — узел модели из Blender (#109): в модели одно
+    expect(modelErrors([{ ...box, id: 'body' }, { ...box, id: 'head' }], foot, 'проба')).toEqual([]);
+    expect(modelErrors([{ ...box, id: 'body' }, { ...box, id: 'body' }], foot, 'проба')[0]).toContain('у другой части');
   });
 });
 

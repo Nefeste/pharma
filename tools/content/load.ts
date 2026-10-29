@@ -133,7 +133,7 @@ export function sourceKeys(): Set<string> {
 /**
  * Ошибки модели кодом (docs/specs/2026-10-view.md, 2в). Модель — в метрах и только для окна: части внутри следа записи
  * [ширина, глубина, высота] и не ниже пола; у цилиндра поперёк оси — круг; у бункера ось — вертикаль, сверху круг, снизу
- * диаметр; у ленты — что на ней едет, у других частей — ничего.
+ * диаметр; у ленты — что на ней едет, у других частей — ничего; имена частей в модели не повторяются.
  */
 export function modelErrors(list: readonly ModelPart[], foot: [number, number, number], where: string): string[] {
   const [W, D, H] = foot;
@@ -153,6 +153,7 @@ export function modelErrors(list: readonly ModelPart[], foot: [number, number, n
     }
     if (p.shape === 'cone') need((p.axis ?? 'y') === 'y' && Math.abs(p.w - p.d) < eps && p.bottom !== undefined, `${at}: бункер — вертикальный, сверху круг, снизу диаметр`);
     need((p.shape === 'belt') === (p.item !== undefined), `${at}: штуки — только у ленты, и у ленты — обязательно`);
+    need(p.id === undefined || list.findIndex(q => q.id === p.id) === i, `${at}: имя «${p.id}» — у другой части модели`);
   });
   return out;
 }

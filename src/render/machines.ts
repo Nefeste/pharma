@@ -3,6 +3,10 @@
 // машин слиты по цвету — несколько вызовов отрисовки на завод; ротор крутится и кожух открывается своей сеткой. Над каждой
 // машиной — лампа состояния: цвет и значок. На лентах — блистеры, пачки и ящики; в накопителе между машинами — та же доля,
 // что в движке. Скорость ленты на экране — не быстрее `BELT_MAX`: на ×1 и быстрее лента течёт, а не мелькает.
+//
+// Модель из Blender (#109, src/app/art.ts): у вида записи есть .glb — часть с именем берёт его узел того же имени
+// (фаски, детали, запечённое затенение); неподвижные узлы всех машин слиты по своим материалам, ротор и кожух — в своих
+// шарнирах, как части кода. Лампа, значок, ленты — те же.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { ContentDb, ModelPart, Sku } from '../content/types';
@@ -12,7 +16,7 @@ import { beltOffsets, beltSpeed, bufferCount, type Lamp, LAMP_COLOR, lampOfEquip
 import type { Layout } from './layout';
 
 /** Отделка (`13-art.md`, §5): матовая нержавейка, белые панели, тёмные панели управления; плёнка, фольга, гофрокартон. */
-const FINISH: Record<NonNullable<ModelPart['color']>, { color: number; rough: number; metal: number; opacity?: number }> = {
+export const FINISH: Record<NonNullable<ModelPart['color']>, { color: number; rough: number; metal: number; opacity?: number }> = {
   white: { color: 0xe6e9ea, rough: 0.6, metal: 0.05 },
   steel: { color: 0xb3b9bd, rough: 0.35, metal: 0.7 },
   grey: { color: 0x8c949a, rough: 0.55, metal: 0.3 },
@@ -25,7 +29,7 @@ const FINISH: Record<NonNullable<ModelPart['color']>, { color: number; rough: nu
 
 /** Резина ленты и стекло кожухов. */
 const BELT = { color: 0x2a2f33, rough: 0.8, metal: 0 };
-const GLASS = { color: 0xbcd6e2, rough: 0.1, metal: 0, opacity: 0.28 };
+export const GLASS = { color: 0xbcd6e2, rough: 0.1, metal: 0, opacity: 0.28 };
 
 /** Штуки на ленте: размер, м, и отделка. */
 const ITEM: Record<'blister' | 'carton' | 'case', { size: [number, number, number]; finish: { color: number; rough: number; metal: number } }> = {
@@ -188,7 +192,18 @@ export class Machines {
   private s = new THREE.Vector3(1, 1, 1);
   private up = new THREE.Vector3(0, 1, 0);
 
-  constructor(l: Layout, db: ContentDb) {
+  /** сколько машин нарисовано моделью из Blender — для сценария в браузере и листа сравнения */
+  readonly fromBlender: number;
+  /** сетки и материалы, которые сделал этот вид (узлы .glb — общие, их освобождает не он) */
+  private own: THREE.BufferGeometry[] = [];
+  private mats: THREE.Material[] = [];
+  private fin(f: Parameters<typeof finishOf>[0]) {
+    const m = finishOf(f);
+    this.mats.push(m);
+    return m;
+  }
+
+  constructor(l: Layout, db: ContentDb, models: ReadonlyMap<string, THREE.Object3D> = new Map()) {
     const plant = l.plan.plant;
     const statics = new Map<string, THREE.BufferGeometry[]>();
     const add = (key: string, g: THREE.BufferGeometry) => {
@@ -196,14 +211,19 @@ export class Machines {
       list.push(g.index ? g.toNonIndexed() : g);
       statics.set(key, list);
     };
-    const place = (model: ModelPart[], size: [number, number, number], at: [number, number], turn: number, unit: Omit<Unit, 'moving' | 'lamp' | 'icon'>, lineNo?: number, machineNo?: number) => {
+    // неподвижные узлы .glb — по их материалу
+    const glbStatics = new Map<THREE.Material, THREE.BufferGeometry[]>();
+    let blender = 0;
+    const place = (model: ModelPart[], size: [number, number, number], at: [number, number], turn: number, unit: Omit<Unit, 'moving' | 'lamp' | 'icon'>, lineNo?: number, machineNo?: number, glb?: THREE.Object3D) => {
       const [W, D, H] = size.map(v => v / 100);
       const root = new THREE.Object3D();
       root.position.set(at[0] / 100, 0, at[1] / 100);
       root.rotation.y = (turn * Math.PI) / 2;
       root.updateMatrixWorld(true);
       const moving: Moving[] = [];
+      if (glb) blender++;
       for (const p of model) {
+        const node = glb && p.id ? glb.children.find(c => c.name === p.id) : undefined;
         if (p.shape === 'belt') {
           // лента: полотно и борта неподвижны, штуки едут от входа (+x модели) к выходу (−x)
           const g = new THREE.BoxGeometry(p.w, p.h, p.d);
@@ -214,13 +234,39 @@ export class Machines {
           this.belts.push({ origin, dir, length: p.w, item: p.item!, line: lineNo ?? -1, machine: machineNo ?? -1, buffer: false, phase: 0 });
           continue;
         }
-        const g = partGeometry(p);
+        if (node && !p.spin && !p.cover) {
+          // неподвижный узел .glb: его сетки — на место в мире, к своим материалам
+          node.traverse(o => {
+            const m = o as THREE.Mesh;
+            if (!m.isMesh) return;
+            const g = m.geometry.clone().applyMatrix4(m.matrixWorld).applyMatrix4(root.matrixWorld);
+            const mat = m.material as THREE.Material;
+            glbStatics.set(mat, [...(glbStatics.get(mat) ?? []), g]);
+          });
+          continue;
+        }
         if (p.spin || p.cover) {
           // подвижная часть — своя сетка в шарнире: ротор — вокруг своей середины, кожух — вокруг заднего верхнего ребра
           const pivot = new THREE.Object3D();
-          const mesh = new THREE.Mesh(g, p.shape === 'glass' ? finishOf(GLASS) : finishOf(FINISH[p.color ?? 'steel']));
-          mesh.castShadow = p.shape !== 'glass';
-          mesh.receiveShadow = true;
+          let mesh: THREE.Object3D;
+          if (node) {
+            // узел .glb с деталями внутри (пуансоны ротора) — копия, сетки и материалы общие
+            mesh = node.clone(true);
+            mesh.position.set(0, 0, 0);
+            mesh.traverse(o => {
+              const m = o as THREE.Mesh;
+              if (!m.isMesh) return;
+              m.castShadow = !(m.material as THREE.Material).transparent;
+              m.receiveShadow = true;
+            });
+          } else {
+            const g = partGeometry(p);
+            this.own.push(g);
+            const code = new THREE.Mesh(g, p.shape === 'glass' ? this.fin(GLASS) : this.fin(FINISH[p.color ?? 'steel']));
+            code.castShadow = p.shape !== 'glass';
+            code.receiveShadow = true;
+            mesh = code;
+          }
           if (p.cover) {
             pivot.position.set(p.x, p.y + p.h / 2, p.z - p.d / 2);
             mesh.position.set(0, -p.h / 2, p.d / 2);
@@ -231,11 +277,13 @@ export class Machines {
           moving.push({ pivot, ...(p.spin ? { spin: new THREE.Vector3(p.spin === 'x' ? 1 : 0, p.spin === 'y' ? 1 : 0, p.spin === 'z' ? 1 : 0) } : {}), omega: Math.min(3, 0.8 / r), cover: !!p.cover, open: 0 });
           continue;
         }
+        const g = partGeometry(p);
         g.applyMatrix4(new THREE.Matrix4().makeTranslation(p.x, p.y, p.z)).applyMatrix4(root.matrixWorld);
         add(p.shape === 'glass' ? 'glass' : (p.color ?? 'steel'), g);
       }
       // лампа — на углу крыши машины, значок — над ней
       const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, LAMP_H, 16), this.lampMat('off'));
+      this.own.push(lamp.geometry);
       lamp.position.set(W / 2 - 0.15, H + LAMP_H / 2, -D / 2 + 0.15);
       root.add(lamp);
       const icon = new THREE.Sprite(this.iconMat('off'));
@@ -247,7 +295,7 @@ export class Machines {
     };
     plant.equipment.forEach((e, i) => {
       const t = db.equipment[e.type];
-      place(t.model, t.size, e.at, e.turn, { eq: i });
+      place(t.model, t.size, e.at, e.turn, { eq: i }, undefined, undefined, models.get(e.type));
     });
     this.caps = plant.lines.map(() => []);
     this.counts = plant.lines.map(ln => ln.machines.map(mc => db.machines[mc.type].item));
@@ -279,15 +327,27 @@ export class Machines {
     });
     for (const [key, list] of statics) {
       const f = key === 'glass' ? GLASS : key === 'belt' ? BELT : FINISH[key as keyof typeof FINISH];
-      const mesh = new THREE.Mesh(mergeGeometries(list), finishOf(f));
+      const g = mergeGeometries(list);
+      this.own.push(g);
+      const mesh = new THREE.Mesh(g, this.fin(f));
       mesh.castShadow = key !== 'glass';
       mesh.receiveShadow = true;
       mesh.name = `machines ${key}`;
       this.group.add(mesh);
     }
+    for (const [mat, list] of glbStatics) {
+      const g = mergeGeometries(list);
+      this.own.push(g, ...list);
+      const mesh = new THREE.Mesh(g, mat);
+      mesh.castShadow = !mat.transparent;
+      mesh.receiveShadow = true;
+      mesh.name = `machines blender ${mat.name}`;
+      this.group.add(mesh);
+    }
+    this.fromBlender = blender;
     const box = new THREE.BoxGeometry(1, 1, 1);
     const item = (k: 'blister' | 'carton' | 'case') => {
-      const mesh = new THREE.InstancedMesh(box, finishOf(ITEM[k].finish), MAX_ITEMS);
+      const mesh = new THREE.InstancedMesh(box, this.fin(ITEM[k].finish), MAX_ITEMS);
       mesh.count = 0;
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.frustumCulled = false;
@@ -297,12 +357,25 @@ export class Machines {
     };
     this.items = { blister: item('blister'), carton: item('carton'), case: item('case') };
     this.bands = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.3 }), MAX_BANDS);
+    this.mats.push(this.bands.material as THREE.Material);
     this.bands.count = 0;
     this.bands.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.bands.setColorAt(0, this.c.set(0xffffff));
     this.bands.frustumCulled = false;
     this.bands.name = 'belt bands';
     this.group.add(this.bands);
+  }
+
+  /** Освободить свои сетки: вид пересобирают (переключатель «Модели» — код или Blender). */
+  dispose() {
+    for (const g of this.own) g.dispose();
+    for (const m of this.mats) m.dispose();
+    for (const m of this.lampMats.values()) m.dispose();
+    for (const m of this.icons.values()) {
+      m.map?.dispose();
+      m.dispose();
+    }
+    this.items.blister.geometry.dispose();
   }
 
   /** Что показывают лампы — оборудование участков по порядку плана, затем машины линий: для сценария в браузере. */

@@ -1,6 +1,8 @@
 // из bolnitsa: src/render/view.ts @ e0a3491 — изменено: камера уходит на запад за край участка — во двор рамп с фурами;
 // окружение для отражений ночью гаснет вместе с солнцем — иначе на среднем и высоком пресетах ночь светла, как день
-// (контактный лист, docs/specs/2026-10-view.md, 2г; исправление — перенести в «Больницу»).
+// (контактный лист, docs/specs/2026-10-view.md, 2г; исправление — перенести в «Больницу»); ночью заливка теплеет и
+// крепнет, а не гаснет: внутри горят светильники, и на низком пресете машины не уходят в черноту (проход по снимкам,
+// docs/reports/2026-10-slice-checks.md).
 // Отрисовщик, свет и камера. Пресеты качества меняют тени, сглаживание, затенение и разрешение кадра; сглаживание
 // задаётся при создании контекста WebGL, поэтому смена пресета пересоздаёт WebGLRenderer — геометрия и текстуры
 // загружаются в видеокарту заново сами.
@@ -56,6 +58,10 @@ export function gpuString(r: THREE.WebGLRenderer): string {
 
 // ---------------------------------------------------------------- свет и время суток
 
+/** Ночью: на сколько слабеет окружение для отражений и сколько заливки прибавляется — с окружением и без (гипотеза). */
+const NIGHT_ENV = 0.5;
+const NIGHT_FILL = { env: 0.35, bare: 0.75 };
+
 export class Daylight {
   readonly sun = new THREE.DirectionalLight(0xffffff, 3);
   readonly hemi = new THREE.HemisphereLight(0xdfe9f2, 0x8a7f70, 1.2);
@@ -65,6 +71,8 @@ export class Daylight {
   /** сила окружения днём; ночью — четверть */
   private envDay = 0.3;
   private night = 0;
+  /** есть ли окружение для отражений (пресет): без него ночью металл и стены держит только заливка */
+  private envOn = false;
 
   constructor(
     private scene: THREE.Scene,
@@ -98,6 +106,7 @@ export class Daylight {
       this.envTex = null;
     }
     this.envOwner = r;
+    this.envOn = on;
     if (on && !this.envTex) {
       const pm = new THREE.PMREMGenerator(r);
       this.envTex = pm.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -108,7 +117,7 @@ export class Daylight {
       this.envTex = null;
     }
     this.scene.environment = this.envTex;
-    this.scene.environmentIntensity = this.envDay * (1 - 0.75 * this.night);
+    this.scene.environmentIntensity = this.envDay * (1 - NIGHT_ENV * this.night);
   }
 
   setShadowSize(n: number) {
@@ -133,15 +142,16 @@ export class Daylight {
     // сумерки — с 18:30 до 20:00 (зима; дневная смена кончается в 20:00): к вечеру видно свет светильников
     const night = hour >= 18.5 ? Math.min(1, (hour - 18.5) / 1.5) : hour < 6.5 ? 1 - Math.max(0, hour - 6) / 0.5 : 0;
     this.night = night;
-    this.scene.environmentIntensity = this.envDay * (1 - 0.75 * night);
+    this.scene.environmentIntensity = this.envDay * (1 - NIGHT_ENV * night);
     const warm = new THREE.Color(0xfff4e6).lerp(new THREE.Color(0xff8a3c), low);
     this.sun.color.copy(warm);
     this.sun.intensity = (1.6 + 2.2 * (1 - low)) * (1 - night * 0.9);
-    // вечером и ночью внутри горит свет: фон теплеет и слабеет немного (свет на полу — от светильников, lamps.ts), иначе
-    // помещения проваливаются в темноту
-    this.hemi.color.set(0xdfe9f2).lerp(new THREE.Color(0xffd6a8), low * 0.45).lerp(new THREE.Color(0xb8b0a0), night * 0.6);
-    this.hemi.intensity = 0.75 - low * 0.12 - night * 0.12;
-    this.hemi.groundColor.set(0x8a7f70).lerp(new THREE.Color(0x5c4a3a), night);
+    // вечером и ночью внутри горит свет (пятна на полу — от светильников, lamps.ts): заливка теплеет, а не гаснет — ночь
+    // меняет цвет и количество света, а не контраст (13-art.md, §5), и машины в цехе без солнца не проваливаются в
+    // черноту; без окружения для отражений (низкий пресет) металл держит только она — ей нужно больше
+    this.hemi.color.set(0xdfe9f2).lerp(new THREE.Color(0xffd6a8), low * 0.45).lerp(new THREE.Color(0xf1eadf), night * 0.6);
+    this.hemi.intensity = 0.75 - low * 0.12 + night * (this.envOn ? NIGHT_FILL.env : NIGHT_FILL.bare);
+    this.hemi.groundColor.set(0x8a7f70).lerp(new THREE.Color(0x6a6258), night);
     // фон — тёмный: за участком ничего нет (замечание владельца: не плоская зелень до горизонта)
     this.scene.background = new THREE.Color(0x2a3236).lerp(new THREE.Color(0x3a3430), low * 0.5).lerp(new THREE.Color(0x141a24), night);
   }

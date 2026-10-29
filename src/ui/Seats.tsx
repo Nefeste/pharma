@@ -57,7 +57,7 @@ export function Seats({ hud, actions, scenario }: { hud: Hud; actions: Actions; 
         })}
       </div>
       <div className="sfoot">
-        <span className="muted">{names.length === 0 ? T.seats.pickOne : T.seats.picked(names.join(', '))}</span>
+        <span className="muted">{names.length === 0 ? (first ? T.seats.first : T.seats.pickOne) : T.seats.picked(names.join(', '))}</span>
         <button type="button" className="on" disabled={names.length === 0} onClick={() => actions.takeSeats()} data-test="seats-take">
           {T.seats.take}
         </button>

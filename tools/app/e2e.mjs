@@ -53,12 +53,14 @@
 // линии, у каждого число, без стрелок участка; наведение — часы частей, щелчок по грануляции — блок «Загрузка» с теми же
 // часами; окно «вчера» — полные сутки; доска «План — факт» по часам смены; слой — не больше четырёх вызовов отрисовки;
 // снимок — в контактном листе; 9 октября за вчера у ключевой машины — OEE с множителями, как на планёрке. Ошибок в
-// консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png.
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094]
+// консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png. Первая неделя (docs/specs/2026-10-vertical-slice.md):
+// путь новичка от «Кем вы будете» до «За эту игру» на планёрке 8 сентября в чистом окне — tools/app/e2e-week.mjs.
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findChromium } from './e2e-lib.mjs';
+import { weekPart } from './e2e-week.mjs';
 import { serve } from './serve.mjs';
 
 const arg = (k, d) => {
@@ -196,7 +198,24 @@ const untilMorning = async (keep = false) => {
   if (!keep) await page.keyboard.press('Escape');
 };
 
+// части: основная — всё, что выше в шапке; «Первая неделя» — путь новичка в чистом окне (tools/app/e2e-week.mjs).
+// `--only main` или `--only week` — одна из них
+const only = arg('only', '');
 try {
+  if (only !== 'week') await mainPart();
+  if (only !== 'main') await weekPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
+  else ok('ошибок в консоли нет');
+  if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
+  else ok('запросов наружу нет');
+} catch (e) {
+  fail(e instanceof Error ? e.stack ?? e.message : String(e));
+} finally {
+  await browser.close();
+  server.close();
+}
+
+async function mainPart() {
   await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 60_000 });
   ok('страница загружена, первый кадр нарисован');
@@ -2205,13 +2224,4 @@ try {
     await ctx.close();
   }
 
-  if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
-  else ok('ошибок в консоли нет');
-  if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
-  else ok('запросов наружу нет');
-} catch (e) {
-  fail(e instanceof Error ? e.stack ?? e.message : String(e));
-} finally {
-  await browser.close();
-  server.close();
 }

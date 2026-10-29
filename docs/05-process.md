@@ -7,9 +7,10 @@
 
 ## Ветки, слияние, CI
 
-- Работа — в ветках `claude/<задача>`, в `main` — через PR. Кто сливает — по классам изменений (ADR студии
-  [0018](https://github.com/Nefeste/gornitsa/blob/main/adr/0018-change-classes-automerge.md)); пути владельца — в
-  [`.github/CODEOWNERS`](../.github/CODEOWNERS).
+- Работа — в ветках `claude/<задача>`, в `main` — через PR. Классы изменений — по ADR студии
+  [0018](https://github.com/Nefeste/gornitsa/blob/main/adr/0018-change-classes-automerge.md), но автослияния нет:
+  каждый PR сливает владелец (решение владельца 29.10.2026, [#15](https://github.com/Nefeste/pharma/issues/15)); пути
+  владельца — в [`.github/CODEOWNERS`](../.github/CODEOWNERS).
 - Каждый PR — в `main`. Пока предыдущая часть не слита, ветка следующей растёт из её ветки, но PR открывается сразу в
   `main`: до слияния предыдущей в его разнице видна и она. PR в промежуточную ветку не открываем: так #2 и #3 слились в
   промежуточные ветки, а не в `main`, — GitHub не перевёл их базу (журнал, 17.10.2026).

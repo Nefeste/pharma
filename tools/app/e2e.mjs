@@ -202,7 +202,11 @@ const untilMorning = async (keep = false) => {
 // `--only main` или `--only week` — одна из них
 const only = arg('only', '');
 try {
-  if (only !== 'week') await mainPart();
+  // основная часть кончилась — её страницу закрыть: она рисует кадры и отняла бы у первой недели процессор
+  if (only !== 'week') {
+    await mainPart();
+    await page.close();
+  }
   if (only !== 'main') await weekPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');

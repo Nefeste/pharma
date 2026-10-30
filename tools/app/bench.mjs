@@ -4,7 +4,7 @@
 // Итог — JSON того же вида, что у бенча в Electron (`electron . --bench`), и PNG.
 //   node tools/app/bench.mjs [--secs 15] [--warm 3] [--capped] [--qualities low,high] [--shots 0]
 //                            [--out tools/app/out/имя] [--size 1280x720] [--layer load] [--art code]
-// --layer load — со слоем «Загрузка и OEE» (Б1и): тот же замер с ним. --art code — машины и пол кодом, без моделей из
+// --layer load — со слоем «Загрузка и OEE» (Б1и): тот же замер с ним. --art code — машины кодом, без моделей из
 // Blender (#109): тот же замер для сравнения.
 // --capped — с вертикальной синхронизацией; без него — без неё (видно запас). Программный WebGL (SwiftShader): числа
 // говорят о процессоре контейнера, не о видеокарте игрока.

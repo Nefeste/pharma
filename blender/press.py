@@ -149,8 +149,8 @@ PARTS = {'body': body, 'rotor': rotor, 'cover': cover, 'head': head, 'hopper': h
 WEAR = {'punches': ('rotor', punches)}
 
 
-def build(scene, machine, M, parent=None):
-    """Объекты пресса — по частям записи, в серединах частей (оси окна); `parent` — пустышка места в помещении."""
+def build(scene, machine, M):
+    """Объекты пресса — по частям записи, в серединах частей (оси окна)."""
     rec = scene['machines'][machine]
     objs = {}
     for p in rec['model']:
@@ -158,7 +158,7 @@ def build(scene, machine, M, parent=None):
         if make is None:
             raise SystemExit(f'{machine}: у части {p.get("id") or p["shape"]} нет построения в blender/press.py')
         bm, mats = make(p, M)
-        ob = lib.mesh_object(p['id'], bm, mats, parent)
+        ob = lib.mesh_object(p['id'], bm, mats)
         ob.location = lib.bl(p['x'], p['y'], p['z'])
         objs[p['id']] = ob
     for name, (part, make) in WEAR.items():

@@ -66,23 +66,9 @@
  },
  "machines/press.glb": {
   "source": "blender/press.py",
-  "sha256": "7907675309716122db772c48fc9d5b487f89d497a3c2e8c877f45961714868a7",
+  "sha256": "a8c06d8ba83856df8865591d0eeecb2decde6a5a07f5e93006f229fdb28ada74",
   "input": "1890d72f794569cf9d8229b789b5ef03f721af79514acb0c34a005254c1e28a9",
   "blender": "Blender 5.2.3 LTS (e13b728c6880)",
   "out": "fd0444133c40c0b3fd8fff29a17782466b866607fffcc349f1589f9f292eb98b"
- },
- "rooms/compression-light.png": {
-  "source": "blender/room.py",
-  "sha256": "52426662f06184cd06c011969450fb4fca24f5db82c4da2645e30e47438046f6",
-  "input": "480754419154ca87df1f2ff0da5ee3851b41ac3464721cd79e0720c764c6352a",
-  "blender": "Blender 5.2.3 LTS (e13b728c6880)",
-  "out": "217df3534f64cc7464edf74af04a3aa0aa8003f4162178c8a51fc659c9825bbe"
- },
- "rooms/compression-ao.png": {
-  "source": "blender/room.py",
-  "sha256": "52426662f06184cd06c011969450fb4fca24f5db82c4da2645e30e47438046f6",
-  "input": "480754419154ca87df1f2ff0da5ee3851b41ac3464721cd79e0720c764c6352a",
-  "blender": "Blender 5.2.3 LTS (e13b728c6880)",
-  "out": "cb42fa37f44ce70b0a673af52f1a4ddcf5cbec546a6ca7ad54137038f546066f"
  }
 }

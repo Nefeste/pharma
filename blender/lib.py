@@ -203,16 +203,13 @@ def select_only(objs):
     bpy.context.view_layer.objects.active = objs[0]
 
 
-def bake(objs, kind, margin, passes=None):
-    """Запечка Cycles в активные картинки материалов `objs`: AO или рассеянный свет без цвета (прямой и отражённый)."""
+def bake(objs, kind, margin):
+    """Запечка Cycles в активные картинки материалов `objs` (затенение — `AO`)."""
     select_only(objs)
     sc = bpy.context.scene
     sc.render.bake.margin = margin
     sc.render.bake.margin_type = 'EXTEND'
-    if passes:
-        bpy.ops.object.bake(type=kind, pass_filter=passes, margin=margin, margin_type='EXTEND', use_clear=False, target='IMAGE_TEXTURES')
-    else:
-        bpy.ops.object.bake(type=kind, margin=margin, margin_type='EXTEND', use_clear=False, target='IMAGE_TEXTURES')
+    bpy.ops.object.bake(type=kind, margin=margin, margin_type='EXTEND', use_clear=False, target='IMAGE_TEXTURES')
 
 
 def pixels(img):
@@ -220,11 +217,6 @@ def pixels(img):
     buf = [0.0] * (img.size[0] * img.size[1] * 4)
     img.pixels.foreach_get(buf)
     return buf
-
-
-def to_srgb(c):
-    c = min(1.0, max(0.0, c))
-    return c * 12.92 if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055
 
 
 def write_png(path, w, h, channels, values):

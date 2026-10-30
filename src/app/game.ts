@@ -165,7 +165,7 @@ export class Game {
     readonly host: HTMLElement,
   ) {}
 
-  /** что лежит в assets/models: люди, модели и запечка из Blender */
+  /** что лежит в assets/models: люди и модели из Blender */
   private models!: ModelIndex;
 
   /** База, сцена, поток — и первый кадр после первого среза; `art` — модели из Blender или кодом (#109). */

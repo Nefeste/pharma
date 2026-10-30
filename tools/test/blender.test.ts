@@ -1,16 +1,12 @@
-// Модели и запечка из Blender (#109; blender/README.md, tools/blender/): файлы assets/models — те, что в паспорте
-// (sources.json), паспорт — от нынешних записи, раскладки и скриптов (иначе: «перестройте — npm run models»), окно грузит
-// то, что построено (index.json); узлы .glb — части записи (устав, docs/11-new-games.md: имя узла = идентификатор части),
-// у каждого — середина части, вся модель — в следе записи, цвета — отделка machines.ts; пол запечки — пол помещения.
+// Модели из Blender (#109; blender/README.md, tools/blender/): файлы assets/models — те, что в паспорте (sources.json),
+// паспорт — от нынешних записи и скриптов (иначе: «перестройте — npm run models»), окно грузит то, что построено
+// (index.json), а свет помещений не запекается (решение владельца, #112); узлы .glb — части записи (устав,
+// docs/11-new-games.md: имя узла = идентификатор части), у каждого — середина части, вся модель — в следе записи,
+// цвета — отделка machines.ts.
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { db } from '../../src/content';
-import { CELL } from '../../src/engine/nav';
-import { planOf } from '../../src/engine/plant';
-import { bakeRect, bakeUv, inBake } from '../../src/render/blender';
-import { lampPoints } from '../../src/render/lamps';
-import { layoutOf } from '../../src/render/layout';
 import { ART_INDEX, BLENDER, BUILD, inputHash, nodeErrors, OUTPUTS, sceneOf, scriptsHash, sha256 } from '../blender/scene';
 import { MODELS } from './render-kit';
 
@@ -53,7 +49,7 @@ describe('паспорт', () => {
     }
   });
 
-  test('паспорт — от нынешних записи, раскладки и скриптов: иначе модели надо перестроить (npm run models)', () => {
+  test('паспорт — от нынешних записи и скриптов: иначе модели надо перестроить (npm run models)', () => {
     const read = (p: string) => readFileSync(join(ROOT, p));
     for (const o of OUTPUTS) {
       expect([o.path, 'сцена', sources[o.path].input]).toEqual([o.path, 'сцена', inputHash(scene, o)]);
@@ -61,9 +57,14 @@ describe('паспорт', () => {
     }
   });
 
-  test('окно грузит то, что построено: машины и запечки помещений в index.json', () => {
+  test('окно грузит то, что построено: люди и машины в index.json; запечек помещений нет (#112)', () => {
+    expect(Object.keys(index).sort()).toEqual(['machines', 'people']);
     expect(index.machines).toEqual(ART_INDEX.machines);
-    expect(index.rooms).toEqual(ART_INDEX.rooms);
+  });
+
+  test('в паспорте из Blender — только то, что строится сейчас: прочее убрано вместе с файлом', () => {
+    const built = Object.entries(sources).filter(([, r]) => r.blender).map(([path]) => path);
+    expect(built.sort()).toEqual(OUTPUTS.map(o => o.path).sort());
   });
 });
 
@@ -128,41 +129,4 @@ describe('машина из Blender', () => {
       }
     });
   }
-});
-
-describe('запечка помещения', () => {
-  const plan = planOf(db, 'plant.proto');
-  const l = layoutOf(plan);
-
-  test('пол запечки — пол помещения между осями стен; координаты запечки — от угла к углу', () => {
-    for (const id of BUILD.rooms) {
-      const n = l.rooms.findIndex(r => r.id === id);
-      const rect = bakeRect(l.rooms[n]);
-      for (let z = 0; z < l.h; z++)
-        for (let x = 0; x < l.w; x++) {
-          const i = z * l.w + x;
-          if (l.nav.cells[i] !== CELL.floor) continue;
-          expect([id, x, z, inBake(rect, x + 0.5, z + 0.5)]).toEqual([id, x, z, l.nav.room[i] === n]);
-        }
-      expect(bakeUv(rect, rect[0], rect[1])).toEqual([0, 1]);
-      expect(bakeUv(rect, rect[0] + rect[2], rect[1] + rect[3])).toEqual([1, 0]);
-    }
-  });
-
-  test('сцена помещения — из раскладки окна: его светильники, оборудование по плану, стены в его клетках', () => {
-    for (const id of BUILD.rooms) {
-      const n = l.rooms.findIndex(r => r.id === id);
-      const r = l.rooms[n];
-      const s = scene.rooms[id];
-      expect(s.lamps.map(p => [p.x, p.z])).toEqual(lampPoints(l).filter(p => p.room === n).map(p => [p.x, p.z]));
-      expect(s.equipment.map(e => e.type)).toEqual(plan.plant.equipment.filter(e => e.room === id).map(e => e.type));
-      expect(s.walls.length % 9).toBe(0);
-      for (let i = 0; i < s.walls.length; i += 3) expect(s.walls[i] >= r.x - 1e-3 && s.walls[i] <= r.x + r.w + 1e-3 && s.walls[i + 2] >= r.z - 1e-3 && s.walls[i + 2] <= r.z + r.d + 1e-3).toBe(true);
-      // картинки запечки — на весь пол запечки, точек на метр — как в сцене
-      for (const k of ['light', 'ao'] as const) {
-        const b = readFileSync(join(MODELS, ART_INDEX.rooms[id][k]));
-        expect([k, b.readUInt32BE(16), b.readUInt32BE(20)]).toEqual([k, s.rect[2] * s.px, s.rect[3] * s.px]);
-      }
-    }
-  });
 });

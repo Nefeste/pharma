@@ -10,7 +10,6 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { ZoneKind } from '../content/types';
 import { CELL } from '../engine/nav';
 import { T } from '../i18n';
-import { bakeUv, inBake } from './blender';
 import { isOutside, type Layout, outward, STORE, TALL, wallHeight } from './layout';
 import { type FloorKind, type FloorTex, makeFloor } from './textures';
 
@@ -51,28 +50,15 @@ function floorKinds(l: Layout): (FloorKind | null)[] {
   return k;
 }
 
-/** Запечка пола помещения из Blender (#109): прямоугольник (`bakeRect`), карта света и затенения по второму набору координат. */
-export interface FloorBake {
-  rect: readonly number[];
-  light: THREE.Texture;
-  ao: THREE.Texture;
-}
-
-/**
- * Пол — квадраты по 0,5 м; половинки стеновых клеток берут пол соседа (как в «Больнице»). Квадраты в запечке помещения —
- * своей сеткой: второй набор координат — по запечке, карта света и затенения — её (blender.ts, `bakeUv`).
- */
-export function buildFloors(l: Layout, anisotropy: number, lightMap: THREE.Texture | null, textures = new Map<FloorKind, FloorTex>(), bakes: readonly FloorBake[] = []): THREE.Mesh[] {
+/** Пол — квадраты по 0,5 м; половинки стеновых клеток берут пол соседа (как в «Больнице»). */
+export function buildFloors(l: Layout, anisotropy: number, lightMap: THREE.Texture | null, textures = new Map<FloorKind, FloorTex>()): THREE.Mesh[] {
   const { w, h, nav } = l;
   const kind = floorKinds(l);
   const isWall = (x: number, y: number) => x < 0 || y < 0 || x >= w || y >= h || nav.cells[y * w + x] === CELL.wall;
-  // ключ — вид пола и номер запечки (−1 — без неё)
-  const quads = new Map<string, number[]>();
+  const quads = new Map<FloorKind, number[]>();
   const add = (k: FloorKind, x: number, z: number, s: number) => {
-    const b = bakes.findIndex(r => inBake(r.rect, x + s / 2, z + s / 2));
-    const key = `${k} ${b}`;
-    let a = quads.get(key);
-    if (!a) quads.set(key, (a = []));
+    let a = quads.get(k);
+    if (!a) quads.set(k, (a = []));
     a.push(x, z, s);
   };
   for (let y = 0; y < h; y++) {
@@ -96,9 +82,7 @@ export function buildFloors(l: Layout, anisotropy: number, lightMap: THREE.Textu
     }
   }
   const meshes: THREE.Mesh[] = [];
-  for (const [key, q] of quads) {
-    const [k, b] = [key.split(' ')[0] as FloorKind, Number(key.split(' ')[1])];
-    const bake = bakes[b];
+  for (const [k, q] of quads) {
     let tex = textures.get(k);
     if (!tex) textures.set(k, (tex = makeFloor(k, anisotropy)));
     const n = q.length / 3;
@@ -117,9 +101,8 @@ export function buildFloors(l: Layout, anisotropy: number, lightMap: THREE.Textu
         nor[i * 18 + j * 3 + 1] = 1;
         uv[i * 12 + j * 2] = v[j * 2] / tex.meters;
         uv[i * 12 + j * 2 + 1] = v[j * 2 + 1] / tex.meters;
-        const [u, t] = bake ? bakeUv(bake.rect, v[j * 2], v[j * 2 + 1]) : [v[j * 2] / w, 1 - v[j * 2 + 1] / h];
-        uv1[i * 12 + j * 2] = u;
-        uv1[i * 12 + j * 2 + 1] = t;
+        uv1[i * 12 + j * 2] = v[j * 2] / w;
+        uv1[i * 12 + j * 2 + 1] = 1 - v[j * 2 + 1] / h;
       }
     }
     const g = new THREE.BufferGeometry();
@@ -128,17 +111,13 @@ export function buildFloors(l: Layout, anisotropy: number, lightMap: THREE.Textu
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     g.setAttribute('uv1', new THREE.BufferAttribute(uv1, 2));
     const mat = new THREE.MeshStandardMaterial({ map: tex.texture, roughness: k === 'epoxy' ? 0.35 : 0.6, metalness: 0 });
-    if (bake) {
-      mat.lightMap = bake.light;
-      mat.lightMapIntensity = 0;
-      mat.aoMap = bake.ao;
-    } else if (lightMap) {
+    if (lightMap) {
       mat.lightMap = lightMap;
       mat.lightMapIntensity = 0;
     }
     const m = new THREE.Mesh(g, mat);
     m.receiveShadow = true;
-    m.name = bake ? `floor ${k} baked` : `floor ${k}`;
+    m.name = `floor ${k}`;
     meshes.push(m);
   }
   return meshes;
@@ -338,9 +317,6 @@ float lowY = aBase > ${WALL_LOW.toFixed(2)} ? -0.05 : min(position.y, ${WALL_LOW
 transformed.y = mix(position.y, lowY, cutK);
 `;
 
-/** Стена внутри — белые панели, sRGB 0…1 (и для запечки света помещения в Blender, tools/blender/scene.ts). */
-export const PANEL = [0.92, 0.93, 0.92] as const;
-
 // Цвета: снаружи — кирпичная коробка старого цеха с тёмным цоколем, внутри — белые панели с серым плинтусом
 // (docs/13-art.md, §3, §5); стекло окна, наличник двери; верх стены — тёмный, чтобы срез читался сверху.
 function wallMaterial(uniforms: Walls['uniforms']): { mat: THREE.MeshStandardMaterial; depth: THREE.MeshDepthMaterial } {
@@ -360,7 +336,7 @@ function wallMaterial(uniforms: Walls['uniforms']): { mat: THREE.MeshStandardMat
         else if (vObjN.y < -0.5) wc = vec3(0.85);
         else if (vOut > 0.5) wc = vH < 0.45 ? vec3(0.36, 0.33, 0.31) : vec3(0.56, 0.36, 0.29);
         else if (vH < 0.12) wc = vec3(0.55, 0.58, 0.58);
-        else wc = vec3(${PANEL.join(', ')});
+        else wc = vec3(0.92, 0.93, 0.92);
         vec4 diffuseColor = vec4( pow(wc, vec3(2.2)), opacity );`,
       );
   };

@@ -4,12 +4,12 @@
 import type { ReactNode } from 'react';
 import { devLevers, heldLevers, mainLevers, resignLevers, riskLevers } from '../app/levers';
 import type { PartType, Scenario } from '../content/types';
-import { civilFromDays, momentOf, type Ymd } from '../engine/core/calendar';
+import { civilFromDays, DAY, HOUR, momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
 import { DEPT_SEAT } from '../engine/seats';
-import { dateText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
+import { dateText, daysText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { HeadDay } from '../sim/journal';
-import type { LineSum, MainLoss, ModeRow, MorningView, SeatSum } from '../sim/report';
+import type { LineSum, MainLoss, ModeRow, MorningView, SeatSum, SessionSum } from '../sim/report';
 import type { Thing } from '../sim/views';
 import { assetName, workName } from './assets';
 import { db } from './db';
@@ -232,6 +232,35 @@ function SeatBlock({ x, start }: { x: SeatSum; start: Ymd }) {
   );
 }
 
+/**
+ * Итог игры (обёртка): сколько вы играете — по часам окна, сколько прошло на заводе и что он за это время сделал. Минуты —
+ * с первого кадра игры в этом окне.
+ */
+function SessionBlock({ x, real }: { x: SessionSum; real: number }) {
+  const min = Math.max(1, Math.round((performance.now() - real) / 60_000));
+  // на заводе — сутками и часами: «7 дней 1 ч»
+  const span = x.to - x.from;
+  const h = Math.round((span % DAY) / HOUR);
+  const plant = `${daysText(Math.floor(span / DAY))}${h > 0 ? ` ${h}\u00a0${T.units.h}` : ''}`;
+  const rows = [
+    T.morning.session.batches(x.bulk, x.packed, x.released, x.rejected),
+    ...(x.packs > 0 ? [T.morning.session.packs(num(x.packs))] : []),
+    x.closed === 0 ? T.morning.session.noOrders : T.morning.session.orders(x.onTime, x.closed),
+    T.morning.session.devs(x.deviations, x.open, x.concluded),
+    T.morning.session.cash(money(x.balance), money(x.change, true)),
+  ];
+  return (
+    <div className="mblock" data-test="morning-session">
+      <div data-test="session-head">{T.morning.session.head(durText(min * 60), plant)}</div>
+      <ul className="mlist">
+        {rows.map((r, i) => (
+          <li key={i}>{r}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function Morning({ v, day, start, plant, pause, actions, hud, scenario }: { v?: MorningView; day: number; start: Ymd; plant: string; pause: boolean; actions: Actions; hud: Hud; scenario?: Scenario }) {
   const d = civilFromDays(day);
   const at = momentOf(d, 0);
@@ -262,6 +291,11 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
         <div className="muted">{T.app.loading}</div>
       ) : (
         <>
+          {v.session && hud.session ? (
+            <Section title={T.morning.session.title}>
+              <SessionBlock x={v.session} real={hud.session.real} />
+            </Section>
+          ) : null}
           {v.seats.length > 0 ? (
             <Section title={T.morning.seatsTitle}>
               {v.seats.map(x => (

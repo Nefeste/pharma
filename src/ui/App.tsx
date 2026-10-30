@@ -145,9 +145,10 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
           <NoticeLine n={s.notices[0]} actions={actions} />
         </div>
       </Guard>
-      {/* слои слева (Б1и; геймдизайн, §18) и подсказка у столбика под курсором */}
+      {/* слои слева (Б1и; геймдизайн, §18) и подсказка у столбика под курсором; пока выбирают место, слоёв нет — из-под
+          экрана «Кем вы будете» они выглядывали обрезком (второй проход по снимкам) */}
       <Guard name={T.floor.layers}>
-        <Layers hud={s} actions={actions} />
+        {s.seats.open ? null : <Layers hud={s} actions={actions} />}
         <FloorTip hud={s} plant={plant} />
       </Guard>
       {/* ограда — и вокруг закрытой панели: ошибку уборки при снятии панели React отдаёт той, что осталась на экране */}

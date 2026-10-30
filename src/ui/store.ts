@@ -62,6 +62,8 @@ export interface Hud {
   card?: CardView;
   /** планёрка (3в): открыта ли, на какие сутки, вид */
   morning: { open: boolean; day?: number; view?: MorningView };
+  /** эта игра (обёртка): мгновение завода и время окна (`performance.now`, мс) в начале — для итога игры на планёрке */
+  session?: { from: number; real: number };
   /** автопаузы (Б2а): открыто ли меню; какие отключены — запоминается в окне (src/app/pauses.ts) */
   pauses: { open: boolean; off: Pause[] };
   /** панель кассы (3в): открыта ли, страница календаря, вид */

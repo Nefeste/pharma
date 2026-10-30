@@ -22,10 +22,14 @@ import { type TrainSum, trainSum } from './people';
 import { type AssetSum, assetSum } from './places';
 import type { Thing } from './views';
 
-/** Планёрка в 08:00 суток `day` (номер дня от 1970-01-01). */
+/**
+ * Планёрка в 08:00 суток `day` (номер дня от 1970-01-01). `since` — мгновение завода, с которого окно ведёт эту игру: с
+ * ним планёрка несёт итог игры (`session`).
+ */
 export interface MorningQuery {
   view: 'morning';
   day: number;
+  since?: number;
 }
 
 export interface CashQuery {
@@ -211,6 +215,8 @@ export interface MorningView {
   modes: ModeRow[];
   /** решения за сутки (Б5а): строка на руководителя — сколько, какие, у заказов поставщикам — предоплата */
   heads: HeadDay[];
+  /** итог игры (обёртка): что завод сделал с мгновения `since` запроса; меньше суток игры — нет */
+  session?: SessionSum;
 }
 
 /**
@@ -436,6 +442,61 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     seats: seatSums(db, s),
     modes: modeRows(db, s),
     heads: headDays(s, from, at),
+    ...(q.since !== undefined && at - q.since >= DAY ? { session: sessionSum(s, q.since, at) } : {}),
+  };
+}
+
+// ---------------------------------------------------------------- итог игры
+
+/**
+ * Итог игры (обёртка, docs/specs/2026-10-vertical-slice.md, «Итог игры»): что завод сделал с мгновения `from` до планёрки
+ * `to` — по записям серий, заказов, отклонений, расследований и кассы, как итог места.
+ */
+export interface SessionSum {
+  from: number;
+  to: number;
+  /** серии: балк готов, упаковка кончилась, выпущено и отклонено уполномоченным лицом или лабораторией */
+  bulk: number;
+  packed: number;
+  released: number;
+  rejected: number;
+  /** пачек упаковано — без брака камеры — у заданий, которые кончились */
+  packs: number;
+  /** заказы покупателей, закрытые за игру, и из них отгруженные в срок и полностью */
+  closed: number;
+  onTime: number;
+  /** отклонения, открытые за игру, и сколько из них ещё открыто; расследований закрыто */
+  deviations: number;
+  open: number;
+  concluded: number;
+  /** касса сейчас и её изменение за игру */
+  balance: number;
+  change: number;
+}
+
+export function sessionSum(s: PlantState, from: number, to: number): SessionSum {
+  const inW = (t: number | undefined) => t !== undefined && t >= from && t < to;
+  const batches = Object.values(s.batches);
+  const packed = batches.filter(b => b.pack?.state === 'done' && inW(b.pack.end));
+  const closed = Object.values(s.orders)
+    .filter(o => o.status !== 'open')
+    .filter(o => inW(o.shipment && s.shipments[o.shipment] ? s.shipments[o.shipment].t : o.due));
+  const devs = Object.values(s.deviations).filter(d => inW(d.opened));
+  return {
+    from,
+    to,
+    bulk: batches.filter(b => b.bulk !== undefined && inW(s.lots[b.bulk]?.received)).length,
+    packed: packed.length,
+    released: batches.filter(b => b.status === 'released' && inW(b.released)).length,
+    rejected: batches.filter(b => inW(rejectedAt(s, b))).length,
+    packs: packed.reduce((n, b) => n + (b.pack!.cartons ?? 0) - (b.pack!.cartonRejects ?? 0), 0),
+    closed: closed.length,
+    onTime: closed.filter(o => o.status === 'shipped').length,
+    deviations: devs.length,
+    open: devs.filter(d => d.status === 'open').length,
+    concluded: Object.values(s.investigations).filter(i => i.status === 'closed' && inW(i.conclusion?.t)).length,
+    balance: s.cash.balance,
+    change: s.cash.ledger.reduce((n, e) => n + (inW(e.t) ? e.sum : 0), 0),
   };
 }
 

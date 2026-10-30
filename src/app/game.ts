@@ -218,6 +218,8 @@ export class Game {
     this.t = sl.t;
     this.day = sl.day;
     this.lag = s.lag;
+    // эта игра (обёртка): с первого среза — итог игры на планёрке и её минуты
+    if (!this.store.get().session) this.store.set({ session: { from: sl.t, real: performance.now() } });
     this.view.apply(sl);
     // слой «Потоки — люди» (Б1г) — стрелки переходов людей вместо перевозок паллет и линии
     const arrows = this.store.get().layer === 'people' ? moveArrows(this.layout, this.peopleFlows) : [...moveArrows(this.layout, this.flows), ...lineArrows(this.db, this.layout, sl.lines)];
@@ -935,7 +937,7 @@ export class Game {
     const list: ViewQuery[] = [{ id: 'top', view: 'top' }];
     if (st.open) list.push({ id: 'stock', ...st.query });
     if (this.selected) list.push({ id: 'card', view: 'card', thing: this.selected });
-    if (h.morning.open && h.morning.day !== undefined) list.push({ id: 'morning', view: 'morning', day: h.morning.day });
+    if (h.morning.open && h.morning.day !== undefined) list.push({ id: 'morning', view: 'morning', day: h.morning.day, ...(h.session ? { since: h.session.from } : {}) });
     if (h.cash.open) list.push({ id: 'cash', view: 'cash', page: h.cash.page });
     if (h.lab.open) list.push(h.lab.tab === 'queue' ? { id: 'lab', view: 'lab' } : { id: 'chart', view: 'chart', test: 'test.ipc.mass' });
     // черновик: новые сроки заданий и новые срочные задания (0.0.39) — их полосы расписание показывает до «Утвердить»

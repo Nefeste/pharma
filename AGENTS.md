@@ -93,7 +93,8 @@ npm run content                    # build and validate content/ → src/content
 npm run typecheck                  # content + tsc --noEmit (src incl. .tsx, tools)
 npm test                           # content + bun test tools/test
 npm run build                      # content + page and its two workers (esbuild) → dist/ (not in git)
-npm run e2e                        # after build: the game in headless Chromium; tools/app/out/e2e*.png and contact.png
+npm run e2e                        # after build: the game in headless Chromium; tools/app/out/e2e*.png and contact.png;
+                                   # then the first week of a newcomer (e2e-week.mjs, week.png); `-- --only main|week` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -311,8 +312,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   trip with its material and lot, with Б1ж a compression's turret speed with the norm at it and at the recipe target
   and a packing job's blister speed (`now.ts`); the 08:00 meeting — the player's places over
   their tenure, yesterday by calendar day with its cleanings and changeovers, events of the 24 hours before it, what
-  waits now, with Б1ж the setpoints off target and since when — the cash panel and the top-bar cash with the player's
-  places (`report.ts`); the places and assets — the
+  waits now, with Б1ж the setpoints off target and since when, from a day of play on — what the plant did this session
+  («За эту игру») — the cash panel and the top-bar cash with the player's places (`report.ts`); the places and assets — the
   «Места» tab, an asset in a card, the meeting's calibration and qualification, which batch waits for which asset —
   records and visits are the plant's knowledge (`places.ts`); the partners — makers, pairs with their approval and
   evaluation, agreements and contracts in force for the «Контрагенты» tab, the meeting's suppliers, a lot's maker and
@@ -447,8 +448,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   baked floor from Blender (`models/machines/`, `models/rooms/`), and `LICENSES.md` (sources, licenses, SHA-256); never
   add a model without its line there and in `assets/models/sources.json`.
 - `tools/app/` — page build (the page, the calculation thread and the plan run's thread), local server, browser scenario
-  with the contact sheet, the «code — Blender» sheet of the compression room (`blender-sheet.mjs`), the headless scene
-  bench (`bench.mjs`, `--art code` — machines and floors in code), the release update archive — one `resources/app.asar`
-  (`update-zip.mjs`); `tools/test/` — Bun tests and save samples; engine
-  mechanics tests run on the scenario as it was before Б2в (`legacy.ts`), the golden run — on the game's scenario;
+  with the contact sheet and the first week of a newcomer in a clean window (`e2e-week.mjs`), the «code — Blender» sheet
+  of the compression room (`blender-sheet.mjs`), the headless scene bench (`bench.mjs`, `--art code` — machines and
+  floors in code), the release update archive — one `resources/app.asar` (`update-zip.mjs`); `tools/test/` — Bun tests
+  and save samples; engine mechanics tests run on the scenario as it was before Б2в (`legacy.ts`), the golden run — on
+  the game's scenario;
   `tools/bench/` — the engine bench, with `--plan` also the plan run.

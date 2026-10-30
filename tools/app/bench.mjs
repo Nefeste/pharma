@@ -3,8 +3,9 @@
 // Авто-бенч в Chromium без окна (Playwright): пресеты качества × общий план и крупный план, потом 4 снимка 1920×1080.
 // Итог — JSON того же вида, что у бенча в Electron (`electron . --bench`), и PNG.
 //   node tools/app/bench.mjs [--secs 15] [--warm 3] [--capped] [--qualities low,high] [--shots 0]
-//                            [--out tools/app/out/имя] [--size 1280x720] [--layer load]
-// --layer load — со слоем «Загрузка и OEE» (Б1и): тот же замер с ним.
+//                            [--out tools/app/out/имя] [--size 1280x720] [--layer load] [--art code]
+// --layer load — со слоем «Загрузка и OEE» (Б1и): тот же замер с ним. --art code — машины и пол кодом, без моделей из
+// Blender (#109): тот же замер для сравнения.
 // --capped — с вертикальной синхронизацией; без него — без неё (видно запас). Программный WebGL (SwiftShader): числа
 // говорят о процессоре контейнера, не о видеокарте игрока.
 import { chromium } from 'playwright-core';
@@ -23,6 +24,7 @@ const warm = Number(arg('warm', 3));
 const qualities = arg('qualities', 'low,medium,high');
 const shots = arg('shots', '1') !== '0';
 const layer = arg('layer', '') === 'load' ? '&layer=load' : '';
+const art = arg('art', '') === 'code' ? '&art=code' : '';
 const capped = flag('capped');
 const [vw, vh] = arg('size', '1280x720').split('x').map(Number);
 const port = 8094;
@@ -42,7 +44,7 @@ page.on('pageerror', e => {
   console.log(`  pageerror ${e.message}`);
   errors.push(e.message);
 });
-const url = `http://127.0.0.1:${port}/index.html?bench=1&secs=${secs}&warm=${warm}&qualities=${qualities}&shots=${shots ? 1 : 0}&lang=ru${layer}`;
+const url = `http://127.0.0.1:${port}/index.html?bench=1&secs=${secs}&warm=${warm}&qualities=${qualities}&shots=${shots ? 1 : 0}&lang=ru${layer}${art}`;
 console.log(`→ ${url}`);
 const tStart = Date.now();
 await page.goto(url);

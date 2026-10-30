@@ -20,6 +20,47 @@ export interface Lamps {
   setHour(hour: number, materials: THREE.MeshStandardMaterial[]): void;
 }
 
+/** Светящаяся панель светильника, м: квадрат в тёмной рамке (`buildLamps`). */
+export const LAMP_GLOW = 0.58;
+
+/** Цвет света (docs/13-art.md, §5): чистые зоны — ровный холодно-белый, склад — нейтральный, вспомогательные — тёплый. */
+export function lampTint(r: { type: string; grade: 'D' | 'cnc' }): [number, number, number] {
+  return r.grade === 'D' ? [236, 246, 255] : TALL.has(r.type) ? [246, 246, 240] : [255, 240, 214];
+}
+
+/** Высота светильника, м: панель — под потолком помещения, подвесной у склада — ниже. */
+export function lampHeight(l: Layout, pt: { x: number; z: number; room: number }): number {
+  return roomHeight(l, Math.floor(pt.x), Math.floor(pt.z)) - (TALL.has(l.rooms[pt.room].type) ? 0.6 : 0.08);
+}
+
+/**
+ * Пятно света светильника на карте света пола: радиус, м; доля цвета светильника у середины, на 0,55 радиуса и у края;
+ * пятно — не ближе `inset` м к осям стен своего помещения.
+ */
+export const POOL = { radius: { tall: 4.4, room: 2.6 }, stops: [[0, 0.55], [0.55, 0.25], [1, 0]], inset: 0.9 } as const;
+
+/**
+ * Карта света пола в точке — то, что рисует холст `buildLamps`: пятна светильников, чьё помещение накрывает точку, сложены
+ * и обрезаны сверху; sRGB 0…1. Для запечки света помещения в Blender (tools/blender/scene.ts): её пол светит в среднем так
+ * же, как пятна соседей.
+ */
+export function poolAt(l: Layout, pts: readonly { x: number; z: number; room: number }[], x: number, z: number): [number, number, number] {
+  const sum = [0, 0, 0];
+  for (const p of pts) {
+    const r = l.rooms[p.room];
+    if (x < r.x + POOL.inset || x > r.x + r.w - POOL.inset || z < r.z + POOL.inset || z > r.z + r.d - POOL.inset) continue;
+    const t = Math.hypot(x - p.x, z - p.z) / (TALL.has(r.type) ? POOL.radius.tall : POOL.radius.room);
+    if (t >= 1) continue;
+    const k = POOL.stops.findIndex(([at]) => at > t);
+    const [t0, a0] = POOL.stops[k - 1];
+    const [t1, a1] = POOL.stops[k];
+    const a = a0 + ((a1 - a0) * (t - t0)) / (t1 - t0);
+    const tint = lampTint(r);
+    for (let c = 0; c < 3; c++) sum[c] += (tint[c] / 255) * a;
+  }
+  return sum.map(v => Math.min(1, v)) as [number, number, number];
+}
+
 /** Где висят светильники: сеткой внутри помещения — у склада через 6 м, у прочих через 3 м. */
 export function lampPoints(l: Layout): { x: number; z: number; room: number }[] {
   const out: { x: number; z: number; room: number }[] = [];
@@ -57,16 +98,12 @@ export function buildLamps(l: Layout): Lamps {
     g.save();
     const r = l.rooms[p.room];
     g.beginPath();
-    g.rect((r.x + 0.9) * px, (r.z + 0.9) * px, (r.w - 1.8) * px, (r.d - 1.8) * px);
+    g.rect((r.x + POOL.inset) * px, (r.z + POOL.inset) * px, (r.w - 2 * POOL.inset) * px, (r.d - 2 * POOL.inset) * px);
     g.clip();
-    const tall = TALL.has(r.type);
-    const rad = (tall ? 4.4 : 2.6) * px;
+    const rad = (TALL.has(r.type) ? POOL.radius.tall : POOL.radius.room) * px;
     const grd = g.createRadialGradient(p.x * px, p.z * px, 0, p.x * px, p.z * px, rad);
-    // чистые зоны — ровный холодно-белый свет, склад — нейтральный, вспомогательные — тёплый (docs/13-art.md, §5)
-    const tint = r.grade === 'D' ? '236,246,255' : tall ? '246,246,240' : '255,240,214';
-    grd.addColorStop(0, `rgba(${tint},0.55)`);
-    grd.addColorStop(0.55, `rgba(${tint},0.25)`);
-    grd.addColorStop(1, `rgba(${tint},0)`);
+    const tint = lampTint(r).join(',');
+    for (const [at, a] of POOL.stops) grd.addColorStop(at, `rgba(${tint},${a})`);
     g.fillStyle = grd;
     g.fillRect(p.x * px - rad, p.z * px - rad, rad * 2, rad * 2);
     g.restore();
@@ -78,7 +115,7 @@ export function buildLamps(l: Layout): Lamps {
   // светильник — квадратная светящаяся панель 0,58 м в тёмной рамке: сверху (потолка в разрезе нет) видна светящаяся
   // сторона; у склада — круглый подвесной под потолком, крупнее
   const body = new THREE.BoxGeometry(0.68, 0.03, 0.68);
-  const glow = new THREE.BoxGeometry(0.58, 0.036, 0.58);
+  const glow = new THREE.BoxGeometry(LAMP_GLOW, 0.036, LAMP_GLOW);
   const material = new THREE.MeshStandardMaterial({ color: 0xfff6e8, emissive: 0xffeed2, emissiveIntensity: 1, roughness: 0.3 });
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x9aa4a8, roughness: 0.5, metalness: 0.3 });
   const shell = new THREE.InstancedMesh(body, frameMat, Math.max(1, pts.length));
@@ -99,8 +136,7 @@ export function buildLamps(l: Layout): Lamps {
     return { x: r.x + r.w / 2, z: r.z + r.d / 2 };
   });
   const set = (i: number, on: boolean) => {
-    const top = roomHeight(l, Math.floor(pts[i].x), Math.floor(pts[i].z));
-    m.compose(p.set(pts[i].x, top - (TALL.has(l.rooms[pts[i].room].type) ? 0.6 : 0.08), pts[i].z), straight, on ? size[i] : zero);
+    m.compose(p.set(pts[i].x, lampHeight(l, pts[i]), pts[i].z), straight, on ? size[i] : zero);
     shell.setMatrixAt(i, m);
     light.setMatrixAt(i, m);
   };

@@ -11,6 +11,7 @@ import { planOf } from '../engine/plant';
 import type { Command, Notice } from '../engine/types';
 import { dayText, durText, hText, named, qtyText, T } from '../i18n';
 import { bakeLook, lodOf, packPeople } from '../render/bake';
+import type { ArtIndex } from '../render/blender';
 import { AT, camDetail, type Detail, ease, speedDetail, type Weights } from '../render/detail';
 import { type Layout, layoutOf, levelY } from '../render/layout';
 import type { PalletView } from '../render/loads';
@@ -27,6 +28,7 @@ import { assetClass, workName } from '../ui/assets';
 import { useDb } from '../ui/db';
 import { commandsOf, draftKey, ordersOf, prune, upsert } from '../ui/draft';
 import { type Actions, holds, type Hud, LIVE, NO_RUN, PLAN_RUN, type Speed, type Store } from '../ui/store';
+import { type ArtMode, loadArt } from './art';
 import { keepFirsts, keptFirsts } from './firsts';
 import { barBoxes, nextLayer } from './floor';
 import { fillsOf, Flows, lineArrows, moveArrows, movesOf, peopleMoves } from './flows';
@@ -77,13 +79,15 @@ declare global {
 const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
 
+const MODELS = './assets/models';
+type ModelIndex = ArtIndex & { people: string[] };
+
 /**
  * Люди — модели CC0 из assets/models/people (assets/LICENSES.md): загрузить, запечь анимации и упростить для дальнего
  * плана, как в «Больнице» (её src/app/game.ts).
  */
-async function loadPeople() {
-  const base = './assets/models';
-  const index = (await (await fetch(`${base}/index.json`)).json()) as { people: string[] };
+async function loadPeople(index: ModelIndex) {
+  const base = MODELS;
   await MeshoptSimplifier.ready;
   const raws = await Promise.all(index.people.map(async n => bakeLook((await loader.loadAsync(`${base}/people/${n}.glb`)) as never, n)));
   return { people: packPeople(raws, raws.map(r => lodOf(r, 0.25, MeshoptSimplifier))), names: index.people };
@@ -161,8 +165,11 @@ export class Game {
     readonly host: HTMLElement,
   ) {}
 
-  /** База, сцена, поток — и первый кадр после первого среза. */
-  static async create(host: HTMLElement, store: Store, quality: Quality): Promise<Game> {
+  /** что лежит в assets/models: люди, модели и запечка из Blender */
+  private models!: ModelIndex;
+
+  /** База, сцена, поток — и первый кадр после первого среза; `art` — модели из Blender или кодом (#109). */
+  static async create(host: HTMLElement, store: Store, quality: Quality, art: ArtMode = 'blender'): Promise<Game> {
     const db = (await (await fetch('./content.json')).json()) as ContentDb;
     useDb(db);
     const g = new Game(db, store, host);
@@ -171,9 +178,12 @@ export class Game {
     g.scenario = sc;
     g.layout = layoutOf(planOf(db, sc.plant));
     g.machineBoxes = machineBoxes(db, g.layout);
+    g.models = (await (await fetch(`${MODELS}/index.json`)).json()) as ModelIndex;
+    const models = art === 'blender' ? await loadArt(loader, MODELS, g.models) : undefined;
+    store.set({ art });
     // паллет в сцене — сколько мест в плане и ещё на фуры и в помещения
-    g.stage = new Stage({ host, layout: g.layout, db, quality, capacity: g.layout.plan.slots.length + 256 });
-    const crowd = await loadPeople();
+    g.stage = new Stage({ host, layout: g.layout, db, quality, capacity: g.layout.plan.slots.length + 256, art: models });
+    const crowd = await loadPeople(g.models);
     g.stage.setPeople(crowd.people, crowd.names);
     g.client = new SimClient('./sim.js');
     g.client.onSlice = s => g.receive(s);
@@ -555,6 +565,17 @@ export class Game {
     setQuality: (q: Quality) => {
       this.stage.applyQuality(q);
       this.store.set({ quality: q });
+    },
+    setArt: (art: ArtMode) => {
+      if (art === 'code') {
+        this.stage.setArt(undefined);
+        this.store.set({ art });
+        return;
+      }
+      void loadArt(loader, MODELS, this.models).then(a => {
+        this.stage.setArt(a);
+        this.store.set({ art });
+      });
     },
     pickQuality: (q: Quality) => {
       // выбор игрока — запоминается, стартовый замер его больше не трогает (preset.ts)

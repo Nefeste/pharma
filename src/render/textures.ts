@@ -7,6 +7,9 @@ import { rng } from './rng';
 
 export type FloorKind = 'concrete' | 'epoxy' | 'lab' | 'linoleum' | 'corridor' | 'grass' | 'asphalt' | 'paving';
 
+/** Основной цвет полимерного пола чистой зоны — и для запечки света помещения в Blender (tools/blender/scene.ts). */
+export const EPOXY = '#dfe5e4';
+
 export interface FloorTex {
   texture: THREE.Texture;
   meters: number;
@@ -71,7 +74,7 @@ export function makeFloor(kind: FloorKind, anisotropy: number): FloorTex {
       break;
     case 'epoxy':
       // чистая зона: светлый бесшовный полимерный пол
-      g.fillStyle = '#dfe5e4';
+      g.fillStyle = EPOXY;
       g.fillRect(0, 0, S, S);
       speckle(g, S, 1500, ['#d2d9d8', '#eef2f1'], 22, 1);
       meters = 3;

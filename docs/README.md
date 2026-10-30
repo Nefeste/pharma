@@ -46,7 +46,8 @@
     действуют здесь.
 11. [`journal/`](journal/) — журнал по месяцам.
 12. [`reports/`](reports/) — отчёты: журнал проверок среза
-    ([`reports/2026-10-slice-checks.md`](reports/2026-10-slice-checks.md)).
+    ([`reports/2026-10-slice-checks.md`](reports/2026-10-slice-checks.md)), пилот Blender
+    ([`reports/2026-11-blender-pilot.md`](reports/2026-11-blender-pilot.md)).
 
 Как ведётся работа и собирается игра — [`05-process.md`](05-process.md); что проверяется — [`06-testing.md`](06-testing.md).
 

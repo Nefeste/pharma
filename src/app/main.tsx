@@ -1,7 +1,7 @@
 // Страница игры (docs/02-architecture.md, §10): панели React и 3D-вид. Параметры адреса — для проверок:
 //   ?q=low|medium|high — пресет качества; ?lang=en — язык; ?bench=1 (&secs=15&warm=3&qualities=low,high&shots=0) —
-//   авто-бенч сцены (docs/specs/2026-10-view.md, 2г), &layer=load — со слоем «Загрузка и OEE» (Б1и). В Electron — те же
-//   ключи: --q low, --bench, --secs 15, --layer load.
+//   авто-бенч сцены (docs/specs/2026-10-view.md, 2г), &layer=load — со слоем «Загрузка и OEE» (Б1и); ?art=code — машины и
+//   пол кодом, без моделей из Blender (#109). В Electron — те же ключи: --q low, --bench, --secs 15, --layer load, --art code.
 import { createRoot } from 'react-dom/client';
 import { setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
@@ -32,6 +32,7 @@ const actions: Actions = {
   setQuality: later('setQuality'),
   pickQuality: later('pickQuality'),
   setWalls: later('setWalls'),
+  setArt: later('setArt'),
   toggleDebug: later('toggleDebug'),
   bench: later('bench'),
   toggleStock: later('toggleStock'),
@@ -138,13 +139,15 @@ async function firstPreset(g: Game) {
   remember(windowKeep(), pick);
 }
 
-Game.create(document.getElementById('view')!, store, quality)
+// модели: из Blender (#109) или кодом — `?art=code`; у Electron — `--art code` (после запуска, тем же переключателем)
+Game.create(document.getElementById('view')!, store, quality, q.get('art') === 'code' ? 'code' : 'blender')
   .then(async g => {
     game = g;
     window.__game = g;
     const args = window.shell ? await window.shell.args() : [];
     const has = (k: string) => q.get(k) === '1' || args.includes(`--${k}`);
     const val = (k: string) => q.get(k) ?? (args.includes(`--${k}`) ? args[args.indexOf(`--${k}`) + 1] : null);
+    if (val('art') === 'code' && g.store.get().art !== 'code') g.actions.setArt('code');
     if (has('bench')) {
       // бенч сцены — директором: экран «Кем вы будете» не заслоняет снимки
       g.actions.pickSeat('director');

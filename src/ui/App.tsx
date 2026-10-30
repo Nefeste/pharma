@@ -211,6 +211,14 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
             ))}
           </span>
           <span className="group">
+            <span className="label">{T.debug.art}</span>
+            {(['blender', 'code'] as const).map(a => (
+              <button key={a} className={s.art === a ? 'on' : ''} onClick={() => actions.setArt(a)} data-test={`art-${a}`}>
+                {T.debug.arts[a]}
+              </button>
+            ))}
+          </span>
+          <span className="group">
             <button onClick={() => actions.bench(false)} data-test="bench">
               {T.debug.bench}
             </button>

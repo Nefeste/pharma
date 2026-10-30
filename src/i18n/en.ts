@@ -209,6 +209,8 @@ export const en: Strings = {
     gpu: (ms: string) => `GPU ${ms} ms`,
     quality: 'Quality',
     qualities: { low: 'low', medium: 'medium', high: 'high' },
+    art: 'Models',
+    arts: { blender: 'detailed', code: 'simple' },
     bench: 'Auto-bench',
     benchUncapped: 'Auto-bench without vsync (restart)',
     benchRunning: 'Auto-bench running…',

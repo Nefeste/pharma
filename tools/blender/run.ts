@@ -1,4 +1,4 @@
-// Сборка моделей и запечки в Blender (#109; blender/README.md): сцена — из базы и кода раскладки (scene.ts), скрипты
+// Сборка моделей в Blender (#109; blender/README.md): сцена — из базы и отделки machines.ts (scene.ts), скрипты
 // blender/ — в фоновом режиме, готовые файлы — в assets/models с паспортом (sources.json: скрипт, SHA-256 скриптов, доля
 // сцены, версия Blender, SHA-256 файла) и списком для окна (index.json). Долгая работа — локально, не в CI (устав,
 // docs/04-process.md); тест сверяет файлы с паспортом и паспорт — с базой (tools/test/blender.test.ts).
@@ -36,7 +36,6 @@ writeFileSync(scenePath, JSON.stringify(scene));
 function build(dir: string) {
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(join(dir, 'machines'), { recursive: true });
-  mkdirSync(join(dir, 'rooms'), { recursive: true });
   const run = (script: string, args: string[]) => {
     const t = Date.now();
     const r = spawnSync(bin, ['--background', '--factory-startup', '--python-exit-code', '1', '--python', join(root, script), '--', '--scene', scenePath, ...args], { encoding: 'utf8', maxBuffer: 64 << 20 });
@@ -47,7 +46,6 @@ function build(dir: string) {
     const glb = join(dir, ART_INDEX.machines[t]);
     run('blender/press.py', ['--machine', t, '--work', dir, '--out', glb, ...(blend ? ['--blend', join(out, `${t}.blend`)] : [])]);
   }
-  for (const id of BUILD.rooms) run('blender/room.py', ['--room', id, '--out', join(dir, 'rooms'), ...(blend ? ['--blend', join(out, `${id}.blend`)] : [])]);
   return Object.fromEntries(OUTPUTS.map(o => [o.path, sha256(readFileSync(join(dir, o.path)))]));
 }
 
@@ -77,6 +75,7 @@ for (const o of OUTPUTS) {
   console.log(`${o.path}  ${got[o.path]}`);
 }
 writeFileSync(join(models, 'sources.json'), JSON.stringify(sources, null, 1));
-const index = JSON.parse(readFileSync(join(models, 'index.json'), 'utf8')) as Record<string, unknown>;
-writeFileSync(join(models, 'index.json'), JSON.stringify({ ...index, ...ART_INDEX }, null, 1));
+// список окна: люди — как были, из Blender — только то, что строится сейчас
+const index = JSON.parse(readFileSync(join(models, 'index.json'), 'utf8')) as { people: string[] };
+writeFileSync(join(models, 'index.json'), JSON.stringify({ people: index.people, ...ART_INDEX }, null, 1));
 console.log('assets/models: sources.json и index.json обновлены');

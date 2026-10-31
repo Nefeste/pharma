@@ -1,7 +1,7 @@
 // Страница игры (docs/02-architecture.md, §10): панели React и 3D-вид. Параметры адреса — для проверок:
 //   ?q=low|medium|high — пресет качества; ?lang=en — язык; ?bench=1 (&secs=15&warm=3&qualities=low,high&shots=0) —
-//   авто-бенч сцены (docs/specs/2026-10-view.md, 2г), &layer=load — со слоем «Загрузка и OEE» (Б1и); ?art=code — машины и
-//   пол кодом, без моделей из Blender (#109). В Electron — те же ключи: --q low, --bench, --secs 15, --layer load, --art code.
+//   авто-бенч сцены (docs/specs/2026-10-view.md, 2г), &layer=load — со слоем «Загрузка и OEE» (Б1и); ?art=code — машины
+//   кодом, без моделей из Blender (#109). В Electron — те же ключи: --q low, --bench, --secs 15, --layer load, --art code.
 import { createRoot } from 'react-dom/client';
 import { setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';

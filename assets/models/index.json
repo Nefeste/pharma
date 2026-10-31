@@ -16,11 +16,5 @@
  ],
  "machines": {
   "eq.press": "machines/press.glb"
- },
- "rooms": {
-  "compression": {
-   "light": "rooms/compression-light.png",
-   "ao": "rooms/compression-ao.png"
-  }
  }
 }

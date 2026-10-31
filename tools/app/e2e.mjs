@@ -626,11 +626,10 @@ async function mainPart() {
   if (lamps.shown.length !== lamps.want || !lamps.shown.every(l => kinds.has(l))) fail(`лампы: ${lamps.shown.join(', ')} — ждали ${lamps.want}`);
   else ok(`лампы: ${lamps.shown.length} — ${[...new Set(lamps.shown)].join(', ')}`);
 
-  // модели из Blender (#109): пресс — из .glb, пол компрессионной — с запечкой; «Модели» в панели отладки пересобирает
-  // машины и пол кодом и обратно
+  // модели из Blender (#109): пресс — из .glb; «Модели» в панели отладки пересобирает машины кодом и обратно
   const art = await page.evaluate(async () => {
     const g = window.__game;
-    const now = () => ({ glb: g.stage.machines.fromBlender, baked: g.stage.floors.filter(m => m.name.endsWith(' baked')).length, mode: g.store.get().art });
+    const now = () => ({ glb: g.stage.machines.fromBlender, mode: g.store.get().art });
     const before = now();
     g.actions.setArt('code');
     const code = now();
@@ -638,9 +637,9 @@ async function mainPart() {
     await new Promise(r => setTimeout(r, 100));
     return { before, code, after: now() };
   });
-  const artWant = { before: { glb: 1, baked: 1, mode: 'blender' }, code: { glb: 0, baked: 0, mode: 'code' }, after: { glb: 1, baked: 1, mode: 'blender' } };
+  const artWant = { before: { glb: 1, mode: 'blender' }, code: { glb: 0, mode: 'code' }, after: { glb: 1, mode: 'blender' } };
   if (JSON.stringify(art) !== JSON.stringify(artWant)) fail(`модели из Blender: ${JSON.stringify(art)}`);
-  else ok('модели из Blender: пресс из .glb и пол компрессионной с запечкой; «Модели» — простые и обратно');
+  else ok('модели из Blender: пресс из .glb; «Модели» — простые и обратно');
 
   // «живое время» (2в): «1:1» — секунда в секунду. Программная отрисовка даёт несколько кадров в секунду, а шаг кадра
   // ограничен 0,1 с — поэтому часы окна (с дробью, ещё не ушедшей в поток) могут отстать, но не уйти вперёд

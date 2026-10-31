@@ -136,16 +136,17 @@ def forming(p, M):
 
 
 def hopper(p, M):
-    """Чаша бункера на колонке, как у машин на фото (pack-photos — облик): стальная чаша с ободом и крышкой с тёмной
-    кнопкой, под ней — колонка дозатора на блоке, от блока к коробке питателя — две гибкие трубки в кольцах."""
+    """Чаша бункера на колонке, как у машин на фото (pack-photos — облик): открытая стальная чаша с ободом, внутри —
+    воронка к выпуску; под ней — колонка дозатора на блоке, от блока к коробке питателя — две гибкие трубки в кольцах.
+    Таблеток в чаше не видно: их считает движок."""
     w, h = p['w'], p['h']
     bm = bmesh.new()
     lo, hi = 1.62, p['y'] + h / 2
     a, b = _local(p, lo), _local(p, hi)
-    lib.cylinder(bm, 0.07, w / 2 - 0.012, b - a - 0.02, (0, (a + b - 0.02) / 2, 0), sides=32, mat=0, drop=('bottom',))
-    lib.cylinder(bm, w / 2, w / 2, 0.02, (0, b - 0.01, 0), sides=32, mat=0, bevel=0.003)
-    lib.cylinder(bm, w / 2 - 0.02, w / 2 - 0.02, 0.01, (0, b + 0.005, 0), sides=32, mat=0, bevel=0.002)
-    lib.cylinder(bm, 0.02, 0.016, 0.018, (0, b + 0.019, 0), sides=12, mat=1)
+    # чаша открыта сверху: стенка в 2–3 см, обод, внутри — воронка к выпуску (сверху видна вогнутой, не диском)
+    r = w / 2
+    lib.lathe(bm, [(0, 0), (0.07, 0), (r - 0.012, b - a - 0.02), (r, b - a - 0.015), (r, b - a), (r - 0.022, b - a),
+                   (r - 0.03, b - a - 0.02), (0.045, 0.05), (0, 0.05)], at=(0, a, 0), sides=40, mat=0)
     # колонка и блок дозатора
     col_lo = 1.54
     lib.cylinder(bm, 0.045, 0.045, lo - col_lo, (0, _local(p, (lo + col_lo) / 2), 0), sides=20, mat=0)
@@ -154,11 +155,11 @@ def hopper(p, M):
     feed = p['y'] - h / 2
     t_hi = col_lo - 0.06
     for z in (-0.06, 0.06):
-        lib.cylinder(bm, 0.022, 0.022, t_hi - feed, (0, _local(p, (t_hi + feed) / 2), z), sides=16, mat=2)
+        lib.cylinder(bm, 0.022, 0.022, t_hi - feed, (0, _local(p, (t_hi + feed) / 2), z), sides=16, mat=1)
         for k in range(4):
             y = feed + 0.02 + k * (t_hi - feed - 0.04) / 3
-            lib.cylinder(bm, 0.027, 0.027, 0.008, (0, _local(p, y), z), sides=16, mat=2)
-    return bm, [M['steel'], M['dark'], M['grey']]
+            lib.cylinder(bm, 0.027, 0.027, 0.008, (0, _local(p, y), z), sides=16, mat=1)
+    return bm, [M['steel'], M['grey']]
 
 
 def feeder(p, M):

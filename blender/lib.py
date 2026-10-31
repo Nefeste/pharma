@@ -201,6 +201,35 @@ def cylinder(bm, r_bottom, r_top, h, at=(0, 0, 0), axis='y', sides=32, mat=0, be
     _append(bm, one)
 
 
+def lathe(bm, profile, at=(0, 0, 0), sides=32, mat=0):
+    """Тело вращения вокруг оси y окна (чаша, воронка): `profile` — точки (r, y) от низа к верху, с серединой `at`;
+    точка с r = 0 — на оси (дно или дно чаши изнутри). Сетка замкнута, нормали — наружу: внутренняя стенка чаши видна
+    сверху, без изнанки."""
+    one = bmesh.new()
+    rings = []
+    for r, y in profile:
+        if r == 0:
+            rings.append([one.verts.new(bl(at[0], at[1] + y, at[2]))])
+            continue
+        ring = []
+        for k in range(sides):
+            a = 2 * math.pi * k / sides
+            ring.append(one.verts.new(bl(at[0] + r * math.cos(a), at[1] + y, at[2] + r * math.sin(a))))
+        rings.append(ring)
+    for a, b in zip(rings, rings[1:]):
+        for k in range(sides):
+            n = (k + 1) % sides
+            if len(a) == 1:
+                one.faces.new((a[0], b[n], b[k]))
+            elif len(b) == 1:
+                one.faces.new((a[k], a[n], b[0]))
+            else:
+                one.faces.new((a[k], a[n], b[n], b[k]))
+    bmesh.ops.recalc_face_normals(one, faces=one.faces[:])
+    _finish(one, mat, 0.0, 1, ())
+    _append(bm, one)
+
+
 def apply_modifiers(ob):
     """Модификаторы — в сетку: дальше её режут развёрткой и запекают."""
     bpy.context.view_layer.objects.active = ob

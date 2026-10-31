@@ -1,7 +1,8 @@
 # Общее для скриптов Blender «Фармзавода» (#109; устав, docs/11-new-games.md: Blender в фоновом режиме, скрипт в
-# blender/, результат — .glb в assets/ с паспортом). Сцену пишет tools/blender/scene.ts из той же базы и того же кода
-# раскладки, что окно игры; здесь — оси окна, отделка, части с фасками, запечка Cycles и PNG своим кодом. Только bpy,
-# bmesh и стандартная библиотека: ставить в Blender ничего не нужно.
+# blender/, результат — .glb в assets/ с паспортом). Сцену пишет tools/blender/scene.ts из той же базы и отделки
+# machines.ts, что окно игры; здесь — оси окна, отделка на все машины, части с фасками, машина по частям записи, кожух
+# у стенки, стойка лампы, развёртка, запечка Cycles, PNG своим кодом и имена узлов .glb. Только bpy, bmesh и стандартная
+# библиотека: ставить в Blender ничего не нужно.
 #
 # Повторяемость байт в байт: пустая сцена фабричных настроек, имена — свои, порядок создания — один, у Cycles — одно зерно
 # и одно число проб без подстройки и без шумодава; картинки запечки пишет `write_png` (zlib, уровень 9), а экспорт glTF
@@ -70,6 +71,23 @@ def material(name, f):
     if 'opacity' in f:
         bsdf.inputs['Alpha'].default_value = f['opacity']
         m.surface_render_method = 'BLENDED'
+    return m
+
+
+# отделка неподвижных частей — с затенением из общей карты; подвижных — та же, без него (`-moving`): тень, запечённая в
+# одном положении, ехала бы вместе с частью (docs/13-art.md, §8). Плёнка прозрачна — у неподвижных частей её нет.
+SHADED = ('white', 'steel', 'grey', 'dark', 'blue', 'foil', 'card')
+
+
+def materials(scene):
+    """Отделка записей (machines.ts) — один набор на все машины: в .glb у машин общие материалы, и окно сливает их
+    неподвижные части по материалу. Материал без сетки в .glb не попадает."""
+    f = scene['finish']
+    m = {k: material(k, f[k]) for k in SHADED}
+    for k in f:
+        if k != 'glass':
+            m[f'{k}-moving'] = material(f'{k}-moving', f[k])
+    m['glass'] = material('glass', f['glass'])
     return m
 
 
@@ -161,11 +179,14 @@ def _append(dst, src):
     src.free()
 
 
-def box(bm, w, d, h, at=(0, 0, 0), mat=0, bevel=0.0, segments=2, drop=()):
-    """Ящик w × d × h (оси окна: x, z, y) с серединой `at` (оси окна) — в bmesh части."""
+def box(bm, w, d, h, at=(0, 0, 0), mat=0, bevel=0.0, segments=2, drop=(), turn=0.0):
+    """Ящик w × d × h (оси окна: x, z, y) с серединой `at` (оси окна) — в bmesh части; `turn` — поворот, рад, вокруг оси
+    z окна (от x к y: наклонный лоток, плечо захвата)."""
     one = bmesh.new()
     bmesh.ops.create_cube(one, size=1.0)
-    bmesh.ops.transform(one, matrix=Matrix.Translation(bl(*at)) @ Matrix.Diagonal((w, d, h, 1.0)), verts=one.verts[:])
+    # ось z окна — ось −y Blender: поворот окна на `turn` — поворот Blender вокруг y на −`turn`
+    m = Matrix.Translation(bl(*at)) @ Matrix.Rotation(-turn, 4, 'Y') @ Matrix.Diagonal((w, d, h, 1.0))
+    bmesh.ops.transform(one, matrix=m, verts=one.verts[:])
     _finish(one, mat, bevel, segments, drop)
     _append(bm, one)
 
@@ -185,6 +206,123 @@ def apply_modifiers(ob):
     bpy.context.view_layer.objects.active = ob
     for m in list(ob.modifiers):
         bpy.ops.object.modifier_apply(modifier=m.name)
+
+
+def hood(bm, w, d, h, bays, glass=0, frame=1, slot=0.0):
+    """Кожух у стенки машины («балкон», docs/10-domain.md, §6): стальная рама со стёклами спереди, сверху и по торцам;
+    сзади кожух открыт — там стенка, по её верхнему ребру — пояс шарнира (кожух открывается вверх и наружу,
+    src/render/machines.ts). Спереди — створки с ручками внизу; у торцов внизу — щель `slot` м: лента, полотно и пачки
+    проходят под рамой. Оси части, середина — в нуле."""
+    t = 0.03
+    xs = [-w / 2 + t / 2 + k * (w - t) / bays for k in range(bays + 1)]
+    fz, bz = d / 2 - t / 2, -d / 2 + t / 2
+    top, low = h / 2 - t / 2, -h / 2 + t / 2
+    ends = (-w / 2 + t / 2, w / 2 - t / 2)
+    # стойки: спереди — по углам и между створками во всю высоту; сзади — по углам, над щелью
+    for x in xs:
+        box(bm, t, t, h, (x, 0, fz), mat=frame, bevel=0.003, segments=1)
+    for x in ends:
+        box(bm, t, t, h - slot, (x, slot / 2, bz), mat=frame, bevel=0.003, segments=1)
+    # пояса: спереди — сверху и снизу, сзади — сверху (шарнир); поперёк — сверху у каждой стойки и на торцах над щелью
+    for y, z in ((top, fz), (low, fz), (top, bz)):
+        box(bm, w - 2 * t, t, t, (0, y, z), mat=frame, bevel=0.003, segments=1)
+    for x in xs:
+        box(bm, t, d - 2 * t, t, (x, top, 0), mat=frame, bevel=0.003, segments=1)
+    for x in ends:
+        box(bm, t, d - 2 * t, t, (x, low + slot, 0), mat=frame, bevel=0.003, segments=1)
+    # стёкла створок спереди и сверху, ручки внизу створок
+    for a, b in zip(xs, xs[1:]):
+        x, bw = (a + b) / 2, b - a - t
+        box(bm, bw, 0.006, h - 2 * t, (x, 0, fz), mat=glass)
+        box(bm, bw, d - 2 * t, 0.006, (x, top, 0), mat=glass)
+        box(bm, min(0.3, bw / 2), 0.02, 0.02, (x, -h / 2 + 0.1, d / 2 + 0.01), mat=frame)
+    # стёкла торцов — над щелью
+    for x in ends:
+        box(bm, 0.006, d - 2 * t, h - 2 * t - slot, (x, slot / 2, 0), mat=glass)
+
+
+def local(p, x, y, z):
+    """Точка машины (x, y, z, м; оси окна) — в осях части `p`."""
+    return (x - p['x'], y - p['y'], z - p['z'])
+
+
+def part(p, name):
+    """Часть записи машины по имени — построения видят всю запись (`p['rec']`, `build`)."""
+    return next(q for q in p['rec']['model'] if q.get('id') == name)
+
+
+def pole(bm, p, base, mat_base=0, mat_rod=1):
+    """Стойка сигнальной колонны: от высоты `base` м до лампы состояния, которую рисует окно (`lamp` записи сцены,
+    src/render/machines.ts `lampAt`) — лампа стоит на стойке, а не висит над машиной. Оси части `p`."""
+    lx, ly, lz = p['rec']['lamp']
+    x, y0, z = local(p, lx, base, lz)
+    y1 = ly - p['y']
+    box(bm, 0.07, 0.07, 0.012, (x, y0 + 0.006, z), mat=mat_base, bevel=0.003, segments=1)
+    cylinder(bm, 0.014, 0.014, y1 - y0 - 0.012, (x, (y0 + 0.012 + y1) / 2, z), sides=12, mat=mat_rod)
+
+
+def empty(name):
+    """Пустышка — корень машины в .glb: узел с именем вида записи, части — внутри."""
+    ob = bpy.data.objects.new(name, None)
+    bpy.context.scene.collection.objects.link(ob)
+    return ob
+
+
+def build(scene, machine, M, parts, wear, root):
+    """Объекты машины — по частям записи, в серединах частей (оси окна), внутри корня `root`; детали с именем — узлы
+    износа записи (`parts`) внутри своей части. Построение части получает её запись с записью машины (`rec`): соседние
+    части и лампу состояния. Лента — кодом (src/render/machines.ts): полотно и штуки на нём. Имя
+    объекта — «вид/часть»: у разных машин части называются одинаково, а имена объектов Blender не повторяются;
+    приставку снимает `own_names`."""
+    rec = scene['machines'][machine]
+    objs = {}
+    for p in rec['model']:
+        if p['shape'] == 'belt':
+            continue
+        make = parts.get(p.get('id'))
+        if make is None:
+            raise SystemExit(f'{machine}: у части {p.get("id") or p["shape"]} нет построения в blender/')
+        bm, mats = make({**p, 'rec': rec}, M)
+        ob = mesh_object(f'{machine}/{p["id"]}', bm, mats, root)
+        ob.location = bl(p['x'], p['y'], p['z'])
+        objs[p['id']] = ob
+    for name, (part, make) in wear.items():
+        if name not in rec['wear'] or part not in objs:
+            continue
+        p = next(q for q in rec['model'] if q.get('id') == part)
+        bm, mats = make({**p, 'rec': rec}, M)
+        objs[name] = mesh_object(f'{machine}/{name}', bm, mats, objs[part])
+    for ob in objs.values():
+        apply_modifiers(ob)
+    return objs
+
+
+def unwrap(objs):
+    """Одна развёртка на все объекты: острова по углу граней, упакованы вместе — в одну картинку затенения."""
+    select_only(objs)
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=0.004, area_weight=0.0, correct_aspect=True, scale_to_bounds=False)
+    bpy.ops.uv.pack_islands(rotate=True, margin=0.004)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+
+def own_names(path):
+    """Узлы .glb — имена частей записи (устав: имя узла = идентификатор части): снять приставку «вид/» у узлов. JSON
+    файла — заново, двоичная часть — та же, что у экспорта."""
+    with open(path, 'rb') as f:
+        data = f.read()
+    magic, version, _ = struct.unpack_from('<4sII', data, 0)
+    size, kind = struct.unpack_from('<I4s', data, 12)
+    gltf = json.loads(data[20:20 + size])
+    for node in gltf.get('nodes', []):
+        if '/' in node.get('name', ''):
+            node['name'] = node['name'].split('/', 1)[1]
+    text = json.dumps(gltf, separators=(',', ':')).encode('utf-8')
+    text += b' ' * (-len(text) % 4)
+    rest = data[20 + size:]
+    with open(path, 'wb') as f:
+        f.write(struct.pack('<4sII', magic, version, 20 + len(text) + len(rest)) + struct.pack('<I4s', len(text), kind) + text + rest)
 
 
 # ---------------------------------------------------------------- запечка

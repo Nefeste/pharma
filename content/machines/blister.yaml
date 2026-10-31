@@ -5,18 +5,26 @@ id: mach.blister
 name: { ru: Блистерная машина, en: Blister machine }
 # ширина, глубина, высота, м — след на полу (docs/specs/2026-10-view.md, 2а): гипотеза, сверить
 size: [5.0, 1.4, 1.9]
-# модель кодом из частей (docs/13-art.md, §8; docs/specs/2026-10-view.md, 2в): силуэт класса, м — гипотеза, сверить
+# модель кодом из частей (docs/13-art.md, §8; docs/specs/2026-10-view.md, 2в): силуэт класса, м — гипотеза, сверить.
+# Имена частей — узлы модели из Blender (blender/blister.py), станции — по ходу плёнки (pilchik-2000, pack-line-vendors).
+# Компоновка — «балкон», как у машин на страницах производителей (pack-line-vendors, pack-photos): за запайкой и
+# вырубкой — стенка с фольгой на размотке, перед ними — кожух со стёклами спереди и сверху; у входа плёнки — открытый
+# стол: размотка, нагрев и формование, питатель с чашей бункера наверху, камера; пульт — на стойке у входа
 model:
-  - { shape: box, x: 0, z: 0, y: 0.45, w: 5.0, d: 1.2, h: 0.9, color: white }
-  - { shape: box, x: 0, z: 0, y: 0.92, w: 5.0, d: 1.3, h: 0.04, color: steel }
-  - { shape: glass, x: -0.3, z: 0, y: 1.3, w: 3.8, d: 1.1, h: 0.7, cover: true }
-  - { shape: box, x: 1.2, z: 0, y: 1.15, w: 0.4, d: 0.7, h: 0.45, color: steel }
-  - { shape: box, x: 0.2, z: 0, y: 1.15, w: 0.4, d: 0.7, h: 0.45, color: steel }
-  - { shape: box, x: -0.9, z: 0, y: 1.15, w: 0.4, d: 0.7, h: 0.45, color: steel }
-  - { shape: cyl, axis: z, x: 2.15, z: 0, y: 1.35, w: 0.6, d: 0.3, h: 0.6, color: film, spin: z }
-  - { shape: cyl, axis: z, x: 0.6, z: 0, y: 1.75, w: 0.3, d: 0.3, h: 0.3, color: foil, spin: z }
+  - { id: body, shape: box, x: 0, z: 0, y: 0.45, w: 5.0, d: 1.2, h: 0.9, color: white }
+  - { id: table, shape: box, x: 0, z: 0, y: 0.92, w: 5.0, d: 1.3, h: 0.04, color: steel }
+  - { id: wall, shape: box, x: -0.88, z: -0.61, y: 1.4, w: 2.64, d: 0.08, h: 0.92, color: white }
+  - { id: cover, shape: glass, x: -0.88, z: 0.025, y: 1.405, w: 2.64, d: 1.19, h: 0.91, cover: true }
+  - { id: forming, shape: box, x: 1.2, z: 0, y: 1.15, w: 0.4, d: 0.7, h: 0.45, color: steel }
+  - { id: hopper, shape: cone, x: 0.74, z: 0, y: 1.61, w: 0.44, d: 0.44, h: 0.5, bottom: 0.1, color: steel }
+  - { id: feeder, shape: box, x: 0.74, z: 0, y: 1.21, w: 0.3, d: 0.5, h: 0.3, color: grey }
+  - { id: camera, shape: box, x: 0.5, z: 0, y: 1.42, w: 0.1, d: 0.16, h: 0.12, color: dark }
+  - { id: sealing, shape: box, x: 0.2, z: 0, y: 1.15, w: 0.4, d: 0.7, h: 0.45, color: steel }
+  - { id: punching, shape: box, x: -0.9, z: 0, y: 1.15, w: 0.4, d: 0.7, h: 0.45, color: steel }
+  - { id: film, shape: cyl, axis: z, x: 2.15, z: 0, y: 1.35, w: 0.6, d: 0.3, h: 0.6, color: film, spin: z }
+  - { id: foil, shape: cyl, axis: z, x: 0.05, z: -0.4, y: 1.62, w: 0.3, d: 0.3, h: 0.3, color: foil, spin: z }
   - { shape: belt, x: -1.6, z: 0, y: 0.96, w: 1.6, d: 0.25, h: 0.04, item: blister }
-  - { shape: box, x: 0, z: 0.66, y: 1.3, w: 0.4, d: 0.06, h: 0.3, color: dark }
+  - { id: panel, shape: box, x: 1.9, z: 0.58, y: 1.55, w: 0.4, d: 0.06, h: 0.3, color: dark }
 item: blister
 # паспортная скорость, блистеров в минуту (Б1ж): от неё OEE считает потерю скорости; ход — уставка инструкции
 # по упаковке позиции, не быстрее паспорта
@@ -50,5 +58,5 @@ parts:
 # НДС; оборудование первичной и вторичной упаковки квалифицируют (прил. 15 GMP ЕАЭС, п. 7.1). Часы и цены — гипотезы
 qual: { every: 36, hours: 8, price: 150000, name: { ru: Квалификация блистерной машины, en: Blister machine qualification } }
 critical: true
-source: [pilchik-2000, blister-vendors, sepha-seal, gmp-eaeu]
+source: [pilchik-2000, blister-vendors, pack-line-vendors, pack-photos, sepha-seal, gmp-eaeu]
 review: draft

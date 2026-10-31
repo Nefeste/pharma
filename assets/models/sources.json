@@ -64,11 +64,11 @@
   "sha256": "a75e2ade5703cd02371d7f38bb6ab307d94a7db2f07d4a219f9248fdecab5e6a",
   "out": "1023a993fb3bc2e559dd1825514334cb8684adf51d0a28cf371f6d1c2b58c4f1"
  },
- "machines/press.glb": {
-  "source": "blender/press.py",
-  "sha256": "a8c06d8ba83856df8865591d0eeecb2decde6a5a07f5e93006f229fdb28ada74",
-  "input": "1890d72f794569cf9d8229b789b5ef03f721af79514acb0c34a005254c1e28a9",
+ "machines.glb": {
+  "source": "blender/machines.py",
+  "sha256": "2dc5c17a61255ebdaf4ba59b19c804fb8608c209e4f87c829375cf729da6e126",
+  "input": "3004b108b7a5b334634f0d2b97fc22269547fa655832b407c281120352afa1fb",
   "blender": "Blender 5.2.3 LTS (e13b728c6880)",
-  "out": "fd0444133c40c0b3fd8fff29a17782466b866607fffcc349f1589f9f292eb98b"
+  "out": "a9628981172b96aea64f0d9f0e079596d282be1c94b1105cb8ca753851474210"
  }
 }

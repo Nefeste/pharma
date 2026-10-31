@@ -7,3 +7,9 @@
 export interface ArtIndex {
   machines?: Record<string, string>;
 }
+
+/**
+ * Имя узла .glb, как в файле: загрузчик glTF делает имена неповторимыми (`body`, `body_1` — части у машин называются
+ * одинаково) и чистит их от точек (`eq.press`), а исходное кладёт в `userData.name`.
+ */
+export const nodeName = (o: { name: string; userData: Record<string, unknown> }): string => (typeof o.userData.name === 'string' ? o.userData.name : o.name);

@@ -4,13 +4,15 @@
 // машиной — лампа состояния: цвет и значок. На лентах — блистеры, пачки и ящики; в накопителе между машинами — та же доля,
 // что в движке. Скорость ленты на экране — не быстрее `BELT_MAX`: на ×1 и быстрее лента течёт, а не мелькает.
 //
-// Модель из Blender (#109, src/app/art.ts): у вида записи есть .glb — часть с именем берёт его узел того же имени
-// (фаски, детали, запечённое затенение); неподвижные узлы всех машин слиты по своим материалам, ротор и кожух — в своих
-// шарнирах, как части кода. Лампа, значок, ленты — те же.
+// Модель из Blender (#109, src/app/art.ts): у вида записи есть узел .glb — часть с именем берёт его узел с тем же именем
+// из файла (`userData.name`: фаски, детали, запечённое затенение); неподвижные узлы всех машин слиты по своим материалам —
+// материалы у машин общие, — ротор, кожух и рулоны — в своих шарнирах, как части кода. Лампа, значок, ленты — те же; под
+// лампой у модели из Blender — стойка (`lampAt`).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { ContentDb, ModelPart, Sku } from '../content/types';
 import type { EquipmentRow, LineRow } from '../sim/pack';
+import { nodeName } from './blender';
 import { inkOf } from './color';
 import { beltOffsets, beltSpeed, bufferCount, type Lamp, LAMP_COLOR, lampOfEquipment, lampOfMachine, PITCH } from './flow';
 import type { Layout } from './layout';
@@ -51,6 +53,11 @@ export interface BeltShown {
 /** Лампа: высота над машиной, размер; значок — над лампой. */
 const LAMP_H = 0.22;
 const ICON = 0.3;
+/**
+ * Где низ лампы состояния машины со следом W × D × H м (оси машины): на заднем правом углу, на высоте следа. Модель из
+ * Blender ставит под неё стойку сигнальной колонны (tools/blender/scene.ts, blender/lib.py `pole`).
+ */
+export const lampAt = (W: number, D: number, H: number): [number, number, number] => [W / 2 - 0.15, H, -D / 2 + 0.15];
 
 /** Лента на экране: начало (вход), направление потока, длина; что везёт; чья. */
 interface Belt {
@@ -223,7 +230,7 @@ export class Machines {
       const moving: Moving[] = [];
       if (glb) blender++;
       for (const p of model) {
-        const node = glb && p.id ? glb.children.find(c => c.name === p.id) : undefined;
+        const node = glb && p.id ? glb.children.find(c => nodeName(c) === p.id) : undefined;
         if (p.shape === 'belt') {
           // лента: полотно и борта неподвижны, штуки едут от входа (+x модели) к выходу (−x)
           const g = new THREE.BoxGeometry(p.w, p.h, p.d);
@@ -282,13 +289,14 @@ export class Machines {
         add(p.shape === 'glass' ? 'glass' : (p.color ?? 'steel'), g);
       }
       // лампа — на углу крыши машины, значок — над ней
+      const [lx, ly, lz] = lampAt(W, D, H);
       const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, LAMP_H, 16), this.lampMat('off'));
       this.own.push(lamp.geometry);
-      lamp.position.set(W / 2 - 0.15, H + LAMP_H / 2, -D / 2 + 0.15);
+      lamp.position.set(lx, ly + LAMP_H / 2, lz);
       root.add(lamp);
       const icon = new THREE.Sprite(this.iconMat('off'));
       icon.scale.set(ICON, ICON, 1);
-      icon.position.set(W / 2 - 0.15, H + LAMP_H + ICON / 2 + 0.05, -D / 2 + 0.15);
+      icon.position.set(lx, ly + LAMP_H + ICON / 2 + 0.05, lz);
       root.add(icon);
       this.group.add(root);
       this.units.push({ ...unit, moving, lamp, icon });
@@ -303,7 +311,7 @@ export class Machines {
     plant.lines.forEach((ln, li) => {
       ln.machines.forEach((mc, k) => {
         const t = db.machines[mc.type];
-        place(t.model, t.size, mc.at, mc.turn, { line: li, machine: k }, li, k);
+        place(t.model, t.size, mc.at, mc.turn, { line: li, machine: k }, li, k, models.get(mc.type));
       });
       // накопители — ленты между выходом машины и входом следующей, по ходу потока
       ln.machines.forEach((mc, k) => {

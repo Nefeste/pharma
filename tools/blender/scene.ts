@@ -3,16 +3,21 @@
 // же читает machines.ts) и отделка machines.ts. Свет помещений не запекается (решение владельца, #112). Сам скрипт Blender
 // о заводе ничего не знает. Паспорт модели (assets/models/sources.json) хранит SHA-256 своей доли сцены: тест скажет,
 // что запись изменилась, а модель — нет (tools/test/blender.test.ts).
+//
+// Все машины из Blender — один файл и одна карта затенения на всех: у машин общие материалы, и окно сливает их
+// неподвижные части в несколько вызовов отрисовки на завод, сколько бы машин ни было (отчёт пилота, находка 7).
 import { createHash } from 'node:crypto';
 import * as THREE from 'three';
 import type { ContentDb, ModelPart } from '../../src/content/types';
 import { stableJson } from '../../src/engine/core/hash';
-import { FINISH, GLASS } from '../../src/render/machines';
+import { FINISH, GLASS, lampAt } from '../../src/render/machines';
 
 /** Версия Blender, на которой собраны модели (blender/README.md): другая — сборка не идёт. */
 export const BLENDER = '5.2.3';
-/** Что строится в Blender: машины, на которые смотрят вблизи (#112). */
-export const BUILD = { machines: ['eq.press'] } as const;
+/** Что строится в Blender: машины, на которые смотрят вблизи (#112) — пресс и линия упаковки. */
+export const BUILD = { machines: ['eq.press', 'mach.blister', 'mach.cartoner'] } as const;
+/** Файл всех машин в assets/models. */
+export const MACHINES_GLB = 'machines.glb';
 
 type Rgb = [number, number, number];
 export interface SceneFinish {
@@ -27,6 +32,8 @@ export interface SceneMachine {
   model: ModelPart[];
   /** узлы износа записи (`parts`): деталь с таким именем — узел внутри своей части */
   wear: string[];
+  /** низ лампы состояния, которую рисует окно (machines.ts `lampAt`), м: под ней — стойка сигнальной колонны */
+  lamp: Rgb;
 }
 export interface BlenderScene {
   blender: string;
@@ -44,8 +51,10 @@ export function sceneOf(db: ContentDb): BlenderScene {
   for (const [k, f] of Object.entries({ ...FINISH, glass: GLASS })) finish[k] = { color: lin(f.color), rough: f.rough, metal: f.metal, ...(f.opacity !== undefined ? { opacity: f.opacity } : {}) };
   const machines: Record<string, SceneMachine> = {};
   for (const t of BUILD.machines) {
-    const e = db.equipment[t];
-    machines[t] = { size: e.size.map(v => v / 100) as Rgb, model: e.model, wear: e.parts.map(p => p.id) };
+    // оборудование участка или машина линии
+    const e = db.equipment[t] ?? db.machines[t];
+    const size = e.size.map(v => v / 100) as Rgb;
+    machines[t] = { size, model: e.model, wear: e.parts.map(p => p.id), lamp: lampAt(...size) };
   }
   return { blender: BLENDER, finish, machines };
 }
@@ -60,16 +69,18 @@ export interface Output {
   scripts: string[];
   input: (s: BlenderScene) => unknown;
 }
-export const OUTPUTS: Output[] = BUILD.machines.map(t => ({
-  path: `machines/${t.replace(/^eq\./, '')}.glb`,
-  script: 'blender/press.py',
-  scripts: ['blender/lib.py', 'blender/press.py'],
-  input: (s: BlenderScene) => ({ blender: s.blender, finish: s.finish, machine: s.machines[t] }),
-}));
+export const OUTPUTS: Output[] = [
+  {
+    path: MACHINES_GLB,
+    script: 'blender/machines.py',
+    scripts: ['blender/lib.py', 'blender/press.py', 'blender/blister.py', 'blender/cartoner.py', 'blender/machines.py'],
+    input: (s: BlenderScene) => ({ blender: s.blender, finish: s.finish, machines: s.machines }),
+  },
+];
 
-/** Что окно грузит из Blender (assets/models/index.json, src/render/blender.ts `ArtIndex`). */
+/** Что окно грузит из Blender (assets/models/index.json, src/render/blender.ts `ArtIndex`): машина — узел файла её вида. */
 export const ART_INDEX = {
-  machines: Object.fromEntries(BUILD.machines.map(t => [t, `machines/${t.replace(/^eq\./, '')}.glb`])),
+  machines: Object.fromEntries(BUILD.machines.map(t => [t, MACHINES_GLB])),
 };
 
 export const sha256 = (data: string | Uint8Array) => createHash('sha256').update(data).digest('hex');

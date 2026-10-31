@@ -15,6 +15,8 @@
   "Casual_Bald"
  ],
  "machines": {
-  "eq.press": "machines/press.glb"
+  "eq.press": "machines.glb",
+  "mach.blister": "machines.glb",
+  "mach.cartoner": "machines.glb"
  }
 }

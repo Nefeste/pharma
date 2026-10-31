@@ -52,9 +52,13 @@
 // слева, «Потоки — люди» с рычага планёрки отмечен в них; на шестые сутки L — столбики в помещениях производства и у машин
 // линии, у каждого число, без стрелок участка; наведение — часы частей, щелчок по грануляции — блок «Загрузка» с теми же
 // часами; окно «вчера» — полные сутки; доска «План — факт» по часам смены; слой — не больше четырёх вызовов отрисовки;
-// снимок — в контактном листе; 9 октября за вчера у ключевой машины — OEE с множителями, как на планёрке. Ошибок в
-// консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png. Первая неделя (docs/specs/2026-10-vertical-slice.md):
-// путь новичка от «Кем вы будете» до «За эту игру» на планёрке 8 сентября в чистом окне — tools/app/e2e-week.mjs.
+// снимок — в контактном листе; 9 октября за вчера у ключевой машины — OEE с множителями, как на планёрке. Отклонённое
+// (Б1з): после решения по серии на посту качества следующую серию ГП отклонили — её паллеты в зоне; на планёрке — места,
+// «Заказать вывоз» погашено без поста «Снабжение и склад»; директором — «Заказать вывоз»; фура подрядчика у рампы —
+// погрузка и подпись начальника ОКК в «Сейчас»; запись журнала отходов и свободные места в карточке помещения, в кассе —
+// «Вывоз отходов». Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png. Первая неделя
+// (docs/specs/2026-10-vertical-slice.md): путь новичка от «Кем вы будете» до «За эту игру» на планёрке 8 сентября в
+// чистом окне — tools/app/e2e-week.mjs.
 //   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -1359,6 +1363,192 @@ async function mainPart() {
       }
       await page.keyboard.press('Escape');
     }
+  }
+
+  // отклонённое (Б1з): на посту качества серию ГП отклонили на решении по серии — её паллеты едут в зону отклонённого;
+  // на планёрке — «Отклонённое»: сколько мест занято, «Заказать вывоз» погашено — пост «Снабжение и склад» ведёт коллега;
+  // директором — «Заказать вывоз» у строки планёрки: подрядчик приедет на следующий рабочий день к началу своих часов; в
+  // этот день — фура подрядчика у рампы отгрузки, погрузка и подпись начальника ОКК в «Сейчас»; фура уехала — в карточке
+  // помещения отклонённого запись журнала отходов и свободные места, в кассе — «Вывоз отходов». Пока паллеты едут в зону,
+  // место директора — тоже у игрока: иначе коллега склада в 09:00 закажет вывоз раньше игрока, если серию отклонят утром;
+  // на планёрку игрок приходит без него
+  {
+    const ALL = ['director', 'production', 'quality', 'supply', 'commerce'];
+    // места игрока — набор целиком, экраном «Кем вы будете», как игрок: кнопка «Место», плитки, «Взять»
+    const seatsTo = async want => {
+      await page.click('[data-test=seats-open]');
+      await page.waitForSelector('#seats', { timeout: 20_000 });
+      const pick = await page.evaluate(() => window.__game.store.get().seats.pick);
+      for (const id of ALL) if (pick.includes(id) !== want.includes(id)) await page.click(`[data-test=seat-tile][data-seat=${id}]`);
+      await page.click('[data-test=seats-take]');
+      // места в полосе — в порядке журнала мест: взятое последним — в конце
+      await page.waitForFunction(w => [...(window.__game.store.get().top?.seats ?? [])].sort().join() === w, [...want].sort().join(), { timeout: 20_000 });
+      await page.evaluate(() => window.__game.actions.setSpeed(0));
+    };
+    // чего ждёт шаг — по имени, как у решения по серии: функция уходит в страницу целиком. `mine` — паллеты ГП, ещё не
+    // решённые, когда серию отклонили: её паллеты — те из них, что стали отклонёнными; `at` — мгновение завода
+    const probe = ({ k, mine, at }) => {
+      const g = window.__game;
+      const c = g.store.get().card?.card;
+      const slots = g.layout.plan.slots;
+      const all = [...g.view.units.values()];
+      const truck = g.view.trucks.find(t => t.waste);
+      const ours = all.filter(u => u.tag === 'rejected' && mine.includes(u.unit));
+      const r =
+        k === 'fg'
+          ? all.find(u => u.where === 'slot' && slots[u.ref].kind === 'fgQuarantine' && u.tag === 'quarantine')?.unit
+          : k === 'release'
+            ? !!c?.release
+            : k === 'zone'
+              ? ours.length > 0 && ours.every(u => u.where === 'slot' && slots[u.ref].kind === 'rejected')
+              : k === 'dock'
+                ? truck?.docked === true
+                : k === 'load'
+                  ? g.view.tasks.some(t => t.kind === 'wasteLoad')
+                  : k === 'sign'
+                    ? g.view.tasks.some(t => t.kind === 'wasteSign')
+                    : k === 'gone'
+                      ? !truck
+                      : k === 'time'
+                        ? g.t + g.lag >= at
+                        : k === 'clear'
+                          ? c?.kind === 'room' && !!c.waste && !c.waste.order
+                          : false;
+      return r || g.speed === 0 ? { r } : false;
+    };
+    const got = async (k, mine, at) => (await page.evaluate(probe, { k, mine, at }))?.r;
+    // со скоростью `speed`, пока не выполнено условие `k` (проба в каждом кадре) или не прошло `days` суток завода; мир
+    // встаёт сам на автопаузах места игрока и на планёрке — дальше. Кадр окна двигает часы не больше чем на 0,1 с ×
+    // скорость: на ×4 — до 12 мин завода, на ×3 — до 2 мин; погрузку и подпись — минуты завода — ждут на ×3
+    const go = async (k, days, { mine = [], at = 0, speed = 4 } = {}) => {
+      const from = await gameT();
+      for (let runs = 0; !(await got(k, mine, at)) && (await gameT()) < from + days * 86400 && runs < 500; runs++) {
+        await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
+        await page.evaluate(v => window.__game.actions.setSpeed(v), speed);
+        await page.waitForFunction(probe, { k, mine, at }, { timeout: 30_000 }).catch(() => {});
+        await page.evaluate(() => window.__game.actions.setSpeed(0));
+      }
+      return got(k, mine, at);
+    };
+    // паллеты ГП, ещё не решённые: в карантине ГП и на местах паллетирования
+    const undecided = () =>
+      page.evaluate(() => {
+        const g = window.__game;
+        return [...g.view.units.values()].filter(u => u.where === 'slot' && ['fgQuarantine', 'palletizing'].includes(g.layout.plan.slots[u.ref].kind) && u.tag !== 'rejected').map(u => u.unit);
+      });
+    const ofMine = mine => page.evaluate(m => [...window.__game.view.units.values()].filter(u => u.tag === 'rejected' && m.includes(u.unit)).map(u => u.unit), mine);
+    // помещение отклонённого в карточке: места зоны, заказанный вывоз, журнал отходов; Esc закрывает
+    const room = async () => {
+      const i = await page.evaluate(() => window.__game.layout.plan.plant.rooms.findIndex(r => r.type === 'rejected'));
+      await page.evaluate(i => window.__game.actions.select({ kind: 'room', i }), i);
+      await page.waitForFunction(() => !!window.__game.store.get().card?.card?.waste, null, { timeout: 20_000 });
+      await frames(2);
+      const r = await page.evaluate(() => ({
+        places: [...document.querySelectorAll('[data-test=card-waste-place]')].map(x => x.getAttribute('data-busy')),
+        order: document.querySelector('[data-test=card-waste-order]')?.textContent ?? '',
+        log: [...document.querySelectorAll('[data-test=card-waste-entry]')].map(x => x.innerText.replace(/\s*\n\s*/g, ' · ')),
+      }));
+      return r;
+    };
+    // строка фуры подрядчика в «Сейчас»: текст и кто у неё работает — роли и сколько; N открывает, Esc закрывает
+    const nowTruck = async () => {
+      const was = await page.evaluate(() => window.__game.store.get().now.open);
+      if (!was) await page.keyboard.press('KeyN');
+      await page.waitForFunction(() => !!window.__game.store.get().now.view, null, { timeout: 20_000 });
+      await frames(2);
+      const row = await page.evaluate(() => {
+        const r = [...document.querySelectorAll('[data-test=now-row][data-kind=truck]')].find(x => /вывоз отклонённого/.test(x.textContent ?? ''));
+        return r ? { text: r.innerText.replace(/\s+/g, ' ').trim(), crew: r.querySelector('.nmain .muted')?.textContent ?? '' } : undefined;
+      });
+      if (!was) await page.keyboard.press('Escape');
+      return row;
+    };
+    // вывоз, заказанный коллегой раньше, ещё не кончился — дождаться его конца с открытой карточкой помещения
+    await seatsTo(['director', 'production', 'quality']);
+    let r0 = await room();
+    if (!/не заказан/.test(r0.order)) {
+      await go('clear', 4);
+      r0 = await room();
+    }
+    await page.keyboard.press('Escape');
+    const unit = await go('fg', 10);
+    let has = false;
+    if (unit !== undefined) {
+      await page.evaluate(n => window.__game.actions.select({ kind: 'unit', n }), unit);
+      await page.waitForFunction(n => window.__game.store.get().card?.card?.kind === 'unit' && window.__game.store.get().card.card.unit === n, unit, { timeout: 20_000 });
+      has = await go('release', 3);
+      await frames(2);
+    }
+    if (!has) fail(`отклонённое: ГП с решением по серии не дождались — паллета ${unit ?? 'не появилась'}`);
+    else {
+      const mine = await undecided();
+      await page.click('[data-test=release-reject]');
+      await page.keyboard.press('Escape');
+      const moved = await go('zone', 3, { mine });
+      const fresh = await ofMine(mine);
+      // на планёрку — без места директора: «Заказать вывоз» погашено, его пост ведёт коллега
+      await seatsTo(['production', 'quality']);
+      await page.evaluate(() => window.__game.actions.openMorning());
+      await page.waitForFunction(() => !!window.__game.store.get().morning.view, null, { timeout: 20_000 });
+      await frames(2);
+      const m = await page.evaluate(() => ({
+        zone: document.querySelector('[data-test=morning-rejects-zone]')?.textContent ?? '',
+        order: document.querySelector('[data-test=morning-rejects-order]')?.textContent ?? '',
+        off: document.querySelector('[data-test=morning-rejects] [data-test=lever-waste] button')?.disabled,
+        hint: document.querySelector('[data-test=morning-rejects] [data-test=lever-waste] .warn')?.textContent ?? '',
+        used: window.__game.store.get().morning.view.rejects?.used,
+      }));
+      await page.evaluate(() => document.querySelector('[data-test=morning-rejects]')?.scrollIntoView({ block: 'center' }));
+      await frames(2);
+      await page.screenshot({ path: join(out, 'e2e-rejects.png') });
+      await page.keyboard.press('Escape');
+      if (!moved || fresh.length === 0 || m.off !== true || !/Снабжение и склад/.test(m.hint) || !/занято/.test(m.zone) || !/не заказан/.test(m.order))
+        fail(`отклонённое: паллеты серии в зоне ${moved} (${fresh.length}); на планёрке «${m.zone}», «${m.order}», «Заказать вывоз» погашено ${m.off}, «${m.hint}»`);
+      else ok(`отклонённое: ${fresh.length} ${fresh.length === 1 ? 'паллета' : 'паллеты'} ГП — в зоне; на планёрке «${m.zone}», «${m.order}»; «Заказать вывоз» погашено — «${m.hint.replace(/^\s*·\s*/, '')}»; снимок ${join(out, 'e2e-rejects.png')}`);
+      // директором — «Заказать вывоз» у строки планёрки
+      await seatsTo(['director', 'production', 'quality']);
+      await page.evaluate(() => window.__game.actions.openMorning());
+      await page.waitForFunction(() => !!window.__game.store.get().morning.view, null, { timeout: 20_000 });
+      await frames(2);
+      await page.click('[data-test=morning-rejects] [data-test=lever-waste] button');
+      await page.waitForFunction(() => !window.__game.store.get().morning.open, null, { timeout: 20_000 }).catch(() => {});
+      const r1 = await room();
+      const at = await page.evaluate(() => window.__game.store.get().card?.card?.waste?.order?.at ?? 0);
+      await page.keyboard.press('Escape');
+      if (!/заказали вы: подрядчик приедет/.test(r1.order)) fail(`«Заказать вывоз»: в карточке помещения отклонённого «${r1.order}»`);
+      else ok(`«Заказать вывоз» директором: «${r1.order}»`);
+      // день вывоза: на ×4 — до получаса перед часами подрядчика, дальше на ×3: фура у рампы, погрузка, подпись
+      // начальника ОКК; фура уехала
+      await go('time', 4, { at: at - 1800 });
+      const docked = await go('dock', 2, { speed: 3 });
+      const loading = docked && (await go('load', 1, { speed: 3 })) ? await nowTruck() : undefined;
+      const signing = loading && (await go('sign', 1, { speed: 3 })) ? await nowTruck() : undefined;
+      const left = signing ? await go('gone', 1, { speed: 3 }) : false;
+      if (!loading || !signing || !left || !/Кладовщик|Водитель/.test(loading.crew) || !/Начальник ОКК/.test(signing.crew))
+        fail(`фура подрядчика: у рампы ${docked}; погрузка «${loading?.text ?? ''}» (${loading?.crew ?? ''}); подпись «${signing?.text ?? ''}» (${signing?.crew ?? ''}); уехала ${left}`);
+      else ok(`фура подрядчика: «${loading.text}» — грузят ${loading.crew}; подпись — ${signing.crew}; фура уехала`);
+      // журнал отходов и свободные места; в кассе — «Вывоз отходов»
+      const r2 = await room();
+      await page.screenshot({ path: join(out, 'e2e-waste.png') });
+      await page.keyboard.press('Escape');
+      const cashWas = await page.evaluate(() => window.__game.store.get().cash.open);
+      if (!cashWas) await page.click('[data-test=cash-open]');
+      await page.waitForFunction(() => !!window.__game.store.get().cash.view, null, { timeout: 20_000 });
+      await frames(2);
+      const cash = await page.evaluate(() => ({
+        entry: window.__game.store.get().cash.view.entries.find(e => e.item === 'waste'),
+        text: /Вывоз отходов/.test(document.querySelector('#cash')?.textContent ?? ''),
+      }));
+      if (!cashWas) await page.keyboard.press('Escape');
+      const free = r2.places.filter(x => x === 'no').length;
+      const entry = r2.log[0] ?? '';
+      // паллеты серии уехали: их больше нет в учёте склада
+      const stay = await page.evaluate(m => m.filter(n => window.__game.view.units.has(n)), fresh);
+      if (r2.log.length !== r0.log.length + 1 || !/передачу подписал /.test(entry) || !/акт об обезвреживании — до/.test(entry) || stay.length > 0 || free === 0 || !cash.entry || cash.entry.sum >= 0 || !cash.text)
+        fail(`журнал отходов: записей ${r0.log.length} → ${r2.log.length}, «${entry}»; паллет серии осталось ${stay.length}; свободно ${free} из ${r2.places.length}; в кассе ${JSON.stringify(cash.entry)}, «Вывоз отходов» ${cash.text}`);
+      else ok(`журнал отходов: «${entry}»; паллет серии на складе нет; свободно ${free} из ${r2.places.length} мест; в кассе «Вывоз отходов» ${Math.round(-cash.entry.sum / 100)} ₽; снимок ${join(out, 'e2e-waste.png')}`);
+    }
+    await seatsTo(['production', 'quality']);
   }
 
   // срочное задание (Б1г, 0.0.39): «Срочное задание» — первым в строке черновика, позиции — списком под ним; выбрали —

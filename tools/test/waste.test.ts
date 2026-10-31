@@ -2,9 +2,10 @@
 // Отклонённый балк выносят из промежуточного склада и везут в зону отклонённого. Вывоз заказывает пост «Снабжение и
 // склад» — команда `waste` — или, пока пост не у игрока, коллега склада в 09:00 рабочего дня: заняты две трети мест зоны
 // или паллета ждёт вывоза дольше срока; второго, пока первый не кончился, нет. Фура подрядчика встаёт к рампе отгрузки в
-// его часы следующего рабочего дня, а рампа занята — ждёт; грузят всё, что лежало в зоне, когда фура встала; подпись
-// начальника ОКК — после погрузки; счёт — выезд и паллеты с НДС; запись журнала отходов; тара и паллеты ушли из учёта,
-// партия — нет. Длинная игра не встаёт: год, где отклоняют каждую вторую серию ГП, и год с уставками на краю диапазона.
+// его часы следующего рабочего дня, а рампа занята — ждёт до конца его часов, потом приедет снова; грузят всё, что лежало
+// в зоне, когда фура встала; подпись начальника ОКК — после погрузки; счёт — выезд и паллеты с НДС; запись журнала
+// отходов; тара и паллеты ушли из учёта, партия — нет. Длинная игра не встаёт: год, где отклоняют каждую вторую серию
+// ГП, и год с уставками на краю диапазона.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import type { ContentDb } from '../../src/content/types';
@@ -207,6 +208,28 @@ describe('фура подрядчика', () => {
     expect(s.waste.log.at(-1)?.pallets).toBe(2);
   });
 
+  test('рампа занята до конца часов подрядчика — фура уезжает пустой и приезжает на следующий рабочий день', () => {
+    const s = newPlant(db, { scenario: SC });
+    reject(s, 2);
+    apply(db, s, { kind: 'waste' });
+    const o = s.waste.order!;
+    const day = dayOf(s, o.at);
+    until(s, o.at - MIN);
+    s.trucks.K999 = { id: 'K999', dock: outDock, units: [], arrived: s.t, docked: true, open: false };
+    until(s, at(day, w.hours[1]) - MIN);
+    const first = o.truck!;
+    expect(s.trucks[first]?.docked).toBe(false);
+    until(s, at(day, w.hours[1]) + MIN);
+    expect([s.trucks[first], o.truck]).toEqual([undefined, undefined]);
+    const next = addWorkdays(cal, day, 1);
+    expect(o.at).toBe(at(next, w.hours[0]));
+    expect(check(db, s)).toEqual([]);
+    delete s.trucks.K999;
+    const bad = live(s, () => s.waste.order === undefined, o.at + DAY);
+    expect(bad).toEqual([]);
+    expect([dayOf(s, s.waste.log.at(-1)!.t), s.waste.log.at(-1)!.pallets]).toEqual([next, 2]);
+  });
+
   test('паллеты, ждавшие места в полной зоне, едут в освободившиеся места', () => {
     const s = newPlant(db, { scenario: SC });
     reject(s, rej.length);
@@ -337,6 +360,12 @@ describe('виды — без истины, из учёта', () => {
     expect(postOf(db, s.journal.at(-1)!)).toBe('supply');
     const card = cardView(db, s, { kind: 'room', i: room }).card;
     if (card.kind !== 'room' || !card.waste) throw new Error('нет блока зоны');
+    // зону отклонённого, склад и лабораторию движок не убирает — строк чистоты нет; у помещений стадии и линии — есть
+    const cleanAt = (type: string) => {
+      const c = cardView(db, s, { kind: 'room', i: plan.plant.rooms.findIndex(r => r.type === type) }).card;
+      return c.kind === 'room' ? (c.clean?.k ?? 'none') : c.kind;
+    };
+    expect(['rejected', 'warehouse', 'lab', 'dispensing', 'packaging'].map(cleanAt)).toEqual(['none', 'none', 'none', 'clean', 'clean']);
     expect(card.waste.places).toHaveLength(rej.length);
     expect(card.waste.places.filter(x => x.lot).map(x => x.lot)).toEqual(lots.map(id => [s.lots[id].code.y, s.lots[id].code.m, s.lots[id].code.n]));
     expect([card.waste.order, card.waste.log]).toEqual([{ at: o.at, by: 'player' }, []]);

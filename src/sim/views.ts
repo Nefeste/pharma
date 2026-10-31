@@ -368,9 +368,14 @@ export function stockView(db: ContentDb, s: PlantState, q: StockQuery): StockVie
   return { view: 'stock', rows: rows.slice(page * PAGE, (page + 1) * PAGE), total: rows.length, page, pages };
 }
 
-/** Чистота свободного помещения — по правилу движка (`readyFor`, `ensureCleaning`): сроки 72 и 24 часа. */
-function cleanOf(s: PlantState, r: Room): RoomClean | undefined {
+/**
+ * Чистота свободного помещения — по правилу движка (`readyFor`, `ensureCleaning`): сроки 72 и 24 часа; только у
+ * помещения работы серии — стадии карты или линии (`roomFor`): склад, зону отклонённого и лабораторию так не убирают.
+ */
+function cleanOf(db: ContentDb, s: PlantState, r: Room): RoomClean | undefined {
   if (r.batch) return undefined;
+  const plan = planOf(db, s.plant);
+  if (!plan.plant.lines.some(l => l.room === r.id) && !Object.values(db.recipes).some(rc => rc.stages.some(st => plan.roomOf[st.room] === r.id))) return undefined;
   if (r.status === 'clean') return { k: 'clean', ...(r.cleanFor ? { product: r.cleanFor } : {}), until: r.since + CLEAN_HOLD, ...(s.t - r.since > CLEAN_HOLD ? { expired: true as const } : {}) };
   if (r.status !== 'dirty') return undefined;
   // грязным дольше суток — генеральная; начатая мойка своё уже решила
@@ -548,7 +553,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       const regimes = regimesAt(db, s, def.id);
       const knobs = knobsAt(db, s, def.id);
       const inside = insideOf(db, s, def.id);
-      const tidy = cleanOf(s, r);
+      const tidy = cleanOf(db, s, r);
       return {
         kind: 'room',
         room: thing.i,

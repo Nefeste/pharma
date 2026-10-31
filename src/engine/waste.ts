@@ -2,15 +2,17 @@
 // склад — команда `waste` поста «Снабжение и склад»; пока пост не у игрока, — коллега склада в 09:00 рабочего дня, когда
 // в зоне отклонённого заняты две трети мест или паллета ждёт вывоза дольше срока. Вывоз один: пока подрядчик не уехал,
 // второго не заказывают. Подрядчик по договору приезжает на следующий рабочий день к началу своих часов; его фура встаёт
-// к рампе отгрузки, как фура покупателя (market.ts, `dockNext`), а рампа занята — ждёт во дворе. Кладовщик и водитель
-// грузят в кузов всё, что лежит в зоне, когда фура встала; передачу подписывает начальник ОКК; фура уезжает: счёт — выезд
-// и паллеты, с НДС к вычету; запись — в журнале отходов. Тара и паллеты уходят из учёта склада, количество — в списанное
-// партии, а сама партия остаётся: вывоз, которым она ушла, — в журнале. Отклонённый балк выносят из промежуточного склада
-// (mes.ts, `bulkOut`) — дальше он едет в зону, как всё отклонённое.
+// к рампе отгрузки, как фура покупателя (market.ts, `dockNext`), а рампа занята — ждёт во дворе до конца его часов и
+// приедет снова на следующий рабочий день. Кладовщик и водитель грузят в кузов всё, что лежит в зоне, когда фура встала;
+// передачу подписывает начальник ОКК; фура уезжает: счёт — выезд и паллеты, с НДС к вычету; запись — в журнале отходов.
+// Тара и паллеты уходят из учёта склада, количество — в списанное партии, а сама партия остаётся: вывоз, которым она
+// ушла, — в журнале. Отклонённый балк выносят из промежуточного склада (mes.ts, `bulkOut`) — дальше он едет в зону, как
+// всё отклонённое.
 import type { ContentDb } from '../content/types';
 import { part, post } from './cash';
 import { addMonths, addWorkdays, civilFromDays, DAY, daysFromCivil, HOUR, isWorkday, lastOfMonth, momentOf } from './core/calendar';
 import { note, noteCmd } from './journal';
+import { dockWait } from './lean';
 import { planOf } from './plant';
 import { playerHolds } from './seats';
 import { nextId } from './stock';
@@ -82,7 +84,9 @@ function book(db: ContentDb, s: PlantState, by: string) {
 
 /**
  * Каждый час (Б1з): в 09:00 рабочего дня — коллега склада, пока пост «Снабжение и склад» не у игрока; в день вывоза, к
- * началу часов подрядчика, — его фура: к рампе её поставит шаг отгрузки (market.ts), когда рампа свободна.
+ * началу часов подрядчика, — его фура: к рампе её поставит шаг отгрузки (market.ts), когда рампа свободна. Часы
+ * подрядчика кончились, а фура так и не встала к рампе — она уезжает пустой и приедет на следующий рабочий день к началу
+ * его часов; сколько она ждала во дворе — в потери (3а).
  */
 export function wasteHour(db: ContentDb, s: PlantState) {
   const w = db.scenarios[s.scenario].waste;
@@ -90,6 +94,14 @@ export function wasteHour(db: ContentDb, s: PlantState) {
   const now = momentOf(s.start, s.t);
   if (now.sec === WASTE_HOUR && !s.waste.order && !playerHolds(s, 'wms') && isWorkday(calOf(db, s), now.day)) colleague(db, s, now.day);
   const o = s.waste.order;
+  const yard = o?.truck !== undefined ? s.trucks[o.truck] : undefined;
+  if (o && yard && !yard.docked && s.t >= at(s, momentOf(s.start, yard.arrived).day, w.hours[1])) {
+    dockWait(s, s.t - yard.arrived);
+    delete s.trucks[yard.id];
+    delete o.truck;
+    o.at = at(s, addWorkdays(calOf(db, s), now.day, 1), w.hours[0]);
+    return;
+  }
   if (o && o.truck === undefined && s.t >= o.at) {
     const dock = db.plants[s.plant].docks.find(d => d.kind === 'out')!.id;
     const tr: Truck = { id: nextId(s, 'R'), dock, waste: o.id, units: [], arrived: s.t, docked: false, open: false };

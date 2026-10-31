@@ -91,7 +91,7 @@ const TRUCK_LEN = TRAILER.length + 3.9;
 /** Короба фур кадра: от заднего края кузова наружу (−x), от асфальта двора до крыши. */
 export function truckBoxes(poses: readonly TruckPose[]): Box[] {
   return poses.map(p => ({
-    thing: { kind: 'truck', n: p.truck, customer: p.customer },
+    thing: { kind: 'truck', n: p.truck, customer: p.customer, ...(p.waste ? { waste: true as const } : {}) },
     min: [p.x - TRUCK_LEN, -1.2, p.z - TRAILER.width / 2] as V3,
     max: [p.x, TRAILER.height, p.z + TRAILER.width / 2] as V3,
   }));

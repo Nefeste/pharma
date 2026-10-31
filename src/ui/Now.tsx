@@ -33,7 +33,7 @@ export function rowTitle(r: NowRow): string {
     case 'repair':
       return T.now.repair(!!r.planned, partName(r.machine, r.part), machineName(r.machine));
     case 'truck':
-      return r.customer ? T.now.truckOut(named(db?.customers[r.customer]?.name, r.customer)) : T.now.truckIn(named(db?.suppliers[r.supplier ?? '']?.name, r.supplier));
+      return r.waste ? T.now.truckWaste : r.customer ? T.now.truckOut(named(db?.customers[r.customer]?.name, r.customer)) : T.now.truckIn(named(db?.suppliers[r.supplier ?? '']?.name, r.supplier));
     case 'visit':
     case 'accept': {
       // работа подрядчика и её приёмка (Б3в): «Калибровка весов · Весы с ламинарным боксом, инв. № 00000108»

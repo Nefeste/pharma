@@ -152,7 +152,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   mass at a stage's input, the batch mass less what later stages load (`stageMass`, shared with the schedule run,
   «Сейчас» and the reference); the packing job and its packaging kit — a container of it already
   in the line room is in place, whatever pallet it lies on; a stage stopped by a part
-  failure and resumed after the repair; a new not-before time of a batch order from the player — `shift`; room
+  failure and resumed after the repair; with Б1з a rejected bulk carried out of the bulk room by the storekeeper, as
+  a kit's rest, and on to the rejected zone (`bulkOut`); a new not-before time of a batch order from the player —
+  `shift`; room
   readiness, nominal stage time and cleaning time shared with the schedule run; new part budgets of a running stage for
   the plan run's twin — `stageRedraw`), `plan/schedule.ts` (the schedule run — a pure function: running tasks to their
   end, then kitting, stages and cleaning by the engine's rules and its own functions, with the player's draft changes
@@ -260,8 +262,14 @@ first, or copy the working code of Bolnitsa on the same versions.
   department head — the head by position, what was decided about which thing, the reason with the plant's numbers and
   never the truth; the player's command of the same kinds — «you» with the place it came from; a colleague's command —
   the record of its head; a scenario's or a refused command — none; no rule reads it; records older than the term go
-  at midnight; the plan run's copy starts without it), `seats.ts` (the player's places — the director and four posts:
-  whose each command is — a
+  at midnight; the plan run's copy starts without it), `waste.ts` (with Б1з, the removal of rejected material: the
+  `waste` command of the «Снабжение и склад» post — the contractor on the next workday at the start of his hours; while
+  the player does not hold the post, the warehouse colleague at 09:00 on a workday when two thirds of the zone's places
+  are taken or a pallet waits longer than the term; one removal at a time; the contractor's truck docks at the out dock
+  like a customer's, a busy dock — it waits in the yard to the end of his hours and comes again the next workday; all
+  that lies in the zone when it docks is loaded, the QC head signs the handover; the bill — the trip and the pallets,
+  VAT to deduct; the waste log; containers and pallets leave the stock, the lot stays), `seats.ts` (the player's
+  places — the director and four posts: whose each command is — a
   transfer, a vacancy, a hire, a dismissal, a vacation part or a related profession is the post of the role's
   department —, the `seat` command, the log of places; a player's command of another's post is refused),
   `batchno.ts` (the batch number `PPNNNMMYY`: the short `PPNNN` when the batch record is issued, month and year when the
@@ -292,7 +300,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   progress, people with their walk to a post, vehicles, lines with their machines, equipment, and whether a machine or
   equipment is in calibration or qualification; no truth fields — not the next micro-stop, not a part's budget), views
   for panels — the warehouse and the card of a thing with what a pallet holds, with Б1е a room's cleanliness — clean
-  for which product and until when, or dirty after which product and which cleaning it needs — and a line machine's job
+  for which product and until when, or dirty after which product and which cleaning it needs, only for a room of a
+  stage or a line — and a line machine's job
   waiting for the room's cleaning, with Б1ж the blister machine's speed — rated, the job's and each SKU's setpoint —,
   built here on request and sent with the slice only when they changed, without truth
   fields (`views.ts`); the deviation card, the batch decision at release and
@@ -337,7 +346,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   and codes of a record's things, «Кто решил» of the cards and the batch record, the meeting's decisions of the day by
   head — records of the plant (`journal.ts`); with Б1и, the floor — rooms and line machines over today, yesterday or
   seven days, the key machine and OEE by the meeting's `lineSum`, the plan-vs-actual board of the shift by hours, the
-  batch a held room leads to — records of the plant (`floor.ts`); the schedule — the Gantt of the past, the running and
+  batch a held room leads to — records of the plant (`floor.ts`); with Б1з, the rejected — the zone's places and the
+  lots on them, pallets waiting for a place, the removal and the waste log for the meeting, the rejected room's card and
+  the batch record — records of the plant (`waste.ts`); the schedule — the Gantt of the past, the running and
   the schedule run
   with the player's draft —
   new not-before times and new urgent batch orders, the old bars of what the draft moves, and the ghost of a dragged
@@ -399,7 +410,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   starts, `shift` commands on approval (`draft.ts`), the «Кем вы будете» screen of places (`Seats.tsx`), the
   investigation board — steps, findings in words with numbers from the records, version bars, the decision, the
   debrief (`Inv.tsx`), the batch record over the other windows — opened from a card, «Сейчас», the meeting and a click
-  on a batch bar of the schedule (`Dossier.tsx`), the levers of a row (`Levers.tsx`), the deviation card, the batch
+  on a batch bar of the schedule (`Dossier.tsx`), the rejected room's block of the card — the zone's places, the
+  removal, the waste log (`Waste.tsx`), the levers of a row (`Levers.tsx`), the deviation card, the batch
   decision, stage parameters, with Б1ж the setpoints with «−» and «+» and a blister machine's speed, and
   the first-event explanation in the card (`Decide.tsx`), status and work icons (`icons.tsx`), asset words — class and
   inventory number, the work's name, «until» and why it does not work
@@ -416,7 +428,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   `also` of the staff rows and `same` of a role only another person of it replaces; with Б1д — the stage that loads each
   line of a recipe's composition; with Б1е — the minor and general cleaning of a line machine that touches tablets; with
   Б1ж — a parameter's setpoint step, the turret speed of compression, a part's load by a parameter (`stress`), a cause's
-  IPC scatter, a line machine's rated speed and the blister machine's speed factors (`fast`), a SKU's blister speed);
+  IPC scatter, a line machine's rated speed and the blister machine's speed factors (`fast`), a SKU's blister speed;
+  with Б1з — the scenario's contractor `waste`: his hours, the minutes of the handover signature and the prices);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
@@ -429,7 +442,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   draft of the start staff fits whole (`leaveErrors`); every line of a composition loaded on a stage of its recipe after
   dispensing, the API and another component on the first mixing; with Б1ж a parameter's target inside its range and a
   whole number of steps from both edges, a part's load by a parameter of a stage run on its equipment, a cause's scatter
-  only from a parameter, a SKU's blister speed within the machine's rated one; plan rules in
+  only from a parameter, a SKU's blister speed within the machine's rated one; with Б1з the contractor's hours within
+  the day and his prices above zero; plan rules in
   `plan.ts`: doors on walls, docks on outer walls, class D only through
   airlocks, reachability, posts on
   walkable floor; models in

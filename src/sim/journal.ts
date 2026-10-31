@@ -107,6 +107,8 @@ function headOf(db: ContentDb, d: Decided): Head {
       return 'hr';
     case 'extend':
       return 'sales';
+    case 'waste':
+      return 'wms';
   }
 }
 

@@ -17,6 +17,7 @@ import { expo, roll } from './random';
 import { containersByLot, findSlot, nextId, putUnit, stockChanged } from './stock';
 import { addTask } from './tasks';
 import type { Container, Lot, Notice, Order, PlantState, Shipment, Task, Truck, Unit } from './types';
+import { wasteDocked } from './waste';
 import { WMS } from './wms';
 import { calOf } from './workdays';
 
@@ -194,7 +195,11 @@ function allocateDay(db: ContentDb, s: PlantState) {
   for (const o of ordersToday(s)) allocate(db, s, o);
 }
 
-/** После события: до 13:00 рабочего дня — распределить снова, если изменился склад; у рампы — грузить и отпускать фуру. */
+/**
+ * После события: до 13:00 рабочего дня — распределить снова, если изменился склад; у рампы — грузить и отпускать фуру
+ * покупателя; рампа отгрузки свободна, а во дворе ждёт фура — к рампе (фура подрядчика по вывозу отклонённого приезжает
+ * часом, Б1з, и уезжает после подписи — waste.ts).
+ */
 export function marketStep(db: ContentDb, s: PlantState, notices: Notice[]) {
   const now = momentOf(s.start, s.t);
   if (isWorkday(calOf(db, s), now.day) && now.sec >= ALLOC_HOUR && now.sec < CUTOFF_HOUR) {
@@ -207,6 +212,7 @@ export function marketStep(db: ContentDb, s: PlantState, notices: Notice[]) {
     loadReady(db, s, tr);
     depart(db, s, tr, notices);
   }
+  dockNext(db, s, notices);
 }
 
 /**
@@ -398,8 +404,8 @@ function trucksArrive(db: ContentDb, s: PlantState, notices: Notice[]) {
 }
 
 /**
- * К свободной рампе отгрузки — первая ждущая фура покупателя: кузов открыт для погрузки; сколько она ждала во дворе — в
- * потери (3а).
+ * К свободной рампе отгрузки — первая ждущая фура: у покупателя кузов открыт для погрузки; у подрядчика по вывозу
+ * отклонённого (Б1з) — погрузка всего, что лежит в зоне (waste.ts). Сколько фура ждала во дворе — в потери (3а).
  */
 function dockNext(db: ContentDb, s: PlantState, notices: Notice[]) {
   const dock = outDock(db, s);
@@ -408,8 +414,9 @@ function dockNext(db: ContentDb, s: PlantState, notices: Notice[]) {
   const next = trucks[0];
   if (!next) return;
   next.docked = true;
-  next.open = true;
   dockWait(s, s.t - next.arrived);
+  if (next.waste) return wasteDocked(db, s, next);
+  next.open = true;
   loadReady(db, s, next);
   depart(db, s, next, notices);
 }

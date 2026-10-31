@@ -2,7 +2,7 @@
 // за время на нём (3е), вчера в цифрах, одна главная потеря, одна подсказка; что было с прошлой планёрки; что ждёт сейчас. Большое окно поверх карты с
 // вопросом в заголовке. Вид собирает поток расчёта (src/sim/report.ts) без слов и без истины; слова — отсюда.
 import type { ReactNode } from 'react';
-import { devLevers, heldLevers, mainLevers, resignLevers, riskLevers } from '../app/levers';
+import { devLevers, heldLevers, mainLevers, resignLevers, riskLevers, wasteLevers } from '../app/levers';
 import type { PartType, Scenario } from '../content/types';
 import { civilFromDays, DAY, HOUR, momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
@@ -10,6 +10,7 @@ import { DEPT_SEAT } from '../engine/seats';
 import { dateText, daysText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { HeadDay } from '../sim/journal';
 import type { LineSum, MainLoss, ModeRow, MorningView, SeatSum, SessionSum } from '../sim/report';
+import type { RejectSum } from '../sim/waste';
 import type { Thing } from '../sim/views';
 import { assetName, workName } from './assets';
 import { db } from './db';
@@ -257,6 +258,37 @@ function SessionBlock({ x, real }: { x: SessionSum; real: number }) {
           <li key={i}>{r}</li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** Где ждут места в зоне отклонённого: вид места склада или помещение — словами. */
+const placeName = (where: string) => (T.zones as Record<string, string>)[where] ?? T.roomTypes[where] ?? where;
+
+/**
+ * Отклонённое (Б1з): сколько мест зоны занято из скольких, сколько паллет ждут места и где; вывоз — заказан, у рампы или
+ * нет; вывозы с прошлой планёрки; у строки — «Заказать вывоз». Пусто и тихо — блока нет.
+ */
+function Rejects({ r, start, hud, actions, close }: { r: RejectSum; start: Ymd; hud: Hud; actions: Actions; close?: () => void }) {
+  if (r.used === 0 && r.waiting.length === 0 && !r.order && r.out.length === 0) return null;
+  const full = r.used >= r.places;
+  return (
+    <div className="mblock" data-test="morning-rejects">
+      <div className="mhead">{T.waste.title}</div>
+      <div className={full ? 'bad' : r.waiting.length > 0 ? 'warn' : ''} data-test="morning-rejects-zone">
+        {T.waste.zone(r.used, r.places)}
+        {r.waiting.length > 0 ? <span> · {T.waste.waiting(r.waiting.map(x => T.waste.where(placeName(x.where), x.n)).join(', '))}</span> : null}
+      </div>
+      <div className="muted" data-test="morning-rejects-order">
+        {r.order ? T.waste.order(whenText(start, r.order.at), r.order.by === 'player') : T.waste.none}
+        {r.order?.truck ? <span> · {T.waste[r.order.truck]}</span> : null}
+      </div>
+      {r.out.map(x => (
+        <div key={x.t} data-test="morning-rejects-out">
+          {T.waste.out(whenText(start, x.t), x.pallets, money(x.sum))}
+        </div>
+      ))}
+      <Levers list={wasteLevers(r)} hud={hud} actions={actions} close={close} />
     </div>
   );
 }
@@ -516,6 +548,7 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                 )),
               ]}
             />
+            {v.rejects ? <Rejects r={v.rejects} start={start} hud={hud} actions={actions} close={close} /> : null}
             <Rows
               title={T.morning.trainTitle}
               rows={[

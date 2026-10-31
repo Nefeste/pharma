@@ -30,7 +30,7 @@ export const HEAD_SEAT: Record<Head, SeatId> = {
 export const DEPT_HEAD: Record<Dept, Head> = { mes: 'mes', line: 'mes', maint: 'maint', qa: 'qa', qc: 'qc', wms: 'wms' };
 
 /** Руководитель по полю `by` команды коллеги; команда сценария — никто. */
-const BY: Record<string, Head> = { 'head:plan': 'plan', 'head:supply': 'supply', 'head:quality': 'qa', 'head:maint': 'maint' };
+const BY: Record<string, Head> = { 'head:plan': 'plan', 'head:supply': 'supply', 'head:quality': 'qa', 'head:maint': 'maint', 'head:wms': 'wms' };
 
 /** Записать решение: номер по порядку — свой счётчик журнала, мгновение, автор; у игрока — место. */
 export function note(s: PlantState, by: Head | 'player', d: Decided, seat?: SeatId) {

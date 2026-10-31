@@ -95,14 +95,21 @@ export function check(db: ContentDb, s: PlantState): string[] {
     const kind = plan.slot[u.where.id]?.kind;
     if (!kind) continue;
     if (UNDECIDED.has(lot.status) && !BEFORE_DECISION.has(kind)) bad.push(`паллета ${u.id}: партия ${lot.id} (${lot.status}) уже в «${kind}»`);
+    // в зоне отклонённого — только отклонённое (Б1з)
+    if (kind === 'rejected' && lot.status !== 'rejected') bad.push(`паллета ${u.id}: партия ${lot.id} (${lot.status}) в зоне отклонённого`);
     if (kind === 'storage' && lot.status !== 'released' && lot.status !== 'blocked') bad.push(`паллета ${u.id}: партия ${lot.id} (${lot.status}) на стеллаже хранения`);
   }
   for (const tr of Object.values(s.trucks)) {
     for (const uid of tr.units) {
       const u = s.units[uid];
       if (!u || u.where.kind !== 'truck' || u.where.id !== tr.id) bad.push(`фура ${tr.id}: паллета ${uid} не на ней`);
+      // фура подрядчика (Б1з) везёт только отклонённое
+      if (u && tr.waste) for (const cid of u.items) if (s.lots[s.containers[cid]?.lot]?.status !== 'rejected') bad.push(`фура ${tr.id}: на вывоз — паллета ${uid} не отклонённой партии`);
     }
+    if (tr.waste && (s.waste.order?.id !== tr.waste || s.waste.order.truck !== tr.id)) bad.push(`фура ${tr.id}: вывоза ${tr.waste} нет или он ждёт другую фуру`);
   }
+  const wo = s.waste.order;
+  if (wo?.truck && !s.trucks[wo.truck]) bad.push(`вывоз ${wo.id}: фуры ${wo.truck} нет`);
   // люди и техника — не больше одной задачи; задача знает своих людей
   for (const p of Object.values(s.people)) {
     if (p.task && !s.tasks[p.task]?.people.includes(p.id)) bad.push(`человек ${p.id}: задача ${p.task} его не знает`);
@@ -493,6 +500,8 @@ function packing(db: ContentDb, s: PlantState, bad: string[]) {
   // отгруженные ящики — коды ушли к покупателю, но остаются кодами серии
   const shippedCodes = new Map<string, [number, number][]>();
   for (const sh of Object.values(s.shipments)) for (const x of sh.cases) shippedCodes.set(x.lot, [...(shippedCodes.get(x.lot) ?? []), ...x.codes]);
+  // вывезенное на уничтожение (Б1з): коды пачек ушли с подрядчиком, но остаются кодами серии
+  for (const w of s.waste.log) for (const x of w.lots) if (x.codes) shippedCodes.set(x.lot, [...(shippedCodes.get(x.lot) ?? []), ...x.codes]);
   const containersOf = (lotId: string) => byLot.get(lotId) ?? [];
   for (const line of Object.values(s.lines)) {
     const b = line.batch ? s.batches[line.batch] : undefined;

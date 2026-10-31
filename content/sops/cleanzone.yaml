@@ -1,11 +1,12 @@
 # Чистая зона: переодевание и поведение в помещениях класса D — особое обучение для зон, где опасна контаминация, и
 # процедуры гигиены и одежды (GMP ЕАЭС, ч. I, пп. 2.12, 2.15). Нужна работам, которые идут в помещениях класса D плана:
-# стадии, мойка оборудования и уборка помещений, линия, отбор проб, шлюзы для материалов и пробоотборной, ремонт.
+# стадии, мойка оборудования и уборка помещений, линия, отбор проб, шлюзы для материалов и пробоотборной, ремонт, вынос
+# отклонённого балка из промежуточного склада (Б1з).
 id: sop.cleanzone
 name: { ru: Чистая зона — переодевание и поведение, en: Clean area — gowning and conduct }
 doc: { code: SOP-0002, rev: 1, from: 2026-01-19, approved: role.qa-head }
 roles: [role.storekeeper, role.driver, role.sampler, role.operator, role.master, role.line-operator, role.packer, role.mechanic, role.setter, role.cleaner]
-for: { tasks: [stage, clean, roomClean, crew, feed, changeover, clearance, clearCheck, sample, transfer, return, putaway, toSampling, fromSampling, repair, invFix] }
+for: { tasks: [stage, clean, roomClean, crew, feed, changeover, clearance, clearCheck, sample, transfer, return, putaway, toSampling, fromSampling, repair, invFix, bulkOut] }
 hours: 2
 every: 12
 source: [gmp-eaeu]

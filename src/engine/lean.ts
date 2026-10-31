@@ -52,6 +52,10 @@ export const AREA: Record<TaskKind, Dept> = {
   accept: 'qa',
   vendorReview: 'qa',
   devAssess: 'qa',
+  // вывоз отклонённого (Б1з): вынос балка и погрузка — склад, подпись передачи — ОКК
+  bulkOut: 'wms',
+  wasteLoad: 'wms',
+  wasteSign: 'qc',
 };
 
 /** Ожидание обучения в задержки не идёт: его ставят заранее, за срок предупреждения, и оно ждёт свободного часа. */

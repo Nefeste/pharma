@@ -185,6 +185,7 @@ export const ru = {
       noParam: 'такой стадии или режима нет в действующей редакции',
       outOfRange: 'вне диапазона карты: новый диапазон — новой редакцией через управление изменениями',
       offStep: 'уставку меняют шагом режима от цели',
+      noWaste: 'у сценария нет подрядчика по вывозу отклонённого',
     } as Partial<Record<string, string>>,
   },
   view: {
@@ -277,7 +278,7 @@ export const ru = {
   },
   /** где паллета */
   place: {
-    truck: (n: number, customer: boolean) => `${customer ? 'фура покупателя' : 'фура поставщика'} ${n}`,
+    truck: (n: number, customer: boolean, waste?: boolean) => `${waste ? 'фура подрядчика по вывозу' : customer ? 'фура покупателя' : 'фура поставщика'} ${n}`,
   },
   /** помещения — по типу в записи плана */
   roomTypes: {
@@ -342,6 +343,9 @@ export const ru = {
     accept: 'Приёмка работы подрядчика',
     vendorReview: 'Оценка поставщика',
     devAssess: 'Оценка отклонения',
+    bulkOut: 'Вынос отклонённого балка',
+    wasteLoad: 'Погрузка на вывоз',
+    wasteSign: 'Подпись передачи на вывоз',
   } as Record<string, string>,
   /** почему задача ждёт */
   wait: { people: 'люди заняты', shift: 'людей нет в смене', vehicle: 'техника занята', instrument: 'прибор занят', place: 'нет свободного места', dock: 'рампа занята', qual: 'нет допуска', asset: 'калибровка или квалификация', hours: 'нет часов', leave: 'в отпуске' },
@@ -450,7 +454,7 @@ export const ru = {
     overNow: (at: string) => `сверхурочно с ${at}`,
     doing: { walk: 'Идёт на пост', exit: 'Идёт к выходу', post: 'Ждёт на посту', off: 'Вне смены' },
     free: 'Свободна',
-    truck: (customer: boolean): string => (customer ? 'Фура покупателя' : 'Фура поставщика'),
+    truck: (customer: boolean, waste?: boolean): string => (waste ? 'Фура подрядчика: вывоз отклонённого' : customer ? 'Фура покупателя' : 'Фура поставщика'),
     order: 'Заказ',
     arrived: 'Пришла',
     truckState: { yard: 'Ждёт во дворе', check: 'На проверке у рампы', unload: 'Разгрузка', load: 'Погрузка' },
@@ -482,6 +486,7 @@ export const ru = {
     weighed: (code: string, qty: string) => `Отвешено на серию ${code}: ${qty}`,
     pack: (code: string, qty?: string, used?: string) => (qty === undefined ? `Списано на упаковку серии ${code}: ${used ?? ''}` : used !== undefined ? `На упаковку серии ${code}: выдано ${qty}, списано ${used}` : `Выдано на упаковку серии ${code}: ${qty}`),
     shipped: (customer: string, qty: string) => `Отгружено: ${qty} — ${customer}`,
+    wasted: (pallets: number, qty: string) => `Вывезено на уничтожение: ${qty}, ${pallets} ${pluralRu(pallets, 'паллета', 'паллеты', 'паллет')}`,
     start: 'На складе с начала игры: запас на старте',
     reserved: (n: number, qty: string) => `Резерв под ${n} ${pluralRu(n, 'задание', 'задания', 'заданий')} на серию: ${qty}`,
     maint: { failure: 'Отказ узла', repair: 'Ремонт после отказа', replace: 'Замена по плану' },
@@ -712,6 +717,7 @@ export const ru = {
       hiring: 'Найм',
       settle: 'Расчёт при увольнении',
       vacation: 'Отпускные',
+      waste: 'Вывоз отходов',
     },
     why: {
       po: (supplier: string, po: string) => `${supplier}, заказ ${po}`,
@@ -1134,6 +1140,7 @@ export const ru = {
     auditUntil: (gone: string, until: string) => `идёт ${gone} · отчёт ${until}`,
     truckIn: (supplier: string) => `Фура поставщика: ${supplier}`,
     truckOut: (customer: string) => `Фура покупателя: ${customer}`,
+    truckWaste: 'Фура подрядчика: вывоз отклонённого',
     line: (n: number) => `линия ${n}`,
     onWay: 'идут к месту работы',
     gone: (gone: string, norm: string) => `идёт ${gone} из ${norm}`,
@@ -1354,6 +1361,8 @@ export const ru = {
     personWhat: 'в карточке — «Отпустить раньше»: по соглашению, последний день сегодня',
     journal: 'Журнал',
     journalWhat: 'кто что решил и почему — с числами завода',
+    waste: 'Заказать вывоз',
+    wasteWhat: 'подрядчик приедет на следующий рабочий день и вывезет всё, что лежит в зоне, — на уничтожение по договору',
     seat: (seat: string) => `пост «${seat}» — его ведёт коллега`,
     later: {
       build: 'Будет в Б7: переставить пост или помещение — стройка',
@@ -1515,6 +1524,7 @@ export const ru = {
     bulk: (code: string, status: string) => `балк — партия ${code}: ${status.toLowerCase()}`,
     checked: (when: string) => `проверка ГП и досье специалистом ООК — ${when}`,
     released: (when: string) => `выпущена уполномоченным лицом — ${when}`,
+    wasted: (when: string) => `вывезена на уничтожение — ${when}`,
     held: 'уполномоченное лицо держит серию',
     decision: { release: 'ваше решение: выпустить', reject: 'ваше решение: отклонить', hold: 'ваше решение: держать' } as Record<string, string>,
     yieldText: (units: string, pct: string) => `в балке ${units} таблеток — выход серии ${pct}`,
@@ -1632,6 +1642,7 @@ export const ru = {
       batch: (code: string, decision: string) => `Решение по серии ${code}: ${decision}`,
       contract: (no: string, party: string, to: string) => `Новый рамочный договор ${no}: ${party}, до ${to}`,
       extend: (no: string, party: string, to: string) => `Договор поставки ${no} продлён: ${party}, до ${to}`,
+      waste: (at: string) => `Вывоз отклонённого: подрядчик приедет ${at}`,
     },
     verdict: { release: 'разрешить', reject: 'отклонить', investigate: 'расследование' } as Record<string, string>,
     decision: { release: 'выпустить', hold: 'держать', reject: 'отклонить' } as Record<string, string>,
@@ -1714,6 +1725,11 @@ export const ru = {
     contract: (prev: string, end: string) => `Прежний договор ${prev} кончился ${end}`,
     contractNew: 'Действующего договора не было — пара снова одобрена',
     extend: (end: string) => `Прежний срок кончился ${end}`,
+    /** вывоз отклонённого (Б1з): правило коллеги склада */
+    waste: {
+      full: (used: number, places: number) => `В зоне отклонённого заняты ${groupRu(used)} из ${groupRu(places)} ${pluralRu(places, 'места', 'мест', 'мест')} — две трети и больше`,
+      old: (since: string, months: number) => `Паллета ждёт вывоза с ${since} — дольше ${groupRu(months)} мес.: накопление отходов — не дольше 11 месяцев`,
+    },
     /** «Кто решил» в карточке: что решено о вещи */
     kinds: {
       order: 'Задание поставил',
@@ -1735,6 +1751,7 @@ export const ru = {
       batch: 'Решение по серии',
       contract: 'Рамочный договор',
       extend: 'Договор поставки',
+      waste: 'Вывоз отклонённого',
     } as Record<string, string>,
     /** решения за сутки на планёрке: сколько каких */
     count: {
@@ -1767,8 +1784,33 @@ export const ru = {
             : `${groupRu(n)} ${pluralRu(n, 'серия отклонена', 'серии отклонены', 'серий отклонено')}`,
       contract: (n: number) => `${groupRu(n)} ${pluralRu(n, 'рамочный договор', 'рамочных договора', 'рамочных договоров')}`,
       extend: (n: number) => `${groupRu(n)} ${pluralRu(n, 'договор поставки продлён', 'договора поставки продлены', 'договоров поставки продлено')}`,
+      waste: (n: number) => `${groupRu(n)} ${pluralRu(n, 'вывоз', 'вывоза', 'вывозов')} отклонённого`,
     } as Record<string, (n: number, v?: string) => string>,
     prepaid: (sum: string) => `предоплата ${sum}`,
+  },
+  /** отклонённое (Б1з): зона, вывоз на уничтожение, журнал отходов */
+  waste: {
+    title: 'Отклонённое',
+    zone: (used: number, places: number) => `Зона отклонённого: занято ${groupRu(used)} из ${groupRu(places)} ${pluralRu(places, 'места', 'мест', 'мест')}`,
+    waiting: (list: string) => `ждут места: ${list}`,
+    where: (where: string, n: number) => `${where} — ${groupRu(n)}`,
+    order: (when: string, player: boolean) => `Вывоз ${player ? 'заказали вы' : 'заказал заведующий складом'}: подрядчик приедет ${when}`,
+    yard: 'фура подрядчика ждёт во дворе',
+    dock: 'фура подрядчика у рампы — грузят',
+    none: 'Вывоз не заказан',
+    out: (when: string, pallets: number, sum: string) => `Вывоз ${when}: ${groupRu(pallets)} ${pluralRu(pallets, 'паллета', 'паллеты', 'паллет')}, ${sum} с НДС`,
+    places: 'Места зоны',
+    place: (n: number) => `Место ${n}`,
+    free: 'свободно',
+    lot: (lot: string, material: string, since: string) => `${lot} · ${material} — отклонена ${since}`,
+    log: 'Журнал отходов',
+    noLog: 'Вывозов ещё не было',
+    entry: (when: string, pallets: number, sum: string, vat: string) => `${when}: ${groupRu(pallets)} ${pluralRu(pallets, 'паллета', 'паллеты', 'паллет')} — ${sum} и НДС ${vat}`,
+    signed: (who: string) => `передачу подписал ${who}`,
+    act: (day: string) => `акт об обезвреживании — до ${day}`,
+    item: (lot: string, material: string, pallets: number, containers: number, qty: string) =>
+      `${lot} · ${material}: ${groupRu(pallets)} ${pluralRu(pallets, 'паллета', 'паллеты', 'паллет')}, ${groupRu(containers)} тар. мест — ${qty}`,
+    booked: (when: string, player: boolean) => `Вывоз ${player ? 'заказали вы' : 'заказал заведующий складом'} ${when}`,
   },
   /** срочное задание на серию (Б1г) */
   urgent: {

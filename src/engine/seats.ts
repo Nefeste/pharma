@@ -19,6 +19,7 @@ export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
   assess: 'quality',
   setpoint: 'quality',
   po: 'supply',
+  waste: 'supply',
 };
 
 /** Пост отдела (Б4а): производство, линию и техслужбу ведёт «Производство», ОКК и ООК — «Качество», склад — «Снабжение и склад». */

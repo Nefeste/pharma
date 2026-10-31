@@ -12,6 +12,7 @@ import { planOf } from '../engine/plant';
 import { unitsOfLot } from '../engine/stock';
 import type { Batch, BatchStatus, Deviation, KitLine, LotStatus, PackJob, PlantState, Recon } from '../engine/types';
 import { whoBatch, type WhoRow } from './journal';
+import { wastedAt } from './waste';
 
 export interface DossierQuery {
   view: 'dossier';
@@ -154,6 +155,8 @@ export interface DossierView {
   decision?: 'release' | 'reject' | 'hold';
   held?: boolean;
   released?: number;
+  /** вывезена на уничтожение (Б1з): мгновения вывозов, которыми ушли её балк и ГП */
+  wasted?: number[];
   /** кто решил (Б5а): задание, решение по балку, вывод расследования, решения уполномоченного лица */
   who?: WhoRow[];
 }
@@ -275,6 +278,8 @@ export function dossierView(db: ContentDb, s: PlantState, q: DossierQuery): Doss
     held: !!b.held,
     ...(b.released !== undefined ? { released: b.released } : {}),
   };
+  const wasted = wastedAt(s, [b.bulk, b.pack?.fg].filter((x): x is string => x !== undefined));
+  if (wasted.length > 0) view.wasted = wasted;
   if (first && first.stage === r.stages[0].id) {
     const [scale] = equipmentOf(db, s, first.equipment);
     const [by, check] = [whoOf(s, first.people[0] ?? ''), whoOf(s, first.people[1] ?? '')];

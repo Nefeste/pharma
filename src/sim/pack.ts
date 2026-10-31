@@ -70,7 +70,7 @@ const KIND_NO: Record<TaskKind, number> = {
   unload: 0, receive: 1, putaway: 2, move: 3, toSampling: 4, sample: 5, fromSampling: 6, handover: 7, prep: 8, review: 9,
   decide: 10, pick: 11, transfer: 12, return: 13, stage: 14, clean: 15, crew: 16, changeover: 17, clearance: 18, clearCheck: 19,
   feed: 20, fgCheck: 21, qpDecide: 22, ship: 23, casePick: 24, load: 25, repair: 26, truckCheck: 27, invStep: 28, invFix: 29,
-  train: 30, trainCheck: 31, accept: 32, vendorReview: 33, devAssess: 34, roomClean: 35,
+  train: 30, trainCheck: 31, accept: 32, vendorReview: 33, devAssess: 34, roomClean: 35, bulkOut: 36, wasteLoad: 37, wasteSign: 38,
 };
 /** Виды задач по номерам — как в срезе. */
 export const TASK_KINDS: readonly TaskKind[] = (Object.keys(KIND_NO) as TaskKind[]).sort((a, b) => KIND_NO[a] - KIND_NO[b]);
@@ -110,7 +110,9 @@ export interface TruckRow {
   dock: number;
   docked: boolean;
   customer: boolean;
-  /** кузов открыт: фура поставщика проверена, фура покупателя встала к рампе */
+  /** фура подрядчика по вывозу отклонённого (Б1з): номер — по одному счёту с фурами покупателей */
+  waste?: boolean;
+  /** кузов открыт: фура поставщика проверена, фура покупателя или подрядчика встала к рампе */
   open: boolean;
 }
 
@@ -304,7 +306,8 @@ export class Packer {
       const code = b ? packNo(b.code) : -1;
       return [i, room ? ROOM_STATUS.indexOf(room.status) : 0, code, b ? ix.recipe.get(b.recipe)! : -1, b && room?.status === 'busy' ? b.stage : -1];
     });
-    const trucks: number[][] = Object.values(s.trucks).map(t => [num(t.id), ix.dock.get(t.dock)!, t.docked ? 1 : 0, t.customer ? 1 : 0, t.open ? 1 : 0]);
+    // вид фуры: 0 — поставщика, 1 — покупателя, 2 — подрядчика по вывозу отклонённого (Б1з)
+    const trucks: number[][] = Object.values(s.trucks).map(t => [num(t.id), ix.dock.get(t.dock)!, t.docked ? 1 : 0, t.customer ? 1 : t.waste ? 2 : 0, t.open ? 1 : 0]);
     const changed: number[][] = [];
     const seen = new Set<number>();
     for (const u of Object.values(s.units)) {
@@ -390,7 +393,7 @@ export function unpack(buf: Int32Array): Unpacked {
   }
   const trucks: TruckRow[] = [];
   for (let i = 0; i < buf[H.trucks]; i++, o += K.size) {
-    trucks.push({ truck: buf[o + K.truck], dock: buf[o + K.dock], docked: buf[o + K.docked] === 1, customer: buf[o + K.customer] === 1, open: buf[o + K.open] === 1 });
+    trucks.push({ truck: buf[o + K.truck], dock: buf[o + K.dock], docked: buf[o + K.docked] === 1, customer: buf[o + K.customer] === 1, waste: buf[o + K.customer] === 2, open: buf[o + K.open] === 1 });
   }
   const units: UnitRow[] = [];
   for (let i = 0; i < buf[H.units]; i++, o += U.size) {

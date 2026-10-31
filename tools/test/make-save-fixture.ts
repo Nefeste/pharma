@@ -43,7 +43,9 @@
 // уставки посреди стадии здесь тоже есть, но их держит образец схемы 28. С схемы 30 — посреди учёта помещений: у
 // помещений учёта отрезки в разных состояниях — серия держит помещение без работы, другое убирают или налаживают, линия
 // упаковывает, — а у сменного задания, которое идёт, уже есть выпуск по часам; журнал здесь тоже есть, но его держит
-// образец схемы 29.
+// образец схемы 29. С схемы 31 — посреди вывоза отклонённого: игрок на посту качества отклоняет серии ГП, коллега склада
+// заказывает вывоз, фура подрядчика у рампы — кладовщик с водителем грузят или начальник ОКК подписывает передачу, — а
+// прежний вывоз уже в журнале отходов; учёта помещений посреди дела здесь нет — его держит образец схемы 30.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { DAY, daysFromCivil, HOUR, MIN, momentOf } from '../../src/engine/core/calendar';
@@ -125,10 +127,13 @@ const floored = () => {
   const ph = new Set(Object.values(s.rooms).map(r => r.phase));
   return ph.has('held') && ph.has('clean') && ph.has('work') && s.shiftTasks.some(t => t.to === undefined && (t.hours?.length ?? 0) >= 2);
 };
+// посреди вывоза отклонённого (Б1з): у фуры подрядчика грузят или подписывают передачу, а прежний вывоз — в журнале отходов
+const wasting = () => s.waste.log.length > 0 && Object.values(s.tasks).some(t => (t.kind === 'wasteLoad' || t.kind === 'wasteSign') && t.state === 'busy');
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : seated() && floored();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : seated() && wasting();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
+const refused = new Set<string>();
 if (SCHEMA >= 13) apply(db, s, { kind: 'seat', seats: ['director'] });
 // с схемы 23 — директор переводит вторую смену в бригаду 1: с 1 октября; с схемы 24 — вместо этого открывает вакансии
 // аппаратчика и упаковщика первой смены по объявлению
@@ -155,6 +160,13 @@ while (s.t < end && !busy()) {
   if (SCHEMA >= 14)
     for (const i of Object.values(s.investigations))
       if (i.status === 'open' && i.runs.length === 0) for (const step of ['records', 'dossier']) apply(db, s, { kind: 'investigate', inv: i.id, step, by: 'player' });
+  // с схемы 31 — игрок на посту качества отклоняет каждую серию ГП: её паллеты едут в зону отклонённого
+  if (SCHEMA >= 31 && s.seats?.some(x => x.seat === 'quality' && x.to === undefined))
+    for (const b of Object.values(s.batches))
+      if (b.status === 'fg' && !refused.has(b.id)) {
+        refused.add(b.id);
+        apply(db, s, { kind: 'release', batch: b.id, decision: 'reject' });
+      }
   // с схемы 22 — игрок на посту качества оценивает отклонения, которые уже можно: испытания готовы — по ним
   if (SCHEMA >= 22)
     for (const d of Object.values(s.deviations))

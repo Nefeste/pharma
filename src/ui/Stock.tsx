@@ -28,7 +28,7 @@ export function placeText(p: PlaceRef, plant: string): string {
     const r = plan.plant.rooms[p.i];
     return r ? (T.roomTypes[r.type] ?? r.type) : '';
   }
-  return T.place.truck(p.n, p.customer);
+  return T.place.truck(p.n, p.customer, p.waste);
 }
 
 /** Поставщик словами: свой завод и запас на старте — без записи поставщика. */

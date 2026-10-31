@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 30;
+export const SCHEMA = 31;
 
 // ---------------------------------------------------------------- склад
 
@@ -641,9 +641,10 @@ export interface Po {
 export interface Truck {
   id: string;
   dock: string;
-  /** фура поставщика по заказу или фура покупателя за отгрузкой */
+  /** фура поставщика по заказу или фура покупателя за отгрузкой; фура подрядчика — за отклонённым (Б1з): номер вывоза */
   po?: string;
   customer?: Id;
+  waste?: string;
   /** паллеты на фуре — ещё не снятые */
   units: string[];
   arrived: number;
@@ -1011,7 +1012,7 @@ export interface Shipment {
   vat: number;
 }
 
-export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle' | 'vacation';
+export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle' | 'vacation' | 'waste';
 
 // ---------------------------------------------------------------- техслужба
 
@@ -1428,7 +1429,12 @@ export type Decided =
   /** новый рамочный договор поставщика: прежний и его последний день; день конца нового */
   | { kind: 'contract'; contract: string; party: Id; to: number; why: { prev?: string; end?: number } }
   /** продлён договор поставки покупателя: прежний последний день и новый */
-  | { kind: 'extend'; contract: string; party: Id; to: number; why: { end: number } };
+  | { kind: 'extend'; contract: string; party: Id; to: number; why: { end: number } }
+  /**
+   * вывоз отклонённого (Б1з): заказ и мгновение приезда подрядчика; у коллеги склада — сколько мест зоны занято из
+   * скольких и, если паллета ждёт вывоза дольше срока, — с какого мгновения она отклонена и срок, месяцев
+   */
+  | { kind: 'waste'; order: string; at: number; why?: { used: number; places: number; since?: number; months: number } };
 
 /**
  * Запись журнала решений (Б5а): номер по порядку, мгновение, кто решил — руководитель или игрок, у игрока — место, с
@@ -1526,6 +1532,52 @@ export interface PlantState {
   leave: Record<number, LeaveYear>;
   /** журнал решений (Б5а; src/engine/journal.ts): по порядку, за срок геймдизайна (§8.5) */
   journal: Decision[];
+  /** вывоз отклонённого (Б1з; src/engine/waste.ts): заказанный вывоз — один, пока подрядчик не уехал; журнал отходов */
+  waste: WasteState;
+}
+
+/**
+ * Вывоз отклонённого (Б1з): заказ — когда и кто заказал (игрок или коллега склада), мгновение начала часов подрядчика в
+ * день вывоза; фура подрядчика — когда приехала. Журнал отходов — вывозы по порядку, все: их немного, а партия видит в нём
+ * вывоз, которым ушла.
+ */
+export interface WasteState {
+  order?: WasteOrder;
+  log: WasteEntry[];
+}
+
+export interface WasteOrder {
+  id: string;
+  booked: number;
+  by: string;
+  at: number;
+  truck?: string;
+}
+
+/**
+ * Запись журнала отходов (Б1з): вывоз — номер заказа, когда фура уехала, кто и когда заказал; партии — сколько паллет и
+ * тары и сколько в ней (мг или шт.), у ГП — коды пачек отрезками; кто подписал передачу; счёт — без НДС и НДС, копейки;
+ * до какого дня придёт акт об обезвреживании — номер дня, 30 дней после месяца вывоза (`pp-506`, п. 11).
+ */
+export interface WasteEntry {
+  id: string;
+  t: number;
+  booked: number;
+  by: string;
+  lots: WasteLot[];
+  pallets: number;
+  signed: string;
+  sum: number;
+  vat: number;
+  act: number;
+}
+
+export interface WasteLot {
+  lot: string;
+  pallets: number;
+  containers: number;
+  qty: number;
+  codes?: [number, number][];
 }
 
 /** Запись журнала мест: место игрока, с какого мгновения и по какое; держит его сейчас — без конца. */
@@ -1600,7 +1652,9 @@ export type Command =
    * движка, в диапазоне редакции в силе, на шаге от цели
    */
   | { kind: 'setpoint'; recipe: Id; stage: string; param: string; value: number; by?: string }
-  | { kind: 'setpoint'; sku: Id; value: number; by?: string };
+  | { kind: 'setpoint'; sku: Id; value: number; by?: string }
+  /** заказать вывоз отклонённого (Б1з): подрядчик приедет на следующий рабочий день; один, пока подрядчик не уехал */
+  | { kind: 'waste'; by?: string };
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
@@ -1684,7 +1738,9 @@ export type Refusal =
   /** уставка (Б1ж): нет такой стадии или режима в редакции в силе; вне её диапазона; не на шаге от цели */
   | 'noParam'
   | 'outOfRange'
-  | 'offStep';
+  | 'offStep'
+  /** вывоз отклонённого (Б1з): у сценария нет подрядчика по вывозу */
+  | 'noWaste';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =

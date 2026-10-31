@@ -168,8 +168,23 @@ export const TASK_KINDS = [
   'accept',
   'vendorReview',
   'devAssess',
+  'bulkOut',
+  'wasteLoad',
+  'wasteSign',
 ] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];
+
+/**
+ * Вывоз отклонённого (Б1з; геймдизайн, §4.5): подрядчик по договору работает с `hours[0]` до `hours[1]` — секунды от
+ * полуночи; передачу подписывает начальник ОКК — `sign`, с; счёт — выезд `trip` и обезвреживание `pallet` за паллету,
+ * копейки без НДС.
+ */
+export interface ScenarioWaste {
+  hours: [number, number];
+  sign: number;
+  trip: number;
+  pallet: number;
+}
 
 /**
  * Обучение по документу (Б3б): роли, которые по нему учатся, — строка матрицы обучения (геймдизайн, §6.4); сколько
@@ -275,6 +290,8 @@ export interface Scenario {
   labor?: Labor;
   /** отпуска (Б4г; src/engine/leave.ts): правило черновика графика и доплата заместителю; нет — отпусков нет */
   leave?: LeaveRule;
+  /** вывоз отклонённого (Б1з; src/engine/waste.ts): подрядчик, подпись передачи и цены; нет — вывоза нет */
+  waste?: ScenarioWaste;
   /** происшествие прототипа (часть 4): у задания на серию — неисправность по жребию зерна */
   incident?: IncidentDef;
 }

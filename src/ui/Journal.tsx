@@ -103,6 +103,8 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
       return J.contract(d.contract, party(d.party), dayText(d.to));
     case 'extend':
       return J.extend(d.contract, party(d.party), dayText(d.to));
+    case 'waste':
+      return J.waste(whenText(start, d.at));
   }
 }
 
@@ -210,6 +212,12 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
       return [d.why.prev ? J.contract(d.why.prev, dayText(d.why.end ?? 0)) : J.contractNew];
     case 'extend':
       return [J.extend(dayText(d.why.end))];
+    case 'waste': {
+      // коллега склада (Б1з): по заполнению зоны или по сроку; у игрока причины нет
+      const w = d.why;
+      if (!w) return [];
+      return w.since !== undefined ? [J.waste.old(dayText(momentOf(start, w.since).day), w.months)] : [J.waste.full(w.used, w.places)];
+    }
     default:
       return [];
   }

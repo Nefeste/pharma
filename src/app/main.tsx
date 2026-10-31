@@ -63,6 +63,7 @@ const actions: Actions = {
   setLabTab: later('setLabTab'),
   rush: later('rush'),
   overtime: later('overtime'),
+  waste: later('waste'),
   roster: later('roster'),
   vacancy: later('vacancy'),
   closeVacancy: later('closeVacancy'),

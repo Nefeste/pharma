@@ -21,6 +21,7 @@ import { type PartnerSum, partnerSum } from './partners';
 import { type TrainSum, trainSum } from './people';
 import { type AssetSum, assetSum } from './places';
 import type { Thing } from './views';
+import { type RejectSum, rejectSum } from './waste';
 
 /**
  * Планёрка в 08:00 суток `day` (номер дня от 1970-01-01). `since` — мгновение завода, с которого окно ведёт эту игру: с
@@ -217,6 +218,8 @@ export interface MorningView {
   heads: HeadDay[];
   /** итог игры (обёртка): что завод сделал с мгновения `since` запроса; меньше суток игры — нет */
   session?: SessionSum;
+  /** отклонённое (Б1з): места зоны, ждущие места, вывоз, вывозы с прошлой планёрки; у сценария без подрядчика — нет */
+  rejects?: RejectSum;
 }
 
 /**
@@ -413,6 +416,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
       return { ...thingOf(db, s, p.machine), part: p.type, since: p.failed ?? s.t, repair: task ? (task.state === 'busy' ? 'busy' : 'open') : 'spare' };
     });
   const next = s.cash.dues.filter(d => d.sum < 0).sort((a, b) => a.due - b.due)[0];
+  const rejects = rejectSum(db, s, from, at);
   return {
     view: 'morning',
     day: q.day,
@@ -443,6 +447,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     modes: modeRows(db, s),
     heads: headDays(s, from, at),
     ...(q.since !== undefined && at - q.since >= DAY ? { session: sessionSum(s, q.since, at) } : {}),
+    ...(rejects ? { rejects } : {}),
   };
 }
 

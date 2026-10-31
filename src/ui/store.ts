@@ -253,6 +253,8 @@ export interface Actions {
   rush(lot: string): void;
   /** политика отдела «Сверхурочные» (Б4а) — команда `overtime` */
   overtime(dept: Dept, mode: OvertimeMode): void;
+  /** заказать вывоз отклонённого (Б1з) — команда `waste` */
+  waste(): void;
   /** перевод человека на другой график (Б4б): номер человека, как в срезе */
   roster(person: number, shift: Id): void;
   /**

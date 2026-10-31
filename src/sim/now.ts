@@ -56,6 +56,8 @@ export interface NowRow {
   sku?: Id;
   supplier?: Id;
   customer?: Id;
+  /** фура подрядчика по вывозу отклонённого (Б1з) */
+  waste?: true;
   /** уборка генеральная */
   major?: boolean;
   /** замена узла по плану, а не ремонт после отказа */
@@ -128,7 +130,7 @@ const DEPT: Partial<Record<TaskKind, NowDept>> = {
 };
 
 /** Задачи, которые идут в своих строках: смена у линии — в строке упаковки, подготовка и проверка — в строке испытания, фура — в строке фуры. */
-const FOLDED = new Set<TaskKind>(['crew', 'prep', 'review', 'truckCheck', 'unload', 'load']);
+const FOLDED = new Set<TaskKind>(['crew', 'prep', 'review', 'truckCheck', 'unload', 'load', 'wasteLoad', 'wasteSign']);
 
 const num = (id: string) => Number(id.slice(1));
 
@@ -143,8 +145,8 @@ function overSince(s: PlantState, people: readonly string[]): number | undefined
 }
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
 
-/** Работы комплекта: к шлюзу, перекладка, возврат остатка. */
-const KIT_TRIPS = new Set<TaskKind>(['pick', 'transfer', 'return']);
+/** Работы комплекта: к шлюзу, перекладка, возврат остатка; вынос отклонённого балка (Б1з) — тем же путём. */
+const KIT_TRIPS = new Set<TaskKind>(['pick', 'transfer', 'return', 'bulkOut']);
 
 /**
  * Что везут или выносят в работе комплекта (Б1д): материал и партия первой тары на паллете — у возврата это та партия,
@@ -356,16 +358,18 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
   for (const tr of Object.values(s.trucks)) {
     if (!tr.docked) continue;
     const po = tr.po ? s.pos[tr.po] : undefined;
-    const ids = busy.filter(t => (t.kind === 'truckCheck' || t.kind === 'unload') && t.from.kind === 'truck' && t.from.id === tr.id).concat(busy.filter(t => t.kind === 'load' && t.truck === tr.id));
+    // у фуры подрядчика (Б1з) — погрузка отклонённого и подпись передачи
+    const ids = busy.filter(t => (t.kind === 'truckCheck' || t.kind === 'unload') && t.from.kind === 'truck' && t.from.id === tr.id).concat(busy.filter(t => (t.kind === 'load' || t.kind === 'wasteLoad' || t.kind === 'wasteSign') && t.truck === tr.id));
     rows.push({
       key: `truck:${tr.id}`,
       dept: 'wms',
       kind: 'truck',
       ...(tr.customer ? { customer: tr.customer } : {}),
       ...(po ? { supplier: po.supplier } : {}),
+      ...(tr.waste ? { waste: true as const } : {}),
       people: peopleOf([...new Set(ids.flatMap(t => t.people))], [...new Set(ids.flatMap(t => t.roles))]),
       from: tr.arrived,
-      thing: { kind: 'truck', n: num(tr.id), customer: !!tr.customer },
+      thing: { kind: 'truck', n: num(tr.id), customer: !!tr.customer, ...(tr.waste ? { waste: true as const } : {}) },
     });
   }
 

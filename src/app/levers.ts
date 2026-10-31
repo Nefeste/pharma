@@ -34,6 +34,8 @@ export type Lever =
   | { k: 'leave'; seat: SeatId }
   | { k: 'person'; n: number; tab: number; role: Id; seat: SeatId }
   | { k: 'journal'; n?: number }
+  /** заказать вывоз отклонённого (Б1з): команда поста «Снабжение и склад» */
+  | { k: 'waste'; seat: SeatId }
   | { k: 'later'; what: Later };
 
 const later = (...what: Later[]): Lever[] => what.map(w => ({ k: 'later', what: w }));
@@ -107,6 +109,14 @@ export function resignLevers(r: { person: number; tab: number; role: Id }, dept:
 /** Удержанная серия: решение по ней — в карточке её ГП. */
 export function heldLevers(h: HeldRow): Lever[] {
   return h.unit === undefined ? [] : [{ k: 'batch', unit: h.unit, code: h.code, seat: 'quality' }];
+}
+
+/**
+ * Отклонённое (Б1з): в зоне что-то лежит, а вывоз не заказан — «Заказать вывоз», пост «Снабжение и склад»; заказан или
+ * зона пуста — рычагов нет.
+ */
+export function wasteLevers(r: { used: number; order?: unknown }): Lever[] {
+  return r.used > 0 && !r.order ? [{ k: 'waste', seat: 'supply' }] : [];
 }
 
 /** Чей рычаг: у кнопки — пост; слой, справочник и «будет позже» — ничьи. */

@@ -22,6 +22,7 @@ import { StatusIcon, TaskIcon } from './icons';
 import { WhoList } from './Journal';
 import { placeText, supplierText } from './Stock';
 import { type Actions, type Hud, holds } from './store';
+import { WasteBlock } from './Waste';
 
 /**
  * Табель месяца (Б4а): по дням с 1-го по сегодня — отметки формы Т-13 и часы, сеткой по дням недели; итоги — отработано
@@ -252,6 +253,8 @@ function histText(h: Hist, unit: 'mass' | 'pcs' | undefined, parts: readonly Par
       return T.hist.pack(h.batch, h.qty === undefined ? undefined : unit ? qtyText(h.qty, unit) : num(h.qty), h.used === undefined ? undefined : unit ? qtyText(h.used, unit) : num(h.used));
     case 'shipped':
       return T.hist.shipped(named(db?.customers[h.customer]?.name, h.customer), unit ? qtyText(h.qty, unit) : num(h.qty));
+    case 'wasted':
+      return T.hist.wasted(h.pallets, unit ? qtyText(h.qty, unit) : num(h.qty));
     case 'maint':
       return `${T.hist.maint[h.what]} · ${named(parts.find(x => x.id === h.part)?.name, h.part)} · ${T.hist.wear(`${num(h.wear / 100)}\u00a0%`)}`;
     case 'rec': {
@@ -539,6 +542,7 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
           {c.inside ? <InsideBlock x={c.inside} /> : null}
           {c.regimes ? <RegimesBlock g={c.regimes} start={start} actions={actions} /> : null}
           {c.knobs ? <KnobsBlock list={c.knobs} hud={hud} actions={actions} /> : null}
+          {c.waste ? <WasteBlock w={c.waste} start={start} /> : null}
           <DossierButton n={c.bn} actions={actions} />
           <Why list={c.why} start={start} />
           {hud.selected ? <LoadBlock key={JSON.stringify(hud.selected)} hud={hud} thing={hud.selected} plant={plant} actions={actions} /> : null}
@@ -688,10 +692,11 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
       body = <DevBody c={c} start={start} hud={hud} actions={actions} />;
       break;
     case 'truck':
-      title = T.card.truck(!!c.customer);
+      title = T.card.truck(!!c.customer, !!c.waste);
       body = (
         <dl>
-          <Row k={T.card.state}>{!c.docked ? T.card.truckState.yard : c.customer ? T.card.truckState.load : c.open ? T.card.truckState.unload : T.card.truckState.check}</Row>
+          <Row k={T.card.state}>{!c.docked ? T.card.truckState.yard : c.customer || c.waste ? T.card.truckState.load : c.open ? T.card.truckState.unload : T.card.truckState.check}</Row>
+          {c.waste ? <Row k="">{T.waste.booked(whenText(start, c.waste.booked), c.waste.by === 'player')}</Row> : null}
           {c.customer ? <Row k={T.card.supplier}>{named(db?.customers[c.customer]?.name, c.customer)}</Row> : null}
           {c.supplier ? <Row k={T.card.supplier}>{supplierText(c.supplier)}</Row> : null}
           {c.po ? <Row k={T.card.order}>{c.po}</Row> : null}

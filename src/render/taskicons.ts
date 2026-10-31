@@ -53,6 +53,10 @@ export const ICON_OF: Record<TaskKind | 'pack' | 'test' | 'truck' | 'visit' | 'a
   vendorReview: 'check',
   // оценка влияния отклонения (Б1г) — проверка по досье и результатам
   devAssess: 'check',
+  // вывоз отклонённого (Б1з): вынос балка из промежуточного склада и погрузка — перевозка, подпись передачи — решение
+  bulkOut: 'move',
+  wasteLoad: 'move',
+  wasteSign: 'decide',
   visit: 'check',
   audit: 'check',
 };

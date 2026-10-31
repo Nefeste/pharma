@@ -345,6 +345,13 @@ function Decisions({ v, start, actions }: { v: DossierView; start: Ymd; actions:
   if (v.decision) rows.push(<div key="d">{T.dossier.decision[v.decision]}</div>);
   if (v.held) rows.push(<div key="h" className="bad">{T.dossier.held}</div>);
   if (v.released !== undefined) rows.push(<div key="r">{T.dossier.released(whenText(start, v.released))}</div>);
+  // вывезена на уничтожение (Б1з): вывоз, которым ушли её балк или ГП
+  for (const t of v.wasted ?? [])
+    rows.push(
+      <div key={`w${t}`} className="muted" data-test="dossier-wasted">
+        {T.dossier.wasted(whenText(start, t))}
+      </div>,
+    );
   const devs = v.devs ?? [];
   return (
     <div className="dsec" data-test="dossier-decisions">

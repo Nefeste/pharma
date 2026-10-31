@@ -35,6 +35,7 @@ import { type GanttQuery, type GanttView, type GhostQuery, type GhostView, gantt
 import { kitItem, type NowQuery, type NowView, nowView } from './now';
 import { type RefQuery, type RefView, refView } from './ref';
 import { type CashQuery, type CashView, cashView, type MorningQuery, type MorningView, morningView, type TopQuery, type TopView, topView } from './report';
+import { type WasteBy, type WasteRoom, wasteRoom } from './waste';
 
 /** Вещь на полу — теми же номерами, что в срезе: паллета, помещение и оборудование — по порядку плана, машина — линия и место. */
 export type Thing =
@@ -44,7 +45,7 @@ export type Thing =
   | { kind: 'machine'; line: number; k: number }
   | { kind: 'person'; n: number }
   | { kind: 'vehicle'; n: number }
-  | { kind: 'truck'; n: number; customer: boolean }
+  | { kind: 'truck'; n: number; customer: boolean; waste?: true }
   /** отклонение (Б1г): на полу его нет — карточка открывается из извещения, планёрки и карточки серии */
   | { kind: 'dev'; n: number };
 
@@ -70,7 +71,7 @@ export interface CardQuery {
 export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery);
 
 /** Место паллеты: место плана (номер по порядку), помещение (номер по порядку), фура. */
-export type PlaceRef = { k: 'slot'; i: number } | { k: 'room'; i: number } | { k: 'truck'; n: number; customer: boolean };
+export type PlaceRef = { k: 'slot'; i: number } | { k: 'room'; i: number } | { k: 'truck'; n: number; customer: boolean; waste?: true };
 
 export interface StockRow {
   lot: string;
@@ -140,6 +141,8 @@ export type Hist =
    */
   | { k: 'pack'; t?: number; batch: string; qty?: number; used?: number }
   | { k: 'shipped'; t: number; customer: Id; qty: number }
+  /** вывезено на уничтожение (Б1з): вывоз — когда фура уехала, сколько паллет и сколько в таре */
+  | { k: 'wasted'; t: number; pallets: number; qty: number }
   | { k: 'maint'; t: number; part: string; what: 'failure' | 'repair' | 'replace'; wear: number }
   /** запись квалификации или калибровки (Б3в): мгновение — начало дня записи */
   | { k: 'rec'; t: number; work: 'qual' | 'cal'; day: number; until: number; by?: { role: Id; tab: number } };
@@ -192,7 +195,7 @@ export interface SpeedView {
  */
 export type CardData =
   | { kind: 'unit'; unit: number; tag: Tag; containers: number; holds?: Holds; where: PlaceRef; lot?: LotInfo; release?: ReleaseView; why: Why[]; history: Hist[]; who?: WhoRow[] }
-  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; clean?: RoomClean; batch?: string; bn?: number; recipe?: Id; stage?: string; inside?: Inside; regimes?: Regimes; knobs?: Knobs[]; why: Why[] }
+  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; clean?: RoomClean; batch?: string; bn?: number; recipe?: Id; stage?: string; inside?: Inside; regimes?: Regimes; knobs?: Knobs[]; waste?: WasteRoom; why: Why[] }
   | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; bn?: number; recipe?: Id; inside?: Inside; parts: PartInfo[]; asset?: AssetInfo; regimes?: Regimes; knobs?: Knobs[]; why: Why[]; history: Hist[]; who?: WhoRow[] }
   | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; bn?: number; sku?: Id; materials?: LineMaterial[]; speed?: SpeedView; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[]; who?: WhoRow[] }
   /** человек (Б3б): табельный номер, навык, допуск сегодня, обучение по матрице его роли, что изучает сейчас; табель месяца (Б4а) */
@@ -229,7 +232,8 @@ export type CardData =
       who?: WhoRow[];
     }
   | { kind: 'vehicle'; vehicle: number; type: Id; task?: TaskKind }
-  | { kind: 'truck'; truck: number; customer?: Id; supplier?: Id; po?: string; docked: boolean; open: boolean; units: number; arrived: number }
+  /** фура подрядчика по вывозу отклонённого (Б1з) — `waste`: когда и кто заказал вывоз */
+  | { kind: 'truck'; truck: number; customer?: Id; supplier?: Id; po?: string; waste?: { booked: number; by: WasteBy }; docked: boolean; open: boolean; units: number; arrived: number }
   | DevCard
   /** вещи больше нет на заводе: паллету отгрузили, фура уехала */
   | { kind: 'gone' };
@@ -292,7 +296,7 @@ function placeOf(db: ContentDb, s: PlantState, u: Unit): PlaceRef {
     return { k: 'room', i: plan.plant.rooms.findIndex(r => r.id === id) };
   }
   const t = s.trucks[u.where.id];
-  return { k: 'truck', n: num(u.where.id), customer: !!t?.customer };
+  return { k: 'truck', n: num(u.where.id), customer: !!t?.customer, ...(t?.waste ? { waste: true as const } : {}) };
 }
 
 /** Паллеты партий и остаток в таре — один проход по таре. */
@@ -461,6 +465,7 @@ function lotHistory(s: PlantState, lot: Lot): Hist[] {
     const qty = sh.cases.filter(c => c.lot === lot.id).reduce((n, c) => n + c.qty, 0);
     if (qty > 0) out.push({ k: 'shipped', t: sh.t, customer: sh.customer, qty });
   }
+  for (const e of s.waste.log) for (const x of e.lots) if (x.lot === lot.id) out.push({ k: 'wasted', t: e.t, pallets: x.pallets, qty: x.qty });
   // по времени; без отметки — на своём месте в порядке событий
   return out.map((h, i) => ({ h, i })).sort((a, b) => (a.h.t ?? Number.MAX_SAFE_INTEGER) - (b.h.t ?? Number.MAX_SAFE_INTEGER) || a.i - b.i).map(x => x.h);
 }
@@ -557,6 +562,8 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(inside ? { inside } : {}),
         ...(regimes ? { regimes } : {}),
         ...(knobs.length > 0 ? { knobs } : {}),
+        // помещение отклонённого (Б1з): места зоны, ждущие места, вывоз и журнал отходов
+        ...(def.type === 'rejected' ? { waste: wasteRoom(db, s) } : {}),
         why: [...clean.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.room === def.id)],
       };
     }
@@ -676,14 +683,17 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       return { kind: 'vehicle', vehicle: thing.n, type: v.type, ...(t ? { task: t.kind } : {}) };
     }
     case 'truck': {
-      const t = Object.values(s.trucks).find(x => num(x.id) === thing.n && !!x.customer === thing.customer);
-      if (!t) return { kind: 'gone' };
+      // фура поставщика — `K`, покупателя и подрядчика по вывозу (Б1з) — `R` с номером по одному счёту
+      const t = s.trucks[`${thing.customer || thing.waste ? 'R' : 'K'}${thing.n}`];
+      if (!t || !!t.customer !== thing.customer || !!t.waste !== !!thing.waste) return { kind: 'gone' };
       const po = t.po ? s.pos[t.po] : undefined;
+      const o = t.waste && s.waste.order?.id === t.waste ? s.waste.order : undefined;
       return {
         kind: 'truck',
         truck: thing.n,
         ...(t.customer ? { customer: t.customer } : {}),
         ...(po ? { supplier: po.supplier, po: po.id } : {}),
+        ...(o ? { waste: { booked: o.booked, by: o.by === 'player' ? ('player' as const) : ('colleague' as const) } } : {}),
         docked: t.docked,
         open: t.open,
         units: t.units.length,

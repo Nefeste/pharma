@@ -12,7 +12,7 @@ import { leanStep, newLoss } from './lean';
 import { newLines } from './line';
 import { newParts } from './maint';
 import { newCustomers } from './market';
-import { stageTaskNorm } from './mes';
+import { bulkOut, stageTaskNorm } from './mes';
 import { seedContracts, seedPairs, specPairs } from './partners';
 import { planOf } from './plant';
 import { nominal } from './quality';
@@ -421,6 +421,28 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     const s = raw as unknown as PlantState;
     for (const d of s.losses) d.rooms ??= {};
     leanStep(db, s);
+    return raw;
+  },
+  // 30 → 31 (Б1з): вывоз отклонённого — заказа нет, журнал отходов пуст. Процедуру обращения с отклонёнными материалами
+  // учат кладовщик, водитель и начальник ОКК: у людей из прежних сохранений записи на неё нет — запись как на старте
+  // партии, по хешу человека и кода, на день сохранения. Отклонённый балк, который стоит в промежуточном складе, выносят:
+  // задача — сразу, раздатчик даст её в первый час после загрузки.
+  30: (raw, db) => {
+    const sc = db.scenarios[raw.scenario as string];
+    if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
+    const s = raw as unknown as PlantState;
+    s.waste = { log: [] };
+    const day = momentOf(s.start, s.t).day;
+    const kinds = new Set(['bulkOut', 'wasteLoad', 'wasteSign']);
+    const codes = new Set(Object.values(db.sops).flatMap(x => (x.for.tasks?.some(k => kinds.has(k)) ? [x.doc.code] : [])));
+    for (const p of Object.values(s.people)) {
+      const lack = new Set(rowsOf(db, p).filter(c => codes.has(c) && !p.train[c]));
+      if (lack.size > 0) seedTraining(db, sc, p, day, lack);
+    }
+    for (const b of Object.values(s.batches)) {
+      const lot = b.bulk ? s.lots[b.bulk] : undefined;
+      if (b.status === 'rejected' && lot?.status === 'rejected') bulkOut(db, s, lot);
+    }
     return raw;
   },
 };

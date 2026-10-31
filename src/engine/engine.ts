@@ -36,6 +36,7 @@ import { placePo, supplyDay } from './supply';
 import { dispatch, release } from './tasks';
 import { alsoCommand, seedTraining, trainDay, trainDone } from './train';
 import { type Command, type Notice, type PlantEvent, type PlantState, SCHEMA } from './types';
+import { wasteCommand, wasteDone, wasteHour } from './waste';
 import { truckArrives, wmsDone } from './wms';
 
 /** Час планёрки (геймдизайн, §2). */
@@ -104,6 +105,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     former: {},
     leave: {},
     journal: [],
+    waste: { log: [] },
   };
   s.losses.push(newLoss(momentOf(s.start, s.t).day));
   // люди — у входа, с табельными номерами по порядку приёма и записями обучения (Б3б); техника — на стоянке, приборы — в
@@ -300,6 +302,12 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       setpointCommand(db, s, cmd, notices);
       return notices;
     }
+    case 'waste': {
+      // вывоз отклонённого (Б1з): подрядчик приедет на следующий рабочий день — раздавать нечего
+      const notices: Notice[] = [];
+      wasteCommand(db, s, cmd, notices);
+      return notices;
+    }
   }
 }
 
@@ -385,6 +393,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       mesHour(db, s);
       lineHour(db, s, notices);
       leanHour(db, s);
+      // вывоз отклонённого (Б1з): коллега склада в 09:00, фура подрядчика в его час — к рампе её поставит шаг отгрузки
+      wasteHour(db, s);
       marketHour(db, s, notices);
       // коллеги планирования и снабжения (Б2в): задание через две недели, заказы поставщикам по расходу плана
       planHour(db, s, notices);
@@ -407,7 +417,7 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       const t = s.tasks[ev.id];
       if (!t || t.v !== ev.v || t.state !== 'busy') return;
       release(db, s, t);
-      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices) && !maintDone(db, s, t, notices) && !invDone(db, s, t, notices) && !trainDone(db, s, t) && !assetDone(db, s, t) && !partnersDone(db, s, t)) wmsDone(db, s, t, notices);
+      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices) && !maintDone(db, s, t, notices) && !invDone(db, s, t, notices) && !trainDone(db, s, t) && !assetDone(db, s, t) && !partnersDone(db, s, t) && !wasteDone(db, s, t, notices)) wmsDone(db, s, t, notices);
       // паллета ГП уехала с места паллетирования — у линии освободилось место; машину линии починили — она снова в работе
       if ((t.kind === 'putaway' || t.kind === 'repair') && t.line) lineUpdate(db, s, s.lines[t.line], notices);
       if (t.kind === 'putaway' || t.kind === 'stage') startSampling(db, s);

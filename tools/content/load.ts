@@ -78,6 +78,7 @@ import { type DraftPerson, placeDraft } from '../../src/engine/leave';
 import { QA } from '../../src/engine/qa';
 import { cycleErrors, shiftLengths } from '../../src/engine/shifts';
 import { CHECKERS } from '../../src/engine/train';
+import { WASTE } from '../../src/engine/waste';
 import { WMS } from '../../src/engine/wms';
 import { KINDS, type Kind, WORKS } from './schema';
 import { planErrors } from './plan';
@@ -1001,6 +1002,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       ...(s.incident ? { incident: incidentOf(s.incident, s.batches.length, where) } : {}),
       ...(s.labor ? { labor: laborOf(s.labor, s, where) } : {}),
       ...(s.leave ? { leave: leaveRuleOf(s.leave, s, where) } : {}),
+      ...(s.waste ? { waste: { hours: [s.waste.hours[0] * 3600, s.waste.hours[1] * 3600] as [number, number], sign: sec(s.waste.sign), trip: kop(s.waste.trip), pallet: kop(s.waste.pallet) } } : {}),
     };
   }
   const profiles: Record<string, Profile> = {};
@@ -1377,6 +1379,10 @@ function learnErrors(raw: Raw, sops: Record<string, Sop>, tests: Record<string, 
     accept: Object.values(ACCEPT),
     vendorReview: REVIEWERS,
     devAssess: QA.specialists,
+    // вывоз отклонённого (Б1з): балк выносит кладовщик, грузят кладовщик и водитель, передачу подписывает начальник ОКК
+    bulkOut: WMS.keepers,
+    wasteLoad: WMS.movers,
+    wasteSign: WASTE.signers,
   };
   const LINE_WORK: TaskKind[] = ['crew', 'feed', 'changeover', 'clearance', 'clearCheck'];
   const check = (where: string, has: string[], doers: Iterable<string>) => {

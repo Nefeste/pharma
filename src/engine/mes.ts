@@ -197,10 +197,13 @@ export function mesStep(db: ContentDb, s: PlantState) {
         tryStart(db, s, b);
         break;
       case 'bulk': {
-        // отклонённый балк не упаковывают; разрешённый — в позицию серии, если она задана
+        // отклонённый балк не упаковывают — его выносят в зону отклонённого (Б1з); разрешённый — в позицию серии, если она
+        // задана
         const lot = s.lots[b.bulk!];
-        if (lot.status === 'rejected') b.status = 'rejected';
-        else if (lot.status === 'released' && b.sku) startPacking(db, s, b);
+        if (lot.status === 'rejected') {
+          b.status = 'rejected';
+          bulkOut(db, s, lot);
+        } else if (lot.status === 'released' && b.sku) startPacking(db, s, b);
         break;
       }
       case 'packing': {
@@ -760,6 +763,17 @@ export function mesDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       }
       return true;
     }
+    case 'bulkOut': {
+      // отклонённый балк (Б1з) — на деревянную паллету в шлюзе и оттуда в зону отклонённого; пластиковая — из учёта
+      const src = s.units[t.unit!];
+      const w: Unit = { id: nextId(s, 'U'), type: 'unit.pallet.euro', where: { kind: 'slot', id: t.to! }, items: [...src.items], tag: src.tag };
+      s.units[w.id] = w;
+      putUnit(s, w, t.to!);
+      for (const cid of w.items) s.containers[cid].unit = w.id;
+      delete s.units[src.id];
+      addTask(s, { kind: 'move', roles: [...WMS.movers], veh: [...WMS.floor], unit: w.id, from: { kind: 'slot', id: t.to! }, toKind: 'rejected', work: 0, prio: PRIO.putaway, ...(t.lot ? { lot: t.lot } : {}) });
+      return true;
+    }
     case 'clean': {
       // оборудование вымыто (Б4в): дальше — уборка помещения уборщиком; уборка помещения не нужна — чисто
       const room = s.rooms[t.room!];
@@ -798,6 +812,22 @@ function afterUnload(db: ContentDb, s: PlantState, u: Unit) {
   }
   const gate = plan.byKind.staging[0];
   addTask(s, { kind: 'putaway', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from: { kind: 'slot', id: u.where.id }, toKind: 'storage', near: { x: gate.x, z: gate.z }, work: 0, prio: PRIO.putaway });
+}
+
+/**
+ * Отклонённый балк (Б1з): кладовщик выносит его из промежуточного склада в шлюз для материалов, как остаток комплекта, —
+ * на деревянную паллету; оттуда его везут в зону отклонённого. Паллета балка, у которой уже есть задача, — не вторая.
+ */
+export function bulkOut(db: ContentDb, s: PlantState, lot: Lot) {
+  const plan = planOf(db, s.plant);
+  const seen = new Set<string>();
+  for (const c of Object.values(s.containers)) {
+    if (c.lot !== lot.id || seen.has(c.unit)) continue;
+    seen.add(c.unit);
+    const u = s.units[c.unit];
+    if (u.where.kind !== 'room' || busyUnit(s, u.id)) continue;
+    addTask(s, { kind: 'bulkOut', roles: [...WMS.keepers], unit: u.id, from: roomPlace(plan, u.where.id), toKind: 'staging', work: TRANSFER_WORK, prio: MES_PRIO.return, lot: lot.id });
+  }
 }
 
 export function returnTask(db: ContentDb, s: PlantState, kit: Unit, batch: string) {

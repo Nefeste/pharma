@@ -15,6 +15,8 @@ interface P {
 export interface TruckPose {
   truck: number;
   customer: boolean;
+  /** фура подрядчика по вывозу отклонённого (Б1з) */
+  waste?: boolean;
   dock: number;
   /** стоит у рампы по учёту (ворота подняты); уходящая — нет */
   docked: boolean;
@@ -66,7 +68,8 @@ export class Yard {
     const waiting = new Map<number, number>();
     const now = new Set<string>();
     for (const r of rows) {
-      const key = `${r.customer ? 'R' : 'K'}${r.truck}`;
+      // фуры покупателей и подрядчика по вывозу (Б1з) — один счёт `R`, поставщиков — `K`
+      const key = `${r.customer || r.waste ? 'R' : 'K'}${r.truck}`;
       now.add(key);
       const k = r.docked ? 0 : (waiting.get(r.dock) ?? 0);
       if (!r.docked) waiting.set(r.dock, k + 1);
@@ -95,11 +98,11 @@ export class Yard {
     const out: TruckPose[] = [];
     for (const { row, leg } of this.seen.values()) {
       const p = poseAt(leg, t);
-      out.push({ truck: row.truck, customer: row.customer, dock: row.dock, docked: row.docked, x: p.x, z: p.z, closed: !row.open, moving: p.moving });
+      out.push({ truck: row.truck, customer: row.customer, waste: row.waste, dock: row.dock, docked: row.docked, x: p.x, z: p.z, closed: !row.open, moving: p.moving });
     }
     for (const { row, leg } of this.gone) {
       const p = poseAt(leg, t);
-      out.push({ truck: row.truck, customer: row.customer, dock: row.dock, docked: false, x: p.x, z: p.z, closed: true, moving: p.moving });
+      out.push({ truck: row.truck, customer: row.customer, waste: row.waste, dock: row.dock, docked: false, x: p.x, z: p.z, closed: true, moving: p.moving });
     }
     return out;
   }

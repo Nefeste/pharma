@@ -838,6 +838,7 @@ export class Game {
     },
     rush: lot => this.client.command({ kind: 'rush', lot, by: 'player' }),
     overtime: (dept, mode) => this.client.command({ kind: 'overtime', dept, mode, by: 'player' }),
+    waste: () => this.client.command({ kind: 'waste', by: 'player' }),
     roster: (person, shift) => this.client.command({ kind: 'roster', person: `E${person}`, shift, by: 'player' }),
     vacancy: (role, shift, via) => this.client.command({ kind: 'vacancy', role, shift, via, by: 'player' }),
     closeVacancy: id => this.client.command({ kind: 'close', vacancy: id, by: 'player' }),

@@ -3,46 +3,21 @@
 # сейчас — в части кода (src/render/machines.ts). Поверх силуэта записи — то, что код не рисует: фаски, утопленный
 # цоколь, створки с ручками, решётка, кольца направляющих и стол матриц ротора, верхние и нижние пуансоны (у пресса они
 # есть: natoli-wl, docs/10-domain.md, §6), рама и стёкла кожуха, шов и табличка головки, крышка бункера, экран и кнопки
-# пульта. Затенение (AO) — запечено Cycles в одну картинку на неподвижные части и лежит в .glb как occlusionTexture;
-# у ротора, пуансонов и кожуха его нет: они двигаются, и тень, запечённая в одном положении, ехала бы вместе с ними, а
-# ротор под головкой вышел бы почти чёрным — не видно, крутится ли он (docs/13-art.md, §2, §8).
+# пульта, стойка сигнальной колонны. Затенение (AO) — у неподвижных частей, из общей карты всех машин
+# (blender/machines.py); у ротора, пуансонов и кожуха его нет: они двигаются, и тень, запечённая в одном положении,
+# ехала бы вместе с ними, а ротор под головкой вышел бы почти чёрным — не видно, крутится ли он (docs/13-art.md, §2,
+# §8).
 #
 # Пуансоны — отдельный объект `punches` внутри ротора: имя — узел износа записи (`parts`), крутится вместе с ротором.
-# Число станций, размеры деталей — гипотеза картинки, не факт: сверить (docs/13-art.md, §8).
-#
-#   blender --background --factory-startup --python-exit-code 1 --python blender/press.py -- \
-#     --scene tools/blender/out/scene.json --machine eq.press --work tools/blender/out --out press.glb [--blend путь]
+# Число станций, размеры деталей — гипотеза картинки, не факт: сверить (docs/13-art.md, §8). Собирает blender/machines.py.
 import math
-import os
-import sys
 
 import bmesh
-import bpy
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import lib  # noqa: E402
+import lib
 
 # станций ротора — гипотеза картинки
 STATIONS = 18
-# точек картинки затенения на сторону, проб Cycles, длина лучей затенения, м: щели, швы и касание пола — без тени на
-# всю нижнюю половину боковин (свет в игре мягкий и светлый, docs/13-art.md, §5; на низком пресете с 0,5 м станина темнела)
-AO_SIZE = 512
-AO_SAMPLES = 256
-AO_DISTANCE = 0.2
-
-
-# отделка неподвижных частей — с затенением; подвижных — та же, без него (`-moving`)
-SHADED = ('white', 'steel', 'dark', 'grey', 'foil')
-
-
-def materials(scene):
-    """Отделка записей (machines.ts): неподвижных частей — с затенением; ротора, пуансонов и рамы кожуха — без него."""
-    f = scene['finish']
-    m = {k: lib.material(k, f[k]) for k in SHADED}
-    for k in ('steel', 'foil'):
-        m[f'{k}-moving'] = lib.material(f'{k}-moving', f[k])
-    m['glass'] = lib.material('glass', f['glass'])
-    return m
 
 
 def body(p, M):
@@ -111,13 +86,15 @@ def cover(p, M):
 
 
 def head(p, M):
-    """Головка: корпус, тёмный шов посередине, табличка спереди."""
+    """Головка: корпус, тёмный шов посередине, табличка спереди; на заднем углу — стойка сигнальной колонны под лампой
+    состояния окна."""
     w, d, h = p['w'], p['d'], p['h']
     bm = bmesh.new()
     lib.box(bm, w, d, h, (0, 0, 0), mat=0, bevel=0.012, segments=3)
     lib.box(bm, w + 0.004, d + 0.004, 0.006, (0, -0.03, 0), mat=1)
     lib.box(bm, 0.22, 0.004, 0.07, (0, 0.06, d / 2 + 0.002), mat=2)
-    return bm, [M['white'], M['dark'], M['grey']]
+    lib.pole(bm, p, p['y'] + h / 2, mat_base=1, mat_rod=3)
+    return bm, [M['white'], M['dark'], M['grey'], M['steel']]
 
 
 def hopper(p, M):
@@ -147,102 +124,3 @@ MACHINES = {'eq.press'}
 PARTS = {'body': body, 'rotor': rotor, 'cover': cover, 'head': head, 'hopper': hopper, 'panel': panel}
 # детали — узлы износа записи внутри своей части
 WEAR = {'punches': ('rotor', punches)}
-
-
-def build(scene, machine, M):
-    """Объекты пресса — по частям записи, в серединах частей (оси окна)."""
-    rec = scene['machines'][machine]
-    objs = {}
-    for p in rec['model']:
-        make = PARTS.get(p.get('id'))
-        if make is None:
-            raise SystemExit(f'{machine}: у части {p.get("id") or p["shape"]} нет построения в blender/press.py')
-        bm, mats = make(p, M)
-        ob = lib.mesh_object(p['id'], bm, mats)
-        ob.location = lib.bl(p['x'], p['y'], p['z'])
-        objs[p['id']] = ob
-    for name, (part, make) in WEAR.items():
-        if name not in rec['wear'] or part not in objs:
-            continue
-        p = next(q for q in rec['model'] if q.get('id') == part)
-        bm, mats = make(p, M)
-        objs[name] = lib.mesh_object(name, bm, mats, objs[part])
-    for ob in objs.values():
-        lib.apply_modifiers(ob)
-    return objs
-
-
-def unwrap(objs):
-    """Одна развёртка на все объекты: острова по углу граней, упакованы вместе — в одну картинку затенения."""
-    lib.select_only(objs)
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=0.004, area_weight=0.0, correct_aspect=True, scale_to_bounds=False)
-    bpy.ops.uv.pack_islands(rotate=True, margin=0.004)
-    bpy.ops.object.mode_set(mode='OBJECT')
-
-
-def main():
-    a = lib.args()
-    scene = lib.load_scene(a['scene'])
-    lib.reset(AO_SAMPLES)
-    bpy.context.scene.world.light_settings.distance = AO_DISTANCE
-    M = materials(scene)
-    objs = build(scene, a['machine'], M)
-    rec = scene['machines'][a['machine']]
-    moving = {p['id'] for p in rec['model'] if p.get('spin') or p.get('cover')}
-    # подвижные части с деталями внутри — без затенения и без развёртки
-    shaded = [o for n, o in objs.items() if n not in moving and (o.parent is None or o.parent.name not in moving)]
-    unwrap(shaded)
-    # пол под прессом: затеняет низ станины; в .glb его нет
-    bm = bmesh.new()
-    lib.box(bm, 4, 4, 0.02, (0, -0.01, 0))
-    floor = lib.mesh_object('floor', bm, [lib.material('floor', {'color': [0.74, 0.78, 0.78], 'rough': 0.6, 'metal': 0})])
-    # кожух не затеняет: стекло, а открытым он поднят
-    objs['cover'].hide_render = True
-    bake = lib.float_image('ao-bake', AO_SIZE, AO_SIZE, 1.0)
-    for k in SHADED:
-        lib.image_node(M[k], bake)
-    lib.bake(shaded, 'AO', 8)
-    px = lib.pixels(bake)
-    ao = [round(min(1.0, max(0.0, px[i])) * 255) for i in range(0, len(px), 4)]
-    out = a['out']
-    # картинка затенения — рядом с рабочим файлом сборки: в .glb она войдёт целиком, в assets/ её отдельно нет
-    png = os.path.join(a['work'], f'{a["machine"]}-ao.png')
-    lib.write_png(png, AO_SIZE, AO_SIZE, 1, ao)
-    # затенение — файл с диска: экспорт кладёт его байты в .glb как есть
-    img = bpy.data.images.load(png)
-    img.colorspace_settings.name = 'Non-Color'
-    for k in SHADED:
-        nt = M[k].node_tree
-        for n in [n for n in nt.nodes if n.type == 'TEX_IMAGE']:
-            nt.nodes.remove(n)
-        lib.image_node(M[k], img, occlusion=True)
-    bpy.data.images.remove(bake)
-    bpy.data.objects.remove(floor)
-    objs['cover'].hide_render = False
-    bpy.ops.export_scene.gltf(
-        filepath=out,
-        export_format='GLB',
-        export_yup=True,
-        export_apply=True,
-        export_texcoords=True,
-        export_normals=True,
-        export_tangents=False,
-        export_materials='EXPORT',
-        export_image_format='AUTO',
-        export_cameras=False,
-        export_lights=False,
-        export_extras=False,
-        export_animations=False,
-        export_skins=False,
-        export_morph=False,
-        use_selection=False,
-    )
-    if a.get('blend'):
-        bpy.ops.file.pack_all()
-        bpy.ops.wm.save_as_mainfile(filepath=a['blend'], compress=True)
-
-
-if __name__ == '__main__':
-    main()

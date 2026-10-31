@@ -354,24 +354,26 @@ first, or copy the working code of Bolnitsa on the same versions.
   choice kept in the window (`preset.ts`); the autopauses — which notices stop the world, whose post each is, the ones
   switched off kept in the window, where a click on a notice leads (`pauses.ts`); which «Сейчас» row is the work of a
   thing in the card (`watch.ts`); the levers of meeting rows — decisions, whose post, «будет в …» (`levers.ts`); the
-  first-event explanations understood, kept in the window (`firsts.ts`); the models from Blender, loaded once before the
-  stage, and the «Модели» switch of the debug panel (`art.ts`); trucks in the yard — backing in,
-  waiting, driving off, a picture only (`yard.ts`); what is under the cursor — people by their point on screen, pallets,
-  machines and trucks by the camera ray, the room by the floor (`pick.ts`); pallet moves between zones seen from the
-  slice, their rates, arrows and the fill of warehouse places, people moving between rooms for the «Потоки — люди» layer
-  (`flows.ts`); with Б1и the layers on the left and L, where the load columns and the boards stand, part heights as
-  shares of the window, the number over each column, the board rows, the palette (`floor.ts`); the scene bench, a copy
-  of Bolnitsa's, with `--layer load` also with the layer on (`bench.ts`, `stats.ts`).
+  first-event explanations understood, kept in the window (`firsts.ts`); the models from Blender — one file of all the
+  machines loaded once before the stage, a machine its node — and the «Модели» switch of the debug panel (`art.ts`);
+  trucks in the yard — backing in, waiting, driving off, a picture only (`yard.ts`); what is under the cursor — people
+  by their point on screen, pallets, machines and trucks by the camera ray, the room by the floor (`pick.ts`); pallet
+  moves between zones seen from the slice, their rates, arrows and the fill of warehouse places, people moving between
+  rooms for the «Потоки — люди» layer (`flows.ts`); with Б1и the layers on the left and L, where the load columns and
+  the boards stand, part heights as shares of the window, the number over each column, the board rows, the palette
+  (`floor.ts`); the scene bench, a copy of Bolnitsa's, with `--layer load` also with the layer on (`bench.ts`,
+  `stats.ts`).
 - `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa); the plant
   from the plan (`layout.ts` — rooms, walls, doors and spots from `planOf`), floors, zone markings, ground and yard,
   walls with the cut and openings (`world.ts`), doors, lamps and floor textures (`doors.ts`, `lamps.ts`, `textures.ts` —
   copies of Bolnitsa, adapted), racks and pallet loads by instancing (`loads.ts`), trucks — closed body before the check and when leaving (`trucks.ts`), room
   status signs (`signs.ts`), equipment and line machines as models in code from their records' `model` parts, with
   status lamps and icons, rotors, covers, belts and buffers (`machines.ts`; the lamp of each state, belt speed and
-  buffer fill — pure functions in `flow.ts`; with #109 a record type with a model from Blender takes the .glb node of
-  each named part, rotor and cover in their pivots), what `assets/models/index.json` lists from Blender — shared with
-  the scene for Blender and the tests; room light is not baked, by the owner's decision #112 (`blender.ts`), the pallet
-  truck and the reach truck in code (`vehicles.ts`), the detail
+  buffer fill — pure functions in `flow.ts`; with #109 a record type with a model from Blender takes its node in the
+  shared .glb and in it the node of each named part, rotor, cover and reels in their pivots, the lamp on a pole —
+  `lampAt`), what `assets/models/index.json` lists from Blender and a node's name as in the file (`nodeName`) — shared
+  with the scene for Blender and the tests; room light is not baked, by the owner's decision #112 (`blender.ts`), the
+  pallet truck and the reach truck in code (`vehicles.ts`), the detail
   level by speed and camera height with its soft change (`detail.ts`), the site layer — arrows above the walls and the
   fill of places (`overlay.ts`), colour checks — colour-blindness simulation, ΔE and icon contrast (`color.ts`), the
   outline of the selected thing (`select.ts`), the work icons — paths shared by SVG and canvas (`taskicons.ts`) and the
@@ -439,19 +441,23 @@ first, or copy the working code of Bolnitsa on the same versions.
   pair of the start has a quality agreement in force: `pairErrors`).
 - `blender/` — Python scripts for Blender in the background (#109; by the owner's decision #112 — a mix: silhouettes
   of every class in code, a detailed model from Blender for the machines seen up close, AO only on static parts, room
-  light not baked): `lib.py` (scene, axes of the window, finishes, parts with bevels in one order, Cycles bakes, PNG by
-  own code), `press.py` (the tablet press from its record — objects named by its parts, AO on the static ones),
-  `README.md` (the pinned version, how to run, repeatability); `tools/blender/` — the scene for them from the game's own
-  content and the finishes of `machines.ts`, the passport's hashes and the check of .glb nodes against the record's
+  light not baked): `lib.py` (scene, axes of the window, finishes shared by all machines, parts with bevels in one
+  order, the guard at a machine's wall, the lamp's pole, Cycles bakes, PNG by own code, node names of the .glb),
+  `machines.py` (all machines in one run — one .glb, shared materials, one AO atlas, AO on the static parts),
+  `press.py`, `blister.py`, `cartoner.py` (the tablet press, the blister machine and the cartoner from their records —
+  objects named by their parts; the line in the «balcony» look of the makers' photos, `pack-photos`), `README.md` (the
+  pinned version, how to run, repeatability); `tools/blender/` — the scene for them from the game's own content, the
+  finishes of `machines.ts` and the lamp's place, the passport's hashes and the check of .glb nodes against the record's
   parts (`scene.ts`), `npm run models` (`run.ts`).
 - `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
-- `assets/` — CC0 people models (copies of Bolnitsa's, byte for byte), with #109 the press from Blender
-  (`models/machines/`), and `LICENSES.md` (sources, licenses, SHA-256); never add a model without its line there and in
-  `assets/models/sources.json`.
+- `assets/` — CC0 people models (copies of Bolnitsa's, byte for byte), with #109 and #112 the machines from Blender in
+  one file (`models/machines.glb`), and `LICENSES.md` (sources, licenses, SHA-256); never add a model without its line
+  there and in `assets/models/sources.json`.
 - `tools/app/` — page build (the page, the calculation thread and the plan run's thread), local server, browser scenario
   with the contact sheet and the first week of a newcomer in a clean window (`e2e-week.mjs`), the «code — Blender» sheet
-  of the press in the compression room (`blender-sheet.mjs`), the headless scene bench (`bench.mjs`, `--art code` —
-  machines in code), the release update archive — one `resources/app.asar` (`update-zip.mjs`); `tools/test/` — Bun tests
+  of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench
+  (`bench.mjs`, `--art code` — machines in code), the release update archive — one `resources/app.asar`
+  (`update-zip.mjs`); `tools/test/` — Bun tests
   and save samples; engine mechanics tests run on the scenario as it was before Б2в (`legacy.ts`), the golden run — on
   the game's scenario;
   `tools/bench/` — the engine bench, with `--plan` also the plan run.

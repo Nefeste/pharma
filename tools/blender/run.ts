@@ -11,7 +11,7 @@ import { spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { db } from '../../src/content';
-import { ART_INDEX, BLENDER, BUILD, inputHash, OUTPUTS, scriptsHash, sceneOf, sha256 } from './scene';
+import { ART_INDEX, BLENDER, inputHash, MACHINES_GLB, OUTPUTS, scriptsHash, sceneOf, sha256 } from './scene';
 
 const root = join(import.meta.dir, '../..');
 const out = join(root, 'tools/blender/out');
@@ -35,17 +35,15 @@ writeFileSync(scenePath, JSON.stringify(scene));
 /** Один прогон всех скриптов в папку `dir`; файлы — по путям assets/models. */
 function build(dir: string) {
   rmSync(dir, { recursive: true, force: true });
-  mkdirSync(join(dir, 'machines'), { recursive: true });
+  mkdirSync(dir, { recursive: true });
   const run = (script: string, args: string[]) => {
     const t = Date.now();
     const r = spawnSync(bin, ['--background', '--factory-startup', '--python-exit-code', '1', '--python', join(root, script), '--', '--scene', scenePath, ...args], { encoding: 'utf8', maxBuffer: 64 << 20 });
     if (r.status !== 0) throw new Error(`${script}: код ${r.status}\n${r.stdout.slice(-3000)}\n${r.stderr.slice(-3000)}`);
     console.log(`${script} ${args.join(' ')} — ${((Date.now() - t) / 1000).toFixed(0)} с`);
   };
-  for (const t of BUILD.machines) {
-    const glb = join(dir, ART_INDEX.machines[t]);
-    run('blender/press.py', ['--machine', t, '--work', dir, '--out', glb, ...(blend ? ['--blend', join(out, `${t}.blend`)] : [])]);
-  }
+  // все машины — одним прогоном: общая карта затенения и общие материалы (scene.ts)
+  run('blender/machines.py', ['--work', dir, '--out', join(dir, MACHINES_GLB), ...(blend ? ['--blend', join(out, 'machines.blend')] : [])]);
   return Object.fromEntries(OUTPUTS.map(o => [o.path, sha256(readFileSync(join(dir, o.path)))]));
 }
 

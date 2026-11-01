@@ -12,8 +12,11 @@ import { type Actions, type Hud, holds } from './store';
 
 const material = (id: Id) => named(db?.materials[id]?.name, id);
 const unitOf = (m: Id) => db?.materials[m]?.unit ?? 'mass';
-/** Количество окна — в кг у материала по массе и в штуках у прочих; движок считает в мг и штуках. */
-const toInput = (m: Id, qty: number) => (unitOf(m) === 'mass' ? qty / 1e6 : qty);
+/**
+ * Количество окна — в кг до грамма у материала по массе и в штуках у прочих; движок считает в мг и штуках. Строки правила
+ * снабжения — с точностью до миллиграмма: в поле — до грамма, а в заказ уходят как есть, пока их не правят руками.
+ */
+const toInput = (m: Id, qty: number) => (unitOf(m) === 'mass' ? Math.round(qty / 1e3) / 1e3 : qty);
 const fromInput = (m: Id, v: number) => Math.max(0, Math.round(unitOf(m) === 'mass' ? v * 1e6 : v));
 
 /** Цена строки: договор с остатком обещанного или прайс — за кг или за штуку. */

@@ -5,9 +5,10 @@ import type { ContentDb, Id } from '../../content/types';
 import { DAY, momentOf } from '../core/calendar';
 import { P_ONE } from '../core/rng';
 import { apply } from '../engine';
+import { MODED, modeOf } from '../heads';
 import { oee, type Switches, switchesOf } from '../lean';
 import { planOf } from '../plant';
-import type { Command, LineDay, PlantState } from '../types';
+import type { Command, HeadsState, LineDay, PlantState } from '../types';
 import { blind } from './twin';
 
 export interface RunOpts {
@@ -107,10 +108,21 @@ function measure(db: ContentDb, c: PlantState, from: number, to: number, seed: n
   };
 }
 
+/**
+ * Режимы отделов копии (Б5б): «советует» — как «сам», прогон отвечает, что будет, если игрок принимает предложения;
+ * «вручную» — как есть: без команд варианта отдел молчит. Предложений в копии нет.
+ */
+export function runHeads(s: PlantState): HeadsState {
+  const mode: HeadsState['mode'] = { ...s.heads.mode };
+  for (const h of MODED) if (modeOf(s, h) === 'advise') mode[h] = 'auto';
+  return { mode, open: {}, no: {} };
+}
+
 /** Зерно `k` варианта: копия состояния, двойник (если не выключен), команды варианта по порядку, ход времени на горизонт. */
 export function runSeed(db: ContentDb, s: PlantState, variant: Command[], o: RunOpts, k: number): PlantState {
-  // копия — без журнала решений (Б5а) и закрытых месяцев показателей (Б5ж): будущему они не нужны, правила их не читают
-  const c: PlantState = structuredClone({ ...s, journal: [], kpi: { ...s.kpi, months: [] } });
+  // копия — без журнала решений (Б5а) и закрытых месяцев показателей (Б5ж): будущему они не нужны, правила их не читают;
+  // режимы отделов — «советует» как «сам» (Б5б)
+  const c: PlantState = structuredClone({ ...s, journal: [], heads: runHeads(s), kpi: { ...s.kpi, months: [] } });
   if (o.twin !== false) blind(db, c, k);
   for (const cmd of variant) apply(db, c, cmd);
   apply(db, c, { kind: 'advance', seconds: o.days * DAY });

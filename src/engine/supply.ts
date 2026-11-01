@@ -9,51 +9,67 @@ import { schedule } from './core/agenda';
 import { DAY, HOUR, isWorkday, MIN, momentOf, workdayOnOrAfter } from './core/calendar';
 import { part, post, vatRate } from './cash';
 import { inForce } from './docs';
+import { modeOf, round } from './heads';
 import { noteCmd } from './journal';
 import { packNeeds } from './mes';
-import { approved, pairsFor, priceLine } from './partners';
+import { approved, linePrice, pairsFor, priceLine } from './partners';
 import { aheadMilli, casesOf, positionOf } from './planner';
 import { planOf } from './plant';
 import { roll } from './random';
 import { containersByLot, containersFor, free, nextId } from './stock';
-import type { Command, Notice, PackJob, PlantState, Po, PoLine, PoWhy } from './types';
+import type { Command, Notice, PackJob, PlantState, Po, PoLine, PoWhy, Refusal } from './types';
 import { calOf } from './workdays';
 
 /** Окно прихода фур: рабочий день, с 09:00, плюс до шести часов. */
 const ARRIVE_FROM = 9 * HOUR;
 const ARRIVE_SPREAD = 6 * HOUR;
 
-export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'po' }>, notices: Notice[], why?: PoWhy[]): Po | undefined {
-  const sup = db.suppliers[cmd.supplier];
-  if (!sup) {
-    notices.push({ kind: 'refused', cmd: 'po', why: 'noSupplier', detail: cmd.supplier });
-    return undefined;
-  }
-  if (cmd.lines.length === 0) {
-    notices.push({ kind: 'refused', cmd: 'po', why: 'empty' });
-    return undefined;
-  }
+/**
+ * Заказ без записи (Б5б; окно «Заказ поставщику», предложение снабжения): строки — количество вверх до целой тары,
+ * изготовитель — из записи поставщика; стоимость без НДС, НДС и предоплата. Отказ — с причиной и материалом: нет
+ * поставщика, строк нет, поставщик материал не продаёт, меньше наименьшей партии, не по одобренной паре.
+ */
+export type PoQuote = { lines: PoLine[]; costs: number[]; net: number; vat: number; prepaid: number } | { why: Refusal; detail?: string };
+
+export function quotePo(db: ContentDb, s: PlantState, supplier: Id, want: readonly PoLine[]): PoQuote {
+  const sup = db.suppliers[supplier];
+  if (!sup) return { why: 'noSupplier', detail: supplier };
+  if (want.length === 0) return { why: 'empty' };
   const lines: PoLine[] = [];
   const today = momentOf(s.start, s.t).day;
-  for (const l of cmd.lines) {
+  for (const l of want) {
     const item = sup.items[l.material];
-    if (!item) {
-      notices.push({ kind: 'refused', cmd: 'po', why: 'notSold', detail: l.material });
-      return undefined;
-    }
-    if (l.qty < item.moq) {
-      notices.push({ kind: 'refused', cmd: 'po', why: 'belowMoq', detail: l.material });
-      return undefined;
-    }
+    if (!item) return { why: 'notSold', detail: l.material };
+    if (l.qty < item.moq) return { why: 'belowMoq', detail: l.material };
     // только по одобренной паре действующей спецификации (Б3г): изготовитель — из записи поставщика
     const maker = item.maker;
-    if ((l.maker !== undefined && l.maker !== maker) || !approved(db, s, sup.id, maker, l.material, today)) {
-      notices.push({ kind: 'refused', cmd: 'po', why: 'pair', detail: l.material });
-      return undefined;
-    }
+    if ((l.maker !== undefined && l.maker !== maker) || !approved(db, s, sup.id, maker, l.material, today)) return { why: 'pair', detail: l.material };
     const cap = db.containers[db.materials[l.material].container].capacity;
     lines.push({ material: l.material, qty: containersFor(db, l.material, l.qty) * cap, maker });
   }
+  // сумма с НДС: АФС — по ставке лекарственных средств, остальное — по общей; по договору — до остатка обещанного
+  let net = 0;
+  let vat = 0;
+  const costs: number[] = [];
+  const taken = new Map<Id, number>();
+  for (const l of lines) {
+    const cost = linePrice(db, s, sup.id, l, taken.get(l.material) ?? 0).cost;
+    taken.set(l.material, (taken.get(l.material) ?? 0) + l.qty);
+    costs.push(cost);
+    net += cost;
+    vat += part(cost, vatRate(db, s, l.material));
+  }
+  return { lines, costs, net, vat, prepaid: part(net + vat, sup.prepay) };
+}
+
+export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'po' }>, notices: Notice[], why?: PoWhy[]): Po | undefined {
+  const q = quotePo(db, s, cmd.supplier, cmd.lines);
+  if ('why' in q) {
+    notices.push({ kind: 'refused', cmd: 'po', why: q.why, ...(q.detail ? { detail: q.detail } : {}) });
+    return undefined;
+  }
+  const sup = db.suppliers[cmd.supplier];
+  const lines = q.lines;
   const eta = etaOf(db, s, sup.id, sup.lead);
   // сумма с НДС: АФС — по ставке лекарственных средств, остальное — по общей; предоплата — сейчас, остаток — после прихода
   let net = 0;
@@ -133,17 +149,25 @@ export function supplyPosition(db: ContentDb, s: PlantState, material: Id, byLot
   return n;
 }
 
+/** Заказ поставщику, который считает правило снабжения: строки и причина каждой. */
+export interface SupplyOrder {
+  supplier: Id;
+  lines: PoLine[];
+  why: PoWhy[];
+}
+
 /**
- * Каждый час: в рабочий день в 09:00 — заказ по одобренной паре всего, что ниже точки заказа: расход на наибольший срок
+ * Правило снабжения (Б2в) без записи — его заказы на сейчас: всё, что ниже точки заказа, — расход на наибольший срок
  * поставки, входной контроль и страховой запас. Заказывают до точки заказа и ещё `every` суток расхода, не меньше
  * минимальной партии и не больше половины зоны карантина в паллетах: отбор проб начинают, когда в карантине вся партия
  * (lab.ts), и партия больше зоны его не дождётся. Недостающее — следующими днями. У поставщика — одним заказом. Пара —
- * первая из одобренных в спецификации, действующей сегодня (Б3г); нет её — материал не заказать.
+ * первая из одобренных в спецификации, действующей сегодня (Б3г); нет её — материал не заказать. Тем же правилом окно
+ * «Заказ поставщику» заполняет «Предложить» (Б5б).
  */
-export function supplyDay(db: ContentDb, s: PlantState, notices: Notice[]) {
+export function supplyPlan(db: ContentDb, s: PlantState): SupplyOrder[] {
   const sc = db.scenarios[s.scenario];
+  if (!sc.supply || !sc.plan) return [];
   const now = momentOf(s.start, s.t);
-  if (!sc.supply || !sc.plan || !isWorkday(calOf(db, s), now.day) || now.sec !== SUPPLY_HOUR) return;
   const { safety, every, qc } = sc.supply;
   const room = Math.max(1, Math.floor((planOf(db, s.plant).byKind.quarantine?.length ?? 2) / 2));
   // тара по партиям — один проход на весь расчёт
@@ -178,5 +202,32 @@ export function supplyDay(db: ContentDb, s: PlantState, notices: Notice[]) {
     const why: PoWhy = { material, maker: pair.maker, have, per: per.get(material)!, point, lead: sup.lead[1], qc, safety, every, moq, want, ...(qty < want ? { cut: true as const } : {}) };
     whys.set(sup.id, [...(whys.get(sup.id) ?? []), why]);
   }
-  for (const [supplier, l] of lines) placePo(db, s, { kind: 'po', supplier, lines: l, by: 'head:supply' }, notices, whys.get(supplier));
+  return [...lines].map(([supplier, l]) => ({ supplier, lines: l, why: whys.get(supplier)! }));
+}
+
+/** Вещь предложения снабжения (Б5б): заказ поставщику — одно открытое у поставщика. */
+export const poKey = (supplier: Id) => `po/${supplier}`;
+
+/**
+ * Каждый час: в рабочий день в 09:00 — правило снабжения (`supplyPlan`). Режим отдела (Б5б): «сам» — заказы; «советует»
+ * — предложения тех же заказов с той же причиной и предоплатой по договору; у поставщика, которому заказ больше не
+ * нужен, предложение «не нужно»; «вручную» — ничего.
+ */
+export function supplyDay(db: ContentDb, s: PlantState, notices: Notice[]) {
+  const sc = db.scenarios[s.scenario];
+  const now = momentOf(s.start, s.t);
+  if (!sc.supply || !sc.plan || !isWorkday(calOf(db, s), now.day) || now.sec !== SUPPLY_HOUR) return;
+  const mode = modeOf(s, 'supply');
+  if (mode === 'manual') return;
+  const orders = supplyPlan(db, s);
+  if (mode === 'auto') {
+    for (const o of orders) placePo(db, s, { kind: 'po', supplier: o.supplier, lines: o.lines, by: 'head:supply' }, notices, o.why);
+    return;
+  }
+  const r = round(s, ['po/']);
+  for (const o of orders) {
+    const q = quotePo(db, s, o.supplier, o.lines);
+    r.propose('supply', poKey(o.supplier), { kind: 'po', supplier: o.supplier, lines: o.lines }, { kind: 'po', supplier: o.supplier, prepaid: 'why' in q ? 0 : q.prepaid, why: o.why }, notices);
+  }
+  r.done();
 }

@@ -8,6 +8,7 @@ import type { Attr, ContentDb, FindingRead, Id, IncidentRoot, InvFinding, InvMod
 import { batchNo } from './batchno';
 import { MIN } from './core/calendar';
 import { P_ONE } from './core/rng';
+import { modeOf, moot, propose, seenAt } from './heads';
 import { expectedGain, posterior, quantize } from './infer';
 import { note, noteCmd } from './journal';
 import { labPlace, LAB_PRIO, QC, settleLot } from './lab';
@@ -15,7 +16,6 @@ import { defect } from './lean';
 import { planOf } from './plant';
 import { within } from './quality';
 import { roll } from './random';
-import { held } from './seats';
 import { nextId, setLotStatus, stockChanged, unitsOfLot } from './stock';
 import { addTask } from './tasks';
 import { type Batch, type Command, INSTRUMENT_FAULTS, type InstrumentFault, type Investigation, type LabTest, type Lot, type Notice, type Place, type PlantState, type StageRecord, type StepWhy, type Task } from './types';
@@ -39,12 +39,6 @@ const modelOf = (db: ContentDb, inv: Investigation) => db.investigations[inv.mod
 
 /** Версия «ошибка лаборатории» — та, у которой нет причины в каталоге: серия ни при чём. */
 export const isLab = (m: InvModel, id: string) => m.candidates.some(c => c.id === id && c.cause === undefined);
-
-/** Игрок держит пост качества (или директор, 3е) — расследование ждёт его; мест нет — ведёт коллега. */
-export function playerLeads(s: PlantState): boolean {
-  const h = held(s);
-  return !!h && (h.includes('quality') || h.includes('director'));
-}
 
 // ---------------------------------------------------------------- происшествие
 
@@ -470,31 +464,48 @@ function hoursOf(db: ContentDb, st: InvStep): number {
   return Math.max(MIN_HOURS, sec / 3600);
 }
 
+/** Вещь предложения начальника ООК (Б5б): расследование — одно открытое предложение, шаг или вывод. */
+export const invKey = (inv: string) => `inv/${inv}`;
+
 /**
- * Коллега качества — «разумный специалист», как «разумный врач» «Анамнеза»: пока игрок не держит пост качества, у
- * открытого расследования без идущего шага — сначала лаборатория (фаза I, `fda-oos`): записи и прибор, а если лучшая
- * версия — ошибка лаборатории, то и повтор той же пробы, по порядку модели; затем шаг с наибольшей пользой на час (не
- * меньше `minGain`), пока лучшая версия не наберёт `threshold`. Затем решение по лучшей версии: выпустить — только если
- * ошибка лаборатории доказана. Зовётся после каждого события.
+ * Коллега качества — «разумный специалист», как «разумный врач» «Анамнеза»: у открытого расследования без идущего шага —
+ * сначала лаборатория (фаза I, `fda-oos`): записи и прибор, а если лучшая версия — ошибка лаборатории, то и повтор той же
+ * пробы, по порядку модели; затем шаг с наибольшей пользой на час (не меньше `minGain`), пока лучшая версия не наберёт
+ * `threshold`. Затем решение по лучшей версии: выпустить — только если ошибка лаборатории доказана. Зовётся после каждого
+ * события. Режим ООК (Б5б): «сам» — решает; «советует» — предлагает тот же шаг или вывод с той же причиной, а считает
+ * заново, только когда у расследования новые шаги или улики; решённое — «не нужно»; «вручную» — ничего.
  */
 export function invStep(db: ContentDb, s: PlantState, notices: Notice[]): boolean {
-  if (playerLeads(s)) return false;
+  const mode = modeOf(s, 'qa');
+  if (mode === 'manual') return false;
   let acted = false;
   for (const inv of Object.values(s.investigations)) {
-    if (inv.status !== 'open' || inv.runs.some(r => r.to === undefined)) continue;
+    const key = invKey(inv.id);
+    if (inv.status !== 'open') {
+      if (mode === 'advise' && s.heads.open[key] !== undefined) moot(s, key);
+      continue;
+    }
+    if (inv.runs.some(r => r.to === undefined)) continue;
+    // что видел руководитель: шаги и улики только прибавляются — то же число, то же предложение
+    const seen = inv.runs.length + inv.obs.length;
+    if (mode === 'advise' && seenAt(s, key) === seen) continue;
     const m = modelOf(db, inv);
     const beliefs = posterior(m, inv.obs);
     const top = beliefs[0];
     const done = new Set(inv.runs.map(r => r.step));
     const observed = new Set(inv.obs.map(o => o.f));
-    acted = true;
+    if (mode === 'auto') acted = true;
+    const step = (st: InvStep, why: StepWhy) => {
+      if (mode === 'auto') startStep(db, s, inv, st, 'head:quality', undefined, why);
+      else propose(s, 'qa', key, { kind: 'investigate', inv: inv.id, step: st.id }, { kind: 'step', inv: inv.id, step: st.id, why }, notices, seen);
+    };
     // шаги лаборатории, которых ещё не было: записи и прибор — всегда, повтор — если лучшая — ошибка лаборатории
     const marks = (x: InvStep) => x.checks.some(c => 'mark' in (m.findings.find(f => f.id === c.f)?.read ?? {}));
     const lab = m.steps.find(x => !done.has(x.id) && (marks(x) || (!!x.retest && isLab(m, top.id))));
     // версия впереди и её вероятность — для журнала решений (Б5а): доли 1/10 000 по уликам, которые завод знает
     const p = Math.round(top.p * P_ONE);
     if (lab) {
-      startStep(db, s, inv, lab, 'head:quality', undefined, { rule: marks(lab) ? 'lab' : 'retest', top: top.id, p });
+      step(lab, { rule: marks(lab) ? 'lab' : 'retest', top: top.id, p });
       continue;
     }
     if (top.p * P_ONE < m.threshold) {
@@ -513,12 +524,17 @@ export function invStep(db: ContentDb, s: PlantState, notices: Notice[]): boolea
         }
       }
       if (best) {
-        startStep(db, s, inv, best, 'head:quality', undefined, { rule: 'gain', gain: Math.round(quantize(gain) / 1e6), min: Math.round(hoursOf(db, best) * 60), top: top.id, p });
+        step(best, { rule: 'gain', gain: Math.round(quantize(gain) / 1e6), min: Math.round(hoursOf(db, best) * 60), top: top.id, p });
         continue;
       }
     }
     const fate = isLab(m, top.id) && labProven(db, inv) ? 'release' : 'reject';
-    note(s, 'qa', { kind: 'conclude', inv: inv.id, cause: top.id, fate, why: { p, threshold: m.threshold, proven: labProven(db, inv) } });
+    const why = { p, threshold: m.threshold, proven: labProven(db, inv) };
+    if (mode === 'advise') {
+      propose(s, 'qa', key, { kind: 'conclude', inv: inv.id, cause: top.id, fate }, { kind: 'conclude', inv: inv.id, cause: top.id, fate, why }, notices, seen);
+      continue;
+    }
+    note(s, 'qa', { kind: 'conclude', inv: inv.id, cause: top.id, fate, why });
     close(db, s, inv, top.id, fate, 'head:quality', notices);
   }
   return acted;

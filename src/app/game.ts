@@ -411,6 +411,7 @@ export class Game {
       : n.kind === 'assetExpired' ? T.notices.assetExpired(workName(n, n.work), assetClass(n), T.assets.inv(n.inv))
       : n.kind === 'pairSuspended' ? T.notices.pairSuspended(named(this.db.suppliers[n.supplier]?.name, n.supplier), named(this.db.makers[n.maker]?.name, n.maker))
       : n.kind === 'setpoints' ? T.notices.setpoints(n.n)
+      : n.kind === 'proposal' ? T.notices.proposal(T.journal.names[n.head] ?? n.head)
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;
@@ -560,6 +561,7 @@ export class Game {
     },
     go: (g: Go) => {
       if ('inv' in g) this.actions.openInv(g.inv);
+      else if ('journal' in g) this.actions.openJournal(g.journal);
       else if ('thing' in g) this.actions.show(g.thing);
       else if (g.panel === 'gantt') {
         if (!this.store.get().gantt.open) this.actions.toggleGantt();
@@ -881,6 +883,9 @@ export class Game {
     rush: lot => this.client.command({ kind: 'rush', lot, by: 'player' }),
     overtime: (dept, mode) => this.client.command({ kind: 'overtime', dept, mode, by: 'player' }),
     waste: () => this.client.command({ kind: 'waste', by: 'player' }),
+    answer: (n, ok) => this.client.command({ kind: ok ? 'accept' : 'decline', n }),
+    setMode: (head, mode) => this.client.command({ kind: 'mode', head, mode, by: 'player' }),
+    maintain: (machine, part) => this.client.command({ kind: 'maintain', machine, part }),
     roster: (person, shift) => this.client.command({ kind: 'roster', person: `E${person}`, shift, by: 'player' }),
     vacancy: (role, shift, via) => this.client.command({ kind: 'vacancy', role, shift, via, by: 'player' }),
     closeVacancy: id => this.client.command({ kind: 'close', vacancy: id, by: 'player' }),

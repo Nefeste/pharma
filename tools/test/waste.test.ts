@@ -133,14 +133,32 @@ describe('коллега склада', () => {
     expect(s.journal.filter(r => r.d.kind === 'waste').at(-1)?.d).toMatchObject({ why: { used: 1, places: rej.length, since, months: KEEP } });
   });
 
-  test('игрок на посту склада (директор) — коллега не заказывает; ушёл с поста — заказывает', () => {
+  test('директор: склад «вручную» — заведующий складом молчит; «советует» — предлагает; место отдано — заказывает сам (Б5б)', () => {
+    // пост «Снабжение и склад» сценарий прототипа не даёт: режим склада выбирает директор
+    const s = newPlant(db, { scenario: SC });
+    apply(db, s, { kind: 'seat', seats: ['director'] });
+    expect(apply(db, s, { kind: 'mode', head: 'wms', mode: 'manual' })).toEqual([]);
+    reject(s, rej.length);
+    until(s, at(start, WASTE_HOUR) + MIN);
+    expect(s.waste.order).toBeUndefined();
+    expect(s.journal.filter(r => r.d.kind === 'waste')).toHaveLength(0);
+    apply(db, s, { kind: 'mode', head: 'wms', mode: 'advise' });
+    until(s, at(start + 1, WASTE_HOUR) + MIN);
+    expect(s.waste.order).toBeUndefined();
+    const ask = s.journal.find(r => r.d.kind === 'waste')!;
+    expect(ask).toMatchObject({ by: 'wms', ask: { key: 'waste', cmd: { kind: 'waste' } }, d: { why: { used: rej.length, places: rej.length } } });
+    expect(ask.ask!.end).toBeUndefined();
+    apply(db, s, { kind: 'seat', seats: ['production'] });
+    expect(ask.ask!.end?.how).toBe('stale');
+    until(s, at(start + 2, WASTE_HOUR) + MIN);
+    expect(s.waste.order?.by).toBe('head:wms');
+  });
+
+  test('директор — склад «сам» по умолчанию: заведующий складом заказывает вывоз (Б5б)', () => {
     const s = newPlant(db, { scenario: SC });
     apply(db, s, { kind: 'seat', seats: ['director'] });
     reject(s, rej.length);
     until(s, at(start, WASTE_HOUR) + MIN);
-    expect(s.waste.order).toBeUndefined();
-    apply(db, s, { kind: 'seat', seats: ['production'] });
-    until(s, at(start + 1, WASTE_HOUR) + MIN);
     expect(s.waste.order?.by).toBe('head:wms');
   });
 });

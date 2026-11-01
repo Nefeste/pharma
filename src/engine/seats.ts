@@ -1,8 +1,10 @@
 // Места игрока (docs/specs/2026-10-panels.md, 3е; геймдизайн, §29.2–29.4): директор и четыре поста. Игрок берёт одно
 // место или несколько из тех, что даёт сценарий; у каждого поста свои команды, чужая команда игрока — отказ с причиной.
-// Работа отделов идёт по правилам движка, как раньше: место даёт команды и мерило. Журнал мест — кто и когда что держал:
-// по нему считают итог поста за время на месте.
+// Работа отделов идёт по правилам движка: место даёт команды, мерило и режимы своих отделов (Б5б, heads.ts). Журнал мест —
+// кто и когда что держал: по нему считают итог поста за время на месте.
 import { type ContentDb, type Dept, SEATS, type SeatId } from '../content/types';
+import { staleAsks } from './heads';
+import { HEAD_SEAT, recordOf } from './journal';
 import { colleagueTargets } from './modes';
 import type { Command, Notice, PlantState } from './types';
 
@@ -31,7 +33,8 @@ export const DEPT_SEAT: Record<Dept, SeatId> = { mes: 'production', line: 'produ
  */
 export function ownerOf(cmd: Command, dept?: Dept): SeatId | undefined {
   if (cmd.kind === 'overtime') return DEPT_SEAT[cmd.dept];
-  if (cmd.kind === 'roster' || cmd.kind === 'vacancy' || cmd.kind === 'close' || cmd.kind === 'hire' || cmd.kind === 'dismiss' || cmd.kind === 'leave' || cmd.kind === 'also') return dept && DEPT_SEAT[dept];
+  if (cmd.kind === 'mode') return HEAD_SEAT[cmd.head];
+  if (cmd.kind === 'roster' || cmd.kind === 'vacancy' || cmd.kind === 'agency' || cmd.kind === 'close' || cmd.kind === 'hire' || cmd.kind === 'dismiss' || cmd.kind === 'leave' || cmd.kind === 'also') return dept && DEPT_SEAT[dept];
   return OWNER[cmd.kind];
 }
 
@@ -46,6 +49,7 @@ function roleOf(s: PlantState, cmd: Command): string | undefined {
     case 'vacancy':
       return cmd.role;
     case 'close':
+    case 'agency':
       return s.vacancies[cmd.vacancy]?.role;
     case 'hire':
       return s.candidates[cmd.candidate]?.role;
@@ -74,10 +78,16 @@ export function held(s: PlantState): SeatId[] | undefined {
  */
 export function foreign(s: PlantState, cmd: Command, db?: ContentDb): SeatId | undefined {
   const role = roleOf(s, cmd);
-  const own = ownerOf(cmd, role ? db?.roles[role]?.dept : undefined);
+  const own = cmd.kind === 'accept' || cmd.kind === 'decline' ? askOwner(s, cmd.n) : ownerOf(cmd, role ? db?.roles[role]?.dept : undefined);
   if (!own || ('by' in cmd && cmd.by !== undefined && cmd.by !== 'player')) return undefined;
   const h = held(s);
   return !h || h.includes('director') || h.includes(own) ? undefined : own;
+}
+
+/** Пост ответа на предложение (Б5б): пост отдела руководителя, который предложил; записи нет — ничей, отказ даст команда. */
+function askOwner(s: PlantState, n: number): SeatId | undefined {
+  const r = recordOf(s, n);
+  return r && r.by !== 'player' ? HEAD_SEAT[r.by] : undefined;
 }
 
 /**
@@ -96,4 +106,6 @@ export function seatCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
   for (const id of SEATS) if (want.has(id) && !log.some(x => x.seat === id && x.to === undefined)) log.push({ seat: id, from: s.t });
   // игрок ушёл с поста «Качество и технология» — коллега технологии держит цель (Б1ж)
   if (had && !playerHolds(s, 'qa')) colleagueTargets(s, notices);
+  // пост отпущен (Б5б): открытые предложения его руководителей устарели — они решат в свой час
+  staleAsks(s);
 }

@@ -1,14 +1,18 @@
 // Журнал решений для окна (Б5а; docs/specs/2026-10-vertical-slice.md, «Б5а»): строки журнала — от новых к старым, с
 // отбором по посту и автору, страницами; «Кто решил» у вещей завода — серии, партии, отклонения, актива, машины,
-// человека; решения за сутки на планёрке — строка на руководителя. Данные — без слов: номера, виды, числа, мгновения;
-// слова — в окне (src/i18n/). Истины здесь нет (docs/02-architecture.md, §9): причины в журнале — числа, которые завод
-// знает, а ссылки на вещи — их номера и коды, как в карточках.
+// человека; решения за сутки на планёрке — строка на руководителя. С Б5б — предложения руководителей: открытые сверху,
+// «Ждут вашего решения», с ответом и тем, может ли игрок ответить; режимы отделов взятых постов. Данные — без слов:
+// номера, виды, числа, мгновения; слова — в окне (src/i18n/). Истины здесь нет (docs/02-architecture.md, §9): причины в
+// журнале — числа, которые завод знает, а ссылки на вещи — их номера и коды, как в карточках.
 import type { ContentDb, Dept, Id, SeatId } from '../content/types';
 import { batchNo } from '../engine/batchno';
+import { MODED, modeOf as deptMode } from '../engine/heads';
 import { DEPT_HEAD, HEAD_SEAT } from '../engine/journal';
 import { planOf } from '../engine/plant';
+import { foreign, held } from '../engine/seats';
 import { unitsOfLot } from '../engine/stock';
-import type { AssetFamily, Batch, Decided, Decision, Head, Lot, Person, PlantState } from '../engine/types';
+import { quotePo } from '../engine/supply';
+import type { Ask, AssetFamily, Batch, Decided, Decision, DeptMode, Head, Lot, Person, PlantState } from '../engine/types';
 import { thingOf } from './places';
 import type { Thing } from './views';
 
@@ -38,7 +42,7 @@ export interface JournalRef {
   lot?: Code;
   material?: Id;
   unit?: number;
-  po?: { lines: { material: Id; qty: number }[]; eta: number };
+  po?: { lines: { material: Id; qty: number }[]; eta?: number };
   dev?: number;
   inv?: string;
   model?: Id;
@@ -50,7 +54,16 @@ export interface JournalRef {
   thing?: Thing;
 }
 
-/** Строка журнала: запись движка, пост решения, что окну нужно для слов и переходов. */
+/**
+ * Предложение руководителя в строке (Б5б): ответ — нет, ждёт; может ли игрок ответить — предложение открыто, а пост отдела
+ * у игрока или игрок — директор.
+ */
+export interface AskInfo {
+  end?: Ask['end'];
+  can?: true;
+}
+
+/** Строка журнала: запись движка, пост решения, что окну нужно для слов и переходов; у предложения — его ответ. */
 export interface JournalRow {
   n: number;
   t: number;
@@ -59,6 +72,14 @@ export interface JournalRow {
   post: SeatId;
   d: Decided;
   ref: JournalRef;
+  ask?: AskInfo;
+}
+
+/** Режим отдела взятого поста (Б5б): руководитель, его пост и режим сейчас. */
+export interface ModeInfo {
+  head: Head;
+  seat: SeatId;
+  mode: DeptMode;
 }
 
 export interface JournalView {
@@ -70,6 +91,10 @@ export interface JournalView {
   focus?: number;
   /** с какого мгновения журнал помнит решения — срок геймдизайна (§8.5) */
   since?: number;
+  /** ждут вашего решения (Б5б): открытые предложения, новые сверху — на любой странице и при любом отборе */
+  asks: JournalRow[];
+  /** режимы отделов взятых постов (Б5б); у директора — всех отделов с выбором; мест не выбрано — нет */
+  modes: ModeInfo[];
 }
 
 /** Строк на странице журнала. */
@@ -109,6 +134,8 @@ function headOf(db: ContentDb, d: Decided): Head {
       return 'sales';
     case 'waste':
       return 'wms';
+    case 'mode':
+      return d.head;
   }
 }
 
@@ -153,15 +180,23 @@ function modeOf(db: ContentDb, key: string): JournalRef['mode'] {
   return { ...(r ? { recipe: r.id } : {}), stage: parts[1], param: parts[2] };
 }
 
-/** Ссылки записи — по нынешнему состоянию завода: номер серии появляется, когда его выдали; паллета — пока она на заводе. */
-export function refOf(db: ContentDb, s: PlantState, d: Decided): JournalRef {
+/**
+ * Ссылки записи — по нынешнему состоянию завода: номер серии появляется, когда его выдали; паллета — пока она на заводе.
+ * У предложения заказа поставщику (Б5б) строк заказа ещё нет — строки команды до целой тары, срока нет.
+ */
+export function refOf(db: ContentDb, s: PlantState, d: Decided, ask?: Ask): JournalRef {
   const plan = planOf(db, s.plant);
+  if (d.kind === 'po' && !d.po && ask?.cmd.kind === 'po') {
+    const q = quotePo(db, s, ask.cmd.supplier, ask.cmd.lines);
+    return { po: { lines: ('why' in q ? ask.cmd.lines : q.lines).map(l => ({ material: l.material, qty: l.qty })) } };
+  }
   switch (d.kind) {
     case 'order':
+      return d.batch ? batchRef(s, d.batch) : {};
     case 'batch':
       return batchRef(s, d.batch);
     case 'po': {
-      const po = s.pos[d.po];
+      const po = d.po ? s.pos[d.po] : undefined;
       return po ? { po: { lines: po.lines.map(l => ({ material: l.material, qty: l.qty })), eta: po.eta } } : {};
     }
     case 'step':
@@ -197,14 +232,45 @@ export function refOf(db: ContentDb, s: PlantState, d: Decided): JournalRef {
   }
 }
 
+/** Ответ на предложение в строке (Б5б): открыто и игрок может ответить — `can`. */
+export function askInfo(s: PlantState, r: Decision): AskInfo | undefined {
+  if (!r.ask) return undefined;
+  if (r.ask.end) return { end: r.ask.end };
+  return foreign(s, { kind: 'accept', n: r.n }) ? {} : { can: true };
+}
+
+/** Строка журнала для окна. */
+export function rowOf(db: ContentDb, s: PlantState, r: Decision): JournalRow {
+  const ask = askInfo(s, r);
+  return { n: r.n, t: r.t, by: r.by, ...(r.seat ? { seat: r.seat } : {}), post: postOf(db, r), d: r.d, ref: refOf(db, s, r.d, r.ask), ...(ask ? { ask } : {}) };
+}
+
+/** Открытые предложения (Б5б), новые сверху. */
+export const openAsks = (db: ContentDb, s: PlantState): JournalRow[] =>
+  Object.values(s.heads.open)
+    .sort((a, b) => b - a)
+    .flatMap(n => {
+      const r = s.journal.find(x => x.n === n);
+      return r ? [rowOf(db, s, r)] : [];
+    });
+
+/** Режимы отделов взятых постов (Б5б): по порядку руководителей; у директора — все отделы с выбором. */
+export function modesOf(s: PlantState): ModeInfo[] {
+  const h = held(s);
+  if (!h) return [];
+  return MODED.filter(x => h.includes('director') || h.includes(HEAD_SEAT[x])).map(x => ({ head: x, seat: HEAD_SEAT[x], mode: deptMode(s, x) }));
+}
+
 /** Журнал: новые сверху; отбор по посту и автору; страница — по `focus`, если запись есть. */
 export function journalView(db: ContentDb, s: PlantState, q: JournalQuery): JournalView {
   const all = s.journal.filter(r => (!q.who || (q.who === 'player') === (r.by === 'player')) && (!q.seat || postOf(db, r) === q.seat)).reverse();
   const pages = Math.max(1, Math.ceil(all.length / JOURNAL_PAGE));
   const at = q.focus !== undefined ? all.findIndex(r => r.n === q.focus) : -1;
   const page = at >= 0 ? Math.floor(at / JOURNAL_PAGE) : Math.min(Math.max(0, q.page), pages - 1);
-  const rows = all.slice(page * JOURNAL_PAGE, (page + 1) * JOURNAL_PAGE).map(r => ({ n: r.n, t: r.t, by: r.by, ...(r.seat ? { seat: r.seat } : {}), post: postOf(db, r), d: r.d, ref: refOf(db, s, r.d) }));
-  return { view: 'journal', rows, total: all.length, page, pages, ...(at >= 0 ? { focus: q.focus } : {}), ...(s.journal[0] ? { since: s.journal[0].t } : {}) };
+  const rows = all.slice(page * JOURNAL_PAGE, (page + 1) * JOURNAL_PAGE).map(r => rowOf(db, s, r));
+  // с какого мгновения журнал помнит решения: открытое предложение старше срока остаётся — его не считают
+  const kept = s.journal.find(r => !r.ask || r.ask.end);
+  return { view: 'journal', rows, total: all.length, page, pages, ...(at >= 0 ? { focus: q.focus } : {}), ...(kept ? { since: kept.t } : {}), asks: openAsks(db, s), modes: modesOf(s) };
 }
 
 // ---------------------------------------------------------------- «Кто решил» в карточках
@@ -220,6 +286,8 @@ export interface WhoRow {
   seat?: SeatId;
   kind: Decided['kind'];
   v?: string;
+  /** предложение руководителя (Б5б): ответ, может ли игрок ответить */
+  ask?: AskInfo;
 }
 
 const verdictOf = (d: Decided): string | undefined => {
@@ -240,8 +308,17 @@ const verdictOf = (d: Decided): string | undefined => {
   }
 };
 
+/**
+ * Строки «Кто решил» вещи: решения и предложения руководителей (Б5б) — устаревшие и ненужные предложения не решали
+ * ничего, их здесь нет.
+ */
 const whoRows = (s: PlantState, f: (d: Decided) => boolean): WhoRow[] =>
-  s.journal.filter(r => f(r.d)).map(r => ({ n: r.n, t: r.t, by: r.by, ...(r.seat ? { seat: r.seat } : {}), kind: r.d.kind, ...(verdictOf(r.d) ? { v: verdictOf(r.d) } : {}) }));
+  s.journal
+    .filter(r => f(r.d) && (!r.ask?.end || r.ask.end.how === 'ok' || r.ask.end.how === 'no'))
+    .map(r => {
+      const ask = askInfo(s, r);
+      return { n: r.n, t: r.t, by: r.by, ...(r.seat ? { seat: r.seat } : {}), kind: r.d.kind, ...(verdictOf(r.d) ? { v: verdictOf(r.d) } : {}), ...(ask ? { ask } : {}) };
+    });
 
 /** Серия: задание, решение по балку, вывод расследования, решения уполномоченного лица. */
 export function whoBatch(s: PlantState, b: Batch): WhoRow[] {
@@ -292,11 +369,14 @@ export interface HeadDay {
   last: number;
 }
 
-/** Решения руководителей с мгновения `from` до `to`: строка на руководителя, в порядке их поста и первой записи. */
+/**
+ * Решения руководителей с мгновения `from` до `to`: строка на руководителя, в порядке их поста и первой записи.
+ * Предложения (Б5б) — не решения руководителя: принятое решил игрок.
+ */
 export function headDays(s: PlantState, from: number, to: number): HeadDay[] {
   const out = new Map<Head, HeadDay>();
   for (const r of s.journal) {
-    if (r.by === 'player' || r.t < from || r.t >= to) continue;
+    if (r.by === 'player' || r.ask || r.t < from || r.t >= to) continue;
     let h = out.get(r.by);
     if (!h) out.set(r.by, (h = { head: r.by, n: 0, kinds: [], last: r.n }));
     h.n++;

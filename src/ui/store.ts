@@ -6,6 +6,7 @@ import type { Layer } from '../app/floor';
 import type { Go, Pause } from '../app/pauses';
 import type { Dept, Id, OvertimeMode, SeatId } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
+import type { DeptMode, Head } from '../engine/types';
 import type { RunSum } from '../engine/plan/run';
 import type { Change } from '../engine/plan/schedule';
 import type { Lang } from '../i18n';
@@ -264,6 +265,12 @@ export interface Actions {
   overtime(dept: Dept, mode: OvertimeMode): void;
   /** заказать вывоз отклонённого (Б1з) — команда `waste` */
   waste(): void;
+  /** ответ на предложение руководителя (Б5б): «Принять» или «Отклонить» записи журнала `n` */
+  answer(n: number, ok: boolean): void;
+  /** режим отдела руководителя (Б5б) — команда `mode` */
+  setMode(head: Head, mode: DeptMode): void;
+  /** «Заменить» узел машины вне отказа (Б5б) — команда `maintain`: машина и узел по именам плана */
+  maintain(machine: string, part: string): void;
   /** перевод человека на другой график (Б4б): номер человека, как в срезе */
   roster(person: number, shift: Id): void;
   /**

@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 33;
+export const SCHEMA = 34;
 
 // ---------------------------------------------------------------- склад
 
@@ -1412,13 +1412,14 @@ export interface TestWhy {
 
 /**
  * Что решено и о какой вещи завода (Б5а) — и почему, у решения руководителя: числа причины — только то, что знает завод.
- * У решения игрока причины нет: её знает сам игрок.
+ * У решения игрока причины нет: её знает сам игрок. У предложения руководителя (Б5б) номера вещей, которые появятся
+ * только с командой, — задания, заказа, вакансии, вывоза — нет, пока его не приняли.
  */
 export type Decided =
   /** задание на серию: позиция, карта и «не раньше» */
-  | { kind: 'order'; batch: string; recipe: Id; sku?: Id; notBefore: number; why?: OrderWhy }
+  | { kind: 'order'; batch?: string; recipe: Id; sku?: Id; notBefore: number; why?: OrderWhy }
   /** заказ поставщику: предоплата; по каждой строке — положение материала */
-  | { kind: 'po'; po: string; supplier: Id; prepaid: number; why?: PoWhy[] }
+  | { kind: 'po'; po?: string; supplier: Id; prepaid: number; why?: PoWhy[] }
   /** шаг расследования */
   | { kind: 'step'; inv: string; step: string; why?: StepWhy }
   /** вывод расследования: версия, её вероятность и порог, доли 1/10 000; ошибка лаборатории доказана */
@@ -1439,7 +1440,7 @@ export type Decided =
    * вакансия: вместо кого — человек, табельный номер и день заявления; канал — объявление, сразу агентство (по
    * объявлению такую роль в городе не найти) или агентство после стольких суток без подходящего
    */
-  | { kind: 'vacancy'; vacancy: string; role: Id; via: 'ad' | 'agency'; why?: { instead: string; tab: number; day: number; rule: 'ad' | 'city' | 'late'; days?: number } }
+  | { kind: 'vacancy'; vacancy?: string; role: Id; via: 'ad' | 'agency'; why?: { instead: string; tab: number; day: number; rule: 'ad' | 'city' | 'late'; days?: number } }
   /** приём: навык против наименьшего, ожидание против цены рынка за навык с надбавкой `over`, доли 1/10 000 */
   | { kind: 'hire'; cand: string; vacancy: string; role: Id; why?: { skill: number; min: number; salary: number; price: number; over: number } }
   /** черновик графика отпусков года: у скольких людей из скольких не всем частям нашлось место */
@@ -1463,12 +1464,34 @@ export type Decided =
    * вывоз отклонённого (Б1з): заказ и мгновение приезда подрядчика; у коллеги склада — сколько мест зоны занято из
    * скольких и, если паллета ждёт вывоза дольше срока, — с какого мгновения она отклонена и срок, месяцев
    */
-  | { kind: 'waste'; order: string; at: number; why?: { used: number; places: number; since?: number; months: number } };
+  | { kind: 'waste'; order?: string; at?: number; why?: { used: number; places: number; since?: number; months: number } }
+  /** режим отдела руководителя (Б5б): игрок сменил его на посту отдела */
+  | { kind: 'mode'; head: Head; mode: DeptMode };
+
+/**
+ * Режим отдела (Б5б; геймдизайн, §8.5): «сам» — руководитель решает по правилу; «советует» — в свой час предлагает то же
+ * решение, командой оно становится, когда игрок его примет; «вручную» — молчит, решает игрок.
+ */
+export type DeptMode = 'auto' | 'advise' | 'manual';
+
+/**
+ * Предложение руководителя (Б5б): вещь — у неё одно открытое предложение; команда, которую «Принять» отдаёт от имени
+ * игрока; что руководитель видел, когда считал, — у шага расследования число шагов и улик: то же — не считать заново.
+ * Ответ: принято — с места игрока; отклонено; устарело — новое предложение в следующий час руководителя, пост отпущен или
+ * режим сменился; не нужно — правило больше не срабатывает или команда не прошла. Ответа нет — ждёт.
+ */
+export interface Ask {
+  key: string;
+  cmd: Command;
+  seen?: number;
+  end?: { how: 'ok' | 'no' | 'stale' | 'moot'; t: number; seat?: SeatId };
+}
 
 /**
  * Запись журнала решений (Б5а): номер по порядку, мгновение, кто решил — руководитель или игрок, у игрока — место, с
- * которого отдана команда (мест не выбрано — нет), что решено и почему. Журнал движок только пишет: правила его не
- * читают.
+ * которого отдана команда (мест не выбрано — нет), что решено и почему. У предложения руководителя (Б5б) — команда и
+ * ответ: принятое игроком остаётся записью руководителя, с номерами вещей команды. Решения «сам» от журнала не
+ * зависят; предложения руководитель находит по указателю в `heads`.
  */
 export interface Decision {
   n: number;
@@ -1476,6 +1499,18 @@ export interface Decision {
   by: Head | 'player';
   seat?: SeatId;
   d: Decided;
+  ask?: Ask;
+}
+
+/**
+ * Режимы отделов (Б5б; src/engine/heads.ts): выбор игрока у руководителя — записи нет, режим по умолчанию места;
+ * открытые предложения по вещи и отклонённые сегодня — номера записей журнала: правило находит своё предложение, не
+ * перебирая журнал.
+ */
+export interface HeadsState {
+  mode: Partial<Record<Head, DeptMode>>;
+  open: Record<string, number>;
+  no: Record<string, number>;
 }
 
 export interface PlantState {
@@ -1559,8 +1594,10 @@ export interface PlantState {
   former: Record<string, Person>;
   /** графики отпусков по годам (Б4г): черновик или утверждён; части — у людей */
   leave: Record<number, LeaveYear>;
-  /** журнал решений (Б5а; src/engine/journal.ts): по порядку, за срок геймдизайна (§8.5) */
+  /** журнал решений (Б5а; src/engine/journal.ts): по порядку, за срок геймдизайна (§8.5), и открытые предложения */
   journal: Decision[];
+  /** режимы отделов (Б5б; src/engine/heads.ts): выбор игрока, указатели открытых и отклонённых сегодня предложений */
+  heads: HeadsState;
   /** вывоз отклонённого (Б1з; src/engine/waste.ts): заказанный вывоз — один, пока подрядчик не уехал; журнал отходов */
   waste: WasteState;
   /** показатели руководителей (Б5ж; src/engine/kpi.ts): срезы суток этого месяца и закрытые месяцы */
@@ -1709,8 +1746,13 @@ export type Command =
    * график, в котором он и так будет, — отмена ждущего перевода
    */
   | { kind: 'roster'; person: string; shift: Id; by?: string }
-  /** вакансия (Б4в): роль, график и канал — объявление или кадровое агентство */
-  | { kind: 'vacancy'; role: Id; shift: Id; via: 'ad' | 'agency'; by?: string }
+  /**
+   * вакансия (Б4в): роль, график и канал — объявление или кадровое агентство; вместо кого — на заявление по собственному
+   * желанию (Б5б): такую вакансию ведёт руководитель отдела роли
+   */
+  | { kind: 'vacancy'; role: Id; shift: Id; via: 'ad' | 'agency'; instead?: string; by?: string }
+  /** вакансию руководителя по объявлению — кадровому агентству (Б5б) */
+  | { kind: 'agency'; vacancy: string; by?: string }
   /** закрыть вакансию (Б4в): её кандидаты уходят */
   | { kind: 'close'; vacancy: string; by?: string }
   /** принять кандидата (Б4в) с испытанием на столько месяцев: медосмотр, первый день */
@@ -1737,7 +1779,12 @@ export type Command =
   | { kind: 'setpoint'; recipe: Id; stage: string; param: string; value: number; by?: string }
   | { kind: 'setpoint'; sku: Id; value: number; by?: string }
   /** заказать вывоз отклонённого (Б1з): подрядчик приедет на следующий рабочий день; один, пока подрядчик не уехал */
-  | { kind: 'waste'; by?: string };
+  | { kind: 'waste'; by?: string }
+  /** режим отдела руководителя (Б5б): «сам», «советует» или «вручную» — команда поста отдела */
+  | { kind: 'mode'; head: Head; mode: DeptMode; by?: string }
+  /** ответ на предложение руководителя (Б5б): номер записи журнала; «Принять» отдаёт его команду от имени игрока */
+  | { kind: 'accept'; n: number }
+  | { kind: 'decline'; n: number };
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
@@ -1823,7 +1870,10 @@ export type Refusal =
   | 'outOfRange'
   | 'offStep'
   /** вывоз отклонённого (Б1з): у сценария нет подрядчика по вывозу */
-  | 'noWaste';
+  | 'noWaste'
+  /** предложение (Б5б): такой записи с предложением нет; на него уже ответили, оно устарело или не нужно */
+  | 'noAsk'
+  | 'askDone';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
@@ -1907,4 +1957,9 @@ export type Notice =
   | { kind: 'invStep'; id: string; step: string }
   | { kind: 'concluded'; id: string; cause: string; fate: 'reject' | 'release' }
   /** отклонение оценено (Б1г): без влияния или серию отклонили; номер серии — для слов извещения */
-  | { kind: 'assessed'; id: string; verdict: 'none' | 'reject'; code: string };
+  | { kind: 'assessed'; id: string; verdict: 'none' | 'reject'; code: string }
+  /**
+   * предложение руководителя (Б5б): запись журнала, руководитель и пост отдела; мгновение — до планёрки предложение
+   * ждёт её (автопауза, src/app/pauses.ts)
+   */
+  | { kind: 'proposal'; n: number; head: Head; seat: SeatId; t: number };

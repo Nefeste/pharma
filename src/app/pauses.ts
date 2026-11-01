@@ -9,12 +9,16 @@ import type { Notice } from '../engine/types';
 import type { Thing } from '../sim/views';
 import type { Keep } from './preset';
 
+/** Посты, у отделов которых есть руководители с выбором (Б5б): им — автопауза «Предложение». */
+const PROPOSAL_SEATS: readonly SeatId[] = ['production', 'quality', 'supply'];
+
 /**
  * Автопаузы прототипа — по порядку меню. Из событий сотрудника есть потеря допуска (Б3б), сверхурочные года на исходе
  * (Б4а) и заявление об увольнении (Б4в); срок квалификации или калибровки актива (Б3в); приостановленная пара поставщика
- * (Б3г); черновик графика отпусков (Б4г); жалобы, совещания S&OP и инспекции в прототипе нет.
+ * (Б3г); черновик графика отпусков (Б4г); предложение руководителя (Б5б); жалобы, совещания S&OP и инспекции в прототипе
+ * нет.
  */
-export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'leaveDraft', 'morning'] as const;
+export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'leaveDraft', 'proposal', 'morning'] as const;
 export type Pause = (typeof PAUSES)[number];
 
 /**
@@ -35,6 +39,8 @@ export const PAUSE_NOTICES: Record<Pause, readonly string[]> = {
   assetExpired: ['assetExpired/equipment', 'assetExpired/machine', 'assetExpired/ipc', 'assetExpired/lab', 'assetExpired/sensor'],
   pairSuspended: ['pairSuspended'],
   leaveDraft: ['leaveDraft'],
+  // предложение руководителя (Б5б): у поста отдела; до планёрки — ждёт её (`stopKinds`)
+  proposal: PROPOSAL_SEATS.flatMap(x => [`proposal/${x}`, `proposal/${x}/early`]),
   morning: ['morning'],
 };
 
@@ -60,6 +66,8 @@ export const PAUSE_SEATS: Record<Pause, readonly SeatId[] | 'all'> = {
   pairSuspended: ['quality', 'supply'],
   // черновик графика отпусков (Б4г): строки своих постов правит каждый пост
   leaveDraft: 'all',
+  // предложение руководителя (Б5б) — у поста его отдела (`KEY_SEATS`)
+  proposal: PROPOSAL_SEATS,
   morning: 'all',
 };
 
@@ -75,6 +83,7 @@ export const KEY_SEATS: Partial<Record<string, readonly SeatId[]>> = {
   'assetExpired/lab': ['quality'],
   'assetExpired/sensor': ['supply'],
   ...Object.fromEntries(Object.entries(DEPT_SEAT).flatMap(([d, seat]) => [[`overtimeLow/${d}`, [seat]], [`resign/${d}`, [seat]]])),
+  ...Object.fromEntries(PROPOSAL_SEATS.flatMap(x => [[`proposal/${x}`, [x]], [`proposal/${x}/early`, [x]]])),
 };
 
 /** Ключ в хранилище окна: отключённые автопаузы — новая автопауза в следующей версии придёт включённой. */
@@ -94,13 +103,17 @@ export function mine(p: Pause, seats: readonly SeatId[] | undefined): boolean {
   return who === 'all' || !seats || seats.includes('director') || who.some(x => seats.includes(x));
 }
 
-/** Ключи извещений, на которых мир встаёт: автопауза включена и это дело места игрока; у ключа со своим делом — его. */
+/**
+ * Ключи извещений, на которых мир встаёт: автопауза включена и это дело места игрока; у ключа со своим делом — его.
+ * Предложение до планёрки (Б5б) ждёт её: стоп один — на планёрке; автопауза планёрки выключена — стоп в час предложения.
+ */
 export function stopKinds(off: readonly Pause[], seats: readonly SeatId[] | undefined): string[] {
   const own = (k: string) => {
     const who = KEY_SEATS[k];
     return !who || !seats || seats.includes('director') || who.some(x => seats.includes(x));
   };
-  return PAUSES.filter(p => !off.includes(p) && mine(p, seats)).flatMap(p => PAUSE_NOTICES[p].filter(own));
+  const meeting = !off.includes('morning');
+  return PAUSES.filter(p => !off.includes(p) && mine(p, seats)).flatMap(p => PAUSE_NOTICES[p].filter(k => own(k) && !(meeting && k.endsWith('/early'))));
 }
 
 /** Отключённые автопаузы из хранилища окна; нет, не прочитать или чужое — ничего не отключено. */
@@ -122,8 +135,8 @@ export function keepOff(keep: Keep | undefined, off: readonly Pause[]) {
   }
 }
 
-/** Куда ведёт щелчок по извещению: вещь на полу, окно, справочник на своей вкладке или доска расследования. */
-export type Go = { thing: Thing } | { panel: 'gantt' | 'morning' | 'lab' } | { panel: 'ref'; tab: 'places' | 'partners' | 'people' } | { inv: string };
+/** Куда ведёт щелчок по извещению: вещь на полу, окно, справочник на своей вкладке, доска расследования или журнал на записи. */
+export type Go = { thing: Thing } | { panel: 'gantt' | 'morning' | 'lab' } | { panel: 'ref'; tab: 'places' | 'partners' | 'people' } | { inv: string } | { journal: number };
 
 /** Машина линии или оборудование участка по имени в плане — вещь для карточки. */
 export function machineThing(plant: Plant, id: string): Thing | undefined {
@@ -186,6 +199,9 @@ export function goOf(plant: Plant, n: Notice): Go | undefined {
     }
     case 'pairSuspended':
       return { panel: 'ref', tab: 'partners' };
+    case 'proposal':
+      // предложение руководителя (Б5б) — к журналу на его записи: причина, «Принять» и «Отклонить»
+      return { journal: n.n };
     default:
       return undefined;
   }

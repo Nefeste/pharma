@@ -9,6 +9,7 @@ import type { ContentDb, Id, PartType } from '../content/types';
 import { dueIn, owe, part, post } from './cash';
 import { schedule } from './core/agenda';
 import { P_ONE } from './core/rng';
+import { modeOf, moot, propose } from './heads';
 import { note, noteCmd } from './journal';
 import { planOf } from './plant';
 import { expo, roll } from './random';
@@ -115,11 +116,16 @@ export function failPart(db: ContentDb, s: PlantState, pt: Part, notices: Notice
   notices.push({ kind: 'failure', machine: pt.machine, part: pt.type });
 }
 
+/** Вещь предложения главного механика (Б5б): замена узла по наработке. */
+export const replaceKey = (part: string) => `replace/${part}`;
+
 /**
- * Шаг техслужбы: отказавшим — ремонт, если есть запчасть; политика «по наработке» — замена, когда износ дошёл до порога;
- * решённая замена — как только машина свободна и есть запчасть. Нет запчасти — ремонт ждёт поставки, а ЗИП пополняется.
+ * Шаг техслужбы: отказавшим — ремонт, если есть запчасть; политика «по наработке» — замена, когда износ дошёл до порога
+ * и машина свободна; решённая замена — как только машина свободна и есть запчасть. Нет запчасти — ремонт ждёт поставки, а
+ * ЗИП пополняется. Замена по наработке — в режиме техслужбы (Б5б): «сам» — решает, «советует» — предлагает то же в тот же
+ * миг, а замена больше не нужна — предложение «не нужно»; «вручную» — ничего. Ремонт после отказа — в любом режиме.
  */
-export function maintStep(db: ContentDb, s: PlantState) {
+export function maintStep(db: ContentDb, s: PlantState, notices: Notice[]) {
   const policy = db.scenarios[s.scenario].maint;
   for (const pt of Object.values(s.parts)) {
     if (pt.task) continue;
@@ -137,9 +143,15 @@ export function maintStep(db: ContentDb, s: PlantState) {
       continue;
     }
     const at = policy[pt.id];
-    if (!pt.plan && at !== undefined && idle(s, pt) && wearAt(t, pt.done) >= at) {
-      pt.plan = 'policy';
-      note(s, 'maint', { kind: 'replace', part: pt.id, why: { wear: wearAt(t, pt.done), at } });
+    if (at !== undefined) {
+      const need = !pt.plan && wearAt(t, pt.done) >= at;
+      const mode = need && idle(s, pt) ? modeOf(s, 'maint') : undefined;
+      const why = { wear: wearAt(t, pt.done), at };
+      if (mode === 'auto') {
+        pt.plan = 'policy';
+        note(s, 'maint', { kind: 'replace', part: pt.id, why });
+      } else if (mode === 'advise') propose(s, 'maint', replaceKey(pt.id), { kind: 'maintain', machine: pt.machine, part: pt.type }, { kind: 'replace', part: pt.id, why }, notices);
+      else if (!need && s.heads.open[replaceKey(pt.id)] !== undefined) moot(s, replaceKey(pt.id));
     }
     if (!pt.plan || !idle(s, pt)) continue;
     if (free(s, t.spare) > 0) repairTask(db, s, pt, true);

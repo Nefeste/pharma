@@ -10,6 +10,7 @@
 // партий и заказов. Счёт — в целых.
 import type { ContentDb, Id, Recipe, Sku } from '../content/types';
 import { addWorkdays, DAY, isWorkday, momentOf } from './core/calendar';
+import { modeOf, moot, propose } from './heads';
 import { BATCH_HOUR, placeOrder } from './mes';
 import { containersByLot } from './stock';
 import type { Notice, OrderWhy, PlantState } from './types';
@@ -82,16 +83,29 @@ export function positionOf(db: ContentDb, s: PlantState, sku: Id, window: number
   return { sku, cases, ordered, span, work: workBack(db, s, span) };
 }
 
-/** Каждый час: в рабочий день в начале смены аппаратчиков — задание на рабочий день через две рабочие недели, если оно нужно. */
+/** Вещь предложения начальника отдела планирования (Б5б): следующее задание на серию — одно открытое. */
+export const ORDER_KEY = 'order';
+
+/**
+ * Каждый час: в рабочий день в начале смены аппаратчиков — задание на рабочий день через две рабочие недели, если оно
+ * нужно. Режим отдела (Б5б): «сам» — задание; «советует» — предложение того же задания с той же причиной, а задание не
+ * нужно — открытое предложение «не нужно»; «вручную» — ничего.
+ */
 export function planHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   const plan = db.scenarios[s.scenario].plan;
   const now = momentOf(s.start, s.t);
   const cal = calOf(db, s);
   if (!plan || !isWorkday(cal, now.day) || now.sec !== BATCH_HOUR) return;
+  const mode = modeOf(s, 'plan');
+  if (mode === 'manual') return;
   const day = addWorkdays(cal, now.day, AHEAD_WORK);
   const at = s.t + (day - now.day) * DAY;
-  if (Object.values(s.batches).some(b => momentOf(s.start, b.notBefore).day === day)) return;
-  const got = pick(db, s, plan.items, plan.cover, plan.window, plan.urgent, at);
+  const got = Object.values(s.batches).some(b => momentOf(s.start, b.notBefore).day === day) ? undefined : pick(db, s, plan.items, plan.cover, plan.window, plan.urgent, at);
+  if (mode === 'advise') {
+    if (!got) return moot(s, ORDER_KEY);
+    const cmd = { kind: 'order' as const, recipe: got.it.recipe, notBefore: at, sku: got.it.sku };
+    return propose(s, 'plan', ORDER_KEY, cmd, { kind: 'order', recipe: got.it.recipe, sku: got.it.sku, notBefore: at, why: got.why }, notices);
+  }
   if (got) placeOrder(db, s, { kind: 'order', recipe: got.it.recipe, notBefore: at, by: 'head:plan', sku: got.it.sku }, notices, got.why);
 }
 

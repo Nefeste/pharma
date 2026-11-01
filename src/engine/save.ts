@@ -8,6 +8,7 @@ import { HOUR, momentOf } from './core/calendar';
 import { newCash } from './cash';
 import { inForce } from './docs';
 import { newPolicy } from './hours';
+import { newKpi } from './kpi';
 import { leanStep, newLoss } from './lean';
 import { newLines } from './line';
 import { newParts } from './maint';
@@ -451,6 +452,13 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     const s = raw as unknown as PlantState;
     for (const d of s.losses) d.waits ??= {};
     leanStep(db, s);
+    return raw;
+  },
+  // 32 → 33 (Б5ж): показатели руководителей — закрытых месяцев нет, учёт текущего месяца — с мгновения сохранения,
+  // месяц «неполный»; новых записей — у рампы и на месте у партий, начала работ и ожидания запчасти в журнале
+  // оборудования, дня открытия вакансии у принятых — у прошлого нет
+  32: raw => {
+    (raw as unknown as PlantState).kpi = newKpi(raw.t as number);
     return raw;
   },
 };

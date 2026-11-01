@@ -7,6 +7,7 @@ import { batchNo } from '../engine/batchno';
 import { DAY, momentOf } from '../engine/core/calendar';
 import { inForce } from '../engine/docs';
 import { MORNING } from '../engine/engine';
+import { cleanBatch, decidedAt, lineOee, rejectedAt } from '../engine/kpi';
 import { AREA, type Oee, oee, rhythm, shiftsOfDay, type Switches, switchesOf } from '../engine/lean';
 import { orderRisks, type OrderRisk } from '../engine/market';
 import { planOf } from '../engine/plant';
@@ -590,36 +591,6 @@ export type SeatSum =
   | { seat: 'supply' | 'commerce'; from: number };
 
 /** Сутки линии за несколько суток: время, проход, выпуск по номиналу и годные — суммой; OEE ключевой машины. */
-function lineOee(days: LineDay[]): Oee | undefined {
-  if (days.length === 0) return undefined;
-  const n = days[0].ideal.length;
-  const ideal = Array.from({ length: n }, (_, i) => days.reduce((x, d) => x + (d.ideal[i] ?? 0), 0));
-  let key = 0;
-  ideal.forEach((v, i) => {
-    if (v < ideal[key]) key = i;
-  });
-  const run = days.reduce((x, d) => x + (d.run[key] ?? 0), 0);
-  const out = days.reduce((x, d) => x + (d.times[key]?.out ?? 0), 0);
-  return oee({ ideal: ideal[key], run, out }, days.reduce((x, d) => x + d.good, 0));
-}
-
-/** Когда серию решили: выпуск — по записи серии, отклонение ГП — по статусу её партии; балк отклоняет лаборатория, не УЛ. */
-function decidedAt(s: PlantState, b: Batch): number | undefined {
-  if (b.status === 'released') return b.released;
-  const fg = b.pack?.fg ? s.lots[b.pack.fg] : undefined;
-  return b.status === 'rejected' && fg?.status === 'rejected' ? fg.since : undefined;
-}
-
-/** Серия без отклонений: ни у неё, ни у её балка и ГП. */
-const clean = (s: PlantState, b: Batch) => !Object.values(s.deviations).some(d => d.batch === b.id || (d.lot !== undefined && (d.lot === b.bulk || d.lot === b.pack?.fg)));
-
-/** Отклонённой партии своей серии — когда; такой нет — `undefined`. */
-function rejectedAt(s: PlantState, b: Batch): number | undefined {
-  if (b.status !== 'rejected') return undefined;
-  for (const id of [b.bulk, b.pack?.fg]) if (id && s.lots[id]?.status === 'rejected') return s.lots[id].since;
-  return undefined;
-}
-
 /**
  * Итог каждого места, которое игрок держит сейчас, — за время на нём. Сменные задания, сутки линии, уборки и переналадки
  * движок ведёт по календарным суткам: сутки, в которые место взяли, — целиком. Остальное — с мгновения, когда взяли.
@@ -660,7 +631,7 @@ function seatSum(db: ContentDb, s: PlantState, seat: SeatId, from: number): Seat
         deviations: devs.length,
         open: devs.filter(d => d.status === 'open').length,
         decided: decided.length,
-        first: decided.filter(b => b.status === 'released' && clean(s, b)).length,
+        first: decided.filter(b => b.status === 'released' && cleanBatch(s, b)).length,
         ...(waited.length > 0 ? { toDecision: Math.round(waited.reduce((a, b) => a + b, 0) / waited.length) } : {}),
       };
     }

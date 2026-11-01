@@ -129,7 +129,11 @@ export function maintStep(db: ContentDb, s: PlantState) {
         // журнал решений (Б5а): главный механик — ремонт после отказа, запчасть из мастерской
         note(s, 'maint', { kind: 'repair', part: pt.id, why: { failed: pt.failed ?? s.t, spare: t.spare, free: free(s, t.spare) } });
         repairTask(db, s, pt, false);
-      } else replenish(db, s, t.spare);
+      } else {
+        // ремонт ждёт запчасть (Б5ж; EN 15341 O26 — запчасти по требованию): в запись журнала, когда его сделают
+        pt.nospare = true;
+        replenish(db, s, t.spare);
+      }
       continue;
     }
     const at = policy[pt.id];
@@ -207,7 +211,10 @@ export function maintDone(db: ContentDb, s: PlantState, t: Task, notices: Notice
   const sp = s.spares[ty.spare];
   sp.qty--;
   sp.reserved--;
-  s.maintLog.push({ t: s.t, machine: pt.machine, part: pt.type, what: t.planned ? 'replace' : 'repair', wear: wearAt(ty, pt.done), people: [...t.people] });
+  // когда слесарь взял работу и ждал ли ремонт запчасть (Б5ж) — время внепланового и планового обслуживания
+  const from = t.times?.[0];
+  s.maintLog.push({ t: s.t, machine: pt.machine, part: pt.type, what: t.planned ? 'replace' : 'repair', wear: wearAt(ty, pt.done), people: [...t.people], ...(from !== undefined ? { from } : {}), ...(pt.nospare ? { spare: true as const } : {}) });
+  delete pt.nospare;
   pt.done = 0;
   pt.budget = budgetOf(s, pt.id);
   pt.state = 'ok';

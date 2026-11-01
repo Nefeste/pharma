@@ -182,7 +182,7 @@ function hireCandidate(db: ContentDb, s: PlantState, lab: Labor, id: string, tri
   const d = { kind: 'hire' as const, cand: c.id, vacancy: v.id, role: c.role };
   if (cmd) noteCmd(s, cmd, d, deptOf(db, c.role));
   else note(s, DEPT_HEAD[deptOf(db, c.role)], { ...d, ...(why ? { why } : {}) });
-  const h: Hire = { id: c.id, vacancy: v.id, via: c.via, role: c.role, skill: c.skill, salary: c.salary, shift: v.shift, trial, exam, day: first.day, at: first.at };
+  const h: Hire = { id: c.id, vacancy: v.id, via: c.via, role: c.role, skill: c.skill, salary: c.salary, shift: v.shift, trial, exam, day: first.day, at: first.at, vac: v.from };
   s.hires[h.id] = h;
   hiringPay(s, -lab.medical.price, `med-${h.id}`);
   if (c.via === 'agency') hiringPay(s, -agencyFee(lab, c.salary), `agency-${h.id}`);
@@ -214,6 +214,7 @@ function start(db: ContentDb, s: PlantState, h: Hire, notices: Notice[]) {
     salary: h.salary,
     hired: h.day,
     cand: h.id,
+    ...(h.vac !== undefined ? { vac: h.vac } : {}),
     ...(db.shifts[h.shift].cycle ? { roster: [{ shift: h.shift, from: h.day }] } : {}),
     ...(h.trial > 0 ? { trial: addMonths(h.day, h.trial) - 1 } : {}),
   };

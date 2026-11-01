@@ -1,14 +1,15 @@
 // Данные на полу (Б1и; docs/specs/2026-10-vertical-slice.md, «Б1и»): помещения производства и упаковки и машины линий
 // за окно — сегодня, вчера или 7 суток, по календарным суткам завода, — ключевая машина и OEE той же функцией, что у
-// планёрки, и доска «План — факт» у каждой линии. Только учёт завода — время помещений и машин по состояниям, счётчики
-// годных пачек, сменные задания, записи стадий, — без истины (docs/02-architecture.md, §9).
+// планёрки, и доска «План — факт» у каждой линии. С Б1к — часы ожидания серий у мест за то же окно и «держит линию».
+// Только учёт завода — время помещений, машин и серий по состояниям, счётчики годных пачек, сменные задания, записи
+// стадий, — без истины (docs/02-architecture.md, §9).
 import type { ContentDb, Id } from '../content/types';
 import { batchNo } from '../engine/batchno';
 import { DAY, HOUR, momentOf } from '../engine/core/calendar';
 import { NO_ROOM, NO_TIMES, rhythm, roomsOf } from '../engine/lean';
 import { planOf } from '../engine/plant';
-import type { DayLoss, LineDay, MachineTimes, PlantState, RoomPhase, RoomTimes } from '../engine/types';
-import { type LineSum, lineSum } from './report';
+import type { BatchPhase, DayLoss, LineDay, MachineTimes, PlantState, RoomPhase, RoomTimes } from '../engine/types';
+import { type LineLoss, type LineSum, lineSum } from './report';
 
 /** Окно слоя: сегодня — с полуночи до сейчас, вчера — прошлые календарные сутки, 7 суток — сегодня и шесть до него. */
 export type FloorWin = 'today' | 'yesterday' | 'week';
@@ -54,6 +55,17 @@ export interface FloorBoard {
   rhythm?: number;
 }
 
+/**
+ * «Держит линию» (Б1к): над какой машиной табличка — номер по порядку линии — и её главная потеря за окно, с. Ключевая
+ * машина планёрки ждала соседа — табличка над соседом, чьих остановок она ждала: `key` — ключевая машина.
+ */
+export interface FloorHolds {
+  k: number;
+  what?: LineLoss;
+  sec?: number;
+  key?: number;
+}
+
 export interface FloorLine {
   /** линия — номер по порядку плана */
   n: number;
@@ -61,7 +73,34 @@ export interface FloorLine {
   machines: Pick<MachineTimes, MachineLoad>[];
   /** ключевая машина и её OEE с множителями — как у планёрки, за окно */
   sum: LineSum;
+  /** «держит линию» (Б1к): ключевой машины за окно нет — нет */
+  holds?: FloorHolds;
   board?: FloorBoard;
+}
+
+/** Чего ждут серии у места (Б1к) — состояние серии без хода стадий и линии и без своей даты «не раньше». */
+export type WaitWhat = Exclude<BatchPhase, 'plan' | 'before' | 'work' | 'packing'>;
+/** Ожидания по порядку: при равных часах слово — первое из них. */
+export const WAIT_WHAT: readonly WaitWhat[] = ['line', 'lab', 'cleaning', 'people', 'decision', 'repair', 'room', 'equipment', 'asset', 'materials', 'kitting'];
+const IS_WAIT: ReadonlySet<string> = new Set(WAIT_WHAT);
+
+/** Серия, которая ждёт у места сейчас: номер (`B<n>`) — к досье, номер серии и чего ждёт. */
+export interface FloorWaiting {
+  bn: number;
+  code: string;
+  what: WaitWhat;
+}
+
+/**
+ * Место (Б1к) — помещение, номер по порядку плана: секунды ожидания серий у него за окно по словам, с отрезками, которые
+ * ещё идут; всего; чего ждали больше всего; серии, которые ждут у него сейчас.
+ */
+export interface FloorWait {
+  i: number;
+  sec: Partial<Record<WaitWhat, number>>;
+  total: number;
+  what: WaitWhat;
+  now: FloorWaiting[];
 }
 
 export interface FloorView {
@@ -71,6 +110,11 @@ export interface FloorView {
   span: number;
   rooms: FloorRoom[];
   lines: FloorLine[];
+  /**
+   * места с ожиданием за окно или сейчас (Б1к) — по убыванию часов; первые три с часами — таблички «Узких мест», места
+   * без часов за окно, где серии ждут сейчас, — в конце
+   */
+  waits: FloorWait[];
 }
 
 /** Сутки окна — номера: от раннего к позднему. */
@@ -191,7 +235,51 @@ export function floorView(db: ContentDb, s: PlantState, q: FloorQuery): FloorVie
       return { run: t.run, slow: t.slow, micro: t.micro, fail: t.fail, wait: t.wait, setup: t.setup };
     });
     const board = boardOf(s, l.id);
-    return { n, machines, sum: lineSum(n, ld), ...(board ? { board } : {}) };
+    const sum = lineSum(n, ld);
+    const holds = holdsOf(sum);
+    return { n, machines, sum, ...(holds ? { holds } : {}), ...(board ? { board } : {}) };
   });
-  return { view: 'floor', win: q.win, span, rooms, lines };
+  return { view: 'floor', win: q.win, span, rooms, lines, waits: waitsOf(s, list, days.at(-1) === today, index) };
+}
+
+/** «Держит линию» (Б1к) — из итога линии планёрки: ключевая машина и её главная потеря; ждала соседа — сосед. */
+export function holdsOf(sum: LineSum): FloorHolds | undefined {
+  if (sum.key === undefined) return undefined;
+  if (sum.loss?.what === 'wait' && sum.neighbour) return { k: sum.neighbour.k, what: sum.neighbour.what, sec: sum.neighbour.sec, key: sum.key };
+  return { k: sum.key, ...(sum.loss ? { what: sum.loss.what, sec: sum.loss.sec } : {}) };
+}
+
+/**
+ * Ожидание серий у мест за окно (Б1к): сутки учёта и, если в окне сегодня, отрезки, которые ещё идут; ход стадий и линии
+ * — не ожидание. Места — по убыванию часов, при равных — по порядку плана.
+ */
+function waitsOf(s: PlantState, list: DayLoss[], today: boolean, index: Map<string, number>): FloorWait[] {
+  const by = new Map<string, FloorWait>();
+  const at = (room: string) => {
+    let w = by.get(room);
+    if (!w) {
+      w = { i: index.get(room) ?? -1, sec: {}, total: 0, what: 'line', now: [] };
+      by.set(room, w);
+    }
+    return w;
+  };
+  const put = (room: string, ph: BatchPhase, sec: number) => {
+    if (!IS_WAIT.has(ph) || sec <= 0) return;
+    const w = at(room);
+    const k = ph as WaitWhat;
+    w.sec[k] = (w.sec[k] ?? 0) + sec;
+    w.total += sec;
+  };
+  for (const d of list) for (const [room, x] of Object.entries(d.waits ?? {})) for (const [ph, sec] of Object.entries(x)) put(room, ph as BatchPhase, sec ?? 0);
+  for (const b of Object.values(s.batches)) {
+    if (!b.place || !b.phase || !IS_WAIT.has(b.phase)) continue;
+    if (today && b.placeAt !== undefined) put(b.place, b.phase, s.t - b.placeAt);
+    at(b.place).now.push({ bn: Number(b.id.slice(1)), code: batchNo(b.code), what: b.phase as WaitWhat });
+  }
+  const out = [...by.values()].filter(w => w.i >= 0);
+  for (const w of out) {
+    w.what = w.total > 0 ? WAIT_WHAT.reduce((a, k) => ((w.sec[k] ?? 0) > (w.sec[a] ?? 0) ? k : a)) : w.now[0].what;
+    w.now.sort((a, b) => a.bn - b.bn);
+  }
+  return out.sort((a, b) => b.total - a.total || a.i - b.i);
 }

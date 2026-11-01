@@ -22,9 +22,12 @@ export interface BenchOpts {
   warm?: number;
   qualities?: Quality[];
   shots?: boolean;
-  /** слой слева (Б1и): «Загрузка и OEE» — замер с включённым слоем, рядом с прежним */
-  layer?: 'load';
+  /** слой слева: «Загрузка и OEE» (Б1и), «Узкие места» и «Проблемы» (Б1к) — замер с включённым слоем, рядом с прежним */
+  layer?: (typeof BENCH_LAYERS)[number];
 }
+
+/** Слои данных, с которыми бенч меряет сцену. */
+export const BENCH_LAYERS = ['load', 'bottle', 'andon'] as const;
 
 /**
  * Сцена спецификации прототипа (критерии приёмки, «3D»): сутки и час завода (сутки — как в верхней полосе, с первых);
@@ -126,10 +129,11 @@ export async function runBench(g: Game, opts: BenchOpts) {
     g.stage.reserve(g.layout.plan.slots.length + SCENE.extra + 256);
     g.extra = stressPallets(g, SCENE.extra);
     g.refreshPallets();
-    // слой данных (Б1и): включён до замеров — столбики, числа и доски на полу из вида «Пол»
+    // слой данных (Б1и, Б1к): включён до замеров — столбики, таблички или значки на полу из видов «Пол» и «Андон»
     if (opts.layer) {
       g.actions.setLayer(opts.layer);
-      for (let i = 0; i < 100 && !store.get().floor.view; i++) await sleep(100);
+      const got = () => (opts.layer === 'andon' ? !!store.get().andon.view : !!store.get().floor.view);
+      for (let i = 0; i < 100 && !got(); i++) await sleep(100);
     }
     g.actions.setSpeed(1);
     const path = route(g);

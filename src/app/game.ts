@@ -30,7 +30,7 @@ import { commandsOf, draftKey, ordersOf, prune, upsert } from '../ui/draft';
 import { type Actions, holds, type Hud, LIVE, NO_RUN, PLAN_RUN, type Speed, type Store } from '../ui/store';
 import { type ArtMode, loadArt } from './art';
 import { keepFirsts, keptFirsts } from './firsts';
-import { barBoxes, nextLayer } from './floor';
+import { andonBoxes, andonMarks, barBoxes, DATA_LAYERS, midSpot, nextLayer, plateBoxes, platesOf } from './floor';
 import { fillsOf, Flows, lineArrows, moveArrows, movesOf, peopleMoves } from './flows';
 import { type Movers, moversAt, taskIcons } from './movers';
 import { stopKey } from '../sim/protocol';
@@ -261,9 +261,13 @@ export class Game {
         // смотрели работу — её строки больше нет: работа кончилась, прежняя скорость
         if (this.watching && !d.rows.some(r => r.key === this.watching!.key)) this.actions.setSpeed(this.watching.resume);
       } else if (d.view === 'floor') {
-        // вид «Пол» (Б1и): столбики и доски на полу, блок «Загрузка» в карточке, подсказка
+        // вид «Пол» (Б1и): столбики и доски на полу, блок «Загрузка» в карточке, подсказка; таблички «Узких мест» (Б1к)
         this.store.set({ floor: { ...this.store.get().floor, view: d } });
         this.stage.setFloor(d);
+        this.stage.plates.set(platesOf(this.layout, d));
+      } else if (d.view === 'andon') {
+        // вид «Андон» (Б1к): значки над вещами ставит кадр — фуры, паллеты и техника двигаются
+        this.store.set({ andon: { view: d } });
       } else if (d.view === 'ghost') {
         // призрак того, что тянут сейчас; прежний запрос — не показываем
         const g = this.store.get().gantt;
@@ -462,6 +466,7 @@ export class Game {
     this.stage.setDetail(this.detail);
     const a = performance.now();
     this.showMovers(ts);
+    if (this.store.get().layer === 'andon') this.stage.andon.set(andonMarks(this.store.get().andon.view?.items ?? [], this.thingTop));
     this.stage.setMachines(this.view.lines, this.view.equipment, this.ff ? FF_CHUNK * 60 : RATE[this.speed]);
     this.stage.frame(dt, (((this.t % 86400) + 86400) % 86400) / 3600);
     this.push(this.frames.draw, performance.now() - a);
@@ -716,7 +721,7 @@ export class Game {
     setLayer: l => {
       // слой данных один (Б1и): с ним стрелки перевозок не проступают; «Потоки — люди» — стрелки переходов людей
       this.stage.forceLayer(l === 'people');
-      this.stage.setFloorOn(l === 'load');
+      this.stage.setDataLayer(DATA_LAYERS.has(l) ? (l as 'load' | 'bottle' | 'andon') : undefined);
       this.store.set({ layer: l, floor: { ...this.store.get().floor, hover: undefined } });
       this.sendViews();
     },
@@ -954,8 +959,10 @@ export class Game {
     if (h.ref.open) list.push({ id: 'ref', view: 'ref' });
     // «Сейчас» — и при закрытой панели: карточке — для «Смотреть», смотрящему — чтобы знать, когда работа кончилась
     if (h.now.open || this.selected || this.watching) list.push({ id: 'now', view: 'now' });
-    // «Пол» (Б1и) — пока включён слой и пока открыта карточка помещения или машины: в ней блок «Загрузка»
-    if (h.layer === 'load' || this.selected?.kind === 'room' || this.selected?.kind === 'machine') list.push({ id: 'floor', view: 'floor', win: h.floor.win });
+    // «Пол» (Б1и) — пока включён слой «Загрузка» или «Узкие места» (Б1к) и пока открыта карточка помещения или машины: в
+    // ней блоки «Загрузка» и «Узкие места»; «Андон» (Б1к) — пока включён слой «Проблемы»
+    if (h.layer === 'load' || h.layer === 'bottle' || this.selected?.kind === 'room' || this.selected?.kind === 'machine') list.push({ id: 'floor', view: 'floor', win: h.floor.win });
+    if (h.layer === 'andon') list.push({ id: 'andon', view: 'andon' });
     const key = JSON.stringify(list);
     if (key === this.viewsSent) return;
     this.viewsSent = key;
@@ -984,6 +991,9 @@ export class Game {
 
   /** Что под курсором (pick.ts): люди и техника — по точке на экране, паллеты, машины и фуры — лучом, помещение — по полу. */
   private thingAt(clientX: number, clientY: number): Thing | undefined {
+    // метки слоя данных — столбики, таблички, значки андона — первыми: щёлкают по ним, а не по человеку под ними
+    const mark = nearest(this.stage.ray(clientX, clientY), this.markBoxes());
+    if (mark) return mark.thing;
     const spots: Spot[] = [];
     const near = (x: number, y: number, z: number, thing: Thing) => {
       const sp = this.stage.screen(x, y, z);
@@ -994,17 +1004,55 @@ export class Game {
       for (const f of this.moversNow.people) near(f.x, 0.9, f.z, { kind: 'person', n: f.person });
       for (const v of this.moversNow.vehicles) near(v.x, 1, v.z, { kind: 'vehicle', n: v.vehicle });
     }
-    // столбики слоя «Загрузка и OEE» (Б1и) выбирают своё помещение или машину
-    const bars = this.store.get().layer === 'load' ? barBoxes(this.stage.floor.spots) : [];
-    const boxes = [...bars, ...palletBoxes([...this.pallets, ...this.carriedNow]), ...this.machineBoxes, ...truckBoxes(this.trucksNow)];
+    const boxes = [...palletBoxes([...this.pallets, ...this.carriedNow]), ...this.machineBoxes, ...truckBoxes(this.trucksNow)];
     return pick(spots, this.stage.ray(clientX, clientY), boxes, this.layout);
   }
 
-  /** Столбик слоя под курсором (Б1и) — для подсказки с часами частей; слой снят или мимо — `undefined`. */
-  private barAt(clientX: number, clientY: number): Thing | undefined {
-    if (this.store.get().layer !== 'load') return undefined;
-    return nearest(this.stage.ray(clientX, clientY), barBoxes(this.stage.floor.spots))?.thing;
+  /**
+   * Короба меток слоя данных: столбики «Загрузки» (Б1и), таблички «Узких мест» и значки андона (Б1к) — с высоты участка
+   * таблички и значки крупнее, короба тоже; слой не данных — пусто.
+   */
+  private markBoxes(): Box[] {
+    const l = this.store.get().layer;
+    const k = 1 + Math.min(1, Math.max(0, this.stage.site));
+    if (l === 'load') return barBoxes(this.stage.floor.spots);
+    if (l === 'bottle') return plateBoxes(this.stage.plates.plates, k);
+    if (l === 'andon') return andonBoxes(this.stage.andon.marks, k);
+    return [];
   }
+
+  /** Метка слоя под курсором — для подсказки: часы частей столбика, ожидание у места, проблемы вещи; мимо — `undefined`. */
+  private barAt(clientX: number, clientY: number): Thing | undefined {
+    const boxes = this.markBoxes();
+    return boxes.length > 0 ? nearest(this.stage.ray(clientX, clientY), boxes)?.thing : undefined;
+  }
+
+  /**
+   * Где вещь значка андона (Б1к) и высота её верха, м: помещение — точка у его середины, пол; оборудование и машина — середина
+   * следа и высота вида; фура, паллета, техника — где они в этом кадре. Вещи на полу нет — `undefined`.
+   */
+  private thingTop = (t: Thing): [number, number, number] | undefined => {
+    const mid = (b: Box | undefined): [number, number, number] | undefined => (b ? [(b.min[0] + b.max[0]) / 2, b.max[1], (b.min[2] + b.max[2]) / 2] : undefined);
+    switch (t.kind) {
+      case 'room': {
+        const at = midSpot(this.layout, t.i);
+        return at ? [at.x, 0, at.z] : undefined;
+      }
+      case 'equipment':
+      case 'machine':
+        return mid(this.machineBoxes.find(x => same(x.thing, t)));
+      case 'truck':
+        return mid(truckBoxes(this.trucksNow).find(x => same(x.thing, t)));
+      case 'unit':
+        return mid(palletBoxes([...this.pallets, ...this.carriedNow]).find(x => same(x.thing, t)));
+      case 'vehicle': {
+        const v = this.moversNow.vehicles.find(x => x.vehicle === t.n);
+        return v ? [v.x, 2.2, v.z] : undefined;
+      }
+      default:
+        return undefined;
+    }
+  };
 
   /** Наведение на столбик: подсказка — у курсора, где он был, когда навели; ушли со столбика — подсказки нет. */
   private hover(clientX: number, clientY: number) {

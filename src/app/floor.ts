@@ -1,27 +1,46 @@
-// Данные на полу (Б1и; docs/specs/2026-10-vertical-slice.md, «Б1и»; docs/13-art.md, §11): слои слева и клавиша L, где
-// стоят столбики помещений и машин линии и доска «План — факт», высоты частей столбика — доли окна, число над ним, строки
-// доски. Числа — гипотезы геймдизайна, §3.6. Чистые функции без Three.js и DOM — их проверяют тесты в Bun; рисует
-// src/render/floor.ts.
+// Данные на полу (Б1и; docs/specs/2026-10-vertical-slice.md, «Б1и», «Б1к»; docs/13-art.md, §11): слои слева и клавиша
+// L, где стоят столбики помещений и машин линии и доска «План — факт», высоты частей столбика — доли окна, число над ним,
+// строки доски; с Б1к — таблички «Узких мест» над тремя местами и над машиной, которая держит линию, и значки андона над
+// вещами, которые не работают. Числа — гипотезы геймдизайна, §3.6. Чистые функции без Three.js и DOM — их проверяют тесты
+// в Bun; рисуют src/render/floor.ts, plates.ts и andon.ts.
 import type { ContentDb } from '../content/types';
 import { HOUR } from '../engine/core/calendar';
 import { CELL } from '../engine/nav';
 import type { Layout } from '../render/layout';
 import { LAMP_COLOR } from '../render/flow';
-import { type FloorView, MACHINE_PARTS, type MachineLoad, ROOM_PARTS } from '../sim/floor';
+import type { AndonItem, AndonKind, AndonWeight } from '../sim/andon';
+import { type FloorView, MACHINE_PARTS, type MachineLoad, ROOM_PARTS, type WaitWhat } from '../sim/floor';
+import type { LineLoss } from '../sim/report';
 import type { Thing } from '../sim/views';
 import type { Box } from './pick';
 
-/** Слои слева (геймдизайн, §3.6, §18): обычный вид, загрузка и OEE (Б1и), потоки людей (Б1г) — по кругу клавишей L. */
-export const LAYERS = ['plain', 'load', 'people'] as const;
+/**
+ * Слои слева (геймдизайн, §3.6, §18): обычный вид, загрузка и OEE (Б1и), узкие места и проблемы (Б1к), потоки людей
+ * (Б1г) — по кругу клавишей L.
+ */
+export const LAYERS = ['plain', 'load', 'bottle', 'andon', 'people'] as const;
 export type Layer = (typeof LAYERS)[number];
 
 export const nextLayer = (l: Layer): Layer => LAYERS[(LAYERS.indexOf(l) + 1) % LAYERS.length];
 
+/** Слои данных: с ними стрелки перевозок не проступают, люди и техника остаются, светильников под потолком нет. */
+export const DATA_LAYERS: ReadonlySet<Layer> = new Set<Layer>(['load', 'bottle', 'andon']);
+
 /**
  * Размеры (геймдизайн, §3.6; гипотезы), м: столбик помещения и машины линии — сторона; полная высота — всё окно; высота
- * числа над столбиком; доска «План — факт» — ширина, высота и нижний край.
+ * числа над столбиком; доска «План — факт» — ширина, высота и нижний край; табличка «Узких мест» — высота букв строки и
+ * нижний край; значок андона — сторона, высота центра над полом вещи и высота букв слова под ним; над вещью выше — `over`
+ * над её верхом до нижнего края значка.
  */
-export const FLOOR = { room: 0.6, machine: 0.4, full: 2.4, digits: 0.35, board: { w: 2, h: 1.2, y: 1.8 } } as const;
+export const FLOOR = {
+  room: 0.6,
+  machine: 0.4,
+  full: 2.4,
+  digits: 0.35,
+  board: { w: 2, h: 1.2, y: 1.8 },
+  plate: { h: 0.35, y: 2.4 },
+  andon: { size: 0.6, y: 2.8, word: 0.22, over: 0.3 },
+} as const;
 
 /** Часть столбика: что это — состояние помещения или машины. */
 export type Part = 'work' | 'clean' | 'held' | MachineLoad;
@@ -197,4 +216,114 @@ export interface BoardRow {
 /** Строки доски по часам смены. */
 export function boardRows(b: NonNullable<FloorView['lines'][number]['board']>): BoardRow[] {
   return b.hours.map((h, i) => ({ from: b.from + i * HOUR, plan: h.plan, ...(h.fact !== undefined ? { fact: h.fact } : {}), now: b.now === i, low: h.fact !== undefined && b.now !== i && h.fact < h.plan }));
+}
+
+// ---------------------------------------------------------------- узкие места и проблемы (Б1к)
+
+const midCache = new WeakMap<Layout, Map<number, { x: number; z: number } | undefined>>();
+
+/**
+ * Точка над помещением: свободная клетка пола, у которой все восемь соседей — пол того же помещения, ближе всех к его
+ * середине; таких нет — середина помещения. Над ней — табличка «Узких мест» и значок андона. Считается раз на план.
+ */
+export function midSpot(l: Layout, i: number): { x: number; z: number } | undefined {
+  let m = midCache.get(l);
+  if (!m) midCache.set(l, (m = new Map()));
+  if (!m.has(i)) m.set(i, findMid(l, i));
+  return m.get(i);
+}
+
+function findMid(l: Layout, i: number): { x: number; z: number } | undefined {
+  const r = l.rooms[i];
+  if (!r) return undefined;
+  const nav = l.nav;
+  const cx = r.x + r.w / 2;
+  const cz = r.z + r.d / 2;
+  const free = (x: number, z: number) => x >= 0 && z >= 0 && x < nav.w && z < nav.h && nav.cells[z * nav.w + x] === CELL.floor && nav.room[z * nav.w + x] === i && !nav.blocked[z * nav.w + x];
+  let best: { x: number; z: number } | undefined;
+  let near = Number.POSITIVE_INFINITY;
+  for (let z = Math.ceil(r.z); z < r.z + r.d; z++) {
+    for (let x = Math.ceil(r.x); x < r.x + r.w; x++) {
+      let ok = true;
+      for (let dz = -1; dz <= 1 && ok; dz++) for (let dx = -1; dx <= 1 && ok; dx++) ok = free(x + dx, z + dz);
+      if (!ok) continue;
+      const d = Math.hypot(x + 0.5 - cx, z + 0.5 - cz);
+      if (d < near) {
+        near = d;
+        best = { x: x + 0.5, z: z + 0.5 };
+      }
+    }
+  }
+  return best ?? { x: cx, z: cz };
+}
+
+/**
+ * Табличка «Узких мест»: над помещением — место по порядку, часы ожидания серий за окно и слово наибольшего ожидания; над
+ * машиной — «держит линию» с её главной потерей; ждала соседа ключевая машина `key` — табличка над соседом.
+ */
+export type Plate =
+  | { thing: Thing; x: number; z: number; k: 'top'; rank: number; sec: number; what: WaitWhat }
+  | { thing: Thing; x: number; z: number; k: 'holds'; what?: LineLoss; sec?: number; key?: number };
+
+/** Таблички вида «Пол»: три места с часами ожидания — по убыванию, и над машиной, которая держит каждую линию. */
+export function platesOf(l: Layout, v: FloorView): Plate[] {
+  const out: Plate[] = [];
+  v.waits
+    .filter(w => w.total > 0)
+    .slice(0, 3)
+    .forEach((w, n) => {
+      const at = midSpot(l, w.i);
+      if (at) out.push({ thing: { kind: 'room', i: w.i }, ...at, k: 'top', rank: n + 1, sec: w.total, what: w.what });
+    });
+  for (const ln of v.lines) {
+    const h = ln.holds;
+    const m = h ? l.plan.plant.lines[ln.n]?.machines[h.k] : undefined;
+    if (!h || !m) continue;
+    out.push({ thing: { kind: 'machine', line: ln.n, k: h.k }, x: m.at[0] / 100, z: m.at[1] / 100, k: 'holds', ...(h.what ? { what: h.what, sec: h.sec } : {}), ...(h.key !== undefined ? { key: h.key } : {}) });
+  }
+  return out;
+}
+
+/** Табличка на полу: ширина её фона и высота, м, без увеличения с высоты участка (src/render/plates.ts). */
+export type PlateShown = Plate & { w: number; h: number };
+
+/** Короба табличек для щелчка и наведения: табличка повёрнута к камере — короб квадратный в плане; `scale` — с высоты участка. */
+export function plateBoxes(list: readonly PlateShown[], scale: number): Box[] {
+  return list.map(p => {
+    const w = (p.w * scale) / 2;
+    return { thing: p.thing, min: [p.x - w, FLOOR.plate.y, p.z - w], max: [p.x + w, FLOOR.plate.y + p.h * scale, p.z + w] };
+  });
+}
+
+/** Значок андона на полу: вещь, вид и вес первой проблемы, номер в виде и центр значка, м. */
+export interface AndonMark {
+  thing: Thing;
+  kind: AndonKind;
+  weight: AndonWeight;
+  n: number;
+  x: number;
+  y: number;
+  z: number;
+}
+
+/**
+ * Значки андона над вещами: `top` — где вещь и высота её верха, м (вещи на полу нет — значка нет). Центр — на
+ * `FLOOR.andon.y` над полом; вещь выше — над её верхом, с зазором `over` до нижнего края значка.
+ */
+export function andonMarks(items: readonly AndonItem[], top: (t: Thing) => [number, number, number] | undefined): AndonMark[] {
+  const out: AndonMark[] = [];
+  const a = FLOOR.andon;
+  items.forEach((it, n) => {
+    const at = top(it.thing);
+    if (!at) return;
+    out.push({ thing: it.thing, kind: it.kind, weight: it.weight, n, x: at[0], y: Math.max(a.y, at[1] + a.over + a.size / 2), z: at[2] });
+  });
+  return out;
+}
+
+/** Короба значков андона для щелчка и наведения: значок и слово под ним (вдвое выше букв); `scale` — с высоты участка. */
+export function andonBoxes(list: readonly AndonMark[], scale: number): Box[] {
+  const a = FLOOR.andon;
+  const r = (a.size * scale) / 2;
+  return list.map(m => ({ thing: m.thing, min: [m.x - r, m.y - r - 2 * a.word * scale, m.z - r], max: [m.x + r, m.y + r, m.z + r] }));
 }

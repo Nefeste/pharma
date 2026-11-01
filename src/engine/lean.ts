@@ -7,6 +7,7 @@ import { lineUnfit, stageUnfit } from './assets';
 import { DAY, HOUR, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { machineSpeed } from './modes';
+import { roomAt } from './places';
 import { planOf } from './plant';
 import type { PlantPlan } from './plant';
 import type { Batch, BatchPhase, DayLoss, Line, LineDay, MachineTimes, PlantState, Room, RoomPhase, RoomTimes, ShiftTask, Task, TaskKind, WaitCause } from './types';
@@ -73,6 +74,7 @@ export function newLoss(day: number): DayLoss {
     changes: { n: 0, sec: 0 },
     lines: {},
     rooms: {},
+    waits: {},
   };
 }
 
@@ -224,6 +226,8 @@ export function leanHour(db: ContentDb, s: PlantState) {
     dayOf(s, now.day);
   }
   for (const id of roomsOf(planOf(db, s.plant)).rooms) roomSpan(s, s.rooms[id]);
+  // отрезки серий у мест (Б1к) — тоже каждый час: через полночь их нет
+  for (const b of Object.values(s.batches)) if (b.place) placeSpan(s, b);
   // годные пачки часа — у каждого открытого задания с часами (доска «План — факт», Б1и): до конца смены, чтобы их сумма
   // была выпуском смены
   // смена короче суток: задания старше двух суток закрыты
@@ -384,17 +388,82 @@ export function phaseOf(db: ContentDb, s: PlantState, b: Batch): BatchPhase | un
   }
 }
 
-/** После раздачи задач: у каждой серии, чьё состояние сменилось, прошлый отрезок — в его состояние; так же у помещений. */
+/**
+ * После раздачи задач: у каждой серии, чьё состояние сменилось, прошлый отрезок — в его состояние; так же у помещений.
+ * С Б1к — и у места: сменилось состояние или место — отрезок у прошлого места в сутки его начала.
+ */
 export function leanStep(db: ContentDb, s: PlantState) {
   for (const b of Object.values(s.batches)) {
     const ph = phaseOf(db, s, b);
-    if (ph === b.phase) continue;
-    if (b.phase && s.t > b.phaseAt) b.spent[b.phase] = (b.spent[b.phase] ?? 0) + s.t - b.phaseAt;
-    if (ph) b.phase = ph;
-    else delete b.phase;
-    b.phaseAt = s.t;
+    const at = ph ? placeOf(db, s, b, ph) : undefined;
+    if (ph === b.phase && at === b.place) continue;
+    placeSpan(s, b);
+    if (ph !== b.phase) {
+      if (b.phase && s.t > b.phaseAt) b.spent[b.phase] = (b.spent[b.phase] ?? 0) + s.t - b.phaseAt;
+      if (ph) b.phase = ph;
+      else delete b.phase;
+      b.phaseAt = s.t;
+    }
+    if (at) {
+      b.place = at;
+      b.placeAt = s.t;
+    } else {
+      delete b.place;
+      delete b.placeAt;
+    }
   }
   roomsStep(db, s);
+}
+
+/** Места учёта, кроме помещений стадий и линий (Б1к): склад, лаборатория и помещение ООК — где пост уполномоченного лица. */
+interface Spots {
+  store: string;
+  lab: string;
+  qa: string;
+}
+
+const spotsCache = new WeakMap<PlantPlan, Spots>();
+
+function spotsOf(plan: PlantPlan): Spots {
+  const hit = spotsCache.get(plan);
+  if (hit) return hit;
+  const p = plan.plant;
+  const qp = p.posts['role.qp'];
+  const out: Spots = { store: plan.roomOf.warehouse, lab: plan.roomOf.lab, qa: (qp && roomAt(p, qp[0], qp[1])) ?? plan.roomOf.office };
+  spotsCache.set(plan, out);
+  return out;
+}
+
+/**
+ * Место серии в состоянии `ph` (Б1к) — помещение: стадии идут и ждут в помещении стадии, упаковка — в помещении линии,
+ * балк ждёт решения лаборатории — у лаборатории, ГП ждёт проверки и решения — у помещения ООК, до стадий — нет
+ * материала или комплект едет — у склада. Своя дата «не раньше» — не ожидание: места нет.
+ */
+export function placeOf(db: ContentDb, s: PlantState, b: Batch, ph: BatchPhase): string | undefined {
+  if (ph === 'plan' || ph === 'before') return undefined;
+  const plan = planOf(db, s.plant);
+  switch (b.status) {
+    case 'process':
+      return plan.roomOf[db.recipes[b.recipe].stages[b.stage].room];
+    case 'bulk':
+      return spotsOf(plan).lab;
+    case 'packing':
+      return roomsOf(plan).lineRoom[b.pack!.line];
+    case 'fg':
+      return spotsOf(plan).qa;
+    default:
+      return spotsOf(plan).store;
+  }
+}
+
+/** Отрезок серии у места (Б1к) от `placeAt` до сейчас — в сутки его начала, в её нынешнее состояние. */
+function placeSpan(s: PlantState, b: Batch) {
+  if (!b.place || !b.phase || b.placeAt === undefined) return;
+  if (s.t > b.placeAt) {
+    const x = (dayOf(s, momentOf(s.start, b.placeAt).day).waits[b.place] ??= {});
+    x[b.phase] = (x[b.phase] ?? 0) + s.t - b.placeAt;
+  }
+  b.placeAt = s.t;
 }
 
 /** Помещения учёта (Б1и) — помещения производства и упаковки: где по плану стоит оборудование или линия; по порядку плана. */

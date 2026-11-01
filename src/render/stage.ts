@@ -18,7 +18,9 @@ import type { People } from './bake';
 import { dressOf, lookOf, skinOf } from './cast';
 import { AT, shownOf, type Weights } from './detail';
 import { buildDoors, type Doors } from './doors';
+import { AndonLayer } from './andon';
 import { FloorLayer } from './floor';
+import { PlateLayer } from './plates';
 import { GpuTimer } from './gpu';
 import { buildLamps, type Lamps } from './lamps';
 import type { Layout } from './layout';
@@ -78,6 +80,10 @@ export class Stage {
   readonly overlay: Overlay;
   /** слой «Загрузка и OEE» (Б1и): столбики, числа, доски «План — факт» */
   readonly floor: FloorLayer;
+  /** слой «Узкие места» (Б1к): таблички над тремя местами и над машиной, которая держит линию */
+  readonly plates = new PlateLayer();
+  /** слой «Проблемы» (Б1к): значки андона над вещами, которые не работают */
+  readonly andon = new AndonLayer();
   /** что видно при нынешней крупности показа (detail.ts) */
   private shownD = shownOf(AT[1]);
   private lineRows: readonly LineRow[] = [];
@@ -141,6 +147,8 @@ export class Stage {
     this.scene.add(this.overlay.group);
     this.floor = new FloorLayer(init.db, layout, roomsOf(layout.plan).rooms, n => T.morning.line(n + 1));
     this.scene.add(this.floor.group);
+    this.scene.add(this.plates.mesh);
+    this.scene.add(this.andon.group);
     this.loads = new Loads(init.capacity);
     this.scene.add(this.loads.group);
     this.scene.add(this.trucks.group);
@@ -224,14 +232,24 @@ export class Stage {
     this.overlay.setShown(on ? 1 : this.shownD.layer);
   }
 
-  /** Слой «Загрузка и OEE» (Б1и): виден или нет; вес уровня участка — числа с высоты участка крупнее. */
+  /**
+   * Слой данных (Б1и, Б1к): «Загрузка и OEE», «Узкие места» или «Проблемы» — какой виден, или ни один; вес уровня участка
+   * — числа, таблички и значки с высоты участка крупнее.
+   */
   private dataOn = false;
   private siteW = 0;
-  setFloorOn(on: boolean) {
-    this.dataOn = on;
-    this.floor.setShown(on);
-    // светильники под потолком сверху закрывают числа, доску и верх столбиков: в слое данных их нет, свет на полу — есть
-    this.lamps.mesh.visible = !on;
+  setDataLayer(layer: 'load' | 'bottle' | 'andon' | undefined) {
+    this.dataOn = layer !== undefined;
+    this.floor.setShown(layer === 'load');
+    this.plates.setShown(layer === 'bottle');
+    this.andon.setShown(layer === 'andon');
+    // светильники под потолком сверху закрывают числа, доску, таблички и значки: в слое данных их нет, свет на полу — есть
+    this.lamps.mesh.visible = !this.dataOn;
+  }
+
+  /** Вес уровня участка сейчас: числа, таблички и значки с высоты участка крупнее — и их короба для щелчка. */
+  get site(): number {
+    return this.siteW;
   }
 
   /** Вид «Пол» из потока расчёта: столбики, числа и доски — заново. */
@@ -376,6 +394,8 @@ export class Stage {
     this.machines.update(dt, this.gameRate, this.lineRows, this.eqRows, this.shownD);
     this.signs.update(u, cam.half);
     this.floor.update(cam.camera, this.siteW);
+    this.plates.update(this.siteW);
+    this.andon.update(this.siteW);
     this.draw();
   }
 

@@ -17,7 +17,7 @@ import { assetName, untilText, unfitText, workName } from './assets';
 import { db, docText } from './db';
 import { DevBody, First, KnobsBlock, RegimesBlock, ReleaseBlock, SpeedBlock } from './Decide';
 import { LeaveBlock } from './Leave';
-import { LoadBlock } from './Layers';
+import { AndonRows, BottleBlock, LoadBlock } from './Layers';
 import { StatusIcon, TaskIcon } from './icons';
 import { WhoList } from './Journal';
 import { placeText, supplierText } from './Stock';
@@ -546,6 +546,7 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
           <DossierButton n={c.bn} actions={actions} />
           <Why list={c.why} start={start} />
           {hud.selected ? <LoadBlock key={JSON.stringify(hud.selected)} hud={hud} thing={hud.selected} plant={plant} actions={actions} /> : null}
+          {hud.selected ? <BottleBlock hud={hud} thing={hud.selected} actions={actions} /> : null}
         </>
       );
       break;
@@ -706,6 +707,8 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
       );
       break;
   }
+  // со слоем «Проблемы» (Б1к) — то, что не работает у вещи сейчас, теми же словами, что у значка на полу
+  const andon = hud.layer === 'andon' && hud.selected ? hud.andon.view?.items.find(x => JSON.stringify(x.thing) === JSON.stringify(hud.selected)) : undefined;
   return (
     <div className={`card panel${beside ? ' beside' : ''}`} id="card" data-test="card">
       <div className="cardhead">
@@ -715,6 +718,12 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
         </button>
       </div>
       <First kind={firstOf(c)} hud={hud} actions={actions} />
+      {andon ? (
+        <div data-test="card-andon">
+          <div className="csec">{T.andon.title}</div>
+          <AndonRows item={andon} plant={plant} start={start} />
+        </div>
+      ) : null}
       {body}
       {watch ? (
         <div className="cwatch">

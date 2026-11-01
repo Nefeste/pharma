@@ -445,6 +445,14 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     }
     return raw;
   },
+  // 31 → 32 (Б1к): учёт ожидания серий у мест — с мгновения сохранения, у прошлых суток его нет: место и начало отрезка
+  // у каждой серии в работе ставит первый шаг учёта
+  31: (raw, db) => {
+    const s = raw as unknown as PlantState;
+    for (const d of s.losses) d.waits ??= {};
+    leanStep(db, s);
+    return raw;
+  },
 };
 
 export function toSave(s: PlantState): string {

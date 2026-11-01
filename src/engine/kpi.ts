@@ -27,7 +27,8 @@ export type KpiUnit = 'kop' | 'share' | 'sec' | 'day' | 'per' | 'wh';
  * Определение показателя (ISO 22400-2, табл. 1, — имя, формула, единица, тренд): кто им измеряется, единица, направление
  * — 1 «выше — лучше», −1 «ниже — лучше»; окно — месяц или 12 месяцев скользящим окном (редкие события: отказы, OOS,
  * отклонения, текучесть; геймдизайн, §8.6); ключи источников формулы (`docs/10-domain.md`), пусто — определение наше;
- * противовес — показатель, который этот может испортить; у кого ещё в строке.
+ * противовес — показатель, который этот может испортить; у кого ещё в строке; сумма за месяц — копится с его начала:
+ * неполный месяц с полным сравнивают в сутки.
  */
 export interface KpiDef {
   id: string;
@@ -38,6 +39,7 @@ export interface KpiDef {
   src: readonly string[];
   pair?: string;
   also?: readonly KpiHead[];
+  acc?: true;
 }
 
 const ISO = 'gost-r-iso-22400-2-2019';
@@ -45,13 +47,13 @@ const ISO = 'gost-r-iso-22400-2-2019';
 /** Показатели руководителей по порядку строк окна. */
 export const KPIS: readonly KpiDef[] = [
   // директор: деньги — кассовым методом, без прибыли и рентабельности до себестоимости продаж (Б6)
-  { id: 'flow', head: 'dir', unit: 'kop', dir: 1, win: 'm', src: ['cbr-714p'], pair: 'otifOrders' },
+  { id: 'flow', head: 'dir', unit: 'kop', dir: 1, win: 'm', src: ['cbr-714p'], pair: 'otifOrders', acc: true },
   { id: 'cashMin', head: 'dir', unit: 'kop', dir: 1, win: 'm', src: [], pair: 'flow' },
   { id: 'otifOrders', head: 'dir', unit: 'share', dir: 1, win: 'm', src: [], pair: 'fgDays' },
   // планирование
   { id: 'onDay', head: 'plan', unit: 'share', dir: 1, win: 'm', src: [], pair: 'fgDays' },
   { id: 'fgDays', head: 'plan', unit: 'day', dir: -1, win: 'm', src: ['fda-qm-2022'], pair: 'otif' },
-  { id: 'switchH', head: 'plan', unit: 'sec', dir: -1, win: 'm', src: [], pair: 'fgDays' },
+  { id: 'switchH', head: 'plan', unit: 'sec', dir: -1, win: 'm', src: [], pair: 'fgDays', acc: true },
   // производство
   { id: 'oee', head: 'mes', unit: 'share', dir: 1, win: 'm', src: [ISO], pair: 'rft' },
   { id: 'setup', head: 'mes', unit: 'share', dir: -1, win: 'm', src: [ISO] },
@@ -59,7 +61,7 @@ export const KPIS: readonly KpiDef[] = [
   { id: 'rhythm', head: 'mes', unit: 'share', dir: 1, win: 'm', src: ['bse-rhythm'] },
   { id: 'scrap', head: 'mes', unit: 'share', dir: -1, win: 'm', src: [ISO] },
   { id: 'massLoss', head: 'mes', unit: 'share', dir: -1, win: 'm', src: [ISO], also: ['tech'] },
-  { id: 'ot', head: 'mes', unit: 'sec', dir: -1, win: 'm', src: ['tk-99'], pair: 'shift' },
+  { id: 'ot', head: 'mes', unit: 'sec', dir: -1, win: 'm', src: ['tk-99'], pair: 'shift', acc: true },
   // главный механик
   { id: 'mtbf', head: 'maint', unit: 'sec', dir: 1, win: 'y', src: ['gost-27-102', 'gost-r-57330'] },
   { id: 'mttr', head: 'maint', unit: 'sec', dir: -1, win: 'y', src: ['gost-27-102', 'gost-r-57330'] },
@@ -86,17 +88,17 @@ export const KPIS: readonly KpiDef[] = [
   { id: 'cpk', head: 'tech', unit: 'share', dir: 1, win: 'm', src: [ISO, 'fda-qm-2022'], pair: 'oee' },
   { id: 'rft', head: 'tech', unit: 'share', dir: 1, win: 'm', src: ['ispe-qm-w2', 'fda-qm-2022'], pair: 'oee', also: ['dir'] },
   // снабжение
-  { id: 'matWait', head: 'supply', unit: 'sec', dir: -1, win: 'm', src: [], pair: 'matDays' },
+  { id: 'matWait', head: 'supply', unit: 'sec', dir: -1, win: 'm', src: [], pair: 'matDays', acc: true },
   { id: 'matDays', head: 'supply', unit: 'day', dir: -1, win: 'm', src: ['gks-fhd-2002'], pair: 'matWait' },
   { id: 'framework', head: 'supply', unit: 'share', dir: 1, win: 'm', src: ['ghsc-fy2019'] },
   // склад
   { id: 'dockToStock', head: 'wms', unit: 'sec', dir: -1, win: 'm', src: [] },
-  { id: 'dockWait', head: 'wms', unit: 'sec', dir: -1, win: 'm', src: [], pair: 'occupancy' },
+  { id: 'dockWait', head: 'wms', unit: 'sec', dir: -1, win: 'm', src: [], pair: 'occupancy', acc: true },
   { id: 'occupancy', head: 'wms', unit: 'share', dir: -1, win: 'm', src: ['werc-dc-measures'], pair: 'dockWait' },
   { id: 'shelf', head: 'wms', unit: 'day', dir: 1, win: 'm', src: ['ghsc-fy2019'] },
   // продажи
   { id: 'otif', head: 'sales', unit: 'share', dir: 1, win: 'm', src: ['ghsc-fy2019'], pair: 'fgDays' },
-  { id: 'revenue', head: 'sales', unit: 'kop', dir: 1, win: 'm', src: ['fsbu-4-2023'], pair: 'dso' },
+  { id: 'revenue', head: 'sales', unit: 'kop', dir: 1, win: 'm', src: ['fsbu-4-2023'], pair: 'dso', acc: true },
   { id: 'dso', head: 'sales', unit: 'day', dir: -1, win: 'm', src: ['gks-fhd-2002'], pair: 'revenue' },
   // кадры
   { id: 'turnover', head: 'hr', unit: 'share', dir: -1, win: 'y', src: ['ispe-qm-w2'], pair: 'otLimit', also: ['dir'] },
@@ -466,13 +468,13 @@ const CALC: Record<string, Calc> = {
     return share(clean, clean + work);
   },
   shift: c => {
-    const tasks = c.s.shiftTasks.filter(t => t.plan > 0 && t.fact !== undefined && inside(t.to, c.p.from, c.p.to));
+    const tasks = closedShifts(c.s, c.p.from, c.p.to).filter(t => t.plan > 0 && t.fact !== undefined);
     return share(
       tasks.reduce((n, t) => n + (t.fact ?? 0), 0),
       tasks.reduce((n, t) => n + t.plan, 0),
     );
   },
-  rhythm: c => rhythm(c.s.shiftTasks.filter(t => inside(t.to, c.p.from, c.p.to))),
+  rhythm: c => rhythm(closedShifts(c.s, c.p.from, c.p.to)),
   scrap: c => {
     const jobs = Object.values(c.s.batches).flatMap(b => (b.pack && inside(b.pack.end, c.p.from, c.p.to) ? [b.pack] : []));
     return share(
@@ -725,13 +727,31 @@ function usedValue(c: Ctx): number {
 
 /** Значения показателей за период — в единицах определений; посчитать не из чего — ключа нет. */
 export function kpiValues(db: ContentDb, s: PlantState, p: KpiPeriod): Record<string, number> {
+  return kpiPick(db, s, p, KPIS.map(k => k.id));
+}
+
+/** Значения только этих показателей за период — итог поста (3е) считает свои теми же функциями. */
+export function kpiPick(db: ContentDb, s: PlantState, p: KpiPeriod, ids: readonly string[]): Record<string, number> {
   const c = ctxOf(db, s, p);
   const out: Record<string, number> = {};
-  for (const k of KPIS) {
-    const v = CALC[k.id](c);
-    if (v !== undefined && Number.isFinite(v)) out[k.id] = v;
+  for (const id of ids) {
+    const v = CALC[id]?.(c);
+    if (v !== undefined && Number.isFinite(v)) out[id] = v;
   }
   return out;
+}
+
+/**
+ * Период «с мгновения `from` по сейчас» — итог поста (3е): без сумм срезов и кВт·ч — его показатели их не читают; окно
+ * 12 месяцев — как у текущего месяца.
+ */
+export function sincePeriod(s: PlantState, from: number): KpiPeriod {
+  return { from, to: s.t, yFrom: monthStart(s, s.t, -11), snap: emptySnap(), wh: 0 };
+}
+
+/** Сменные задания, закрытые в [from, to), — у выполнения заданий и ритмичности. */
+export function closedShifts(s: PlantState, from: number, to: number) {
+  return s.shiftTasks.filter(t => inside(t.to, from, to));
 }
 
 /** Контекст расчёта за период — для видов: «Почему?» каждого показателя читает те же записи. */

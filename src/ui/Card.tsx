@@ -4,7 +4,7 @@
 import { type ReactNode, useState } from 'react';
 import type { PartType } from '../content/types';
 import { civilFromDays, momentOf, weekday, type Ymd } from '../engine/core/calendar';
-import { clock, dayText, hText, money, named, num, qtyText, T, whenText } from '../i18n';
+import { clock, dayText, hText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import { DEPT_SEAT } from '../engine/seats';
 import type { SaView, SheetView } from '../sim/hours';
 import type { NowRow } from '../sim/now';
@@ -691,6 +691,27 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
         </>
       );
       body = <DevBody c={c} start={start} hud={hud} actions={actions} />;
+      break;
+    case 'order':
+      // заказ покупателя (Б5ж): его открывают из «Почему?» показателей — на полу заказа нет
+      title = T.card.orderTitle(c.order);
+      body = (
+        <dl data-test="card-order">
+          <Row k={T.card.state}>{T.card.orderStatus[c.status] ?? c.status}</Row>
+          <Row k={T.card.customer}>{named(db?.customers[c.customer]?.name, c.customer)}</Row>
+          <Row k={T.card.placed}>{whenText(start, c.placed)}</Row>
+          <Row k={T.card.due}>{whenText(start, c.due)}</Row>
+          {c.shipped !== undefined ? <Row k={T.card.shippedAt}>{whenText(start, c.shipped)}</Row> : null}
+          <Row k={T.card.minShelf}>{T.card.minShelfText(pctText(c.minShelf))}</Row>
+          <Row k={T.card.orderLines}>
+            {c.lines.map(l => (
+              <div key={l.sku} className={l.shipped < l.cases && c.status !== 'open' ? 'bad' : undefined}>
+                {T.card.orderLine(named(db?.skus[l.sku]?.name, l.sku), l.shipped, l.cases)}
+              </div>
+            ))}
+          </Row>
+        </dl>
+      );
       break;
     case 'truck':
       title = T.card.truck(!!c.customer, !!c.waste);

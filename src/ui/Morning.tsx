@@ -9,10 +9,12 @@ import { planOf } from '../engine/plant';
 import { DEPT_SEAT } from '../engine/seats';
 import { dateText, daysText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { HeadDay } from '../sim/journal';
+import type { MonthClose } from '../sim/kpi';
 import type { LineSum, MainLoss, ModeRow, MorningView, SeatSum, SessionSum } from '../sim/report';
 import type { RejectSum } from '../sim/waste';
 import type { Thing } from '../sim/views';
 import { assetName, workName } from './assets';
+import { headName, kpiName, kpiText, kpiValue, monthText } from './Kpi';
 import { db } from './db';
 import { Levers } from './Levers';
 import type { Actions, Hud } from './store';
@@ -200,22 +202,23 @@ function SeatBlock({ x, start }: { x: SeatSum; start: Ymd }) {
   const rows: string[] = [];
   switch (x.seat) {
     case 'production': {
+      // числа — показатели окна «Показатели» (Б5ж) за время на месте: те же определения и та же запись
       const packs = (n: number) => T.morning.packs(num(n));
-      rows.push(x.shifts === 0 ? T.morning.prod.noShifts : T.morning.prod.plan(packs(x.fact), packs(x.plan), pctText(Math.floor((x.fact * 10000) / x.plan))));
-      if (x.rhythm !== undefined) rows.push(T.morning.prod.rhythm(pctText(x.rhythm)));
-      for (const l of x.lines) rows.push(l.oee ? T.morning.prod.oee(T.morning.line(l.line + 1), pctText(Math.min(l.oee.oee, 10000))) : T.morning.prod.noOee(T.morning.line(l.line + 1)));
+      rows.push(x.shift === undefined ? T.morning.prod.noShifts : T.morning.prod.plan(packs(x.fact), packs(x.plan), kpiValue('share', x.shift)));
+      if (x.rhythm !== undefined) rows.push(T.morning.prod.rhythm(kpiValue('share', x.rhythm)));
+      for (const l of x.lines) rows.push(l.oee ? T.morning.prod.oee(T.morning.line(l.line + 1), kpiValue('share', l.oee.oee)) : T.morning.prod.noOee(T.morning.line(l.line + 1)));
       rows.push(T.morning.prod.recleans(x.recleans));
       rows.push(T.morning.prod.switches(x.switches.major, durText(x.switches.majorSec), x.switches.changes, durText(x.switches.changeSec)));
       break;
     }
     case 'quality':
       rows.push(T.morning.qual.devs(x.deviations, x.open));
-      rows.push(x.decided === 0 ? T.morning.qual.noDecisions : T.morning.qual.first(x.first, x.decided));
-      if (x.toDecision !== undefined) rows.push(T.morning.qual.toDecision(durText(x.toDecision)));
+      rows.push(x.rft === undefined ? T.morning.qual.noDecisions : T.morning.qual.first(x.first, x.released, kpiValue('share', x.rft)));
+      if (x.release !== undefined) rows.push(T.morning.qual.toDecision(kpiValue('sec', x.release)));
       break;
     case 'director':
-      rows.push(T.morning.dir.cash(money(x.balance), money(x.change, true)));
-      rows.push(x.closed === 0 ? T.morning.dir.noOrders : T.morning.dir.orders(x.onTime, x.closed));
+      rows.push(T.morning.dir.cash(money(x.balance), kpiValue('kop', x.flow, true)));
+      rows.push(x.otif === undefined ? T.morning.dir.noOrders : T.morning.dir.orders(x.onTime, x.closed, kpiValue('share', x.otif)));
       rows.push(T.morning.dir.rejected(x.rejected));
       break;
     default:
@@ -229,6 +232,41 @@ function SeatBlock({ x, start }: { x: SeatSum; start: Ymd }) {
           <li key={i}>{r}</li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * Итоги месяца (Б5ж) — на первой планёрке месяца: у руководителя — показатели, сдвинувшиеся сильнее всего против месяца до
+ * него, с противовесом; первый закрытый месяц — сравнивать не с чем. Рычаг — окно «Показатели». Это отчёт, а не событие:
+ * без автопаузы и без извещения.
+ */
+function MonthBlock({ x, hud, actions, close }: { x: MonthClose; hud: Hud; actions: Actions; close: () => void }) {
+  return (
+    <div className="mblock" data-test="morning-month">
+      {x.first ? <div className="muted">{T.kpi.close.first}</div> : null}
+      {!x.first && x.heads.length === 0 ? <div className="muted">{T.kpi.close.none}</div> : null}
+      {x.heads.map(h => (
+        <div key={h.head} data-test="morning-month-head" data-head={h.head}>
+          <div className="mhead">{headName(h.head)}</div>
+          <ul className="mlist">
+            {h.rows.map(r => (
+              <li key={r.id} data-test="morning-month-row" data-id={r.id} data-trend={r.trend}>
+                <span className={r.trend === 1 ? 'good' : r.trend === -1 ? 'bad' : ''}>{r.trend === 1 ? '▲ ' : r.trend === -1 ? '▼ ' : '= '}</span>
+                {T.kpi.close.row(kpiName(r.id), kpiText(r.id, r.unit, r.v), kpiText(r.id, r.unit, r.was), T.kpi.trendShort[r.trend === 1 ? 'up' : r.trend === -1 ? 'down' : 'same'])}
+                {r.pair ? (
+                  <div className="muted">
+                    {r.pair.v !== undefined && r.pair.was !== undefined
+                      ? T.kpi.close.pair(kpiName(r.pair.id), kpiText(r.pair.id, r.pair.unit, r.pair.v), kpiText(r.pair.id, r.pair.unit, r.pair.was))
+                      : T.kpi.close.pairNone(kpiName(r.pair.id))}
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      <Levers list={[{ k: 'kpi', month: x.from }]} hud={hud} actions={actions} close={close} />
     </div>
   );
 }
@@ -326,6 +364,11 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
           {v.session && hud.session ? (
             <Section title={T.morning.session.title}>
               <SessionBlock x={v.session} real={hud.session.real} />
+            </Section>
+          ) : null}
+          {v.month ? (
+            <Section title={T.kpi.close.title(`${monthText(v.month)}${v.month.part ? ` · ${T.kpi.part}` : ''}`)}>
+              <MonthBlock x={v.month} hud={hud} actions={actions} close={close} />
             </Section>
           ) : null}
           {v.seats.length > 0 ? (

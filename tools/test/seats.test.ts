@@ -1,17 +1,20 @@
 // Часть 3е: места игрока (docs/specs/2026-10-panels.md, 3е). Команда `seat` ведёт журнал мест: смена закрывает прежние
 // записи и открывает новые, то же место — та же запись; отказы — пустой набор и место не из сценария. Чужая команда
 // игрока — отказ `notYours` с местом, чья она; директор может всё; команды сценария не проверяются; пока места не
-// выбраны — можно всё. Журнал переживает сохранение; места сценария — из пяти. Итог поста — за время на месте: сменные
-// задания, ритм, OEE и повторные уборки производства; отклонения и решения качества; касса и заказы директора.
+// выбраны — можно всё. Журнал переживает сохранение; места сценария — из пяти. Итог поста — за время на месте теми же
+// функциями, что окно «Показатели» (Б5ж): сменные задания, ритм, OEE и повторные уборки производства; отклонения,
+// «верно с первого раза» и время до решения качества; денежный поток и заказы директора.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { SEATS, type SeatId } from '../../src/content/types';
 import { DAY, HOUR, momentOf } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
+import { cleanBatch, closedAt, kpiValues, median, rejectedAt, sincePeriod } from '../../src/engine/kpi';
 import { oee, rhythm } from '../../src/engine/lean';
 import { fromSave, toSave } from '../../src/engine/save';
 import { foreign, held, OWNER } from '../../src/engine/seats';
 import type { Command, Notice, PlantState } from '../../src/engine/types';
+import { kpiView } from '../../src/sim/kpi';
 import { morningView, seatSums, topView } from '../../src/sim/report';
 import { scenario } from '../content/schema';
 
@@ -174,13 +177,14 @@ describe('итог поста', () => {
     expect(morningView(db, s, { view: 'morning', day }).seats).toEqual(sums);
   });
 
-  test('производство: сменные задания и ритм — по кончившимся сменам; OEE — по суткам линии; уборки и переналадки', () => {
+  test('производство: сменные задания и ритм — по сменам, закрытым на месте; OEE — по суткам линии; уборки и переналадки', () => {
     const p = of('production');
-    const tasks = s.shiftTasks.filter(t => t.plan > 0 && t.fact !== undefined);
+    const tasks = s.shiftTasks.filter(t => t.plan > 0 && t.fact !== undefined && t.to !== undefined && t.to >= t0 && t.to < s.t);
     expect(p.shifts).toBe(tasks.length);
     expect(p.plan).toBe(tasks.reduce((n, t) => n + t.plan, 0));
     expect(p.fact).toBe(tasks.reduce((n, t) => n + t.fact!, 0));
     expect(p.rhythm).toBe(rhythm(tasks));
+    expect(p.shift).toBe(Math.round((p.fact * 10000) / p.plan));
     const line = Object.keys(s.lines)[0];
     const days = s.losses.flatMap(d => (d.lines[line] ? [d.lines[line]] : []));
     const ideal = days[0].ideal.map((_, i) => days.reduce((n, d) => n + d.ideal[i], 0));
@@ -199,30 +203,61 @@ describe('итог поста', () => {
     expect(p.switches.major).toBeGreaterThan(0);
   });
 
-  test('качество: отклонения и решения уполномоченного лица — только с мгновения, когда место взяли снова', () => {
+  test('качество: отклонения и выпущенные серии — только с мгновения, когда место взяли снова; время до решения — медиана', () => {
     const q = of('quality');
     const devs = Object.values(s.deviations).filter(d => d.opened >= tq);
     expect(q.deviations).toBe(devs.length);
     expect(q.open).toBe(devs.filter(d => d.status === 'open').length);
-    const released = Object.values(s.batches).filter(b => b.status === 'released' && b.released! >= tq);
+    const released = Object.values(s.batches).filter(b => b.status === 'released' && b.released! >= tq && b.released! < s.t);
     expect(released.length).toBeGreaterThan(0);
-    expect(q.decided).toBeGreaterThanOrEqual(released.length);
-    expect(q.first).toBeLessThanOrEqual(released.length);
-    const waited = released.map(b => b.released! - b.pack!.end!);
-    expect(q.toDecision).toBe(Math.round(waited.reduce((a, b) => a + b, 0) / waited.length));
-    // серии, решённые до того, как место взяли снова, — не в счёт
+    expect(q.released).toBe(released.length);
+    expect(q.first).toBe(released.filter(b => cleanBatch(s, b)).length);
+    expect(q.rft).toBe(Math.round((q.first * 10000) / q.released));
+    expect(q.release).toBe(median(released.map(b => b.released! - b.pack!.end!)));
+    // серии, выпущенные до того, как место взяли снова, — не в счёт
     const before = Object.values(s.batches).filter(b => b.status === 'released' && b.released! < tq).length;
-    expect(q.decided + before).toBe(Object.values(s.batches).filter(b => b.status === 'released' || (b.status === 'rejected' && b.pack?.fg)).length);
+    expect(before).toBeGreaterThan(0);
+    expect(q.released + before).toBe(Object.values(s.batches).filter(b => b.status === 'released' && b.released! < s.t).length);
   });
 
-  test('директор: касса и её изменение, заказы в срок и полностью из закрытых, отклонённые серии', () => {
+  test('директор: касса и денежный поток, заказы в срок и полностью из закрытых, отклонённые серии', () => {
     const d = of('director');
     expect(d.balance).toBe(s.cash.balance);
-    expect(d.change).toBe(s.cash.balance - s.cash.start);
-    const closed = Object.values(s.orders).filter(o => o.status !== 'open');
+    expect(d.flow).toBe(s.cash.ledger.reduce((n, e) => n + (e.item !== 'start' && e.t >= t0 && e.t < s.t ? e.sum : 0), 0));
+    const closed = Object.values(s.orders).filter(o => { const at = closedAt(s, o); return at !== undefined && at < s.t; });
+    expect(closed.length).toBeGreaterThan(0);
     expect(d.closed).toBe(closed.length);
     expect(d.onTime).toBe(closed.filter(o => o.status === 'shipped').length);
-    expect(d.rejected).toBe(Object.values(s.batches).filter(b => b.status === 'rejected').length);
+    expect(d.otif).toBe(Math.round((d.onTime * 10000) / d.closed));
+    expect(d.rejected).toBe(Object.values(s.batches).filter(b => (rejectedAt(s, b) ?? s.t) < s.t).length);
+  });
+
+  test('те же определения, что у окна «Показатели»: за время на месте — числа показателей за тот же период', () => {
+    const p = of('production');
+    const q = of('quality');
+    const d = of('director');
+    const vp = kpiValues(db, s, sincePeriod(s, t0));
+    const vq = kpiValues(db, s, sincePeriod(s, tq));
+    expect([p.shift, p.rhythm, d.flow, d.otif]).toEqual([vp.shift, vp.rhythm, vp.flow, vp.otifOrders]);
+    expect(p.lines[0].oee?.oee).toBe(vp.oee);
+    expect([q.rft, q.release]).toEqual([vq.rft, vq.release]);
+  });
+
+  test('за одни и те же сутки числа итога и окна совпадают: место с начала партии, первый месяц', () => {
+    const e = fresh();
+    apply(db, e, { kind: 'seat', seats: ['director', 'production', 'quality'] });
+    apply(db, e, { kind: 'advance', seconds: 25 * DAY });
+    expect(e.kpi.months).toEqual([]);
+    const sum = seatSums(db, e);
+    const cell = (tab: SeatId, id: string) => kpiView(db, e, { view: 'kpi', tab }).rows.flatMap(r => r.cells).find(c => c.id === id)?.now;
+    const ps = sum.find(x => x.seat === 'production') as Extract<(typeof sum)[number], { seat: 'production' }>;
+    const qs = sum.find(x => x.seat === 'quality') as Extract<(typeof sum)[number], { seat: 'quality' }>;
+    const ds = sum.find(x => x.seat === 'director') as Extract<(typeof sum)[number], { seat: 'director' }>;
+    expect([ps.shift, ps.rhythm, ps.lines[0].oee?.oee]).toEqual([cell('production', 'shift'), cell('production', 'rhythm'), cell('production', 'oee')]);
+    expect([qs.rft, qs.release]).toEqual([cell('quality', 'rft'), cell('quality', 'release')]);
+    expect([ds.flow, ds.otif]).toEqual([cell('director', 'flow'), cell('director', 'otifOrders')]);
+    expect(ps.shift).toBeDefined();
+    expect(qs.rft).toBeDefined();
   });
 
   test('без истины: два завода с разными истинными полями — один и тот же итог', () => {

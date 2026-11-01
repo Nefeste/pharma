@@ -6,7 +6,7 @@
 import type { ContentDb, Id, SeatId } from '../content/types';
 import { SEATS } from '../content/types';
 import { batchNo } from '../engine/batchno';
-import { momentOf } from '../engine/core/calendar';
+import { DAY, momentOf } from '../engine/core/calendar';
 import { HEAD_SEAT } from '../engine/journal';
 import {
   assessTimes,
@@ -25,6 +25,8 @@ import {
   type KpiUnit,
   KPIS,
   kpiValues,
+  monthPeriod,
+  monthStart,
   oeeOf,
   otifLines,
   p90,
@@ -33,8 +35,9 @@ import {
   sampleTimes,
   vacancyDays,
 } from '../engine/kpi';
+import { P_ONE } from '../engine/core/rng';
 import { planOf } from '../engine/plant';
-import type { PlantState } from '../engine/types';
+import type { Deviation, PlantState } from '../engine/types';
 import type { Thing } from './views';
 
 export interface KpiQuery {
@@ -42,6 +45,8 @@ export interface KpiQuery {
   tab: SeatId;
   /** показатель, у которого открыт «Почему?» */
   why?: string;
+  /** закрытый месяц — мгновение его начала; нет — нынешний месяц */
+  month?: number;
 }
 
 /** Месяц: год, месяц; учёт начался не 1-го числа — «неполный». */
@@ -54,8 +59,8 @@ export interface KpiMonthRef {
 /**
  * Показатель в строке: определение (единица, направление, окно, источники, противовес); число нынешнего месяца, прошлого
  * закрытого и 12 закрытых по порядку, старые первыми (`null` — посчитать было не из чего); лучше (1) или хуже (−1)
- * прошлого месяца по направлению, так же — 0; подробности — множители OEE, 90-й процентиль и сколько записей, пик;
- * есть ли «Почему?».
+ * прошлого месяца по направлению, так же — 0 (у суммы месяца — в сутки); подробности — множители OEE, 90-й процентиль
+ * и сколько записей, пик; есть ли «Почему?».
  */
 export interface KpiCell {
   id: string;
@@ -64,6 +69,7 @@ export interface KpiCell {
   win: 'm' | 'y';
   src: readonly string[];
   pair?: string;
+  acc?: true;
   now?: number;
   prev?: number;
   hist: (number | null)[];
@@ -81,9 +87,9 @@ export interface KpiHeadRow {
 export type KpiWhyRow =
   | { k: 'batch'; batch: number; code: string; sec?: number; devs?: number; rejected?: true }
   | { k: 'order'; order: number; customer: Id; due: number; status: 'shipped' | 'short' | 'late'; missing: number }
-  | { k: 'dev'; n: number; kind: string; opened: number; sec?: number; prev?: number }
+  | { k: 'dev'; n: number; kind: Deviation['kind']; opened: number; sec?: number; prev?: number }
   | { k: 'lot'; code: [number, number, number]; material: Id; sec?: number; unit?: number; rejected?: true }
-  | { k: 'fail'; thing?: Thing; part: string; t: number; sec?: number; spare?: true }
+  | { k: 'fail'; thing?: Thing; type?: Id; part: string; t: number; sec?: number; spare?: true }
   | { k: 'person'; role: Id; tab: number; person?: number; day?: number; days?: number }
   | { k: 'cpk'; recipe: Id; test: Id; cpk: number; n: number };
 
@@ -92,11 +98,18 @@ export interface KpiView {
   tab: SeatId;
   /** вкладки: взятые места первыми, потом остальные по порядку */
   tabs: SeatId[];
-  /** нынешний месяц и с какого мгновения его учёт; закрытые месяцы истории — старые первыми, не больше 12 */
-  month: KpiMonthRef & { from: number };
-  months: KpiMonthRef[];
+  /**
+   * месяц окна и с какого мгновения его учёт: нынешний или закрытый (`closed`); закрытые месяцы истории, до него
+   * включительно, — старые первыми, не больше 12; соседние месяцы — начало закрытого до него и после него, `null` — после
+   * него нынешний
+   */
+  month: KpiMonthRef & { from: number; closed?: true };
+  older?: number;
+  newer?: number | null;
+  months: (KpiMonthRef & { from: number })[];
   rows: KpiHeadRow[];
-  why?: { id: string; rows: KpiWhyRow[] };
+  /** «Почему?» показателя: первые `WHY_MAX` записей, всего — если их больше */
+  why?: { id: string; rows: KpiWhyRow[]; all?: number };
 }
 
 /** Месяцев в истории строки. */
@@ -120,15 +133,15 @@ export const cellsOf = (head: KpiHead) => KPIS.filter(k => k.head === head || k.
 const num = (id: string) => Number(id.slice(1));
 const num2 = (id: string) => Number(id.replace(/^[A-Z]+/, ''));
 
-/** Вещь машины журнала оборудования: машина линии или оборудование. */
-function machineThing(db: ContentDb, s: PlantState, machine: string): Thing | undefined {
+/** Машина журнала оборудования: вещь на полу — машина линии или оборудование — и её вид по плану. */
+function machineOf(db: ContentDb, s: PlantState, machine: string): { thing?: Thing; type?: Id } {
   const plan = planOf(db, s.plant);
   for (const [li, l] of plan.plant.lines.entries()) {
     const k = l.machines.findIndex(m => m.id === machine);
-    if (k >= 0) return { kind: 'machine', line: li, k };
+    if (k >= 0) return { thing: { kind: 'machine', line: li, k }, type: l.machines[k].type };
   }
   const i = plan.plant.equipment.findIndex(e => e.id === machine);
-  return i >= 0 ? { kind: 'equipment', i } : undefined;
+  return i >= 0 ? { thing: { kind: 'equipment', i }, type: plan.plant.equipment[i].type } : {};
 }
 
 /** Первая паллета партии на полу — для ссылки на её карточку. */
@@ -138,10 +151,10 @@ function unitOf(s: PlantState, lot: string): number | undefined {
   return best;
 }
 
-/** Длительности дольше 90-го процентиля — по убыванию. */
+/** Самые долгие 10 % — не короче 90-го процентиля, хотя бы одна запись; по убыванию. */
 function slowest<T extends { sec: number }>(a: T[]): T[] {
   const p = p90(a.map(x => x.sec));
-  return p === undefined ? [] : a.filter(x => x.sec > p).sort((x, y) => y.sec - x.sec);
+  return p === undefined ? [] : a.filter(x => x.sec >= p).sort((x, y) => y.sec - x.sec);
 }
 
 const lotRow = (s: PlantState, lot: string, sec?: number): KpiWhyRow => {
@@ -225,18 +238,12 @@ export function whyRows(db: ContentDb, s: PlantState, c: KpiCtx, id: string): Kp
     case 'mttr':
       return failuresOf(s, p.yFrom, p.to)
         .reverse()
-        .map(({ f, r }) => {
-          const thing = machineThing(db, s, f.machine);
-          return { k: 'fail' as const, ...(thing ? { thing } : {}), part: f.part, t: f.t, ...(r ? { sec: r.t - f.t } : {}), ...(r?.spare ? { spare: true as const } : {}) };
-        });
+        .map(({ f, r }) => ({ k: 'fail' as const, ...machineOf(db, s, f.machine), part: f.part, t: f.t, ...(r ? { sec: r.t - f.t } : {}), ...(r?.spare ? { spare: true as const } : {}) }));
     case 'spares':
       return s.maintLog
         .filter(e => e.what === 'repair' && e.spare && e.t >= p.yFrom && e.t < p.to)
         .reverse()
-        .map(e => {
-          const thing = machineThing(db, s, e.machine);
-          return { k: 'fail' as const, ...(thing ? { thing } : {}), part: e.part, t: e.t, spare: true as const };
-        });
+        .map(e => ({ k: 'fail' as const, ...machineOf(db, s, e.machine), part: e.part, t: e.t, spare: true as const }));
     case 'cpk':
       return cpkOf(c)
         .filter(x => x.cpk < CPK_MIN)
@@ -288,17 +295,108 @@ function moreOf(db: ContentDb, s: PlantState, c: KpiCtx, id: string): Record<str
   return undefined;
 }
 
-/** Окно «Показатели»: вкладка, её руководители и показатели; «Почему?» — у одного показателя по запросу. */
+/** Лучше (1), хуже (−1) или так же (0) — по знаку изменения и направлению показателя. */
+const trendOf = (delta: number, dir: 1 | -1) => Math.sign(delta * dir) as 1 | -1 | 0;
+
+// ---------------------------------------------------------------- итоги месяца
+
+/** Строка «Итогов месяца»: показатель, его число закрытого месяца и месяца до него; противовес — так же, если посчитан. */
+export interface CloseRow {
+  id: string;
+  unit: KpiUnit;
+  dir: 1 | -1;
+  v: number;
+  was: number;
+  trend: 1 | -1 | 0;
+  pair?: { id: string; unit: KpiUnit; v?: number; was?: number };
+}
+
+/**
+ * «Итоги месяца» (Б5ж) — раздел первой планёрки месяца: закрытый месяц; у каждого руководителя — показатели, сдвинувшиеся
+ * сильнее всего против месяца до него, с противовесом; месяц первый — сравнивать не с чем.
+ */
+export interface MonthClose {
+  y: number;
+  m: number;
+  /** начало закрытого месяца — окно «Показатели» открывается на нём */
+  from: number;
+  part?: true;
+  first?: true;
+  heads: { head: KpiHead; rows: CloseRow[] }[];
+}
+
+/** Сдвиг заметный — не меньше такой доли большего из двух чисел, 1/10 000. */
+export const CLOSE_MIN = 500;
+
+/** Показателей у руководителя в «Итогах месяца» — не больше. */
+export const CLOSE_MAX = 2;
+
+/** Сдвиг показателя — доля большего по модулю из двух чисел, 1/10 000: у сумм и долей одна мера. */
+function moved(v: number, was: number): number {
+  const m = Math.max(Math.abs(v), Math.abs(was));
+  return m === 0 ? 0 : Math.round((Math.abs(v - was) * P_ONE) / m);
+}
+
+/**
+ * «Итоги месяца» планёрки в мгновение `at`: первая планёрка после закрытия месяца — в первые сутки после полуночи на 1-е;
+ * иначе — нет. Свои показатели руководителя: показатель, который он видит в строке как директор, — у своего руководителя.
+ */
+export function monthClose(s: PlantState, at: number): MonthClose | undefined {
+  const months = s.kpi.months;
+  const last = months.at(-1);
+  if (!last || at < last.to || at >= last.to + DAY || monthStart(s, at) !== last.to) return undefined;
+  const head = { y: last.y, m: last.m, from: last.from, ...(last.part ? { part: true as const } : {}) };
+  const before = months.at(-2);
+  if (!before) return { ...head, first: true, heads: [] };
+  const heads = SEATS.flatMap(headsOf).flatMap(h => {
+    const rows = KPIS.filter(k => k.head === h)
+      .flatMap(k => {
+        const v = last.v[k.id];
+        const was = before.v[k.id];
+        if (v === undefined || was === undefined) return [];
+        const score = moved(v, was);
+        return score >= CLOSE_MIN ? [{ k, v, was, score }] : [];
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, CLOSE_MAX)
+      .map(({ k, v, was }): CloseRow => {
+        const pk = k.pair ? KPI[k.pair] : undefined;
+        const pv = pk ? last.v[pk.id] : undefined;
+        const pw = pk ? before.v[pk.id] : undefined;
+        return {
+          id: k.id,
+          unit: k.unit,
+          dir: k.dir,
+          v,
+          was,
+          trend: trendOf(v - was, k.dir),
+          ...(pk ? { pair: { id: pk.id, unit: pk.unit, ...(pv !== undefined ? { v: pv } : {}), ...(pw !== undefined ? { was: pw } : {}) } } : {}),
+        };
+      });
+    return rows.length > 0 ? [{ head: h, rows }] : [];
+  });
+  return { ...head, heads };
+}
+
+/**
+ * Окно «Показатели»: вкладка, её руководители и показатели нынешнего месяца или выбранного закрытого; «Почему?» — у одного
+ * показателя по запросу, записи того же периода.
+ */
 export function kpiView(db: ContentDb, s: PlantState, q: KpiQuery): KpiView {
   const held = (s.seats ?? []).filter(x => x.to === undefined).map(x => x.seat);
   const tabs = [...SEATS.filter(x => held.includes(x)), ...SEATS.filter(x => !held.includes(x))];
-  const p = currentPeriod(db, s);
+  const all = s.kpi.months;
+  // выбран закрытый месяц — его итог, как его записал движок, и записи его периода; нет — нынешний месяц по сейчас
+  const at = q.month !== undefined ? all.findIndex(m => m.from === q.month) : -1;
+  const sel = at >= 0 ? all[at] : undefined;
+  const p = sel ? monthPeriod(s, sel) : currentPeriod(db, s);
   const c = kpiCtx(db, s, p);
-  const now = kpiValues(db, s, p);
-  const months = s.kpi.months.slice(-HIST);
-  const last = months.at(-1);
-  const d = momentOf(s.start, s.kpi.from).date;
-  const part = d.d !== 1;
+  const now = sel ? sel.v : kpiValues(db, s, p);
+  const upto = sel ? at + 1 : all.length;
+  const months = all.slice(Math.max(0, upto - HIST), upto);
+  const last = sel ? all[at - 1] : months.at(-1);
+  const d = momentOf(s.start, p.from).date;
+  const part = sel ? !!sel.part : d.d !== 1;
   const rows: KpiHeadRow[] = headsOf(q.tab).map(head => ({
     head,
     cells: cellsOf(head).map(k => {
@@ -313,22 +411,27 @@ export function kpiView(db: ContentDb, s: PlantState, q: KpiQuery): KpiView {
         win: k.win,
         src: k.src,
         ...(k.pair ? { pair: k.pair } : {}),
+        ...(k.acc ? { acc: true as const } : {}),
         ...(v !== undefined ? { now: v } : {}),
         ...(prev !== undefined ? { prev } : {}),
         hist,
-        ...(v !== undefined && prev !== undefined ? { trend: (Math.sign((v - prev) * k.dir) as 1 | -1 | 0) } : {}),
+        ...(v !== undefined && prev !== undefined && last ? { trend: trendOf(k.acc ? v / Math.max(1, p.to - p.from) - prev / Math.max(1, last.to - last.from) : v - prev, k.dir) } : {}),
         ...(more ? { more } : {}),
         why: WHY.has(k.id),
       };
     }),
   }));
-  const why = q.why && KPI[q.why] && WHY.has(q.why) ? { id: q.why, rows: whyRows(db, s, c, q.why).slice(0, WHY_MAX) } : undefined;
+  const list = q.why && KPI[q.why] && WHY.has(q.why) ? whyRows(db, s, c, q.why) : undefined;
+  const why = q.why && list ? { id: q.why, rows: list.slice(0, WHY_MAX), ...(list.length > WHY_MAX ? { all: list.length } : {}) } : undefined;
+  const older = (sel ? all[at - 1] : all.at(-1))?.from;
   return {
     view: 'kpi',
     tab: q.tab,
     tabs,
-    month: { y: d.y, m: d.m, from: s.kpi.from, ...(part ? { part: true as const } : {}) },
-    months: months.map(m => ({ y: m.y, m: m.m, ...(m.part ? { part: true as const } : {}) })),
+    month: { y: d.y, m: d.m, from: p.from, ...(part ? { part: true as const } : {}), ...(sel ? { closed: true as const } : {}) },
+    ...(older !== undefined ? { older } : {}),
+    ...(sel ? { newer: all[at + 1]?.from ?? null } : {}),
+    months: months.map(m => ({ y: m.y, m: m.m, from: m.from, ...(m.part ? { part: true as const } : {}) })),
     rows,
     ...(why ? { why } : {}),
   };

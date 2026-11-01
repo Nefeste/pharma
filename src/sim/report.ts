@@ -7,7 +7,7 @@ import { batchNo } from '../engine/batchno';
 import { DAY, momentOf } from '../engine/core/calendar';
 import { inForce } from '../engine/docs';
 import { MORNING } from '../engine/engine';
-import { cleanBatch, decidedAt, lineOee, rejectedAt } from '../engine/kpi';
+import { cleanBatch, closedAt, closedShifts, kpiCtx, type KpiPeriod, kpiPick, oeeOf, rejectedAt, sincePeriod } from '../engine/kpi';
 import { AREA, type Oee, oee, rhythm, shiftsOfDay, type Switches, switchesOf } from '../engine/lean';
 import { orderRisks, type OrderRisk } from '../engine/market';
 import { planOf } from '../engine/plant';
@@ -18,6 +18,7 @@ import { type PeopleMeeting, peopleMeeting } from './hire';
 import { type LeaveMeeting, leaveMeeting } from './leave';
 import { type HoursMeeting, hoursMeeting } from './hours';
 import { type HeadDay, headDays } from './journal';
+import { type MonthClose, monthClose } from './kpi';
 import { type PartnerSum, partnerSum } from './partners';
 import { type TrainSum, trainSum } from './people';
 import { type AssetSum, assetSum } from './places';
@@ -221,6 +222,8 @@ export interface MorningView {
   session?: SessionSum;
   /** отклонённое (Б1з): места зоны, ждущие места, вывоз, вывозы с прошлой планёрки; у сценария без подрядчика — нет */
   rejects?: RejectSum;
+  /** итоги месяца (Б5ж): на первой планёрке месяца — что сдвинулось сильнее всего против месяца до него */
+  month?: MonthClose;
 }
 
 /**
@@ -418,6 +421,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     });
   const next = s.cash.dues.filter(d => d.sum < 0).sort((a, b) => a.due - b.due)[0];
   const rejects = rejectSum(db, s, from, at);
+  const month = monthClose(s, at);
   return {
     view: 'morning',
     day: q.day,
@@ -449,6 +453,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     heads: headDays(s, from, at),
     ...(q.since !== undefined && at - q.since >= DAY ? { session: sessionSum(s, q.since, at) } : {}),
     ...(rejects ? { rejects } : {}),
+    ...(month ? { month } : {}),
   };
 }
 
@@ -551,15 +556,19 @@ function pendingOf(db: ContentDb, s: PlantState): { pending: PendingDev[]; held:
 
 // ---------------------------------------------------------------- ваше место (3е)
 
-/** Итог места за время на нём (геймдизайн, §29.2): с какого мгновения игрок держит место и мерило места. */
+/**
+ * Итог места за время на нём (геймдизайн, §29.2): с какого мгновения игрок держит место и мерило места — показатели окна
+ * «Показатели» (Б5ж) теми же функциями движка за время на месте; к ним — записи, из которых число.
+ */
 export type SeatSum =
   | {
       seat: 'production';
       from: number;
-      /** сменные задания линий: задание и выпуск, пачки, по кончившимся сменам */
+      /** сменные задания, закрытые за время на месте: план и выпуск, пачки; выполнение заданий и ритмичность */
       plan: number;
       fact: number;
       shifts: number;
+      shift?: number;
       rhythm?: number;
       lines: { line: number; oee?: Oee }[];
       recleans: number;
@@ -572,81 +581,84 @@ export type SeatSum =
       /** отклонений открыто за время на месте и сколько из них ещё открыто */
       deviations: number;
       open: number;
-      /** серий решено уполномоченным лицом; из них выпущено без отклонений; среднее от конца упаковки до решения, с */
-      decided: number;
+      /** серий выпущено; из них без отклонений и их доля — «верно с первого раза»; медиана от конца упаковки до решения, с */
+      released: number;
       first: number;
-      toDecision?: number;
+      rft?: number;
+      release?: number;
     }
   | {
       seat: 'director';
       from: number;
       balance: number;
-      /** изменение кассы за время на месте */
-      change: number;
-      /** заказы покупателей, закрытые за время на месте, и из них отгруженные в срок и полностью */
+      /** денежный поток от текущих операций за время на месте */
+      flow: number;
+      /** заказы покупателей, закрытые за время на месте, из них отгруженные в срок и полностью, их доля */
       closed: number;
       onTime: number;
+      otif?: number;
       rejected: number;
     }
   | { seat: 'supply' | 'commerce'; from: number };
 
-/** Сутки линии за несколько суток: время, проход, выпуск по номиналу и годные — суммой; OEE ключевой машины. */
 /**
- * Итог каждого места, которое игрок держит сейчас, — за время на нём. Сменные задания, сутки линии, уборки и переналадки
- * движок ведёт по календарным суткам: сутки, в которые место взяли, — целиком. Остальное — с мгновения, когда взяли.
+ * Итог каждого места, которое игрок держит сейчас, — за время на нём. Сутки линии, уборки и переналадки движок ведёт по
+ * календарным суткам: сутки, в которые место взяли, — целиком, как у показателей месяца. Остальное — с мгновения, когда
+ * взяли.
  */
 export function seatSums(db: ContentDb, s: PlantState): SeatSum[] {
   return (s.seats ?? []).filter(x => x.to === undefined).map(x => seatSum(db, s, x.seat, x.from));
 }
 
+const inP = (t: number | undefined, p: KpiPeriod): t is number => t !== undefined && t >= p.from && t < p.to;
+
 function seatSum(db: ContentDb, s: PlantState, seat: SeatId, from: number): SeatSum {
+  const p = sincePeriod(s, from);
   switch (seat) {
     case 'production': {
-      const day = momentOf(s.start, from).day;
-      const tasks = s.shiftTasks.filter(t => momentOf(s.start, t.from).day >= day && t.plan > 0 && t.fact !== undefined);
-      const days = s.losses.filter(d => d.day >= day);
-      const r = rhythm(tasks);
+      const v = kpiPick(db, s, p, ['shift', 'rhythm']);
+      const days = kpiCtx(db, s, p).days;
+      const tasks = closedShifts(s, p.from, p.to).filter(t => t.plan > 0 && t.fact !== undefined);
       return {
         seat,
         from,
         plan: tasks.reduce((n, t) => n + t.plan, 0),
         fact: tasks.reduce((n, t) => n + (t.fact ?? 0), 0),
         shifts: tasks.length,
-        ...(r !== undefined ? { rhythm: r } : {}),
-        lines: planOf(db, s.plant).plant.lines.map((l, n) => {
-          const o = lineOee(days.flatMap(d => (d.lines[l.id] ? [d.lines[l.id]] : [])));
-          return { line: n, ...(o ? { oee: o } : {}) };
-        }),
+        ...(v.shift !== undefined ? { shift: v.shift } : {}),
+        ...(v.rhythm !== undefined ? { rhythm: v.rhythm } : {}),
+        lines: oeeOf(db, s, days).map((o, n) => ({ line: n, ...(o ? { oee: o } : {}) })),
         recleans: days.reduce((n, d) => n + d.recleans, 0),
         switches: switchesOf(days),
       };
     }
     case 'quality': {
-      const devs = Object.values(s.deviations).filter(d => d.opened >= from);
-      const decided = Object.values(s.batches).filter(b => (decidedAt(s, b) ?? -1) >= from);
-      const waited = decided.filter(b => b.status === 'released' && b.released !== undefined && b.pack?.end !== undefined).map(b => b.released! - b.pack!.end!);
+      const v = kpiPick(db, s, p, ['rft', 'release']);
+      const devs = Object.values(s.deviations).filter(d => inP(d.opened, p));
+      const rel = Object.values(s.batches).filter(b => b.status === 'released' && inP(b.released, p));
       return {
         seat,
         from,
         deviations: devs.length,
         open: devs.filter(d => d.status === 'open').length,
-        decided: decided.length,
-        first: decided.filter(b => b.status === 'released' && cleanBatch(s, b)).length,
-        ...(waited.length > 0 ? { toDecision: Math.round(waited.reduce((a, b) => a + b, 0) / waited.length) } : {}),
+        released: rel.length,
+        first: rel.filter(b => cleanBatch(s, b)).length,
+        ...(v.rft !== undefined ? { rft: v.rft } : {}),
+        ...(v.release !== undefined ? { release: v.release } : {}),
       };
     }
     case 'director': {
-      const closed = Object.values(s.orders)
-        .filter(o => o.status !== 'open')
-        .filter(o => (o.shipment && s.shipments[o.shipment] ? s.shipments[o.shipment].t : o.due) >= from);
+      const v = kpiPick(db, s, p, ['flow', 'otifOrders']);
+      const closed = Object.values(s.orders).filter(o => inP(closedAt(s, o), p));
       return {
         seat,
         from,
         balance: s.cash.balance,
-        change: s.cash.ledger.reduce((n, e) => n + (e.t >= from ? e.sum : 0), 0),
+        flow: v.flow ?? 0,
         closed: closed.length,
         onTime: closed.filter(o => o.status === 'shipped').length,
-        rejected: Object.values(s.batches).filter(b => (rejectedAt(s, b) ?? -1) >= from).length,
+        ...(v.otifOrders !== undefined ? { otif: v.otifOrders } : {}),
+        rejected: Object.values(s.batches).filter(b => inP(rejectedAt(s, b), p)).length,
       };
     }
     default:

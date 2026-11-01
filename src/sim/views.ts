@@ -20,6 +20,7 @@ import { shiftEnd } from '../engine/staff';
 import { TAG } from '../engine/stock';
 import type { AssetRec, KitLine, Lot, LotStatus, MachineState, Person, PlantState, Quit, Room, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
 import { type AndonQuery, type AndonView, andonView } from './andon';
+import { type KpiQuery, type KpiView, kpiView } from './kpi';
 import { type DevCard, devCard, type Knobs, knobsAt, type Regimes, regimesAt, type ReleaseView, releaseOf } from './devs';
 import { type DossierQuery, type DossierView, dossierView, type Inside, insideOf, type LineMaterial, lineMaterials } from './dossier';
 import { type FloorQuery, type FloorView, floorView } from './floor';
@@ -48,7 +49,9 @@ export type Thing =
   | { kind: 'vehicle'; n: number }
   | { kind: 'truck'; n: number; customer: boolean; waste?: true }
   /** отклонение (Б1г): на полу его нет — карточка открывается из извещения, планёрки и карточки серии */
-  | { kind: 'dev'; n: number };
+  | { kind: 'dev'; n: number }
+  /** заказ покупателя (Б5ж): на полу его нет — карточка открывается из «Почему?» показателей */
+  | { kind: 'order'; n: number };
 
 export type StockSort = 'code' | 'material' | 'supplier' | 'status' | 'left' | 'expiry';
 
@@ -69,7 +72,7 @@ export interface CardQuery {
   thing: Thing;
 }
 
-export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery);
+export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery);
 
 /** Место паллеты: место плана (номер по порядку), помещение (номер по порядку), фура. */
 export type PlaceRef = { k: 'slot'; i: number } | { k: 'room'; i: number } | { k: 'truck'; n: number; customer: boolean; waste?: true };
@@ -236,6 +239,11 @@ export type CardData =
   /** фура подрядчика по вывозу отклонённого (Б1з) — `waste`: когда и кто заказал вывоз */
   | { kind: 'truck'; truck: number; customer?: Id; supplier?: Id; po?: string; waste?: { booked: number; by: WasteBy }; docked: boolean; open: boolean; units: number; arrived: number }
   | DevCard
+  /**
+   * заказ покупателя (Б5ж): покупатель, когда заказан, срок отгрузки, наименьший остаточный срок годности, статус, строки —
+   * сколько ящиков заказано и отгружено; ушла фура — когда
+   */
+  | { kind: 'order'; order: number; customer: Id; placed: number; due: number; minShelf: number; status: 'open' | 'shipped' | 'short' | 'late'; lines: { sku: Id; cases: number; shipped: number }[]; shipped?: number }
   /** вещи больше нет на заводе: паллету отгрузили, фура уехала */
   | { kind: 'gone' };
 
@@ -280,7 +288,7 @@ export interface CardView {
   card: CardData;
 }
 
-export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView;
+export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView;
 
 const num = (id: string) => Number(id.slice(1));
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
@@ -708,6 +716,12 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
     }
     case 'dev':
       return devCard(db, s, thing.n) ?? { kind: 'gone' };
+    case 'order': {
+      const o = s.orders[`O${thing.n}`];
+      if (!o) return { kind: 'gone' };
+      const sh = o.shipment ? s.shipments[o.shipment] : undefined;
+      return { kind: 'order', order: thing.n, customer: o.customer, placed: o.placed, due: o.due, minShelf: o.minShelf, status: o.status, lines: o.lines.map(l => ({ sku: l.sku, cases: l.cases, shipped: l.shipped })), ...(sh ? { shipped: sh.t } : {}) };
+    }
   }
 }
 
@@ -745,6 +759,8 @@ export function viewOf(db: ContentDb, s: PlantState, q: ViewQuery): ViewData {
       return floorView(db, s, q);
     case 'andon':
       return andonView(db, s);
+    case 'kpi':
+      return kpiView(db, s, q);
   }
 }
 

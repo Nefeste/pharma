@@ -256,6 +256,10 @@ export class Game {
         if (x.open && x.batch === d.batch) this.store.set({ dossier: { ...x, view: d } });
       } else if (d.view === 'ref') {
         if (hud.ref.open) this.store.set({ ref: { ...this.store.get().ref, view: d } });
+      } else if (d.view === 'kpi') {
+        // окно «Показатели» (Б5ж): вид прежней вкладки или месяца, отправленный до нового запроса, не показываем
+        const k = this.store.get().kpi;
+        if (k.open && k.tab === d.tab && (d.month.closed ? d.month.from : undefined) === k.month) this.store.set({ kpi: { ...k, view: d } });
       } else if (d.view === 'now') {
         this.store.set({ now: { ...this.store.get().now, view: d } });
         // смотрели работу — её строки больше нет: работа кончилась, прежняя скорость
@@ -681,11 +685,11 @@ export class Game {
     toggleInv: () => {
       // большое окно поверх карты, как расписание: панели справа, расписание и справочник закрываются
       const open = !this.store.get().inv.open;
-      this.store.set({ inv: { open }, ...(open ? { ...this.rightClosed(), ref: { ...this.store.get().ref, open: false } } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ inv: { open }, ...(open ? { ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false } } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     openInv: id => {
-      this.store.set({ inv: { open: true, id }, ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ inv: { open: true, id }, ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     // досье серии (Б1д) — поверх остальных окон: открыли из карточки, «Сейчас» или расписания — они остаются под ним
@@ -702,10 +706,42 @@ export class Game {
       // справочник — большое окно поверх карты, как доска расследования
       const r = this.store.get().ref;
       const open = !r.open;
-      this.store.set({ ref: { ...r, open }, ...(open ? { ...this.rightClosed(), inv: { open: false } } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ ref: { ...r, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, kpi: { ...this.store.get().kpi, open: false } } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     setRefTab: tab => this.store.set({ ref: { ...this.store.get().ref, tab } }),
+    toggleKpi: () => {
+      const k = this.store.get().kpi;
+      if (k.open) {
+        this.store.set({ kpi: { ...k, open: false } });
+        this.sendViews();
+      } else this.actions.openKpi(k.month);
+    },
+    openKpi: month => {
+      // окно «Показатели» (Б5ж) — большое, как справочник; открыли впервые — вкладка взятого места
+      const k = this.store.get().kpi;
+      const held = this.store.get().top?.seats?.[0];
+      const tab = !k.view && held ? held : k.tab;
+      const keep = k.view?.tab === tab && (k.view.month.closed ? k.view.month.from : undefined) === month;
+      this.store.set({ kpi: { open: true, tab, ...(k.why ? { why: k.why } : {}), ...(month !== undefined ? { month } : {}), ...(keep ? { view: k.view } : {}) }, ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.sendViews();
+    },
+    setKpiTab: tab => {
+      const { view, ...k } = this.store.get().kpi;
+      this.store.set({ kpi: { ...k, tab, ...(view?.tab === tab ? { view } : {}) } });
+      this.sendViews();
+    },
+    kpiWhy: id => {
+      const { why, ...rest } = this.store.get().kpi;
+      this.store.set({ kpi: why === id ? rest : { ...rest, why: id } });
+      this.sendViews();
+    },
+    setKpiMonth: month => {
+      const { view, month: was, ...k } = this.store.get().kpi;
+      if (was === month) return;
+      this.store.set({ kpi: { ...k, ...(month !== undefined ? { month } : {}), ...(view ? { view } : {}) } });
+      this.sendViews();
+    },
     investigate: (inv, step) => this.client.command({ kind: 'investigate', inv, step, by: 'player' }),
     release: (batch, decision) => this.client.command({ kind: 'release', batch, decision }),
     assess: (deviation, verdict) => this.client.command({ kind: 'assess', deviation, verdict, by: 'player' }),
@@ -898,7 +934,7 @@ export class Game {
    */
   private bigClosed(): Partial<Hud> {
     const h = this.store.get();
-    return { ...(h.inv.open ? { inv: { open: false } } : {}), ...(h.ref.open ? { ref: { ...h.ref, open: false } } : {}) };
+    return { ...(h.inv.open ? { inv: { open: false } } : {}), ...(h.ref.open ? { ref: { ...h.ref, open: false } } : {}), ...(h.kpi.open ? { kpi: { ...h.kpi, open: false } } : {}) };
   }
 
   private rightClosed(keep?: 'stock' | 'cash' | 'lab' | 'now' | 'journal'): Partial<Hud> {
@@ -957,6 +993,7 @@ export class Game {
     if (h.journal.open) list.push({ id: 'journal', view: 'journal', page: h.journal.page, ...(h.journal.seat ? { seat: h.journal.seat } : {}), ...(h.journal.who ? { who: h.journal.who } : {}), ...(h.journal.focus !== undefined ? { focus: h.journal.focus } : {}) });
     if (h.dossier.open && h.dossier.batch !== undefined) list.push({ id: 'dossier', view: 'dossier', batch: h.dossier.batch });
     if (h.ref.open) list.push({ id: 'ref', view: 'ref' });
+    if (h.kpi.open) list.push({ id: 'kpi', view: 'kpi', tab: h.kpi.tab, ...(h.kpi.why ? { why: h.kpi.why } : {}), ...(h.kpi.month !== undefined ? { month: h.kpi.month } : {}) });
     // «Сейчас» — и при закрытой панели: карточке — для «Смотреть», смотрящему — чтобы знать, когда работа кончилась
     if (h.now.open || this.selected || this.watching) list.push({ id: 'now', view: 'now' });
     // «Пол» (Б1и) — пока включён слой «Загрузка» или «Узкие места» (Б1к) и пока открыта карточка помещения или машины: в
@@ -1094,7 +1131,8 @@ export class Game {
         return v ? { circle: [v.x, v.z, 1.1], y: 0 } : undefined;
       }
       case 'dev':
-        // отклонения на полу нет
+      case 'order':
+        // отклонения и заказа покупателя на полу нет
         return undefined;
     }
   }
@@ -1179,6 +1217,7 @@ export class Game {
       else if (k === 'KeyI') this.actions.toggleInv();
       else if (k === 'KeyN') this.actions.toggleNow();
       else if (k === 'KeyJ') this.actions.toggleJournal();
+      else if (k === 'KeyK') this.actions.toggleKpi();
       else if (k === 'KeyL') this.actions.nextLayer();
       else if (k === 'F1') {
         e.preventDefault();
@@ -1197,6 +1236,7 @@ export class Game {
         else if (h.gantt.open) this.actions.toggleGantt();
         else if (h.inv.open) this.actions.toggleInv();
         else if (h.ref.open) this.actions.toggleRef();
+        else if (h.kpi.open) this.actions.toggleKpi();
         else if (h.morning.open) this.actions.closeMorning(false);
         else if (h.cash.open) this.actions.toggleCash();
         else if (h.lab.open) this.actions.toggleLab();

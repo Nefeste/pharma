@@ -270,7 +270,31 @@
     .dossier .dtab .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .dossier .dstages { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
     .dossier .dstage.s-plan { opacity: 0.75; }
-    .inv > .phead, .ref > .phead { position: sticky; top: -8px; z-index: 1; margin: -8px -12px 0; padding: 8px 12px 4px; background: rgba(22, 30, 34, 0.98); border-bottom: 1px solid var(--line); }
+    .inv > .phead, .ref > .phead, .kpi > .phead { position: sticky; top: -8px; z-index: 1; margin: -8px -12px 0; padding: 8px 12px 4px; background: rgba(22, 30, 34, 0.98); border-bottom: 1px solid var(--line); }
+    /* окно «Показатели» (Б5ж) — большое, как справочник: строка руководителя и плитки его показателей; столбики 12 месяцев
+       приглушены, последний закрытый — акцентом: с ним сравнивают число месяца; «лучше» и «хуже» — стрелкой, словом и цветом */
+    .kpi { position: absolute; left: 8px; right: 8px; top: calc(var(--top-h, 48px) + 8px); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 2px; background: rgba(22, 30, 34, 0.98); }
+    .kpi .phead .filters { margin-left: 12px; }
+    .kpi .kmonth { margin-left: 12px; font-size: 12px; }
+    .kpi .khead { display: grid; grid-template-columns: 180px 1fr; gap: 6px 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+    .kpi .khname { font-weight: 600; padding-top: 4px; }
+    .kpi .kcells { display: flex; flex-wrap: wrap; gap: 8px; }
+    .kpi .kcell { width: 200px; box-sizing: border-box; padding: 6px 8px; border-radius: 4px; background: rgba(255,255,255,.04); display: flex; flex-direction: column; gap: 2px; }
+    .kpi .kcell.on { box-shadow: inset 0 0 0 1px var(--accent); }
+    .kpi .kname { font-size: 12px; color: var(--muted); cursor: help; }
+    .kpi .kline { display: flex; align-items: flex-end; justify-content: space-between; gap: 6px; min-height: 28px; }
+    .kpi .kvalue { font-size: 18px; font-weight: 600; white-space: nowrap; }
+    .kpi .kspark { flex: none; }
+    .kpi .kspark rect { fill: #62747b; }
+    .kpi .kspark rect.klast { fill: var(--accent); }
+    .kpi .kspark rect:hover { fill: #a9bcc2; }
+    .kpi .kspark .kbase { stroke: rgba(255,255,255,.14); stroke-width: 1; }
+    .kpi .ksub { font-size: 11px; }
+    .kpi .kwhy { font-size: 12px; align-self: flex-start; }
+    .kpi .kwhylist { grid-column: 2; padding: 6px 10px; border-left: 2px solid var(--accent); background: rgba(255,255,255,.03); }
+    .kpi .kwhylist .mlist { margin: 4px 0 0; }
+    .good { color: #7fd69a; }
+    @media (max-width: 720px) { .kpi .khead { grid-template-columns: 1fr; } .kpi .kwhylist { grid-column: 1; } }
     /* ограда панели (src/ui/Guard.tsx): на месте упавшей панели — ошибка и «Закрыть» */
     .guard { position: absolute; left: 50%; top: calc(var(--top-h, 48px) + 8px); transform: translateX(-50%); max-width: min(720px, calc(100% - 16px)); z-index: 6; display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
     .rbody { display: flex; flex-direction: column; gap: 6px; }

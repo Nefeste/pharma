@@ -711,11 +711,12 @@ export class Game {
     },
     setRefTab: tab => this.store.set({ ref: { ...this.store.get().ref, tab } }),
     toggleKpi: () => {
+      // K открывает нынешний месяц; закрытый — рычаг «Итогов месяца», щелчок по столбику и стрелки у месяца
       const k = this.store.get().kpi;
       if (k.open) {
         this.store.set({ kpi: { ...k, open: false } });
         this.sendViews();
-      } else this.actions.openKpi(k.month);
+      } else this.actions.openKpi();
     },
     openKpi: month => {
       // окно «Показатели» (Б5ж) — большое, как справочник; открыли впервые — вкладка взятого места

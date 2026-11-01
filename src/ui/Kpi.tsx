@@ -102,7 +102,7 @@ function Spark({ c, months, actions }: { c: KpiCell; months: readonly (KpiMonthR
         const h = Math.max(1, Math.round((Math.abs(v) / span) * H));
         const mo = months[i - off];
         return (
-          <rect key={i} className={i === vals.length - 1 ? 'klast' : undefined} x={i * (BAR + GAP)} y={v >= 0 ? y0 - h : y0} width={BAR} height={h} rx={1} onClick={mo ? () => actions.setKpiMonth(mo.from) : undefined} data-test="kpi-bar">
+          <rect key={i} className={i === vals.length - 1 ? 'klast' : undefined} x={i * (BAR + GAP)} y={v >= 0 ? y0 - h : y0} width={BAR} height={h} rx={1} onClick={mo ? () => actions.setKpiMonth(mo.from) : undefined} data-test="kpi-bar" data-from={mo?.from}>
             <title>{`${T.kpi.bar(mo ? `${monthText(mo)}${mo.part ? ` (${T.kpi.part})` : ''}` : '', kpiText(c.id, c.unit, v))} · ${T.kpi.barHint}`}</title>
           </rect>
         );

@@ -264,7 +264,13 @@ first, or copy the working code of Bolnitsa on the same versions.
   department head — the head by position, what was decided about which thing, the reason with the plant's numbers and
   never the truth; the player's command of the same kinds — «you» with the place it came from; a colleague's command —
   the record of its head; a scenario's or a refused command — none; no rule reads it; records older than the term go
-  at midnight; the plan run's copy starts without it), `waste.ts` (with Б1з, the removal of rejected material: the
+  at midnight; the plan run's copy starts without it), `kpi.ts` (with Б5ж, the heads' indicators: 47 definitions — the
+  head, unit, direction, month or rolling 12 months, source keys, the counterweight —, each a pure function of plant
+  records over a period and never of truth; the midnight snapshot of what records do not keep — stock at lot price, FG
+  packs, receivables and payables, taken places, people without full admission — summed per month; at 00:00 on the 1st
+  the month's results written into the state and never changed, the month's kWh taken before cash resets the meter;
+  the same functions for the window, the meeting and the post's summary — `kpiValues`, `kpiPick`, `sincePeriod`),
+  `waste.ts` (with Б1з, the removal of rejected material: the
   `waste` command of the «Снабжение и склад» post — the contractor on the next workday at the start of his hours; while
   the player does not hold the post, the warehouse colleague at 09:00 on a workday when two thirds of the zone's places
   are taken or a pallet waits longer than the term; one removal at a time; the contractor's truck docks at the out dock
@@ -346,7 +352,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   deputies and whom one may choose, whom a person covers, the meeting's away, leaving soon and back — records of the
   plant (`leave.ts`); with Б5а, the decision journal — pages newest first, filters by post and author, the numbers
   and codes of a record's things, «Кто решил» of the cards and the batch record, the meeting's decisions of the day by
-  head — records of the plant (`journal.ts`); with Б1и, the floor — rooms and line machines over today, yesterday or
+  head — records of the plant (`journal.ts`); with Б5ж, the indicators — tabs of the places, held ones first, the heads'
+  rows of the current or a chosen closed month with last month, 12 closed months, better or worse by direction — a sum
+  of the month per day —, «Почему?» — the records behind a number with their links, and the meeting's «Итоги месяца» on
+  the first meeting after a close (`kpi.ts`); with Б1и, the floor — rooms and line machines over today, yesterday or
   seven days, the key machine and OEE by the meeting's `lineSum`, the plan-vs-actual board of the shift by hours, the
   batch a held room leads to — records of the plant, and with Б1к the hours batches waited at each place over the
   window with its main word, the batches waiting now and «держит линию» (`floor.ts`); with Б1к, the andon — what is
@@ -411,8 +420,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   its tabs, sortable columns and search, hiring in «Люди» (`Ref.tsx`, F1), the vacation schedule in «Люди» and the
   vacation block of a person's card — parts, deputies, the related profession (`Leave.tsx`), the decision journal —
   the right panel, J, a row with its reason in words, filters and pages, and the «Кто решил» rows with «Почему?»
-  (`Journal.tsx`), the layers menu on the left with the window and the legend, the column tooltip and the card's
-  «Загрузка» block (`Layers.tsx`), quality attribute and
+  (`Journal.tsx`), the indicators window — K, tabs, tiles with 12 bars, the formula and source on hover, «Почему?», the
+  month arrows (`Kpi.tsx`), the layers menu on the left with the window and the legend, the column tooltip and the
+  card's «Загрузка» block (`Layers.tsx`), quality attribute and
   process parameter
   values in words (`units.ts`), what is going on now with «Смотреть»
   (`Now.tsx`, N), the 08:00 meeting (`Morning.tsx`), the cash

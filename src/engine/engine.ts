@@ -16,6 +16,7 @@ import { hoursHour, newPolicy, overtimeCommand } from './hours';
 import { rosterCommand, rosterDay } from './shifts';
 import { concludeCommand, invDone, investigateCommand, invStep, newIncident } from './investigation';
 import { trimJournal } from './journal';
+import { kpiHour, newKpi } from './kpi';
 import { labDone, runDone, rushCommand, startSampling } from './lab';
 import { leanHour, leanStep, newLoss } from './lean';
 import { leaveCommand, leaveHour } from './leave';
@@ -106,6 +107,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     leave: {},
     journal: [],
     waste: { log: [] },
+    kpi: newKpi(sc.start.hour * HOUR),
   };
   s.losses.push(newLoss(momentOf(s.start, s.t).day));
   // люди — у входа, с табельными номерами по порядку приёма и записями обучения (Б3б); техника — на стоянке, приборы — в
@@ -393,6 +395,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       mesHour(db, s);
       lineHour(db, s, notices);
       leanHour(db, s);
+      // показатели руководителей (Б5ж): в полночь — срез суток, на 1-е — итог прошлого месяца; после учёта потерь часа
+      kpiHour(db, s);
       // вывоз отклонённого (Б1з): коллега склада в 09:00, фура подрядчика в его час — к рампе её поставит шаг отгрузки
       wasteHour(db, s);
       marketHour(db, s, notices);

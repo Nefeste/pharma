@@ -145,6 +145,8 @@ function midnight(db: ContentDb, s: PlantState, z: number) {
   c.vat.in += tax;
   const cost = net + tax;
   owe(s, 'energy', -(cost - c.energy.advanced), at(s, workdayOnOrAfter(cal, daysFromCivil({ y: date.y, m: date.m, d: pr.energy.final })), BANK_HOUR), ref);
+  // показатели руководителей (Б5ж): кВт·ч месяца — их итогу, который считают после учёта потерь часа
+  s.kpi.wh = c.energy.wh;
   c.energy = { wh: 0, at: s.t, last: cost, advanced: 0 };
   for (const [d, share] of pr.energy.advances) {
     const adv = part(cost, share);

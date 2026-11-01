@@ -4,7 +4,7 @@
 import { type ReactNode, useState } from 'react';
 import type { PartType } from '../content/types';
 import { civilFromDays, momentOf, weekday, type Ymd } from '../engine/core/calendar';
-import { clock, dayText, hText, money, named, num, qtyText, T, whenText } from '../i18n';
+import { clock, dayText, hText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import { DEPT_SEAT } from '../engine/seats';
 import type { SaView, SheetView } from '../sim/hours';
 import type { NowRow } from '../sim/now';
@@ -419,10 +419,11 @@ function LineMaterials({ list }: { list: readonly LineMaterial[] }) {
 }
 
 /**
- * `beside` — открыта панель справа: карточка уже, чтобы не заходить под неё; `watch` — работа вещи в «Сейчас» (Б1б);
- * `hud` — чьи посты у игрока и какие пояснения он уже понял (Б1г).
+ * `beside` — открыта панель справа: карточка уже, чтобы не заходить под неё; `over` — открыто большое окно (показатели,
+ * справочник, расследование): карточка поверх него непрозрачна, строки окна под ней не просвечивают (Б5ж); `watch` —
+ * работа вещи в «Сейчас» (Б1б); `hud` — чьи посты у игрока и какие пояснения он уже понял (Б1г).
  */
-export function Card({ v, start, plant, actions, hud, beside, watch }: { v: CardView; start: Ymd; plant: string; actions: Actions; hud: Hud; beside?: boolean; watch?: NowRow }) {
+export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v: CardView; start: Ymd; plant: string; actions: Actions; hud: Hud; beside?: boolean; over?: boolean; watch?: NowRow }) {
   const c = v.card;
   let title: ReactNode = '';
   let body: ReactNode = null;
@@ -692,6 +693,27 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
       );
       body = <DevBody c={c} start={start} hud={hud} actions={actions} />;
       break;
+    case 'order':
+      // заказ покупателя (Б5ж): его открывают из «Почему?» показателей — на полу заказа нет
+      title = T.card.orderTitle(c.order);
+      body = (
+        <dl data-test="card-order">
+          <Row k={T.card.state}>{T.card.orderStatus[c.status] ?? c.status}</Row>
+          <Row k={T.card.customer}>{named(db?.customers[c.customer]?.name, c.customer)}</Row>
+          <Row k={T.card.placed}>{whenText(start, c.placed)}</Row>
+          <Row k={T.card.due}>{whenText(start, c.due)}</Row>
+          {c.shipped !== undefined ? <Row k={T.card.shippedAt}>{whenText(start, c.shipped)}</Row> : null}
+          <Row k={T.card.minShelf}>{T.card.minShelfText(pctText(c.minShelf))}</Row>
+          <Row k={T.card.orderLines}>
+            {c.lines.map(l => (
+              <div key={l.sku} className={l.shipped < l.cases && c.status !== 'open' ? 'bad' : undefined}>
+                {T.card.orderLine(named(db?.skus[l.sku]?.name, l.sku), l.shipped, l.cases)}
+              </div>
+            ))}
+          </Row>
+        </dl>
+      );
+      break;
     case 'truck':
       title = T.card.truck(!!c.customer, !!c.waste);
       body = (
@@ -710,7 +732,7 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
   // со слоем «Проблемы» (Б1к) — то, что не работает у вещи сейчас, теми же словами, что у значка на полу
   const andon = hud.layer === 'andon' && hud.selected ? hud.andon.view?.items.find(x => JSON.stringify(x.thing) === JSON.stringify(hud.selected)) : undefined;
   return (
-    <div className={`card panel${beside ? ' beside' : ''}`} id="card" data-test="card">
+    <div className={`card panel${beside ? ' beside' : ''}${over ? ' over' : ''}`} id="card" data-test="card">
       <div className="cardhead">
         <b id="card-title">{title}</b>
         <button type="button" className="close" onClick={() => actions.select(undefined)} title={T.card.closeHint}>

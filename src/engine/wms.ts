@@ -7,9 +7,10 @@ import { dueIn, owe } from './cash';
 import { MIN } from './core/calendar';
 import { dockWait } from './lean';
 import { coldOf } from './places';
+import { planOf } from './plant';
 import { createLot, putUnit } from './stock';
 import { addTask } from './tasks';
-import type { Notice, PlantState, Task, Truck } from './types';
+import type { Lot, Notice, PlantState, Task, Truck } from './types';
 
 /** Роли и техника склада. */
 export const WMS = {
@@ -71,8 +72,20 @@ function dockNext(db: ContentDb, s: PlantState, dock: string) {
   if (!next) return;
   next.docked = true;
   dockWait(s, s.t - next.arrived);
+  // время «от рампы до места» (Б5ж): с этого мгновения у каждой партии фуры
+  for (const u of next.units) for (const c of s.units[u].items) s.lots[s.containers[c].lot].docked ??= s.t;
   const cold = next.units.some(u => coldOf(db, s.plant, s.lots[s.containers[s.units[u].items[0]].lot].material));
   addTask(s, { kind: 'truckCheck', roles: [...WMS.keepers], from: { kind: 'truck', id: next.id }, work: CHECK_WORK + (cold ? CHECK_COLD : 0), prio: PRIO.check });
+}
+
+/** Есть ли у партии паллета на фуре или в зоне приёмки — ещё не размещённая. */
+function receiving(db: ContentDb, s: PlantState, lot: Lot): boolean {
+  const plan = planOf(db, s.plant);
+  for (const u of Object.values(s.units)) {
+    if (!u.items.some(c => s.containers[c]?.lot === lot.id)) continue;
+    if (u.where.kind === 'truck' || (u.where.kind === 'slot' && plan.slot[u.where.id]?.kind === 'receiving')) return true;
+  }
+  return false;
 }
 
 /** Что сделала задача склада, когда кончилась. */
@@ -104,7 +117,13 @@ export function wmsDone(db: ContentDb, s: PlantState, t: Task, _notices: Notice[
       addTask(s, { kind: 'putaway', roles: [...WMS.movers], veh: [...WMS.floor], unit: u!.id, from: t.from, toKind: cold ? 'cold' : 'quarantine', work: 0, prio: PRIO.putaway });
       return;
     }
-    case 'putaway':
+    case 'putaway': {
+      putUnit(s, u!, t.to!);
+      // последняя паллета партии легла на место (Б5ж): ни одной на фуре и в зоне приёмки
+      const lot = s.lots[s.containers[u!.items[0]].lot];
+      if (lot.docked !== undefined && lot.placed === undefined && !receiving(db, s, lot)) lot.placed = s.t;
+      return;
+    }
     case 'move':
       putUnit(s, u!, t.to!);
       return;

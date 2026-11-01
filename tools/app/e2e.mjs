@@ -2053,10 +2053,31 @@ async function mainPart() {
   // у бригады 2 — дни, ночи, выходные и дополнительный выходной 9-го
   {
     const today = () => page.evaluate(() => Math.floor(window.__game.t / 86400));
+    // итоги месяца (Б5ж): на планёрке 1 октября — раздел «Итоги месяца» за сентябрь с рычагом «Показатели»; первый
+    // закрытый месяц — сравнивать не с чем; 2 октября раздела нет
+    const month = {};
     for (let i = 0; i < 40 && (await today()) < 38; i++) {
       await untilMorning(true);
+      const d = await today();
+      if (d === 30 || d === 31) {
+        await page.waitForFunction(() => {
+          const m = window.__game.store.get().morning;
+          return m.open && m.view?.day === m.day;
+        }, null, { timeout: 20_000 });
+        month[d] = await page.evaluate(() => ({
+          block: document.querySelector('[data-test=morning-month]')?.textContent ?? null,
+          title: [...document.querySelectorAll('#morning .msec')].map(x => x.textContent ?? '').find(x => /^Итоги месяца/.test(x)) ?? null,
+          lever: !!document.querySelector('[data-test=morning-month] [data-test=lever-kpi]'),
+          view: window.__game.store.get().morning.view?.month ?? null,
+        }));
+      }
       if ((await today()) < 38) await page.keyboard.press('Escape');
     }
+    const oct1 = month[30];
+    const oct2 = month[31];
+    if (!oct1 || oct1.title !== 'Итоги месяца — сентябрь 2027' || !oct1.view?.first || !/Первый закрытый месяц: сравнивать пока не с чем/.test(oct1.block ?? '') || !oct1.lever || !oct2 || oct2.block !== null || oct2.title !== null)
+      fail(`итоги месяца: 1 октября ${JSON.stringify(oct1)}; 2 октября ${JSON.stringify(oct2)}`);
+    else ok(`итоги месяца: 1 октября — «${oct1.title}», «${(oct1.block ?? '').slice(0, 70)}…», рычаг «Показатели»; 2 октября раздела нет`);
     await page.waitForFunction(() => {
       const m = window.__game.store.get().morning;
       return m.open && m.view?.day === m.day;
@@ -2557,6 +2578,88 @@ async function mainPart() {
       await page.mouse.move(5, 400);
     } else fail('первый значок андона не на экране');
     await page.click('[data-test=layer-plain]');
+    await writeSheet(sheet);
+  }
+
+  // показатели (Б5ж): K — окно «Показатели»; вкладка «Производство» — OEE нынешнего месяца, и если линия в нём только
+  // налаживалась, у эффективности и качества — прочерк; щелчок по столбику последнего закрытого месяца — его OEE с
+  // доступностью, эффективностью и качеством; наведение на имя — формула, направление и источник; «Коммерция» — закрытый
+  // месяц с наименьшим OTIF по строкам, щелчком по его столбику; «Почему?» у OTIF — заказы, отгруженные не полностью или
+  // не вовремя; щелчок — карточка заказа с его строками. Снимок — в контактный лист, лист — заново
+  {
+    await page.evaluate(() => window.__game.actions.setSpeed(0));
+    await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
+    await page.keyboard.press('KeyK');
+    await page.waitForSelector('#kpi [data-test=kpi-tab]', { timeout: 20_000 });
+    await page.click('[data-test=kpi-tab][data-tab=production]');
+    await page.waitForFunction(() => window.__game.store.get().kpi.view?.tab === 'production', null, { timeout: 20_000 });
+    await frames(1);
+    const oeeCell = () => {
+      const cell = document.querySelector('[data-test=kpi-cell][data-id=oee]');
+      return {
+        month: document.querySelector('[data-test=kpi-month] b')?.textContent ?? '',
+        tabs: [...document.querySelectorAll('[data-test=kpi-tab]')].map(x => x.getAttribute('data-tab')),
+        heads: [...document.querySelectorAll('[data-test=kpi-head]')].map(x => x.getAttribute('data-head')),
+        now: cell?.querySelector('[data-test=kpi-now]')?.textContent ?? '',
+        more: cell?.querySelector('[data-test=kpi-more]')?.textContent ?? '',
+        tip: cell?.querySelector('[data-test=kpi-name]')?.getAttribute('title') ?? '',
+        bars: [...(cell?.querySelectorAll('[data-test=kpi-bar]') ?? [])].map(x => Number(x.getAttribute('data-from'))),
+        months: window.__game.store.get().kpi.view?.months.length ?? 0,
+      };
+    };
+    const cur = await page.evaluate(oeeCell);
+    const pct = '\\d+,\\d\u00a0%';
+    const curOk = /^(\d+,\d\u00a0%|нет записей)$/.test(cur.now) && (cur.more === '' || new RegExp(`^доступность ${pct} · эффективность (${pct}|—) · качество (${pct}|—)$`).test(cur.more));
+    const last = cur.bars.at(-1);
+    if (last !== undefined) {
+      await page.click(`[data-test=kpi-cell][data-id=oee] [data-test=kpi-bar][data-from="${last}"]`);
+      await page.waitForFunction(f => window.__game.store.get().kpi.view?.month.from === f && window.__game.store.get().kpi.view?.month.closed === true, last, { timeout: 20_000 });
+      await frames(1);
+    }
+    const prod = await page.evaluate(oeeCell);
+    await page.hover('[data-test=kpi-cell][data-id=oee] [data-test=kpi-name]');
+    await page.screenshot({ path: join(out, 'e2e-kpi.png') });
+    sheet.push({ file: join(out, 'e2e-kpi.png'), label: 'Б5ж · «Показатели» · производство' });
+    const fiveTabs = prod.tabs.length === 5 && ['director', 'production', 'quality', 'supply', 'commerce'].every(x => prod.tabs.includes(x));
+    if (!curOk || last === undefined || !fiveTabs || prod.heads.join() !== 'plan,mes,maint' || !new RegExp(`^${pct}$`).test(prod.now) || !new RegExp(`^доступность ${pct} · эффективность ${pct} · качество ${pct}$`).test(prod.more) || !/^Доступность × эффективность × качество ключевой машины линии/.test(prod.tip) || !/Источник: gost-r-iso-22400-2-2019/.test(prod.tip) || !/выше — лучше/.test(prod.tip) || prod.months < 3 || prod.bars.length !== prod.months)
+      fail(`«Показатели», производство: нынешний ${JSON.stringify(cur)}; закрытый ${JSON.stringify(prod)}`);
+    else ok(`«Показатели», производство: OEE за ${cur.month} — ${cur.now} (${cur.more || 'без подробностей'}), за ${prod.month} — ${prod.now} (${prod.more}); закрытых месяцев ${prod.months}; подсказка «${prod.tip.replace(/\n/g, ' / ')}»`);
+    await page.click('[data-test=kpi-tab][data-tab=commerce]');
+    await page.waitForFunction(() => window.__game.store.get().kpi.view?.tab === 'commerce', null, { timeout: 20_000 });
+    // закрытый месяц с наименьшим OTIF по строкам — по столбикам вида
+    const worst = await page.evaluate(() => {
+      const v = window.__game.store.get().kpi.view;
+      const c = v.rows.flatMap(r => r.cells).find(x => x.id === 'otif');
+      const off = c.hist.length - v.months.length;
+      let best;
+      v.months.forEach((m, i) => {
+        const x = c.hist[i + off];
+        if (x !== null && x < 10000 && (best === undefined || x < best.v)) best = { from: m.from, v: x, y: m.y, m: m.m };
+      });
+      return best ?? null;
+    });
+    if (!worst) fail('«Показатели», коммерция: ни в одном закрытом месяце OTIF не ниже 100 %');
+    else {
+      await page.click(`[data-test=kpi-cell][data-id=otif] [data-test=kpi-bar][data-from="${worst.from}"]`);
+      await page.waitForFunction(f => window.__game.store.get().kpi.view?.month.from === f && window.__game.store.get().kpi.view?.month.closed === true, worst.from, { timeout: 20_000 });
+      await page.click('[data-test=kpi-cell][data-id=otif] [data-test=kpi-why]');
+      await page.waitForSelector('[data-test=kpi-whylist][data-id=otif] [data-test=kpi-why-row]', { timeout: 20_000 });
+      const why = await page.evaluate(() => ({
+        month: document.querySelector('[data-test=kpi-month] b')?.textContent ?? '',
+        closed: document.querySelector('[data-test=kpi-month]')?.getAttribute('data-closed'),
+        rows: [...document.querySelectorAll('[data-test=kpi-whylist] [data-test=kpi-why-row]')].map(x => ({ k: x.getAttribute('data-k'), text: x.textContent ?? '' })),
+      }));
+      await page.click('[data-test=kpi-whylist] [data-test=kpi-why-row] button');
+      await page.waitForSelector('[data-test=card-order]', { timeout: 20_000 });
+      const card = await page.evaluate(() => ({ title: document.querySelector('#card-title')?.textContent ?? '', text: document.querySelector('[data-test=card-order]')?.textContent ?? '', sel: window.__game.selected }));
+      await page.screenshot({ path: join(out, 'e2e-kpi-why.png') });
+      if (why.closed !== '1' || why.rows.length === 0 || !why.rows.every(r => r.k === 'order' && /^Заказ №\u00a0\d+ · .+ · отгрузить \d\d\.\d\d \d\d:\d\d · (недопоставка|опоздание)/.test(r.text)) || card.sel?.kind !== 'order' || !/^Заказ покупателя №\u00a0\d+$/.test(card.title) || !/Отгружен (не полностью|с опозданием)/.test(card.text) || !/отгружено \d+ из \d+/.test(card.text))
+        fail(`«Почему?» у OTIF: ${JSON.stringify(why)}; карточка ${JSON.stringify(card)}`);
+      else ok(`«Почему?» у OTIF за ${why.month} (${(worst.v / 100).toFixed(1)} %): ${why.rows.length} — «${why.rows[0].text}»; карточка «${card.title}»: ${card.text.slice(0, 120)}…`);
+      await page.keyboard.press('Escape');
+    }
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('#kpi'), null, { timeout: 20_000 });
     await writeSheet(sheet);
   }
 

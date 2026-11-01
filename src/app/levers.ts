@@ -34,6 +34,8 @@ export type Lever =
   | { k: 'leave'; seat: SeatId }
   | { k: 'person'; n: number; tab: number; role: Id; seat: SeatId }
   | { k: 'journal'; n?: number }
+  /** окно «Показатели» (Б5ж) на закрытом месяце: «Итоги месяца» планёрки */
+  | { k: 'kpi'; month?: number }
   /** заказать вывоз отклонённого (Б1з): команда поста «Снабжение и склад» */
   | { k: 'waste'; seat: SeatId }
   | { k: 'later'; what: Later };

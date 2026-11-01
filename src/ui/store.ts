@@ -16,6 +16,7 @@ import type { AndonView } from '../sim/andon';
 import type { FloorView, FloorWin } from '../sim/floor';
 import type { InvView } from '../sim/inv';
 import type { JournalView } from '../sim/journal';
+import type { KpiView } from '../sim/kpi';
 import type { ChartView, LabView } from '../sim/lab';
 import type { BatchLabel, GanttView, GhostView } from '../sim/plan';
 import type { NowRow, NowView } from '../sim/now';
@@ -110,6 +111,8 @@ export interface Hud {
   seats: { open: boolean; pick: SeatId[] };
   /** справочник завода (этап Б, Б1а): открыт ли, вкладка, вид */
   ref: { open: boolean; tab: RefTab; view?: RefView };
+  /** окно «Показатели» (Б5ж): открыто ли, вкладка — место, у какого показателя открыт «Почему?», вид */
+  kpi: { open: boolean; tab: SeatId; why?: string; month?: number; view?: KpiView };
   /**
    * слой слева (Б1и; геймдизайн, §3.6, §18): обычный вид; «Загрузка и OEE» — столбики, числа, доски «План — факт»;
    * «Узкие места» и «Проблемы» (Б1к) — таблички над местами, где серии ждут, и значки андона; «Потоки — люди» (Б1г) —
@@ -200,6 +203,7 @@ export const initial: Hud = {
   dossier: { open: false },
   seats: { open: false, pick: [] },
   ref: { open: false, tab: 'recipes' },
+  kpi: { open: false, tab: 'director' },
   layer: 'plain',
   floor: { win: 'today' },
   andon: {},
@@ -306,6 +310,15 @@ export interface Actions {
   /** справочник завода: открыть или закрыть (F1), вкладка */
   toggleRef(): void;
   setRefTab(tab: RefTab): void;
+  /**
+   * окно «Показатели» (Б5ж): открыть или закрыть (K), вкладка, «Почему?» показателя — тот же ещё раз закрывает; месяц —
+   * закрытый по мгновению начала, нет — нынешний; открыть на месяце — рычаг «Итогов месяца»
+   */
+  toggleKpi(): void;
+  setKpiTab(tab: SeatId): void;
+  kpiWhy(id: string): void;
+  setKpiMonth(month?: number): void;
+  openKpi(month?: number): void;
   investigate(inv: string, step: string): void;
   conclude(inv: string, cause: string, fate: 'reject' | 'release'): void;
   /**

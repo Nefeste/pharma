@@ -17,6 +17,7 @@ import { Guard } from './Guard';
 import { Dossier } from './Dossier';
 import { Inv } from './Inv';
 import { Journal } from './Journal';
+import { Kpi } from './Kpi';
 import { FloorTip, Layers } from './Layers';
 import { Lab } from './Lab';
 import { Morning } from './Morning';
@@ -114,6 +115,9 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
             <button type="button" className={s.journal.open ? 'on' : ''} onClick={() => actions.toggleJournal()} title={T.journal.hint} data-test="journal-open">
               {T.journal.button}
             </button>
+            <button type="button" className={s.kpi.open ? 'on' : ''} onClick={() => actions.toggleKpi()} title={T.kpi.hint} data-test="kpi-open">
+              {T.kpi.button}
+            </button>
             <button type="button" className={s.gantt.open ? 'on' : ''} onClick={() => actions.toggleGantt()} title={T.gantt.hint} data-test="gantt-open">
               {T.gantt.button}
             </button>
@@ -183,12 +187,15 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
       <Guard name={T.ref.button} close={s.ref.open ? actions.toggleRef : undefined}>
         {s.ref.open && <Ref hud={s} actions={actions} />}
       </Guard>
+      <Guard name={T.kpi.button} close={s.kpi.open ? actions.toggleKpi : undefined}>
+        {s.kpi.open && <Kpi hud={s} actions={actions} />}
+      </Guard>
       <Guard name={T.seats.button} close={s.seats.open ? actions.closeSeats : undefined}>
         {s.seats.open && <Seats hud={s} actions={actions} scenario={scenario} />}
       </Guard>
       <Guard name={T.card.title} close={s.selected ? () => actions.select(undefined) : undefined}>
         {s.selected && s.card && (
-          <Card v={s.card} start={s.start} plant={plant} actions={actions} hud={s} beside={s.stock.open || s.cash.open || s.lab.open || s.now.open || s.journal.open} watch={watchFor(s.selected, s.card.card, s.now.view?.rows)} />
+          <Card v={s.card} start={s.start} plant={plant} actions={actions} hud={s} beside={s.stock.open || s.cash.open || s.lab.open || s.now.open || s.journal.open} over={s.kpi.open || s.ref.open || s.inv.open} watch={watchFor(s.selected, s.card.card, s.now.view?.rows)} />
         )}
       </Guard>
       {/* досье серии (Б1д) — поверх остальных окон, и карточки тоже: его открывают из неё */}

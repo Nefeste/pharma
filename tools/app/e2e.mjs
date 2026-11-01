@@ -2906,7 +2906,8 @@ async function mainPart() {
       else {
         // до утра дня прихода, потом ×4 с пробой в каждом кадре, пока фура заказа не встанет во дворе
         const k = Number(mine.po.slice(1));
-        for (let i = 0; i < 20 && Math.floor((await gameT()) / 86400) < Math.floor(mine.eta / 86400); i++) await untilMorning();
+        // срок поставки — до четырёх недель: утро за утром до дня прихода
+        for (let i = 0; i < 40 && Math.floor((await gameT()) / 86400) < Math.floor(mine.eta / 86400); i++) await untilMorning();
         let seen;
         for (let i = 0; i < 40 && !seen && (await gameT()) < mine.eta + 6 * 3600; i++) {
           await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));

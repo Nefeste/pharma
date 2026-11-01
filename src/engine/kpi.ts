@@ -231,10 +231,10 @@ export function rejectedAt(s: PlantState, b: Batch): number | undefined {
 }
 
 /**
- * OEE линии за сутки потерь: ключевая машина — с наименьшим номиналом, как у планёрки (3в); доступность, эффективность и
- * качество — множители OEE. Загрузки не было — `undefined`.
+ * Ключевая машина линии за сутки потерь — с наименьшим номиналом, как у планёрки (3в): выпуск по номиналу за время
+ * загрузки и за время работы, выпуск, годные. Суток линии нет — `undefined`.
  */
-export function lineOee(days: readonly LineDay[]): Oee | undefined {
+function lineSums(days: readonly LineDay[]): { ideal: number; run: number; out: number; good: number } | undefined {
   if (days.length === 0) return undefined;
   const n = days[0].ideal.length;
   const ideal = Array.from({ length: n }, (_, i) => days.reduce((x, d) => x + (d.ideal[i] ?? 0), 0));
@@ -244,12 +244,37 @@ export function lineOee(days: readonly LineDay[]): Oee | undefined {
   });
   const run = days.reduce((x, d) => x + (d.run[key] ?? 0), 0);
   const out = days.reduce((x, d) => x + (d.times[key]?.out ?? 0), 0);
-  return oee({ ideal: ideal[key], run, out }, days.reduce((x, d) => x + d.good, 0));
+  return { ideal: ideal[key], run, out, good: days.reduce((x, d) => x + d.good, 0) };
 }
+
+/**
+ * OEE линии за сутки потерь: ключевая машина — с наименьшим номиналом, как у планёрки (3в); доступность, эффективность и
+ * качество — множители OEE. Загрузки не было — `undefined`.
+ */
+export function lineOee(days: readonly LineDay[]): Oee | undefined {
+  const m = lineSums(days);
+  return m && oee(m, m.good);
+}
+
+/** Сутки каждой линии плана за период, по порядку плана. */
+const lineDays = (db: ContentDb, s: PlantState, days: readonly DayLoss[]): LineDay[][] =>
+  planOf(db, s.plant).plant.lines.map(l => days.flatMap(d => (d.lines[l.id] ? [d.lines[l.id]] : [])));
 
 /** OEE каждой линии плана за сутки периода, по порядку плана. */
 export function oeeOf(db: ContentDb, s: PlantState, days: readonly DayLoss[]): (Oee | undefined)[] {
-  return planOf(db, s.plant).plant.lines.map(l => lineOee(days.flatMap(d => (d.lines[l.id] ? [d.lines[l.id]] : []))));
+  return lineDays(db, s, days).map(lineOee);
+}
+
+/**
+ * Множители OEE каждой линии плана за сутки периода — только определённые (ISO 22400-2): эффективность — при времени
+ * работы, качество — при выпуске. Линия только налаживалась — доступность 0, а эффективности и качества нет, а не ноль.
+ */
+export function oeePartsOf(db: ContentDb, s: PlantState, days: readonly DayLoss[]): ({ a: number; p?: number; q?: number } | undefined)[] {
+  return lineDays(db, s, days).map(d => {
+    const m = lineSums(d);
+    const o = m && oee(m, m.good);
+    return m && o ? { a: o.a, ...(m.run > 0 ? { p: o.p } : {}), ...(m.out > 0 ? { q: o.q } : {}) } : undefined;
+  });
 }
 
 /** Когда заказ закрыт: фура покупателя ушла — по отгрузке; не отгружен ничего — в срок отгрузки. */

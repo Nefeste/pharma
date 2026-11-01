@@ -28,7 +28,7 @@ import {
   kpiValues,
   monthPeriod,
   monthStart,
-  oeeOf,
+  oeePartsOf,
   otifLines,
   p90,
   releaseTimes,
@@ -267,10 +267,8 @@ export function whyRows(db: ContentDb, s: PlantState, c: KpiCtx, id: string): Kp
 function moreOf(db: ContentDb, s: PlantState, c: KpiCtx, id: string): Record<string, number> | undefined {
   const times = (a: { sec: number }[]) => (a.length > 0 ? { p90: p90(a.map(x => x.sec))!, n: a.length } : undefined);
   switch (id) {
-    case 'oee': {
-      const o = oeeOf(db, s, c.days).find(x => x !== undefined);
-      return o ? { a: o.a, p: o.p, q: o.q } : undefined;
-    }
+    case 'oee':
+      return oeePartsOf(db, s, c.days).find(x => x !== undefined);
     case 'testTime':
       return times(sampleTimes(c));
     case 'incoming':

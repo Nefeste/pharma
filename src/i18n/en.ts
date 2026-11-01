@@ -1841,6 +1841,8 @@ export const en: Strings = {
     days: (x: string) => `${x}\u00a0days`,
     per: (x: string) => `${x} per 1000`,
     kwh: (x: string) => `${x}\u00a0kWh`,
+    /** a factor that is not defined: performance without run time, quality without output */
+    dash: '—',
     /** details: OEE factors, for durations the 90th percentile, peak occupancy, how many records */
     oeeParts: (a: string, p: string, q: string) => `availability ${a} · performance ${p} · quality ${q}`,
     p90: (t: string, n: number) => `90\u00a0% within ${t} · ${n} ${n === 1 ? 'record' : 'records'}`,

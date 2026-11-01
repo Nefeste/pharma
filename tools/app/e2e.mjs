@@ -2581,10 +2581,11 @@ async function mainPart() {
     await writeSheet(sheet);
   }
 
-  // показатели (Б5ж): K — окно «Показатели»; вкладка «Производство» — OEE с доступностью, эффективностью и качеством,
-  // наведение на имя — формула, направление и источник; «Коммерция» — закрытый месяц с наименьшим OTIF по строкам,
-  // щелчком по его столбику; «Почему?» у OTIF — заказы, отгруженные не полностью или не вовремя; щелчок — карточка заказа
-  // с его строками. Снимок — в контактный лист, лист — заново
+  // показатели (Б5ж): K — окно «Показатели»; вкладка «Производство» — OEE нынешнего месяца, и если линия в нём только
+  // налаживалась, у эффективности и качества — прочерк; щелчок по столбику последнего закрытого месяца — его OEE с
+  // доступностью, эффективностью и качеством; наведение на имя — формула, направление и источник; «Коммерция» — закрытый
+  // месяц с наименьшим OTIF по строкам, щелчком по его столбику; «Почему?» у OTIF — заказы, отгруженные не полностью или
+  // не вовремя; щелчок — карточка заказа с его строками. Снимок — в контактный лист, лист — заново
   {
     await page.evaluate(() => window.__game.actions.setSpeed(0));
     await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
@@ -2593,25 +2594,36 @@ async function mainPart() {
     await page.click('[data-test=kpi-tab][data-tab=production]');
     await page.waitForFunction(() => window.__game.store.get().kpi.view?.tab === 'production', null, { timeout: 20_000 });
     await frames(1);
-    const prod = await page.evaluate(() => {
+    const oeeCell = () => {
       const cell = document.querySelector('[data-test=kpi-cell][data-id=oee]');
       return {
+        month: document.querySelector('[data-test=kpi-month] b')?.textContent ?? '',
         tabs: [...document.querySelectorAll('[data-test=kpi-tab]')].map(x => x.getAttribute('data-tab')),
         heads: [...document.querySelectorAll('[data-test=kpi-head]')].map(x => x.getAttribute('data-head')),
         now: cell?.querySelector('[data-test=kpi-now]')?.textContent ?? '',
         more: cell?.querySelector('[data-test=kpi-more]')?.textContent ?? '',
         tip: cell?.querySelector('[data-test=kpi-name]')?.getAttribute('title') ?? '',
-        bars: cell?.querySelectorAll('[data-test=kpi-bar]').length ?? 0,
+        bars: [...(cell?.querySelectorAll('[data-test=kpi-bar]') ?? [])].map(x => Number(x.getAttribute('data-from'))),
         months: window.__game.store.get().kpi.view?.months.length ?? 0,
       };
-    });
+    };
+    const cur = await page.evaluate(oeeCell);
+    const pct = '\\d+,\\d\u00a0%';
+    const curOk = /^(\d+,\d\u00a0%|нет записей)$/.test(cur.now) && (cur.more === '' || new RegExp(`^доступность ${pct} · эффективность (${pct}|—) · качество (${pct}|—)$`).test(cur.more));
+    const last = cur.bars.at(-1);
+    if (last !== undefined) {
+      await page.click(`[data-test=kpi-cell][data-id=oee] [data-test=kpi-bar][data-from="${last}"]`);
+      await page.waitForFunction(f => window.__game.store.get().kpi.view?.month.from === f && window.__game.store.get().kpi.view?.month.closed === true, last, { timeout: 20_000 });
+      await frames(1);
+    }
+    const prod = await page.evaluate(oeeCell);
     await page.hover('[data-test=kpi-cell][data-id=oee] [data-test=kpi-name]');
     await page.screenshot({ path: join(out, 'e2e-kpi.png') });
     sheet.push({ file: join(out, 'e2e-kpi.png'), label: 'Б5ж · «Показатели» · производство' });
     const fiveTabs = prod.tabs.length === 5 && ['director', 'production', 'quality', 'supply', 'commerce'].every(x => prod.tabs.includes(x));
-    if (!fiveTabs || prod.heads.join() !== 'plan,mes,maint' || !/^\d+,\d %$/.test(prod.now) || !/^доступность \d+,\d % · эффективность \d+,\d % · качество \d+,\d %$/.test(prod.more) || !/^Доступность × эффективность × качество ключевой машины линии/.test(prod.tip) || !/Источник: gost-r-iso-22400-2-2019/.test(prod.tip) || !/выше — лучше/.test(prod.tip) || prod.months < 3 || prod.bars !== prod.months)
-      fail(`«Показатели», производство: ${JSON.stringify(prod)}`);
-    else ok(`«Показатели», производство: OEE ${prod.now} — ${prod.more}; закрытых месяцев ${prod.months}; подсказка «${prod.tip.replace(/\n/g, ' / ')}»`);
+    if (!curOk || last === undefined || !fiveTabs || prod.heads.join() !== 'plan,mes,maint' || !new RegExp(`^${pct}$`).test(prod.now) || !new RegExp(`^доступность ${pct} · эффективность ${pct} · качество ${pct}$`).test(prod.more) || !/^Доступность × эффективность × качество ключевой машины линии/.test(prod.tip) || !/Источник: gost-r-iso-22400-2-2019/.test(prod.tip) || !/выше — лучше/.test(prod.tip) || prod.months < 3 || prod.bars.length !== prod.months)
+      fail(`«Показатели», производство: нынешний ${JSON.stringify(cur)}; закрытый ${JSON.stringify(prod)}`);
+    else ok(`«Показатели», производство: OEE за ${cur.month} — ${cur.now} (${cur.more || 'без подробностей'}), за ${prod.month} — ${prod.now} (${prod.more}); закрытых месяцев ${prod.months}; подсказка «${prod.tip.replace(/\n/g, ' / ')}»`);
     await page.click('[data-test=kpi-tab][data-tab=commerce]');
     await page.waitForFunction(() => window.__game.store.get().kpi.view?.tab === 'commerce', null, { timeout: 20_000 });
     // закрытый месяц с наименьшим OTIF по строкам — по столбикам вида

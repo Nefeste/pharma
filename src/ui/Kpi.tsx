@@ -60,8 +60,11 @@ function moreText(c: KpiCell): string | undefined {
   const m = c.more;
   if (!m) return undefined;
   switch (c.id) {
-    case 'oee':
-      return T.kpi.oeeParts(pctText(m.a, 1), pctText(m.p, 1), pctText(m.q, 1));
+    case 'oee': {
+      // эффективности без времени работы и качества без выпуска нет — прочерк, а не ноль
+      const part = (x: number | undefined) => (x === undefined ? T.kpi.dash : pctText(x, 1));
+      return T.kpi.oeeParts(part(m.a), part(m.p), part(m.q));
+    }
     case 'occupancy':
       return T.kpi.peak(pctText(m.peak, 1));
     case 'mtbf':

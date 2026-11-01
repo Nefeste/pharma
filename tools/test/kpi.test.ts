@@ -3,7 +3,8 @@
 // которые различаются только полями истины, показатели одни; средние остатков — сумма срезов в полночь на число срезов;
 // кВт·ч месяца касса снимает до того, как обнулит счётчик; образец схемы 32 читается — месяцев нет, текущий с минуты
 // загрузки и «неполный»; образец схемы 33 — как есть. Новые записи: у партии — у рампы и на месте, в журнале
-// оборудования — когда слесарь взял работу, у принятого — день открытия вакансии.
+// оборудования — когда слесарь взял работу, у принятого — день открытия вакансии. Множители OEE — только определённые:
+// без времени работы эффективности нет, без выпуска — качества.
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { db } from '../../src/content';
@@ -11,10 +12,11 @@ import { part } from '../../src/engine/cash';
 import { DAY, momentOf } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
 import { check } from '../../src/engine/invariants';
-import { currentPeriod, decidedAt, emptySnap, KPI, KPIS, kpiSnapshot, kpiValues, monthPeriod, monthStart } from '../../src/engine/kpi';
+import { currentPeriod, decidedAt, emptySnap, KPI, KPIS, kpiSnapshot, kpiValues, monthPeriod, monthStart, oeeOf, oeePartsOf } from '../../src/engine/kpi';
+import { planOf } from '../../src/engine/plant';
 import { runSeed } from '../../src/engine/plan/run';
 import { fromSave } from '../../src/engine/save';
-import type { KpiSnap, PlantState } from '../../src/engine/types';
+import type { DayLoss, KpiSnap, PlantState } from '../../src/engine/types';
 import { sourceKeys } from '../content/load';
 
 const SC = 'scn.proto';
@@ -122,6 +124,21 @@ describe('срез суток', () => {
 
   test('пустой срез — нули', () => {
     expect(Object.values(emptySnap()).every(x => x === 0)).toBe(true);
+  });
+});
+
+describe('множители OEE', () => {
+  test('только определённые: линия налаживалась — доступность 0, а эффективности и качества нет; без выпуска нет качества', () => {
+    const p = newPlant(db, { scenario: SC });
+    const line = planOf(db, p.plant).plant.lines[0].id;
+    const n = p.lines[line].machines.length;
+    const day = (ideal: number, run: number, out: number, good: number) =>
+      ({ day: 0, lines: { [line]: { times: Array.from({ length: n }, () => ({ out })), ideal: Array(n).fill(ideal), run: Array(n).fill(run), good } } }) as unknown as DayLoss;
+    expect(oeePartsOf(db, p, [day(1000, 0, 0, 0)])).toEqual([{ a: 0 }]);
+    expect(oeeOf(db, p, [day(1000, 0, 0, 0)])[0]?.oee).toBe(0);
+    expect(oeePartsOf(db, p, [day(1000, 500, 0, 0)])).toEqual([{ a: 5000, p: 0 }]);
+    expect(oeePartsOf(db, p, [day(1000, 500, 400, 300)])).toEqual([{ a: 5000, p: 8000, q: 7500 }]);
+    expect(oeePartsOf(db, p, [])).toEqual([undefined]);
   });
 });
 

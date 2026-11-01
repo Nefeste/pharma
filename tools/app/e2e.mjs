@@ -940,6 +940,7 @@ async function mainPart() {
   // полные сутки; доска «План — факт» у линии — план и годные пачки текущей смены; «Обычный вид» — столбиков нет,
   // светильники снова видны. Снимок — в контактный лист
   let floorShot;
+  let bottleShot;
   {
     await page.evaluate(() => window.__game.actions.select(undefined));
     await camAt({ x: 39, z: 9, half: 10 });
@@ -1016,6 +1017,92 @@ async function mainPart() {
       fail(`доска «План — факт»: ${JSON.stringify(board)}`);
     else ok(`доска «План — факт»: смена ${new Date(board.from * 1000).toISOString().slice(11, 16)}–${new Date(board.ends * 1000).toISOString().slice(11, 16)}, задание ${board.plan}, годных ${board.fact}, по часам ${board.hours.map(h => h.fact ?? '·').join(' ')}`);
     await page.keyboard.press('Escape');
+    // узкие места (Б1к): L — «Узкие места», окно — 7 суток: над тремя местами, где серии дольше всего ждали, — табличка
+    // с местом по порядку, часами и словом, над машиной, которая держит линию, — «держит линию»; столбиков, досок и
+    // светильников нет; слой — не больше четырёх вызовов отрисовки; наведение на первую табличку — подсказка с часами по
+    // словам; щелчок — карточка помещения с блоком «Узкие места», те же часы. Снимок — в контактный лист
+    await page.keyboard.press('KeyL');
+    await page.waitForFunction(() => window.__game.store.get().layer === 'bottle', null, { timeout: 10_000 });
+    await page.click('[data-test=floor-win-week]');
+    await page.waitForFunction(() => window.__game.store.get().floor.view?.win === 'week', null, { timeout: 20_000 });
+    await frames(4);
+    const bv = await page.evaluate(() => {
+      const g = window.__game;
+      const v = g.store.get().floor.view;
+      const plates = g.stage.plates.plates;
+      return {
+        calls: g.stage.calls,
+        tops: plates.filter(p => p.k === 'top').map(p => ({ i: p.thing.i, rank: p.rank, sec: p.sec, what: p.what })),
+        want: v.waits.filter(w => w.total > 0).slice(0, 3).map((w, n) => ({ i: w.i, rank: n + 1, sec: w.total, what: w.what })),
+        holds: plates.filter(p => p.k === 'holds').map(p => p.thing),
+        lines: v.lines.filter(l => l.holds).map(l => ({ kind: 'machine', line: l.n, k: l.holds.k })),
+        types: Object.fromEntries(g.layout.rooms.map((r, i) => [i, r.type])),
+        bars: g.stage.floor.group.visible,
+        lamps: g.stage.lamps.mesh.visible,
+        legend: !!document.querySelector('[data-test=bottle-legend]'),
+      };
+    });
+    if (bv.tops.length !== Math.min(3, bv.want.length) || JSON.stringify(bv.tops) !== JSON.stringify(bv.want) || JSON.stringify(bv.holds) !== JSON.stringify(bv.lines) || bv.bars || bv.lamps || !bv.legend || bv.calls - off > 4)
+      fail(`слой «Узкие места»: ${JSON.stringify(bv)}, вызовов без слоя ${off}`);
+    else ok(`слой «Узкие места» за 7 суток: ${bv.tops.map(t => `${t.rank} — ${bv.types[t.i]}, ${Math.round(t.sec / 3600)} ч, ${t.what}`).join('; ')}; «держит линию» — над ${bv.holds.length} машиной; столбиков и светильников нет; вызовов отрисовки ${bv.calls - off >= 0 ? '+' : ''}${bv.calls - off}`);
+    await page.screenshot({ path: join(out, 'e2e-bottle.png') });
+    bottleShot = { file: join(out, 'e2e-bottle.png'), label: `Б1к · «Узкие места» · 7 суток · ${bv.calls} вызовов` };
+    const top = await page.evaluate(() => {
+      const g = window.__game;
+      const p = g.stage.plates.plates.find(x => x.k === 'top' && x.rank === 1);
+      return p ? { sp: g.stage.screen(p.x, 2.4 + p.h / 2, p.z), i: p.thing.i } : undefined;
+    });
+    if (!top?.sp) fail('табличка первого места не на экране');
+    else {
+      await page.mouse.move(top.sp.x, top.sp.y);
+      await page.waitForSelector('[data-test=bottle-tip]', { timeout: 10_000 }).catch(() => {});
+      const tip = await page.evaluate(i => {
+        const w = window.__game.store.get().floor.view.waits.find(x => x.i === i);
+        return {
+          rows: [...document.querySelectorAll('[data-test=bottle-tip] [data-test=bottle-row]')].map(x => [x.getAttribute('data-what'), Number(x.getAttribute('data-sec'))]),
+          sec: w.sec,
+          rank: document.querySelector('[data-test=bottle-tip] [data-test=bottle-rank]')?.textContent ?? '',
+          text: document.querySelector('[data-test=bottle-tip]')?.textContent ?? '',
+        };
+      }, top.i);
+      const same = tip.rows.length > 0 && tip.rows.length === Object.keys(tip.sec).length && tip.rows.every(([k, sec]) => tip.sec[k] === sec);
+      if (!same || !/^1-е место/.test(tip.rank) || !/ждали/.test(tip.text)) fail(`подсказка у таблички первого места: ${JSON.stringify(tip)}`);
+      else ok(`подсказка у таблички первого места: ${tip.text}`);
+      await page.mouse.click(top.sp.x, top.sp.y);
+      await page.waitForSelector('[data-test=card-bottle] [data-test=bottle-row]', { timeout: 20_000 }).catch(() => {});
+      const card = await page.evaluate(i => {
+        const g = window.__game;
+        const w = g.store.get().floor.view.waits.find(x => x.i === i);
+        return {
+          sel: g.selected,
+          rows: [...document.querySelectorAll('[data-test=card-bottle] [data-test=bottle-row]')].map(x => [x.getAttribute('data-what'), Number(x.getAttribute('data-sec'))]),
+          now: document.querySelectorAll('[data-test=card-bottle] [data-test=bottle-now]').length,
+          want: w.now.length,
+          sec: w.sec,
+        };
+      }, top.i);
+      const same2 = card.rows.length > 0 && card.rows.every(([k, sec]) => card.sec[k] === sec);
+      if (card.sel?.kind !== 'room' || card.sel.i !== top.i || !same2 || card.now !== card.want) fail(`карточка первого места, «Узкие места»: ${JSON.stringify(card)}`);
+      else ok(`карточка первого места: блок «Узкие места» — те же часы, ждут сейчас — ${card.now}`);
+      await page.keyboard.press('Escape');
+      await page.mouse.move(5, 400);
+    }
+    // L — «Проблемы»: таблички ушли, значки — над теми вещами вида, что стоят на полу; что не горит — значков нет
+    await page.keyboard.press('KeyL');
+    await page.waitForFunction(() => window.__game.store.get().layer === 'andon' && !!window.__game.store.get().andon.view, null, { timeout: 20_000 });
+    await frames(4);
+    const av = await page.evaluate(() => {
+      const g = window.__game;
+      return {
+        items: g.store.get().andon.view.items.length,
+        marks: g.stage.andon.marks.length,
+        plates: g.stage.plates.mesh.visible,
+        legend: document.querySelectorAll('[data-test=andon-legend] li').length,
+        calls: g.stage.calls,
+      };
+    });
+    if (av.marks > av.items || av.plates || av.legend !== 3 || av.calls - off > 4) fail(`слой «Проблемы»: ${JSON.stringify(av)}, вызовов без слоя ${off}`);
+    else ok(`слой «Проблемы»: не работает ${av.items} вещей — значков ${av.marks}; табличек нет; вызовов отрисовки ${av.calls - off >= 0 ? '+' : ''}${av.calls - off}`);
     // L — «Потоки — люди», L — «Обычный вид»: столбиков нет
     await page.keyboard.press('KeyL');
     await page.keyboard.press('KeyL');
@@ -1032,6 +1119,17 @@ async function mainPart() {
     ['machine', MACHINE, 1],
   ];
   const sheet = [];
+  /** Один лист: строки — пресет и время суток, столбцы — высота; за ними — снимки слоёв. */
+  const writeSheet = async list => {
+    const cells = list.map(c => `<figure><img src="data:image/png;base64,${readFileSync(c.file).toString('base64')}"><figcaption>${c.label}</figcaption></figure>`).join('');
+    const lister = await browser.newPage({ viewport: { width: 1290, height: 800 } });
+    await lister.setContent(
+      `<style>body{margin:6px;background:#1d2226;font:12px sans-serif;color:#d8dde0}main{display:grid;grid-template-columns:repeat(3,420px);gap:6px}figure{margin:0}img{width:420px;display:block}figcaption{padding:2px 0 4px}</style><main>${cells}</main>`,
+    );
+    await lister.screenshot({ path: join(out, 'contact.png'), fullPage: true });
+    await lister.close();
+    ok(`контактный лист: ${list.length} снимков → ${join(out, 'contact.png')}`);
+  };
   const shoot = async when => {
     for (const q of ['low', 'medium', 'high']) {
       await page.evaluate(q => window.__game.actions.setQuality(q), q);
@@ -1056,17 +1154,11 @@ async function mainPart() {
   await page.keyboard.press('Space');
   await page.waitForTimeout(300);
   await shoot('night');
-  // и слой «Загрузка и OEE» (Б1и) — днём, в час упаковки
+  // и слои «Загрузка и OEE» (Б1и) и «Узкие места» (Б1к) — днём, в час упаковки; «Проблемы» (Б1к) — в конце основной
+  // части, когда что-то не работает: лист пишется ещё раз
   if (floorShot) sheet.push(floorShot);
-  // один лист: строки — пресет и время суток, столбцы — высота
-  const cells = sheet.map(c => `<figure><img src="data:image/png;base64,${readFileSync(c.file).toString('base64')}"><figcaption>${c.label}</figcaption></figure>`).join('');
-  const lister = await browser.newPage({ viewport: { width: 1290, height: 800 } });
-  await lister.setContent(
-    `<style>body{margin:6px;background:#1d2226;font:12px sans-serif;color:#d8dde0}main{display:grid;grid-template-columns:repeat(3,420px);gap:6px}figure{margin:0}img{width:420px;display:block}figcaption{padding:2px 0 4px}</style><main>${cells}</main>`,
-  );
-  await lister.screenshot({ path: join(out, 'contact.png'), fullPage: true });
-  await lister.close();
-  ok(`контактный лист: ${sheet.length} снимков → ${join(out, 'contact.png')}`);
+  if (bottleShot) sheet.push(bottleShot);
+  await writeSheet(sheet);
 
   // автопаузы (Б2а): у производства и качества тринадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
   // вышел», с Б3г — «пара приостановлена», с Б4а — «сверхурочные года на исходе», с Б4в — «заявление об увольнении»,
@@ -2412,6 +2504,60 @@ async function mainPart() {
     else ok(`отпуск: в кассе отпускные ${Math.round(-pay.sum / 100)} ₽; на планёрке «${away.find(x => /Водитель/.test(x))}»; в карточке «${card}»; у кладовщика «${covers}»; снимок ${join(out, 'e2e-leave-card.png')}`);
     // автопаузы — как были: до сих пор «До утра» шло без остановок до 08:00
     await page.evaluate(ids => ids.forEach(p => window.__game.actions.setPause(p, true)), others.filter(p => !offBefore.includes(p)));
+  }
+
+  // проблемы (Б1к): слой «Проблемы» с высоты участка; ничего не горит — ×4, пока не загорится, не дольше трёх суток
+  // завода. Над каждой вещью вида, которая на полу, — значок вида первой проблемы; наведение на первый — подсказка со
+  // всеми проблемами вещи и мгновением; щелчок — карточка вещи с блоком «Проблемы» теми же словами. Снимок — в контактный
+  // лист, лист — заново
+  {
+    await page.click('[data-test=layer-andon]');
+    await page.waitForFunction(() => window.__game.store.get().layer === 'andon' && !!window.__game.store.get().andon.view, null, { timeout: 20_000 });
+    const from = await gameT();
+    for (let i = 0; i < 60 && (await gameT()) < from + 72 * 3600; i++) {
+      if (await page.evaluate(() => window.__game.store.get().andon.view.items.length > 0)) break;
+      await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
+      await page.evaluate(() => window.__game.actions.setSpeed(4));
+      await page.waitForFunction(() => window.__game.store.get().andon.view.items.length > 0 || window.__game.speed === 0, null, { timeout: 30_000 }).catch(() => {});
+      await page.evaluate(() => window.__game.actions.setSpeed(0));
+    }
+    await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
+    await camAt(null);
+    await settle(3);
+    await frames(4);
+    const a = await page.evaluate(() => {
+      const g = window.__game;
+      const items = g.store.get().andon.view.items;
+      const marks = g.stage.andon.marks;
+      return {
+        items: items.map(x => ({ thing: x.thing, kind: x.kind, weight: x.weight, why: x.why.map(w => w.kind) })),
+        marks: marks.map(m => ({ thing: m.thing, kind: m.kind, weight: m.weight, n: m.n })),
+        first: marks[0] ? { sp: g.stage.screen(marks[0].x, marks[0].y, marks[0].z), n: marks[0].n } : undefined,
+        calls: g.stage.calls,
+      };
+    });
+    const right = a.marks.every(m => JSON.stringify(a.items[m.n].thing) === JSON.stringify(m.thing) && a.items[m.n].kind === m.kind && a.items[m.n].weight === m.weight);
+    if (a.marks.length < 1 || !right) fail(`слой «Проблемы»: ${JSON.stringify(a)}`);
+    else ok(`слой «Проблемы»: значков ${a.marks.length} — ${a.marks.map(m => `${m.thing.kind} ${m.kind} (${m.weight})`).join(', ')}`);
+    await page.screenshot({ path: join(out, 'e2e-andon.png') });
+    sheet.push({ file: join(out, 'e2e-andon.png'), label: `Б1к · «Проблемы» · участок · ${a.calls} вызовов` });
+    if (a.first?.sp) {
+      await page.mouse.move(a.first.sp.x, a.first.sp.y);
+      await page.waitForSelector('[data-test=andon-tip]', { timeout: 10_000 }).catch(() => {});
+      const tip = await page.evaluate(() => ({ rows: [...document.querySelectorAll('[data-test=andon-tip] [data-test=andon-row]')].map(x => x.getAttribute('data-kind')), text: document.querySelector('[data-test=andon-tip]')?.textContent ?? '' }));
+      const want = a.items[a.first.n].why;
+      if (tip.rows.join() !== want.join() || !/с \d\d\.\d\d \d\d:\d\d/.test(tip.text)) fail(`подсказка у значка: ${JSON.stringify(tip)}, а проблемы ${want.join(', ')}`);
+      else ok(`подсказка у значка: ${tip.text}`);
+      await page.mouse.click(a.first.sp.x, a.first.sp.y);
+      await page.waitForSelector('[data-test=card-andon] [data-test=andon-row]', { timeout: 20_000 }).catch(() => {});
+      const card = await page.evaluate(() => ({ sel: window.__game.selected, rows: [...document.querySelectorAll('[data-test=card-andon] [data-test=andon-row]')].map(x => x.getAttribute('data-kind')) }));
+      if (JSON.stringify(card.sel) !== JSON.stringify(a.items[a.first.n].thing) || card.rows.join() !== want.join()) fail(`карточка вещи со значком: ${JSON.stringify(card)}`);
+      else ok(`карточка вещи со значком: блок «Проблемы» — ${card.rows.join(', ')}`);
+      await page.keyboard.press('Escape');
+      await page.mouse.move(5, 400);
+    } else fail('первый значок андона не на экране');
+    await page.click('[data-test=layer-plain]');
+    await writeSheet(sheet);
   }
 
   // стартовый пресет (Б1б): первый запуск без пресета в адресе — средний, через пять секунд замер; кадр программной

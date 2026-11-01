@@ -12,6 +12,7 @@ import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import type { DossierView } from '../sim/dossier';
+import type { AndonView } from '../sim/andon';
 import type { FloorView, FloorWin } from '../sim/floor';
 import type { InvView } from '../sim/inv';
 import type { JournalView } from '../sim/journal';
@@ -111,7 +112,8 @@ export interface Hud {
   ref: { open: boolean; tab: RefTab; view?: RefView };
   /**
    * слой слева (Б1и; геймдизайн, §3.6, §18): обычный вид; «Загрузка и OEE» — столбики, числа, доски «План — факт»;
-   * «Потоки — люди» (Б1г) — стрелки переходов людей между помещениями вместо перевозок паллет
+   * «Узкие места» и «Проблемы» (Б1к) — таблички над местами, где серии ждут, и значки андона; «Потоки — люди» (Б1г) —
+   * стрелки переходов людей между помещениями вместо перевозок паллет
    */
   layer: Layer;
   /**
@@ -119,6 +121,8 @@ export interface Hud {
    * на него навели
    */
   floor: { win: FloorWin; view?: FloorView; hover?: { thing: Thing; x: number; y: number } };
+  /** вид «Андон» (Б1к): что не работает сейчас — пока включён слой «Проблемы»; подсказка — у `floor.hover` */
+  andon: { view?: AndonView };
   /** пояснения при первом событии (Б1г): виды, которые игрок уже понял, — запоминаются в окне (src/app/firsts.ts) */
   firsts: readonly string[];
 }
@@ -198,6 +202,7 @@ export const initial: Hud = {
   ref: { open: false, tab: 'recipes' },
   layer: 'plain',
   floor: { win: 'today' },
+  andon: {},
   firsts: [],
 };
 

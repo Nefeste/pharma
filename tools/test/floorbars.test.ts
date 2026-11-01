@@ -1,9 +1,11 @@
 // Б1и: данные на полу в окне (src/app/floor.ts). Места столбиков — на свободном полу своего помещения и у своей машины,
 // доска — за последней машиной линии; высоты частей — доли окна от полной высоты, по порядку снизу вверх; число — у
 // каждого столбика: у помещения — доля работы, у ключевой машины — OEE с множителями, у других — доля хода; строки доски
-// «План — факт»; слои — по кругу клавишей L.
+// «План — факт»; слои — по кругу клавишей L. Б1к: таблички «Узких мест» — над тремя местами с часами ожидания по
+// убыванию, у середины помещения, и над машиной, которая держит линию; значки андона — над вещью, на 2,8 м или над её
+// верхом; короба для щелчка — вокруг них.
 import { describe, expect, test } from 'bun:test';
-import { barBoxes, barsOf, boardRows, colorOf, FLOOR, LAYERS, nextLayer, PART_COLOR, ROOM_AS, spotsOf } from '../../src/app/floor';
+import { andonBoxes, andonMarks, barBoxes, barsOf, boardRows, colorOf, DATA_LAYERS, FLOOR, LAYERS, midSpot, nextLayer, PART_COLOR, plateBoxes, platesOf, ROOM_AS, spotsOf } from '../../src/app/floor';
 import { db } from '../../src/content';
 import { DAY, HOUR } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
@@ -12,7 +14,8 @@ import { CELL } from '../../src/engine/nav';
 import { planOf } from '../../src/engine/plant';
 import type { PlantState } from '../../src/engine/types';
 import { layoutOf } from '../../src/render/layout';
-import { floorView, MACHINE_PARTS, ROOM_PARTS } from '../../src/sim/floor';
+import type { AndonItem } from '../../src/sim/andon';
+import { type FloorView, floorView, MACHINE_PARTS, ROOM_PARTS } from '../../src/sim/floor';
 
 const SC = 'scn.proto';
 const plan = planOf(db, db.scenarios[SC].plant);
@@ -127,8 +130,77 @@ describe('доска и слои', () => {
     ]);
   });
 
-  test('слои по кругу: обычный вид → загрузка и OEE → потоки — люди → обычный вид', () => {
-    expect(LAYERS).toEqual(['plain', 'load', 'people']);
-    expect([nextLayer('plain'), nextLayer('load'), nextLayer('people')]).toEqual(['load', 'people', 'plain']);
+  test('слои по кругу: обычный вид → загрузка и OEE → узкие места → проблемы → потоки — люди → обычный вид', () => {
+    expect(LAYERS).toEqual(['plain', 'load', 'bottle', 'andon', 'people']);
+    expect(LAYERS.map(nextLayer)).toEqual(['load', 'bottle', 'andon', 'people', 'plain']);
+  });
+});
+
+describe('узкие места и проблемы (Б1к)', () => {
+  test('слои данных — «Загрузка», «Узкие места», «Проблемы»; обычный вид и потоки — нет', () => {
+    expect(LAYERS.filter(x => DATA_LAYERS.has(x))).toEqual(['load', 'bottle', 'andon']);
+  });
+
+  test('точка над помещением — свободная клетка его пола у середины, а нет такой — середина; есть у каждого помещения', () => {
+    let free = 0;
+    for (const [i, r] of l.rooms.entries()) {
+      const at = midSpot(l, i)!;
+      expect(at.x).toBeGreaterThanOrEqual(r.x);
+      expect(at.x).toBeLessThanOrEqual(r.x + r.w);
+      expect(at.z).toBeGreaterThanOrEqual(r.z);
+      expect(at.z).toBeLessThanOrEqual(r.z + r.d);
+      const k = Math.floor(at.z) * l.nav.w + Math.floor(at.x);
+      if ([l.nav.cells[k], l.nav.room[k], l.nav.blocked[k]].join() === [CELL.floor, i, 0].join()) free++;
+      else expect(at).toEqual({ x: r.x + r.w / 2, z: r.z + r.d / 2 });
+    }
+    // у помещений учёта, лаборатории, ООК и склада — свободная клетка
+    for (const id of [...roomsOf(plan).rooms, 'lab', 'office', 'warehouse']) {
+      const i = l.rooms.findIndex(r => r.id === id);
+      const at = midSpot(l, i)!;
+      const k = Math.floor(at.z) * l.nav.w + Math.floor(at.x);
+      expect([id, l.nav.cells[k], l.nav.room[k], l.nav.blocked[k]]).toEqual([id, CELL.floor, i, 0]);
+    }
+    expect(free).toBeGreaterThan(l.rooms.length / 2);
+  });
+
+  test('таблички: три места с часами — по убыванию, с местом по порядку и словом; над машиной — «держит линию»', () => {
+    const v = floorView(db, s, { view: 'floor', win: 'week' });
+    const p = platesOf(l, v);
+    const tops = p.filter(x => x.k === 'top');
+    const want = v.waits.filter(w => w.total > 0).slice(0, 3);
+    expect(tops.map(x => (x.k === 'top' ? [x.thing, x.rank, x.sec, x.what] : []))).toEqual(want.map((w, n) => [{ kind: 'room', i: w.i }, n + 1, w.total, w.what]));
+    for (const x of tops) if (x.thing.kind === 'room') expect({ x: x.x, z: x.z }).toEqual(midSpot(l, x.thing.i)!);
+    const holds = p.filter(x => x.k === 'holds');
+    expect(holds.length).toBe(v.lines.filter(x => x.holds).length);
+    for (const x of holds) {
+      if (x.thing.kind !== 'machine') throw new Error('над машиной');
+      const ln = v.lines.find(y => y.n === (x.thing.kind === 'machine' ? x.thing.line : -1))!;
+      expect(x.thing.k).toBe(ln.holds!.k);
+      const m = plan.plant.lines[x.thing.line].machines[x.thing.k];
+      expect([x.x, x.z]).toEqual([m.at[0] / 100, m.at[1] / 100]);
+    }
+    // ожидания не было — табличек мест нет
+    const empty: FloorView = { ...v, waits: [], lines: v.lines.map(({ holds: _, ...ln }) => ln) };
+    expect(platesOf(l, empty)).toEqual([]);
+  });
+
+  test('короб таблички: ширина её фона, нижний край — 2,4 м; с высоты участка — вдвое больше', () => {
+    const p = { thing: { kind: 'room' as const, i: 0 }, x: 10, z: 20, k: 'top' as const, rank: 1, sec: 3600, what: 'lab' as const, w: 6, h: 0.8 };
+    expect(plateBoxes([p], 1)).toEqual([{ thing: p.thing, min: [7, FLOOR.plate.y, 17], max: [13, FLOOR.plate.y + 0.8, 23] }]);
+    expect(plateBoxes([p], 2)[0].max[1]).toBeCloseTo(FLOOR.plate.y + 1.6, 9);
+  });
+
+  test('значок андона: центр — на 2,8 м над полом вещи; над вещью выше — над её верхом; вещи на полу нет — значка нет', () => {
+    const item = (thing: AndonItem['thing']): AndonItem => ({ thing, kind: 'fail', weight: 'stop', why: [{ kind: 'fail' }] });
+    const items = [item({ kind: 'room', i: 1 }), item({ kind: 'truck', n: 3, customer: false }), item({ kind: 'unit', n: 9 })];
+    const top = (t: AndonItem['thing']): [number, number, number] | undefined => (t.kind === 'room' ? [5, 0, 6] : t.kind === 'truck' ? [20, 3.8, 2] : undefined);
+    const m = andonMarks(items, top);
+    expect(m).toEqual([
+      { thing: items[0].thing, kind: 'fail', weight: 'stop', n: 0, x: 5, y: FLOOR.andon.y, z: 6 },
+      { thing: items[1].thing, kind: 'fail', weight: 'stop', n: 1, x: 20, y: 3.8 + FLOOR.andon.over + FLOOR.andon.size / 2, z: 2 },
+    ]);
+    const [b] = andonBoxes(m, 1);
+    expect(b.max[1] - FLOOR.andon.y).toBeCloseTo(FLOOR.andon.size / 2, 9);
+    expect(FLOOR.andon.y - b.min[1]).toBeCloseTo(FLOOR.andon.size / 2 + 2 * FLOOR.andon.word, 9);
   });
 });

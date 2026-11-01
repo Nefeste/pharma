@@ -45,7 +45,9 @@
 // упаковывает, — а у сменного задания, которое идёт, уже есть выпуск по часам; журнал здесь тоже есть, но его держит
 // образец схемы 29. С схемы 31 — посреди вывоза отклонённого: игрок на посту качества отклоняет серии ГП, коллега склада
 // заказывает вывоз, фура подрядчика у рампы — кладовщик с водителем грузят или начальник ОКК подписывает передачу, — а
-// прежний вывоз уже в журнале отходов; учёта помещений посреди дела здесь нет — его держит образец схемы 30.
+// прежний вывоз уже в журнале отходов; учёта помещений посреди дела здесь нет — его держит образец схемы 30. С схемы 32 —
+// посреди учёта у мест: серии ждут у четырёх мест и больше — у лаборатории, линии и других, — а в сутках сохранения учёт
+// уже копится; вывоза посреди дела здесь нет — его держит образец схемы 31.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { DAY, daysFromCivil, HOUR, MIN, momentOf } from '../../src/engine/core/calendar';
@@ -129,8 +131,14 @@ const floored = () => {
 };
 // посреди вывоза отклонённого (Б1з): у фуры подрядчика грузят или подписывают передачу, а прежний вывоз — в журнале отходов
 const wasting = () => s.waste.log.length > 0 && Object.values(s.tasks).some(t => (t.kind === 'wasteLoad' || t.kind === 'wasteSign') && t.state === 'busy');
+// посреди учёта у мест (Б1к): серии у четырёх мест и больше, среди них лаборатория и линия; в сутках сохранения учёт есть
+// у двух мест и больше
+const waited = () => {
+  const at = new Set(Object.values(s.batches).map(b => b.place).filter(Boolean));
+  return at.size >= 4 && at.has('lab') && at.has(lineRoom) && Object.keys(s.losses.at(-1)?.waits ?? {}).length >= 2;
+};
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : seated() && wasting();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : seated() && waited();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 const refused = new Set<string>();
@@ -160,8 +168,8 @@ while (s.t < end && !busy()) {
   if (SCHEMA >= 14)
     for (const i of Object.values(s.investigations))
       if (i.status === 'open' && i.runs.length === 0) for (const step of ['records', 'dossier']) apply(db, s, { kind: 'investigate', inv: i.id, step, by: 'player' });
-  // с схемы 31 — игрок на посту качества отклоняет каждую серию ГП: её паллеты едут в зону отклонённого
-  if (SCHEMA >= 31 && s.seats?.some(x => x.seat === 'quality' && x.to === undefined))
+  // схема 31 — игрок на посту качества отклоняет каждую серию ГП: её паллеты едут в зону отклонённого
+  if ((SCHEMA as number) === 31 && s.seats?.some(x => x.seat === 'quality' && x.to === undefined))
     for (const b of Object.values(s.batches))
       if (b.status === 'fg' && !refused.has(b.id)) {
         refused.add(b.id);

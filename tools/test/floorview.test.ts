@@ -1,6 +1,8 @@
 // Б1и: вид «Пол» (src/sim/floor.ts). Часы помещений — из учёта суток, с отрезком, который ещё идёт; машины линии, ключевая
 // машина и OEE — те же, что у планёрки за те же сутки; доска «План — факт» — сменное задание по часам; без истины: два
-// завода, у которых различаются только истинные поля, дают один вид.
+// завода, у которых различаются только истинные поля, дают один вид. Б1к: часы ожидания серий у мест — из учёта суток с
+// отрезками, которые ещё идут, по убыванию, слово — наибольшее ожидание; «держит линию» — ключевая машина планёрки, при
+// ожидании соседа — сосед.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { DAY, HOUR, momentOf } from '../../src/engine/core/calendar';
@@ -8,7 +10,7 @@ import { apply, newPlant } from '../../src/engine/engine';
 import { roomsOf } from '../../src/engine/lean';
 import { planOf } from '../../src/engine/plant';
 import type { PlantState, RoomPhase } from '../../src/engine/types';
-import { floorView, hourPlan, sumLineDays, winDays } from '../../src/sim/floor';
+import { floorView, holdsOf, hourPlan, sumLineDays, WAIT_WHAT, type WaitWhat, winDays } from '../../src/sim/floor';
 import { lineSum, morningView } from '../../src/sim/report';
 
 const SC = 'scn.proto';
@@ -112,6 +114,86 @@ describe('линия', () => {
     expect(hourPlan(8000, 8)).toEqual(Array(8).fill(1000));
     expect(hourPlan(0, 8)).toEqual(Array(8).fill(0));
     for (const [p, n] of [[12345, 8], [7, 12], [999, 7]]) expect(hourPlan(p, n).reduce((a, x) => a + x, 0)).toBe(p);
+  });
+});
+
+describe('узкие места (Б1к)', () => {
+  const index = new Map(plan.plant.rooms.map((r, i) => [r.id, i]));
+  const isWait = new Set<string>(WAIT_WHAT);
+  /** Ожидание у мест за сутки окна своим кодом: учёт суток и, если окно с сегодня, отрезки, которые идут. */
+  function own(days: number[], open: boolean): Map<number, Partial<Record<WaitWhat, number>>> {
+    const out = new Map<number, Partial<Record<WaitWhat, number>>>();
+    const put = (room: string, ph: string, sec: number) => {
+      if (!isWait.has(ph) || sec <= 0) return;
+      const x = out.get(index.get(room)!) ?? {};
+      x[ph as WaitWhat] = (x[ph as WaitWhat] ?? 0) + sec;
+      out.set(index.get(room)!, x);
+    };
+    for (const d of s.losses.filter(x => days.includes(x.day))) for (const [room, x] of Object.entries(d.waits)) for (const [ph, sec] of Object.entries(x)) put(room, ph, sec ?? 0);
+    if (open) for (const b of Object.values(s.batches)) if (b.place && b.phase && b.placeAt !== undefined) put(b.place, b.phase, s.t - b.placeAt);
+    return out;
+  }
+
+  test('часы у мест — из учёта суток окна; сегодня и 7 суток — с отрезками, которые идут; ход стадий и линии — не ожидание', () => {
+    for (const win of ['today', 'yesterday', 'week'] as const) {
+      const v = floorView(db, s, { view: 'floor', win });
+      const want = own(winDays(s, win), win !== 'yesterday');
+      const got = new Map(v.waits.filter(w => w.total > 0).map(w => [w.i, w.sec]));
+      expect(got).toEqual(want);
+      for (const w of v.waits) {
+        expect(w.total).toBe(Object.values(w.sec).reduce((n, x) => n + (x ?? 0), 0));
+        expect(Object.keys(w.sec).some(k => k === 'work' || k === 'packing')).toBe(false);
+      }
+    }
+  });
+
+  test('места — по убыванию часов; слово — чего ждали больше всего; за 7 суток лаборатория и линия — в тройке', () => {
+    const v = floorView(db, s, { view: 'floor', win: 'week' });
+    const withHours = v.waits.filter(w => w.total > 0);
+    expect(withHours.length).toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < withHours.length; i++) expect(withHours[i - 1].total).toBeGreaterThanOrEqual(withHours[i].total);
+    for (const w of withHours) {
+      const most = Math.max(...Object.values(w.sec).map(x => x ?? 0));
+      expect(w.sec[w.what]).toBe(most);
+    }
+    const top = withHours.slice(0, 3).map(w => plan.plant.rooms[w.i].id);
+    expect(top).toContain('lab');
+    expect(top).toContain('packaging');
+    expect(withHours.find(w => plan.plant.rooms[w.i].id === 'lab')!.what).toBe('lab');
+  });
+
+  test('серии, которые ждут сейчас, — у своего места, с номером и словом; работа — не ожидание', () => {
+    const v = floorView(db, s, { view: 'floor', win: 'week' });
+    const now = v.waits.flatMap(w => w.now.map(x => ({ room: plan.plant.rooms[w.i].id, ...x })));
+    const want = Object.values(s.batches).filter(b => b.place && b.phase && isWait.has(b.phase));
+    expect(now.length).toBe(want.length);
+    expect(now.length).toBeGreaterThan(0);
+    for (const x of now) {
+      const b = s.batches[`B${x.bn}`];
+      expect(b.place).toBe(x.room);
+      expect(b.phase).toBe(x.what);
+      expect(x.code).toMatch(/^[A-Z]{2}\d{3}/);
+    }
+  });
+
+  test('«держит линию» — ключевая машина и главная потеря планёрки за то же окно; ждала соседа — сосед', () => {
+    for (const win of ['today', 'yesterday', 'week'] as const) {
+      const v = floorView(db, s, { view: 'floor', win });
+      for (const l of v.lines) {
+        if (l.sum.key === undefined) {
+          expect(l.holds).toBeUndefined();
+          continue;
+        }
+        expect(l.holds).toEqual(holdsOf(l.sum));
+      }
+    }
+    expect(holdsOf({ line: 0 })).toBeUndefined();
+    const oee = { a: 5000, p: 6000, q: 9900, oee: 2970 };
+    expect(holdsOf({ line: 0, key: 1, oee, loss: { what: 'setup', sec: 3600 } })).toEqual({ k: 1, what: 'setup', sec: 3600 });
+    expect(holdsOf({ line: 0, key: 1, oee, loss: { what: 'wait', sec: 3600 }, neighbour: { k: 0, what: 'fail', sec: 1800 } })).toEqual({ k: 0, what: 'fail', sec: 1800, key: 1 });
+    // ожидание без остановок соседа — над самой ключевой
+    expect(holdsOf({ line: 0, key: 1, oee, loss: { what: 'wait', sec: 3600 } })).toEqual({ k: 1, what: 'wait', sec: 3600 });
+    expect(holdsOf({ line: 0, key: 1, oee })).toEqual({ k: 1 });
   });
 });
 

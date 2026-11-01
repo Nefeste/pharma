@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 31;
+export const SCHEMA = 32;
 
 // ---------------------------------------------------------------- склад
 
@@ -602,6 +602,9 @@ export interface Batch {
   spent: Partial<Record<BatchPhase, number>>;
   phase?: BatchPhase;
   phaseAt: number;
+  /** учёт у мест (Б1к): место нынешнего отрезка — помещение — и его начало; отрезки закрываются каждый час */
+  place?: string;
+  placeAt?: number;
   /** проверка ООК кончилась; решение игрока для уполномоченного лица; держит ли УЛ серию; когда выпущена */
   checked?: number;
   decision?: 'release' | 'reject' | 'hold';
@@ -1192,6 +1195,11 @@ export interface DayLoss {
   lines: Record<string, LineDay>;
   /** по помещениям производства и упаковки (Б1и): время по состояниям */
   rooms: Record<string, RoomTimes>;
+  /**
+   * у мест (Б1к): секунды серий по состояниям — у помещения стадии, линии, лаборатории, ООК и склада; своя дата
+   * «не раньше» — не здесь
+   */
+  waits: Record<string, Partial<Record<BatchPhase, number>>>;
 }
 
 /**

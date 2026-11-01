@@ -345,6 +345,10 @@ function lean(s: PlantState, bad: string[]) {
     }
     const sum = Object.values(b.spent).reduce((n, x) => n + x, 0) + (b.phase ? s.t - b.phaseAt : 0);
     if (sum !== s.t - b.ordered) bad.push(`серия ${b.id}: по состояниям ${sum} с, а с задания ${s.t - b.ordered}`);
+    // учёт у мест (Б1к): у серии в работе — место и начало отрезка не раньше её состояния; своя дата — без места
+    const placed = b.phase !== undefined && b.phase !== 'plan' && b.phase !== 'before';
+    if (placed && (!b.place || b.placeAt === undefined || b.placeAt < b.phaseAt || b.placeAt > s.t)) bad.push(`серия ${b.id}: ${b.phase} без места или отрезка (${b.place}, ${b.placeAt})`);
+    if (!placed && b.place) bad.push(`серия ${b.id}: ${b.phase ?? 'без состояния'}, а место ${b.place}`);
   }
   for (const t of Object.values(s.tasks)) {
     if (t.why && (t.state !== 'open' || t.since === undefined || t.since > s.t)) bad.push(`задача ${t.id}: ждёт (${t.why}), а она ${t.state}`);

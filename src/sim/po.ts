@@ -75,7 +75,8 @@ function suppliersOf(db: ContentDb, s: PlantState): PoSupplier[] {
 /** Окно «Заказ поставщику»: поставщики, ответ завода на черновик, заказы правила снабжения. */
 export function poView(db: ContentDb, s: PlantState, q: PoQuery): PoView {
   const suppliers = suppliersOf(db, s);
-  const supplier = q.supplier && suppliers.some(x => x.id === q.supplier) ? q.supplier : suppliers[0]?.id;
+  // поставщик черновика остаётся, даже если одобренных пар у него больше нет: строки — отказ «нет пары», а не чужой поставщик
+  const supplier = q.supplier && db.suppliers[q.supplier] ? q.supplier : suppliers[0]?.id;
   let answer: PoAnswer | undefined;
   if (supplier && q.lines.length > 0) {
     const r = quotePo(db, s, supplier, q.lines as PoLine[]);

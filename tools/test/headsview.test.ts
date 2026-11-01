@@ -103,7 +103,9 @@ describe('карточка: «Кто решил»', () => {
     expect(r.ask!.end?.how).toBe('moot');
     const rows = card();
     expect(rows.some(x => x.n === r.n)).toBe(false);
-    expect(rows.at(-1)).toMatchObject({ kind: 'replace', by: 'player', seat: 'production' });
+    // замена — одна строка, «вы» с поста; за ней — заказ ЗИП техслужбы: запчасть ушла в резерв
+    expect(rows.filter(x => x.kind === 'replace')).toEqual([{ n: r.n + 1, t: s.t, by: 'player', seat: 'production', kind: 'replace' }]);
+    expect(rows.at(-1)).toMatchObject({ kind: 'spare', by: 'maint' });
   });
 });
 

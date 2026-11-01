@@ -218,16 +218,21 @@ const setMode = async (head, mode) => {
   return now;
 };
 
-/** Места игрока — набор целиком, экраном «Кем вы будете», как игрок: кнопка «Место», плитки, «Взять»; мир — на паузе. */
+/**
+ * Места игрока — набор целиком, экраном «Кем вы будете», как игрок: кнопка «Место», плитки, «Взять»; мир — на паузе.
+ * Возвращает режимы отделов отмеченных мест, какими их показал экран перед «Взять» (Б5б): «руководитель:режим» через пробел.
+ */
 const seatsTo = async want => {
   await page.click('[data-test=seats-open]');
   await page.waitForSelector('#seats', { timeout: 20_000 });
   const pick = await page.evaluate(() => window.__game.store.get().seats.pick);
   for (const id of ['director', 'production', 'quality', 'supply', 'commerce']) if (pick.includes(id) !== want.includes(id)) await page.click(`[data-test=seat-tile][data-seat=${id}]`);
+  const modes = await page.evaluate(() => [...document.querySelectorAll('[data-test=seat-modes] [data-head]')].map(x => `${x.getAttribute('data-head')}:${x.getAttribute('data-mode')}`).join(' '));
   await page.click('[data-test=seats-take]');
   // места в полосе — в порядке журнала мест: взятое последним — в конце
   await page.waitForFunction(w => [...(window.__game.store.get().top?.seats ?? [])].sort().join() === w, [...want].sort().join(), { timeout: 20_000 });
   await page.evaluate(() => window.__game.actions.setSpeed(0));
+  return modes;
 };
 
 /**
@@ -2528,7 +2533,7 @@ async function mainPart() {
     };
     const leaveView = () => page.evaluate(() => window.__game.store.get().ref.view?.leave);
     const offBefore = await page.evaluate(() => [...window.__game.store.get().pauses.off]);
-    const others = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'morning'];
+    const others = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'proposal', 'morning'];
     await page.evaluate(ids => ids.forEach(p => window.__game.actions.setPause(p, false)), others);
     const draftNote = () => page.evaluate(() => window.__game.notices.find(n => /^Кадры составили черновик графика отпусков на 2028/.test(n.text)) ?? null);
     // прошлый шаг мог уйти за 1 декабря, тогда черновик уже пришёл: он — в полосе извещений со знаком паузы
@@ -2784,7 +2789,16 @@ async function mainPart() {
   // игрока, фура поставщика — в срок поставки. Техслужба — «вручную»: у узла пресса — наработка и «Заменить»; после
   // щелчка — «замена решена», в журнале — «вы». Шаг — последним из тех, что идут по одному заводу: дальше мир не нужен
   {
-    await seatsTo(['director', 'production', 'quality']);
+    // экран «Кем вы будете»: у отмеченных мест — режимы их отделов; директору — отделы постов, которых не отметили. Выбор
+    // игрока помнится: планирование и техслужба — «сам», склад — «вручную»; прочие — по умолчанию
+    const seen = await seatsTo(['director', 'production', 'quality']);
+    const want = 'supply:auto wms:manual plan:auto mes:advise maint:auto qa:advise qc:advise';
+    if (seen !== want) fail(`«Кем вы будете»: режимы отделов «${seen}», а не «${want}»`);
+    else ok(`«Кем вы будете»: режимы отделов отмеченных мест — ${seen}`);
+    // у директора дело — все автопаузы: на время шага мир встаёт только на планёрке и предложениях руководителей
+    const offBefore = await page.evaluate(() => [...window.__game.store.get().pauses.off]);
+    const others = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'leaveDraft'];
+    await page.evaluate(ids => ids.forEach(p => window.__game.actions.setPause(p, false)), others);
     const sm = await setMode('supply', 'advise');
     let stop;
     for (let i = 0; i < 60 && !stop; i++) {
@@ -2924,6 +2938,7 @@ async function mainPart() {
       else ok(`техслужба «вручную»: «${p0.text.replace(/Заменить$/, '').trim()}» — «Заменить»: «${p1.text}»; «Кто решил» — «${who.slice(0, 80)}»`);
     }
     await page.keyboard.press('Escape');
+    await page.evaluate(ids => ids.forEach(p => window.__game.actions.setPause(p, true)), others.filter(p => !offBefore.includes(p)));
     await writeSheet(sheet);
   }
 

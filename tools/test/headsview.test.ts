@@ -112,7 +112,8 @@ describe('окно «Заказ поставщику»', () => {
   const s = fresh();
   apply(db, s, { kind: 'seat', seats: ['director'] });
   apply(db, s, { kind: 'mode', head: 'supply', mode: 'advise' });
-  until(s, nextWork(s, 9 * HOUR) + MIN);
+  // ровно 09:00 — мгновение предложений: окно считает то же правило в то же мгновение
+  until(s, nextWork(s, 9 * HOUR));
   const asked = open(s).filter(r => r.by === 'supply');
 
   test('поставщики — с одобренной парой; у материала — наименьшая партия, тара и цена', () => {

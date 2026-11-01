@@ -203,12 +203,26 @@ const untilMorning = async (keep = false) => {
 };
 
 /**
+ * Журнал (J): открыть, если закрыт, и дождаться свежего вида. Окно держит вид прошлого открытия, пока поток расчёта не
+ * пришлёт новый (а при открытии он присылает его всегда): без ожидания сценарий прочёл бы строки прошлого раза.
+ */
+const openJournal = async () => {
+  if (await page.evaluate(() => window.__game.store.get().journal.open)) return;
+  await page.evaluate(() => {
+    window.__jv = window.__game.store.get().journal.view;
+  });
+  await page.keyboard.press('KeyJ');
+  await page.waitForFunction(() => !!window.__game.store.get().journal.view && window.__game.store.get().journal.view !== window.__jv, null, { timeout: 20_000 });
+  await frames(1);
+};
+
+/**
  * Режим отдела (Б5б) — полосой режимов журнала, как игрок: J, кнопка режима у руководителя; журнал закрыть, если его не
  * было. Возвращает режим, который полоса показывает после щелчка.
  */
 const setMode = async (head, mode) => {
   const was = await page.evaluate(() => window.__game.store.get().journal.open);
-  if (!was) await page.keyboard.press('KeyJ');
+  await openJournal();
   await page.waitForSelector(`[data-test=journal-modes] [data-head=${head}]`, { timeout: 20_000 });
   const cur = await page.getAttribute(`[data-test=journal-modes] [data-head=${head}]`, 'data-mode');
   if (cur !== mode) await page.click(`[data-test=journal-modes] [data-head=${head}] button[data-mode=${mode}]`);
@@ -437,7 +451,7 @@ async function mainPart() {
       await page.screenshot({ path: join(out, 'e2e-asks.png') });
       const [got] = await answerAsks(r => r.n !== a.n);
       await page.keyboard.press('Escape');
-      await page.keyboard.press('KeyJ');
+      await openJournal();
       await page.waitForFunction(n => window.__game.store.get().journal.view?.rows.some(r => r.n === n), a.n, { timeout: 20_000 });
       await frames(2);
       const j = await page.evaluate(n => {
@@ -865,6 +879,7 @@ async function mainPart() {
   let declined;
   while ((await page.evaluate(() => window.__game.day)) < 6) {
     await untilMorning(true);
+    await page.waitForFunction(() => window.__game.store.get().morning.view?.day === window.__game.store.get().morning.day, null, { timeout: 20_000 });
     const before = await page.evaluate(() => window.__game.store.get().morning.view?.asks.length ?? 0);
     if (before > 0) asked.push(...(await answerAsks(r => r.kind === 'order' && !declined && (declined = r.n) > 0)));
     if (await page.evaluate(() => window.__game.store.get().morning.open)) await page.keyboard.press('Escape');
@@ -904,7 +919,7 @@ async function mainPart() {
   {
     const j = declined
       ? await (async () => {
-          await page.keyboard.press('KeyJ');
+          await openJournal();
           await page.waitForFunction(n => window.__game.store.get().journal.view?.rows.some(r => r.n === n), declined, { timeout: 20_000 }).catch(() => {});
           await frames(2);
           const x = await page.evaluate(n => {
@@ -2269,7 +2284,7 @@ async function mainPart() {
   // запас, спрос и порог; «К вещи» — досье серии, в нём «Кто решил»; «Почему?» у задания — журнал на нём; на планёрке —
   // «Решения за сутки»; экран «Кем вы будете» — коллеги по правилам движка
   {
-    await page.keyboard.press('KeyJ');
+    await openJournal();
     await page.waitForSelector('[data-test=journal-row]', { timeout: 20_000 });
     const rows = await page.evaluate(() => [...document.querySelectorAll('[data-test=journal-row]')].map(x => `${x.getAttribute('data-by')}/${x.getAttribute('data-kind')}`));
     const order = page.locator('[data-test=journal-row][data-by=plan][data-kind=order]').first();
@@ -2814,7 +2829,7 @@ async function mainPart() {
     }
     if (sm !== 'advise' || !stop || stop.t % 86400 !== 9 * 3600 || stop.speed !== 0) fail(`снабжение «советует»: режим ${sm}, стоп ${JSON.stringify(stop)}`);
     else {
-      await page.keyboard.press('KeyJ');
+      await openJournal();
       await page.waitForFunction(() => window.__game.store.get().journal.view?.asks.some(a => a.d.kind === 'po'), null, { timeout: 20_000 });
       await frames(2);
       // предложения заказов, новые сверху: строки — до целой тары, как у команды
@@ -2830,7 +2845,7 @@ async function mainPart() {
       }
       await page.keyboard.press('Escape');
       const manual = await setMode('supply', 'manual');
-      await page.keyboard.press('KeyJ');
+      await openJournal();
       await page.waitForFunction(n => window.__game.store.get().journal.view?.rows.some(r => r.n === n && r.ask?.end), last.n, { timeout: 20_000 }).catch(() => {});
       const stale = await page.evaluate(n => window.__game.store.get().journal.view?.rows.find(r => r.n === n)?.ask?.end?.how ?? '', last.n);
       await page.keyboard.press('Escape');
@@ -2879,7 +2894,7 @@ async function mainPart() {
       await page.keyboard.press('Escape');
       await page.keyboard.press('Escape');
       // заказ игрока — в журнале: номер заказа и срок; фура — в срок поставки
-      await page.keyboard.press('KeyJ');
+      await openJournal();
       await page.waitForFunction(sup => window.__game.store.get().journal.view?.rows.some(r => r.by === 'player' && r.d.kind === 'po' && r.d.supplier === sup && !!r.d.po), last.supplier, { timeout: 20_000 }).catch(() => {});
       const mine = await page.evaluate(sup => {
         const r = window.__game.store.get().journal.view?.rows.find(x => x.by === 'player' && x.d.kind === 'po' && x.d.supplier === sup && !!x.d.po);

@@ -2945,12 +2945,12 @@ async function mainPart() {
     if (mm !== 'manual' || !p0.can || !/Заменить узел, как только машина свободна/.test(p0.title)) fail(`«Заменить»: техслужба ${mm}, узел ${JSON.stringify(p0)}`);
     else {
       await page.click('[data-test=card-parts] li[data-part=punches] [data-test=card-replace]');
-      await page.waitForFunction(() => /замена решена|ремонт/.test(document.querySelector('[data-test=card-parts] li[data-part=punches]')?.textContent ?? ''), null, { timeout: 20_000 }).catch(() => {});
+      await page.waitForFunction(() => /замена (решена|идёт)/.test(document.querySelector('[data-test=card-parts] li[data-part=punches]')?.textContent ?? ''), null, { timeout: 20_000 }).catch(() => {});
       await frames(2);
       const p1 = await part();
       await page.screenshot({ path: join(out, 'e2e-replace.png') });
       const who = await page.evaluate(() => [...document.querySelectorAll('[data-test=who-row][data-kind=replace]')].map(x => x.textContent ?? '').at(-1) ?? '');
-      if (!/замена решена/.test(p1.text) || p1.can || !/[Вв]ы/.test(who)) fail(`«Заменить»: после щелчка «${p1.text}», «Кто решил» «${who}»`);
+      if (!/замена (решена|идёт)/.test(p1.text) || /ремонт/.test(p1.text) || p1.can || !/[Вв]ы/.test(who)) fail(`«Заменить»: после щелчка «${p1.text}», «Кто решил» «${who}»`);
       else ok(`техслужба «вручную»: «${p0.text.replace(/Заменить$/, '').trim()}» — «Заменить»: «${p1.text}»; «Кто решил» — «${who.slice(0, 80)}»`);
     }
     await page.keyboard.press('Escape');

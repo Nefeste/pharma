@@ -379,6 +379,7 @@ export const en: Strings = {
     parts: 'Parts',
     failed: 'failed',
     repairing: 'repair under way',
+    replacing: 'replacement under way',
     partAt: (at: string) => `· replaced by wear at ${at}`,
     replacePlanned: 'replacement decided',
     replace: 'Replace',

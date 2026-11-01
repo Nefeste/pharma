@@ -423,8 +423,7 @@ function PartsBlock({ parts, names, machine, hud, actions }: { parts: readonly P
             {named(names?.find(x => x.id === p.type)?.name, p.type)}: {T.hist.wear(pctText(p.wear))}
             {p.at !== undefined ? <span className="muted"> {T.card.partAt(pctText(p.at))}</span> : null}
             {p.failed ? `, ${T.card.failed}` : ''}
-            {p.repair ? `, ${T.card.repairing}` : ''}
-            {p.plan ? `, ${T.card.replacePlanned}` : ''}{' '}
+            {p.repair ? `, ${p.plan ? T.card.replacing : T.card.repairing}` : p.plan ? `, ${T.card.replacePlanned}` : ''}{' '}
             {machine && !p.no ? (
               <button type="button" className="small" disabled={!mine} onClick={() => actions.maintain(machine, p.type)} title={mine ? T.card.replaceHint(durText(p.work), p.spare) : T.seats.notYours(T.seats.names.production)} data-test="card-replace">
                 {T.card.replace}

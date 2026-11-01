@@ -409,6 +409,7 @@ export const ru = {
     parts: 'Узлы',
     failed: 'отказал',
     repairing: 'ремонт идёт',
+    replacing: 'замена идёт',
     partAt: (at: string) => `· замена по наработке на ${at}`,
     replacePlanned: 'замена решена',
     replace: 'Заменить',

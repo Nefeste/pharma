@@ -15,6 +15,7 @@ import { currentPeriod, decidedAt, emptySnap, KPI, KPIS, kpiSnapshot, kpiValues,
 import { runSeed } from '../../src/engine/plan/run';
 import { fromSave } from '../../src/engine/save';
 import type { KpiSnap, PlantState } from '../../src/engine/types';
+import { sourceKeys } from '../content/load';
 
 const SC = 'scn.proto';
 const sample = (n: number) => readFileSync(new URL(`./fixtures/save-v${n}.json`, import.meta.url), 'utf8');
@@ -80,6 +81,14 @@ describe('закрытые месяцы', () => {
       if (k.pair) expect(KPI[k.pair]).toBeDefined();
     }
     expect(new Set(KPIS.map(k => k.id)).size).toBe(KPIS.length);
+  });
+
+  test('ключи источников показателей — из таблицы источников docs/10-domain.md, §9; без ключа — определение наше', () => {
+    const known = sourceKeys();
+    expect(known.size).toBeGreaterThan(50);
+    for (const k of KPIS) for (const key of k.src) expect(known.has(key) ? key : `${k.id}: ${key}`).toBe(key);
+    // у каждого из двенадцати руководителей — показатели
+    expect(new Set(KPIS.map(k => k.head)).size).toBe(12);
   });
 
   test('инварианты в конце — без нарушений', () => {

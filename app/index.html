@@ -60,6 +60,8 @@
     .card { position: absolute; left: 8px; bottom: 10px; min-width: 380px; max-width: min(600px, calc(100% - 16px)); max-height: 46%; overflow: auto; padding: 8px 12px; }
     /* склад открыт: карточка — слева от него, под панель не заходит */
     .card.beside { min-width: 0; max-width: min(600px, max(300px, calc(100% - min(760px, calc(100% - 16px)) - 24px))); }
+    /* поверх большого окна (Б5ж) — непрозрачна, как досье: строки окна под ней не просвечивают */
+    .card.over { z-index: 2; background: rgba(22, 30, 34, 0.98); box-shadow: 0 6px 30px rgba(0,0,0,.5); }
     .cardhead { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 15px; }
     .card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; margin: 0; }
     .card dt { color: var(--muted); font-size: 11px; }

@@ -419,10 +419,11 @@ function LineMaterials({ list }: { list: readonly LineMaterial[] }) {
 }
 
 /**
- * `beside` — открыта панель справа: карточка уже, чтобы не заходить под неё; `watch` — работа вещи в «Сейчас» (Б1б);
- * `hud` — чьи посты у игрока и какие пояснения он уже понял (Б1г).
+ * `beside` — открыта панель справа: карточка уже, чтобы не заходить под неё; `over` — открыто большое окно (показатели,
+ * справочник, расследование): карточка поверх него непрозрачна, строки окна под ней не просвечивают (Б5ж); `watch` —
+ * работа вещи в «Сейчас» (Б1б); `hud` — чьи посты у игрока и какие пояснения он уже понял (Б1г).
  */
-export function Card({ v, start, plant, actions, hud, beside, watch }: { v: CardView; start: Ymd; plant: string; actions: Actions; hud: Hud; beside?: boolean; watch?: NowRow }) {
+export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v: CardView; start: Ymd; plant: string; actions: Actions; hud: Hud; beside?: boolean; over?: boolean; watch?: NowRow }) {
   const c = v.card;
   let title: ReactNode = '';
   let body: ReactNode = null;
@@ -731,7 +732,7 @@ export function Card({ v, start, plant, actions, hud, beside, watch }: { v: Card
   // со слоем «Проблемы» (Б1к) — то, что не работает у вещи сейчас, теми же словами, что у значка на полу
   const andon = hud.layer === 'andon' && hud.selected ? hud.andon.view?.items.find(x => JSON.stringify(x.thing) === JSON.stringify(hud.selected)) : undefined;
   return (
-    <div className={`card panel${beside ? ' beside' : ''}`} id="card" data-test="card">
+    <div className={`card panel${beside ? ' beside' : ''}${over ? ' over' : ''}`} id="card" data-test="card">
       <div className="cardhead">
         <b id="card-title">{title}</b>
         <button type="button" className="close" onClick={() => actions.select(undefined)} title={T.card.closeHint}>

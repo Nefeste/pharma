@@ -195,7 +195,7 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
       </Guard>
       <Guard name={T.card.title} close={s.selected ? () => actions.select(undefined) : undefined}>
         {s.selected && s.card && (
-          <Card v={s.card} start={s.start} plant={plant} actions={actions} hud={s} beside={s.stock.open || s.cash.open || s.lab.open || s.now.open || s.journal.open} watch={watchFor(s.selected, s.card.card, s.now.view?.rows)} />
+          <Card v={s.card} start={s.start} plant={plant} actions={actions} hud={s} beside={s.stock.open || s.cash.open || s.lab.open || s.now.open || s.journal.open} over={s.kpi.open || s.ref.open || s.inv.open} watch={watchFor(s.selected, s.card.card, s.now.view?.rows)} />
         )}
       </Guard>
       {/* досье серии (Б1д) — поверх остальных окон, и карточки тоже: его открывают из неё */}

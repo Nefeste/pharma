@@ -1,7 +1,8 @@
-// Б5б: предложения руководителей в видах (docs/specs/2026-10-vertical-slice.md, «Проверки Б5б», «Виды» и «Окно»): журнал —
-// «Ждут вашего решения» сверху и полоса режимов взятых постов; планёрка — «Предложения»; карточка — «Кто решил» с ответом,
-// без устаревших и ненужных; окно «Заказ поставщику» (src/sim/po.ts) — «Предложить» те же строки, что снабжение в тот же
-// час, отказ причиной и материалом строки; узлы машины — порог, запчасть, почему заменить нельзя; без истины.
+// Б5б: предложения руководителей в видах (docs/specs/2026-10-vertical-slice.md, «Проверки Б5б», «Виды» и «Окно»):
+// журнал — «Ждут вашего решения» сверху и полоса режимов взятых постов; планёрка — «Предложения»; принятое задание на
+// серию — в расписании; карточка — «Кто решил» с ответом, без устаревших и ненужных; окно «Заказ поставщику»
+// (src/sim/po.ts) — «Предложить» те же строки, что снабжение в тот же час, отказ причиной и материалом строки; узлы
+// машины — порог, запчасть, почему заменить нельзя; без истины.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { DAY, HOUR, isWorkday, MIN, momentOf } from '../../src/engine/core/calendar';
@@ -14,6 +15,7 @@ import { ORDER_KEY } from '../../src/engine/planner';
 import type { Notice, PlantState } from '../../src/engine/types';
 import { calOf } from '../../src/engine/workdays';
 import { journalView } from '../../src/sim/journal';
+import { ganttView } from '../../src/sim/plan';
 import { poView } from '../../src/sim/po';
 import { morningView } from '../../src/sim/report';
 import { cardView, type PartInfo } from '../../src/sim/views';
@@ -70,6 +72,14 @@ describe('журнал и планёрка', () => {
     expect(done.ask).toEqual({ end: { how: 'ok', t: s.t, seat: 'production' } });
     expect(done.ref.bn).toBeDefined();
     expect(morningView(db, s, { view: 'morning', day: today(s) }).asks.some(x => x.n === r.n)).toBe(false);
+    // принятое задание — в расписании: полосы по плану с его «не раньше»
+    const id = `B${done.ref.bn}`;
+    const nb = s.batches[id].notBefore;
+    expect(nb).toBe(r.d.kind === 'order' ? r.d.notBefore : -1);
+    const g = ganttView(db, s, { view: 'gantt', from: nb - 3 * DAY, to: nb + 9 * DAY });
+    expect(g.bars.some(b => b.batch === id && b.when === 'plan')).toBe(true);
+    expect(g.batches[id]).toMatchObject({ notBefore: nb });
+    expect(['waiting', 'reserved']).toContain(g.batches[id].status);
   });
 
   test('мест нет — полосы режимов нет; директор — все отделы с выбором, по умолчанию «сам»', () => {

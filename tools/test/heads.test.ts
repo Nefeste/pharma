@@ -275,6 +275,32 @@ describe('сохранение и прогон плана', () => {
     expect(toSave(back)).toBe(toSave(s));
   });
 
+  test('образец схемы 33 читается: выбора нет — режимы по местам, предложений нет; советуют с первого часа', async () => {
+    const s = fromSave(db, await Bun.file(new URL('./fixtures/save-v33.json', import.meta.url)).text());
+    expect(s.heads).toEqual({ mode: {}, open: {}, no: {} });
+    // в образце взяты посты производства и качества: их отделы советуют, снабжение и склад — «сам»
+    expect(Object.fromEntries(MODED.map(h => [h, modeOf(s, h)]))).toEqual({ plan: 'advise', mes: 'advise', maint: 'advise', qa: 'advise', qc: 'advise', supply: 'auto', wms: 'auto' });
+    expect(s.journal.some(r => r.ask)).toBe(false);
+    apply(db, s, { kind: 'advance', seconds: 2 * DAY });
+    expect(check(db, s)).toEqual([]);
+    expect(open(s).length).toBeGreaterThan(0);
+  });
+
+  test('образец схемы 34 — как есть: выбор режима, ответы всех видов и открытое предложение; «Принять» после загрузки', async () => {
+    const json = await Bun.file(new URL('./fixtures/save-v34.json', import.meta.url)).text();
+    const s = fromSave(db, json);
+    const raw = JSON.parse(json) as PlantState;
+    expect(s.heads).toEqual(raw.heads);
+    expect(s.heads.mode.maint).toBe('manual');
+    expect(new Set(asks(s).flatMap(r => (r.ask!.end ? [r.ask!.end.how] : [])))).toEqual(new Set(['ok', 'no', 'stale', ...asks(s).flatMap(r => (r.ask!.end?.how === 'moot' ? ['moot' as const] : []))]));
+    const r = open(s)[0];
+    expect(s.heads.open[r.ask!.key]).toBe(r.n);
+    expect(refusals(apply(db, s, { kind: 'accept', n: r.n }))).toEqual([]);
+    expect(r.ask!.end?.how).toBe('ok');
+    apply(db, s, { kind: 'advance', seconds: DAY });
+    expect(check(db, s)).toEqual([]);
+  });
+
   test('копия прогона плана: «советует» — «сам», «вручную» — как есть; предложений нет', () => {
     const s = fresh();
     apply(db, s, { kind: 'seat', seats: ['production'] });

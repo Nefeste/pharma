@@ -13,11 +13,11 @@ import { orderRisks, type OrderRisk } from '../engine/market';
 import { planOf } from '../engine/plant';
 import { devsOf, openDevs } from '../engine/qa';
 import { unitsOfLot } from '../engine/stock';
-import type { AssetFamily, Batch, CashItem, DayLoss, Deviation, LineDay, MachineTimes, PlantState, TaskKind, WageParts, WaitCause } from '../engine/types';
+import type { AssetFamily, Batch, CashItem, DayLoss, DeptMode, Deviation, Head, LineDay, MachineTimes, PlantState, TaskKind, WageParts, WaitCause } from '../engine/types';
 import { type PeopleMeeting, peopleMeeting } from './hire';
 import { type LeaveMeeting, leaveMeeting } from './leave';
 import { type HoursMeeting, hoursMeeting } from './hours';
-import { type HeadDay, headDays } from './journal';
+import { type HeadDay, headDays, type JournalRow, openAsks } from './journal';
 import { type MonthClose, monthClose } from './kpi';
 import { type PartnerSum, partnerSum } from './partners';
 import { type TrainSum, trainSum } from './people';
@@ -218,6 +218,8 @@ export interface MorningView {
   modes: ModeRow[];
   /** решения за сутки (Б5а): строка на руководителя — сколько, какие, у заказов поставщикам — предоплата */
   heads: HeadDay[];
+  /** предложения (Б5б): открытые, новые сверху — с причиной, «Принять» и «Отклонить» у поста отдела */
+  asks: JournalRow[];
   /** итог игры (обёртка): что завод сделал с мгновения `since` запроса; меньше суток игры — нет */
   session?: SessionSum;
   /** отклонённое (Б1з): места зоны, ждущие места, вывоз, вывозы с прошлой планёрки; у сценария без подрядчика — нет */
@@ -451,6 +453,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     seats: seatSums(db, s),
     modes: modeRows(db, s),
     heads: headDays(s, from, at),
+    asks: openAsks(db, s),
     ...(q.since !== undefined && at - q.since >= DAY ? { session: sessionSum(s, q.since, at) } : {}),
     ...(rejects ? { rejects } : {}),
     ...(month ? { month } : {}),
@@ -800,10 +803,12 @@ export interface TopView {
   offered: SeatId[];
   /** расследований идёт (часть 4) */
   inv: number;
+  /** режимы отделов (Б5б): выбор игрока, который завод помнит, — экран «Кем вы будете» показывает его у мест */
+  modes: Partial<Record<Head, DeptMode>>;
 }
 
 export function topView(db: ContentDb, s: PlantState): TopView {
   const held = s.seats?.filter(x => x.to === undefined).map(x => x.seat);
   const inv = Object.values(s.investigations).filter(i => i.status === 'open').length;
-  return { view: 'top', balance: s.cash.balance, day: dayChange(s, s.t), ...(held ? { seats: held } : {}), offered: db.scenarios[s.scenario].seats, inv };
+  return { view: 'top', balance: s.cash.balance, day: dayChange(s, s.t), ...(held ? { seats: held } : {}), offered: db.scenarios[s.scenario].seats, inv, modes: { ...s.heads.mode } };
 }

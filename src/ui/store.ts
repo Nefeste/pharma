@@ -17,6 +17,7 @@ import type { AndonView } from '../sim/andon';
 import type { FloorView, FloorWin } from '../sim/floor';
 import type { InvView } from '../sim/inv';
 import type { JournalView } from '../sim/journal';
+import type { PoView } from '../sim/po';
 import type { KpiView } from '../sim/kpi';
 import type { ChartView, LabView } from '../sim/lab';
 import type { BatchLabel, GanttView, GhostView } from '../sim/plan';
@@ -84,6 +85,8 @@ export interface Hud {
    * раскрыта; вид
    */
   journal: { open: boolean; seat?: SeatId; who?: 'heads' | 'player'; page: number; focus?: number; view?: JournalView };
+  /** окно «Заказ поставщику» (Б5б): открыто ли; поставщик и строки черновика — мг или шт.; вид */
+  po: { open: boolean; supplier?: Id; lines: readonly { material: Id; qty: number }[]; view?: PoView };
   /** «Смотреть»: какую работу — строка «Сейчас» в мгновение, когда начали смотреть */
   watch?: NowRow;
   /**
@@ -109,7 +112,8 @@ export interface Hud {
   /** досье серии (Б1д): открыто ли, какая серия — номер `B<n>`, вид; окно — поверх остальных */
   dossier: { open: boolean; batch?: number; view?: DossierView };
   /** экран «Кем вы будете» (3е): открыт ли, что отмечено */
-  seats: { open: boolean; pick: SeatId[] };
+  /** «Кем вы будете» (3е): открыт ли экран, отмеченные места и режимы их отделов, выбранные здесь (Б5б) */
+  seats: { open: boolean; pick: SeatId[]; modes?: Partial<Record<Head, DeptMode>> };
   /** справочник завода (этап Б, Б1а): открыт ли, вкладка, вид */
   ref: { open: boolean; tab: RefTab; view?: RefView };
   /** окно «Показатели» (Б5ж): открыто ли, вкладка — место, у какого показателя открыт «Почему?», вид */
@@ -198,6 +202,7 @@ export const initial: Hud = {
   lab: { open: false, tab: 'queue' },
   now: { open: false },
   journal: { open: false, page: 0 },
+  po: { open: false, lines: [] },
   gantt: { open: false, days: 3, draft: [], urgent: [] },
   plan: NO_RUN,
   inv: { open: false },
@@ -271,6 +276,16 @@ export interface Actions {
   setMode(head: Head, mode: DeptMode): void;
   /** «Заменить» узел машины вне отказа (Б5б) — команда `maintain`: машина и узел по именам плана */
   maintain(machine: string, part: string): void;
+  /**
+   * окно «Заказ поставщику» (Б5б): открыть или закрыть; поставщик и строки черновика; «Предложить» — строки правила
+   * снабжения у этого поставщика; «Отправить» — команда `po`
+   */
+  togglePo(): void;
+  /** режим отдела места на экране «Кем вы будете» (Б5б): команды `mode` уйдут с «Взять» */
+  pickMode(head: Head, mode: DeptMode): void;
+  setPo(patch: { supplier?: Id; lines?: readonly { material: Id; qty: number }[] }): void;
+  suggestPo(): void;
+  sendPo(): void;
   /** перевод человека на другой график (Б4б): номер человека, как в срезе */
   roster(person: number, shift: Id): void;
   /**

@@ -27,6 +27,7 @@ import { type FloorQuery, type FloorView, floorView } from './floor';
 import { type SaView, type SheetView, saOf, sheetOf } from './hours';
 import { type InvQuery, type InvView, invView } from './inv';
 import { type JournalQuery, type JournalView, journalView, whoAsset, whoBatch, whoLot, whoMachine, whoPerson, type WhoRow } from './journal';
+import { type PoQuery, type PoView, poView } from './po';
 import { type ChartQuery, type ChartView, chartView, type LabQuery, type LabView, labView } from './lab';
 import { type EqState, eqStateOf } from './pack';
 import { type PersonLeave, personLeave } from './leave';
@@ -72,7 +73,7 @@ export interface CardQuery {
   thing: Thing;
 }
 
-export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery);
+export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery | PoQuery);
 
 /** Место паллеты: место плана (номер по порядку), помещение (номер по порядку), фура. */
 export type PlaceRef = { k: 'slot'; i: number } | { k: 'room'; i: number } | { k: 'truck'; n: number; customer: boolean; waste?: true };
@@ -264,6 +265,15 @@ export interface PartInfo {
   wear: number;
   failed: boolean;
   repair: boolean;
+  /**
+   * «Заменить» (Б5б): порог замены по наработке политики сценария, доли 1/10 000; замена уже решена; свободных запчастей
+   * в мастерской; сколько займёт замена, с; почему заменить сейчас нельзя — узел занят или запчасти нет
+   */
+  at?: number;
+  plan?: true;
+  spare: number;
+  work: number;
+  no?: 'busy' | 'noSpare';
 }
 
 /** «Кто решил» (Б5а): записей журнала о вещи нет — поля нет. */
@@ -288,7 +298,7 @@ export interface CardView {
   card: CardData;
 }
 
-export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView;
+export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView | PoView;
 
 const num = (id: string) => Number(id.slice(1));
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
@@ -498,9 +508,17 @@ function holdsOf(db: ContentDb, s: PlantState, u: Unit): Holds {
 }
 
 function partsOfMachine(db: ContentDb, s: PlantState, machine: string): PartInfo[] {
+  const policy = db.scenarios[s.scenario].maint;
   return Object.values(s.parts)
     .filter(p => p.machine === machine)
-    .map(p => ({ type: p.type, wear: wearAt(partType(db, p), p.done), failed: p.state === 'failed', repair: p.task !== undefined }));
+    .map(p => {
+      const ty = partType(db, p);
+      const sp = s.spares[ty.spare];
+      const spare = sp ? sp.qty - sp.reserved : 0;
+      // те же отказы, что у команды `maintain` (src/engine/maint.ts)
+      const no = p.state !== 'ok' || p.task || p.plan ? ('busy' as const) : spare <= 0 ? ('noSpare' as const) : undefined;
+      return { type: p.type, wear: wearAt(ty, p.done), failed: p.state === 'failed', repair: p.task !== undefined, ...(policy[p.id] !== undefined ? { at: policy[p.id] } : {}), ...(p.plan ? { plan: true as const } : {}), spare, work: ty.replace, ...(no ? { no } : {}) };
+    });
 }
 
 /** Журнал актива (Б3в): отказы, ремонты и замены узлов и записи квалификации и калибровки — по времени. */
@@ -761,6 +779,8 @@ export function viewOf(db: ContentDb, s: PlantState, q: ViewQuery): ViewData {
       return andonView(db, s);
     case 'kpi':
       return kpiView(db, s, q);
+    case 'po':
+      return poView(db, s, q);
   }
 }
 

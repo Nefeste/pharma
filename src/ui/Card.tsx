@@ -4,7 +4,7 @@
 import { type ReactNode, useState } from 'react';
 import type { PartType } from '../content/types';
 import { civilFromDays, momentOf, weekday, type Ymd } from '../engine/core/calendar';
-import { clock, dayText, hText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
+import { clock, dayText, durText, hText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import { DEPT_SEAT } from '../engine/seats';
 import type { SaView, SheetView } from '../sim/hours';
 import type { NowRow } from '../sim/now';
@@ -12,7 +12,7 @@ import type { Admission, DocNow } from '../sim/people';
 import type { AssetInfo } from '../sim/places';
 import { firstOf } from '../app/firsts';
 import type { Inside, LineMaterial } from '../sim/dossier';
-import type { CardView, Hist, Holds, RoomClean, Why } from '../sim/views';
+import type { CardView, Hist, Holds, PartInfo, RoomClean, Why } from '../sim/views';
 import { assetName, untilText, unfitText, workName } from './assets';
 import { db, docText } from './db';
 import { DevBody, First, KnobsBlock, RegimesBlock, ReleaseBlock, SpeedBlock } from './Decide';
@@ -398,6 +398,49 @@ function InsideBlock({ x }: { x: Inside }) {
 }
 
 /** Материалы машины линии (Б1д): партия, выдано, израсходовано по счёту машины и на наладку, осталось у линии. */
+/** Машина карточки по имени плана: оборудование участка или машина линии. */
+function machineId(plant: string, c: { kind: 'equipment'; eq: number } | { kind: 'machine'; line: number; k: number }): string | undefined {
+  const p = db?.plants[plant];
+  return c.kind === 'equipment' ? p?.equipment[c.eq]?.id : p?.lines[c.line]?.machines[c.k]?.id;
+}
+
+/**
+ * Узлы машины (Б5б): износ и порог замены по наработке, отказ, ремонт, решённая замена; «Заменить» — команда `maintain`
+ * со свободной запчастью и временем замены, а нельзя — почему: узел занят или запчасти нет.
+ */
+/**
+ * Узлы машины (1е, Б5б): износ, порог замены по наработке, отказ, ремонт, решённая замена; «Заменить» — команда `maintain`
+ * поста «Производство»: чужой пост — кнопка погашена; узел занят или запчасти нет — причина вместо кнопки.
+ */
+function PartsBlock({ parts, names, machine, hud, actions }: { parts: readonly PartInfo[]; names?: readonly PartType[]; machine?: string; hud: Hud; actions: Actions }) {
+  const mine = holds(hud, 'production');
+  return (
+    <div className="parts" data-test="card-parts">
+      <div className="csec">{T.card.parts}</div>
+      <ul className="hist">
+        {parts.map(p => (
+          <li key={p.type} data-part={p.type}>
+            {named(names?.find(x => x.id === p.type)?.name, p.type)}: {T.hist.wear(pctText(p.wear))}
+            {p.at !== undefined ? <span className="muted"> {T.card.partAt(pctText(p.at))}</span> : null}
+            {p.failed ? `, ${T.card.failed}` : ''}
+            {p.repair ? `, ${T.card.repairing}` : ''}
+            {p.plan ? `, ${T.card.replacePlanned}` : ''}{' '}
+            {machine && !p.no ? (
+              <button type="button" className="small" disabled={!mine} onClick={() => actions.maintain(machine, p.type)} title={mine ? T.card.replaceHint(durText(p.work), p.spare) : T.seats.notYours(T.seats.names.production)} data-test="card-replace">
+                {T.card.replace}
+              </button>
+            ) : p.no && !p.failed && !p.repair && !p.plan ? (
+              <span className="muted" data-test="card-replace-no">
+                {T.card.replaceNo[p.no]}
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function LineMaterials({ list }: { list: readonly LineMaterial[] }) {
   return (
     <>
@@ -576,15 +619,9 @@ export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v
                 <span className="muted"> · {T.card.packingOf(docText('skus', c.sku))}</span>
               </Row>
             ) : null}
-            {c.parts.length ? (
-              <Row k={T.card.parts}>
-                {c.parts
-                  .map(p => `${named(rec?.parts.find(x => x.id === p.type)?.name, p.type)}: ${T.hist.wear(`${num(p.wear / 100)}\u00a0%`)}${p.failed ? `, ${T.card.failed}` : ''}${p.repair ? `, ${T.card.repairing}` : ''}`)
-                  .join('; ')}
-              </Row>
-            ) : null}
             {c.asset ? <AssetRows a={c.asset} start={start} /> : null}
           </dl>
+          {c.parts.length ? <PartsBlock parts={c.parts} names={rec?.parts} machine={machineId(plant, c)} hud={hud} actions={actions} /> : null}
           {c.kind === 'equipment' && c.inside ? <InsideBlock x={c.inside} /> : null}
           {c.kind === 'machine' && c.materials ? <LineMaterials list={c.materials} /> : null}
           {c.kind === 'machine' && c.speed ? <SpeedBlock v={c.speed} hud={hud} actions={actions} /> : null}

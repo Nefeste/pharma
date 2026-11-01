@@ -8,7 +8,7 @@ import type { ContentDb, Scenario } from '../content/types';
 import { DAY, momentOf } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
 import { planOf } from '../engine/plant';
-import type { Command, Notice } from '../engine/types';
+import type { Command, DeptMode, Head, Notice } from '../engine/types';
 import { dayText, durText, hText, named, qtyText, T } from '../i18n';
 import { bakeLook, lodOf, packPeople } from '../render/bake';
 import type { ArtIndex } from '../render/blender';
@@ -251,6 +251,8 @@ export class Game {
         if (hud.inv.open) this.store.set({ inv: { ...this.store.get().inv, view: d } });
       } else if (d.view === 'journal') {
         if (hud.journal.open) this.store.set({ journal: { ...this.store.get().journal, view: d } });
+      } else if (d.view === 'po') {
+        if (hud.po.open) this.store.set({ po: { ...this.store.get().po, view: d } });
       } else if (d.view === 'dossier') {
         const x = this.store.get().dossier;
         if (x.open && x.batch === d.batch) this.store.set({ dossier: { ...x, view: d } });
@@ -279,10 +281,12 @@ export class Game {
       } else this.store.set({ top: d });
     }
     // извещения автопауз игрока — вес «стоп» (13-art.md, §11): на таком поток встал; в полосе — оно, а не то, что пришло с
-    // ним позже
+    // ним позже. Предложение руководителя (Б5б) в ту же минуту — под тем, что случилось: сначала событие, потом совет
     const stops = new Set(this.stops());
-    for (const n of s.notices) if (!stops.has(stopKey(n))) this.notice(n, false);
-    for (const n of s.notices) if (stops.has(stopKey(n))) this.notice(n, true);
+    const stop = (n: Notice) => stops.has(stopKey(n));
+    for (const n of s.notices) if (!stop(n)) this.notice(n, false);
+    for (const n of s.notices) if (stop(n) && n.kind === 'proposal') this.notice(n, true);
+    for (const n of s.notices) if (stop(n) && n.kind !== 'proposal') this.notice(n, true);
     if (s.notices.some(n => n.kind === 'morning')) this.morning(sl.t);
     if (s.stopped) this.autopause();
     this.gotSlice();
@@ -795,8 +799,15 @@ export class Game {
       const h = this.store.get();
       if (h.seats.pick.length === 0) return;
       this.client.command({ kind: 'seat', seats: h.seats.pick });
+      // режимы отделов места (Б5б): выбранные на экране — командами `mode` уже со взятого места; тот же выбор — не шлём
+      const kept = h.top?.modes ?? {};
+      for (const [head, mode] of Object.entries(h.seats.modes ?? {}) as [Head, DeptMode][]) if (kept[head] !== mode) this.client.command({ kind: 'mode', head, mode, by: 'player' });
       this.store.set({ seats: { open: false, pick: [] } });
       this.actions.setSpeed(this.resume);
+    },
+    pickMode: (head, mode) => {
+      const st = this.store.get().seats;
+      this.store.set({ seats: { ...st, modes: { ...st.modes, [head]: mode } } });
     },
     closeSeats: () => {
       // в начале партии место нужно выбрать: закрыть экран нечем
@@ -886,6 +897,36 @@ export class Game {
     answer: (n, ok) => this.client.command({ kind: ok ? 'accept' : 'decline', n }),
     setMode: (head, mode) => this.client.command({ kind: 'mode', head, mode, by: 'player' }),
     maintain: (machine, part) => this.client.command({ kind: 'maintain', machine, part }),
+    togglePo: () => {
+      const po = this.store.get().po;
+      this.store.set({ po: { ...po, open: !po.open } });
+      this.sendViews();
+    },
+    setPo: patch => {
+      const po = this.store.get().po;
+      // другой поставщик — строки прежнего ему не годятся
+      const lines = patch.lines ?? (patch.supplier !== undefined && patch.supplier !== po.supplier ? [] : po.lines);
+      this.store.set({ po: { ...po, ...(patch.supplier !== undefined ? { supplier: patch.supplier } : {}), lines } });
+      this.sendViews();
+    },
+    suggestPo: () => {
+      // «Предложить» (Б5б): строки правила снабжения у этого поставщика — то, что он заказал бы сейчас
+      const po = this.store.get().po;
+      const v = po.view;
+      const supplier = po.supplier ?? v?.supplier;
+      const plan = v?.plan.find(x => x.supplier === supplier) ?? (po.supplier ? undefined : v?.plan[0]);
+      if (!plan) return;
+      this.store.set({ po: { ...po, supplier: plan.supplier, lines: plan.lines.map(l => ({ ...l })) } });
+      this.sendViews();
+    },
+    sendPo: () => {
+      const po = this.store.get().po;
+      const supplier = po.supplier ?? po.view?.supplier;
+      if (!supplier || po.lines.length === 0) return;
+      this.client.command({ kind: 'po', supplier, lines: po.lines.map(l => ({ material: l.material, qty: l.qty })), by: 'player' });
+      this.store.set({ po: { ...po, lines: [] } });
+      this.sendViews();
+    },
     roster: (person, shift) => this.client.command({ kind: 'roster', person: `E${person}`, shift, by: 'player' }),
     vacancy: (role, shift, via) => this.client.command({ kind: 'vacancy', role, shift, via, by: 'player' }),
     closeVacancy: id => this.client.command({ kind: 'close', vacancy: id, by: 'player' }),
@@ -999,6 +1040,7 @@ export class Game {
     if (h.journal.open) list.push({ id: 'journal', view: 'journal', page: h.journal.page, ...(h.journal.seat ? { seat: h.journal.seat } : {}), ...(h.journal.who ? { who: h.journal.who } : {}), ...(h.journal.focus !== undefined ? { focus: h.journal.focus } : {}) });
     if (h.dossier.open && h.dossier.batch !== undefined) list.push({ id: 'dossier', view: 'dossier', batch: h.dossier.batch });
     if (h.ref.open) list.push({ id: 'ref', view: 'ref' });
+    if (h.po.open) list.push({ id: 'po', view: 'po', ...(h.po.supplier ? { supplier: h.po.supplier } : {}), lines: h.po.lines.map(l => ({ material: l.material, qty: l.qty })) });
     if (h.kpi.open) list.push({ id: 'kpi', view: 'kpi', tab: h.kpi.tab, ...(h.kpi.why ? { why: h.kpi.why } : {}), ...(h.kpi.month !== undefined ? { month: h.kpi.month } : {}) });
     // «Сейчас» — и при закрытой панели: карточке — для «Смотреть», смотрящему — чтобы знать, когда работа кончилась
     if (h.now.open || this.selected || this.watching) list.push({ id: 'now', view: 'now' });
@@ -1232,11 +1274,12 @@ export class Game {
         e.preventDefault();
         this.actions.toggleStock();
       } else if (k === 'Escape') {
-        // Esc: сначала то, что тянут в расписании, потом досье серии (оно поверх всего), меню автопауз, выбор, верхнее
-        // окно — расписание (оно поверх планёрки), планёрка, затем панель справа
+        // Esc: сначала то, что тянут в расписании, потом досье серии (оно поверх всего) и окно «Заказ поставщику» (поверх
+        // склада, Б5б), меню автопауз, выбор, верхнее окно — расписание (оно поверх планёрки), планёрка, затем панель справа
         const h = this.store.get();
         if (h.gantt.drag) this.actions.cancelDrag();
         else if (h.dossier.open) this.actions.closeDossier();
+        else if (h.po.open) this.actions.togglePo();
         else if (h.pauses.open) this.actions.togglePauses();
         else if (this.selected) this.actions.select(undefined);
         else if (h.gantt.open) this.actions.toggleGantt();

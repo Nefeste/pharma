@@ -6,6 +6,8 @@ import { EVENT_CAP, goOf, keepOff, keptOff, machineThing, mine, PAUSE_KEY, PAUSE
 import type { Keep } from '../../src/app/preset';
 import { db } from '../../src/content';
 import { DAY } from '../../src/engine/core/calendar';
+import type { Notice } from '../../src/engine/types';
+import { stopKey } from '../../src/sim/protocol';
 
 const plant = db.plants[db.scenarios['scn.proto'].plant];
 
@@ -44,12 +46,13 @@ describe('автопаузы', () => {
     const ot = (...d: string[]) => d.map(x => `overtimeLow/${x}`);
     // заявление об увольнении (Б4в) — тоже пост отдела человека; черновик графика отпусков (Б4г) — каждого поста
     const rs = (...d: string[]) => d.map(x => `resign/${x}`);
-    expect(sorted(stopKinds([], ['production']))).toEqual(sorted(['failure', 'investigation', 'lotRejected', 'materialLate', 'morning', 'leaveDraft', ...eq, ...ot('mes', 'line', 'maint'), ...rs('mes', 'line', 'maint')]));
-    expect(sorted(stopKinds([], ['quality']))).toEqual(sorted(['deviation', 'investigation', 'lotRejected', 'qualLost', 'morning', 'leaveDraft', 'assetExpired/lab', 'pairSuspended', ...ot('qc', 'qa'), ...rs('qc', 'qa')]));
+    // предложение руководителя (Б5б) — у поста его отдела; до планёрки — ждёт её, пока автопауза планёрки включена
+    expect(sorted(stopKinds([], ['production']))).toEqual(sorted(['failure', 'investigation', 'lotRejected', 'materialLate', 'morning', 'leaveDraft', 'proposal/production', ...eq, ...ot('mes', 'line', 'maint'), ...rs('mes', 'line', 'maint')]));
+    expect(sorted(stopKinds([], ['quality']))).toEqual(sorted(['deviation', 'investigation', 'lotRejected', 'qualLost', 'morning', 'leaveDraft', 'assetExpired/lab', 'pairSuspended', 'proposal/quality', ...ot('qc', 'qa'), ...rs('qc', 'qa')]));
     expect(stopKinds([], ['commerce'])).toEqual(['orderRisk', 'leaveDraft', 'morning']);
-    expect(sorted(stopKinds([], ['supply']))).toEqual(sorted(['materialLate', 'morning', 'leaveDraft', 'truckWait', 'assetExpired/sensor', 'pairSuspended', ...ot('wms'), ...rs('wms')]));
-    // директор и «место не выбрано» — всё
-    const all = PAUSES.flatMap(p => PAUSE_NOTICES[p]);
+    expect(sorted(stopKinds([], ['supply']))).toEqual(sorted(['materialLate', 'morning', 'leaveDraft', 'truckWait', 'assetExpired/sensor', 'pairSuspended', 'proposal/supply', ...ot('wms'), ...rs('wms')]));
+    // директор и «место не выбрано» — всё, кроме предложений до планёрки
+    const all = PAUSES.flatMap(p => PAUSE_NOTICES[p]).filter(k => !k.endsWith('/early'));
     expect(stopKinds([], ['director'])).toEqual(all);
     expect(stopKinds([], undefined)).toEqual(all);
     expect(mine('truckWait', ['production', 'quality'])).toBe(false);
@@ -57,8 +60,19 @@ describe('автопаузы', () => {
   });
 
   test('отключённая автопауза не ставит мир на паузу', () => {
-    expect(stopKinds(['morning', 'oos'], ['quality'])).toEqual(['deviation', 'qualLost', 'overtimeLow/qc', 'overtimeLow/qa', 'resign/qc', 'resign/qa', 'assetExpired/lab', 'pairSuspended', 'leaveDraft']);
+    // автопауза планёрки выключена — предложение до планёрки ставит мир на паузу в свой час (Б5б)
+    expect(stopKinds(['morning', 'oos'], ['quality'])).toEqual(['deviation', 'qualLost', 'overtimeLow/qc', 'overtimeLow/qa', 'resign/qc', 'resign/qa', 'assetExpired/lab', 'pairSuspended', 'leaveDraft', 'proposal/quality', 'proposal/quality/early']);
+    expect(stopKinds(['proposal'], ['quality'])).not.toContain('proposal/quality');
     expect(stopKinds([...PAUSES], ['director'])).toEqual([]);
+  });
+
+  test('ключ предложения (Б5б): пост отдела; до 08:00 — «до планёрки»; щелчок — журнал на записи', () => {
+    const n = (t: number): Notice => ({ kind: 'proposal', n: 7, head: 'plan', seat: 'production', t });
+    expect(stopKey(n(7 * 3600))).toBe('proposal/production/early');
+    expect(stopKey(n(8 * 3600))).toBe('proposal/production');
+    expect(stopKey(n(86400 + 9 * 3600))).toBe('proposal/production');
+    expect(pauseOf('proposal/quality/early')).toBe('proposal');
+    expect(goOf(plant, n(0))).toEqual({ journal: 7 });
   });
 
   test('отключённые помнит хранилище окна; чужое, битое и закрытое — ничего не отключено', () => {

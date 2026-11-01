@@ -124,11 +124,13 @@ first, or copy the working code of Bolnitsa on the same versions.
   slots, the lot status table), `supply.ts` (purchase orders; the supply colleague — at 09:00 on a workday, every material
   below its reorder point: plan use over the longest lead time, incoming control and safety stock, through the first
   approved supplier–maker pair, one order per
-  supplier, at most half the quarantine zone in pallets), `planner.ts` (the planning colleague — at 07:00 on a workday, a
-  batch order for the workday two working weeks on, for the SKU that runs out first by FG and work in progress against
-  demand per working day seen in customer orders, over five-day weeks ahead; SKUs in turn until demand is seen;
-  campaigns — the product of the last batch order goes
-  on while its SKUs need a batch and no SKU of the other product is urgent), `wms.ts` (truck, its check at the dock
+  supplier, at most half the quarantine zone in pallets; with Б5б the rule without writing — `supplyPlan` — and an order
+  quoted without writing — lines up to whole containers, cost, VAT and prepayment, or the refusal with the line's
+  material — `quotePo`, shared with the «Заказ поставщику» window), `planner.ts` (the planning colleague — at 07:00 on a
+  workday, a batch order for the workday two working weeks on, for the SKU that runs out first by FG and work in
+  progress against demand per working day seen in customer orders, over five-day weeks ahead; SKUs in turn until demand
+  is seen; campaigns — the product of the last batch order goes on while its SKUs need a batch and no SKU of the other
+  product is urgent), `wms.ts` (truck, its check at the dock
   before unloading, unloading, receiving, putaway), `quality.ts` (true lot properties, the lab result, spec limits),
   `lab.ts` (sampling,
   lab tests by the spec revision in force when the sample was taken, the lot decision — a lot rejected without an
@@ -264,22 +266,31 @@ first, or copy the working code of Bolnitsa on the same versions.
   department head — the head by position, what was decided about which thing, the reason with the plant's numbers and
   never the truth; the player's command of the same kinds — «you» with the place it came from; a colleague's command —
   the record of its head; a scenario's or a refused command — none; no rule reads it; records older than the term go
-  at midnight; the plan run's copy starts without it), `kpi.ts` (with Б5ж, the heads' indicators: 47 definitions — the
-  head, unit, direction, month or rolling 12 months, source keys, the counterweight —, each a pure function of plant
+  at midnight; the plan run's copy starts without it; with Б5б a proposal is a record with its command and its answer),
+  `heads.ts` (with Б5б, the department modes: a head with choices «сам», «советует» or «вручную»; by default the
+  departments of a held post advise, the director's and all without places — «сам»; the player's choice is remembered; a
+  proposal — a journal record with the same rule's reason and command, one open per thing: a new one makes the old
+  «устарело», a rule no longer firing — «не нужно», a declined command not again until midnight; «Принять» — the command
+  from the player's place, checked anew, its decision in the proposal's record; «Отклонить» — no command; a post
+  released or a mode changed — open proposals stale; the QC head's, the qualified person's, repairs and dated
+  decisions — by rule in any mode; the `mode`, `accept` and `decline` commands), `kpi.ts` (with Б5ж, the heads'
+  indicators: 47 definitions — the head, unit, direction, month or rolling 12 months, source keys, the counterweight —,
+  each a pure function of plant
   records over a period and never of truth; the midnight snapshot of what records do not keep — stock at lot price, FG
   packs, receivables and payables, taken places, people without full admission — summed per month; at 00:00 on the 1st
   the month's results written into the state and never changed, the month's kWh taken before cash resets the meter;
   the same functions for the window, the meeting and the post's summary — `kpiValues`, `kpiPick`, `sincePeriod`),
   `waste.ts` (with Б1з, the removal of rejected material: the
-  `waste` command of the «Снабжение и склад» post — the contractor on the next workday at the start of his hours; while
-  the player does not hold the post, the warehouse colleague at 09:00 on a workday when two thirds of the zone's places
+  `waste` command of the «Снабжение и склад» post — the contractor on the next workday at the start of his hours; by the
+  warehouse head's mode (Б5б), the warehouse colleague at 09:00 on a workday when two thirds of the zone's places
   are taken or a pallet waits longer than the term; one removal at a time; the contractor's truck docks at the out dock
   like a customer's, a busy dock — it waits in the yard to the end of his hours and comes again the next workday; all
   that lies in the zone when it docks is loaded, the QC head signs the handover; the bill — the trip and the pallets,
   VAT to deduct; the waste log; containers and pallets leave the stock, the lot stays), `seats.ts` (the player's
   places — the director and four posts: whose each command is — a
   transfer, a vacancy, a hire, a dismissal, a vacation part or a related profession is the post of the role's
-  department —, the `seat` command, the log of places; a player's command of another's post is refused),
+  department —, with Б5б a mode is the post of its head's department and an answer the post of the proposal's or the
+  director —, the `seat` command, the log of places; a player's command of another's post is refused),
   `batchno.ts` (the batch number `PPNNNMMYY`: the short `PPNNN` when the batch record is issued, month and year when the
   first mixing starts; a count per product code from 1 January and after 999 again from 001, skipping numbers still held,
   so a full number never repeats; one integer in the slice), `alerts.ts` (the hourly alerts — a supplier truck still not
@@ -352,10 +363,14 @@ first, or copy the working code of Bolnitsa on the same versions.
   deputies and whom one may choose, whom a person covers, the meeting's away, leaving soon and back — records of the
   plant (`leave.ts`); with Б5а, the decision journal — pages newest first, filters by post and author, the numbers
   and codes of a record's things, «Кто решил» of the cards and the batch record, the meeting's decisions of the day by
-  head — records of the plant (`journal.ts`); with Б5ж, the indicators — tabs of the places, held ones first, the heads'
-  rows of the current or a chosen closed month with last month, 12 closed months, better or worse by direction — a sum
-  of the month per day —, «Почему?» — the records behind a number with their links, and the meeting's «Итоги месяца» on
-  the first meeting after a close (`kpi.ts`); with Б1и, the floor — rooms and line machines over today, yesterday or
+  head, with Б5б «Ждут вашего решения» — open proposals with their reason and whether the player may answer — and the
+  mode bar of the held posts — records of the plant (`journal.ts`); with Б5б, the «Заказ поставщику» window — suppliers
+  with an approved pair, their materials with the smallest lot, the container and the contract or list price, the
+  plant's answer to the draft and the supply rule's orders for «Предложить» (`po.ts`); with Б5ж, the indicators — tabs
+  of the places, held ones first, the heads' rows of the current or a chosen closed month with last month, 12 closed
+  months, better or worse by direction — a sum of the month per day —, «Почему?» — the records behind a number with
+  their links, and the meeting's «Итоги месяца» on the first meeting after a close (`kpi.ts`); with Б1и, the floor —
+  rooms and line machines over today, yesterday or
   seven days, the key machine and OEE by the meeting's `lineSum`, the plan-vs-actual board of the shift by hours, the
   batch a held room leads to — records of the plant, and with Б1к the hours batches waited at each place over the
   window with its main word, the batches waiting now and «держит линию» (`floor.ts`); with Б1к, the andon — what is
@@ -379,8 +394,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   engine's travel times, free people on their way to a post too, and the work icon of each busy person (`movers.ts`);
   the start preset — the frame measured on medium at first run, low if slower than 33 ms, the result and the player's
   choice kept in the window (`preset.ts`); the autopauses — which notices stop the world, whose post each is, the ones
-  switched off kept in the window, where a click on a notice leads (`pauses.ts`); which «Сейчас» row is the work of a
-  thing in the card (`watch.ts`); the levers of meeting rows — decisions, whose post, «будет в …» (`levers.ts`); the
+  switched off kept in the window, where a click on a notice leads, with Б5б a head's proposal before the meeting
+  waiting for it (`pauses.ts`); which «Сейчас» row is the work of a thing in the card (`watch.ts`); the levers of
+  meeting rows — decisions, whose post, «будет в …» (`levers.ts`); the
   first-event explanations understood, kept in the window (`firsts.ts`); the models from Blender — one file of all the
   machines loaded once before the stage, a machine its node — and the «Модели» switch of the debug panel (`art.ts`);
   trucks in the yard — backing in, waiting, driving off, a picture only (`yard.ts`); what is under the cursor — people
@@ -419,8 +435,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   thing — what it is, state, why, what can be done, history; a person's dismissal (`Card.tsx`), the plant reference with
   its tabs, sortable columns and search, hiring in «Люди» (`Ref.tsx`, F1), the vacation schedule in «Люди» and the
   vacation block of a person's card — parts, deputies, the related profession (`Leave.tsx`), the decision journal —
-  the right panel, J, a row with its reason in words, filters and pages, and the «Кто решил» rows with «Почему?»
-  (`Journal.tsx`), the indicators window — K, tabs, tiles with 12 bars, the formula and source on hover, «Почему?», the
+  the right panel, J, a row with its reason in words, filters and pages, and the «Кто решил» rows with «Почему?», with
+  Б5б the proposals with «Принять» and «Отклонить» — in the journal, the meeting and the card — and the mode bar
+  (`Journal.tsx`), the «Заказ поставщику» window from the warehouse panel — supplier, lines, «Предложить», «Отправить»
+  (`Po.tsx`), the indicators window — K, tabs, tiles with 12 bars, the formula and source on hover, «Почему?», the
   month arrows (`Kpi.tsx`), the layers menu on the left with the window and the legend, the column tooltip and the
   card's «Загрузка» block (`Layers.tsx`), quality attribute and
   process parameter

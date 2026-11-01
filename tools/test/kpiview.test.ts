@@ -12,7 +12,7 @@ import { apply, MORNING } from '../../src/engine/engine';
 import { currentPeriod, KPI, kpiCtx, KPIS, kpiValues, monthPeriod } from '../../src/engine/kpi';
 import { fromSave } from '../../src/engine/save';
 import type { PlantState } from '../../src/engine/types';
-import { CLOSE_MAX, CLOSE_MIN, HIST, headsOf, kpiView, type KpiWhyRow, monthClose, WHY, WHY_MAX, whyRows } from '../../src/sim/kpi';
+import { CLOSE_MAX, CLOSE_MIN, HIST, headsOf, kpiView, type KpiWhyRow, monthClose, SAME, WHY, WHY_MAX, whyRows } from '../../src/sim/kpi';
 import { morningView } from '../../src/sim/report';
 import { viewOf } from '../../src/sim/views';
 
@@ -47,7 +47,7 @@ describe('окно «Показатели»', () => {
     expect(seen.size).toBe(KPIS.length);
   });
 
-  test('число месяца — функции движка за текущий месяц; прошлый — итог закрытого; стрелка — по направлению', () => {
+  test('число месяца — функции движка за текущий месяц; прошлый — итог закрытого; стрелка — по направлению, сдвиг меньше видного — «так же»', () => {
     const now = kpiValues(db, s, currentPeriod(db, s));
     const last = s.kpi.months.at(-1)!;
     const cells = SEATS.flatMap(tab => kpiView(db, s, { view: 'kpi', tab }).rows.flatMap(r => r.cells));
@@ -55,7 +55,7 @@ describe('окно «Показатели»', () => {
       expect(c.now).toBe(now[c.id]);
       expect(c.prev).toBe(last.v[c.id]);
       expect(c.hist.at(-1)).toBe(last.v[c.id] ?? null);
-      if (c.now !== undefined && c.prev !== undefined && !KPI[c.id].acc) expect(c.trend).toBe(Math.sign((c.now - c.prev) * KPI[c.id].dir) as 1 | -1 | 0);
+      if (c.now !== undefined && c.prev !== undefined && !KPI[c.id].acc) expect(c.trend).toBe(Math.abs(c.now - c.prev) < SAME[c.unit] ? 0 : (Math.sign((c.now - c.prev) * KPI[c.id].dir) as 1 | -1 | 0));
     }
     // месяц — ноябрь 2027 и с полуночи 1-го; история — закрытые месяцы, старые первыми
     const v = kpiView(db, s, { view: 'kpi', tab: 'director' });
@@ -91,8 +91,9 @@ describe('окно «Показатели»', () => {
     const rev = v.rows.flatMap(r => r.cells).find(c => c.id === 'revenue')!;
     expect(rev.acc).toBe(true);
     if (rev.now !== undefined && rev.prev !== undefined) {
-      const per = rev.now / (p.to - p.from) - rev.prev / (last.to - last.from);
-      expect(rev.trend).toBe(Math.sign(per) as 1 | -1 | 0);
+      // выручка нынешнего месяца — к длине прошлого: в сутки
+      const delta = (rev.now * (last.to - last.from)) / (p.to - p.from) - rev.prev;
+      expect(rev.trend).toBe(Math.abs(delta) < SAME.kop ? 0 : (Math.sign(delta) as 1 | -1 | 0));
     }
   });
 

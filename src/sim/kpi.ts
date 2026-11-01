@@ -20,6 +20,7 @@ import {
   incomingTimes,
   KPI,
   type KpiCtx,
+  type KpiDef,
   kpiCtx,
   type KpiHead,
   type KpiUnit,
@@ -295,8 +296,14 @@ function moreOf(db: ContentDb, s: PlantState, c: KpiCtx, id: string): Record<str
   return undefined;
 }
 
-/** Лучше (1), хуже (−1) или так же (0) — по знаку изменения и направлению показателя. */
-const trendOf = (delta: number, dir: 1 | -1) => Math.sign(delta * dir) as 1 | -1 | 0;
+/**
+ * Сдвиг, который окно ещё показывает, в единицах показателя: половина последнего знака числа — рубль, десятая процента,
+ * часа, суток, случая на 1000 и кВт·ч. Меньше — «так же»: на экране числа равны.
+ */
+export const SAME: Readonly<Record<KpiUnit, number>> = { kop: 50, share: 5, sec: 180, day: 5, per: 5, wh: 50 };
+
+/** Лучше (1), хуже (−1) или так же (0) — по знаку изменения, направлению показателя и сдвигу, который видно. */
+const trendOf = (delta: number, k: Pick<KpiDef, 'dir' | 'unit'>) => (Math.abs(delta) < SAME[k.unit] ? 0 : (Math.sign(delta * k.dir) as 1 | -1 | 0));
 
 // ---------------------------------------------------------------- итоги месяца
 
@@ -339,7 +346,8 @@ function moved(v: number, was: number): number {
 
 /**
  * «Итоги месяца» планёрки в мгновение `at`: первая планёрка после закрытия месяца — в первые сутки после полуночи на 1-е;
- * иначе — нет. Свои показатели руководителя: показатель, который он видит в строке как директор, — у своего руководителя.
+ * иначе — нет. Свои показатели руководителя: показатель, который он видит в строке как директор, — у своего руководителя;
+ * руководители взятых мест — первыми.
  */
 export function monthClose(s: PlantState, at: number): MonthClose | undefined {
   const months = s.kpi.months;
@@ -348,7 +356,10 @@ export function monthClose(s: PlantState, at: number): MonthClose | undefined {
   const head = { y: last.y, m: last.m, from: last.from, ...(last.part ? { part: true as const } : {}) };
   const before = months.at(-2);
   if (!before) return { ...head, first: true, heads: [] };
-  const heads = SEATS.flatMap(headsOf).flatMap(h => {
+  // руководители взятых мест — первыми, как вкладки окна
+  const held = (s.seats ?? []).filter(x => x.to === undefined).map(x => x.seat);
+  const seats = [...SEATS.filter(x => held.includes(x)), ...SEATS.filter(x => !held.includes(x))];
+  const heads = seats.flatMap(headsOf).flatMap(h => {
     const rows = KPIS.filter(k => k.head === h)
       .flatMap(k => {
         const v = last.v[k.id];
@@ -369,7 +380,7 @@ export function monthClose(s: PlantState, at: number): MonthClose | undefined {
           dir: k.dir,
           v,
           was,
-          trend: trendOf(v - was, k.dir),
+          trend: trendOf(v - was, k),
           ...(pk ? { pair: { id: pk.id, unit: pk.unit, ...(pv !== undefined ? { v: pv } : {}), ...(pw !== undefined ? { was: pw } : {}) } } : {}),
         };
       });
@@ -415,7 +426,8 @@ export function kpiView(db: ContentDb, s: PlantState, q: KpiQuery): KpiView {
         ...(v !== undefined ? { now: v } : {}),
         ...(prev !== undefined ? { prev } : {}),
         hist,
-        ...(v !== undefined && prev !== undefined && last ? { trend: trendOf(k.acc ? v / Math.max(1, p.to - p.from) - prev / Math.max(1, last.to - last.from) : v - prev, k.dir) } : {}),
+        // сумма месяца — к длине прошлого: неполный месяц сравнивается с полным в сутки
+        ...(v !== undefined && prev !== undefined && last ? { trend: trendOf((k.acc ? (v * (last.to - last.from)) / Math.max(1, p.to - p.from) : v) - prev, k) } : {}),
         ...(more ? { more } : {}),
         why: WHY.has(k.id),
       };

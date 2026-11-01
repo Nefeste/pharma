@@ -76,10 +76,10 @@ function moreText(c: KpiCell): string | undefined {
   }
 }
 
-/** Ширина и зазор столбика, высота полосы, px: тонкие отметки, между столбиками — зазор цвета фона. */
-const BAR = 6;
-const GAP = 2;
-const H = 28;
+/** Ширина и зазор столбика, высота полосы, px: 12 столбиков во всю ширину плитки, между ними — зазор цвета фона. */
+const BAR = 12;
+const GAP = 3;
+const H = 24;
 
 /**
  * 12 закрытых месяцев столбиками от общей нулевой линии — отрицательные вниз; последний — цветом акцента: с ним сравнивают
@@ -102,7 +102,7 @@ function Spark({ c, months, actions }: { c: KpiCell; months: readonly (KpiMonthR
         const h = Math.max(1, Math.round((Math.abs(v) / span) * H));
         const mo = months[i - off];
         return (
-          <rect key={i} className={i === vals.length - 1 ? 'klast' : undefined} x={i * (BAR + GAP)} y={v >= 0 ? y0 - h : y0} width={BAR} height={h} rx={1} onClick={mo ? () => actions.setKpiMonth(mo.from) : undefined} data-test="kpi-bar" data-from={mo?.from}>
+          <rect key={i} className={i === vals.length - 1 ? 'klast' : undefined} x={i * (BAR + GAP)} y={v >= 0 ? y0 - h : y0} width={BAR} height={h} rx={2} onClick={mo ? () => actions.setKpiMonth(mo.from) : undefined} data-test="kpi-bar" data-from={mo?.from}>
             <title>{`${T.kpi.bar(mo ? `${monthText(mo)}${mo.part ? ` (${T.kpi.part})` : ''}` : '', kpiText(c.id, c.unit, v))} · ${T.kpi.barHint}`}</title>
           </rect>
         );
@@ -122,18 +122,16 @@ function Cell({ c, months, open, actions }: { c: KpiCell; months: readonly (KpiM
         {kpiName(c.id)}
         {c.win === 'y' ? <span> · {T.kpi.win}</span> : null}
       </div>
-      <div className="kline">
-        {c.now !== undefined ? (
-          <span className="kvalue" data-test="kpi-now">
-            {kpiText(c.id, c.unit, c.now)}
-          </span>
-        ) : (
-          <span className="kvalue muted" title={T.kpi.noneHint} data-test="kpi-now">
-            {T.kpi.none}
-          </span>
-        )}
-        <Spark c={c} months={months} actions={actions} />
-      </div>
+      {c.now !== undefined ? (
+        <div className="kvalue" data-test="kpi-now">
+          {kpiText(c.id, c.unit, c.now)}
+        </div>
+      ) : (
+        <div className="kvalue muted" title={T.kpi.noneHint} data-test="kpi-now">
+          {T.kpi.none}
+        </div>
+      )}
+      <Spark c={c} months={months} actions={actions} />
       <div className="ksub muted">
         {c.prev !== undefined ? `${T.kpi.prev}: ${kpiText(c.id, c.unit, c.prev)}` : null}
         {t ? (

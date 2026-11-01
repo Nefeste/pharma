@@ -252,7 +252,8 @@ function MonthBlock({ x, hud, actions, close }: { x: MonthClose; hud: Hud; actio
           <ul className="mlist">
             {h.rows.map(r => (
               <li key={r.id} data-test="morning-month-row" data-id={r.id} data-trend={r.trend}>
-                <span className={r.trend === 1 ? 'good' : r.trend === -1 ? 'bad' : ''}>{r.trend === 1 ? '▲ ' : r.trend === -1 ? '▼ ' : '= '}</span>
+                {/* стрелка — куда сдвинулось число, цвет и слово — лучше это или хуже, как у плитки окна */}
+                <span className={r.trend === 1 ? 'good' : r.trend === -1 ? 'bad' : ''}>{r.v > r.was ? '▲ ' : r.v < r.was ? '▼ ' : '= '}</span>
                 {T.kpi.close.row(kpiName(r.id), kpiText(r.id, r.unit, r.v), kpiText(r.id, r.unit, r.was), T.kpi.trendShort[r.trend === 1 ? 'up' : r.trend === -1 ? 'down' : 'same'])}
                 {r.pair ? (
                   <div className="muted">
@@ -366,16 +367,16 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
               <SessionBlock x={v.session} real={hud.session.real} />
             </Section>
           ) : null}
-          {v.month ? (
-            <Section title={T.kpi.close.title(`${monthText(v.month)}${v.month.part ? ` · ${T.kpi.part}` : ''}`)}>
-              <MonthBlock x={v.month} hud={hud} actions={actions} close={close} />
-            </Section>
-          ) : null}
           {v.seats.length > 0 ? (
             <Section title={T.morning.seatsTitle}>
               {v.seats.map(x => (
                 <SeatBlock key={x.seat} x={x} start={start} />
               ))}
+            </Section>
+          ) : null}
+          {v.month ? (
+            <Section title={T.kpi.close.title(`${monthText(v.month)}${v.month.part ? ` · ${T.kpi.part}` : ''}`)}>
+              <MonthBlock x={v.month} hud={hud} actions={actions} close={close} />
             </Section>
           ) : null}
           {v.modes.length > 0 ? (

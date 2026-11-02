@@ -4,6 +4,7 @@ import type { ContentDb, Id } from '../content/types';
 import { momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { dist, type Mover, type PlantPlan, type Point, type Slot, straight } from './plant';
+import { coldOf } from './places';
 import { lotProps, type Props } from './quality';
 import type { Container, Lot, LotStatus, PlantState, Tag, Unit, Where } from './types';
 
@@ -188,6 +189,29 @@ export function putUnit(s: PlantState, u: Unit, slotId: string) {
 export function slotFree(s: PlantState, slotId: string): boolean {
   const u = s.slots[slotId];
   return !u || (!u.unit && !u.held);
+}
+
+/**
+ * Сколько мест зоны `kind` ждут паллеты из пробоотборной: после отбора проб паллета возвращается в карантин, а материал
+ * с холодным режимом — в холодную камеру (lab.ts). Размещение из приёмки их не занимает: иначе полный карантин ждал бы
+ * пробоотборную, пробоотборная — места в карантине, приёмка — карантин, и склад вставал бы до конца игры.
+ */
+export function heldForSampled(db: ContentDb, s: PlantState, plan: PlantPlan, kind: string): number {
+  let n = 0;
+  for (const sl of plan.byKind.sampling ?? []) {
+    const uid = s.slots[sl.id]?.unit;
+    const c = uid ? s.containers[s.units[uid].items[0]] : undefined;
+    const lot = c ? s.lots[c.lot] : undefined;
+    if (lot && (coldOf(db, s.plant, lot.material) ? 'cold' : 'quarantine') === kind) n++;
+  }
+  return n;
+}
+
+/** Свободных мест вида `kind`. */
+export function freeSlots(s: PlantState, plan: PlantPlan, kind: string): number {
+  let n = 0;
+  for (const sl of plan.byKind[kind] ?? []) if (slotFree(s, sl.id)) n++;
+  return n;
 }
 
 /** Сутки до конца срока: для FEFO и остаточного срока. */

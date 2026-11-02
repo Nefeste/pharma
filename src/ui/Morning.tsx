@@ -333,6 +333,10 @@ function Rejects({ r, start, hud, actions, close }: { r: RejectSum; start: Ymd; 
   );
 }
 
+/** Часть OEE ключевой машины: без времени работы нет производительности, без выпуска — качества — прочерк, как в окне
+ * «Показатели»; выше 100 % — 100 %. */
+const part = (x?: number) => (x === undefined ? T.floor.none : pctText(Math.min(x, 10000)));
+
 export function Morning({ v, day, start, plant, pause, actions, hud, scenario }: { v?: MorningView; day: number; start: Ymd; plant: string; pause: boolean; actions: Actions; hud: Hud; scenario?: Scenario }) {
   const d = civilFromDays(day);
   const at = momentOf(d, 0);
@@ -432,7 +436,7 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                       const key = lineMachine(plant, l.line, l.key);
                       return (
                         <li key={l.line} className="go" onClick={go(key.thing)}>
-                          {T.morning.oeeRow(name, pctText(Math.min(l.oee.oee, 10000)), pctText(l.oee.a), pctText(Math.min(l.oee.p, 10000)), pctText(Math.min(l.oee.q, 10000)))}
+                          {T.morning.oeeRow(name, pctText(Math.min(l.oee.oee, 10000)), pctText(l.oee.a), part(l.oee.p), part(l.oee.q))}
                           {l.loss ? <div className="muted">{lineLossText(plant, l)}</div> : null}
                         </li>
                       );

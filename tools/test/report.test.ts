@@ -77,6 +77,18 @@ describe('планёрка: вчера', () => {
     expect(lineSum(0, undefined)).toEqual({ line: 0 });
   });
 
+  test('ключевая машина без работы — производительности нет, без выпуска — качества: в виде их нет, а не ноль', () => {
+    // сутки, когда линия только налаживалась: загрузка есть, хода и выпуска нет — делить не на что (ISO 22400-2)
+    const idle = { times: [0, 1].map(() => ({ run: 0, slow: 0, micro: 0, fail: 0, wait: 0, setup: 3600, off: 0, out: 0, slowOut: 0 })), ideal: [3600 * 60, 3900 * 60], run: [0, 0], good: 0 };
+    expect(lineSum(0, idle).oee).toEqual({ a: 0, oee: 0 });
+    // ход был, а выпуска нет — производительность есть (ноль), качества нет
+    const run = { ...idle, times: idle.times.map(t => ({ ...t, run: 1800, setup: 1800 })), run: [1800 * 60, 1800 * 60] };
+    expect(lineSum(0, run).oee).toEqual({ a: 5000, p: 0, oee: 0 });
+    // и ход, и выпуск — все три множителя
+    const ok = { ...run, times: run.times.map(t => ({ ...t, out: 1800 * 60 })), good: 1800 * 60 };
+    expect(Object.keys(lineSum(0, ok).oee!).sort()).toEqual(['a', 'oee', 'p', 'q']);
+  });
+
   test('уборки и переналадки — вчерашние, из суток потерь (Б2г)', () => {
     let seen = 0;
     for (let day = day0 + 1; day <= today; day++) {

@@ -96,7 +96,7 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
     case 'spare':
       return J.spare(named(db?.spares[d.spare]?.name, d.spare), d.qty);
     case 'vacancy':
-      return J.vacancy(role(d.role), d.via === 'agency');
+      return J.vacancy(role(d.role), d.via);
     case 'hire':
       return `${J.hire(role(d.role))}${r.person ? `, ${T.card.person(role(r.person.role), r.person.tab)}` : ''}`;
     case 'leaveDraft':

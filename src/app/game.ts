@@ -439,6 +439,8 @@ export class Game {
       : n.kind === 'proposal' ? T.notices.proposal(T.journal.names[n.head] ?? n.head)
       : n.kind === 'policy' ? T.notices.policy(T.journal.names[n.head] ?? n.head, named(this.db.policies[n.policy]?.name, n.policy))
       : n.kind === 'visitMoved' ? T.notices.visitMoved(`${workName(n, n.work)} — ${assetClass(n)}, ${T.assets.inv(n.inv)}`, whenText(this.store.get().start, n.at))
+      : n.kind === 'noOne' ? T.notices.noOne(T.journal.namesOf[n.head] ?? n.head)
+      : n.kind === 'deputy' ? T.notices.deputy(T.journal.namesOf[n.head] ?? n.head, n.role && n.tab !== undefined ? T.card.person(this.roleName(n.role), n.tab) : undefined)
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;

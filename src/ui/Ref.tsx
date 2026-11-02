@@ -11,6 +11,7 @@ import type { DocKind } from '../engine/docs';
 import { DEPT_SEAT } from '../engine/seats';
 import { dayText, durText, hText, lang, money, named, num, pctText, priceText, qtyText, T, whenText } from '../i18n';
 import type { FormerRow, HireRow, HiringView, StaffRow, VacancyRow } from '../sim/hire';
+import type { Via } from '../engine/types';
 import type { RefContract, RefMaker, RefPair } from '../sim/partners';
 import type { DocNow } from '../sim/people';
 import type { AssetInfo, PlaceArea, PlaceCenter } from '../sim/places';
@@ -525,7 +526,7 @@ function Vacancy({ v, h, q, hud, actions }: { v: VacancyRow; h: HiringView; q: s
     { name: hc.candCols.skill, text: x => num(x.skill), num: x => x.skill },
     { name: hc.candCols.salary, text: x => money(x.salary), num: x => x.salary },
     { name: hc.candCols.until, text: x => dayText(x.until), num: x => x.until },
-    { name: hc.candCols.fee, text: x => (x.fee !== undefined ? money(x.fee) : '—'), num: x => x.fee ?? 0 },
+    { name: hc.candCols.fee, text: x => (x.fee !== undefined ? money(x.fee) : x.move !== undefined ? money(x.move) : '—'), num: x => x.fee ?? x.move ?? 0 },
     {
       name: hc.candCols.hire,
       text: () => '',
@@ -549,7 +550,7 @@ function Vacancy({ v, h, q, hud, actions }: { v: VacancyRow; h: HiringView; q: s
       {v.candidates.length > 0 ? (
         <Table test="ref-candidates" cols={cols} items={v.candidates} keyOf={x => x.id} q={q} />
       ) : (
-        <div className="muted small">{v.via === 'ad' ? hc.waitAd : hc.waitAgency(v.next !== undefined ? dayText(v.next) : '—')}</div>
+        <div className="muted small">{v.via === 'ad' ? hc.waitAd : (v.via === 'move' ? hc.waitMove : hc.waitAgency)(v.next !== undefined ? dayText(v.next) : '—')}</div>
       )}
       {pick && v.candidates.some(c => c.id === pick) ? (
         <div className="hireask" data-test="hire-ask">
@@ -563,7 +564,11 @@ function Vacancy({ v, h, q, hud, actions }: { v: VacancyRow; h: HiringView; q: s
               ))}
             </select>
           </label>{' '}
-          <span className="muted">{hc.hireAsk(dayText(v.exam), v.first !== undefined ? dayText(v.first) : '—', money(h.costs.medical))}</span>{' '}
+          <span className="muted">
+            {v.arrive !== undefined && h.move
+              ? hc.hireAskMove(dayText(v.arrive), dayText(v.exam), v.first !== undefined ? dayText(v.first) : '—', money(h.costs.medical), money(h.move.pay))
+              : hc.hireAsk(dayText(v.exam), v.first !== undefined ? dayText(v.first) : '—', money(h.costs.medical))}
+          </span>{' '}
           <button
             type="button"
             disabled={!mine}
@@ -592,8 +597,10 @@ function OpenVacancy({ h, hud, actions }: { h: HiringView; hud: Hud; actions: Ac
   const [role, setRole] = useState(roles[0] ?? '');
   const firstShift = (r: Id) => h.staff.find(x => x.role === r)?.shift ?? Object.keys(db?.shifts ?? {})[0] ?? '';
   const [shift, setShift] = useState(firstShift(roles[0] ?? ''));
-  const [via, setVia] = useState<'ad' | 'agency'>('ad');
+  const [via, setVia] = useState<Via>('ad');
   const { mine, title } = roleSeat(hud, role);
+  // переезд (Б5в) — только для тех, кого в городе по объявлению не найти
+  const canMove = h.movable.includes(role);
   if (!open) {
     return (
       <div>
@@ -613,6 +620,7 @@ function OpenVacancy({ h, hud, actions }: { h: HiringView; hud: Hud; actions: Ac
           onChange={e => {
             setRole(e.target.value);
             setShift(firstShift(e.target.value));
+            if (via === 'move' && !h.movable.includes(e.target.value)) setVia('ad');
           }}
           data-test="vacancy-role"
         >
@@ -635,9 +643,10 @@ function OpenVacancy({ h, hud, actions }: { h: HiringView; hud: Hud; actions: Ac
       </label>{' '}
       <label>
         {hc.channel}{' '}
-        <select value={via} onChange={e => setVia(e.target.value as 'ad' | 'agency')} data-test="vacancy-via">
+        <select value={via} onChange={e => setVia(e.target.value as Via)} data-test="vacancy-via">
           <option value="ad">{hc.via.ad}</option>
           <option value="agency">{hc.via.agency}</option>
+          {canMove ? <option value="move">{hc.via.move}</option> : null}
         </select>
       </label>{' '}
       <button
@@ -676,6 +685,7 @@ function Hiring({ h, q, hud, actions }: { h: HiringView; q: string; hud: Hud; ac
     { name: hc.hireCols.shift, text: x => shiftName(x.shift) },
     { name: hc.hireCols.skill, text: x => num(x.skill), num: x => x.skill },
     { name: hc.hireCols.salary, text: x => money(x.salary), num: x => x.salary },
+    { name: hc.hireCols.arrive, text: x => (x.arrive !== undefined ? dayText(x.arrive) : '—'), num: x => x.arrive ?? 0 },
     { name: hc.hireCols.exam, text: x => dayText(x.exam), num: x => x.exam },
     { name: hc.hireCols.day, text: x => dayText(x.day), num: x => x.day },
     { name: hc.hireCols.trial, text: x => hc.months(x.trial), num: x => x.trial },
@@ -711,6 +721,7 @@ function Hiring({ h, q, hud, actions }: { h: HiringView; q: string; hud: Hud; ac
         ))}
         <OpenVacancy h={h} hud={hud} actions={actions} />
         <div className="muted small">{hc.costs(money(h.costs.ad), h.costs.days[0], h.costs.days[1], pctText(h.costs.agency), money(h.costs.medical))}</div>
+        {h.move ? <div className="muted small">{hc.costsMove(h.move.days[0], h.move.days[1], h.move.notice, h.move.road, money(h.move.pay))}</div> : null}
         <div className="muted small">{hc.note}</div>
       </section>
       {h.hires.length > 0 ? (

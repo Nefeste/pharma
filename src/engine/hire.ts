@@ -5,7 +5,9 @@
 // обучение по матрице роли; испытание — до трёх месяцев (ст. 70). Увольнение — по соглашению сторон (ст. 78), не
 // выдержал испытание (ст. 71), по собственному желанию через две недели (ст. 80): заявления даёт текучесть. Последний
 // день — расчёт (cash.ts, ст. 84.1, 140) и уход после последней смены. Руководитель отдела роли в режиме «сам» открывает
-// вакансию на каждое заявление и принимает первого подходящего кандидата, в режиме «советует» — предлагает (Б5б).
+// вакансию на каждое заявление и принимает первого подходящего кандидата, в режиме «советует» — предлагает (Б5б). Кого
+// по объявлению в городе не найти — руководителей, — ищут ещё и переездом (Б5в): кандидат из другого города приезжает
+// после предупреждения на прежней работе (ст. 80) и дороги, переезд завод возмещает при приёме (ст. 169).
 import type { ContentDb, Dept, Id, Labor } from '../content/types';
 import { dueRule, hireMinBy, skillOf, type Who } from './bosses';
 import { addMonths, addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf } from './core/calendar';
@@ -18,7 +20,7 @@ import { normal, roll, spread } from './random';
 import { graphSpan, spanOn } from './shifts';
 import { dropTask } from './tasks';
 import { trainNow } from './train';
-import type { Command, Decided, Head, Hire, Notice, Person, PlantState, Quit, Vacancy } from './types';
+import type { Command, Decided, Head, Hire, Notice, Person, PlantState, Quit, Vacancy, Via } from './types';
 import { calOf } from './workdays';
 
 /** Причина приёма коллегой (Б5а). */
@@ -65,7 +67,7 @@ function drawSkill(weights: readonly number[], u: number): number {
 }
 
 /** Новый кандидат вакансии: навык, ожидание, срок поиска. */
-function candidate(db: ContentDb, s: PlantState, lab: Labor, vacId: string, via: 'ad' | 'agency', skill: number, z: number) {
+function candidate(db: ContentDb, s: PlantState, lab: Labor, vacId: string, via: Via, skill: number, z: number) {
   const v = s.vacancies[vacId];
   const id = `K${(s.next.K = (s.next.K ?? 0) + 1)}`;
   const day = today(s);
@@ -91,33 +93,41 @@ function adWeek(db: ContentDb, s: PlantState, lab: Labor, notices: Notice[]) {
 /** Плата агентству при приёме его кандидата: доля годового оклада, копейки. */
 export const agencyFee = (lab: Labor, salary: number): number => Math.floor((salary * 12 * lab.agency.share) / P);
 
-/** Когда агентство пришлёт следующего кандидата по вакансии: через `days` суток от и до, в 09:00. */
-function agencyNext(s: PlantState, lab: Labor, vacId: string): number {
-  const [a, b] = lab.agency.days;
-  const d = roll(s, `staff/agency/${vacId}`, r => a + r.int(b - a + 1));
+/** Запись канала, который сам присылает кандидатов: агентство или переезд (Б5в); у объявления и без записи — нет. */
+const remoteOf = (lab: Labor, via: Via) => (via === 'agency' ? lab.agency : via === 'move' ? lab.move : undefined);
+
+/** Когда агентство или переезд пришлёт следующего кандидата по вакансии: через `days` суток от и до, в 09:00. */
+function remoteNext(s: PlantState, days: readonly [number, number], via: Via, vacId: string): number {
+  const [a, b] = days;
+  const d = roll(s, `staff/${via}/${vacId}`, r => a + r.int(b - a + 1));
   return (today(s) + d - daysFromCivil(s.start)) * DAY + LABOR_HOUR;
 }
 
-/** Агентство: кандидат с навыком от и до записи рынка — в своё мгновение; следующего — через новый срок. */
-function agencyStep(db: ContentDb, s: PlantState, lab: Labor, notices: Notice[]) {
+/** Агентство и переезд: кандидат с навыком от и до записи канала — в своё мгновение; следующего — через новый срок. */
+function remoteStep(db: ContentDb, s: PlantState, lab: Labor, notices: Notice[]) {
   for (const v of Object.values(s.vacancies)) {
-    if (v.via !== 'agency' || v.next === undefined || v.next > s.t) continue;
-    const [lo, hi] = lab.agency.skill;
-    const got = roll(s, `staff/agency/${v.id}`, r => ({ skill: lo + r.int(hi - lo + 1), z: normal(r) }));
-    candidate(db, s, lab, v.id, 'agency', got.skill, got.z);
+    const src = remoteOf(lab, v.via);
+    if (!src || v.next === undefined || v.next > s.t) continue;
+    const [lo, hi] = src.skill;
+    const got = roll(s, `staff/${v.via}/${v.id}`, r => ({ skill: lo + r.int(hi - lo + 1), z: normal(r) }));
+    candidate(db, s, lab, v.id, v.via, got.skill, got.z);
     notices.push({ kind: 'candidates', vacancy: v.id, role: v.role, n: 1 });
-    v.next = agencyNext(s, lab, v.id);
+    v.next = remoteNext(s, src.days, v.via, v.id);
   }
 }
 
+/** Переезд (Б5в) — для роли, которую по объявлению в городе не найти: доля «никого» у объявления — целая. */
+export const movable = (lab: Labor | undefined, role: Id): boolean => !!lab?.move && (lab.roles[role]?.ad[0] ?? 0) >= P;
+
 /**
- * Открыть вакансию: объявление — кандидаты с ближайшего понедельника; агентство — первый через свой срок. В журнал
- * решений (Б5а) — игрок с командой или руководитель отдела роли с причиной.
+ * Открыть вакансию: объявление — кандидаты с ближайшего понедельника; агентство и переезд — первый через свой срок. В
+ * журнал решений (Б5а) — игрок с командой или руководитель отдела роли с причиной.
  */
-function open(db: ContentDb, s: PlantState, lab: Labor, role: Id, shift: Id, via: 'ad' | 'agency', notices: Notice[], by?: { instead: string }, cmd?: Command): string {
+function open(db: ContentDb, s: PlantState, lab: Labor, role: Id, shift: Id, via: Via, notices: Notice[], by?: { instead: string }, cmd?: Command): string {
   const id = `J${(s.next.J = (s.next.J ?? 0) + 1)}`;
   s.vacancies[id] = { id, role, shift, via, from: today(s), ...(by ? { by: 'colleague' as const, instead: by.instead } : {}) };
-  if (via === 'agency') s.vacancies[id].next = agencyNext(s, lab, id);
+  const src = remoteOf(lab, via);
+  if (src) s.vacancies[id].next = remoteNext(s, src.days, via, id);
   notices.push({ kind: 'vacancy', id, role, shift, via, ...(by ? { by: 'colleague' as const } : {}) });
   const d = { kind: 'vacancy' as const, vacancy: id, role, via };
   const p = by ? s.people[by.instead] : undefined;
@@ -146,13 +156,16 @@ function firstShift(db: ContentDb, s: PlantState, shift: Id, after: number): { d
 
 /**
  * Если принять сегодня (и для окна): день заключения медосмотра — рабочие дни с завтрашнего — и первый день — первая
- * смена графика после него, с мгновением её начала; смены за год нет — без первого дня.
+ * смена графика после него, с мгновением её начала; смены за год нет — без первого дня. Кандидат переезда (Б5в)
+ * приезжает после предупреждения на прежней работе и дороги — медосмотр с дня приезда.
  */
-export function hireDays(db: ContentDb, s: PlantState, shift: Id): { exam: number; first?: { day: number; at: number } } {
+export function hireDays(db: ContentDb, s: PlantState, shift: Id, via: Via = 'ad'): { exam: number; arrive?: number; first?: { day: number; at: number } } {
   const lab = laborOf(db, s);
-  const exam = addWorkdays(calOf(db, s), today(s), lab?.medical.days ?? 0);
+  const move = via === 'move' ? lab?.move : undefined;
+  const arrive = move ? today(s) + move.notice + move.road : undefined;
+  const exam = addWorkdays(calOf(db, s), arrive ?? today(s), lab?.medical.days ?? 0);
   const first = firstShift(db, s, shift, exam);
-  return { exam, ...(first ? { first } : {}) };
+  return { exam, ...(arrive !== undefined ? { arrive } : {}), ...(first ? { first } : {}) };
 }
 
 /**
@@ -173,20 +186,22 @@ export function dismissTerms(db: ContentDb, s: PlantState, p: Person): { agree?:
 
 /**
  * Принять кандидата: медосмотр — рабочие дни с завтрашнего, за счёт завода; первый день — первая смена после него. В
- * журнал решений (Б5а) — игрок с командой или руководитель отдела роли с причиной `why`.
+ * журнал решений (Б5а) — игрок с командой или руководитель отдела роли с причиной `why`. Кандидату переезда (Б5в) —
+ * возмещение переезда и обустройства сразу, по соглашению сторон (ст. 169).
  */
 function hireCandidate(db: ContentDb, s: PlantState, lab: Labor, id: string, trial: number, notices: Notice[], cmd?: Command, why?: HireWhy): boolean {
   const c = s.candidates[id];
   const v = s.vacancies[c.vacancy];
-  const { exam, first } = hireDays(db, s, v.shift);
+  const { exam, arrive, first } = hireDays(db, s, v.shift, c.via);
   if (!first) return false;
   const d = { kind: 'hire' as const, cand: c.id, vacancy: v.id, role: c.role };
   if (cmd) noteCmd(s, cmd, d, deptOf(db, c.role));
   else note(s, DEPT_HEAD[deptOf(db, c.role)], { ...d, ...(why ? { why } : {}) });
-  const h: Hire = { id: c.id, vacancy: v.id, via: c.via, role: c.role, skill: c.skill, salary: c.salary, shift: v.shift, trial, exam, day: first.day, at: first.at, vac: v.from };
+  const h: Hire = { id: c.id, vacancy: v.id, via: c.via, role: c.role, skill: c.skill, salary: c.salary, shift: v.shift, trial, exam, day: first.day, at: first.at, vac: v.from, ...(arrive !== undefined ? { arrive } : {}) };
   s.hires[h.id] = h;
   hiringPay(s, -lab.medical.price, `med-${h.id}`);
   if (c.via === 'agency') hiringPay(s, -agencyFee(lab, c.salary), `agency-${h.id}`);
+  if (c.via === 'move' && lab.move) hiringPay(s, -lab.move.pay, `move-${h.id}`);
   closeVacancy(s, v.id);
   notices.push({ kind: 'accepted', candidate: h.id, role: h.role, day: h.day });
   return true;
@@ -354,10 +369,10 @@ function colleagueStep(db: ContentDb, s: PlantState, lab: Labor, notices: Notice
   r.done();
 }
 
-/** Вакансию по объявлению — агентству: первый кандидат — через свой срок. */
+/** Вакансию по объявлению или переезду — агентству: первый кандидат — через свой срок. */
 function toAgency(s: PlantState, lab: Labor, v: Vacancy) {
   v.via = 'agency';
-  v.next = agencyNext(s, lab, v.id);
+  v.next = remoteNext(s, lab.agency.days, 'agency', v.id);
 }
 
 /**
@@ -370,7 +385,7 @@ export function hireHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   if (lab) {
     if (now.sec === 0) laborDay(db, s, lab, now.day, notices);
     if (now.sec === LABOR_HOUR && now.weekday === 0) adWeek(db, s, lab, notices);
-    agencyStep(db, s, lab, notices);
+    remoteStep(db, s, lab, notices);
     if (now.sec >= LABOR_HOUR && isWorkday(calOf(db, s), now.day)) colleagueStep(db, s, lab, notices);
   }
   for (const h of Object.values(s.hires)) if (h.at <= s.t) start(db, s, h, notices);
@@ -387,6 +402,7 @@ export function hireCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
     case 'vacancy': {
       if (!lab || !lab.roles[cmd.role]) return refuse('noLabor');
       if (!db.shifts[cmd.shift]) return refuse('noShift');
+      if (cmd.via === 'move' && !movable(lab, cmd.role)) return refuse('noMove', cmd.role);
       // вместо кого (Б5б): вакансию на заявление ведёт руководитель отдела роли — она у заявления
       const q = cmd.instead !== undefined ? s.people[cmd.instead]?.quit : undefined;
       if (cmd.instead !== undefined && (q?.why !== 'own' || q.vacancy !== undefined)) return refuse('noPerson', cmd.instead);

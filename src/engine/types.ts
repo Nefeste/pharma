@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 35;
+export const SCHEMA = 36;
 
 // ---------------------------------------------------------------- склад
 
@@ -784,12 +784,21 @@ export interface Quit {
   vacancy?: string;
 }
 
-/** Вакансия (Б4в): роль и график; канал; день открытия; открыл коллега — вместо кого; когда агентство пришлёт кандидата. */
+/**
+ * Канал найма: объявление в городе, кадровое агентство (Б4в) или переезд кандидата из другого города (Б5в) — тех, кого
+ * по объявлению в городе не найти.
+ */
+export type Via = 'ad' | 'agency' | 'move';
+
+/**
+ * Вакансия (Б4в): роль и график; канал; день открытия; открыл коллега — вместо кого; когда агентство или переезд
+ * (Б5в) пришлёт кандидата.
+ */
 export interface Vacancy {
   id: string;
   role: Id;
   shift: Id;
-  via: 'ad' | 'agency';
+  via: Via;
   from: number;
   by?: 'colleague';
   instead?: string;
@@ -803,7 +812,7 @@ export interface Vacancy {
 export interface Candidate {
   id: string;
   vacancy: string;
-  via: 'ad' | 'agency';
+  via: Via;
   role: Id;
   skill: number;
   salary: number;
@@ -823,6 +832,8 @@ export interface Hire extends Omit<Candidate, 'from' | 'until'> {
   at: number;
   /** день, когда открыли вакансию (Б5ж): переходит к человеку в его первый день; у принятых до схемы 33 нет */
   vac?: number;
+  /** переезд (Б5в): день приезда — после предупреждения на прежней работе и дороги; медосмотр — с него */
+  arrive?: number;
 }
 
 /** Запись графика человека (Б4б): график и номер дня от 1970-01-01, с которого он в нём. */
@@ -1447,7 +1458,7 @@ export type Decided =
    * вакансия: вместо кого — человек, табельный номер и день заявления; канал — объявление, сразу агентство (по
    * объявлению такую роль в городе не найти) или агентство после стольких суток без подходящего
    */
-  | { kind: 'vacancy'; vacancy?: string; role: Id; via: 'ad' | 'agency'; why?: { instead: string; tab: number; day: number; rule: 'ad' | 'city' | 'late'; days?: number } }
+  | { kind: 'vacancy'; vacancy?: string; role: Id; via: Via; why?: { instead: string; tab: number; day: number; rule: 'ad' | 'city' | 'late'; days?: number } }
   /** приём: навык против наименьшего, ожидание против цены рынка за навык с надбавкой `over`, доли 1/10 000 */
   | { kind: 'hire'; cand: string; vacancy: string; role: Id; why?: { skill: number; min: number; salary: number; price: number; over: number } }
   /** черновик графика отпусков года: у скольких людей из скольких не всем частям нашлось место */
@@ -1798,7 +1809,7 @@ export type Command =
    * вакансия (Б4в): роль, график и канал — объявление или кадровое агентство; вместо кого — на заявление по собственному
    * желанию (Б5б): такую вакансию ведёт руководитель отдела роли
    */
-  | { kind: 'vacancy'; role: Id; shift: Id; via: 'ad' | 'agency'; instead?: string; by?: string }
+  | { kind: 'vacancy'; role: Id; shift: Id; via: Via; instead?: string; by?: string }
   /** вакансию руководителя по объявлению — кадровому агентству (Б5б) */
   | { kind: 'agency'; vacancy: string; by?: string }
   /** закрыть вакансию (Б4в): её кандидаты уходят */
@@ -1895,6 +1906,12 @@ export type Refusal =
    * не на испытании; до конца испытания меньше срока предупреждения; уже уходит; «отпустить раньше» без заявления
    */
   | 'noLabor'
+  /** переезд (Б5в) — только для роли, которую по объявлению в городе не найти, и при записи переезда в сценарии */
+  | 'noMove'
+  /** заместитель (Б5в): у руководителя нет строки сценария; роль человека не из тех, что его замещают; и так такой */
+  | 'noHead'
+  | 'notDeputy'
+  | 'deputySame'
   | 'noVacancy'
   | 'noCandidate'
   | 'trialLong'
@@ -1952,7 +1969,7 @@ export type Notice =
    * найм (Б4в): вакансия открыта; новые кандидаты по ней; принят — первый день; вышел на работу; заявление об уходе —
    * последний день и отдел, чей пост встаёт; уволен — последний день прошёл; роль и номер — для слов
    */
-  | { kind: 'vacancy'; id: string; role: Id; shift: Id; via: 'ad' | 'agency'; by?: 'colleague' }
+  | { kind: 'vacancy'; id: string; role: Id; shift: Id; via: Via; by?: 'colleague' }
   | { kind: 'candidates'; vacancy: string; role: Id; n: number }
   | { kind: 'accepted'; candidate: string; role: Id; day: number }
   | { kind: 'hired'; person: string; role: Id; tab: number }
@@ -2040,4 +2057,4 @@ export type Notice =
   /** некому решить за руководителя (Б5в): его нет, а заместителя нет или и он отсутствует; пост отдела — автопауза */
   | { kind: 'noOne'; head: Head; seat: SeatId }
   /** заместитель руководителя назначен или снят (Б5в) */
-  | { kind: 'deputy'; head: HeadId; person?: string };
+  | { kind: 'deputy'; head: HeadId; person?: string; role?: Id; tab?: number };

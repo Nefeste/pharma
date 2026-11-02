@@ -5,6 +5,8 @@
 // поста отдела — извещение «Некому решить». Главный технолог, начальник отдела продаж и отдел кадров — должности без
 // людей до своих частей: решают, как прежде, в час правила. Навык 4 и 5 — правило отдела целиком, ниже — с ограничением по
 // таблице геймдизайна (§8.5, гипотезы): горизонт планирования, порог вывода расследования, замена узла, навык при найме.
+// Руководители — люди у сценария с записью `heads`; без неё все руководители — должности, как до Б5в: так живёт прежний
+// сценарий тестов механики (tools/test/legacy.ts).
 import { HEAD_IDS, type ContentDb, type HeadId, type Id } from '../content/types';
 import { isWorkday, momentOf } from './core/calendar';
 import { HEAD_SEAT, noteCmd } from './journal';
@@ -79,6 +81,9 @@ export function deputyOf(db: ContentDb, s: PlantState, h: HeadId, z = today(s)):
 /** В смене ли человек в мгновение `t` (по графику, без отпуска и в дни работы на заводе). */
 const onShift = (db: ContentDb, s: PlantState, p: Person, t: number) => shiftEndAt(db, s, p, t) !== undefined;
 
+/** Руководители — люди (Б5в): у сценария есть запись заместителей `heads`. */
+const peopleHeads = (db: ContentDb, s: PlantState) => !!db.scenarios[s.scenario].heads;
+
 /**
  * Кто решает за руководителя `head` сейчас (Б5в). Должность без людей — она сама. Уполномоченное лицо — первое по
  * табельному номеру в смене. Руководитель на заводе, не в отпуске — он, если в смене, иначе никто: решение ждёт его
@@ -90,7 +95,7 @@ export function whoDecides(db: ContentDb, s: PlantState, head: Head, t = s.t): W
     const p = ofRole(s, QP_ROLE, z).find(q => onShift(db, s, q, t));
     return p ? { p: p.id } : undefined;
   }
-  if (!isHeadId(head)) return {};
+  if (!isHeadId(head) || !peopleHeads(db, s)) return {};
   const h = headOf(s, head, z);
   if (h && !awayOn(h, z)) return onShift(db, s, h, t) ? { p: h.id } : undefined;
   const d = deputyOf(db, s, head, z);
@@ -103,7 +108,7 @@ export function whoDecides(db: ContentDb, s: PlantState, head: Head, t = s.t): W
  */
 export function noOneFor(db: ContentDb, s: PlantState, head: Head, z = today(s)): boolean {
   if (head === 'qp') return ofRole(s, QP_ROLE, z).every(p => !!awayOn(p, z));
-  if (!isHeadId(head)) return false;
+  if (!isHeadId(head) || !peopleHeads(db, s)) return false;
   const h = headOf(s, head, z);
   if (h && !awayOn(h, z)) return false;
   const d = deputyOf(db, s, head, z);
@@ -174,20 +179,22 @@ export function hireMinBy(skill: number, min: number): number {
  */
 export function deputyCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'deputy' }>, notices: Notice[]) {
   const row = db.scenarios[s.scenario].heads?.[cmd.head];
-  if (!row) return notices.push({ kind: 'refused', cmd: 'deputy', why: 'noRole', detail: cmd.head });
+  if (!row) return notices.push({ kind: 'refused', cmd: 'deputy', why: 'noHead', detail: cmd.head });
   const z = today(s);
   const was = deputyOf(db, s, cmd.head, z);
+  let who: Person | undefined;
   if (cmd.person === null) {
-    if (!was) return notices.push({ kind: 'refused', cmd: 'deputy', why: 'same', detail: cmd.head });
+    if (!was) return notices.push({ kind: 'refused', cmd: 'deputy', why: 'deputySame', detail: cmd.head });
     (s.deputies ??= {})[cmd.head] = '';
   } else {
     const p = s.people[cmd.person];
     if (!p || !employedOn(p, z)) return notices.push({ kind: 'refused', cmd: 'deputy', why: 'noPerson', detail: cmd.person });
     if (p.role === HEAD_ROLE[cmd.head]) return notices.push({ kind: 'refused', cmd: 'deputy', why: 'ownRole', detail: cmd.person });
-    if (!row.can.includes(p.role)) return notices.push({ kind: 'refused', cmd: 'deputy', why: 'noRole', detail: p.role });
-    if (was?.id === p.id) return notices.push({ kind: 'refused', cmd: 'deputy', why: 'same', detail: cmd.person });
+    if (!row.can.includes(p.role)) return notices.push({ kind: 'refused', cmd: 'deputy', why: 'notDeputy', detail: p.role });
+    if (was?.id === p.id) return notices.push({ kind: 'refused', cmd: 'deputy', why: 'deputySame', detail: cmd.person });
     (s.deputies ??= {})[cmd.head] = p.id;
+    who = p;
   }
   noteCmd(s, cmd, { kind: 'deputy', head: cmd.head, ...(cmd.person ? { person: cmd.person } : {}), ...(was ? { was: was.id } : {}) });
-  notices.push({ kind: 'deputy', head: cmd.head, ...(cmd.person ? { person: cmd.person } : {}) });
+  notices.push({ kind: 'deputy', head: cmd.head, ...(who ? { person: who.id, role: who.role, tab: who.tab } : {}) });
 }

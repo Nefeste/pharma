@@ -6,7 +6,7 @@ import type { Layer } from '../app/floor';
 import type { Go, Pause } from '../app/pauses';
 import type { Dept, Id, OvertimeMode, SeatId } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
-import type { DeptMode, Head, PolicyValue } from '../engine/types';
+import type { DeptMode, Head, PolicyValue, Via } from '../engine/types';
 import type { RunSum } from '../engine/plan/run';
 import type { Change } from '../engine/plan/schedule';
 import type { Lang } from '../i18n';
@@ -318,7 +318,7 @@ export interface Actions {
    * найм и увольнение (Б4в): открыть вакансию — роль, график, канал; закрыть её; принять кандидата с испытанием
    * на столько месяцев; уволить — по соглашению, не выдержал испытание или отпустить раньше
    */
-  vacancy(role: Id, shift: Id, via: 'ad' | 'agency'): void;
+  vacancy(role: Id, shift: Id, via: Via): void;
   closeVacancy(id: string): void;
   hire(candidate: string, trial: number): void;
   dismiss(person: number, why: 'agree' | 'trial' | 'early'): void;

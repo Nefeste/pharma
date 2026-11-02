@@ -12,13 +12,16 @@ import type { Keep } from './preset';
 /** Посты, у отделов которых есть руководители с выбором (Б5б): им — автопауза «Предложение». */
 const PROPOSAL_SEATS: readonly SeatId[] = ['production', 'quality', 'supply'];
 
+/** Посты, у отделов которых руководители — люди (Б5в): им — автопауза «Некому решить». */
+const HEAD_SEATS: readonly SeatId[] = ['production', 'quality', 'supply'];
+
 /**
  * Автопаузы прототипа — по порядку меню. Из событий сотрудника есть потеря допуска (Б3б), сверхурочные года на исходе
  * (Б4а) и заявление об увольнении (Б4в); срок квалификации или калибровки актива (Б3в); приостановленная пара поставщика
- * (Б3г); черновик графика отпусков (Б4г); предложение руководителя (Б5б); жалобы, совещания S&OP и инспекции в прототипе
- * нет.
+ * (Б3г); черновик графика отпусков (Б4г); некому решить за руководителя (Б5в); предложение руководителя (Б5б); жалобы,
+ * совещания S&OP и инспекции в прототипе нет.
  */
-export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'leaveDraft', 'proposal', 'morning'] as const;
+export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'leaveDraft', 'noOne', 'proposal', 'morning'] as const;
 export type Pause = (typeof PAUSES)[number];
 
 /**
@@ -39,6 +42,8 @@ export const PAUSE_NOTICES: Record<Pause, readonly string[]> = {
   assetExpired: ['assetExpired/equipment', 'assetExpired/machine', 'assetExpired/ipc', 'assetExpired/lab', 'assetExpired/sensor'],
   pairSuspended: ['pairSuspended'],
   leaveDraft: ['leaveDraft'],
+  // некому решить за руководителя (Б5в): у поста его отдела
+  noOne: HEAD_SEATS.map(x => `noOne/${x}`),
   // предложение руководителя (Б5б): у поста отдела; до планёрки — ждёт её (`stopKinds`)
   proposal: PROPOSAL_SEATS.flatMap(x => [`proposal/${x}`, `proposal/${x}/early`]),
   morning: ['morning'],
@@ -66,6 +71,8 @@ export const PAUSE_SEATS: Record<Pause, readonly SeatId[] | 'all'> = {
   pairSuspended: ['quality', 'supply'],
   // черновик графика отпусков (Б4г): строки своих постов правит каждый пост
   leaveDraft: 'all',
+  // некому решить (Б5в) — у поста отдела руководителя (`KEY_SEATS`)
+  noOne: HEAD_SEATS,
   // предложение руководителя (Б5б) — у поста его отдела (`KEY_SEATS`)
   proposal: PROPOSAL_SEATS,
   morning: 'all',
@@ -84,6 +91,7 @@ export const KEY_SEATS: Partial<Record<string, readonly SeatId[]>> = {
   'assetExpired/sensor': ['supply'],
   ...Object.fromEntries(Object.entries(DEPT_SEAT).flatMap(([d, seat]) => [[`overtimeLow/${d}`, [seat]], [`resign/${d}`, [seat]]])),
   ...Object.fromEntries(PROPOSAL_SEATS.flatMap(x => [[`proposal/${x}`, [x]], [`proposal/${x}/early`, [x]]])),
+  ...Object.fromEntries(HEAD_SEATS.map(x => [`noOne/${x}`, [x]])),
 };
 
 /** Ключ в хранилище окна: отключённые автопаузы — новая автопауза в следующей версии придёт включённой. */
@@ -202,6 +210,12 @@ export function goOf(plant: Plant, n: Notice): Go | undefined {
     case 'proposal':
       // предложение руководителя (Б5б) — к журналу на его записи: причина, «Принять» и «Отклонить»
       return { journal: n.n };
+    case 'noOne':
+      // некому решить (Б5в) — к вкладке «Люди»: руководители, их отпуск и заместители
+      return { panel: 'ref', tab: 'people' };
+    case 'deputy':
+      // заместитель назначен (Б5в) — к нему; снят — к вкладке «Люди»
+      return n.person ? { thing: { kind: 'person', n: Number(n.person.slice(1)) } } : { panel: 'ref', tab: 'people' };
     case 'policy':
       // политика задана (Б5г) — к окну «Политики»
       return { panel: 'policies' };

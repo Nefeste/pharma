@@ -17,6 +17,7 @@ import { defect } from './lean';
 import { planOf } from './plant';
 import { within } from './quality';
 import { roll } from './random';
+import { playerLeads } from './seats';
 import { nextId, setLotStatus, stockChanged, unitsOfLot } from './stock';
 import { addTask } from './tasks';
 import { type Batch, type Command, INSTRUMENT_FAULTS, type InstrumentFault, type Investigation, type LabTest, type Lot, type Notice, type Place, type PlantState, type StageRecord, type StepWhy, type Task } from './types';
@@ -480,8 +481,8 @@ export function invStep(db: ContentDb, s: PlantState, notices: Notice[]): boolea
   const mode = modeOf(s, 'qa');
   if (mode === 'manual') return false;
   // руководитель — человек (Б5в): шаг и вывод — начальника ООК, а без него — заместителя, в свою смену; пока некому —
-  // расследование ждёт
-  const due = Object.values(s.investigations).some(inv => inv.status === 'open' && !inv.runs.some(r => r.to === undefined));
+  // расследование ждёт. Расследование, которое ведёт игрок (Б5д, «Веду сам»), — не его
+  const due = Object.values(s.investigations).some(inv => inv.status === 'open' && !inv.runs.some(r => r.to === undefined) && !playerLeads(s, inv));
   const who = due ? decider(db, s, 'qa', notices) : undefined;
   if (due && !who) return false;
   let acted = false;
@@ -491,7 +492,7 @@ export function invStep(db: ContentDb, s: PlantState, notices: Notice[]): boolea
       if (mode === 'advise' && s.heads.open[key] !== undefined) moot(s, key);
       continue;
     }
-    if (inv.runs.some(r => r.to === undefined)) continue;
+    if (inv.runs.some(r => r.to === undefined) || playerLeads(s, inv)) continue;
     // что видел руководитель: шаги и улики только прибавляются — то же число, то же предложение
     const seen = inv.runs.length + inv.obs.length;
     if (mode === 'advise' && seenAt(s, key) === seen) continue;

@@ -84,6 +84,9 @@ const onShift = (db: ContentDb, s: PlantState, p: Person, t: number) => shiftEnd
 /** Руководители — люди (Б5в): у сценария есть запись заместителей `heads`. */
 const peopleHeads = (db: ContentDb, s: PlantState) => !!db.scenarios[s.scenario].heads;
 
+/** Человек ли руководитель (Б5в): уполномоченное лицо — всегда; шесть руководителей — у сценария с записью `heads`. */
+export const isPerson = (db: ContentDb, s: PlantState, head: Head) => head === 'qp' || (isHeadId(head) && peopleHeads(db, s));
+
 /**
  * Кто решает за руководителя `head` сейчас (Б5в). Должность без людей — она сама. Уполномоченное лицо — первое по
  * табельному номеру в смене. Руководитель на заводе, не в отпуске — он, если в смене, иначе никто: решение ждёт его

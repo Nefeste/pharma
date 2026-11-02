@@ -47,7 +47,7 @@ export function ownerOf(cmd: Command, dept?: Dept): SeatId | undefined {
 }
 
 /** Роль, о которой команда найма (Б4в), перевода (Б4б) или отпуска (Б4г): её отдел — чей пост. */
-function roleOf(s: PlantState, cmd: Command): string | undefined {
+export function roleOf(s: PlantState, cmd: Command): string | undefined {
   switch (cmd.kind) {
     case 'roster':
     case 'dismiss':
@@ -75,6 +75,12 @@ export function playerHolds(s: PlantState, dept: Dept): boolean {
   return !!h && (h.includes('director') || h.includes(DEPT_SEAT[dept]));
 }
 
+/** Ведёт ли расследование игрок (Б5д): ответил «Веду сам» и держит «Качество» или место директора. */
+export function playerLeads(s: PlantState, inv: { lead?: 'player' }): boolean {
+  const h = held(s);
+  return inv.lead === 'player' && !!h && (h.includes('director') || h.includes('quality'));
+}
+
 /** Места, которые игрок держит сейчас; ещё не выбирал — `undefined`. */
 export function held(s: PlantState): SeatId[] | undefined {
   return s.seats?.filter(x => x.to === undefined).map(x => x.seat);
@@ -86,7 +92,7 @@ export function held(s: PlantState): SeatId[] | undefined {
  */
 export function foreign(s: PlantState, cmd: Command, db?: ContentDb): SeatId | undefined {
   const role = roleOf(s, cmd);
-  const own = cmd.kind === 'accept' || cmd.kind === 'decline' ? askOwner(s, cmd.n) : ownerOf(cmd, role ? db?.roles[role]?.dept : undefined);
+  const own = cmd.kind === 'accept' || cmd.kind === 'decline' ? askOwner(s, cmd.n) : cmd.kind === 'answer' ? forkOwner(s, cmd.n) : ownerOf(cmd, role ? db?.roles[role]?.dept : undefined);
   if (!own || ('by' in cmd && cmd.by !== undefined && cmd.by !== 'player')) return undefined;
   const h = held(s);
   return !h || h.includes('director') || h.includes(own) ? undefined : own;
@@ -96,6 +102,11 @@ export function foreign(s: PlantState, cmd: Command, db?: ContentDb): SeatId | u
 function askOwner(s: PlantState, n: number): SeatId | undefined {
   const r = recordOf(s, n);
   return r && r.by !== 'player' ? HEAD_SEAT[r.by] : undefined;
+}
+
+/** Пост ответа на вопрос «Просят решить» (Б5д): кого спросили — пост развилки или директор; вопроса нет — ничей. */
+function forkOwner(s: PlantState, n: number): SeatId | undefined {
+  return recordOf(s, n)?.q?.to;
 }
 
 /**

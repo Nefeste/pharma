@@ -123,6 +123,9 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
     }
     case 'deputy':
       return J.deputy(T.journal.namesOf[d.head] ?? d.head, r.person ? T.card.person(role(r.person.role), r.person.tab) : undefined);
+    case 'memo':
+    case 'fork':
+      return 'XXX-B5D';
   }
 }
 

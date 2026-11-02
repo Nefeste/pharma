@@ -6,6 +6,7 @@
 // журнале — числа, которые завод знает, а ссылки на вещи — их номера и коды, как в карточках.
 import type { ContentDb, Dept, Id, SeatId } from '../content/types';
 import { batchNo } from '../engine/batchno';
+import { FORK_HEAD } from '../engine/forks';
 import { MODED, modeOf as deptMode } from '../engine/heads';
 import { DEPT_HEAD, HEAD_SEAT } from '../engine/journal';
 import { planOf } from '../engine/plant';
@@ -157,6 +158,10 @@ function headOf(db: ContentDb, d: Decided): Head {
       return policyHead(d.policy) ?? 'plan';
     case 'deputy':
       return d.head;
+    case 'memo':
+      return d.to;
+    case 'fork':
+      return FORK_HEAD[d.fork];
   }
 }
 

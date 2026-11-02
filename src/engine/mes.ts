@@ -507,10 +507,25 @@ export function stageBegin(db: ContentDb, s: PlantState, id: string, v: number) 
  * без нагрузки — 10 000.
  */
 function stressOf(db: ContentDb, b: Batch, ty: PartType): number {
+  return stressAt(db, b.recipe, b.stage, b.sp, ty);
+}
+
+/** Нагрузка узла на стадии `stage` карты `recipe` при уставках `sp` — та же, что у идущей стадии (Б1ж). */
+function stressAt(db: ContentDb, recipe: Id, stage: number, sp: Record<string, number> | undefined, ty: PartType): number {
   const k = ty.stress;
-  const v = k ? b.sp?.[k.param] : undefined;
-  const p = k && v !== undefined ? db.recipes[b.recipe].stages[b.stage].params.find(x => x.id === k.param) : undefined;
+  const v = k ? sp?.[k.param] : undefined;
+  const p = k && v !== undefined ? db.recipes[recipe].stages[stage].params.find(x => x.id === k.param) : undefined;
   return k && p && v! > p.target ? P_ONE + k.coef * (v! - p.target) : P_ONE;
+}
+
+/**
+ * Наработка узла вида `ty` за нынешнюю стадию серии по норме (Б5д): таблеток по массе на входе стадии, с нагрузкой
+ * уставок, которые стадия возьмёт, когда начнётся, — знание завода для цены развилки «замена перед работой».
+ */
+export function stageWear(db: ContentDb, s: PlantState, b: Batch, ty: PartType): number {
+  const st = db.recipes[b.recipe].stages[b.stage];
+  const sp = b.sp ?? (st.params.length > 0 ? stageSetpoints(db, s, b.recipe, st) : undefined);
+  return wornBy(unitsOf(db, b), stressAt(db, b.recipe, b.stage, sp, ty));
 }
 
 /** Единиц наработки за `n` таблеток с нагрузкой `k`; таблеток, за которые узел наработает `u`. */

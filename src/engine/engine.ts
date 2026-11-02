@@ -12,6 +12,7 @@ import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
 import { deputyCommand } from './bosses';
+import { answerFork, askDue, forksStep } from './forks';
 import { answerCommand, headsDay, modeCommand, newHeads } from './heads';
 import { hireCommand, hireHour } from './hire';
 import { hoursHour, newPolicy, overtimeCommand } from './hours';
@@ -25,6 +26,7 @@ import { leaveCommand, leaveHour } from './leave';
 import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from './line';
 import { maintainCommand, maintDone, maintStep, newParts, spareArrives } from './maint';
 import { marketDone, marketHour, marketStep, newCustomers, rznPublished, seedFg } from './market';
+import { memoCommand, memoDue, memoHour, withdrawCommand } from './memos';
 import { BATCH_HOUR, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
 import { setpointCommand } from './modes';
 import { auditDone, partnersDone, partnersHour, seedContracts, seedPairs, specPairs } from './partners';
@@ -207,7 +209,7 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
     case 'order': {
       const notices: Notice[] = [];
       placeOrder(db, s, cmd, notices);
-      settle(db, s);
+      settle(db, s, notices);
       return notices;
     }
     case 'pack': {
@@ -246,7 +248,7 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       // место качества отдали — коллега качества ведёт открытые расследования дальше и оценивает отклонения (Б1г); взяли —
       // предлагает (Б5б)
       const inv = invStep(db, s, notices);
-      if (devHour(db, s, notices) || inv) settle(db, s);
+      if (devHour(db, s, notices) || inv) settle(db, s, notices);
       return notices;
     }
     case 'investigate': {
@@ -271,7 +273,7 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       // политика отдела (Б4а): задачи, которые ждали часов, раздаются по новой
       const notices: Notice[] = [];
       overtimeCommand(s, cmd, notices);
-      settle(db, s);
+      settle(db, s, notices);
       return notices;
     }
     case 'roster': {
@@ -288,21 +290,21 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       // найм и увольнение (Б4в): по соглашению последний день — сегодня, а новую работу человек берёт только в смену
       const notices: Notice[] = [];
       hireCommand(db, s, cmd, notices);
-      settle(db, s);
+      settle(db, s, notices);
       return notices;
     }
     case 'leave': {
       // часть отпуска (Б4г): начинается не раньше завтрашнего дня — сейчас раздавать нечего, кроме смены заместителя
       const notices: Notice[] = [];
       leaveCommand(db, s, cmd, notices);
-      settle(db, s);
+      settle(db, s, notices);
       return notices;
     }
     case 'also': {
       // смежная профессия (Б4г): задачи изучить документы её строки — сразу в раздачу
       const notices: Notice[] = [];
       alsoCommand(db, s, cmd, notices);
-      settle(db, s);
+      settle(db, s, notices);
       return notices;
     }
     case 'setpoint': {
@@ -349,17 +351,36 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       answerCommand(s, cmd, notices, c => command(db, s, c));
       return notices;
     }
+    case 'memo': {
+      // служебная записка (Б5д): руководитель ответит в свой час — сейчас раздавать нечего
+      const notices: Notice[] = [];
+      memoCommand(db, s, cmd, notices);
+      return notices;
+    }
+    case 'withdraw': {
+      // отозвать записку (Б5д): ответа не будет
+      const notices: Notice[] = [];
+      withdrawCommand(s, cmd, notices);
+      return notices;
+    }
+    case 'answer': {
+      // ответ на «Просят решить» (Б5д): другой вариант — та же команда, что у поста, со своей раздачей задач
+      const notices: Notice[] = [];
+      answerFork(s, cmd, notices, c => command(db, s, c));
+      return notices;
+    }
   }
 }
 
 /**
  * Раздать задачи; кому задачи не досталось — на пост (3а); затем у серий — чем занято их время (1ж): ждут они людей или
- * уже работают, видно после раздачи.
+ * уже работают, видно после раздачи. С местами игрока — развилки «Просят решить» по тому, чего ждут серии (Б5д).
  */
-function settle(db: ContentDb, s: PlantState) {
+function settle(db: ContentDb, s: PlantState, notices?: Notice[]) {
   dispatch(db, s);
   toPosts(db, s);
   leanStep(db, s);
+  if (notices) forksStep(db, s, notices);
 }
 
 /**
@@ -374,7 +395,7 @@ function steps(db: ContentDb, s: PlantState, notices: Notice[]) {
   qaStep(db, s);
   invStep(db, s, notices);
   marketStep(db, s, notices);
-  settle(db, s);
+  settle(db, s, notices);
 }
 
 /**
@@ -423,6 +444,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       }
       // найм (Б4в): кандидаты, заявления, первые дни принятых, уход после последней смены — до раздачи задач часа
       hireHour(db, s, notices);
+      // служебные записки (Б5д): руководитель снова в рабочем времени — ответ через час
+      memoHour(db, s, notices);
       // отпуска (Б4г): кто ушёл в отпуск и вышел, черновик и утверждение графика, извещения; отпускные — в час банка
       leaveHour(db, s, notices);
       startSampling(db, s);
@@ -450,14 +473,14 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       lineStep(db, s, notices);
       qaStep(db, s);
       marketStep(db, s, notices);
-      settle(db, s);
+      settle(db, s, notices);
       // тревоги часа (Б2а) — по заводу, каким его оставил час; сверхурочные года на исходе (Б4а)
       alertsHour(db, s, notices);
       hoursHour(db, s, notices);
       return;
     case 'truck':
       truckArrives(db, s, ev.po, notices);
-      settle(db, s);
+      settle(db, s, notices);
       return;
     case 'task': {
       const t = s.tasks[ev.id];
@@ -472,11 +495,11 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
     }
     case 'run':
       runDone(db, s, ev.test, ev.v);
-      settle(db, s);
+      settle(db, s, notices);
       return;
     case 'batch':
       mesStep(db, s);
-      settle(db, s);
+      settle(db, s, notices);
       return;
     case 'line':
       lineEvent(db, s, ev.id, ev.v, notices);
@@ -503,7 +526,7 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       return;
     case 'leave':
       // последний зов перед концом смены: кому задачи не нашлось — к выходу
-      settle(db, s);
+      settle(db, s, notices);
       return;
     case 'visit':
       // подрядчик кончил: счёт и приёмка; актив снова в работе, если его запись ещё действует
@@ -514,6 +537,14 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       // аудитор прислал отчёт (Б3г): счёт и задача специалисту ООК
       auditDone(db, s, ev.pair, ev.v);
       steps(db, s, notices);
+      return;
+    case 'memo':
+      // час ответа на служебную записку (Б5д): команды руководителя — каждая со своей раздачей задач
+      memoDue(db, s, ev.n, ev.v, notices, c => command(db, s, c));
+      return;
+    case 'ask':
+      // срок ответа на «Просят решить» (Б5д): руководитель решает сам, как сейчас, — завод не меняется
+      askDue(s, ev.n, ev.v);
       return;
   }
 }

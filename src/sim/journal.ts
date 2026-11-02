@@ -382,6 +382,21 @@ export function whoMachine(db: ContentDb, s: PlantState, machine: string): WhoRo
   return whoRows(s, d => ((d.kind === 'repair' || d.kind === 'replace') && ids.has(d.part)) || (d.kind === 'spare' && spares.has(d.spare)));
 }
 
+/**
+ * Решения человека за руководителя (Б5в): последние `n` записей журнала, где решал он — руководителем или «и. о.», —
+ * новые сверху; предложения — не его решения.
+ */
+export function whoDecided(s: PlantState, p: Person, n = 5): WhoRow[] {
+  const out: WhoRow[] = [];
+  for (let i = s.journal.length - 1; i >= 0 && out.length < n; i--) {
+    const r = s.journal[i];
+    if (r.p !== p.id || r.ask) continue;
+    const as = asOf(s, r);
+    out.push({ n: r.n, t: r.t, by: r.by, kind: r.d.kind, ...(verdictOf(r.d) ? { v: verdictOf(r.d) } : {}), ...(as ? { as } : {}) });
+  }
+  return out;
+}
+
 /** Человек: кто открыл вакансию, на которую его приняли, и кто принял; ушедший — вакансия на его место. */
 export function whoPerson(s: PlantState, p: Person): WhoRow[] {
   const hire = s.journal.find(r => r.d.kind === 'hire' && r.d.cand === p.cand);

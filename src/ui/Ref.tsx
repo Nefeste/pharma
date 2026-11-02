@@ -10,6 +10,7 @@ import { daysFromCivil, weekday } from '../engine/core/calendar';
 import type { DocKind } from '../engine/docs';
 import { DEPT_SEAT } from '../engine/seats';
 import { dayText, durText, hText, lang, money, named, num, pctText, priceText, qtyText, T, whenText } from '../i18n';
+import type { BossRow } from '../sim/bosses';
 import type { FormerRow, HireRow, HiringView, StaffRow, VacancyRow } from '../sim/hire';
 import type { Via } from '../engine/types';
 import type { RefContract, RefMaker, RefPair } from '../sim/partners';
@@ -19,6 +20,7 @@ import type { RefCustomer, RefDoc, RefEquipment, RefInstrument, RefLine, RefMach
 import { assetClass, stateKey, untilText, unfitText, workName } from './assets';
 import { admText } from './Card';
 import { db, docText, headOf } from './db';
+import { Deputy, limitWords } from './Bosses';
 import { LeavePlan } from './Leave';
 import { type Actions, type Hud, holds, REF_TABS } from './store';
 import { attrNum, attrText, paramNum, paramText } from './units';
@@ -783,6 +785,39 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
     { name: pc.trial, text: x => (x.trial !== undefined ? dayText(x.trial) : '—'), num: x => x.trial ?? 0 },
     { name: pc.quit, text: x => (x.quit ? T.card.quitLine(T.hire.why[x.quit.why] ?? x.quit.why, dayText(x.quit.last)) : '—'), show: x => (x.quit ? <span className="warn">{T.card.quitLine(T.hire.why[x.quit.why] ?? x.quit.why, dayText(x.quit.last))}</span> : '—'), num: x => x.quit?.last ?? 0 },
   ];
+  // руководители — люди (Б5в): кто, навык и что он ограничивает, заместитель, кто решает сегодня
+  const bc = T.boss.cols;
+  const who = (x: { role: Id; tab: number }) => T.card.person(named(db?.roles[x.role]?.name, x.role), x.tab);
+  const card = (x: { n: number; role: Id; tab: number }, head: string) => (
+    <button type="button" className="link" onClick={() => actions.show({ kind: 'person', n: x.n })} data-test="boss-card" data-head={head}>
+      {who(x)}
+    </button>
+  );
+  const bosses: Col<BossRow>[] = [
+    {
+      name: bc.head,
+      text: x => T.journal.names[x.head] ?? x.head,
+      show: x => (
+        <span data-test="boss-head" data-head={x.head} data-now={x.now}>
+          {T.journal.names[x.head] ?? x.head}
+        </span>
+      ),
+    },
+    { name: bc.person, text: x => (x.person ? who(x.person) : T.boss.vacant), show: x => (x.person ? card(x.person, x.head) : <span className="warn">{T.boss.vacant}</span>) },
+    { name: bc.skill, text: x => (x.person ? num(x.person.skill) : '—'), num: x => x.person?.skill ?? 0 },
+    { name: bc.limit, text: x => limitWords(x.person?.limit).join(' · ') || T.boss.nothing },
+    { name: bc.deputy, text: x => (x.deputy ? `${who(x.deputy)} · ${T.boss.skill(x.deputy.skill)}` : x.none ? T.boss.removed : T.boss.noDeputy), show: x => <Deputy b={x} hud={hud} actions={actions} bare /> },
+    {
+      name: bc.now,
+      text: x => (x.person?.away !== undefined ? T.boss.away(dayText(x.person.away)) : '') + (x.now === 'head' ? '' : ` ${T.boss.now[x.now]}`),
+      show: x => (
+        <span className={x.now === 'noOne' ? 'bad' : x.now === 'io' ? 'warn' : ''}>
+          {x.person?.away !== undefined ? `${T.boss.away(dayText(x.person.away))} · ` : ''}
+          {T.boss.now[x.now]}
+        </span>
+      ),
+    },
+  ];
   type Doc = { i: number; d: DocNow };
   const mc = T.ref.matrixCols;
   const cell = (x: Doc, j: number) => v.matrix.cells[x.i][j];
@@ -811,6 +846,12 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
   ];
   return (
     <>
+      {v.bosses.length > 0 ? (
+        <section className="rsec">
+          <b>{T.boss.table}</b>
+          <Table test="ref-bosses" cols={bosses} items={v.bosses} keyOf={x => x.head} q={q} />
+        </section>
+      ) : null}
       <section className="rsec">
         <Table test="ref-roles" cols={roles} items={v.roles.filter(x => x.shifts.length > 0)} keyOf={x => x.id} q={q} />
       </section>

@@ -73,7 +73,8 @@ describe('график отпусков', () => {
     const day = ([m, dd]: [number, number]) => ymd(2028, m, dd);
     const summer = [day(rule.summer[0]), day(rule.summer[1])];
     const rest = [day(rule.rest[0]), day(rule.rest[1])];
-    expect(Object.keys(draft.people)).toHaveLength(25);
+    // 25 человек штата и, с Б5в, шесть руководителей-людей
+    expect(Object.keys(draft.people)).toHaveLength(31);
     for (const p of Object.values(draft.people)) {
       const parts = (p.away ?? []).filter(a => a.y === 2028);
       expect([p.id, parts.map(a => a.days)]).toEqual([p.id, [14, 14]]);

@@ -1023,6 +1023,7 @@ export class Game {
     leaveMove: (person, part, from) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'move', part, from, by: 'player' }),
     leaveDrop: (person, part) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'drop', part, by: 'player' }),
     leaveDeputy: (person, part, deputy) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'deputy', part, ...(deputy !== undefined ? { deputy: `E${deputy}` } : {}), by: 'player' }),
+    deputy: (head, person) => this.client.command({ kind: 'deputy', head, person: person === null ? null : `E${person}`, by: 'player' }),
     also: (person, role, on) => this.client.command({ kind: 'also', person: `E${person}`, role, on, by: 'player' }),
     setCashPage: page => {
       this.store.set({ cash: { ...this.store.get().cash, page } });

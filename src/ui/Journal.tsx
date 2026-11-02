@@ -432,11 +432,11 @@ export function Journal({ hud, actions }: { hud: Hud; actions: Actions }) {
 }
 
 /** «Кто решил» в карточке вещи: строка на решение — что, кто, когда — и «Почему?», которое открывает журнал на нём. */
-export function WhoList({ rows, start, actions }: { rows: readonly WhoRow[] | undefined; start: Ymd; actions: Actions }) {
+export function WhoList({ rows, start, actions, title, test }: { rows: readonly WhoRow[] | undefined; start: Ymd; actions: Actions; title?: string; test?: string }) {
   if (!rows || rows.length === 0) return null;
   return (
-    <div className="who" data-test="who">
-      <div className="msec">{T.journal.who}</div>
+    <div className="who" data-test={test ?? 'who'}>
+      <div className="msec">{title ?? T.journal.who}</div>
       <ul className="whol">
         {rows.map(r => (
           <li key={r.n} data-test="who-row" data-kind={r.kind} data-n={r.n} {...(r.ask ? { 'data-ask': r.ask.end?.how ?? 'open' } : {})}>

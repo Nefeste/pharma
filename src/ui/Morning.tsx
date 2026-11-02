@@ -14,6 +14,7 @@ import type { LineSum, MainLoss, ModeRow, MorningView, SeatSum, SessionSum } fro
 import type { RejectSum } from '../sim/waste';
 import type { Thing } from '../sim/views';
 import { assetName, workName } from './assets';
+import { BossMeeting } from './Bosses';
 import { headName, kpiName, kpiText, kpiValue, monthText } from './Kpi';
 import { db } from './db';
 import { AskRows } from './Journal';
@@ -648,6 +649,7 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                 </div>
               ))}
             </div>
+            <BossMeeting rows={v.bosses} go={go} />
             <PeopleBlock v={v} hud={hud} actions={actions} close={close} go={go} />
             <Rows
               title={T.assets.morningTitle}

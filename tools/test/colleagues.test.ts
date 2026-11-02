@@ -236,14 +236,15 @@ describe('год завода прототипа', () => {
     for (const r of ['role.operator', 'role.storekeeper']) expect([r, (busy[r] ?? 0) / shift[r] > 0.33]).toEqual([r, true]);
     // журнал решений (Б5а): записей руководителей — столько же, сколько решений в замере «Как сейчас» спецификации Б5:
     // 201 задание, 112 заказов, 330 решений ОКК по партиям — разрешить или отклонить (решение «расследование» замер
-    // считал с расследованием), 196 выпусков, 17 визитов подрядчика
+    // считал с расследованием), 196 выпусков, 17 визитов подрядчика. С Б5в руководители — люди: решения ОКК и
+    // уполномоченного лица ждут смены, — заказов поставщикам 113, решений по партиям 332, выпусков 197
     expect({
       orders: notes['plan/order'],
       pos: notes['supply/po'],
       lots: (notes['qc/lot:release'] ?? 0) + (notes['qc/lot:reject'] ?? 0),
       releases: notes['qp/batch:release'],
       visits: notes['maint/visit'],
-    }).toEqual({ orders: 201, pos: 112, lots: 330, releases: 196, visits: 17 });
+    }).toEqual({ orders: 201, pos: 113, lots: 332, releases: 197, visits: 17 });
     // за срок журнала — около 220 записей разом (спецификация Б5а)
     expect(s.journal.length).toBeGreaterThan(180);
     expect(s.journal.length).toBeLessThan(270);

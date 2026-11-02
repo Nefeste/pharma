@@ -1850,7 +1850,7 @@ export type Command =
    * заместитель руководителя (Б5в): человек штата одной из ролей записи сценария, не сам руководитель; `null` — снять
    * заместителя. Пост отдела руководителя или директор
    */
-  | { kind: 'deputy'; head: HeadId; person: string | null }
+  | { kind: 'deputy'; head: HeadId; person: string | null; by?: string }
   /** перенести визит подрядчика к активу (Б5г): на день — сутки завода от начала его календаря */
   | { kind: 'visit'; asset: string; day: number; by?: string };
 

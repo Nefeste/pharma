@@ -14,6 +14,7 @@ import { planOf } from '../engine/plant';
 import { devsOf, openDevs } from '../engine/qa';
 import { unitsOfLot } from '../engine/stock';
 import type { AssetFamily, Batch, CashItem, DayLoss, DeptMode, Deviation, Head, LineDay, MachineTimes, PlantState, TaskKind, WageParts, WaitCause } from '../engine/types';
+import { type BossRow, bossMeeting } from './bosses';
 import { type PeopleMeeting, peopleMeeting } from './hire';
 import { type LeaveMeeting, leaveMeeting } from './leave';
 import { type HoursMeeting, hoursMeeting } from './hours';
@@ -237,6 +238,8 @@ export interface MorningView {
   rejects?: RejectSum;
   /** итоги месяца (Б5ж): на первой планёрке месяца — что сдвинулось сильнее всего против месяца до него */
   month?: MonthClose;
+  /** руководители (Б5в): где сегодня решает не руководитель — «и. о.» с его навыком, или некому; все на месте — пусто */
+  bosses: BossRow[];
 }
 
 /**
@@ -469,6 +472,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     ...(q.since !== undefined && at - q.since >= DAY ? { session: sessionSum(s, q.since, at) } : {}),
     ...(rejects ? { rejects } : {}),
     ...(month ? { month } : {}),
+    bosses: bossMeeting(db, s),
   };
 }
 

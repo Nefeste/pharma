@@ -435,8 +435,9 @@ describe('сохранения', () => {
       expect(p.paid).toBeUndefined();
     }
     const { d } = momentOf(s.start, s.t).date;
-    // начислений нет у уборщиков (схема 24) и у запаса людей на отпуска (схема 25): они новые
-    expect(Object.values(s.people).filter(p => p.paid === undefined).map(p => p.role).sort()).toEqual(['role.cleaner', 'role.cleaner', 'role.operator', 'role.packer', 'role.qp']);
+    // начислений нет у уборщиков (схема 24), у запаса людей на отпуска (схема 25) и у руководителей-людей (схема 36): они
+    // новые
+    expect(Object.values(s.people).filter(p => p.paid === undefined).map(p => p.role).sort()).toEqual(['role.chief-mechanic', 'role.cleaner', 'role.cleaner', 'role.operator', 'role.packer', 'role.plan-head', 'role.production-head', 'role.qa-head', 'role.qp', 'role.supply-head', 'role.warehouse-head']);
     for (const p of Object.values(s.people).filter(x => x.paid !== undefined)) expect(p.half !== undefined).toBe(d >= 16);
     expect(s.vacancies).toEqual({});
     live(db, s, s.t + 2 * DAY);

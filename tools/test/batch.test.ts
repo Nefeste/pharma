@@ -265,7 +265,8 @@ describe('сценарий', () => {
     for (const b of batches.filter(x => x.dispensed.some(d => d.lot === api.id))) {
       expect(b.records[0].start).toBeGreaterThan(api.received);
     }
-  });
+    // 90 суток завода — около пяти секунд счёта: под нагрузкой всего набора — больше, чем пять по умолчанию
+  }, 30_000);
 });
 
 describe('сохранение посреди стадии', () => {

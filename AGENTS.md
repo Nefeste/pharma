@@ -292,7 +292,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   `withdraw` before the answer), `forks.ts` (with Б5д, «Просят решить»: a visit holds a batch, a part replacement
   before a machine's work, who leads an OOS investigation — asked by whoever decides for the head now, to the fork's
   post or the director, with each answer's price from the plant's norms and records; no answer in two hours or the
-  fork settled itself — «as now»; the `answer` command — the head's command from the player's place, checked anew),
+  fork settled itself — «as now»; the `answer` command — the head's command from the player's place, checked anew;
+  after every event, but the batches are scanned for a machine's next work only when one work could bring the part to
+  the threshold — a bound from the recipes),
   `kpi.ts` (with Б5ж, the heads'
   indicators: 47 definitions — the head, unit, direction, month or rolling 12 months, source keys, the counterweight —,
   each a pure function of plant

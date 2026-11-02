@@ -8,11 +8,12 @@
 // руководитель решает «как сейчас». Спросить некого — развилка с обеими ценами в журнале, решено сразу. Спрашивает тот,
 // кто сейчас решает за руководителя (Б5в): он сам или «и. о.» в свою смену; вне смены развилку увидят в смену. Мест не
 // выбрано — ни вопросов, ни записей: золотой прогон тот же.
-import type { ContentDb, SeatId } from '../content/types';
+import type { ContentDb, PartType, SeatId } from '../content/types';
 import { lineUnfit, stageUnfit, visitLast } from './assets';
 import { replacesBy, skillOf, thresholdBy, type Who, whoDecides } from './bosses';
 import { schedule } from './core/agenda';
 import { addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf } from './core/calendar';
+import { P_ONE } from './core/rng';
 import { modeOf } from './heads';
 import { note, recordOf } from './journal';
 import { consume, partType, wearAt } from './maint';
@@ -139,9 +140,11 @@ export function contractorSpan(db: ContentDb, s: PlantState, asset: string, from
  * силе. Один раз на мгновение визита: перенесли — новый визит, новый вопрос. Вне смены главного механика и его «и. о.» —
  * не сейчас.
  */
-function visitForks(db: ContentDb, s: PlantState, notices: Notice[]) {
+function visitForks(db: ContentDb, s: PlantState, notices: Notice[], live: () => Batch[]) {
+  // визита, которого подрядчик ещё не начал, нет ни у одного актива — спрашивать не о чем (почти всегда)
+  if (!Object.values(s.assets).some(a => a.visit && a.visit.from === undefined)) return;
   let waits: Map<string, string[]> | undefined;
-  for (const b of Object.values(s.batches)) {
+  for (const b of live()) {
     if (b.phase !== 'asset') continue;
     const u = holdOf(db, s, b);
     if (!u || u.why !== 'visit') continue;
@@ -175,17 +178,52 @@ function idle(s: PlantState, pt: Part): boolean {
 }
 
 /**
+ * Серии в работе и на упаковке — только у них бывает следующая работа машины и только их держит актив (Б5д): один проход
+ * по сериям на шаг развилок, а не на каждый узел; порядок — тот же, что у всех серий.
+ */
+function liveOf(s: PlantState): Batch[] {
+  const out: Batch[] = [];
+  for (const b of Object.values(s.batches)) if (b.status === 'process' || b.status === 'packing') out.push(b);
+  return out;
+}
+
+const bounds = new WeakMap<PartType, number>();
+
+/**
+ * Больше какой наработки узла вида `ty` одна работа не даст (Б5д) — граница сверху, а не цена: таблеток самой большой
+ * карты базы при нагрузке уставки у верха диапазона любой стадии, вдвое — масса на входе стадии с поправкой на содержание
+ * бывает больше массы карты, а штука машины линии — не меньше таблетки. Пока и с ней износ не дойдёт до порога, вопроса
+ * не будет — серии не перебираем.
+ */
+function workBound(db: ContentDb, ty: PartType): number {
+  let n = bounds.get(ty);
+  if (n !== undefined) return n;
+  let units = 0;
+  let k = P_ONE;
+  for (const r of Object.values(db.recipes)) {
+    units = Math.max(units, r.batch.units);
+    const p = ty.stress?.param;
+    for (const st of p ? r.stages : [])
+      for (const x of st.params) if (x.id === p && x.range[1] > x.target) k = Math.max(k, P_ONE + ty.stress!.coef * (x.range[1] - x.target));
+  }
+  n = 2 * Math.ceil((units * k) / P_ONE);
+  bounds.set(ty, n);
+  return n;
+}
+
+/**
  * Следующая работа на машине узла по норме (Б5д): у оборудования — серия, чья нынешняя стадия ждёт его в его помещении,
  * без начатой задачи, — наработка стадии по массе на входе и уставкам; у машины линии — задание на упаковку линии, ещё не
- * начатое, — штук машины из таблеток балка. Из нескольких — с самым ранним «не раньше». Нет — `undefined`.
+ * начатое, — штук машины из таблеток балка. Из нескольких — с самым ранним «не раньше». Нет — `undefined`. `live` — серии
+ * в работе и на упаковке (`liveOf`).
  */
-function nextWork(db: ContentDb, s: PlantState, pt: Part): { batch: string; units: number } | undefined {
+function nextWork(db: ContentDb, s: PlantState, pt: Part, live: Batch[]): { batch: string; units: number } | undefined {
   let best: Batch | undefined;
   if (!pt.line) {
     const eq = s.equipment[pt.machine];
     if (!eq || eq.batch) return undefined;
     const plan = planOf(db, s.plant);
-    for (const b of Object.values(s.batches)) {
+    for (const b of live) {
       if (b.status !== 'process') continue;
       const st = db.recipes[b.recipe].stages[b.stage];
       if (!st || plan.roomOf[st.room] !== eq.room || !st.equipment.includes(eq.type)) continue;
@@ -194,7 +232,7 @@ function nextWork(db: ContentDb, s: PlantState, pt: Part): { batch: string; unit
     }
     return best ? { batch: best.id, units: stageWear(db, s, best, partType(db, pt)) } : undefined;
   }
-  for (const b of Object.values(s.batches)) {
+  for (const b of live) {
     if (b.status !== 'packing' || b.pack?.line !== pt.line || b.pack.state === 'running' || !b.units) continue;
     if (!best || b.notBefore < best.notBefore || (b.notBefore === best.notBefore && b.id < best.id)) best = b;
   }
@@ -210,7 +248,7 @@ function nextWork(db: ContentDb, s: PlantState, pt: Part): { batch: string; unit
  * ремонта; заменить сейчас — работа ждёт замены. Не спрашивает «вручную», вне смены — своей и «и. о.», как и замену по
  * наработке (maint.ts), со слабым навыком (меняет только после отказа) и без свободной запчасти. Один раз на узел и работу.
  */
-function replaceForks(db: ContentDb, s: PlantState, notices: Notice[]) {
+function replaceForks(db: ContentDb, s: PlantState, notices: Notice[], live: () => Batch[]) {
   if (modeOf(s, 'maint') === 'manual') return;
   let who: Who | undefined | null = null;
   for (const pt of Object.values(s.parts)) {
@@ -219,8 +257,8 @@ function replaceForks(db: ContentDb, s: PlantState, notices: Notice[]) {
     if (at === undefined) continue;
     const ty = partType(db, pt);
     const wear = wearAt(ty, pt.done);
-    if (wear >= at) continue;
-    const next = nextWork(db, s, pt);
+    if (wear >= at || wearAt(ty, pt.done + workBound(db, ty)) < at) continue;
+    const next = nextWork(db, s, pt, live());
     if (!next) continue;
     const after = wearAt(ty, pt.done + next.units);
     if (after < at) continue;
@@ -243,8 +281,8 @@ function replaceForks(db: ContentDb, s: PlantState, notices: Notice[]) {
  * директора: «Ведите» — по правилу, лаборатория первой, затем наибольшее знание за час, вывод от порога; «Веду сам» —
  * расследование на доске игрока. Один раз на расследование; вне смены начальника ООК и его «и. о.» — не сейчас.
  */
-function oosForks(db: ContentDb, s: PlantState, notices: Notice[]) {
-  if (held(s)!.includes('quality') || modeOf(s, 'qa') !== 'auto') return;
+function oosForks(db: ContentDb, s: PlantState, notices: Notice[], seats: SeatId[]) {
+  if (seats.includes('quality') || modeOf(s, 'qa') !== 'auto') return;
   let who: Who | undefined | null = null;
   for (const inv of Object.values(s.investigations)) {
     if (inv.status !== 'open' || inv.lead) continue;
@@ -260,7 +298,7 @@ function oosForks(db: ContentDb, s: PlantState, notices: Notice[]) {
 // ---------------------------------------------------------------- открытые вопросы
 
 /** Не решилась ли развилка сама: подрядчик начал или визит перенесли; работа на машине началась; расследование закрыто. */
-function settled(db: ContentDb, s: PlantState, r: Decision): boolean {
+function settled(db: ContentDb, s: PlantState, r: Decision, live: () => Batch[]): boolean {
   const d = r.d as ForkD;
   switch (d.fork) {
     case 'visit': {
@@ -270,7 +308,7 @@ function settled(db: ContentDb, s: PlantState, r: Decision): boolean {
     case 'replace': {
       const pt = s.parts[d.part];
       if (!pt || pt.state !== 'ok' || pt.plan || pt.task || !idle(s, pt)) return true;
-      return nextWork(db, s, pt)?.batch !== d.batch;
+      return nextWork(db, s, pt, live())?.batch !== d.batch;
     }
     case 'oos': {
       const inv = s.investigations[d.inv];
@@ -281,18 +319,22 @@ function settled(db: ContentDb, s: PlantState, r: Decision): boolean {
 
 /**
  * После раздачи задач (Б5д): развилки, решившиеся сами, — «не нужно»; новые развилки — вопрос или запись «решил сам».
- * Мест не выбрано — ничего.
+ * Мест не выбрано — ничего. Шаг идёт после каждого события: серии в работе — один проход за шаг и только если
+ * понадобились; вопрос и запись не меняют ни серий, ни задач.
  */
 export function forksStep(db: ContentDb, s: PlantState, notices: Notice[]) {
-  if (!held(s)) return;
+  const seats = held(s);
+  if (!seats) return;
+  let all: Batch[] | undefined;
+  const live = () => (all ??= liveOf(s));
   if (s.heads.qs)
     for (const n of Object.values(s.heads.qs)) {
       const r = recordOf(s, n);
-      if (r?.q && !r.q.end && settled(db, s, r)) end(s, r, 'moot');
+      if (r?.q && !r.q.end && settled(db, s, r, live)) end(s, r, 'moot');
     }
-  visitForks(db, s, notices);
-  replaceForks(db, s, notices);
-  oosForks(db, s, notices);
+  visitForks(db, s, notices, live);
+  replaceForks(db, s, notices, live);
+  oosForks(db, s, notices, seats);
 }
 
 /** Срок ответа (событие `ask`, Б5д): вопрос открыт — руководитель решает сам, как сейчас: «решил сам: ответа нет». */

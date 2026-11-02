@@ -128,7 +128,7 @@ function addWait(db: ContentDb, s: PlantState, d: DayLoss, t: Task, why: WaitCau
   const w = (d.wait[AREA[t.kind]] ??= {});
   w[why] = (w[why] ?? 0) + sec;
   const x = spotOf(d, taskSpot(db, s, t));
-  const c = (x.wait ??= {});
+  const c = ((x.wait ??= {})[AREA[t.kind]] ??= {});
   c[why] = (c[why] ?? 0) + sec;
   thingAdd(x, why === 'shift' ? 'shift' : 'wait', taskThing(s, t), sec);
 }
@@ -286,7 +286,7 @@ export function dockWait(s: PlantState, sec: number, dock: string, thing?: strin
   const w = (d.wait.wms ??= {});
   w.dock = (w.dock ?? 0) + sec;
   const x = spotOf(d, `dock:${dock}`);
-  const c = (x.wait ??= {});
+  const c = ((x.wait ??= {}).wms ??= {});
   c.dock = (c.dock ?? 0) + sec;
   thingAdd(x, 'wait', thing, sec);
 }

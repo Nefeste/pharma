@@ -33,7 +33,8 @@ function spotOf(s: PlantState, t: Task): string {
 function waited(s: PlantState): Map<string, number> {
   const out = new Map<string, number>();
   const add = (k: string, sec: number) => out.set(k, (out.get(k) ?? 0) + sec);
-  for (const d of s.losses) for (const [spot, x] of Object.entries(d.spots)) for (const [c, sec] of Object.entries(x.wait ?? {})) if (c !== 'dock') add(`${spot}/${c}`, sec ?? 0);
+  for (const d of s.losses)
+    for (const [spot, x] of Object.entries(d.spots)) for (const w of Object.values(x.wait ?? {})) for (const [c, sec] of Object.entries(w ?? {})) if (c !== 'dock') add(`${spot}/${c}`, sec ?? 0);
   for (const id of s.open) {
     const t = s.tasks[id];
     if (t.why && t.since !== undefined && !PLANNED.has(t.kind)) add(`${spotOf(s, t)}/${t.why}`, s.t - t.since);
@@ -105,13 +106,14 @@ describe('учёт у мест', () => {
     const today = momentOf(s.start, s.t).day;
     const past = s.losses.filter(d => d.day < today);
 
-    test('по всем местам за сутки — учёт отделов: ожидание по причинам, перевозки, переходы; инварианты целы', () => {
+    test('по всем местам за сутки — учёт отделов: ожидание по отделу и причине, перевозки, переходы; инварианты целы', () => {
       expect(check(db, s)).toEqual([]);
       for (const d of past) {
+        // по отделу и причине — до секунды
         const dept: Record<string, number> = {};
-        for (const w of Object.values(d.wait)) for (const [c, sec] of Object.entries(w ?? {})) dept[c] = (dept[c] ?? 0) + (sec ?? 0);
+        for (const [k, w] of Object.entries(d.wait)) for (const [c, sec] of Object.entries(w ?? {})) dept[`${k}/${c}`] = (dept[`${k}/${c}`] ?? 0) + (sec ?? 0);
         const spots: Record<string, number> = {};
-        for (const x of Object.values(d.spots)) for (const [c, sec] of Object.entries(x.wait ?? {})) spots[c] = (spots[c] ?? 0) + (sec ?? 0);
+        for (const x of Object.values(d.spots)) for (const [k, w] of Object.entries(x.wait ?? {})) for (const [c, sec] of Object.entries(w ?? {})) spots[`${k}/${c}`] = (spots[`${k}/${c}`] ?? 0) + (sec ?? 0);
         expect(spots).toEqual(dept);
         const xs = Object.values(d.spots);
         expect(xs.reduce((n, x) => n + (x.move ?? 0), 0)).toBe(sumOf(Object.fromEntries(Object.entries(d.move).map(([k, v]) => [k, v?.sec]))));

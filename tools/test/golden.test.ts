@@ -299,5 +299,5 @@ const GOLDEN = {
     lots: 145, released: 142, rejected: 1, units: 100, tests: 201, batches: 47, tablets: 11730381, packs: 659129, cases: 4060, deviations: 5, trucks: 0, tasks: 12,
     orders: 62, onTime: 56, short: 4, shipped: 4051, cash: 2438881099, waits: 46873017, moved: 13087622, walked: 28096066, shifts: 62, major: 98, changes: 38,
   },
-  print: '0b0f10dd',
+  print: '411a9c87',
 };

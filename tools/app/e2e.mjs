@@ -1289,9 +1289,9 @@ async function mainPart() {
   if (bottleShot) sheet.push(bottleShot);
   await writeSheet(sheet);
 
-  // автопаузы (Б2а): у производства и качества четырнадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
+  // автопаузы (Б2а): у производства и качества пятнадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
   // вышел», с Б3г — «пара приостановлена», с Б4а — «сверхурочные года на исходе», с Б4в — «заявление об увольнении»,
-  // с Б4г — «черновик графика отпусков», с Б5б — «предложение руководителя»),
+  // с Б4г — «черновик графика отпусков», с Б5б — «предложение руководителя», с Б5в — «некому решить»),
   // «фура» и «заказ» — не их; планёрку отключили — окно помнит; «До события» — мир
   // встал не в 08:00, а на первом событии автопаузы мест игрока: извещение со знаком паузы, часы стоят, отставания нет.
   // Планёрку включили обратно
@@ -1308,7 +1308,7 @@ async function mainPart() {
     await page.screenshot({ path: join(out, 'e2e-pauses.png') });
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('Escape');
-    if (menu.all !== 14 || menu.on !== 14 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
+    if (menu.all !== 15 || menu.on !== 15 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
       fail(`автопаузы: в меню ${menu.all}, включено ${menu.on}, не ваши ${menu.notYours.join(', ')}, в окне «${kept}»`);
     else ok(`автопаузы: в меню ${menu.all}, не ваши — ${menu.notYours.join(', ')}; планёрку отключили — в окне ${kept}; Esc закрыл меню`);
     const t0 = await gameT();
@@ -2595,7 +2595,7 @@ async function mainPart() {
     };
     const leaveView = () => page.evaluate(() => window.__game.store.get().ref.view?.leave);
     const offBefore = await page.evaluate(() => [...window.__game.store.get().pauses.off]);
-    const others = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'proposal', 'morning'];
+    const others = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'noOne', 'proposal', 'morning'];
     await page.evaluate(ids => ids.forEach(p => window.__game.actions.setPause(p, false)), others);
     const draftNote = () => page.evaluate(() => window.__game.notices.find(n => /^Кадры составили черновик графика отпусков на 2028/.test(n.text)) ?? null);
     // прошлый шаг мог уйти за 1 декабря, тогда черновик уже пришёл: он — в полосе извещений со знаком паузы
@@ -2859,7 +2859,7 @@ async function mainPart() {
     else ok(`«Кем вы будете»: режимы отделов отмеченных мест — ${seen}`);
     // у директора дело — все автопаузы: на время шага мир встаёт только на планёрке и предложениях руководителей
     const offBefore = await page.evaluate(() => [...window.__game.store.get().pauses.off]);
-    const others = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'leaveDraft'];
+    const others = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'leaveDraft', 'noOne'];
     await page.evaluate(ids => ids.forEach(p => window.__game.actions.setPause(p, false)), others);
     const sm = await setMode('supply', 'advise');
     let stop;

@@ -9,7 +9,7 @@
 // позициям нужна серия, а другому продукту не срочно. Своего состояния у коллеги нет: всё — из заводских заданий,
 // партий и заказов. Счёт — в целых.
 import type { ContentDb, Id, Recipe, Sku } from '../content/types';
-import { addWorkdays, DAY, isWorkday, momentOf } from './core/calendar';
+import { addWorkdays, DAY, daysFromCivil, isWorkday, momentOf } from './core/calendar';
 import { coverBy, dueRule, skillOf } from './bosses';
 import { modeOf, moot, propose } from './heads';
 import { asWho } from './journal';
@@ -106,7 +106,8 @@ export function planHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   const who = dueRule(db, s, 'plan', 'plan', BATCH_HOUR, notices);
   if (!who) return;
   const day = addWorkdays(cal, now.day, AHEAD_WORK);
-  const at = s.t + (day - now.day) * DAY;
+  // к началу смены аппаратчиков того дня — и когда за руководителя решили позже его часа (Б5в)
+  const at = (day - daysFromCivil(s.start)) * DAY + BATCH_HOUR;
   // горизонт — политика, а навык руководителя ниже 4 его сокращает (геймдизайн, §8.5)
   const policy = numOf(db, s, POL.cover)!;
   const cover = coverBy(skillOf(s, who), policy);

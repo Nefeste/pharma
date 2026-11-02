@@ -4,20 +4,20 @@
 // первый день — первая смена графика вакансии после заключения: договор и приказ (ст. 67, 68), табельный номер, сразу
 // обучение по матрице роли; испытание — до трёх месяцев (ст. 70). Увольнение — по соглашению сторон (ст. 78), не
 // выдержал испытание (ст. 71), по собственному желанию через две недели (ст. 80): заявления даёт текучесть. Последний
-// день — расчёт (cash.ts, ст. 84.1, 140) и уход после последней смены. Пока пост отдела не у игрока, коллега этого поста
-// открывает вакансию на каждое заявление и принимает первого подходящего кандидата.
+// день — расчёт (cash.ts, ст. 84.1, 140) и уход после последней смены. Руководитель отдела роли в режиме «сам» открывает
+// вакансию на каждое заявление и принимает первого подходящего кандидата, в режиме «советует» — предлагает (Б5б).
 import type { ContentDb, Dept, Id, Labor } from '../content/types';
 import { addMonths, addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf } from './core/calendar';
 import { hiringPay, salaryOf, settle } from './cash';
+import { modeOf, round } from './heads';
 import { DEPT_HEAD, note, noteCmd } from './journal';
 import { deputyGone, dropAfter } from './leave';
 import { planOf } from './plant';
 import { normal, roll, spread } from './random';
-import { playerHolds } from './seats';
 import { graphSpan, spanOn } from './shifts';
 import { dropTask } from './tasks';
 import { trainNow } from './train';
-import type { Command, Decided, Hire, Notice, Person, PlantState, Quit } from './types';
+import type { Command, Decided, Hire, Notice, Person, PlantState, Quit, Vacancy } from './types';
 import { calOf } from './workdays';
 
 /** Причина приёма коллегой (Б5а). */
@@ -277,39 +277,67 @@ function leaveStep(db: ContentDb, s: PlantState, notices: Notice[]) {
   }
 }
 
+/** Причина вакансии на заявление: вместо кого, табельный номер, день заявления, правило канала и сколько суток ждали. */
+function vacWhy(p: Person, rule: 'ad' | 'city' | 'late', day: number, days?: number) {
+  return { instead: p.id, tab: p.tab, day: p.quit?.day ?? day, rule, ...(days !== undefined ? { days } : {}) };
+}
+
 /**
- * Коллега поста (09:00 рабочего дня): пока пост отдела не у игрока, на каждое заявление по собственному желанию —
- * вакансия той же роли и графика по объявлению, а роли, которой по объявлению в городе не найти, — сразу через
+ * Руководитель отдела роли (09:00 рабочего дня) в режиме своего отдела (Б5б): на каждое заявление по собственному
+ * желанию — вакансия той же роли и графика по объявлению, а роли, которой по объявлению в городе не найти, — сразу через
  * агентство; по объявлению `ad` суток никого подходящего — тоже через агентство; принимает первого кандидата с навыком
- * не ниже `skill` и ожиданием не выше цены рынка за его навык на `over`, испытание — по умолчанию.
+ * не ниже `skill` и ожиданием не выше цены рынка за его навык на `over`, испытание — по умолчанию. «Сам» — решает,
+ * «советует» — предлагает то же с той же причиной: вакансию — у заявления, приём или агентство — у вакансии; не нужно
+ * больше — «не нужно»; «вручную» — ничего.
  */
 function colleagueStep(db: ContentDb, s: PlantState, lab: Labor, notices: Notice[]) {
   const z = today(s);
+  const r = round(s, ['quit/', 'vac/']);
   for (const p of Object.values(s.people)) {
     const q = p.quit;
     const row = lab.roles[p.role];
-    if (q?.why !== 'own' || q.vacancy !== undefined || !row || playerHolds(s, deptOf(db, p.role))) continue;
-    q.vacancy = open(db, s, lab, p.role, p.shift, row.ad[0] >= P ? 'agency' : 'ad', notices, { instead: p.id });
+    if (q?.why !== 'own' || q.vacancy !== undefined || !row) continue;
+    const head = DEPT_HEAD[deptOf(db, p.role)];
+    const mode = modeOf(s, head);
+    const via = row.ad[0] >= P ? 'agency' : 'ad';
+    if (mode === 'auto') q.vacancy = open(db, s, lab, p.role, p.shift, via, notices, { instead: p.id });
+    else if (mode === 'advise') r.propose(head, `quit/${p.id}`, { kind: 'vacancy', role: p.role, shift: p.shift, via, instead: p.id }, { kind: 'vacancy', role: p.role, via, why: vacWhy(p, via === 'agency' ? 'city' : 'ad', z) }, notices);
   }
   for (const v of Object.values(s.vacancies)) {
-    if (v.by !== 'colleague' || playerHolds(s, deptOf(db, v.role))) continue;
+    if (v.by !== 'colleague') continue;
+    const head = DEPT_HEAD[deptOf(db, v.role)];
+    const mode = modeOf(s, head);
+    if (mode === 'manual') continue;
     const price = (skill: number) => {
       const m = marketPay(db, lab, v.role, skill);
       return m + Math.floor((m * lab.colleague.over) / P);
     };
     const fit = Object.values(s.candidates).find(c => c.vacancy === v.id && c.skill >= lab.colleague.skill && c.salary <= price(c.skill));
     if (fit) {
-      hireCandidate(db, s, lab, fit.id, lab.probation, notices, undefined, { skill: fit.skill, min: lab.colleague.skill, salary: fit.salary, price: marketPay(db, lab, v.role, fit.skill), over: lab.colleague.over });
+      const why = { skill: fit.skill, min: lab.colleague.skill, salary: fit.salary, price: marketPay(db, lab, v.role, fit.skill), over: lab.colleague.over };
+      if (mode === 'auto') hireCandidate(db, s, lab, fit.id, lab.probation, notices, undefined, why);
+      else if (hireDays(db, s, v.shift).first) r.propose(head, `vac/${v.id}`, { kind: 'hire', candidate: fit.id, trial: lab.probation }, { kind: 'hire', cand: fit.id, vacancy: v.id, role: v.role, why }, notices);
       continue;
     }
     if (v.via === 'ad' && z - v.from >= lab.colleague.ad) {
-      v.via = 'agency';
-      v.next = agencyNext(s, lab, v.id);
-      // журнал решений (Б5а): по объявлению подходящий не нашёлся — агентство
+      // по объявлению подходящий не нашёлся — агентство; журнал решений (Б5а) — с тем, вместо кого вакансия
       const p = v.instead ? (s.people[v.instead] ?? s.former[v.instead]) : undefined;
-      if (p) note(s, DEPT_HEAD[deptOf(db, v.role)], { kind: 'vacancy', vacancy: v.id, role: v.role, via: 'agency', why: { instead: p.id, tab: p.tab, day: p.quit?.day ?? v.from, rule: 'late', days: z - v.from } });
+      const d: Decided = { kind: 'vacancy', vacancy: v.id, role: v.role, via: 'agency', ...(p ? { why: vacWhy(p, 'late', v.from, z - v.from) } : {}) };
+      if (mode === 'advise') {
+        r.propose(head, `vac/${v.id}`, { kind: 'agency', vacancy: v.id }, d, notices);
+        continue;
+      }
+      toAgency(s, lab, v);
+      if (p) note(s, head, d);
     }
   }
+  r.done();
+}
+
+/** Вакансию по объявлению — агентству: первый кандидат — через свой срок. */
+function toAgency(s: PlantState, lab: Labor, v: Vacancy) {
+  v.via = 'agency';
+  v.next = agencyNext(s, lab, v.id);
 }
 
 /**
@@ -330,7 +358,7 @@ export function hireHour(db: ContentDb, s: PlantState, notices: Notice[]) {
 }
 
 /** Команды найма (Б4в): вакансия, закрыть, принять, уволить. Отказы — с причиной. */
-export function hireCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'vacancy' | 'close' | 'hire' | 'dismiss' }>, notices: Notice[]) {
+export function hireCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'vacancy' | 'agency' | 'close' | 'hire' | 'dismiss' }>, notices: Notice[]) {
   const lab = laborOf(db, s);
   const law = lawOf(db, s);
   const z = today(s);
@@ -339,7 +367,20 @@ export function hireCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
     case 'vacancy': {
       if (!lab || !lab.roles[cmd.role]) return refuse('noLabor');
       if (!db.shifts[cmd.shift]) return refuse('noShift');
-      open(db, s, lab, cmd.role, cmd.shift, cmd.via, notices, undefined, cmd);
+      // вместо кого (Б5б): вакансию на заявление ведёт руководитель отдела роли — она у заявления
+      const q = cmd.instead !== undefined ? s.people[cmd.instead]?.quit : undefined;
+      if (cmd.instead !== undefined && (q?.why !== 'own' || q.vacancy !== undefined)) return refuse('noPerson', cmd.instead);
+      const id = open(db, s, lab, cmd.role, cmd.shift, cmd.via, notices, cmd.instead !== undefined ? { instead: cmd.instead } : undefined, cmd);
+      if (q) q.vacancy = id;
+      return;
+    }
+    case 'agency': {
+      const v = s.vacancies[cmd.vacancy];
+      if (!lab) return refuse('noLabor');
+      if (!v) return refuse('noVacancy');
+      if (v.via === 'agency') return refuse('same', cmd.vacancy);
+      toAgency(s, lab, v);
+      noteCmd(s, cmd, { kind: 'vacancy', vacancy: v.id, role: v.role, via: 'agency' }, deptOf(db, v.role));
       return;
     }
     case 'close': {

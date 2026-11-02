@@ -16,6 +16,7 @@ import type { Thing } from '../sim/views';
 import { assetName, workName } from './assets';
 import { headName, kpiName, kpiText, kpiValue, monthText } from './Kpi';
 import { db } from './db';
+import { AskRows } from './Journal';
 import { Levers } from './Levers';
 import type { Actions, Hud } from './store';
 import { paramText } from './units';
@@ -372,6 +373,13 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
               {v.seats.map(x => (
                 <SeatBlock key={x.seat} x={x} start={start} />
               ))}
+            </Section>
+          ) : null}
+          {v.asks.length > 0 ? (
+            <Section title={T.morning.asks}>
+              <div className="mblock" data-test="morning-asks">
+                <AskRows rows={v.asks} start={start} actions={actions} />
+              </div>
             </Section>
           ) : null}
           {v.month ? (

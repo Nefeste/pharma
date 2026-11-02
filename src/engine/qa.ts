@@ -9,7 +9,7 @@ import { batchNo } from './batchno';
 import { part, post } from './cash';
 import { MIN, momentOf } from './core/calendar';
 import { inForce } from './docs';
-import { playerLeads } from './investigation';
+import { modeOf, round } from './heads';
 import { note, noteCmd } from './journal';
 import { defect } from './lean';
 import { fgExpiry, prodDay } from './line';
@@ -364,13 +364,19 @@ function assessed(db: ContentDb, s: PlantState, d: Deviation, notices: Notice[])
   redecide(db, s, b);
 }
 
+/** Вещь предложения начальника ООК (Б5б): оценка влияния отклонения. */
+export const devKey = (dev: string) => `dev/${dev}`;
+
 /**
- * Коллега качества (Б1г; геймдизайн, §29.3): пока пост качества не у игрока, каждый час оценивает отклонения, которые
- * уже можно оценить, по тому же правилу, что и игрок: связанные испытания готовы и в пределах — «без влияния», хоть
- * одно вне — «отклонить серию». Своего состояния у коллеги нет.
+ * Коллега качества (Б1г; геймдизайн, §29.3): каждый час оценивает отклонения, которые уже можно оценить, по тому же
+ * правилу, что и игрок: связанные испытания готовы и в пределах — «без влияния», хоть одно вне — «отклонить серию».
+ * Своего состояния у коллеги нет. Режим ООК (Б5б): «сам» — оценка; «советует» — предложение той же оценки с той же
+ * причиной, отклонение, которое больше не ждёт оценки, — «не нужно»; «вручную» — ничего.
  */
-export function devHour(db: ContentDb, s: PlantState): boolean {
-  if (playerLeads(s)) return false;
+export function devHour(db: ContentDb, s: PlantState, notices: Notice[]): boolean {
+  const mode = modeOf(s, 'qa');
+  if (mode === 'manual') return false;
+  const r = mode === 'advise' ? round(s, ['dev/']) : undefined;
   let acted = false;
   for (const d of Object.values(s.deviations)) {
     if (d.status !== 'open' || assessBlock(s, d)) continue;
@@ -378,9 +384,15 @@ export function devHour(db: ContentDb, s: PlantState): boolean {
     if (tests.some(x => !x.done)) continue;
     const verdict = tests.some(x => x.out > 0) ? 'reject' : 'none';
     // журнал решений (Б5а): начальник ООК — по связанным испытаниям серии
-    note(s, 'qa', { kind: 'assess', dev: d.id, verdict, why: { tests: tests.map(x => ({ test: x.test, kind: x.kind, n: x.n, out: x.out, ...(x.result !== undefined ? { result: x.result } : {}) })) } });
+    const why = { tests: tests.map(x => ({ test: x.test, kind: x.kind, n: x.n, out: x.out, ...(x.result !== undefined ? { result: x.result } : {}) })) };
+    if (r) {
+      r.propose('qa', devKey(d.id), { kind: 'assess', deviation: d.id, verdict }, { kind: 'assess', dev: d.id, verdict, why }, notices);
+      continue;
+    }
+    note(s, 'qa', { kind: 'assess', dev: d.id, verdict, why });
     startAssess(db, s, d, verdict, 'head:quality');
     acted = true;
   }
+  r?.done();
   return acted;
 }

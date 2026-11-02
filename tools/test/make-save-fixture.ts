@@ -47,7 +47,10 @@
 // заказывает вывоз, фура подрядчика у рампы — кладовщик с водителем грузят или начальник ОКК подписывает передачу, — а
 // прежний вывоз уже в журнале отходов; учёта помещений посреди дела здесь нет — его держит образец схемы 30. С схемы 32 —
 // посреди учёта у мест: серии ждут у четырёх мест и больше — у лаборатории, линии и других, — а в сутках сохранения учёт
-// уже копится; вывоза посреди дела здесь нет — его держит образец схемы 31.
+// уже копится; вывоза посреди дела здесь нет — его держит образец схемы 31. С схемы 34 — посреди предложений: у постов
+// производства и качества руководители советуют, техслужба — «вручную» по выбору игрока; одно задание на серию принято,
+// другое отклонено, третье устарело, а предложение руководителя открыто и ждёт ответа; закрытых месяцев показателей здесь
+// нет — их держит образец схемы 33.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { DAY, daysFromCivil, HOUR, MIN, momentOf } from '../../src/engine/core/calendar';
@@ -140,8 +143,11 @@ const waited = () => {
 // посреди учёта показателей (Б5ж): закрыты два месяца и больше, в нынешнем — несколько срезов суток; партию фуры
 // разгружают — у рампы она уже, на месте ещё нет
 const kpied = () => s.kpi.months.length >= 2 && s.kpi.snap.n >= 3 && Object.values(s.lots).some(l => l.docked !== undefined && l.placed === undefined);
+// посреди предложений (Б5б): выбор режима у отдела, ответы всех трёх видов и открытое предложение
+const how = (h: string) => s.journal.some(r => r.ask?.end?.how === h);
+const asked = () => s.heads.mode.maint === 'manual' && how('ok') && how('no') && how('stale') && Object.keys(s.heads.open).length > 0;
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : seated() && kpied();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : SCHEMA < 34 ? seated() && kpied() : seated() && asked();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 const refused = new Set<string>();
@@ -153,6 +159,8 @@ if (SCHEMA >= 24) for (const role of ['role.operator', 'role.packer']) apply(db,
 while (s.t < end && !busy()) {
   if (SCHEMA >= 13 && s.t >= t0 + DAY && s.seats?.some(x => x.seat === 'director' && x.to === undefined)) {
     apply(db, s, { kind: 'seat', seats: ['production', 'quality'] });
+    // с схемы 34 — техслужба «вручную»: выбор игрока у отдела
+    if (SCHEMA >= 34) apply(db, s, { kind: 'mode', head: 'maint', mode: 'manual', by: 'player' });
     // с схемы 28 — на посту качества: скорость ротора обеих карт на шаг выше цели, блистерной у всех позиций — тоже
     if (SCHEMA >= 28) {
       for (const r of Object.values(db.recipes)) {
@@ -197,6 +205,14 @@ while (s.t < end && !busy()) {
       }
     }
   }
+  // с схемы 34 — первое предложение задания на серию принять, второе отклонить; дальше — не отвечать: старое устаревает
+  if (SCHEMA >= 34)
+    for (const n of Object.values(s.heads.open)) {
+      const r = s.journal.find(x => x.n === n);
+      if (r?.by !== 'plan') continue;
+      if (!how('ok')) apply(db, s, { kind: 'accept', n });
+      else if (!how('no')) apply(db, s, { kind: 'decline', n });
+    }
   // с схемы 23 — у бригады появились часы после смены: пост производства переводит механика первой смены в бригаду 2
   if ((SCHEMA as number) === 23 && afterShift() && !Object.values(s.people).some(p => pendingOf(s, p))) {
     const p = Object.values(s.people).find(x => x.role === 'role.mechanic' && x.shift === 'shift.a');

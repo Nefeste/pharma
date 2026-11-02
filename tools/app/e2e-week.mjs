@@ -2,8 +2,8 @@
 // экрана «Кем вы будете» до итога игры на планёрке 8 сентября — целиком, в чистом окне: хранилище окна пусто, как при
 // первом запуске. Место — «Качество и технология». Шаги: место; щелчок по паллете — карточка; первая планёрка в 08:00;
 // справочник (F1) и «Сейчас» (N); лаборатория — «Поднять»; «До события» (6) — по автопаузам места: планёрки, два
-// отклонения 3 сентября — карточка с пояснением, «Понятно»; расследование 7 сентября — три шага, вывод, разбор; планёрка
-// 8 сентября — «За эту игру». Ощущение числами: отклик щелчка и клавиши, через сколько виден результат команды — в
+// отклонения 3 сентября — карточка с пояснением, «Понятно»; расследование 7 сентября — первый шаг предлагает начальник
+// ООК (Б5б): «Принять» в журнале; ещё два шага, вывод, разбор; планёрка 8 сентября — «За эту игру». Ощущение числами: отклик щелчка и клавиши, через сколько виден результат команды — в
 // кадрах и миллисекундах; сколько секунд окна идут сутки на «До события». Снимок каждого шага — tools/app/out/week-*.png,
 // лист — tools/app/out/week.png.
 import { readFileSync } from 'node:fs';
@@ -57,6 +57,8 @@ export async function weekPart({ browser, port, out, ok, fail, errors, requests,
       understood: () => !document.querySelector('[data-test=card-first]'),
       inv: () => !!board() && !!document.querySelector('#inv'),
       step: id => (board()?.steps.find(x => x.id === id)?.state ?? 'can') !== 'can',
+      // предложение принято (Б5б): ушло из «Ждут вашего решения», у строки журнала — «принято вами»
+      accepted: n => !h().journal.view?.asks.some(r => r.n === n) && !!document.querySelector(`#journal [data-test=journal-row][data-n="${n}"] [data-test=ask-end][data-how=ok]`),
       debrief: () => !!document.querySelector('[data-test=inv-debrief]'),
     };
   });
@@ -162,15 +164,16 @@ export async function weekPart({ browser, port, out, ok, fail, errors, requests,
     await shot(5, 'Справочник (F1)');
     await page.keyboard.press('Escape');
 
-    // 6. «До события» — по автопаузам места: планёрки, отклонения 3 сентября; 2 сентября после планёрки ×4 до 10:00 —
-    // «Сейчас» (N): идёт отвешивание первой серии (1 сентября в 08:00 на заводе ещё ничего не идёт); лаборатория —
-    // «Поднять», как только в очереди партия; карточка отклонения — пояснение при первом событии, «Понятно»
+    // 6. «До события» — по автопаузам места: планёрки, отклонения 3 сентября и предложения начальника ООК (Б5б) — оценить
+    // их влияние; 2 сентября после планёрки ×4 до 10:00 — «Сейчас» (N): идёт отвешивание первой серии (1 сентября в 08:00
+    // на заводе ещё ничего не идёт); лаборатория — «Поднять», как только в очереди партия; карточка отклонения — пояснение
+    // при первом событии, «Понятно»
     const devs = [];
     let rushed;
     let nowSeen = false;
     let firstOk = false;
     let seen;
-    for (let i = 0; i < 16 && !(await page.evaluate(() => (window.__game.store.get().top?.inv ?? 0) > 0)); i++) {
+    for (let i = 0; i < 24 && !(await page.evaluate(() => (window.__game.store.get().top?.inv ?? 0) > 0)); i++) {
       const stop = await untilEvent();
       if (stop.morning) {
         await closeMorning();
@@ -222,34 +225,67 @@ export async function weekPart({ browser, port, out, ok, fail, errors, requests,
     else ok(`отклонения недели: мир встал на каждом — «${devs.join('»; «')}»; карточка с пояснением, «Понятно» убрало его`);
     if (!rushed) fail('лаборатория: в очереди ни разу не было партии — «Поднять» не проверено');
 
-    // 7. расследование: извещение — доска; три шага, ×2 пока идут; вывод по лучшей версии — «отклонить»; разбор
-    const inv = await page.evaluate(() => ({ n: window.__game.store.get().top?.inv ?? 0, notice: document.querySelector('[data-test=notice-inv]')?.textContent ?? '' }));
+    // 7. расследование: мир встал на результате вне спецификации, и в ту же минуту начальник ООК предложил первый шаг
+    // (Б5б) — J, «Ждут вашего решения»: «Принять» — шаг в работе; доска — клавишей I; ещё два шага своих; ×2, пока идут, —
+    // новое предложение руководителя ставит мир на паузу, ×2 снова; вывод по лучшей версии — «отклонить»; разбор
+    const inv = await page.evaluate(() => ({ n: window.__game.store.get().top?.inv ?? 0, notice: window.__game.store.get().notices.find(x => x.go && 'inv' in x.go)?.text ?? '' }));
     if (inv.n < 1 || !/вне спецификации/.test(inv.notice)) fail(`расследование: идёт ${inv.n}, извещение «${inv.notice}»`);
     else {
-      await measure('извещение — доска расследования', () => page.click('[data-test=notice-inv]'), 'inv');
-      const steps = ['records', 'dossier', 'journal'];
-      await measure('шаг расследования — в работе', () => page.click(`[data-test=inv-step][data-step=${steps[0]}] [data-test=inv-do]`), 'step', steps[0], 'command');
-      for (const st of steps.slice(1)) await page.click(`[data-test=inv-step][data-step=${st}] [data-test=inv-do]`);
-      await shot(9, 'Расследование — шаги');
-      await page.keyboard.press('Digit2');
-      await page.waitForFunction(list => {
-        const b = window.__game.store.get().inv.view?.board;
-        return !!b && list.every(id => b.steps.find(x => x.id === id)?.state === 'done');
-      }, steps, { timeout: 120_000 });
-      await page.keyboard.press('Space');
+      await page.keyboard.press('KeyJ');
+      await page.waitForSelector('[data-test=journal-asks] [data-test=journal-row][data-kind=step] [data-test=ask-accept]', { timeout: 20_000 }).catch(() => {});
+      const ask = await page.evaluate(() => {
+        const r = document.querySelector('[data-test=journal-asks] [data-test=journal-row][data-kind=step]');
+        const v = window.__game.store.get().journal.view?.asks.find(x => x.d.kind === 'step');
+        return { n: Number(r?.getAttribute('data-n') ?? 0), step: v?.d.step ?? '', by: v?.by ?? '', t: v?.t ?? 0, text: r?.innerText.replace(/\s*\n\s*/g, ' · ') ?? '' };
+      });
+      const mine = ['records', 'dossier', 'journal'];
+      let steps = mine;
+      if (!ask.n || ask.by !== 'qa' || !mine.includes(ask.step)) fail(`расследование: предложения шага начальника ООК в журнале нет — ${JSON.stringify(ask)}`);
+      else {
+        await shot(9, 'Журнал — начальник ООК предлагает шаг');
+        await measure('«Принять» — предложение принято', () => page.click(`[data-test=journal-asks] [data-test=journal-row][data-n="${ask.n}"] [data-test=ask-accept]`), 'accepted', ask.n, 'command');
+        steps = [ask.step, ...mine.filter(x => x !== ask.step)];
+        ok(`расследование: начальник ООК предложил шаг в ту же минуту — «${ask.text.slice(0, 100)}…»; «Принять» — шаг «${ask.step}» в работе`);
+      }
+      await page.keyboard.press('Escape');
+      await measure('I — доска расследования', () => page.keyboard.press('KeyI'), 'inv');
+      const own = steps.filter(x => x !== ask.step);
+      await measure('шаг расследования — в работе', () => page.click(`[data-test=inv-step][data-step=${own[0]}] [data-test=inv-do]`), 'step', own[0], 'command');
+      for (const st of own.slice(1)) await page.click(`[data-test=inv-step][data-step=${st}] [data-test=inv-do]`);
+      await shot(10, 'Расследование — шаги');
+      let done = false;
+      for (let k = 0; k < 12 && !done; k++) {
+        await page.keyboard.press('Digit2');
+        done = await page
+          .waitForFunction(
+            list => {
+              const b = window.__game.store.get().inv.view?.board;
+              const all = !!b && list.every(id => b.steps.find(x => x.id === id)?.state === 'done');
+              return all || window.__game.speed === 0 ? { all } : false;
+            },
+            steps,
+            { timeout: 120_000 },
+          )
+          .then(
+            x => x.jsonValue().then(v => v.all),
+            () => false,
+          );
+      }
+      await page.evaluate(() => window.__game.actions.setSpeed(0));
       await frames(2);
+      if (!done) fail(`расследование: шаги ${steps.join(', ')} не кончились`);
       const top = await page.evaluate(() => window.__game.store.get().inv.view.board.beliefs[0]);
       await page.click(`[data-test=inv-cause][data-id=${top.id}]`);
       await page.click('[data-test=inv-fate][data-id=reject]');
       await measure('вывод — разбор', () => page.click('[data-test=inv-conclude]'), 'debrief', undefined, 'command');
-      await shot(10, 'Расследование — разбор');
+      await shot(11, 'Расследование — разбор');
       const deb = await page.evaluate(() => document.querySelector('[data-test=inv-debrief]')?.getAttribute('data-root') ?? '');
-      ok(`расследование: три шага, вывод — ${top.id} (${(top.p / 100).toFixed(1)} %), серия отклонена; на самом деле — ${deb}`);
+      ok(`расследование: три шага — один предложил начальник ООК, вывод — ${top.id} (${(top.p / 100).toFixed(1)} %), серия отклонена; на самом деле — ${deb}`);
       await page.keyboard.press('Escape');
     }
 
-    // 8. итог недели: «До события» до планёрки 8 сентября — «За эту игру»
-    for (let i = 0; i < 8 && (await page.evaluate(() => window.__game.store.get().morning.day ?? 0)) < day0 + 7; i++) {
+    // 8. итог недели: «До события» до планёрки 8 сентября — «За эту игру»; предложения руководителя по дороге — тоже стоп
+    for (let i = 0; i < 16 && (await page.evaluate(() => window.__game.store.get().morning.day ?? 0)) < day0 + 7; i++) {
       await closeMorning();
       await untilEvent();
     }
@@ -259,7 +295,7 @@ export async function weekPart({ browser, port, out, ok, fail, errors, requests,
       v: window.__game.store.get().morning.view?.session,
       date: document.querySelector('[data-test=date]')?.textContent ?? '',
     }));
-    await shot(11, 'Итог недели — «За эту игру»');
+    await shot(12, 'Итог недели — «За эту игру»');
     const v = sum.v;
     if (!v || v.to - v.from < 7 * 86400 || v.released < 1 || v.rejected < 1 || v.deviations < 3 || v.open !== 0 || v.concluded !== 1 || v.closed < 1 || !/Вы играете \d+\s+мин/.test(sum.text) || !/на заводе прошло 7\s+дней/.test(sum.text))
       fail(`итог недели (${sum.date}): «${sum.text}» — ${JSON.stringify(v)}`);

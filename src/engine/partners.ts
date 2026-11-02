@@ -18,7 +18,7 @@ import { planOf } from './plant';
 import { QA } from './qa';
 import { planUse } from './supply';
 import { addTask } from './tasks';
-import type { Contract, Notice, Pair, PlantState, PoLine, Task } from './types';
+import type { Contract, ContractLine, Notice, Pair, PlantState, PoLine, Task } from './types';
 import { calOf } from './workdays';
 
 /** Исходные и упаковочные материалы — их покупают, и у них одобренные пары; своя продукция — балк и готовая — нет. */
@@ -189,16 +189,27 @@ export const listPrice = (db: ContentDb, s: PlantState, price: number) => Math.r
  * прайсу.
  */
 export function priceLine(db: ContentDb, s: PlantState, supplier: Id, l: PoLine): number {
+  const q = linePrice(db, s, supplier, l);
+  if (q.line) {
+    q.line.bought += l.qty;
+    l.contract = q.contract;
+  }
+  if (q.by < l.qty) l.list = l.qty - q.by;
+  return q.cost;
+}
+
+/**
+ * Цена строки без записи (Б5б; окно «Заказ поставщику» и предложение снабжения): по договору — до остатка обещанного за
+ * вычетом `taken`, уже взятого строками того же заказа, сверх и вне договора — по прайсу. Стоимость без НДС, сколько по
+ * договору, договор и его строка.
+ */
+export function linePrice(db: ContentDb, s: PlantState, supplier: Id, l: PoLine, taken = 0): { cost: number; by: number; contract?: string; line?: ContractLine } {
   const price = db.suppliers[supplier].items[l.material].price;
   const c = contractOf(s, supplier, momentOf(s.start, s.t).day);
   const cl = c?.lines.find(x => x.material === l.material && x.maker === l.maker);
-  const by = cl ? Math.min(l.qty, Math.max(0, cl.volume - cl.bought)) : 0;
-  if (cl) {
-    cl.bought += l.qty;
-    l.contract = c!.id;
-  }
-  if (by < l.qty) l.list = l.qty - by;
-  return costOf(db, l.material, cl?.price ?? price, by) + costOf(db, l.material, listPrice(db, s, price), l.qty - by);
+  const by = cl ? Math.min(l.qty, Math.max(0, cl.volume - cl.bought - taken)) : 0;
+  const cost = costOf(db, l.material, cl?.price ?? price, by) + costOf(db, l.material, listPrice(db, s, price), l.qty - by);
+  return { cost, by, ...(cl ? { contract: c!.id, line: cl } : {}) };
 }
 
 /**

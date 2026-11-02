@@ -1,15 +1,16 @@
 // Журнал решений (Б5а; docs/specs/2026-10-vertical-slice.md, «Б5а»): окно справа — кто что решил и почему. Строки — от
 // новых к старым: время, кто — руководитель или вы с места, — что решено и о чём; у вещи — переход к её карточке;
 // строка раскрывается причиной с числами завода. Отбор — по посту и по автору. «Кто решил» в карточках — строки с
-// «Почему?», которое открывает журнал на записи. Вид собирает поток расчёта (src/sim/journal.ts); слова — здесь и в
-// src/i18n/.
+// «Почему?», которое открывает журнал на записи. С Б5б — режимы отделов взятых постов полосой сверху, предложения
+// руководителей — «Ждут вашего решения» с «Принять» и «Отклонить», у ответа — кто и когда ответил. Вид собирает поток
+// расчёта (src/sim/journal.ts); слова — здесь и в src/i18n/.
 import { useState } from 'react';
 import { SEATS, type SeatId } from '../content/types';
 import { momentOf, type Ymd } from '../engine/core/calendar';
 import { KEEP } from '../engine/journal';
-import type { Decided, Head } from '../engine/types';
+import type { Decided, DeptMode, Head } from '../engine/types';
 import { dayText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
-import type { JournalRef, JournalRow, WhoRow } from '../sim/journal';
+import type { AskInfo, JournalRef, JournalRow, ModeInfo, WhoRow } from '../sim/journal';
 import { assetClass, workName } from './assets';
 import { db } from './db';
 import type { Actions, Hud } from './store';
@@ -104,7 +105,9 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
     case 'extend':
       return J.extend(d.contract, party(d.party), dayText(d.to));
     case 'waste':
-      return J.waste(whenText(start, d.at));
+      return J.waste(d.at !== undefined ? whenText(start, d.at) : undefined);
+    case 'mode':
+      return J.mode(T.journal.names[d.head] ?? d.head, T.journal.modes[d.mode] ?? d.mode);
   }
 }
 
@@ -232,13 +235,45 @@ function goOf(r: JournalRef, actions: Actions): (() => void) | undefined {
   return undefined;
 }
 
+/**
+ * Ответ на предложение (Б5б): ждёт — «Принять» и «Отклонить», если ответить может игрок; ответили — кто и когда, устарело
+ * или не нужно.
+ */
+export function AskLine({ n, ask, start, actions }: { n: number; ask: AskInfo; start: Ymd; actions: Actions }) {
+  const A = T.journal.ask;
+  if (ask.end) {
+    return (
+      <span className={`ask ${ask.end.how}`} data-test="ask-end" data-how={ask.end.how}>
+        {A[ask.end.how](whenText(start, ask.end.t))}
+      </span>
+    );
+  }
+  return (
+    <span className="ask open" data-test="ask-open">
+      <span className="warn">{A.open}</span>
+      {ask.can ? (
+        <>
+          {' '}
+          <button type="button" className="small" onClick={() => actions.answer(n, true)} title={A.acceptHint} data-test="ask-accept">
+            {A.accept}
+          </button>{' '}
+          <button type="button" className="small" onClick={() => actions.answer(n, false)} title={A.declineHint} data-test="ask-decline">
+            {A.decline}
+          </button>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
 function Row({ row, start, open, toggle, actions }: { row: JournalRow; start: Ymd; open: boolean; toggle: () => void; actions: Actions }) {
   const why = whyLines(row.d, row.ref, row.t, start);
   const go = goOf(row.ref, actions);
   return (
-    <li className={`jrow${open ? ' on' : ''}`} data-test="journal-row" data-n={row.n} data-kind={row.d.kind} data-by={row.by}>
+    <li className={`jrow${open ? ' on' : ''}${row.ask && !row.ask.end ? ' asking' : ''}`} data-test="journal-row" data-n={row.n} data-kind={row.d.kind} data-by={row.by} {...(row.ask ? { 'data-ask': row.ask.end?.how ?? 'open' } : {})}>
       <div className="jline">
         <span className="muted">{whenText(start, row.t)}</span> <b>{whoText(row.by, row.seat)}</b>
+        {row.ask ? <span className="muted"> · {T.journal.ask.proposes}</span> : null}
       </div>
       <div className="jline">
         {why.length > 0 ? (
@@ -261,7 +296,46 @@ function Row({ row, start, open, toggle, actions }: { row: JournalRow; start: Ym
           ))}
         </ul>
       ) : null}
+      {row.ask ? (
+        <div className="jline">
+          <AskLine n={row.n} ask={row.ask} start={start} actions={actions} />
+        </div>
+      ) : null}
     </li>
+  );
+}
+
+/** Предложения руководителей (Б5б): строки журнала с причиной и ответом — в журнале сверху и на планёрке. */
+export function AskRows({ rows, start, actions }: { rows: readonly JournalRow[]; start: Ymd; actions: Actions }) {
+  const [shown, setShown] = useState<number | undefined>(undefined);
+  return (
+    <ul className="jlist asks" data-test="asks">
+      {rows.map(r => (
+        <Row key={r.n} row={r} start={start} open={shown === r.n} toggle={() => setShown(shown === r.n ? undefined : r.n)} actions={actions} />
+      ))}
+    </ul>
+  );
+}
+
+const MODES: readonly DeptMode[] = ['auto', 'advise', 'manual'];
+
+/** Режимы отделов взятых постов (Б5б): у каждого руководителя — три кнопки; нажатая — режим сейчас. */
+export function ModeBar({ list, actions }: { list: readonly ModeInfo[]; actions: Actions }) {
+  if (list.length === 0) return null;
+  return (
+    <div className="modes" data-test="journal-modes" title={T.journal.modesHint}>
+      <div className="msec">{T.journal.modesTitle}</div>
+      {list.map(m => (
+        <div className="filters" key={m.head} data-head={m.head} data-mode={m.mode}>
+          <span className="muted">{T.journal.names[m.head] ?? m.head}:</span>
+          {MODES.map(x => (
+            <button type="button" key={x} className={m.mode === x ? 'on' : ''} aria-pressed={m.mode === x} disabled={m.mode === x} onClick={() => actions.setMode(m.head, x)} title={T.journal.modeHint[x]} data-mode={x}>
+              {T.journal.modes[x]}
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -280,6 +354,13 @@ export function Journal({ hud, actions }: { hud: Hud; actions: Actions }) {
           ✕
         </button>
       </div>
+      {v ? <ModeBar list={v.modes} actions={actions} /> : null}
+      {v && (v.asks.length > 0 || v.modes.length > 0) ? (
+        <div className="jasks" data-test="journal-asks">
+          <div className="msec">{T.journal.ask.title}</div>
+          {v.asks.length > 0 ? <AskRows rows={v.asks} start={hud.start} actions={actions} /> : <div className="muted">{T.journal.ask.none}</div>}
+        </div>
+      ) : null}
       <div className="filters" data-test="journal-seats">
         <span className="muted">{T.journal.seatFilter}:</span>
         <button type="button" className={!j.seat ? 'on' : ''} aria-pressed={!j.seat} onClick={() => actions.setJournal({ seat: null })}>
@@ -336,14 +417,20 @@ export function WhoList({ rows, start, actions }: { rows: readonly WhoRow[] | un
       <div className="msec">{T.journal.who}</div>
       <ul className="whol">
         {rows.map(r => (
-          <li key={r.n} data-test="who-row" data-kind={r.kind} data-n={r.n}>
+          <li key={r.n} data-test="who-row" data-kind={r.kind} data-n={r.n} {...(r.ask ? { 'data-ask': r.ask.end?.how ?? 'open' } : {})}>
             <span>
               {T.journal.kinds[r.kind] ?? r.kind}: <b>{whoText(r.by, r.seat)}</b>
+              {r.ask ? <span className="muted"> · {T.journal.ask.proposes}</span> : null}
               {r.v ? ` — ${verdictWord(r)}` : ''} <span className="muted">· {whenText(start, r.t)}</span>
             </span>{' '}
             <button type="button" className="small" onClick={() => actions.openJournal(r.n)} title={T.journal.whyHint} data-test="who-why">
               {T.journal.why}
             </button>
+            {r.ask ? (
+              <div>
+                <AskLine n={r.n} ask={r.ask} start={start} actions={actions} />
+              </div>
+            ) : null}
           </li>
         ))}
       </ul>

@@ -5,6 +5,8 @@
 // Сохранение ходит строкой: состояние с истинными свойствами партий окно не разбирает (§9) — его пишет и читает поток
 // расчёта, со своими миграциями (src/engine/save.ts).
 import type { Id } from '../content/types';
+import { DAY } from '../engine/core/calendar';
+import { MORNING } from '../engine/engine';
 import type { RunSum } from '../engine/plan/run';
 import type { Command, Notice } from '../engine/types';
 import type { BatchLabel } from './plan';
@@ -58,8 +60,10 @@ export type FromPlan =
 /**
  * Ключ извещения для автопауз (Б2а): его вид, а у вышедшего срока актива (Б3в) — вид и род актива: чьё это дело, зависит
  * от того, оборудование это, прибор лаборатории или датчик склада; у сверхурочных года на исходе (Б4а) и заявления
- * об увольнении (Б4в) — вид и отдел.
+ * об увольнении (Б4в) — вид и отдел; у предложения руководителя (Б5б) — пост отдела и «до планёрки»: такое предложение
+ * ждёт планёрку.
  */
 export function stopKey(n: Notice): string {
+  if (n.kind === 'proposal') return `proposal/${n.seat}${n.t % DAY < MORNING ? '/early' : ''}`;
   return n.kind === 'assetExpired' ? `${n.kind}/${n.family}` : n.kind === 'overtimeLow' || n.kind === 'resign' ? `${n.kind}/${n.dept}` : n.kind;
 }

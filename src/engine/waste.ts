@@ -1,6 +1,6 @@
 // Вывоз отклонённого (Б1з; docs/specs/2026-10-vertical-slice.md, «Б1з»; геймдизайн, §4.5): вывоз на уничтожение заказывает
-// склад — команда `waste` поста «Снабжение и склад»; пока пост не у игрока, — коллега склада в 09:00 рабочего дня, когда
-// в зоне отклонённого заняты две трети мест или паллета ждёт вывоза дольше срока. Вывоз один: пока подрядчик не уехал,
+// склад — команда `waste` поста «Снабжение и склад»; в режиме отдела «сам» — заведующий складом в 09:00 рабочего дня, когда
+// в зоне отклонённого заняты две трети мест или паллета ждёт вывоза дольше срока, в режиме «советует» — предлагает (Б5б). Вывоз один: пока подрядчик не уехал,
 // второго не заказывают. Подрядчик по договору приезжает на следующий рабочий день к началу своих часов; его фура встаёт
 // к рампе отгрузки, как фура покупателя (market.ts, `dockNext`), а рампа занята — ждёт во дворе до конца его часов и
 // приедет снова на следующий рабочий день. Кладовщик и водитель грузят в кузов всё, что лежит в зоне, когда фура встала;
@@ -11,10 +11,10 @@
 import type { ContentDb } from '../content/types';
 import { part, post } from './cash';
 import { addMonths, addWorkdays, civilFromDays, DAY, daysFromCivil, HOUR, isWorkday, lastOfMonth, momentOf } from './core/calendar';
+import { modeOf, moot, propose } from './heads';
 import { note, noteCmd } from './journal';
 import { dockWait } from './lean';
 import { planOf } from './plant';
-import { playerHolds } from './seats';
 import { nextId } from './stock';
 import { addTask } from './tasks';
 import type { Command, Notice, PlantState, Task, Truck, Unit, WasteEntry, WasteLot } from './types';
@@ -83,16 +83,16 @@ function book(db: ContentDb, s: PlantState, by: string) {
 }
 
 /**
- * Каждый час (Б1з): в 09:00 рабочего дня — коллега склада, пока пост «Снабжение и склад» не у игрока; в день вывоза, к
- * началу часов подрядчика, — его фура: к рампе её поставит шаг отгрузки (market.ts), когда рампа свободна. Часы
+ * Каждый час (Б1з): в 09:00 рабочего дня — правило заведующего складом в режиме его отдела (Б5б); в день вывоза, к
+ * началу часов подрядчика, — фура подрядчика: к рампе её поставит шаг отгрузки (market.ts), когда рампа свободна. Часы
  * подрядчика кончились, а фура так и не встала к рампе — она уезжает пустой и приедет на следующий рабочий день к началу
  * его часов; сколько она ждала во дворе — в потери (3а).
  */
-export function wasteHour(db: ContentDb, s: PlantState) {
+export function wasteHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   const w = db.scenarios[s.scenario].waste;
   if (!w) return;
   const now = momentOf(s.start, s.t);
-  if (now.sec === WASTE_HOUR && !s.waste.order && !playerHolds(s, 'wms') && isWorkday(calOf(db, s), now.day)) colleague(db, s, now.day);
+  if (now.sec === WASTE_HOUR && isWorkday(calOf(db, s), now.day)) colleague(db, s, now.day, notices);
   const o = s.waste.order;
   const yard = o?.truck !== undefined ? s.trucks[o.truck] : undefined;
   if (o && yard && !yard.docked && s.t >= at(s, momentOf(s.start, yard.arrived).day, w.hours[1])) {
@@ -110,21 +110,42 @@ export function wasteHour(db: ContentDb, s: PlantState) {
   }
 }
 
+/** Вещь предложения заведующего складом (Б5б): вывоз — один, пока подрядчик не уехал. */
+export const WASTE_KEY = 'waste';
+
 /**
- * Коллега склада (Б1з; геймдизайн, §4.5, §29.3): заняты две трети мест зоны или паллета ждёт вывоза дольше срока — вывоз
- * на следующий рабочий день. Журнал решений — начальник склада: сколько мест занято из скольких, а по сроку — с какого
- * мгновения отклонена самая давняя паллета.
+ * Нужен ли вывоз по правилу склада (Б1з; геймдизайн, §4.5): заняты две трети мест зоны или паллета ждёт вывоза дольше
+ * срока. Причина — сколько мест занято из скольких, а по сроку — с какого мгновения отклонена самая давняя паллета; вывоз
+ * уже заказан или нужды нет — нет.
  */
-function colleague(db: ContentDb, s: PlantState, today: number) {
+function wasteWhy(db: ContentDb, s: PlantState, today: number) {
+  if (s.waste.order) return undefined;
   const units = zoneUnits(db, s);
-  if (units.length === 0) return;
+  if (units.length === 0) return undefined;
   const places = zonePlaces(db, s);
   const full = units.length * FULL[1] >= places * FULL[0];
   const since = Math.min(...units.map(u => rejectedAt(s, u)));
   const old = addMonths(momentOf(s.start, since).day, KEEP) <= today;
-  if (!full && !old) return;
+  return full || old ? { used: units.length, places, ...(old ? { since } : {}), months: KEEP } : undefined;
+}
+
+/**
+ * Заведующий складом (Б1з; геймдизайн, §29.3) в режиме отдела (Б5б): «сам» — вывоз на следующий рабочий день и запись
+ * журнала; «советует» — предложение вывоза с той же причиной, не нужен — открытое предложение «не нужно»; «вручную» —
+ * ничего.
+ */
+function colleague(db: ContentDb, s: PlantState, today: number, notices: Notice[]) {
+  const mode = modeOf(s, 'wms');
+  if (mode === 'manual') return;
+  const why = wasteWhy(db, s, today);
+  if (mode === 'advise') {
+    if (why) propose(s, 'wms', WASTE_KEY, { kind: 'waste' }, { kind: 'waste', why }, notices);
+    else moot(s, WASTE_KEY);
+    return;
+  }
+  if (!why) return;
   const order = book(db, s, 'head:wms');
-  note(s, 'wms', { kind: 'waste', order: order.id, at: order.at, why: { used: units.length, places, ...(old ? { since } : {}), months: KEEP } });
+  note(s, 'wms', { kind: 'waste', order: order.id, at: order.at, why });
 }
 
 /**

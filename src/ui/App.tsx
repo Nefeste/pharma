@@ -13,6 +13,7 @@ import { Card } from './Card';
 import { Cash } from './Cash';
 import { db } from './db';
 import { Gantt } from './Gantt';
+import { Po } from './Po';
 import { Guard } from './Guard';
 import { Dossier } from './Dossier';
 import { Inv } from './Inv';
@@ -189,6 +190,9 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
       </Guard>
       <Guard name={T.kpi.button} close={s.kpi.open ? actions.toggleKpi : undefined}>
         {s.kpi.open && <Kpi hud={s} actions={actions} />}
+      </Guard>
+      <Guard name={T.po.button} close={s.po.open ? actions.togglePo : undefined}>
+        {s.po.open && <Po hud={s} actions={actions} />}
       </Guard>
       <Guard name={T.seats.button} close={s.seats.open ? actions.closeSeats : undefined}>
         {s.seats.open && <Seats hud={s} actions={actions} scenario={scenario} />}

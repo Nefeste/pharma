@@ -65,7 +65,7 @@ describe('журнал', () => {
     for (let p = 1; p < v.pages; p++) all.push(...journalView(db, s, q({ page: p })).rows);
     const order = all.find(r => r.d.kind === 'order')!;
     if (order.d.kind !== 'order') throw new Error('order');
-    const b = s.batches[order.d.batch];
+    const b = s.batches[order.d.batch!];
     expect(order.ref.bn).toBe(Number(b.id.slice(1)));
     expect(order.ref.sku).toBe(b.sku);
     const lot = all.find(r => r.d.kind === 'lot')!;
@@ -75,7 +75,7 @@ describe('журнал', () => {
     expect(lot.ref.material).toBe(l.material);
     const po = all.find(r => r.d.kind === 'po')!;
     if (po.d.kind !== 'po') throw new Error('po');
-    expect(po.ref.po).toEqual({ lines: s.pos[po.d.po].lines.map(x => ({ material: x.material, qty: x.qty })), eta: s.pos[po.d.po].eta });
+    expect(po.ref.po).toEqual({ lines: s.pos[po.d.po!].lines.map(x => ({ material: x.material, qty: x.qty })), eta: s.pos[po.d.po!].eta });
     const visit = all.find(r => r.d.kind === 'visit');
     expect(visit).toBeDefined();
     if (visit?.d.kind === 'visit') expect(visit.ref.asset).toEqual({ family: s.assets[visit.d.asset].family, type: s.assets[visit.d.asset].type, inv: s.assets[visit.d.asset].inv });

@@ -11,6 +11,7 @@ import { assetDone, assetHour, assetStep, seedAssets, visitDone } from './assets
 import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
+import { answerCommand, headsDay, modeCommand, newHeads } from './heads';
 import { hireCommand, hireHour } from './hire';
 import { hoursHour, newPolicy, overtimeCommand } from './hours';
 import { rosterCommand, rosterDay } from './shifts';
@@ -106,6 +107,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     former: {},
     leave: {},
     journal: [],
+    heads: newHeads(),
     waste: { log: [] },
     kpi: newKpi(sc.start.hour * HOUR),
   };
@@ -238,9 +240,10 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
     case 'seat': {
       const notices: Notice[] = [];
       seatCommand(db, s, cmd, notices);
-      // место качества отдали — коллега качества ведёт открытые расследования дальше и оценивает отклонения (Б1г)
+      // место качества отдали — коллега качества ведёт открытые расследования дальше и оценивает отклонения (Б1г); взяли —
+      // предлагает (Б5б)
       const inv = invStep(db, s, notices);
-      if (devHour(db, s) || inv) settle(db, s);
+      if (devHour(db, s, notices) || inv) settle(db, s);
       return notices;
     }
     case 'investigate': {
@@ -275,6 +278,7 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       return notices;
     }
     case 'vacancy':
+    case 'agency':
     case 'close':
     case 'hire':
     case 'dismiss': {
@@ -310,6 +314,19 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       wasteCommand(db, s, cmd, notices);
       return notices;
     }
+    case 'mode': {
+      // режим отдела (Б5б): руководитель решит или предложит в свой час — сейчас раздавать нечего
+      const notices: Notice[] = [];
+      modeCommand(s, cmd, notices);
+      return notices;
+    }
+    case 'accept':
+    case 'decline': {
+      // ответ на предложение (Б5б): «Принять» — та же команда, что у игрока, со своей раздачей задач
+      const notices: Notice[] = [];
+      answerCommand(s, cmd, notices, c => command(db, s, c));
+      return notices;
+    }
   }
 }
 
@@ -329,7 +346,7 @@ function settle(db: ContentDb, s: PlantState) {
  */
 function steps(db: ContentDb, s: PlantState, notices: Notice[]) {
   assetStep(db, s);
-  maintStep(db, s);
+  maintStep(db, s, notices);
   mesStep(db, s);
   lineStep(db, s, notices);
   qaStep(db, s);
@@ -378,8 +395,9 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       if (momentOf(s.start, s.t).sec === 0) {
         trainDay(db, s, notices);
         rosterDay(db, s, momentOf(s.start, s.t).day);
-        // журнал решений (Б5а): записи старше срока уходят
+        // журнал решений (Б5а): записи старше срока уходят; отклонённое вчера руководитель может предложить снова (Б5б)
         trimJournal(s);
+        headsDay(s);
       }
       // найм (Б4в): кандидаты, заявления, первые дни принятых, уход после последней смены — до раздачи задач часа
       hireHour(db, s, notices);
@@ -391,20 +409,20 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       assetHour(db, s, notices);
       // контрагенты (Б3г): в полночь — приостановленные пары и договоры; коллега качества назначает оценки
       partnersHour(db, s, notices);
-      maintStep(db, s);
+      maintStep(db, s, notices);
       mesHour(db, s);
       lineHour(db, s, notices);
       leanHour(db, s);
       // показатели руководителей (Б5ж): в полночь — срез суток, на 1-е — итог прошлого месяца; после учёта потерь часа
       kpiHour(db, s);
       // вывоз отклонённого (Б1з): коллега склада в 09:00, фура подрядчика в его час — к рампе её поставит шаг отгрузки
-      wasteHour(db, s);
+      wasteHour(db, s, notices);
       marketHour(db, s, notices);
       // коллеги планирования и снабжения (Б2в): задание через две недели, заказы поставщикам по расходу плана
       planHour(db, s, notices);
       supplyDay(db, s, notices);
       // коллега качества (Б1г): отклонения, которые уже можно оценить
-      devHour(db, s);
+      devHour(db, s, notices);
       lineStep(db, s, notices);
       qaStep(db, s);
       marketStep(db, s, notices);

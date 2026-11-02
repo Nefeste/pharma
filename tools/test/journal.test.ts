@@ -70,7 +70,7 @@ describe('причина — числа правила', () => {
     // позиция задания — ниже порога: запас × рабочих дней окна < заказано × порог
     const me = w.items.find(x => x.sku === d.sku)!;
     expect(me.cases * me.work * 1000).toBeLessThan(me.ordered * w.ahead);
-    expect(s.batches[d.batch].notBefore).toBe(d.notBefore);
+    expect(s.batches[d.batch!].notBefore).toBe(d.notBefore);
   });
 
   test('пока спроса не видно — по очереди: правило и срок окна спроса', () => {
@@ -95,7 +95,7 @@ describe('причина — числа правила', () => {
     for (const r of added) {
       expect(r.by).toBe('supply');
       if (r.d.kind !== 'po') throw new Error('not a po');
-      const po = s.pos[r.d.po];
+      const po = s.pos[r.d.po!];
       expect(r.d.prepaid).toBe(po.prepaid!);
       expect(r.d.why!.map(w => w.material)).toEqual(po.lines.map(l => l.material));
       for (const w of r.d.why!) {
@@ -244,7 +244,7 @@ describe('решение игрока', () => {
     const r = s.journal.at(-1)!;
     expect(r).toMatchObject({ by: 'player', seat: 'director', d: { kind: 'po', supplier: sup } });
     if (r.d.kind === 'po') {
-      expect(r.d.prepaid).toBe(s.pos[r.d.po].prepaid!);
+      expect(r.d.prepaid).toBe(s.pos[r.d.po!].prepaid!);
       expect(r.d.why).toBeUndefined();
     }
   });

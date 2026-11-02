@@ -2,6 +2,7 @@
 // миграция стирает игру человека, поэтому каждый шаг закреплён образцом в tools/test/fixtures/.
 import type { ContentDb } from '../content/types';
 import { seedAssets } from './assets';
+import { newHeads } from './heads';
 import { batchNo } from './batchno';
 import { type Agenda, schedule } from './core/agenda';
 import { HOUR, momentOf } from './core/calendar';
@@ -459,6 +460,11 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   // оборудования, дня открытия вакансии у принятых — у прошлого нет
   32: raw => {
     (raw as unknown as PlantState).kpi = newKpi(raw.t as number);
+    return raw;
+  },
+  // 33 → 34 (Б5б): режимы отделов — выбора игрока нет, режимы по умолчанию взятых мест; открытых предложений нет
+  33: raw => {
+    (raw as unknown as PlantState).heads = newHeads();
     return raw;
   },
 };

@@ -50,6 +50,9 @@ export function Stock({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
       <div className="phead">
         <b id="stock-title">{T.stock.title}</b>
         <span className="muted">{T.stock.question}</span>
+        <button type="button" className={`small${hud.po.open ? ' on' : ''}`} onClick={() => actions.togglePo()} title={T.po.hint} data-test="po-open">
+          {T.po.button}
+        </button>
         <button type="button" className="close" onClick={() => actions.toggleStock()} title={T.card.closeHint}>
           ✕
         </button>

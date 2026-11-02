@@ -63,9 +63,12 @@ export interface LineSum {
   neighbour?: { k: number; what: 'fail' | 'micro'; sec: number };
 }
 
-/** Главная потеря суток: ожидание задач отдела по причине, потеря линии, перевозки техники, пешие переходы. */
+/**
+ * Главная потеря суток: ожидание задач отдела по причине — с Б1л без «нет смены» и с местом, где этого ждали больше
+ * всего, — потеря линии, перевозки техники, пешие переходы.
+ */
 export type MainLoss =
-  | { k: 'wait'; dept: Dept; cause: WaitCause; sec: number }
+  | { k: 'wait'; dept: Dept; cause: WaitCause; sec: number; spot?: string }
   | ({ k: 'line'; sec: number } & Required<Pick<LineSum, 'line' | 'key' | 'loss'>> & Pick<LineSum, 'neighbour'>)
   | { k: 'move'; sec: number; cm: number; empty: number }
   | { k: 'walk'; sec: number; cm: number };
@@ -314,12 +317,29 @@ export function lineSum(n: number, ld: LineDay | undefined): LineSum {
   return out;
 }
 
-/** Главная потеря суток: больше всего секунд — ожидание задач отдела по причине, потеря линии, перевозки, переходы. */
+/**
+ * Главная потеря суток: больше всего секунд — ожидание задач отдела по причине, потеря линии, перевозки, переходы. С Б1л
+ * ожидание, пока людей роли нет в смене, — не главная потеря: это устройство смен, а не потеря дня; у ожидания — место,
+ * где задачи отдела ждали этого больше всего, при равных — первое по имени.
+ */
 export function mainLoss(d: DayLoss | undefined, lines: LineSum[]): MainLoss | undefined {
   if (!d) return undefined;
   const all: MainLoss[] = [];
+  const spots = Object.keys(d.spots ?? {}).sort();
   for (const [dept, causes] of Object.entries(d.wait))
-    for (const [cause, sec] of Object.entries(causes ?? {})) all.push({ k: 'wait', dept: dept as Dept, cause: cause as WaitCause, sec: sec ?? 0 });
+    for (const [cause, sec] of Object.entries(causes ?? {})) {
+      if (cause === 'shift') continue;
+      let spot: string | undefined;
+      let most = 0;
+      for (const k of spots) {
+        const x = d.spots[k].wait?.[dept as Dept]?.[cause as WaitCause] ?? 0;
+        if (x > most) {
+          most = x;
+          spot = k;
+        }
+      }
+      all.push({ k: 'wait', dept: dept as Dept, cause: cause as WaitCause, sec: sec ?? 0, ...(spot ? { spot } : {}) });
+    }
   for (const l of lines) if (l.loss && l.key !== undefined) all.push({ k: 'line', sec: l.loss.sec, line: l.line, key: l.key, loss: l.loss, ...(l.neighbour ? { neighbour: l.neighbour } : {}) });
   const mv = Object.values(d.move);
   all.push({ k: 'move', sec: mv.reduce((n, x) => n + (x?.sec ?? 0), 0), cm: mv.reduce((n, x) => n + (x ? x.loaded + x.empty : 0), 0), empty: mv.reduce((n, x) => n + (x?.empty ?? 0), 0) });

@@ -60,7 +60,7 @@ export const AREA: Record<TaskKind, Dept> = {
 };
 
 /** Ожидание обучения в задержки не идёт: его ставят заранее, за срок предупреждения, и оно ждёт свободного часа. */
-const PLANNED: ReadonlySet<TaskKind> = new Set(['train', 'trainCheck']);
+export const PLANNED: ReadonlySet<TaskKind> = new Set(['train', 'trainCheck']);
 
 export function newLoss(day: number): DayLoss {
   return {

@@ -3,12 +3,14 @@
 // планёрки, и доска «План — факт» у каждой линии. С Б1к — часы ожидания серий у мест за то же окно и «держит линию».
 // Только учёт завода — время помещений, машин и серий по состояниям, счётчики годных пачек, сменные задания, записи
 // стадий, — без истины (docs/02-architecture.md, §9).
-import type { ContentDb, Id } from '../content/types';
+import type { ContentDb, Dept, Id } from '../content/types';
 import { batchNo } from '../engine/batchno';
 import { DAY, HOUR, momentOf } from '../engine/core/calendar';
-import { NO_ROOM, NO_TIMES, rhythm, roomsOf } from '../engine/lean';
+import { AREA, NO_ROOM, NO_TIMES, PLANNED, rhythm, roomsOf, taskSpot, taskThing } from '../engine/lean';
 import { planOf } from '../engine/plant';
-import type { BatchPhase, DayLoss, LineDay, MachineTimes, PlantState, RoomPhase, RoomTimes } from '../engine/types';
+import type { BatchPhase, DayLoss, LineDay, LossKind, MachineTimes, PlantState, RoomPhase, RoomTimes, WaitCause } from '../engine/types';
+import { batchRef, type JournalRef, lotRef, personRef } from './journal';
+import { thingOf } from './places';
 import { type LineLoss, type LineSum, lineSum } from './report';
 
 /** Окно слоя: сегодня — с полуночи до сейчас, вчера — прошлые календарные сутки, 7 суток — сегодня и шесть до него. */
@@ -103,6 +105,31 @@ export interface FloorWait {
   now: FloorWaiting[];
 }
 
+/**
+ * Виды потерь у места (Б1л) по порядку частей столбика — снизу вверх; «нет смены» — последний: в «все» он не входит.
+ */
+export const LOSS_KINDS: readonly LossKind[] = ['wait', 'move', 'walk', 'setup', 'again', 'defect', 'shift'];
+
+/** Вещь потерь (Б1л): что окну нужно для слов и перехода, как у журнала решений, и её секунды за окно. */
+export interface FloorThing {
+  ref: JournalRef;
+  sec: number;
+}
+
+/**
+ * Потери места за окно (Б1л): место — как в учёте: помещение, `zone:<зона или стеллаж>`, `line:<линия>`, `dock:<рампа>`,
+ * `yard`; секунды по видам, у ожидания (без «нет смены») — по причинам и отделам; вещи по видам — по убыванию секунд,
+ * до пяти; всего — без «нет смены».
+ */
+export interface FloorLoss {
+  spot: string;
+  sec: Partial<Record<LossKind, number>>;
+  wait: Partial<Record<WaitCause, number>>;
+  depts: Partial<Record<Dept, number>>;
+  things: Partial<Record<LossKind, FloorThing[]>>;
+  total: number;
+}
+
 export interface FloorView {
   view: 'floor';
   win: FloorWin;
@@ -115,6 +142,8 @@ export interface FloorView {
    * без часов за окно, где серии ждут сейчас, — в конце
    */
   waits: FloorWait[];
+  /** потери мест за окно (Б1л) — по убыванию всего, при равных — по имени места; места без потерь — нет */
+  losses: FloorLoss[];
 }
 
 /** Сутки окна — номера: от раннего к позднему. */
@@ -239,7 +268,114 @@ export function floorView(db: ContentDb, s: PlantState, q: FloorQuery): FloorVie
     const holds = holdsOf(sum);
     return { n, machines, sum, ...(holds ? { holds } : {}), ...(board ? { board } : {}) };
   });
-  return { view: 'floor', win: q.win, span, rooms, lines, waits: waitsOf(s, list, days.at(-1) === today, index) };
+  return { view: 'floor', win: q.win, span, rooms, lines, waits: waitsOf(s, list, days.at(-1) === today, index), losses: lossesAt(db, s, list, days.at(-1) === today) };
+}
+
+/** Сколько вещей у вида места в виде (Б1л). */
+export const LOSS_THINGS = 5;
+
+/**
+ * Потери мест за окно (Б1л): сутки учёта и, если в окне сегодня, ожидание задач, которое ещё идёт, — у места задачи с её
+ * вещью. Вещи — по убыванию секунд, при равных — по имени, до пяти у вида.
+ */
+function lossesAt(db: ContentDb, s: PlantState, list: DayLoss[], today: boolean): FloorLoss[] {
+  type Acc = { sec: Partial<Record<LossKind, number>>; wait: Partial<Record<WaitCause, number>>; depts: Partial<Record<Dept, number>>; things: Partial<Record<LossKind, Map<string, number>>> };
+  const by = new Map<string, Acc>();
+  const at = (spot: string) => {
+    let a = by.get(spot);
+    if (!a) by.set(spot, (a = { sec: {}, wait: {}, depts: {}, things: {} }));
+    return a;
+  };
+  const addThing = (a: Acc, k: LossKind, ref: string | undefined, sec: number) => {
+    if (!ref || sec <= 0) return;
+    const m = (a.things[k] ??= new Map());
+    m.set(ref, (m.get(ref) ?? 0) + sec);
+  };
+  const addWait = (a: Acc, dept: Dept, why: WaitCause, sec: number) => {
+    if (sec <= 0) return;
+    const k: LossKind = why === 'shift' ? 'shift' : 'wait';
+    a.sec[k] = (a.sec[k] ?? 0) + sec;
+    if (k === 'wait') {
+      a.wait[why] = (a.wait[why] ?? 0) + sec;
+      a.depts[dept] = (a.depts[dept] ?? 0) + sec;
+    }
+  };
+  for (const d of list) {
+    for (const [spot, x] of Object.entries(d.spots ?? {})) {
+      const a = at(spot);
+      for (const [dept, w] of Object.entries(x.wait ?? {})) for (const [why, sec] of Object.entries(w ?? {})) addWait(a, dept as Dept, why as WaitCause, sec ?? 0);
+      for (const k of ['move', 'walk', 'setup', 'again', 'defect'] as const) if (x[k]) a.sec[k] = (a.sec[k] ?? 0) + x[k]!;
+      for (const [k, m] of Object.entries(x.things ?? {})) for (const [ref, sec] of Object.entries(m ?? {})) addThing(a, k as LossKind, ref, sec);
+    }
+  }
+  if (today) {
+    for (const id of s.open) {
+      const t = s.tasks[id];
+      if (!t.why || t.since === undefined || PLANNED.has(t.kind)) continue;
+      const a = at(taskSpot(db, s, t));
+      addWait(a, AREA[t.kind], t.why, s.t - t.since);
+      addThing(a, t.why === 'shift' ? 'shift' : 'wait', taskThing(s, t), s.t - t.since);
+    }
+  }
+  const plan = planOf(db, s.plant);
+  const out: FloorLoss[] = [];
+  for (const [spot, a] of by) {
+    const total = LOSS_KINDS.reduce((n, k) => n + (k === 'shift' ? 0 : (a.sec[k] ?? 0)), 0);
+    if (total <= 0 && !a.sec.shift) continue;
+    const things: Partial<Record<LossKind, FloorThing[]>> = {};
+    for (const [k, m] of Object.entries(a.things) as [LossKind, Map<string, number>][]) {
+      const top = [...m]
+        .sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0))
+        .slice(0, LOSS_THINGS)
+        .map(([ref, sec]) => ({ ref: thingRef(db, s, plan, ref), sec }));
+      if (top.length > 0) things[k] = top;
+    }
+    out.push({ spot, sec: a.sec, wait: a.wait, depts: a.depts, things, total });
+  }
+  return out.sort((x, y) => y.total - x.total || (x.spot < y.spot ? -1 : x.spot > y.spot ? 1 : 0));
+}
+
+const num = (id: string) => Number(id.slice(1));
+
+/**
+ * Вещь учёта потерь (Б1л) — то, что окну нужно для слов и перехода, как у журнала решений: серия, партия, паллета,
+ * заказы, вывоз, покупатель, человек, помещение, машина. Вещи уже нет на заводе — только то, что осталось в записях.
+ */
+export function thingRef(db: ContentDb, s: PlantState, plan: ReturnType<typeof planOf>, ref: string): JournalRef {
+  const i = ref.indexOf(':');
+  const k = ref.slice(0, i);
+  const id = ref.slice(i + 1);
+  switch (k) {
+    case 'b':
+      return batchRef(s, id);
+    case 'l':
+      return lotRef(s, id);
+    case 'u':
+      return s.units[id] ? { unit: num(id) } : {};
+    case 'o':
+      return s.orders[id] ? { order: num(id), thing: { kind: 'order', n: num(id) } } : { order: num(id) };
+    case 'po': {
+      const po = s.pos[id];
+      return po ? { po: { lines: po.lines.map(l => ({ material: l.material, qty: l.qty })), eta: po.eta } } : {};
+    }
+    case 'w':
+      return { waste: num(id) };
+    case 'c':
+      return { customer: id };
+    case 'p':
+      return personRef(s, s.people[id] ?? s.former[id]);
+    case 'r': {
+      const r = plan.plant.rooms.findIndex(x => x.id === id);
+      return r >= 0 ? { room: id, thing: { kind: 'room', i: r } } : { room: id };
+    }
+    case 'm': {
+      const thing = thingOf(db, s, id, plan);
+      const type = plan.plant.equipment.find(e => e.id === id)?.type ?? plan.plant.lines.flatMap(l => l.machines).find(m => m.id === id)?.type;
+      return { ...(type ? { machine: type } : {}), ...(thing ? { thing } : {}) };
+    }
+    default:
+      return {};
+  }
 }
 
 /** «Держит линию» (Б1к) — из итога линии планёрки: ключевая машина и её главная потеря; ждала соседа — сосед. */

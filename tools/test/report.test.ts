@@ -48,13 +48,22 @@ describe('планёрка: вчера', () => {
     }
   });
 
-  test('главная потеря — наибольшая: ожидания по отделу и причине, потери линий, перевозки, переходы', () => {
+  test('главная потеря — наибольшая: ожидания по отделу и причине без «нет смены», потери линий, перевозки, переходы', () => {
     for (const day of packed) {
       const v = morningView(db, s, { view: 'morning', day });
       const d = s.losses.find(x => x.day === day - 1)!;
       const m = v.main!;
       expect(m.sec).toBeGreaterThan(0);
-      for (const causes of Object.values(d.wait)) for (const sec of Object.values(causes ?? {})) expect(sec ?? 0).toBeLessThanOrEqual(m.sec);
+      // ожидание, пока людей роли нет в смене, — устройство смен, а не потеря дня (Б1л)
+      for (const causes of Object.values(d.wait)) for (const [c, sec] of Object.entries(causes ?? {})) if (c !== 'shift') expect(sec ?? 0).toBeLessThanOrEqual(m.sec);
+      if (m.k === 'wait') {
+        expect(m.cause).not.toBe('shift');
+        // место — где задачи отдела ждали этого больше всего
+        const at = Object.entries(d.spots).map(([k, x]) => [k, x.wait?.[m.dept]?.[m.cause] ?? 0] as const);
+        const most = Math.max(...at.map(x => x[1]));
+        expect(most).toBeGreaterThan(0);
+        expect(at.find(x => x[0] === m.spot)?.[1]).toBe(most);
+      }
       for (const l of v.lines) expect(l.loss?.sec ?? 0).toBeLessThanOrEqual(m.sec);
       expect(Object.values(d.move).reduce((n, x) => n + (x?.sec ?? 0), 0)).toBeLessThanOrEqual(m.sec);
       expect(Object.values(d.walk).reduce((n, x) => n + (x?.sec ?? 0), 0)).toBeLessThanOrEqual(m.sec);

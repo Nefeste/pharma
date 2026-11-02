@@ -291,6 +291,23 @@ describe('«Просят решить»', () => {
 });
 
 describe('сохранения', () => {
+  test('образец схемы 37: записка с ответом-отказом, записка и вопрос открыты — после загрузки отвечают в свой час', async () => {
+    const s = fromSave(db, await Bun.file(new URL('./fixtures/save-v37.json', import.meta.url)).text());
+    const done = s.journal.find(r => r.memo?.end)!;
+    expect(done.memo!.end!.res).toEqual([{ why: 'belowMoq', detail: 'mat.exc.mcc' }]);
+    const memo = rec(s, s.heads.memos![0]);
+    const ask = rec(s, Object.values(s.heads.qs!)[0]);
+    expect(memo.memo!.end).toBeUndefined();
+    expect(ask.q).toMatchObject({ to: 'production', v: 1 });
+    const due = Math.max(memo.memo!.due!, ask.q!.due!);
+    const out = apply(db, s, { kind: 'advance', seconds: due - s.t });
+    expect(out.filter(n => n.kind === 'memoDone')).toEqual([{ kind: 'memoDone', n: memo.n, head: 'supply', seat: 'production', ok: 0, of: 1 }]);
+    expect(['self', 'moot']).toContain(ask.q!.end!.how);
+    expect(s.heads.memos).toBeUndefined();
+    expect(s.heads.qs).toBeUndefined();
+    expect(check(db, s)).toEqual([]);
+  });
+
   test('образец схемы 36 читается: записок и вопросов нет, у расследований никто не ведёт сам', async () => {
     const s = fromSave(db, await Bun.file(new URL('./fixtures/save-v36.json', import.meta.url)).text());
     expect(s.heads.memos).toBeUndefined();

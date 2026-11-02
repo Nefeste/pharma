@@ -62,7 +62,7 @@ async function openGame({ browser, port, errors, requests, q }) {
       // ответ на вопрос (Б5д): у строки журнала — «вы выбрали …»
       answered: n => !!document.querySelector(`#journal [data-test=journal-row][data-n="${n}"] [data-test=q-end][data-how=player]`),
       // записка ушла: в полосе — извещение «Записка …»
-      memo: () => /^Записка /.test(h().notices[0]?.text ?? '') && !!document.querySelector('[data-test=notice]'),
+      memo: () => /^Записка /.test(h().notices[0]?.text ?? '') && /^Записка /.test(document.querySelector('.top .notice')?.textContent ?? ''),
     };
   });
   page.on('console', m => {
@@ -156,24 +156,25 @@ async function director(x) {
     let ask;
     for (let i = 0; i < 80 && !ask; i++) {
       const n = await s.untilEvent();
-      if (n && /^Просят решить: начальник ООК/.test(n.text)) ask = n;
+      if (n && /^Просят решить: Начальник ООК/.test(n.text)) ask = n;
     }
     if (!ask) {
       fail('вопрос об OOS: до 10 сентября его не было');
       return;
     }
     const speed = await page.evaluate(() => window.__game.speed);
-    await page.click('[data-test=notice]');
+    await page.click('[data-test=notice-go]');
     await page.waitForSelector(`#journal [data-test=journal-row][data-n="${ask.go?.journal}"] [data-test=q-open][data-fork=oos]`, { timeout: 20_000 });
     const row = `#journal [data-test=journal-row][data-n="${ask.go.journal}"]`;
     const open = await page.evaluate(r => document.querySelector(r)?.innerText.replace(/\s*\n\s*/g, ' · ') ?? '', row);
     await s.shot('Просят решить: кто ведёт OOS');
-    // доска: шаги до ответа — их делает ООК
-    const boardSteps = async () => {
+    // доска: какие шаги начаты — до ответа их начинает ООК; шаг, начатый до вопроса, может кончиться и после ответа
+    const boardSteps = async shot => {
       await page.keyboard.press('KeyI');
       await page.waitForFunction(() => !!window.__game.store.get().inv.view?.board && !!document.querySelector('#inv'), null, { timeout: 20_000 });
       await s.frames(1);
-      const v = await page.evaluate(() => window.__game.store.get().inv.view.board.steps.filter(x => x.state !== 'can').map(x => `${x.id}:${x.state}`));
+      const v = await page.evaluate(() => window.__game.store.get().inv.view.board.steps.filter(x => x.state !== 'can').map(x => x.id));
+      if (shot) await s.shot(shot);
       await page.keyboard.press('Escape');
       return v;
     };
@@ -188,9 +189,8 @@ async function director(x) {
     await page.waitForFunction(t => window.__game.t >= t + 86400 || window.__game.speed === 0, t0, { timeout: 120_000 });
     await page.evaluate(() => window.__game.actions.setSpeed(0));
     if (await page.evaluate(() => window.__game.store.get().morning.open)) await page.keyboard.press('Escape');
-    const later = await boardSteps();
-    await s.shot('«Веду сам»: доска без шагов ООК');
-    if (speed !== 0 || !/Ведите/.test(open) || !/Веду сам/.test(open) || !/вы выбрали «Веду сам»/.test(after) || later.join() !== before.join())
+    const later = await boardSteps('«Веду сам»: через сутки на доске — шаг, начатый ООК до вопроса');
+    if (speed !== 0 || !/Ведите/.test(open) || !/Веду сам/.test(open) || !/«Веду сам» — вы/.test(after) || later.join() !== before.join())
       fail(`вопрос об OOS: мир ${speed === 0 ? 'стоит' : 'идёт'}, строка «${open.slice(0, 200)}», ответ «${after}», шаги до ${before.join(', ')} и через сутки ${later.join(', ')}`);
     else ok(`вопрос об OOS: «${open.slice(0, 160)}»; «${after}» — через сутки шаги те же: ${before.join(', ') || 'нет'}`);
 
@@ -198,13 +198,13 @@ async function director(x) {
     let rep;
     for (let i = 0; i < 80 && !rep; i++) {
       const n = await s.untilEvent();
-      if (n && /^Просят решить: главный механик/.test(n.text) && /Пуансоны/i.test(n.text)) rep = n;
+      if (n && /^Просят решить: Главный механик — Замена узла/.test(n.text)) rep = n;
     }
     if (!rep) {
       fail('вопрос о замене пуансонов: до середины сентября его не было');
       return;
     }
-    await page.click('[data-test=notice]');
+    await page.click('[data-test=notice-go]');
     const rrow = `#journal [data-test=journal-row][data-n="${rep.go?.journal}"]`;
     await page.waitForSelector(`${rrow} [data-test=q-open][data-fork=replace]`, { timeout: 20_000 });
     const ropen = await page.evaluate(r => document.querySelector(r)?.innerText.replace(/\s*\n\s*/g, ' · ') ?? '', rrow);
@@ -255,7 +255,7 @@ async function quality(x) {
       return;
     }
     const at = await page.evaluate(() => `${document.querySelector('[data-test=date]')?.textContent ?? ''} ${document.querySelector('[data-test=clock]')?.textContent ?? ''}`);
-    await page.click('[data-test=notice]');
+    await page.click('[data-test=notice-go]');
     const row = `#journal [data-test=journal-row][data-n="${done.go?.journal}"]`;
     await page.waitForSelector(`${row} [data-test=memo-end][data-how=answered]`, { timeout: 20_000 });
     const answer = await page.evaluate(r => document.querySelector(`${r} [data-test=memo-end]`)?.textContent ?? '', row);

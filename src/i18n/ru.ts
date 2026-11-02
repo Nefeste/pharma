@@ -569,6 +569,7 @@ export const ru = {
     first: 'Вчерашних суток у завода нет: игра началась сегодня в 07:00.',
     main: {
       wait: (dept: string, cause: string, t: string) => `${dept}: задачи ждали — ${cause} — ${t}`,
+      at: (text: string, place: string) => `${text}; больше всего — ${place}`,
       move: (km: string, t: string, empty: string) => `Перевозки: ${km}, ${t} в пути, порожняком — ${empty}`,
       walk: (km: string, t: string) => `Пешие переходы: ${km}, ${t}`,
     },
@@ -1905,7 +1906,7 @@ export const ru = {
   floor: {
     layers: 'Слои',
     hint: 'Клавиша L — следующий слой',
-    layer: { plain: 'Обычный вид', load: 'Загрузка и OEE', bottle: 'Узкие места', andon: 'Проблемы', people: 'Потоки — люди' },
+    layer: { plain: 'Обычный вид', load: 'Загрузка и OEE', bottle: 'Узкие места', andon: 'Проблемы', losses: 'Потери', people: 'Потоки — люди' },
     win: { today: 'Сегодня', yesterday: 'Вчера', week: '7 суток' },
     winOf: { today: 'сегодня', yesterday: 'вчера', week: 'за 7 суток' },
     part: {
@@ -1981,6 +1982,37 @@ export const ru = {
     po: (po: string, supplier: string) => `заказ поставщику ${po}, ${supplier}`,
     order: (order: string, customer: string, due: string, missing: string) => `заказ ${order}, ${customer}, к ${due}: не хватает ${missing} ящ.`,
     clean: (code: string) => `уборку ждёт серия ${code}, аппаратчики в смене`,
+  },
+  /**
+   * слой «Потери» (Б1л): вид потерь, семьи причин ожидания, места учёта, подсказка у столбика, блок «Потери» в карточке,
+   * вещи потерь
+   */
+  losses: {
+    title: 'Потери',
+    pickTitle: 'Вид',
+    pick: { all: 'все', wait: 'ожидание', shift: 'нет смены', move: 'перевозки', walk: 'переходы', setup: 'уборки и переналадки', again: 'повторные уборки', defect: 'брак' },
+    kind: { wait: 'ожидание', shift: 'нет смены', move: 'перевозки', walk: 'переходы', setup: 'уборки и переналадки', again: 'повторные уборки', defect: 'брак' },
+    family: { people: 'люди', gear: 'приборы и техника', place: 'места' },
+    familyOf: { people: 'заняты, в отпуске, нет часов или допуска', gear: 'заняты, калибровка или квалификация', place: 'нет свободного места, рампа занята' },
+    legend: 'Часы потерь у мест за окно; самое большое место — во всю высоту',
+    shiftApart: '«Нет смены» — работа ждёт начала смены роли: это устройство смен, в «все» не входит',
+    zone: (name: string) => `Зона «${name}»`,
+    rack: (id: string) => `Стеллаж ${id}`,
+    dock: { in: 'Рампа приёмки', out: 'Рампа отгрузки' },
+    yard: 'Двор',
+    row: (what: string, t: string) => `${what} — ${t}`,
+    total: (t: string) => `Всего — ${t}`,
+    shiftRow: (t: string) => `нет смены — ${t}, в «все» не входит`,
+    none: 'За это окно потерь здесь нет',
+    places: 'Места',
+    thing: {
+      batch: (code: string) => `серия ${code}`,
+      lot: (lot: string) => `партия ${lot}`,
+      unit: (n: number) => `паллета ${n}`,
+      order: (n: number) => `заказ покупателя ${n}`,
+      po: (what: string) => `поставка: ${what}`,
+      waste: (n: number) => `вывоз отклонённого ${n}`,
+    },
   },
   /** окно «Показатели» (Б5ж; геймдизайн, §8.6): как работают службы — показатели руководителей и записи за числом */
   kpi: {

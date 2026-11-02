@@ -71,6 +71,18 @@ describe('планёрка: вчера', () => {
     }
   });
 
+  test('лаборатория ждёт прибор — главная потеря: лаборатория и прибор, у места «лаборатория»; «нет смены» больше — не она (Б1л)', () => {
+    const base = s.losses.find(x => x.day === packed[0] - 1)!;
+    const d = {
+      ...structuredClone(base),
+      wait: { qc: { instrument: 10_000, shift: 50_000 }, wms: { people: 3_000 } },
+      spots: { lab: { wait: { qc: { instrument: 9_000, shift: 50_000 } } }, 'zone:C': { wait: { qc: { instrument: 1_000 }, wms: { people: 3_000 } } } },
+      move: {},
+      walk: {},
+    };
+    expect(mainLoss(d, [])).toEqual({ k: 'wait', dept: 'qc', cause: 'instrument', sec: 10_000, spot: 'lab' });
+  });
+
   test('потеря линии — наибольшая составляющая ключевой машины; ждала соседей — рядом сосед', () => {
     const ld = { times: [0, 1, 2].map(() => ({ run: 3000, slow: 0, micro: 0, fail: 0, wait: 0, setup: 0, off: 0, out: 0, slowOut: 0 })), ideal: [0, 0, 0], run: [0, 0, 0], good: 0 };
     // ключевая — вторая: выпуск по номиналу меньше всех; ждала соседей 900 с, у первой — микроостановки 1200 с

@@ -130,15 +130,15 @@ describe('доска и слои', () => {
     ]);
   });
 
-  test('слои по кругу: обычный вид → загрузка и OEE → узкие места → проблемы → потоки — люди → обычный вид', () => {
-    expect(LAYERS).toEqual(['plain', 'load', 'bottle', 'andon', 'people']);
-    expect(LAYERS.map(nextLayer)).toEqual(['load', 'bottle', 'andon', 'people', 'plain']);
+  test('слои по кругу: обычный вид → загрузка и OEE → узкие места → проблемы → потери → потоки — люди → обычный вид', () => {
+    expect(LAYERS).toEqual(['plain', 'load', 'bottle', 'andon', 'losses', 'people']);
+    expect(LAYERS.map(nextLayer)).toEqual(['load', 'bottle', 'andon', 'losses', 'people', 'plain']);
   });
 });
 
 describe('узкие места и проблемы (Б1к)', () => {
-  test('слои данных — «Загрузка», «Узкие места», «Проблемы»; обычный вид и потоки — нет', () => {
-    expect(LAYERS.filter(x => DATA_LAYERS.has(x))).toEqual(['load', 'bottle', 'andon']);
+  test('слои данных — «Загрузка», «Узкие места», «Проблемы», «Потери» (Б1л); обычный вид и потоки — нет', () => {
+    expect(LAYERS.filter(x => DATA_LAYERS.has(x))).toEqual(['load', 'bottle', 'andon', 'losses']);
   });
 
   test('точка над помещением — свободная клетка его пола у середины, а нет такой — середина; есть у каждого помещения', () => {

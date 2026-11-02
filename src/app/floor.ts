@@ -15,16 +15,16 @@ import type { Thing } from '../sim/views';
 import type { Box } from './pick';
 
 /**
- * Слои слева (геймдизайн, §3.6, §18): обычный вид, загрузка и OEE (Б1и), узкие места и проблемы (Б1к), потоки людей
- * (Б1г) — по кругу клавишей L.
+ * Слои слева (геймдизайн, §3.6, §18): обычный вид, загрузка и OEE (Б1и), узкие места и проблемы (Б1к), потери (Б1л),
+ * потоки людей (Б1г) — по кругу клавишей L.
  */
-export const LAYERS = ['plain', 'load', 'bottle', 'andon', 'people'] as const;
+export const LAYERS = ['plain', 'load', 'bottle', 'andon', 'losses', 'people'] as const;
 export type Layer = (typeof LAYERS)[number];
 
 export const nextLayer = (l: Layer): Layer => LAYERS[(LAYERS.indexOf(l) + 1) % LAYERS.length];
 
 /** Слои данных: с ними стрелки перевозок не проступают, люди и техника остаются, светильников под потолком нет. */
-export const DATA_LAYERS: ReadonlySet<Layer> = new Set<Layer>(['load', 'bottle', 'andon']);
+export const DATA_LAYERS: ReadonlySet<Layer> = new Set<Layer>(['load', 'bottle', 'andon', 'losses']);
 
 /**
  * Размеры (геймдизайн, §3.6; гипотезы), м: столбик помещения и машины линии — сторона; полная высота — всё окно; высота

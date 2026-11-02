@@ -31,6 +31,7 @@ import { type Actions, holds, type Hud, LIVE, NO_RUN, PLAN_RUN, type Speed, type
 import { type ArtMode, loadArt } from './art';
 import { keepFirsts, keptFirsts } from './firsts';
 import { andonBoxes, andonMarks, barBoxes, DATA_LAYERS, midSpot, nextLayer, plateBoxes, platesOf } from './floor';
+import { lossBoxes } from './losses';
 import { fillsOf, Flows, lineArrows, moveArrows, movesOf, peopleMoves } from './flows';
 import { type Movers, moversAt, taskIcons } from './movers';
 import { stopKey } from '../sim/protocol';
@@ -269,7 +270,7 @@ export class Game {
       } else if (d.view === 'floor') {
         // вид «Пол» (Б1и): столбики и доски на полу, блок «Загрузка» в карточке, подсказка; таблички «Узких мест» (Б1к)
         this.store.set({ floor: { ...this.store.get().floor, view: d } });
-        this.stage.setFloor(d);
+        this.stage.setFloor(d, this.store.get().floor.pick);
         this.stage.plates.set(platesOf(this.layout, d));
       } else if (d.view === 'andon') {
         // вид «Андон» (Б1к): значки над вещами ставит кадр — фуры, паллеты и техника двигаются
@@ -764,7 +765,7 @@ export class Game {
     setLayer: l => {
       // слой данных один (Б1и): с ним стрелки перевозок не проступают; «Потоки — люди» — стрелки переходов людей
       this.stage.forceLayer(l === 'people');
-      this.stage.setDataLayer(DATA_LAYERS.has(l) ? (l as 'load' | 'bottle' | 'andon') : undefined);
+      this.stage.setDataLayer(DATA_LAYERS.has(l) ? (l as 'load' | 'bottle' | 'andon' | 'losses') : undefined);
       this.store.set({ layer: l, floor: { ...this.store.get().floor, hover: undefined } });
       this.sendViews();
     },
@@ -772,6 +773,21 @@ export class Game {
     setFloorWin: win => {
       this.store.set({ floor: { ...this.store.get().floor, win } });
       this.sendViews();
+    },
+    setLossPick: pick => {
+      // вид потерь (Б1л) — тот же вид «Пол»: столбики заново, поток расчёта не спрашиваем
+      const f = this.store.get().floor;
+      this.store.set({ floor: { ...f, pick, hover: undefined } });
+      this.stage.setFloor(f.view, pick);
+    },
+    setLossSpot: spot => this.store.set({ floor: { ...this.store.get().floor, spot } }),
+    showSpot: spot => {
+      // планёрка (Б1л): место главной потери — карточка его вещи с блоком «Потери» за вчера
+      const at = this.stage.losses.spots.find(x => x.spot === spot);
+      if (!at) return;
+      this.store.set({ floor: { ...this.store.get().floor, win: 'yesterday', spot } });
+      this.actions.closeMorning(false);
+      this.actions.show(at.thing);
     },
     understood: kind => {
       const list = this.store.get().firsts;
@@ -1044,9 +1060,9 @@ export class Game {
     if (h.kpi.open) list.push({ id: 'kpi', view: 'kpi', tab: h.kpi.tab, ...(h.kpi.why ? { why: h.kpi.why } : {}), ...(h.kpi.month !== undefined ? { month: h.kpi.month } : {}) });
     // «Сейчас» — и при закрытой панели: карточке — для «Смотреть», смотрящему — чтобы знать, когда работа кончилась
     if (h.now.open || this.selected || this.watching) list.push({ id: 'now', view: 'now' });
-    // «Пол» (Б1и) — пока включён слой «Загрузка» или «Узкие места» (Б1к) и пока открыта карточка помещения или машины: в
-    // ней блоки «Загрузка» и «Узкие места»; «Андон» (Б1к) — пока включён слой «Проблемы»
-    if (h.layer === 'load' || h.layer === 'bottle' || this.selected?.kind === 'room' || this.selected?.kind === 'machine') list.push({ id: 'floor', view: 'floor', win: h.floor.win });
+    // «Пол» (Б1и) — пока включён слой «Загрузка», «Узкие места» (Б1к) или «Потери» (Б1л) и пока открыта карточка помещения
+    // или машины: в ней блоки «Загрузка», «Узкие места» и «Потери»; «Андон» (Б1к) — пока включён слой «Проблемы»
+    if (h.layer === 'load' || h.layer === 'bottle' || h.layer === 'losses' || this.selected?.kind === 'room' || this.selected?.kind === 'machine') list.push({ id: 'floor', view: 'floor', win: h.floor.win });
     if (h.layer === 'andon') list.push({ id: 'andon', view: 'andon' });
     const key = JSON.stringify(list);
     if (key === this.viewsSent) return;
@@ -1094,22 +1110,26 @@ export class Game {
   }
 
   /**
-   * Короба меток слоя данных: столбики «Загрузки» (Б1и), таблички «Узких мест» и значки андона (Б1к) — с высоты участка
-   * таблички и значки крупнее, короба тоже; слой не данных — пусто.
+   * Короба меток слоя данных: столбики «Загрузки» (Б1и), таблички «Узких мест» и значки андона (Б1к), столбики «Потерь» с
+   * их местом (Б1л) — с высоты участка таблички и значки крупнее, короба тоже; слой не данных — пусто.
    */
-  private markBoxes(): Box[] {
+  private markBoxes(): (Box & { spot?: string })[] {
     const l = this.store.get().layer;
     const k = 1 + Math.min(1, Math.max(0, this.stage.site));
     if (l === 'load') return barBoxes(this.stage.floor.spots);
+    if (l === 'losses') return lossBoxes(this.stage.losses.bars);
     if (l === 'bottle') return plateBoxes(this.stage.plates.plates, k);
     if (l === 'andon') return andonBoxes(this.stage.andon.marks, k);
     return [];
   }
 
-  /** Метка слоя под курсором — для подсказки: часы частей столбика, ожидание у места, проблемы вещи; мимо — `undefined`. */
-  private barAt(clientX: number, clientY: number): Thing | undefined {
+  /**
+   * Метка слоя под курсором — для подсказки: часы частей столбика, ожидание у места, проблемы вещи, потери места (Б1л);
+   * мимо — `undefined`.
+   */
+  private markAt(clientX: number, clientY: number): (Box & { spot?: string }) | undefined {
     const boxes = this.markBoxes();
-    return boxes.length > 0 ? nearest(this.stage.ray(clientX, clientY), boxes)?.thing : undefined;
+    return boxes.length > 0 ? nearest(this.stage.ray(clientX, clientY), boxes) : undefined;
   }
 
   /**
@@ -1139,12 +1159,12 @@ export class Game {
     }
   };
 
-  /** Наведение на столбик: подсказка — у курсора, где он был, когда навели; ушли со столбика — подсказки нет. */
+  /** Наведение на метку: подсказка — у курсора, где он был, когда навели; ушли с метки — подсказки нет. */
   private hover(clientX: number, clientY: number) {
     const f = this.store.get().floor;
-    const t = this.barAt(clientX, clientY);
-    if (same(t, f.hover?.thing) || (!t && !f.hover)) return;
-    this.store.set({ floor: { ...f, hover: t ? { thing: t, x: clientX, y: clientY } : undefined } });
+    const m = this.markAt(clientX, clientY);
+    if ((same(m?.thing, f.hover?.thing) && m?.spot === f.hover?.spot) || (!m && !f.hover)) return;
+    this.store.set({ floor: { ...f, hover: m ? { thing: m.thing, x: clientX, y: clientY, ...(m.spot ? { spot: m.spot } : {}) } : undefined } });
   }
 
   /** Рамка выбранного в этом кадре: след паллеты, машины, фуры, помещения; круг у человека и техники. */
@@ -1208,7 +1228,10 @@ export class Game {
         this.mouse.drag = { x: e.clientX, y: e.clientY, moved: 0, button: e.button };
         el.setPointerCapture(e.pointerId);
       } else if (e.button === 0) {
-        // ЛКМ — выбрать вещь под курсором; мимо — снять выбор (как в «Больнице»)
+        // ЛКМ — выбрать вещь под курсором; мимо — снять выбор (как в «Больнице»); у столбика «Потерь» (Б1л) — и его место:
+        // блок «Потери» карточки раскроет его
+        const spot = this.markAt(e.clientX, e.clientY)?.spot;
+        if (spot) this.actions.setLossSpot(spot);
         this.actions.select(this.thingAt(e.clientX, e.clientY));
       }
     });

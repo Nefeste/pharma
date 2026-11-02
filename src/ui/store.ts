@@ -14,6 +14,7 @@ import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import type { DossierView } from '../sim/dossier';
 import type { AndonView } from '../sim/andon';
+import type { LossPick } from '../app/losses';
 import type { FloorView, FloorWin } from '../sim/floor';
 import type { InvView } from '../sim/inv';
 import type { JournalView } from '../sim/journal';
@@ -120,15 +121,15 @@ export interface Hud {
   kpi: { open: boolean; tab: SeatId; why?: string; month?: number; view?: KpiView };
   /**
    * слой слева (Б1и; геймдизайн, §3.6, §18): обычный вид; «Загрузка и OEE» — столбики, числа, доски «План — факт»;
-   * «Узкие места» и «Проблемы» (Б1к) — таблички над местами, где серии ждут, и значки андона; «Потоки — люди» (Б1г) —
-   * стрелки переходов людей между помещениями вместо перевозок паллет
+   * «Узкие места» и «Проблемы» (Б1к) — таблички над местами, где серии ждут, и значки андона; «Потери» (Б1л) — столбики
+   * часов потерь у мест; «Потоки — люди» (Б1г) — стрелки переходов людей между помещениями вместо перевозок паллет
    */
   layer: Layer;
   /**
-   * вид «Пол» (Б1и): окно слоя — сегодня, вчера, 7 суток; последний вид; столбик под курсором и где был курсор, когда
-   * на него навели
+   * вид «Пол» (Б1и): окно слоя — сегодня, вчера, 7 суток; вид потерь (Б1л); место, чьи потери раскрыты в блоке «Потери»
+   * карточки; последний вид; метка под курсором — у столбика «Потерь» с его местом — и где был курсор, когда на неё навели
    */
-  floor: { win: FloorWin; view?: FloorView; hover?: { thing: Thing; x: number; y: number } };
+  floor: { win: FloorWin; pick: LossPick; spot?: string; view?: FloorView; hover?: { thing: Thing; x: number; y: number; spot?: string } };
   /** вид «Андон» (Б1к): что не работает сейчас — пока включён слой «Проблемы»; подсказка — у `floor.hover` */
   andon: { view?: AndonView };
   /** пояснения при первом событии (Б1г): виды, которые игрок уже понял, — запоминаются в окне (src/app/firsts.ts) */
@@ -211,7 +212,7 @@ export const initial: Hud = {
   ref: { open: false, tab: 'recipes' },
   kpi: { open: false, tab: 'director' },
   layer: 'plain',
-  floor: { win: 'today' },
+  floor: { win: 'today', pick: 'all' },
   andon: {},
   firsts: [],
 };
@@ -358,6 +359,12 @@ export interface Actions {
   setLayer(l: Layer): void;
   nextLayer(): void;
   setFloorWin(w: FloorWin): void;
+  /** вид потерь слоя «Потери» (Б1л) */
+  setLossPick(p: LossPick): void;
+  /** раскрыть место в блоке «Потери» карточки (Б1л) */
+  setLossSpot(spot: string): void;
+  /** планёрка (Б1л): к месту главной потери — его карточка с блоком «Потери» за вчера */
+  showSpot(spot: string): void;
   understood(kind: string): void;
   /** экран «Кем вы будете»: открыть — мир на паузе; отметить место; взять отмеченные — команда `seat`; закрыть без смены */
   openSeats(): void;

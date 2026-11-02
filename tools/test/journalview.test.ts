@@ -169,6 +169,8 @@ describe('записки и вопросы (Б5д)', () => {
     const row = open.memos[0];
     expect(row.memo).toEqual({ at: memoAt(db, m, 'maint')!, can: true });
     expect(open.rows.map(r => r.n)).toEqual([row.n]);
+    // карточка пресса — «Кто решил»: записка ждёт ответа
+    expect(whoMachine(db, m, 'press-1').find(r => r.n === row.n)!.memo).toEqual({ at: memoAt(db, m, 'maint')!, can: true, to: 'maint' });
     const t: PlantState = structuredClone(m);
     apply(db, t, { kind: 'advance', seconds: DAY });
     const v = journalView(db, t, q());
@@ -178,6 +180,10 @@ describe('записки и вопросы (Б5д)', () => {
     expect(done.memo!.end!.as!.role).toBe('role.chief-mechanic');
     const n = (done.memo!.end!.res![0] as { n: number }).n;
     expect(v.rows.find(r => r.n === n)!.via).toEqual({ n: row.n, seat: 'quality' });
+    // в карточке — ответ и запись главного механика «по записке»
+    const card = whoMachine(db, t, 'press-1');
+    expect(card.find(r => r.n === row.n)!.memo!.end!.res).toHaveLength(1);
+    expect(card.find(r => r.n === n)!.via).toEqual({ n: row.n, seat: 'quality' });
     // планёрка следующего утра — ответ на записку в «Записках и вопросах»
     const day = momentOf(t.start, t.t).day;
     expect(morningView(db, t, { view: 'morning', day }).memos.map(r => r.n)).toEqual([row.n]);

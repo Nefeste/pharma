@@ -298,7 +298,7 @@ export function dossierView(db: ContentDb, s: PlantState, q: DossierQuery): Doss
     view.bulk = { code: codeOf(bulk.code), status: bulk.status, ...(bulk.since !== undefined ? { since: bulk.since } : {}), ...(u ? { unit: num(u.id) } : {}) };
   }
   if (b.pack) view.pack = packOf(db, s, b, b.pack);
-  const who = whoBatch(s, b);
+  const who = whoBatch(s, b, db);
   if (who.length > 0) view.who = who;
   return view;
 }

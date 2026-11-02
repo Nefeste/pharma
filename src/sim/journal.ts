@@ -363,11 +363,11 @@ export function askInfo(s: PlantState, r: Decision): AskInfo | undefined {
  * Записка в строке (Б5д): без ответа — когда ответят — назначенное мгновение или по рабочему времени руководителя, —
  * и отозвать её может игрок; с ответом — кто ответил за руководителя.
  */
-export function memoInfo(db: ContentDb, s: PlantState, r: Decision): MemoInfo | undefined {
+export function memoInfo(db: ContentDb | undefined, s: PlantState, r: Decision): MemoInfo | undefined {
   const m = r.memo;
   if (!m || r.d.kind !== 'memo') return undefined;
   if (!m.end) {
-    const at = m.due ?? memoAt(db, s, r.d.to);
+    const at = m.due ?? (db ? memoAt(db, s, r.d.to) : undefined);
     return { ...(at !== undefined ? { at } : {}), can: true };
   }
   const as = m.end.p ? asOf(s, { ...r, p: m.end.p, ...(m.end.io ? { io: true as const } : {}) }) : undefined;
@@ -470,6 +470,8 @@ export interface WhoRow {
   via?: { n: number; seat?: SeatId };
   /** развилка «Просят решить» (Б5д): ответ — игрок, сам или «не нужно» */
   q?: QInfo;
+  /** служебная записка игрока об этой вещи (Б5д): кому, когда ответят и ответ */
+  memo?: MemoInfo & { to: Head };
 }
 
 const verdictOf = (d: Decided): string | undefined => {
@@ -494,7 +496,7 @@ const verdictOf = (d: Decided): string | undefined => {
  * Строки «Кто решил» вещи: решения и предложения руководителей (Б5б) — устаревшие и ненужные предложения не решали
  * ничего, их здесь нет.
  */
-const whoRows = (s: PlantState, f: (d: Decided) => boolean): WhoRow[] =>
+const whoRows = (s: PlantState, f: (d: Decided) => boolean, db?: ContentDb): WhoRow[] =>
   s.journal
     .filter(r => f(r.d) && (!r.ask?.end || r.ask.end.how === 'ok' || r.ask.end.how === 'no'))
     .map(r => {
@@ -502,18 +504,26 @@ const whoRows = (s: PlantState, f: (d: Decided) => boolean): WhoRow[] =>
       const as = asOf(s, r);
       const q = qInfo(undefined, s, r);
       const via = r.via !== undefined ? { n: r.via, ...(recordOf(s, r.via)?.seat ? { seat: recordOf(s, r.via)!.seat } : {}) } : undefined;
-      return { n: r.n, t: r.t, by: r.by, ...(r.seat ? { seat: r.seat } : {}), kind: r.d.kind, ...(verdictOf(r.d) ? { v: verdictOf(r.d) } : {}), ...(ask ? { ask } : {}), ...(as ? { as } : {}), ...(via ? { via } : {}), ...(q ? { q } : {}) };
+      const m = memoInfo(db, s, r);
+      const memo = m && r.d.kind === 'memo' ? { ...m, to: r.d.to } : undefined;
+      return { n: r.n, t: r.t, by: r.by, ...(r.seat ? { seat: r.seat } : {}), kind: r.d.kind, ...(verdictOf(r.d) ? { v: verdictOf(r.d) } : {}), ...(ask ? { ask } : {}), ...(as ? { as } : {}), ...(via ? { via } : {}), ...(q ? { q } : {}), ...(memo ? { memo } : {}) };
     });
 
-/** Серия: задание, решение по балку, вывод расследования, решения уполномоченного лица; с Б5д — кто ведёт OOS. */
-export function whoBatch(s: PlantState, b: Batch): WhoRow[] {
+/** Записка игрока (Б5д), в которой есть команда о вещи: её строка — в «Кто решил» вещи. */
+const memoAbout = (d: Decided, f: (c: Command) => boolean) => d.kind === 'memo' && d.cmds.some(f);
+
+/**
+ * Серия: задание, решение по балку, вывод расследования, решения уполномоченного лица; с Б5д — кто ведёт OOS и записки о
+ * сдвиге серии. `db` — для часа ответа на записку, которую ещё не назначили.
+ */
+export function whoBatch(s: PlantState, b: Batch, db?: ContentDb): WhoRow[] {
   const invs = new Set(Object.values(s.investigations).filter(i => i.batch === b.id).map(i => i.id));
-  return whoRows(s, d => ((d.kind === 'order' || d.kind === 'batch') && d.batch === b.id) || (d.kind === 'lot' && d.lot === b.bulk) || (d.kind === 'conclude' && invs.has(d.inv)) || (d.kind === 'fork' && d.fork === 'oos' && invs.has(d.inv)));
+  return whoRows(s, d => ((d.kind === 'order' || d.kind === 'batch') && d.batch === b.id) || (d.kind === 'lot' && d.lot === b.bulk) || (d.kind === 'conclude' && invs.has(d.inv)) || (d.kind === 'fork' && d.fork === 'oos' && invs.has(d.inv)) || memoAbout(d, c => c.kind === 'shift' && c.batch === b.id), db);
 }
 
-/** Партия: заказ поставщику, с которым она пришла, и решение начальника ОКК. */
-export function whoLot(s: PlantState, lot: Lot): WhoRow[] {
-  return whoRows(s, d => (d.kind === 'po' && d.po === lot.po) || (d.kind === 'lot' && d.lot === lot.id));
+/** Партия: заказ поставщику, с которым она пришла, и решение начальника ОКК; с Б5д — записки «ускорить испытания». */
+export function whoLot(s: PlantState, lot: Lot, db?: ContentDb): WhoRow[] {
+  return whoRows(s, d => (d.kind === 'po' && d.po === lot.po) || (d.kind === 'lot' && d.lot === lot.id) || memoAbout(d, c => c.kind === 'rush' && c.lot === lot.id), db);
 }
 
 /** Отклонение: оценка влияния; у результата вне спецификации — решение по партии и вывод расследования. */
@@ -522,15 +532,16 @@ export function whoDev(s: PlantState, id: string): WhoRow[] {
   return whoRows(s, d => (d.kind === 'assess' && d.dev === id) || (d.kind === 'lot' && d.dev === id) || (!!dev?.inv && d.kind === 'conclude' && d.inv === dev.inv));
 }
 
-/** Актив: визиты подрядчика; с Б5д — развилки «визит держит серию». */
-export const whoAsset = (s: PlantState, id: string): WhoRow[] => whoRows(s, d => (d.kind === 'visit' || (d.kind === 'fork' && d.fork === 'visit')) && d.asset === id);
+/** Актив: визиты подрядчика; с Б5д — развилки «визит держит серию» и записки о переносе визита. */
+export const whoAsset = (s: PlantState, id: string, db?: ContentDb): WhoRow[] =>
+  whoRows(s, d => ((d.kind === 'visit' || (d.kind === 'fork' && d.fork === 'visit')) && d.asset === id) || memoAbout(d, c => c.kind === 'visit' && c.asset === id), db);
 
 /** Машина или оборудование: ремонты и замены её узлов, заказы ЗИП их запчастей. */
 export function whoMachine(db: ContentDb, s: PlantState, machine: string): WhoRow[] {
   const parts = Object.values(s.parts).filter(p => p.machine === machine);
   const ids = new Set(parts.map(p => p.id));
   const spares = new Set(parts.map(p => (p.line ? db.machines[p.of] : db.equipment[p.of])?.parts.find(x => x.id === p.type)?.spare).filter((x): x is Id => !!x));
-  return whoRows(s, d => ((d.kind === 'repair' || d.kind === 'replace' || (d.kind === 'fork' && d.fork === 'replace')) && ids.has(d.part)) || (d.kind === 'spare' && spares.has(d.spare)));
+  return whoRows(s, d => ((d.kind === 'repair' || d.kind === 'replace' || (d.kind === 'fork' && d.fork === 'replace')) && ids.has(d.part)) || (d.kind === 'spare' && spares.has(d.spare)) || memoAbout(d, c => c.kind === 'maintain' && c.machine === machine), db);
 }
 
 /**

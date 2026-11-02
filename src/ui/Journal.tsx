@@ -666,9 +666,48 @@ export function WhoList({ rows, start, actions, title, test }: { rows: readonly 
                 {r.q.end ? (r.q.end.opt ? `${T.journal.fork.opt[r.q.end.opt] ?? r.q.end.opt}` : '') : T.journal.ask.open}
               </div>
             ) : null}
+            {r.memo ? <WhoMemo n={r.n} memo={r.memo} start={start} actions={actions} /> : null}
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * Записка в «Кто решил» вещи (Б5д): ждёт — когда ответят и «Отозвать»; отозвана; ответ — когда, кто ответил и причины
+ * отказа, если команда не прошла.
+ */
+function WhoMemo({ n, memo, start, actions }: { n: number; memo: NonNullable<WhoRow['memo']>; start: Ymd; actions: Actions }) {
+  const M = T.journal.memo;
+  if (!memo.end)
+    return (
+      <div className="muted" data-test="who-memo" data-how="open">
+        <span className="warn">{memo.at !== undefined ? M.at(whenText(start, memo.at)) : M.never}</span>{' '}
+        {memo.can ? (
+          <button type="button" className="small" onClick={() => actions.withdraw(n)} title={M.withdrawHint} data-test="memo-withdraw">
+            {M.withdraw}
+          </button>
+        ) : null}
+      </div>
+    );
+  if (memo.end.off)
+    return (
+      <div className="muted" data-test="who-memo" data-how="off">
+        {M.off(whenText(start, memo.end.t))}
+      </div>
+    );
+  return (
+    <div className="muted" data-test="who-memo" data-how="answered">
+      {M.answered(whenText(start, memo.end.t), whoText(memo.to, undefined, memo.end.as))}
+      {(memo.end.res ?? []).flatMap((x, i) =>
+        'why' in x ? [
+          <span key={i} className="warn">
+            {' · '}
+            {M.no(T.notices.why[x.why] ?? x.why)}
+          </span>,
+        ] : [],
+      )}
     </div>
   );
 }

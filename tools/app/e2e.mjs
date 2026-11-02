@@ -59,11 +59,12 @@
 // «Вывоз отходов». Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png. Первая неделя
 // (docs/specs/2026-10-vertical-slice.md): путь новичка от «Кем вы будете» до «За эту игру» на планёрке 8 сентября в
 // чистом окне — tools/app/e2e-week.mjs.
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findChromium } from './e2e-lib.mjs';
+import { memoPart } from './e2e-memo.mjs';
 import { weekPart } from './e2e-week.mjs';
 import { serve } from './serve.mjs';
 
@@ -265,16 +266,17 @@ const answerAsks = async (no = () => false) => {
   return out;
 };
 
-// части: основная — всё, что выше в шапке; «Первая неделя» — путь новичка в чистом окне (tools/app/e2e-week.mjs).
-// `--only main` или `--only week` — одна из них
+// части: основная — всё, что выше в шапке; «Первая неделя» — путь новичка в чистом окне (tools/app/e2e-week.mjs);
+// «Записки и вопросы» (Б5д) — два чистых окна (tools/app/e2e-memo.mjs). `--only main`, `week` или `memo` — одна из них
 const only = arg('only', '');
 try {
-  // основная часть кончилась — её страницу закрыть: она рисует кадры и отняла бы у первой недели процессор
-  if (only !== 'week') {
+  // основная часть кончилась — её страницу закрыть: она рисует кадры и отняла бы у других частей процессор
+  if (only === '' || only === 'main') {
     await mainPart();
     await page.close();
-  }
-  if (only !== 'main') await weekPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  } else await page.close();
+  if (only === '' || only === 'week') await weekPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'memo') await memoPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
@@ -1289,9 +1291,10 @@ async function mainPart() {
   if (bottleShot) sheet.push(bottleShot);
   await writeSheet(sheet);
 
-  // автопаузы (Б2а): у производства и качества пятнадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
+  // автопаузы (Б2а): у производства и качества семнадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
   // вышел», с Б3г — «пара приостановлена», с Б4а — «сверхурочные года на исходе», с Б4в — «заявление об увольнении»,
-  // с Б4г — «черновик графика отпусков», с Б5б — «предложение руководителя», с Б5в — «некому решить»),
+  // с Б4г — «черновик графика отпусков», с Б5б — «предложение руководителя», с Б5в — «некому решить», с Б5д — «просят
+  // решить» и «ответ на служебную записку»),
   // «фура» и «заказ» — не их; планёрку отключили — окно помнит; «До события» — мир
   // встал не в 08:00, а на первом событии автопаузы мест игрока: извещение со знаком паузы, часы стоят, отставания нет.
   // Планёрку включили обратно
@@ -1308,7 +1311,7 @@ async function mainPart() {
     await page.screenshot({ path: join(out, 'e2e-pauses.png') });
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('Escape');
-    if (menu.all !== 15 || menu.on !== 15 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
+    if (menu.all !== 17 || menu.on !== 17 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
       fail(`автопаузы: в меню ${menu.all}, включено ${menu.on}, не ваши ${menu.notYours.join(', ')}, в окне «${kept}»`);
     else ok(`автопаузы: в меню ${menu.all}, не ваши — ${menu.notYours.join(', ')}; планёрку отключили — в окне ${kept}; Esc закрыл меню`);
     const t0 = await gameT();

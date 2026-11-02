@@ -16,14 +16,21 @@ const SMALL = 34;
 const DIGIT = 0.72;
 /** Рамка полной высоты — светлая, полупрозрачная: видно, сколько окна не занято. */
 const FRAME = 0xe8edf0;
+/**
+ * Клеток в ряду текстуры: мест бывает под сорок (Б1л), а столбец из сорока клеток — 5 600 точек в высоту, больше, чем
+ * берут иные видеокарты; сеткой по четыре — 1 600 × 1 400.
+ */
+const GRID = 4;
 
 const VERTEX = /* glsl */ `
 attribute float aCell;
 uniform vec2 uSize;
-uniform float uCount;
+uniform vec2 uGrid;
 varying vec2 vUv;
 void main() {
-  vUv = vec2(uv.x, (uv.y + (uCount - 1.0 - aCell)) / uCount);
+  float col = mod(aCell, uGrid.x);
+  float row = floor(aCell / uGrid.x + 0.001);
+  vUv = vec2((uv.x + col) / uGrid.x, (uv.y + (uGrid.y - 1.0 - row)) / uGrid.y);
   vec4 mv = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
   mv.xy += position.xy * uSize;
   gl_Position = projectionMatrix * mv;
@@ -69,7 +76,8 @@ export class Columns {
   private cell: THREE.InstancedBufferAttribute;
   private atlas: CanvasRenderingContext2D;
   private atlasTex: THREE.CanvasTexture;
-  private uniforms: { uMap: { value: THREE.Texture | null }; uSize: { value: THREE.Vector2 }; uCount: { value: number } };
+  private uniforms: { uMap: { value: THREE.Texture | null }; uSize: { value: THREE.Vector2 }; uGrid: { value: THREE.Vector2 } };
+  private cols: number;
   private keys: string[];
   private m = new THREE.Matrix4();
   private q = new THREE.Quaternion();
@@ -111,13 +119,15 @@ export class Columns {
       frame.name = `${name} frames`;
       this.group.add(frame);
     }
-    // числа: клетка на место, по порядку мест
+    // числа: клетка на место, по порядку мест — рядами по `GRID`
+    this.cols = Math.min(GRID, Math.max(1, n));
+    const rows = Math.ceil(Math.max(1, n) / this.cols);
     const c = document.createElement('canvas');
-    c.width = CELL_W;
-    c.height = CELL_H * Math.max(1, n);
+    c.width = CELL_W * this.cols;
+    c.height = CELL_H * rows;
     this.atlas = c.getContext('2d')!;
     this.atlasTex = canvasTex(c);
-    this.uniforms = { uMap: { value: this.atlasTex }, uSize: { value: new THREE.Vector2(1, 1) }, uCount: { value: Math.max(1, n) } };
+    this.uniforms = { uMap: { value: this.atlasTex }, uSize: { value: new THREE.Vector2(1, 1) }, uGrid: { value: new THREE.Vector2(this.cols, rows) } };
     const geo = new THREE.PlaneGeometry(1, 1);
     this.cell = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, n)), 1);
     geo.setAttribute('aCell', this.cell);
@@ -177,8 +187,9 @@ export class Columns {
 
   private drawLabel(i: number, [big, small]: [string, string]) {
     const g = this.atlas;
-    const y = i * CELL_H;
-    g.clearRect(0, y, CELL_W, CELL_H);
+    const x = (i % this.cols) * CELL_W;
+    const y = Math.floor(i / this.cols) * CELL_H;
+    g.clearRect(x, y, CELL_W, CELL_H);
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.lineJoin = 'round';
@@ -189,9 +200,9 @@ export class Columns {
       const fit = w > CELL_W - 2 * stroke ? Math.floor((px * (CELL_W - 2 * stroke)) / w) : px;
       g.font = `${weight} ${fit}px system-ui, sans-serif`;
       g.lineWidth = stroke;
-      g.strokeText(text, CELL_W / 2, y + CELL_H * at);
+      g.strokeText(text, x + CELL_W / 2, y + CELL_H * at);
       g.fillStyle = color;
-      g.fillText(text, CELL_W / 2, y + CELL_H * at);
+      g.fillText(text, x + CELL_W / 2, y + CELL_H * at);
     };
     line(big, BIG, 700, 0.34, '#ffffff', 10);
     line(small, SMALL, 600, 0.8, '#e4ecef', 7);

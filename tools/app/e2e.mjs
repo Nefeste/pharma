@@ -3196,14 +3196,14 @@ async function mainPart() {
     await openBosses();
     const heads = await bossNow();
     const deputies = await page.evaluate(() => document.querySelectorAll('[data-test=ref-bosses] [data-test=card-boss-deputy] [data-test=card-boss-deputy-who]').length);
+    await page.screenshot({ path: join(out, 'e2e-bosses.png') });
+    sheet.push({ file: join(out, 'e2e-bosses.png'), label: 'Б5в · «Люди» · руководители' });
     // переезд — только тем, кого в городе по объявлению не найти
     await page.click('[data-test=vacancy-open]');
     await page.selectOption('[data-test=vacancy-role]', 'role.plan-head');
     const moveHead = await page.evaluate(() => [...document.querySelectorAll('[data-test=vacancy-via] option')].some(o => o.getAttribute('value') === 'move'));
     await page.selectOption('[data-test=vacancy-role]', 'role.packer');
     const movePacker = await page.evaluate(() => [...document.querySelectorAll('[data-test=vacancy-via] option')].some(o => o.getAttribute('value') === 'move'));
-    await page.screenshot({ path: join(out, 'e2e-bosses.png') });
-    sheet.push({ file: join(out, 'e2e-bosses.png'), label: 'Б5в · «Люди» · руководители' });
     // карточка начальника отдела планирования: горизонт — запас позиций политики
     await page.click('[data-test=ref-bosses] [data-test=boss-card][data-head=plan]');
     await page.waitForSelector('[data-test=card-boss-limit]', { timeout: 20_000 });
@@ -3218,7 +3218,7 @@ async function mainPart() {
     await page.screenshot({ path: join(out, 'e2e-boss-card.png') });
     sheet.push({ file: join(out, 'e2e-boss-card.png'), label: 'Б5в · карточка руководителя' });
     const seven = ['plan', 'mes', 'maint', 'qa', 'qc', 'supply', 'wms'];
-    if (Object.keys(heads).join() !== seven.join() || deputies !== 7 || !moveHead || movePacker || !cover || !new RegExp(`смотрит на ${cover}\u00a0(сутки|суток) вперёд`).test(card.limit) || !card.later || !card.kpi)
+    if (Object.keys(heads).join() !== seven.join() || deputies !== 7 || !moveHead || movePacker || !cover || !new RegExp(`смотрит на ${cover}[ \u00a0](сутки|суток) вперёд`).test(card.limit) || !card.later || !card.kpi)
       fail(`«Руководители»: ${JSON.stringify(heads)}, заместителей ${deputies}, переезд у начальника ${moveHead} и у упаковщика ${movePacker}; карточка ${JSON.stringify(card)}, запас политики ${cover}`);
     else ok(`«Руководители»: семь отделов, у каждого заместитель; переезд — у начальника отдела планирования, не у упаковщика; карточка — «${card.limit}», оклад «${card.later}», его решений ${card.decided}`);
     // по соглашению: последний день сегодня, после смены должность свободна — утром решает заместитель «и. о.»

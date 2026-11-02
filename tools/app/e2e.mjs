@@ -2653,11 +2653,13 @@ async function mainPart() {
     if (!/Начальник ОКК/.test(also) || got.deputy?.n !== analyst.person || part.deputy?.n === analyst.person)
       fail(`заместитель: смежные профессии «${also}»; у части начальника ОКК был ${JSON.stringify(part.deputy)}, стал ${JSON.stringify(got.deputy)}`);
     else ok(`заместитель: аналитик таб. № ${analyst.tab} — «${also.trim()}»; у части начальника ОКК ${part.from} заместитель — он вместо таб. № ${part.deputy?.tab}`);
-    // утверждение 17 декабря; часть наладчика — на январь, по соглашению
+    // утверждение 17 декабря; первую часть наладчика с февраля — на январь, по соглашению (с Б5в в черновике она — летом:
+    // руководители в штате)
     for (let i = 0; i < 20 && (await epoch()) < ymd(2027, 12, 18); i++) await untilMorning();
     v = await leaveView();
     const setter = v.people.find(p => p.role === 'role.setter');
-    const later = setter.parts.find(x => x.y === 2028 && x.from >= ymd(2028, 2, 1) && x.from < ymd(2028, 6, 1));
+    const later = setter.parts.find(x => x.y === 2028 && x.from >= ymd(2028, 2, 1));
+    if (!later) throw new Error(`у наладчика нет части 2028 года с февраля: ${JSON.stringify(setter.parts)}`);
     await openLeave();
     await page.click(`[data-test=leave-row][data-tab="${setter.tab}"]`);
     await page.click(`[data-test=leave-person] [data-test=leave-part][data-part=${later.id}] [data-test=leave-move]`);

@@ -5,11 +5,12 @@
 // В срезе три развилки: визит подрядчика держит серию и замена узла перед работой машины (главный механик →
 // «Производство»), кто ведёт расследование OOS (начальник ООК → директор). Пока вопрос открыт, завод живёт как сейчас:
 // подрядчик ждёт, ООК ведёт, работа на машине ответа не ждёт. Не ответили за срок §29.4 или развилка решилась сама —
-// руководитель решает «как сейчас». Спросить некого — развилка с обеими ценами в журнале, решено сразу. Мест не выбрано —
-// ни вопросов, ни записей: золотой прогон тот же.
+// руководитель решает «как сейчас». Спросить некого — развилка с обеими ценами в журнале, решено сразу. Спрашивает тот,
+// кто сейчас решает за руководителя (Б5в): он сам или «и. о.» в свою смену; вне смены развилку увидят в смену. Мест не
+// выбрано — ни вопросов, ни записей: золотой прогон тот же.
 import type { ContentDb, SeatId } from '../content/types';
 import { lineUnfit, stageUnfit, visitLast } from './assets';
-import { FULL, headOf, replacesBy, skillOf, thresholdBy, type Who, whoDecides } from './bosses';
+import { replacesBy, skillOf, thresholdBy, type Who, whoDecides } from './bosses';
 import { schedule } from './core/agenda';
 import { addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf } from './core/calendar';
 import { modeOf } from './heads';
@@ -135,7 +136,8 @@ export function contractorSpan(db: ContentDb, s: PlantState, asset: string, from
 /**
  * Визит держит серию (Б5д): серия ждёт актив, у которого визит, а подрядчик ещё не начал, — главный механик спрашивает
  * «Производство»: ждать подрядчика — серии ждут до конца его работы; перенести визит — на рабочий день до конца записи в
- * силе. Один раз на мгновение визита: перенесли — новый визит, новый вопрос.
+ * силе. Один раз на мгновение визита: перенесли — новый визит, новый вопрос. Вне смены главного механика и его «и. о.» —
+ * не сейчас.
  */
 function visitForks(db: ContentDb, s: PlantState, notices: Notice[]) {
   let waits: Map<string, string[]> | undefined;
@@ -147,6 +149,8 @@ function visitForks(db: ContentDb, s: PlantState, notices: Notice[]) {
     waits.set(u.asset, [...(waits.get(u.asset) ?? []), b.id]);
   }
   if (!waits) return;
+  const who = whoDecides(db, s, 'maint');
+  if (!who) return;
   const today = momentOf(s.start, s.t).day;
   for (const [asset, batches] of waits) {
     const a = s.assets[asset];
@@ -157,7 +161,7 @@ function visitForks(db: ContentDb, s: PlantState, notices: Notice[]) {
     const span = contractorSpan(db, s, asset);
     if (!span) continue;
     const d: ForkD = { kind: 'fork', fork: 'visit', asset, work: v.work, batches, start: span.start, end: span.end, last: visitLast(a, today) };
-    ask(s, 'maint', key, String(v.at), d, notices, whoDecides(db, s, 'maint'));
+    ask(s, 'maint', key, String(v.at), d, notices, who);
   }
 }
 
@@ -200,22 +204,15 @@ function nextWork(db: ContentDb, s: PlantState, pt: Part): { batch: string; unit
   return { batch: best.id, units: Math.floor(best.units! / unit) };
 }
 
-/** Кто решает за главного механика и его навык: в смене — он или «и. о.»; вне смены — руководитель по должности. */
-function maintWho(db: ContentDb, s: PlantState): { who?: Who; skill: number } {
-  const w = whoDecides(db, s, 'maint');
-  if (w) return { who: w, skill: skillOf(s, w) };
-  return { skill: headOf(s, 'maint')?.skill ?? FULL };
-}
-
 /**
  * Замена перед работой (Б5д): машина свободна, а следующая работа на ней по норме доведёт износ узла до порога политики, —
  * главный механик спрашивает «Производство»: заменить после работы — риск отказа посреди неё по таблице узла и время
- * ремонта; заменить сейчас — работа ждёт замены. Не спрашивает «вручную», со слабым навыком (меняет только после отказа)
- * и без свободной запчасти. Один раз на узел и работу.
+ * ремонта; заменить сейчас — работа ждёт замены. Не спрашивает «вручную», вне смены — своей и «и. о.», как и замену по
+ * наработке (maint.ts), со слабым навыком (меняет только после отказа) и без свободной запчасти. Один раз на узел и работу.
  */
 function replaceForks(db: ContentDb, s: PlantState, notices: Notice[]) {
   if (modeOf(s, 'maint') === 'manual') return;
-  let skill: { who?: Who; skill: number } | undefined;
+  let who: Who | undefined | null = null;
   for (const pt of Object.values(s.parts)) {
     if (pt.state !== 'ok' || pt.plan || pt.task || !idle(s, pt)) continue;
     const at = numOf(db, s, POL.replace, pt.id);
@@ -232,10 +229,10 @@ function replaceForks(db: ContentDb, s: PlantState, notices: Notice[]) {
     if (s.heads.asked?.[key] === sig) continue;
     const sp = s.spares[ty.spare];
     if (!sp || sp.qty - sp.reserved <= 0) continue;
-    skill ??= maintWho(db, s);
-    if (!replacesBy(skill.skill)) continue;
+    if (who === null) who = whoDecides(db, s, 'maint');
+    if (!who || !replacesBy(skillOf(s, who))) return;
     const d: ForkD = { kind: 'fork', fork: 'replace', part: pt.id, batch: next.batch, wear, after, at, hz: consume(ty, pt.done, next.units), repair: ty.repair, replace: ty.replace };
-    ask(s, 'maint', key, sig, d, notices, skill.who);
+    ask(s, 'maint', key, sig, d, notices, who);
   }
 }
 
@@ -244,18 +241,19 @@ function replaceForks(db: ContentDb, s: PlantState, notices: Notice[]) {
 /**
  * Кто ведёт OOS (Б5д): открыто расследование, «Качество» не у игрока, а начальник ООК — «сам», — он спрашивает
  * директора: «Ведите» — по правилу, лаборатория первой, затем наибольшее знание за час, вывод от порога; «Веду сам» —
- * расследование на доске игрока. Один раз на расследование.
+ * расследование на доске игрока. Один раз на расследование; вне смены начальника ООК и его «и. о.» — не сейчас.
  */
 function oosForks(db: ContentDb, s: PlantState, notices: Notice[]) {
   if (held(s)!.includes('quality') || modeOf(s, 'qa') !== 'auto') return;
+  let who: Who | undefined | null = null;
   for (const inv of Object.values(s.investigations)) {
     if (inv.status !== 'open' || inv.lead) continue;
     const key = `oos/${inv.id}`;
     if (s.heads.asked?.[key] === inv.id) continue;
-    const w = whoDecides(db, s, 'qa');
-    const skill = w ? skillOf(s, w) : (headOf(s, 'qa')?.skill ?? FULL);
-    const d: ForkD = { kind: 'fork', fork: 'oos', inv: inv.id, threshold: thresholdBy(skill, db.investigations[inv.model].threshold) };
-    ask(s, 'qa', key, inv.id, d, notices, w);
+    if (who === null) who = whoDecides(db, s, 'qa');
+    if (!who) return;
+    const d: ForkD = { kind: 'fork', fork: 'oos', inv: inv.id, threshold: thresholdBy(skillOf(s, who), db.investigations[inv.model].threshold) };
+    ask(s, 'qa', key, inv.id, d, notices, who);
   }
 }
 

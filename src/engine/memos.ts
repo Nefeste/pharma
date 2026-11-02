@@ -95,14 +95,14 @@ export function onDuty(db: ContentDb, s: PlantState, head: Head, t: number): Who
 }
 
 /**
- * Когда руководитель ответит на записку, отправленную в мгновение `t` (Б5д): через час, если это его рабочее время;
- * иначе — через час после первого целого часа, когда он снова в рабочем времени, как его назначит часовое событие. За
- * `MEMO_HORIZON` не нашлось — `undefined`. Одно правило с ответом движка — для слов окна «ответит в …».
+ * Когда руководитель ответит на записку, отправленную в мгновение `t` (Б5д): через час, если записка пришла в его
+ * рабочее время и через час он ещё в нём; иначе — через час после первого целого часа, когда он снова в рабочем времени,
+ * как его назначит часовое событие. За `MEMO_HORIZON` не нашлось — `undefined`. Одно правило с ответом движка — для слов
+ * окна «ответит в …».
  */
 export function memoAt(db: ContentDb, s: PlantState, head: Head, t = s.t): number | undefined {
-  const at = t + MEMO_AFTER;
-  if (onDuty(db, s, head, at)) return at;
-  for (let h = Math.floor(at / HOUR) * HOUR + HOUR; h < at + MEMO_HORIZON; h += HOUR) if (onDuty(db, s, head, h) && onDuty(db, s, head, h + MEMO_AFTER)) return h + MEMO_AFTER;
+  if (onDuty(db, s, head, t) && onDuty(db, s, head, t + MEMO_AFTER)) return t + MEMO_AFTER;
+  for (let h = Math.floor(t / HOUR) * HOUR + HOUR; h < t + MEMO_HORIZON; h += HOUR) if (onDuty(db, s, head, h) && onDuty(db, s, head, h + MEMO_AFTER)) return h + MEMO_AFTER;
   return undefined;
 }
 
@@ -138,8 +138,8 @@ function close(s: PlantState, n: number) {
 
 /**
  * Команда `memo` (Б5д): записка о командах чужого отдела — одной или нескольких, одному руководителю; запись журнала
- * «вы» с местом, ответ — через час в его рабочее время. Отказы: команд нет; своя команда; решение ООК по процедуре; о
- * политиках и прочем; команды разным руководителям.
+ * «вы» с местом. Пришла в его рабочее время — ответ через час; нет — его назначит часовое событие, когда он придёт.
+ * Отказы: команд нет; своя команда; решение ООК по процедуре; о политиках и прочем; команды разным руководителям.
  */
 export function memoCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'memo' }>, notices: Notice[]) {
   const refuse = (why: Refusal, detail?: string) => notices.push({ kind: 'refused', cmd: 'memo', why, ...(detail ? { detail } : {}) });
@@ -156,7 +156,7 @@ export function memoCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
   }
   const r = note(s, 'player', { kind: 'memo', to: to!, cmds }, memoSeat(s));
   r.memo = { v: 0 };
-  arm(s, r, s.t + MEMO_AFTER);
+  if (onDuty(db, s, to!, s.t)) arm(s, r, s.t + MEMO_AFTER);
   (s.heads.memos ??= []).push(r.n);
   const at = memoAt(db, s, to!);
   notices.push({ kind: 'memo', n: r.n, head: to!, ...(at !== undefined ? { at } : {}) });

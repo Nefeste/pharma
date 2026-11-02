@@ -181,7 +181,7 @@ export function LoadBlock({ hud, thing, plant, actions }: { hud: Hud; thing: Thi
       {o && line ? (
         <>
           <div data-test="card-load-oee">
-            {T.floor.oee(pctText(o.oee), pctText(o.a), pctText(o.p), pctText(o.q))}{' '}
+            {T.floor.oee(pctText(o.oee), pctText(o.a), o.p === undefined ? T.floor.none : pctText(o.p), o.q === undefined ? T.floor.none : pctText(o.q))}{' '}
             <button type="button" className="link" onClick={() => setWhy(!why)} data-test="card-load-why">
               {T.floor.why}
             </button>

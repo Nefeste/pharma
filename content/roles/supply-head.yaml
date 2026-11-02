@@ -1,0 +1,4 @@
+id: role.supply-head
+name: { ru: Начальник отдела снабжения, en: Head of procurement }
+dept: wms
+salary: 120000

@@ -1737,7 +1737,7 @@ export const ru = {
     go: 'К вещи',
     goHint: 'Открыть карточку вещи, о которой решение',
     who: 'Кто решил',
-    /** руководители — должности (Б5а): людьми они станут в Б5в */
+    /** руководители (Б5а); с Б5в — люди штата, а должностями остаются главный технолог, продажи и кадры */
     names: {
       plan: 'Начальник отдела планирования',
       mes: 'Начальник производства',
@@ -1752,6 +1752,18 @@ export const ru = {
       hr: 'Отдел кадров',
     } as Record<string, string>,
     player: (seat: string) => (seat ? `Вы, ${seat}` : 'Вы'),
+    /** кого замещает «и. о.» (Б5в): должность в родительном падеже */
+    namesOf: {
+      plan: 'начальника отдела планирования',
+      mes: 'начальника производства',
+      maint: 'главного механика',
+      qa: 'начальника ООК',
+      qc: 'начальника ОКК',
+      qp: 'уполномоченного лица',
+      supply: 'начальника отдела снабжения',
+      wms: 'заведующего складом',
+    } as Record<string, string>,
+    acting: (head: string, person: string) => `и. о. ${head} — ${person}`,
     /** что решено */
     what: {
       order: (sku: string, nb: string) => `Задание на серию: ${sku}, не раньше ${nb}`,
@@ -1777,6 +1789,7 @@ export const ru = {
       waste: (at?: string) => (at ? `Вывоз отклонённого: подрядчик приедет ${at}` : 'Вывоз отклонённого: подрядчик приедет на следующий рабочий день'),
       mode: (head: string, mode: string) => `Режим отдела: ${head} — ${mode}`,
       policy: (what: string, to: string, from: string) => `Политика: ${what} — ${to} вместо ${from}`,
+      deputy: (head: string, person?: string) => (person ? `Заместитель ${head}: ${person}` : `Заместитель ${head} снят`),
     },
     /** режимы отделов (Б5б) */
     modes: { auto: 'сам', advise: 'советует', manual: 'вручную' } as Record<string, string>,
@@ -1816,6 +1829,7 @@ export const ru = {
       others: (list: string) => `Ниже порога и другие: ${list}`,
       alone: 'Других позиций ниже порога нет',
       other: (sku: string, days: number) => `${sku} — на ${workRu(days)}`,
+      limited: (cover: number, policy: number) => `навык руководителя: запас на ${daysRu(cover)} вместо ${daysRu(policy)} по политике`,
     },
     po: {
       line: (material: string, have: string, point: string, per: string, lead: number, qc: number, safety: number) =>
@@ -1836,6 +1850,7 @@ export const ru = {
       none: (cause: string, p: string, threshold: string) => `Полезных шагов больше нет: версия «${cause}» — ${p}, порог — ${threshold}`,
       release: 'ошибка лаборатории доказана — выпустить серию',
       reject: 'выпуск — только при доказанной ошибке лаборатории: серию отклонить',
+      limited: (p: string, model: string) => `навык руководителя: вывод при ${p}, а по модели — при ${model}`,
     },
     assess: {
       tests: (list: string) => `Связанные испытания серии: ${list}`,

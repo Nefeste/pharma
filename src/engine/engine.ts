@@ -11,6 +11,7 @@ import { assetDone, assetHour, assetStep, seedAssets, visitCommand, visitDone } 
 import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
+import { deputyCommand } from './bosses';
 import { answerCommand, headsDay, modeCommand, newHeads } from './heads';
 import { hireCommand, hireHour } from './hire';
 import { hoursHour, newPolicy, overtimeCommand } from './hours';
@@ -328,6 +329,12 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       policyCommand(db, s, cmd, notices);
       return notices;
     }
+    case 'deputy': {
+      // заместитель руководителя (Б5в): решит в свою смену, пока руководителя нет, — раздавать нечего
+      const notices: Notice[] = [];
+      deputyCommand(db, s, cmd, notices);
+      return notices;
+    }
     case 'visit': {
       // перенос визита подрядчика (Б5г): актив, чей визит отложен, снова берёт работу — раздать задачи
       const notices: Notice[] = [];
@@ -436,8 +443,10 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       // коллеги планирования и снабжения (Б2в): задание через две недели, заказы поставщикам по расходу плана
       planHour(db, s, notices);
       supplyDay(db, s, notices);
-      // коллега качества (Б1г): отклонения, которые уже можно оценить
+      // коллега качества (Б1г): отклонения, которые уже можно оценить; расследование, которое ждало смены руководителя
+      // (Б5в), — в первый час, когда есть кому решить
       devHour(db, s, notices);
+      invStep(db, s, notices);
       lineStep(db, s, notices);
       qaStep(db, s);
       marketStep(db, s, notices);

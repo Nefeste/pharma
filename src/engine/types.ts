@@ -1,7 +1,7 @@
 // Состояние завода и обмен с движком (docs/02-architecture.md, §1, §3, §7; docs/specs/2026-10-engine.md). Состояние —
 // обычный сериализуемый объект: сохранение — его снимок со схемой и миграциями (ADR студии 0004). Сущности — словари с
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
-import type { Attr, Dept, Id, IncidentRoot, OvertimeMode, SeatId, TaskKind, ZoneKind } from '../content/types';
+import type { Attr, Dept, HeadId, Id, IncidentRoot, OvertimeMode, SeatId, TaskKind, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
@@ -1362,6 +1362,8 @@ export interface OrderWhy {
   ahead: number;
   /** запас позиций по политике (Б5г), суток: порог — две недели и они */
   cover?: number;
+  /** политика, когда навык руководителя ниже 4 сократил горизонт (Б5в): `cover` — его, это — политики */
+  policy?: number;
   seen?: number;
   soon?: number;
   prev?: Id;
@@ -1425,7 +1427,7 @@ export type Decided =
   /** шаг расследования */
   | { kind: 'step'; inv: string; step: string; why?: StepWhy }
   /** вывод расследования: версия, её вероятность и порог, доли 1/10 000; ошибка лаборатории доказана */
-  | { kind: 'conclude'; inv: string; cause: string; fate: 'reject' | 'release'; why?: { p: number; threshold: number; proven: boolean } }
+  | { kind: 'conclude'; inv: string; cause: string; fate: 'reject' | 'release'; why?: { p: number; threshold: number; model?: number; proven: boolean } }
   /** оценка влияния отклонения: связанные испытания серии */
   | { kind: 'assess'; dev: string; verdict: 'none' | 'reject'; why?: { tests: TestWhy[] } }
   /** оценка пары «поставщик — изготовитель»: до какого дня одобрение и срок предупреждения, суток */
@@ -1474,7 +1476,9 @@ export type Decided =
   /** режим отдела руководителя (Б5б): игрок сменил его на посту отдела */
   | { kind: 'mode'; head: Head; mode: DeptMode }
   /** политика руководителя (Б5г): игрок задал её — у вещи политики «у каждого» — с прежним значением */
-  | { kind: 'policy'; policy: Id; of?: string; from: PolicyValue; to: PolicyValue };
+  | { kind: 'policy'; policy: Id; of?: string; from: PolicyValue; to: PolicyValue }
+  /** заместитель руководителя (Б5в): кого назначили — нет, значит сняли; кто был */
+  | { kind: 'deputy'; head: HeadId; person?: string; was?: string };
 
 /**
  * Значение политики руководителя (Б5г; src/engine/policies.ts): сутки, месяцы или порог износа — доли 1/10 000 ресурса;
@@ -1530,6 +1534,9 @@ export interface Decision {
   seat?: SeatId;
   d: Decided;
   ask?: Ask;
+  /** кто решил за руководителя (Б5в): человек штата; «и. о.» — заместитель, пока руководителя нет; нет — должность */
+  p?: string;
+  io?: true;
 }
 
 /**
@@ -1630,6 +1637,15 @@ export interface PlantState {
   journal: Decision[];
   /** режимы отделов (Б5б; src/engine/heads.ts): выбор игрока, указатели открытых и отклонённых сегодня предложений */
   heads: HeadsState;
+  /**
+   * заместители руководителей (Б5в, src/engine/bosses.ts): назначенный игроком человек; '' — заместителя сняли; нет
+   * записи — первый по табельному номеру человек роли заместителя из записи сценария
+   */
+  deputies?: Partial<Record<HeadId, string>>;
+  /** у кого из руководителей уже сказано «Некому решить» (Б5в): до часа, когда снова есть кому */
+  noOne?: Partial<Record<Head, true>>;
+  /** правила руководителей в свой час (Б5в): день, когда правило отработало, — оно ждёт смены того, кто решает */
+  ruled?: Record<string, number>;
   /** вывоз отклонённого (Б1з; src/engine/waste.ts): заказанный вывоз — один, пока подрядчик не уехал; журнал отходов */
   waste: WasteState;
   /** показатели руководителей (Б5ж; src/engine/kpi.ts): срезы суток этого месяца и закрытые месяцы */
@@ -1819,6 +1835,11 @@ export type Command =
   | { kind: 'decline'; n: number }
   /** политика руководителя (Б5г): у политики «у каждого» — вещь, узел или запчасть; значение — в единицах движка */
   | { kind: 'policy'; policy: Id; of?: string; value: PolicyValue; by?: string }
+  /**
+   * заместитель руководителя (Б5в): человек штата одной из ролей записи сценария, не сам руководитель; `null` — снять
+   * заместителя. Пост отдела руководителя или директор
+   */
+  | { kind: 'deputy'; head: HeadId; person: string | null }
   /** перенести визит подрядчика к активу (Б5г): на день — сутки завода от начала его календаря */
   | { kind: 'visit'; asset: string; day: number; by?: string };
 
@@ -2015,4 +2036,8 @@ export type Notice =
   | { kind: 'proposal'; n: number; head: Head; seat: SeatId; t: number }
   /** политика руководителя задана (Б5г); визит подрядчика перенесён — на какое мгновение */
   | { kind: 'policy'; policy: Id; of?: string; head: Head }
-  | { kind: 'visitMoved'; asset: string; family: AssetFamily; type: Id; inv: number; work: 'qual' | 'cal'; at: number };
+  | { kind: 'visitMoved'; asset: string; family: AssetFamily; type: Id; inv: number; work: 'qual' | 'cal'; at: number }
+  /** некому решить за руководителя (Б5в): его нет, а заместителя нет или и он отсутствует; пост отдела — автопауза */
+  | { kind: 'noOne'; head: Head; seat: SeatId }
+  /** заместитель руководителя назначен или снят (Б5в) */
+  | { kind: 'deputy'; head: HeadId; person?: string };

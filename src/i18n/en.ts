@@ -1658,6 +1658,18 @@ export const en: Strings = {
       hr: 'HR',
     } as Record<string, string>,
     player: (seat: string) => (seat ? `You, ${seat}` : 'You'),
+    /** whom an acting head stands in for (Б5в) */
+    namesOf: {
+      plan: 'head of planning',
+      mes: 'head of production',
+      maint: 'chief mechanic',
+      qa: 'head of QA',
+      qc: 'head of QC',
+      qp: 'qualified person',
+      supply: 'head of procurement',
+      wms: 'warehouse manager',
+    } as Record<string, string>,
+    acting: (head: string, person: string) => `Acting ${head} — ${person}`,
     what: {
       order: (sku: string, nb: string) => `Batch order: ${sku}, not before ${nb}`,
       po: (supplier: string, lines: string) => `Purchase order: ${supplier} — ${lines}`,
@@ -1682,6 +1694,7 @@ export const en: Strings = {
       waste: (at?: string) => (at ? `Removal of rejected material: the contractor comes ${at}` : 'Removal of rejected material: the contractor comes the next working day'),
       mode: (head: string, mode: string) => `Department mode: ${head} — ${mode}`,
       policy: (what: string, to: string, from: string) => `Policy: ${what} — ${to} instead of ${from}`,
+      deputy: (head: string, person?: string) => (person ? `Deputy of the ${head}: ${person}` : `Deputy of the ${head} removed`),
     },
     /** department modes (Б5б) */
     modes: { auto: 'on its own', advise: 'advises', manual: 'manual' } as Record<string, string>,
@@ -1720,6 +1733,7 @@ export const en: Strings = {
       others: (list: string) => `Also below the threshold: ${list}`,
       alone: 'No other item is below the threshold',
       other: (sku: string, days: number) => `${sku} — for ${workEn(days)}`,
+      limited: (cover: number, policy: number) => `the head's skill: a cover of ${daysEn(cover)} instead of ${daysEn(policy)} by the policy`,
     },
     po: {
       line: (material: string, have: string, point: string, per: string, lead: number, qc: number, safety: number) =>
@@ -1740,6 +1754,7 @@ export const en: Strings = {
       none: (cause: string, p: string, threshold: string) => `No useful steps left: version “${cause}” — ${p}, threshold ${threshold}`,
       release: 'a lab error is proven — release the batch',
       reject: 'release only with a proven lab error: reject the batch',
+      limited: (p: string, model: string) => `the head's skill: concludes at ${p}, the model at ${model}`,
     },
     assess: {
       tests: (list: string) => `Linked tests of the batch: ${list}`,

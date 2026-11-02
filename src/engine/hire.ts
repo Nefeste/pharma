@@ -7,17 +7,18 @@
 // день — расчёт (cash.ts, ст. 84.1, 140) и уход после последней смены. Руководитель отдела роли в режиме «сам» открывает
 // вакансию на каждое заявление и принимает первого подходящего кандидата, в режиме «советует» — предлагает (Б5б).
 import type { ContentDb, Dept, Id, Labor } from '../content/types';
+import { dueRule, hireMinBy, skillOf, type Who } from './bosses';
 import { addMonths, addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf } from './core/calendar';
 import { hiringPay, salaryOf, settle } from './cash';
 import { modeOf, round } from './heads';
-import { DEPT_HEAD, note, noteCmd } from './journal';
+import { asWho, DEPT_HEAD, note, noteCmd } from './journal';
 import { deputyGone, dropAfter } from './leave';
 import { planOf } from './plant';
 import { normal, roll, spread } from './random';
 import { graphSpan, spanOn } from './shifts';
 import { dropTask } from './tasks';
 import { trainNow } from './train';
-import type { Command, Decided, Hire, Notice, Person, PlantState, Quit, Vacancy } from './types';
+import type { Command, Decided, Head, Hire, Notice, Person, PlantState, Quit, Vacancy } from './types';
 import { calOf } from './workdays';
 
 /** Причина приёма коллегой (Б5а). */
@@ -293,30 +294,49 @@ function vacWhy(p: Person, rule: 'ad' | 'city' | 'late', day: number, days?: num
 function colleagueStep(db: ContentDb, s: PlantState, lab: Labor, notices: Notice[]) {
   const z = today(s);
   const r = round(s, ['quit/', 'vac/']);
+  // руководитель — человек (Б5в): с 09:00, раз в сутки, в первый час, когда есть кому решить за отдел; пока некому —
+  // вещи отдела ждут, а их открытые предложения остаются
+  const whos = new Map<Head, Who | undefined>();
+  const whoOf = (head: Head) => {
+    if (!whos.has(head)) whos.set(head, modeOf(s, head) === 'manual' ? undefined : dueRule(db, s, `hire/${head}`, head, LABOR_HOUR, notices));
+    return whos.get(head);
+  };
   for (const p of Object.values(s.people)) {
     const q = p.quit;
     const row = lab.roles[p.role];
     if (q?.why !== 'own' || q.vacancy !== undefined || !row) continue;
     const head = DEPT_HEAD[deptOf(db, p.role)];
     const mode = modeOf(s, head);
+    const who = whoOf(head);
+    if (!who) {
+      r.keep(`quit/${p.id}`);
+      continue;
+    }
     const via = row.ad[0] >= P ? 'agency' : 'ad';
-    if (mode === 'auto') q.vacancy = open(db, s, lab, p.role, p.shift, via, notices, { instead: p.id });
-    else if (mode === 'advise') r.propose(head, `quit/${p.id}`, { kind: 'vacancy', role: p.role, shift: p.shift, via, instead: p.id }, { kind: 'vacancy', role: p.role, via, why: vacWhy(p, via === 'agency' ? 'city' : 'ad', z) }, notices);
+    if (mode === 'auto') q.vacancy = asWho(head, who, () => open(db, s, lab, p.role, p.shift, via, notices, { instead: p.id }));
+    else if (mode === 'advise') r.propose(head, `quit/${p.id}`, { kind: 'vacancy', role: p.role, shift: p.shift, via, instead: p.id }, { kind: 'vacancy', role: p.role, via, why: vacWhy(p, via === 'agency' ? 'city' : 'ad', z) }, notices, who);
   }
   for (const v of Object.values(s.vacancies)) {
     if (v.by !== 'colleague') continue;
     const head = DEPT_HEAD[deptOf(db, v.role)];
     const mode = modeOf(s, head);
     if (mode === 'manual') continue;
+    const who = whoOf(head);
+    if (!who) {
+      r.keep(`vac/${v.id}`);
+      continue;
+    }
     const price = (skill: number) => {
       const m = marketPay(db, lab, v.role, skill);
       return m + Math.floor((m * lab.colleague.over) / P);
     };
-    const fit = Object.values(s.candidates).find(c => c.vacancy === v.id && c.skill >= lab.colleague.skill && c.salary <= price(c.skill));
+    // навык при найме (геймдизайн, §8.5): слабый руководитель берёт кандидата слабее
+    const min = hireMinBy(skillOf(s, who), lab.colleague.skill);
+    const fit = Object.values(s.candidates).find(c => c.vacancy === v.id && c.skill >= min && c.salary <= price(c.skill));
     if (fit) {
-      const why = { skill: fit.skill, min: lab.colleague.skill, salary: fit.salary, price: marketPay(db, lab, v.role, fit.skill), over: lab.colleague.over };
-      if (mode === 'auto') hireCandidate(db, s, lab, fit.id, lab.probation, notices, undefined, why);
-      else if (hireDays(db, s, v.shift).first) r.propose(head, `vac/${v.id}`, { kind: 'hire', candidate: fit.id, trial: lab.probation }, { kind: 'hire', cand: fit.id, vacancy: v.id, role: v.role, why }, notices);
+      const why = { skill: fit.skill, min, salary: fit.salary, price: marketPay(db, lab, v.role, fit.skill), over: lab.colleague.over };
+      if (mode === 'auto') asWho(head, who, () => hireCandidate(db, s, lab, fit.id, lab.probation, notices, undefined, why));
+      else if (hireDays(db, s, v.shift).first) r.propose(head, `vac/${v.id}`, { kind: 'hire', candidate: fit.id, trial: lab.probation }, { kind: 'hire', cand: fit.id, vacancy: v.id, role: v.role, why }, notices, who);
       continue;
     }
     if (v.via === 'ad' && z - v.from >= lab.colleague.ad) {
@@ -324,11 +344,11 @@ function colleagueStep(db: ContentDb, s: PlantState, lab: Labor, notices: Notice
       const p = v.instead ? (s.people[v.instead] ?? s.former[v.instead]) : undefined;
       const d: Decided = { kind: 'vacancy', vacancy: v.id, role: v.role, via: 'agency', ...(p ? { why: vacWhy(p, 'late', v.from, z - v.from) } : {}) };
       if (mode === 'advise') {
-        r.propose(head, `vac/${v.id}`, { kind: 'agency', vacancy: v.id }, d, notices);
+        r.propose(head, `vac/${v.id}`, { kind: 'agency', vacancy: v.id }, d, notices, who);
         continue;
       }
       toAgency(s, lab, v);
-      if (p) note(s, head, d);
+      if (p) note(s, head, d, undefined, undefined, who);
     }
   }
   r.done();
@@ -351,7 +371,7 @@ export function hireHour(db: ContentDb, s: PlantState, notices: Notice[]) {
     if (now.sec === 0) laborDay(db, s, lab, now.day, notices);
     if (now.sec === LABOR_HOUR && now.weekday === 0) adWeek(db, s, lab, notices);
     agencyStep(db, s, lab, notices);
-    if (now.sec === LABOR_HOUR && isWorkday(calOf(db, s), now.day)) colleagueStep(db, s, lab, notices);
+    if (now.sec >= LABOR_HOUR && isWorkday(calOf(db, s), now.day)) colleagueStep(db, s, lab, notices);
   }
   for (const h of Object.values(s.hires)) if (h.at <= s.t) start(db, s, h, notices);
   leaveStep(db, s, notices);

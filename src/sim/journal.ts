@@ -74,6 +74,22 @@ export interface JournalRow {
   d: Decided;
   ref: JournalRef;
   ask?: AskInfo;
+  /** кто решил за руководителя (Б5в): человек штата — роль и табельный номер; «и. о.» — заместитель; на заводе — `n` */
+  as?: JournalAs;
+}
+
+/** Человек, решивший за руководителя (Б5в): записи завода, без истины. */
+export interface JournalAs {
+  role: Id;
+  tab: number;
+  io?: true;
+  n?: number;
+}
+
+/** Кто решил за руководителя в записи — человек на заводе или ушедший; нет — должность. */
+export function asOf(s: PlantState, r: Decision): JournalAs | undefined {
+  const p = r.p ? (s.people[r.p] ?? s.former[r.p]) : undefined;
+  return p ? { role: p.role, tab: p.tab, ...(r.io ? { io: true as const } : {}), ...(s.people[p.id] ? { n: num(p.id) } : {}) } : undefined;
 }
 
 /** Режим отдела взятого поста (Б5б): руководитель, его пост и режим сейчас. */
@@ -139,6 +155,8 @@ function headOf(db: ContentDb, d: Decided): Head {
       return d.head;
     case 'policy':
       return policyHead(d.policy) ?? 'plan';
+    case 'deputy':
+      return d.head;
   }
 }
 
@@ -230,6 +248,9 @@ export function refOf(db: ContentDb, s: PlantState, d: Decided, ask?: Ask): Jour
       return personRef(s, hiredAs(s, d.cand));
     case 'setpoint':
       return { mode: modeOf(db, d.key) };
+    case 'deputy':
+      // заместитель руководителя (Б5в): кого назначили — к его карточке
+      return d.person ? personRef(s, s.people[d.person] ?? s.former[d.person]) : {};
     case 'policy': {
       // политика узла (Б5г): вид машины и узла, к машине на полу
       const pt = d.of ? s.parts[d.of] : undefined;
@@ -251,7 +272,8 @@ export function askInfo(s: PlantState, r: Decision): AskInfo | undefined {
 /** Строка журнала для окна. */
 export function rowOf(db: ContentDb, s: PlantState, r: Decision): JournalRow {
   const ask = askInfo(s, r);
-  return { n: r.n, t: r.t, by: r.by, ...(r.seat ? { seat: r.seat } : {}), post: postOf(db, r), d: r.d, ref: refOf(db, s, r.d, r.ask), ...(ask ? { ask } : {}) };
+  const as = asOf(s, r);
+  return { n: r.n, t: r.t, by: r.by, ...(r.seat ? { seat: r.seat } : {}), post: postOf(db, r), d: r.d, ref: refOf(db, s, r.d, r.ask), ...(ask ? { ask } : {}), ...(as ? { as } : {}) };
 }
 
 /** Открытые предложения (Б5б), новые сверху. */
@@ -297,6 +319,8 @@ export interface WhoRow {
   v?: string;
   /** предложение руководителя (Б5б): ответ, может ли игрок ответить */
   ask?: AskInfo;
+  /** кто решил за руководителя (Б5в) */
+  as?: JournalAs;
 }
 
 const verdictOf = (d: Decided): string | undefined => {
@@ -326,7 +350,8 @@ const whoRows = (s: PlantState, f: (d: Decided) => boolean): WhoRow[] =>
     .filter(r => f(r.d) && (!r.ask?.end || r.ask.end.how === 'ok' || r.ask.end.how === 'no'))
     .map(r => {
       const ask = askInfo(s, r);
-      return { n: r.n, t: r.t, by: r.by, ...(r.seat ? { seat: r.seat } : {}), kind: r.d.kind, ...(verdictOf(r.d) ? { v: verdictOf(r.d) } : {}), ...(ask ? { ask } : {}) };
+      const as = asOf(s, r);
+      return { n: r.n, t: r.t, by: r.by, ...(r.seat ? { seat: r.seat } : {}), kind: r.d.kind, ...(verdictOf(r.d) ? { v: verdictOf(r.d) } : {}), ...(ask ? { ask } : {}), ...(as ? { as } : {}) };
     });
 
 /** Серия: задание, решение по балку, вывод расследования, решения уполномоченного лица. */

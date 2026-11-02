@@ -9,8 +9,9 @@ import { schedule } from './core/agenda';
 import { DAY, HOUR, isWorkday, MIN, momentOf, workdayOnOrAfter } from './core/calendar';
 import { part, post, vatRate } from './cash';
 import { inForce } from './docs';
+import { dueRule } from './bosses';
 import { modeOf, round } from './heads';
-import { noteCmd } from './journal';
+import { asWho, noteCmd } from './journal';
 import { packNeeds } from './mes';
 import { approved, linePrice, pairsFor, priceLine } from './partners';
 import { aheadMilli, casesOf, positionOf } from './planner';
@@ -221,19 +222,23 @@ export const poKey = (supplier: Id) => `po/${supplier}`;
  */
 export function supplyDay(db: ContentDb, s: PlantState, notices: Notice[]) {
   const sc = db.scenarios[s.scenario];
-  const now = momentOf(s.start, s.t);
-  if (!sc.supply || !sc.plan || !isWorkday(calOf(db, s), now.day) || now.sec !== SUPPLY_HOUR) return;
+  if (!sc.supply || !sc.plan) return;
   const mode = modeOf(s, 'supply');
   if (mode === 'manual') return;
+  // руководитель — человек (Б5в): с 09:00, в первый час, когда есть кому решить
+  const who = dueRule(db, s, 'supply', 'supply', SUPPLY_HOUR, notices);
+  if (!who) return;
   const orders = supplyPlan(db, s);
   if (mode === 'auto') {
-    for (const o of orders) placePo(db, s, { kind: 'po', supplier: o.supplier, lines: o.lines, by: 'head:supply' }, notices, o.why);
+    asWho('supply', who, () => {
+      for (const o of orders) placePo(db, s, { kind: 'po', supplier: o.supplier, lines: o.lines, by: 'head:supply' }, notices, o.why);
+    });
     return;
   }
   const r = round(s, ['po/']);
   for (const o of orders) {
     const q = quotePo(db, s, o.supplier, o.lines);
-    r.propose('supply', poKey(o.supplier), { kind: 'po', supplier: o.supplier, lines: o.lines }, { kind: 'po', supplier: o.supplier, prepaid: 'why' in q ? 0 : q.prepaid, why: o.why }, notices);
+    r.propose('supply', poKey(o.supplier), { kind: 'po', supplier: o.supplier, lines: o.lines }, { kind: 'po', supplier: o.supplier, prepaid: 'why' in q ? 0 : q.prepaid, why: o.why }, notices, who);
   }
   r.done();
 }

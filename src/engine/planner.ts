@@ -10,7 +10,9 @@
 // партий и заказов. Счёт — в целых.
 import type { ContentDb, Id, Recipe, Sku } from '../content/types';
 import { addWorkdays, DAY, isWorkday, momentOf } from './core/calendar';
+import { coverBy, dueRule, skillOf } from './bosses';
 import { modeOf, moot, propose } from './heads';
+import { asWho } from './journal';
 import { BATCH_HOUR, placeOrder } from './mes';
 import { numOf, POL } from './policies';
 import { containersByLot } from './stock';
@@ -97,18 +99,24 @@ export function planHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   const plan = db.scenarios[s.scenario].plan;
   const now = momentOf(s.start, s.t);
   const cal = calOf(db, s);
-  if (!plan || !isWorkday(cal, now.day) || now.sec !== BATCH_HOUR) return;
+  if (!plan) return;
   const mode = modeOf(s, 'plan');
   if (mode === 'manual') return;
+  // руководитель — человек (Б5в): с начала смены аппаратчиков, в первый час, когда есть кому решить
+  const who = dueRule(db, s, 'plan', 'plan', BATCH_HOUR, notices);
+  if (!who) return;
   const day = addWorkdays(cal, now.day, AHEAD_WORK);
   const at = s.t + (day - now.day) * DAY;
-  const got = Object.values(s.batches).some(b => momentOf(s.start, b.notBefore).day === day) ? undefined : pick(db, s, plan.items, numOf(db, s, POL.cover)!, numOf(db, s, POL.window)!, numOf(db, s, POL.urgent), at);
+  // горизонт — политика, а навык руководителя ниже 4 его сокращает (геймдизайн, §8.5)
+  const policy = numOf(db, s, POL.cover)!;
+  const cover = coverBy(skillOf(s, who), policy);
+  const got = Object.values(s.batches).some(b => momentOf(s.start, b.notBefore).day === day) ? undefined : pick(db, s, plan.items, cover, numOf(db, s, POL.window)!, numOf(db, s, POL.urgent), at, cover < policy ? policy : undefined);
   if (mode === 'advise') {
     if (!got) return moot(s, ORDER_KEY);
     const cmd = { kind: 'order' as const, recipe: got.it.recipe, notBefore: at, sku: got.it.sku };
-    return propose(s, 'plan', ORDER_KEY, cmd, { kind: 'order', recipe: got.it.recipe, sku: got.it.sku, notBefore: at, why: got.why }, notices);
+    return propose(s, 'plan', ORDER_KEY, cmd, { kind: 'order', recipe: got.it.recipe, sku: got.it.sku, notBefore: at, why: got.why }, notices, undefined, who);
   }
-  if (got) placeOrder(db, s, { kind: 'order', recipe: got.it.recipe, notBefore: at, by: 'head:plan', sku: got.it.sku }, notices, got.why);
+  if (got) asWho('plan', who, () => placeOrder(db, s, { kind: 'order', recipe: got.it.recipe, notBefore: at, by: 'head:plan', sku: got.it.sku }, notices, got.why));
 }
 
 /**
@@ -119,12 +127,12 @@ export function planHour(db: ContentDb, s: PlantState, notices: Notice[]) {
  * одной позиции другого продукта не хватит меньше чем на две недели и ещё `urgent` суток, — генеральных уборок меньше.
  * С позицией — причина для журнала решений (Б5а): правило, положение всех позиций плана и пороги.
  */
-function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], cover: number, window: number, urgent: number | undefined, at: number): { it: { recipe: Id; sku: Id }; why: OrderWhy } | undefined {
+function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], cover: number, window: number, urgent: number | undefined, at: number, policy?: number): { it: { recipe: Id; sku: Id }; why: OrderWhy } | undefined {
   const byLot = containersByLot(s);
   const pos = items.map(it => ({ it, p: positionOf(db, s, it.sku, window, byLot) }));
   // запас < заказано за рабочий день окна × рабочих дней пятидневки в AHEAD + cover суток (Б4а)
   const ahead = aheadMilli(AHEAD + cover);
-  const why = (rule: OrderWhy['rule'], extra: Partial<OrderWhy> = {}): OrderWhy => ({ rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work })), ahead, cover, ...extra });
+  const why = (rule: OrderWhy['rule'], extra: Partial<OrderWhy> = {}): OrderWhy => ({ rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work })), ahead, cover, ...(policy !== undefined ? { policy } : {}), ...extra });
   if (pos.some(x => x.p.span === 0)) {
     const last = (sku: Id) => Math.max(-1, ...Object.values(s.batches).filter(b => b.sku === sku).map(b => idNum(b.id)));
     return { it: pos.reduce((a, b) => (last(b.it.sku) < last(a.it.sku) ? b : a)).it, why: why('turn', { seen: SEEN }) };

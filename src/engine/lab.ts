@@ -228,7 +228,10 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       const sm = sampleOf(s, lot.id);
       const out = sm.tests.filter(id => !s.tests[id].pass);
       const model = modelFor(db, s, lot, out);
-      // журнал решений (Б5а): начальник ОКК — по испытаниям пробы, с результатами и пределами
+      // журнал решений (Б5а): начальник ОКК — по испытаниям пробы, с результатами и пределами; решил тот, кто сделал
+      // работу (Б5в): начальник ОКК, а в его отпуске — заместитель по смежной профессии, «и. о.»
+      const by = t.people[0] ? s.people[t.people[0]] : undefined;
+      const who = by ? { p: by.id, ...((QC.heads as readonly string[]).includes(by.role) ? {} : { io: true as const }) } : undefined;
       const tests: TestWhy[] = sm.tests.map(id => {
         const q = s.tests[id];
         return { test: q.method, ...(q.result !== undefined ? { result: q.result } : {}), ...(q.min !== undefined ? { min: q.min } : {}), ...(q.max !== undefined ? { max: q.max } : {}), pass: !!q.pass };
@@ -236,12 +239,12 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       if (out.length === 0) {
         setLotStatus(s, lot, 'released');
         stockChanged(s);
-        note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'release', why: { tests } });
+        note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'release', why: { tests } }, undefined, undefined, who);
         notices.push({ kind: 'lotReleased', lot: lot.id });
       } else if (model) {
         // результат вне спецификации у своей продукции — расследование (часть 4): партия ждёт его решения
         const inv = openInvestigation(db, s, model, lot, out, notices);
-        note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'investigate', inv: inv.id, dev: inv.deviation, why: { tests } });
+        note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'investigate', inv: inv.id, dev: inv.deviation, why: { tests } }, undefined, undefined, who);
         return true;
       } else {
         setLotStatus(s, lot, 'rejected');
@@ -251,7 +254,7 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
         s.deviations[d.id] = d;
         defect(s, 'deviations');
         defect(s, lot.batch ? 'batches' : 'lots');
-        note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'reject', dev: d.id, why: { tests } });
+        note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'reject', dev: d.id, why: { tests } }, undefined, undefined, who);
         notices.push({ kind: 'lotRejected', lot: lot.id, deviation: d.id });
       }
       for (const u of unitsOfLot(s, lot.id)) settleLot(db, s, lot, u);

@@ -12,6 +12,7 @@
 import type { ContentDb } from '../content/types';
 import { part, post } from './cash';
 import { addMonths, addWorkdays, civilFromDays, DAY, daysFromCivil, HOUR, isWorkday, lastOfMonth, momentOf } from './core/calendar';
+import { dueRule } from './bosses';
 import { modeOf, moot, propose } from './heads';
 import { note, noteCmd } from './journal';
 import { dockWait } from './lean';
@@ -87,7 +88,7 @@ export function wasteHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   const w = db.scenarios[s.scenario].waste;
   if (!w) return;
   const now = momentOf(s.start, s.t);
-  if (now.sec === WASTE_HOUR && isWorkday(calOf(db, s), now.day)) colleague(db, s, now.day, notices);
+  colleague(db, s, now.day, notices);
   const o = s.waste.order;
   const yard = o?.truck !== undefined ? s.trucks[o.truck] : undefined;
   if (o && yard && !yard.docked && s.t >= at(s, momentOf(s.start, yard.arrived).day, w.hours[1])) {
@@ -135,15 +136,18 @@ function wasteWhy(db: ContentDb, s: PlantState, today: number) {
 function colleague(db: ContentDb, s: PlantState, today: number, notices: Notice[]) {
   const mode = modeOf(s, 'wms');
   if (mode === 'manual') return;
+  // руководитель — человек (Б5в): с 09:00 рабочего дня, в первый час, когда есть кому решить
+  const who = dueRule(db, s, 'waste', 'wms', WASTE_HOUR, notices);
+  if (!who) return;
   const why = wasteWhy(db, s, today);
   if (mode === 'advise') {
-    if (why) propose(s, 'wms', WASTE_KEY, { kind: 'waste' }, { kind: 'waste', why }, notices);
+    if (why) propose(s, 'wms', WASTE_KEY, { kind: 'waste' }, { kind: 'waste', why }, notices, undefined, who);
     else moot(s, WASTE_KEY);
     return;
   }
   if (!why) return;
   const order = book(db, s, 'head:wms');
-  note(s, 'wms', { kind: 'waste', order: order.id, at: order.at, why });
+  note(s, 'wms', { kind: 'waste', order: order.id, at: order.at, why }, undefined, undefined, who);
 }
 
 /**

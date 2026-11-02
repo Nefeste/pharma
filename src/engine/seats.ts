@@ -37,6 +37,7 @@ export const DEPT_SEAT: Record<Dept, SeatId> = { mes: 'production', line: 'produ
 export function ownerOf(cmd: Command, dept?: Dept): SeatId | undefined {
   if (cmd.kind === 'overtime') return DEPT_SEAT[cmd.dept];
   if (cmd.kind === 'mode') return HEAD_SEAT[cmd.head];
+  if (cmd.kind === 'deputy') return HEAD_SEAT[cmd.head];
   if (cmd.kind === 'policy') {
     const head = policyHead(cmd.policy);
     return head && HEAD_SEAT[head];

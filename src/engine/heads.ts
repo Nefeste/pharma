@@ -7,6 +7,7 @@
 // не предлагает снова до следующих суток. Пост отпущен или режим сменился — открытые предложения устаревают: руководитель
 // решит в свой час. Решения ОКК, уполномоченного лица, ремонт после отказа и решения по сроку — правилом в любом режиме.
 import type { SeatId } from '../content/types';
+import type { Who } from './bosses';
 import { accepted, HEAD_SEAT, note, noteCmd, recordOf } from './journal';
 import { held } from './seats';
 import type { Ask, Command, Decided, Decision, DeptMode, Head, HeadsState, Notice, PlantState } from './types';
@@ -66,7 +67,7 @@ export function seenAt(s: PlantState, key: string): number | undefined {
  * Предложить (Б5б): у вещи открыто то же — оно и остаётся; другое — устарело, а новое — в журнал с причиной, командой
  * и извещением поста отдела; ту же команду отклонили сегодня — ничего. `seen` — что руководитель видел, когда считал.
  */
-export function propose(s: PlantState, head: Head, key: string, cmd: Command, d: Decided, notices: Notice[], seen?: number) {
+export function propose(s: PlantState, head: Head, key: string, cmd: Command, d: Decided, notices: Notice[], seen?: number, who?: Who) {
   const r = openAsk(s, key);
   if (r && same(r.ask!.cmd, cmd)) {
     if (seen !== undefined) r.ask!.seen = seen;
@@ -78,7 +79,7 @@ export function propose(s: PlantState, head: Head, key: string, cmd: Command, d:
     if (seen !== undefined) no.ask.seen = seen;
     return;
   }
-  const x = note(s, head, d, undefined, { key, cmd, ...(seen !== undefined ? { seen } : {}) });
+  const x = note(s, head, d, undefined, { key, cmd, ...(seen !== undefined ? { seen } : {}) }, who);
   s.heads.open[key] = x.n;
   notices.push({ kind: 'proposal', n: x.n, head, seat: HEAD_SEAT[head], t: s.t });
 }
@@ -96,9 +97,13 @@ export function moot(s: PlantState, key: string) {
 export function round(s: PlantState, prefixes: readonly string[]) {
   const touched = new Set<string>();
   return {
-    propose(head: Head, key: string, cmd: Command, d: Decided, notices: Notice[]) {
+    propose(head: Head, key: string, cmd: Command, d: Decided, notices: Notice[], who?: Who) {
       touched.add(key);
-      propose(s, head, key, cmd, d, notices);
+      propose(s, head, key, cmd, d, notices, undefined, who);
+    },
+    /** Вещь ждёт того, кто решит (Б5в): её открытое предложение остаётся. */
+    keep(key: string) {
+      touched.add(key);
     },
     done() {
       for (const key of Object.keys(s.heads.open)) if (prefixes.some(p => key.startsWith(p)) && !touched.has(key)) moot(s, key);

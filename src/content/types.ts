@@ -320,6 +320,11 @@ export interface Scenario {
   deviations: { term: number };
   /** рынок труда города (Б4в; src/engine/hire.ts); нет — ни кандидатов, ни заявлений */
   labor?: Labor;
+  /**
+   * руководители — люди (Б5в; src/engine/bosses.ts): у руководителя отдела — роль заместителя по умолчанию (первый по
+   * табельному номеру человек этой роли) и роли, из которых игрок может его назначить; нет строки — заместителя нет
+   */
+  heads?: Partial<Record<HeadId, { deputy: Id; can: Id[] }>>;
   /** отпуска (Б4г; src/engine/leave.ts): правило черновика графика и доплата заместителю; нет — отпусков нет */
   leave?: LeaveRule;
   /** вывоз отклонённого (Б1з; src/engine/waste.ts): подрядчик, подпись передачи и цены; нет — вывоза нет */
@@ -348,6 +353,11 @@ export interface Labor {
   probation: number;
   trial: number;
   colleague: { skill: number; over: number; ad: number };
+  /**
+   * переезд (Б5в): кандидат из другого города — через столько-то суток, навык от и до; на работу — после `notice` суток
+   * предупреждения на прежней (ст. 80) и `road` суток дороги; возмещение переезда — копейки, на приёме (ст. 169)
+   */
+  move?: { days: [number, number]; skill: [number, number]; notice: number; road: number; pay: number };
   roles: Record<Id, { ad: [number, number, number, number]; skill: [number, number, number, number, number]; quit: number }>;
 }
 
@@ -599,6 +609,9 @@ export interface Agreement {
 
 /** Отделы завода; у каждого — своя политика (Б4а). */
 export const DEPTS = ['wms', 'qc', 'qa', 'mes', 'line', 'maint'] as const;
+/** Руководители-люди (Б5в): отделы, у руководителя которых есть заместитель; уполномоченное лицо замещает другое. */
+export const HEAD_IDS = ['plan', 'mes', 'maint', 'qa', 'qc', 'supply', 'wms'] as const;
+export type HeadId = (typeof HEAD_IDS)[number];
 export type Dept = (typeof DEPTS)[number];
 
 export interface Role {

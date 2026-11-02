@@ -7,7 +7,7 @@
 // видит извещения, уже данные этим доживанием: так поток расчёта встаёт ровно на событии автопаузы (Б2а).
 import type { ContentDb, Id } from '../content/types';
 import { alertsHour } from './alerts';
-import { assetDone, assetHour, assetStep, seedAssets, visitDone } from './assets';
+import { assetDone, assetHour, assetStep, seedAssets, visitCommand, visitDone } from './assets';
 import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
@@ -30,6 +30,7 @@ import { auditDone, partnersDone, partnersHour, seedContracts, seedPairs, specPa
 import { coldOf } from './places';
 import { planHour } from './planner';
 import { planOf } from './plant';
+import { newPolicies, policyCommand } from './policies';
 import { assessCommand, devHour, qaDone, qaStep, releaseCommand } from './qa';
 import { foreign, seatCommand } from './seats';
 import { goHome, LAST_CALL, postArrive, toPosts } from './staff';
@@ -97,6 +98,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     pairs: {},
     contracts: {},
     policy: newPolicy(db, sc.id),
+    policies: newPolicies(),
     setpoints: {},
     maintLog: [],
     losses: [],
@@ -318,6 +320,19 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       // режим отдела (Б5б): руководитель решит или предложит в свой час — сейчас раздавать нечего
       const notices: Notice[] = [];
       modeCommand(s, cmd, notices);
+      return notices;
+    }
+    case 'policy': {
+      // политика руководителя (Б5г): с ближайшего часа его правила — сейчас раздавать нечего
+      const notices: Notice[] = [];
+      policyCommand(db, s, cmd, notices);
+      return notices;
+    }
+    case 'visit': {
+      // перенос визита подрядчика (Б5г): актив, чей визит отложен, снова берёт работу — раздать задачи
+      const notices: Notice[] = [];
+      visitCommand(db, s, cmd, notices);
+      steps(db, s, notices);
       return notices;
     }
     case 'accept':

@@ -12,6 +12,7 @@ import type { ContentDb, Id, Recipe, Sku } from '../content/types';
 import { addWorkdays, DAY, isWorkday, momentOf } from './core/calendar';
 import { modeOf, moot, propose } from './heads';
 import { BATCH_HOUR, placeOrder } from './mes';
+import { numOf, POL } from './policies';
 import { containersByLot } from './stock';
 import type { Notice, OrderWhy, PlantState } from './types';
 import { calOf } from './workdays';
@@ -89,7 +90,8 @@ export const ORDER_KEY = 'order';
 /**
  * Каждый час: в рабочий день в начале смены аппаратчиков — задание на рабочий день через две рабочие недели, если оно
  * нужно. Режим отдела (Б5б): «сам» — задание; «советует» — предложение того же задания с той же причиной, а задание не
- * нужно — открытое предложение «не нужно»; «вручную» — ничего.
+ * нужно — открытое предложение «не нужно»; «вручную» — ничего. Запас позиций, окно спроса и кампании — политики
+ * начальника отдела планирования (Б5г): с чего начинает завод — запись сценария.
  */
 export function planHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   const plan = db.scenarios[s.scenario].plan;
@@ -100,7 +102,7 @@ export function planHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   if (mode === 'manual') return;
   const day = addWorkdays(cal, now.day, AHEAD_WORK);
   const at = s.t + (day - now.day) * DAY;
-  const got = Object.values(s.batches).some(b => momentOf(s.start, b.notBefore).day === day) ? undefined : pick(db, s, plan.items, plan.cover, plan.window, plan.urgent, at);
+  const got = Object.values(s.batches).some(b => momentOf(s.start, b.notBefore).day === day) ? undefined : pick(db, s, plan.items, numOf(db, s, POL.cover)!, numOf(db, s, POL.window)!, numOf(db, s, POL.urgent), at);
   if (mode === 'advise') {
     if (!got) return moot(s, ORDER_KEY);
     const cmd = { kind: 'order' as const, recipe: got.it.recipe, notBefore: at, sku: got.it.sku };
@@ -122,7 +124,7 @@ function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], co
   const pos = items.map(it => ({ it, p: positionOf(db, s, it.sku, window, byLot) }));
   // запас < заказано за рабочий день окна × рабочих дней пятидневки в AHEAD + cover суток (Б4а)
   const ahead = aheadMilli(AHEAD + cover);
-  const why = (rule: OrderWhy['rule'], extra: Partial<OrderWhy> = {}): OrderWhy => ({ rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work })), ahead, ...extra });
+  const why = (rule: OrderWhy['rule'], extra: Partial<OrderWhy> = {}): OrderWhy => ({ rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work })), ahead, cover, ...extra });
   if (pos.some(x => x.p.span === 0)) {
     const last = (sku: Id) => Math.max(-1, ...Object.values(s.batches).filter(b => b.sku === sku).map(b => idNum(b.id)));
     return { it: pos.reduce((a, b) => (last(b.it.sku) < last(a.it.sku) ? b : a)).it, why: why('turn', { seen: SEEN }) };

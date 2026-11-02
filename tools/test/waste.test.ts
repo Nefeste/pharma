@@ -19,7 +19,7 @@ import { rowsOf } from '../../src/engine/quals';
 import { fromSave } from '../../src/engine/save';
 import { createLot } from '../../src/engine/stock';
 import type { PlantState } from '../../src/engine/types';
-import { FULL, KEEP, WASTE, WASTE_HOUR, zoneUnits } from '../../src/engine/waste';
+import { WASTE, WASTE_HOUR, zoneUnits } from '../../src/engine/waste';
 import { WMS } from '../../src/engine/wms';
 import { calOf } from '../../src/engine/workdays';
 import { wasteLevers } from '../../src/app/levers';
@@ -98,6 +98,9 @@ describe('команда «Заказать вывоз»', () => {
 });
 
 describe('коллега склада', () => {
+  // порог — политики заведующего складом (Б5г): с чего начинает завод — запись сценария
+  const FULL = w.full;
+  const KEEP = w.keep;
   const need = Math.ceil((rej.length * FULL[0]) / FULL[1]);
 
   test('в 09:00 рабочего дня: меньше двух третей мест — нет; две трети — вывоз на следующий рабочий день; второго нет', () => {
@@ -112,7 +115,7 @@ describe('коллега склада', () => {
     const o = s.waste.order!;
     expect(o).toEqual({ id: o.id, booked: at(start + 1, WASTE_HOUR), by: 'head:wms', at: at(addWorkdays(cal, start + 1, 1), w.hours[0]) });
     // журнал решений (Б5а): начальник склада — сколько мест занято из скольких
-    expect(s.journal.filter(r => r.d.kind === 'waste')).toEqual([{ n: expect.any(Number), t: o.booked, by: 'wms', d: { kind: 'waste', order: o.id, at: o.at, why: { used: need, places: rej.length, months: KEEP } } }]);
+    expect(s.journal.filter(r => r.d.kind === 'waste')).toEqual([{ n: expect.any(Number), t: o.booked, by: 'wms', d: { kind: 'waste', order: o.id, at: o.at, why: { used: need, places: rej.length, months: KEEP, full: [...FULL] } } }]);
     // зона полна, а подрядчик ещё едет: в 09:00 следующего дня второго вывоза нет — он тот же, что встал к рампе
     reject(s, rej.length - need, need);
     until(s, o.at + MIN);
@@ -131,6 +134,21 @@ describe('коллега склада', () => {
     until(s, at(start, WASTE_HOUR) + MIN);
     expect(s.waste.order?.by).toBe('head:wms');
     expect(s.journal.filter(r => r.d.kind === 'waste').at(-1)?.d).toMatchObject({ why: { used: 1, places: rej.length, since, months: KEEP } });
+  });
+
+  test('политика заведующего складом (Б5г): треть мест — вывоз при трети; срок 6 месяцев — паллета старше полугода', () => {
+    const third = Math.ceil(rej.length / 3);
+    const s = newPlant(db, { scenario: SC });
+    expect(apply(db, s, { kind: 'policy', policy: 'pol.wms.full', value: [1, 3] })).toEqual([{ kind: 'policy', policy: 'pol.wms.full', head: 'wms' }]);
+    reject(s, third);
+    until(s, at(start, WASTE_HOUR) + MIN);
+    expect(s.journal.filter(r => r.d.kind === 'waste').at(-1)?.d).toMatchObject({ why: { used: third, places: rej.length, months: KEEP, full: [1, 3] } });
+    const old = newPlant(db, { scenario: SC });
+    apply(db, old, { kind: 'policy', policy: 'pol.wms.keep', value: 6 });
+    const since = at(addMonths(start, -6), 0);
+    reject(old, 1, 0, since);
+    until(old, at(start, WASTE_HOUR) + MIN);
+    expect(old.journal.filter(r => r.d.kind === 'waste').at(-1)?.d).toMatchObject({ why: { used: 1, since, months: 6 } });
   });
 
   test('директор: склад «вручную» — заведующий складом молчит; «советует» — предлагает; место отдано — заказывает сам (Б5б)', () => {
@@ -464,13 +482,13 @@ describe('сохранения', () => {
 describe('сборщик базы', () => {
   test('запись `waste`: часы подрядчика — внутри суток, подпись и цены больше нуля; процедуре учатся все роли её работ', () => {
     const rec = scenario.shape.waste;
-    const ok = { hours: [9, 17], sign: 20, trip: 15000, pallet: 12000 };
+    const ok = { hours: [9, 17], sign: 20, trip: 15000, pallet: 12000, full: [2, 3], keep: 10 };
     expect(rec.safeParse(ok).success).toBe(true);
     expect(rec.safeParse(undefined).success).toBe(true);
-    const bad = [{ hours: [17, 9] }, { hours: [9, 25] }, { hours: [-1, 9] }, { hours: [9, 9] }, { sign: 0 }, { trip: 0 }, { pallet: -1 }];
+    const bad = [{ hours: [17, 9] }, { hours: [9, 25] }, { hours: [-1, 9] }, { hours: [9, 9] }, { sign: 0 }, { trip: 0 }, { pallet: -1 }, { full: [3, 2] }, { full: [0, 3] }, { keep: 11 }, { keep: 0 }];
     for (const x of bad) expect(rec.safeParse({ ...ok, ...x }).success).toBe(false);
     // в сценарии — секунды и копейки
-    expect(w).toEqual({ hours: [9 * HOUR, 17 * HOUR], sign: 20 * MIN, trip: 1_500_000, pallet: 1_200_000 });
+    expect(w).toEqual({ hours: [9 * HOUR, 17 * HOUR], sign: 20 * MIN, trip: 1_500_000, pallet: 1_200_000, full: [2, 3], keep: 10 });
     // процедура обращения с отклонённым — работам выноса, погрузки и подписи, и учат её все роли, которым они достаются
     const sop = db.sops['sop.rejects'];
     expect(sop.for.tasks).toEqual(['bulkOut', 'wasteLoad', 'wasteSign']);

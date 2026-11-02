@@ -136,7 +136,7 @@ export function keepOff(keep: Keep | undefined, off: readonly Pause[]) {
 }
 
 /** Куда ведёт щелчок по извещению: вещь на полу, окно, справочник на своей вкладке, доска расследования или журнал на записи. */
-export type Go = { thing: Thing } | { panel: 'gantt' | 'morning' | 'lab' } | { panel: 'ref'; tab: 'places' | 'partners' | 'people' } | { inv: string } | { journal: number };
+export type Go = { thing: Thing } | { panel: 'gantt' | 'morning' | 'lab' | 'policies' } | { panel: 'ref'; tab: 'places' | 'partners' | 'people' } | { inv: string } | { journal: number };
 
 /** Машина линии или оборудование участка по имени в плане — вещь для карточки. */
 export function machineThing(plant: Plant, id: string): Thing | undefined {
@@ -202,6 +202,14 @@ export function goOf(plant: Plant, n: Notice): Go | undefined {
     case 'proposal':
       // предложение руководителя (Б5б) — к журналу на его записи: причина, «Принять» и «Отклонить»
       return { journal: n.n };
+    case 'policy':
+      // политика задана (Б5г) — к окну «Политики»
+      return { panel: 'policies' };
+    case 'visitMoved': {
+      // визит перенесён (Б5г) — к активу, как у вышедшего срока
+      const thing = machineThing(plant, n.asset);
+      return thing ? { thing } : { panel: 'ref', tab: 'places' };
+    }
     default:
       return undefined;
   }

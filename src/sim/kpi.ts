@@ -2,7 +2,8 @@
 // поста, взятые места первыми; строка — руководитель и его показатели: число нынешнего месяца, прошлый месяц, 12
 // закрытых месяцев, лучше или хуже по направлению, противовес. «Почему?» — записи, из которых число: серии, заказы,
 // отклонения, пробы, партии, отказы, люди — со ссылкой на их карточку. Нынешний месяц считает та же функция движка, что
-// пишет итог месяца в полночь на 1-е (src/engine/kpi.ts). Только записи завода: полей истины здесь нет.
+// пишет итог месяца в полночь на 1-е (src/engine/kpi.ts). С Б5г — смены политик руководителя по журналу политик завода:
+// у столбика месяца и у месяца окна. Только записи завода: полей истины здесь нет.
 import type { ContentDb, Id, SeatId } from '../content/types';
 import { SEATS } from '../content/types';
 import { batchNo } from '../engine/batchno';
@@ -38,7 +39,8 @@ import {
 } from '../engine/kpi';
 import { P_ONE } from '../engine/core/rng';
 import { planOf } from '../engine/plant';
-import type { Deviation, PlantState } from '../engine/types';
+import { policyHead } from '../engine/policies';
+import type { Deviation, PlantState, PolicyValue } from '../engine/types';
 import type { Thing } from './views';
 
 export interface KpiQuery {
@@ -79,9 +81,27 @@ export interface KpiCell {
   why: boolean;
 }
 
+/**
+ * Смена политики руководителя (Б5г) на столбиках: место месяца среди 12 (`HIST` — месяц окна, ещё не закрытый), день в
+ * нём — тысячные доли месяца от его начала; когда, какая политика, у узла — вид машины и узла; прежнее и новое значение.
+ */
+export interface KpiMark {
+  bar: number;
+  at: number;
+  t: number;
+  policy: Id;
+  of?: string;
+  machine?: Id;
+  part?: string;
+  from: PolicyValue;
+  to: PolicyValue;
+}
+
 export interface KpiHeadRow {
   head: KpiHead;
   cells: KpiCell[];
+  /** смены его политик в месяцах окна (Б5г) — по порядку */
+  marks?: KpiMark[];
 }
 
 /** Запись «Почему?»: серия, заказ, отклонение, партия, отказ, человек или показатель МОК — со ссылкой, где она есть. */
@@ -391,6 +411,35 @@ export function monthClose(s: PlantState, at: number): MonthClose | undefined {
  * Окно «Показатели»: вкладка, её руководители и показатели нынешнего месяца или выбранного закрытого; «Почему?» — у одного
  * показателя по запросу, записи того же периода.
  */
+/**
+ * Смены политик (Б5г) по руководителям: в закрытых месяцах окна — у их столбика, с нынешнего месяца (`from`) — у месяца
+ * окна. Журнал политик завода хранит все смены, поэтому 12 месяцев видны целиком.
+ */
+function marksOf(s: PlantState, months: readonly { from: number; to: number }[], from: number | undefined): Partial<Record<KpiHead, KpiMark[]>> {
+  const out: Partial<Record<KpiHead, KpiMark[]>> = {};
+  const off = HIST - months.length;
+  for (const e of s.policies?.log ?? []) {
+    const head = policyHead(e.policy);
+    if (!head) continue;
+    const i = months.findIndex(m => e.t >= m.from && e.t < m.to);
+    const now = i < 0 && from !== undefined && e.t >= from;
+    if (i < 0 && !now) continue;
+    const m = i >= 0 ? months[i] : undefined;
+    const pt = e.of ? s.parts[e.of] : undefined;
+    (out[head] ??= []).push({
+      bar: m ? off + i : HIST,
+      at: m ? Math.min(999, Math.floor(((e.t - m.from) * 1000) / Math.max(1, m.to - m.from))) : 0,
+      t: e.t,
+      policy: e.policy,
+      ...(e.of ? { of: e.of } : {}),
+      ...(pt ? { machine: pt.of, part: pt.type } : {}),
+      from: e.from,
+      to: e.to,
+    });
+  }
+  return out;
+}
+
 export function kpiView(db: ContentDb, s: PlantState, q: KpiQuery): KpiView {
   const held = (s.seats ?? []).filter(x => x.to === undefined).map(x => x.seat);
   const tabs = [...SEATS.filter(x => held.includes(x)), ...SEATS.filter(x => !held.includes(x))];
@@ -406,8 +455,10 @@ export function kpiView(db: ContentDb, s: PlantState, q: KpiQuery): KpiView {
   const last = sel ? all[at - 1] : months.at(-1);
   const d = momentOf(s.start, p.from).date;
   const part = sel ? !!sel.part : d.d !== 1;
+  const marks = marksOf(s, months, sel ? undefined : p.from);
   const rows: KpiHeadRow[] = headsOf(q.tab).map(head => ({
     head,
+    ...(marks[head]?.length ? { marks: marks[head] } : {}),
     cells: cellsOf(head).map(k => {
       const v = now[k.id];
       const prev = last?.v[k.id];

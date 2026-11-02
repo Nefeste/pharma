@@ -18,6 +18,7 @@ import { cleaned, defect, recleaned } from './lean';
 import { blocked, consume, failPart, partsOf, partType, untilFail, wearAt } from './maint';
 import { stageSetpoints, unitsPerHour } from './modes';
 import { type PlantPlan, planOf } from './plant';
+import { POL, policyOf } from './policies';
 import { measure, within } from './quality';
 import { normal, roll, spread } from './random';
 import { containersByLot, createLot, free, knownAssay, nextId, putUnit, stockChanged } from './stock';
@@ -900,7 +901,7 @@ function stageDone(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, notic
   // оборудование свободно; помещение — грязное, если серия из него уходит
   for (const e of eqs) delete e.batch;
   const next = r.stages[b.stage + 1];
-  if (!next || plan.roomOf[next.room] !== roomId) leaveRoom(db, s, roomId, b.product);
+  if (!next || plan.roomOf[next.room] !== roomId) leaveRoom(db, s, roomId, b.product, b.id);
   b.stage++;
   if (last) finish(db, s, plan, b, rec, notices);
   else tryStart(db, s, b);
@@ -928,16 +929,37 @@ function dispense(s: PlantState, b: Batch, rec: StageRecord) {
 }
 
 /**
- * Серия уходит из помещения — после стадии или упаковки (Б1е): грязное, с продуктом серии; уборка — сразу (политика
- * мастера по умолчанию).
+ * Серия `cur` уходит из помещения — после стадии или упаковки (Б1е): грязное, с продуктом серии; уборка — сразу. Какая —
+ * политика начальника производства (Б5г): «малая сразу, генеральная — перед другим продуктом» или «генеральная сразу,
+ * если следующая серия в помещении — другого продукта».
  */
-export function leaveRoom(db: ContentDb, s: PlantState, roomId: string, product: Id) {
+export function leaveRoom(db: ContentDb, s: PlantState, roomId: string, product: Id, cur: string) {
   const room = s.rooms[roomId];
   room.status = 'dirty';
   delete room.batch;
   room.since = s.t;
   room.product = product;
+  if (policyOf(db, s, POL.clean) === 'major') {
+    const next = nextIn(db, s, roomId, cur);
+    if (next && next.product !== product) room.major = true;
+  }
   ensureCleaning(db, s, room);
+}
+
+/**
+ * Следующая серия, которой нужно помещение (Б5г): из серий, кроме `cur`, ещё не ГП, — с самым ранним «не раньше»; помещению
+ * линии — серия, чья упаковка ещё не идёт, производству — у которой впереди стадия в нём.
+ */
+function nextIn(db: ContentDb, s: PlantState, roomId: string, cur: string): Batch | undefined {
+  const plan = planOf(db, s.plant);
+  const lineRoom = plan.plant.lines.some(l => l.room === roomId);
+  let best: Batch | undefined;
+  for (const x of Object.values(s.batches)) {
+    if (x.id === cur || x.status === 'fg' || x.status === 'released' || x.status === 'rejected') continue;
+    const needs = lineRoom ? !(x.status === 'packing' && x.pack?.state !== 'waiting') : x.status !== 'bulk' && x.status !== 'packing' && db.recipes[x.recipe].stages.some((st, i) => i >= x.stage && plan.roomOf[st.room] === roomId);
+    if (needs && (!best || x.notBefore < best.notBefore)) best = x;
+  }
+  return best;
 }
 
 /** Свойства серии со своей ветвью разброса (часть 4, Б2б): появились позже прочих. */

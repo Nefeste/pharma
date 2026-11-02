@@ -44,6 +44,7 @@ import {
   type ParamUnit,
   type PartType,
   type Plant,
+  type Policy,
   type Product,
   type Profile,
   QUALITATIVE,
@@ -75,6 +76,7 @@ import { MES, stageNorm } from '../../src/engine/mes';
 import { agreementFor, REVIEWERS, STARTING } from '../../src/engine/partners';
 import { accepts, areaCode, CENTER_OF, centerCode, classOf, coldOf, placesOf, rackStore, roomAt } from '../../src/engine/places';
 import { type DraftPerson, placeDraft } from '../../src/engine/leave';
+import { policyErrors } from '../../src/engine/policies';
 import { QA } from '../../src/engine/qa';
 import { cycleErrors, shiftLengths } from '../../src/engine/shifts';
 import { CHECKERS } from '../../src/engine/train';
@@ -225,6 +227,7 @@ export function buildDb(content = CONTENT): Built {
     }
     errors.push(...stageErrors({ hash: '', ...db }));
     errors.push(...leaveErrors({ hash: '', ...db }));
+    errors.push(...policyErrors({ hash: '', ...db }));
   }
   const hash = fnv1a(stableJson(db)).toString(16).padStart(8, '0');
   return { db: { hash, ...db }, errors, files: count };
@@ -966,6 +969,9 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         }
       }
       need(s.assets.ahead + 3 < shortest * 28, `${where}: assets.ahead — срок предупреждения не короче самого короткого интервала, ${shortest} мес.`);
+      // и наибольший срок, который игрок может задать политикой главного механика (Б5г)
+      const ahead = raw.policies['pol.maint.ahead']?.max;
+      need(ahead === undefined || ahead + 3 < shortest * 28, `${where}: pol.maint.ahead — наибольший срок предупреждения не короче самого короткого интервала, ${shortest} мес.`);
     }
     // склад ГП на старте (Б1г): у каждой позиции, которую заказывают покупатели, — карта в плане выпуска: по ней
     // считают ящики серии
@@ -1002,7 +1008,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       ...(s.incident ? { incident: incidentOf(s.incident, s.batches.length, where) } : {}),
       ...(s.labor ? { labor: laborOf(s.labor, s, where) } : {}),
       ...(s.leave ? { leave: leaveRuleOf(s.leave, s, where) } : {}),
-      ...(s.waste ? { waste: { hours: [s.waste.hours[0] * 3600, s.waste.hours[1] * 3600] as [number, number], sign: sec(s.waste.sign), trip: kop(s.waste.trip), pallet: kop(s.waste.pallet) } } : {}),
+      ...(s.waste ? { waste: { hours: [s.waste.hours[0] * 3600, s.waste.hours[1] * 3600] as [number, number], sign: sec(s.waste.sign), trip: kop(s.waste.trip), pallet: kop(s.waste.pallet), full: s.waste.full, keep: s.waste.keep } } : {}),
     };
   }
   const profiles: Record<string, Profile> = {};
@@ -1034,6 +1040,9 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     need(suppliers[sp.supplier], `запчасть ${sp.id}: нет поставщика ${sp.supplier}`);
     spares[sp.id] = { ...sp, price: kop(sp.price) };
   }
+  // политики руководителей (Б5г): порог износа узла — доли 1/10 000 ресурса, как у порога сценария; остальное — как в записи
+  const policies: Record<string, Policy> = {};
+  for (const p of Object.values(raw.policies)) policies[p.id] = p.kind === 'wear' ? { ...p, min: share(p.min!), max: share(p.max!), step: share(p.step!) } : { ...p };
   // покупатели: дни недели — с нуля (0 — понедельник), спрос — только по позициям из базы
   const customers: Record<string, Customer> = {};
   for (const c of Object.values(raw.customers)) {
@@ -1144,6 +1153,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     regimes,
     makers,
     agreements,
+    policies,
   };
 }
 

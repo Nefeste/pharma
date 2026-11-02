@@ -4,12 +4,14 @@
 // знание завода, а не истина: их и показывает окно. Для планёрки — сводка: визиты сегодня, что кончится в срок
 // предупреждения, что просрочено.
 import type { ContentDb, Id, Text } from '../content/types';
-import { contractor, lineUnfit, recOf, stageUnfit, unfit, type Unfit, valid, type Work, WORKS } from '../engine/assets';
+import { contractor, lineUnfit, recOf, stageUnfit, unfit, type Unfit, valid, visitLast, type Work, WORKS } from '../engine/assets';
 import { batchNo } from '../engine/batchno';
-import { DAY, momentOf } from '../engine/core/calendar';
+import { DAY, isWorkday, momentOf } from '../engine/core/calendar';
 import { classOf, placesOf } from '../engine/places';
 import { planOf } from '../engine/plant';
-import type { AssetFamily, AssetRec, PlantState } from '../engine/types';
+import { numOf, POL } from '../engine/policies';
+import type { Asset, AssetFamily, AssetRec, PlantState } from '../engine/types';
+import { calOf } from '../engine/workdays';
 import type { Thing } from './views';
 
 /** Актив для окна: номер, род, класс, место, критический ли; какие работы нужны классу; последние записи; визит; пригоден ли. */
@@ -35,6 +37,11 @@ export interface AssetInfo {
   thing?: Thing;
   /** сегодня по часам завода — номер дня: от него окно пишет «до» и «вышла» */
   today: number;
+  /**
+   * на какие дни можно перенести визит (Б5г): рабочие, с завтра по последний день записи в силе, номерами дней; визит идёт
+   * или записи в силе нет — нет
+   */
+  move?: number[];
 }
 
 export interface PlaceCenter {
@@ -97,7 +104,17 @@ export function assetInfo(db: ContentDb, s: PlantState, id: string): AssetInfo |
     working: contractor(a, s.t),
     ...(thing ? { thing } : {}),
     today: momentOf(s.start, s.t).day,
+    ...(v && v.from === undefined ? movable(db, s, a) : {}),
   };
+}
+
+/** Рабочие дни, на которые можно перенести визит (Б5г): с завтра по последний день записи в силе. */
+function movable(db: ContentDb, s: PlantState, a: Asset): { move?: number[] } {
+  const today = momentOf(s.start, s.t).day;
+  const cal = calOf(db, s);
+  const move: number[] = [];
+  for (let z = today + 1; z <= visitLast(a, today); z++) if (isWorkday(cal, z)) move.push(z);
+  return move.length > 0 ? { move } : {};
 }
 
 /** Вещь на полу актива: машина линии, оборудование, техника; прибор — его помещение. */
@@ -143,7 +160,7 @@ export function placesView(db: ContentDb, s: PlantState): PlacesView {
       vehicles: assets.filter(x => x.family === 'vehicle' && x.place === a.code).map(x => assetInfo(db, s, x.id)!),
     })),
     common: plant.rooms.filter(r => !inAreas.has(r.id)).map(r => r.type),
-    ahead: db.scenarios[s.scenario].assets.ahead,
+    ahead: numOf(db, s, POL.ahead)!,
   };
 }
 
@@ -168,7 +185,8 @@ export interface AssetSum {
 export function assetSum(db: ContentDb, s: PlantState): AssetSum {
   const day = momentOf(s.start, s.t).day;
   const dayStart = s.t - momentOf(s.start, s.t).sec;
-  const ahead = db.scenarios[s.scenario].assets.ahead;
+  // срок предупреждения — политика главного механика (Б5г)
+  const ahead = numOf(db, s, POL.ahead)!;
   const out: AssetSum = { today: [], soon: [], expired: [], ahead };
   for (const a of Object.values(s.assets)) {
     const v = a.visit;

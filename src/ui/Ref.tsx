@@ -479,33 +479,23 @@ function Calendar({ v }: { v: RefView }) {
 }
 
 /**
- * Политики отделов (Б4а): сверхурочные — «по потребности» или «только закончить начатое». Меняет пост отдела или
- * директор; места не выбраны — кто угодно (как команды других постов, 3е).
+ * Политики отделов (Б4а): сверхурочные — «по потребности» или «только закончить начатое». С Б5г их меняют в окне
+ * «Политики» (P), как и другие политики руководителей; здесь — что сейчас и ссылка на окно.
  */
-function Policies({ v, hud, actions }: { v: RefView; hud: Hud; actions: Actions }) {
+function Policies({ v, actions }: { v: RefView; actions: Actions }) {
   const pc = T.ref.policyCols;
   const ot = v.overtime;
-  const mine = (d: Dept) => holds(hud, DEPT_SEAT[d]);
   const cols: Col<Dept>[] = [
     { name: pc.dept, text: d => T.morning.depts[d] ?? d },
     { name: pc.overtime, text: d => T.ref.modes[v.policy[d]] ?? v.policy[d], show: d => <span data-test="policy-mode">{T.ref.modes[v.policy[d]] ?? v.policy[d]}</span> },
-    {
-      name: '',
-      text: () => '',
-      show: d => {
-        const other: OvertimeMode = v.policy[d] === 'need' ? 'finish' : 'need';
-        return (
-          <button type="button" disabled={!mine(d)} onClick={() => actions.overtime(d, other)} title={mine(d) ? '' : T.seats.notYours(T.seats.names[DEPT_SEAT[d]])} data-test="policy-set" data-dept={d}>
-            {T.ref.modeSet(T.ref.modes[other])}
-          </button>
-        );
-      },
-    },
     { name: pc.seat, text: d => T.seats.names[DEPT_SEAT[d]] ?? DEPT_SEAT[d] },
   ];
   return (
     <section className="rsec" data-test="ref-policy">
-      <b>{T.ref.policy}</b>
+      <b>{T.ref.policy}</b>{' '}
+      <button type="button" className="small" onClick={() => actions.togglePolicies()} title={T.policies.hint} data-test="policy-open">
+        {T.ref.policyGo}
+      </button>
       <Table cols={cols} items={[...DEPTS]} keyOf={d => d} q="" />
       <div className="muted small">{T.ref.policyNote(hText(ot.shift), hText(ot.year))}</div>
     </section>
@@ -822,7 +812,7 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
         <Table test="ref-shifts" cols={shifts} items={v.shifts} keyOf={x => x.id} q={q} />
       </section>
       <ShiftCal v={v} />
-      <Policies v={v} hud={hud} actions={actions} />
+      <Policies v={v} actions={actions} />
       <Calendar v={v} />
       <section className="rsec">
         <Table test="ref-matrix" cols={matrix} items={v.matrix.docs.map((d, i) => ({ i, d }))} keyOf={x => x.d.code} q={q} />

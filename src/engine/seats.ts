@@ -6,6 +6,7 @@ import { type ContentDb, type Dept, SEATS, type SeatId } from '../content/types'
 import { staleAsks } from './heads';
 import { HEAD_SEAT, recordOf } from './journal';
 import { colleagueTargets } from './modes';
+import { policyHead } from './policies';
 import type { Command, Notice, PlantState } from './types';
 
 /** Чья команда — пост, к которому она относится; ход времени и выбор места — ничьи; политика отдела — пост отдела. */
@@ -22,18 +23,24 @@ export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
   setpoint: 'quality',
   po: 'supply',
   waste: 'supply',
+  visit: 'production',
 };
 
 /** Пост отдела (Б4а): производство, линию и техслужбу ведёт «Производство», ОКК и ООК — «Качество», склад — «Снабжение и склад». */
 export const DEPT_SEAT: Record<Dept, SeatId> = { mes: 'production', line: 'production', maint: 'production', qc: 'quality', qa: 'quality', wms: 'supply' };
 
 /**
- * Пост команды: у политики отдела — пост этого отдела, у перевода на другой график (Б4б), команд найма и увольнения (Б4в),
- * частей отпуска и смежной профессии (Б4г) — пост отдела роли (`dept`), у остальных — по виду команды.
+ * Пост команды: у политики отдела — пост этого отдела, у режима и политики руководителя (Б5б, Б5г) — пост его отдела, у
+ * перевода на другой график (Б4б), команд найма и увольнения (Б4в), частей отпуска и смежной профессии (Б4г) — пост
+ * отдела роли (`dept`), у остальных — по виду команды.
  */
 export function ownerOf(cmd: Command, dept?: Dept): SeatId | undefined {
   if (cmd.kind === 'overtime') return DEPT_SEAT[cmd.dept];
   if (cmd.kind === 'mode') return HEAD_SEAT[cmd.head];
+  if (cmd.kind === 'policy') {
+    const head = policyHead(cmd.policy);
+    return head && HEAD_SEAT[head];
+  }
   if (cmd.kind === 'roster' || cmd.kind === 'vacancy' || cmd.kind === 'agency' || cmd.kind === 'close' || cmd.kind === 'hire' || cmd.kind === 'dismiss' || cmd.kind === 'leave' || cmd.kind === 'also') return dept && DEPT_SEAT[dept];
   return OWNER[cmd.kind];
 }
@@ -104,8 +111,8 @@ export function seatCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
   const log = (s.seats ??= []);
   for (const x of log) if (x.to === undefined && !want.has(x.seat)) x.to = s.t;
   for (const id of SEATS) if (want.has(id) && !log.some(x => x.seat === id && x.to === undefined)) log.push({ seat: id, from: s.t });
-  // игрок ушёл с поста «Качество и технология» — коллега технологии держит цель (Б1ж)
-  if (had && !playerHolds(s, 'qa')) colleagueTargets(s, notices);
+  // игрок ушёл с поста «Качество и технология» — коллега технологии держит цель (Б1ж) или оставляет уставки (Б5г)
+  if (had && !playerHolds(s, 'qa')) colleagueTargets(db, s, notices);
   // пост отпущен (Б5б): открытые предложения его руководителей устарели — они решат в свой час
   staleAsks(s);
 }

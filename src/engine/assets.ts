@@ -10,11 +10,12 @@ import { part, post } from './cash';
 import { schedule } from './core/agenda';
 import { addMonths, addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf } from './core/calendar';
 import { fnv1a } from './core/hash';
-import { note } from './journal';
+import { note, noteCmd } from './journal';
 import { accepts, classOf, placesOf, roomAt } from './places';
 import { type PlantPlan, planOf, type Slot } from './plant';
+import { numOf, POL } from './policies';
 import { addTask } from './tasks';
-import type { Asset, AssetRec, Notice, PlantState, Task } from './types';
+import type { Asset, AssetRec, Command, Notice, PlantState, Task } from './types';
 import { calOf } from './workdays';
 
 /** Работы подрядчика у актива: повторная квалификация и калибровка (у датчика — поверка). */
@@ -163,11 +164,13 @@ function expired(db: ContentDb, s: PlantState, day: number, notices: Notice[]) {
 }
 
 /**
- * Коллега техслужбы (Б3в): у актива без визита, чья запись кончится в срок предупреждения сценария (или уже кончилась), —
- * визит на ближайший рабочий день, к началу часов подрядчика; из двух работ — та, что кончится раньше.
+ * Коллега техслужбы (Б3в): у актива без визита, чья запись кончится в срок предупреждения (или уже кончилась), — визит на
+ * ближайший рабочий день, к началу часов подрядчика; из двух работ — та, что кончится раньше. Срок предупреждения —
+ * политика главного механика (Б5г): с чего начинает завод — запись сценария.
  */
 function book(db: ContentDb, s: PlantState, today: number) {
   const sc = db.scenarios[s.scenario];
+  const ahead = numOf(db, s, POL.ahead)!;
   const at = (addWorkdays(calOf(db, s), today, 1) - daysFromCivil(s.start)) * DAY + sc.assets.hours[0];
   for (const a of Object.values(s.assets)) {
     if (a.visit) continue;
@@ -176,13 +179,41 @@ function book(db: ContentDb, s: PlantState, today: number) {
     for (const work of WORKS) {
       if (!cls[work]) continue;
       const until = recOf(a, work)?.until ?? Number.NEGATIVE_INFINITY;
-      if (until - today <= sc.assets.ahead && (!due || until < due.until)) due = { work, until };
+      if (until - today <= ahead && (!due || until < due.until)) due = { work, until };
     }
     if (!due) continue;
     a.visit = { work: due.work, at, booked: s.t, v: 0 };
     // журнал решений (Б5а): главный механик — до какого дня запись и срок предупреждения
-    note(s, 'maint', { kind: 'visit', asset: a.id, work: due.work, at, why: { ...(Number.isFinite(due.until) ? { until: due.until } : {}), ahead: sc.assets.ahead } });
+    note(s, 'maint', { kind: 'visit', asset: a.id, work: due.work, at, why: { ...(Number.isFinite(due.until) ? { until: due.until } : {}), ahead } });
   }
+}
+
+/**
+ * Последний день, на который можно перенести визит (Б5г): последний день записи его работы в силе; записи в силе нет —
+ * сегодня: переносить некуда, актив и так не работает.
+ */
+export function visitLast(a: Asset, today: number): number {
+  const rec = a.visit ? recOf(a, a.visit.work) : undefined;
+  return rec && rec.day <= today && today <= rec.until ? rec.until : today;
+}
+
+/**
+ * Команда `visit` (Б5г, обещана в Б3в): перенести визит подрядчика на другой день — рабочий, не раньше завтра и не позже
+ * последнего дня записи в силе (`visitLast`) — к началу часов подрядчика. Начатое не меняется: визит, который уже идёт,
+ * не переносят. Запись журнала «вы» с прежним мгновением. Отказы: визита нет или он идёт; день не годится; тот же день.
+ */
+export function visitCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'visit' }>, notices: Notice[]) {
+  const a = s.assets[cmd.asset];
+  const v = a?.visit;
+  if (!v || v.from !== undefined) return notices.push({ kind: 'refused', cmd: 'visit', why: 'noVisit', detail: cmd.asset });
+  const today = momentOf(s.start, s.t).day;
+  if (!Number.isInteger(cmd.day) || cmd.day <= today || cmd.day > visitLast(a, today) || !isWorkday(calOf(db, s), cmd.day)) return notices.push({ kind: 'refused', cmd: 'visit', why: 'visitDay', detail: cmd.asset });
+  const at = (cmd.day - daysFromCivil(s.start)) * DAY + db.scenarios[s.scenario].assets.hours[0];
+  if (at === v.at) return notices.push({ kind: 'refused', cmd: 'visit', why: 'visitSame', detail: cmd.asset });
+  const from = v.at;
+  v.at = at;
+  noteCmd(s, cmd, { kind: 'visit', asset: a.id, work: v.work, at, from });
+  notices.push({ kind: 'visitMoved', asset: a.id, family: a.family, type: a.type, inv: a.inv, work: v.work, at });
 }
 
 /** Подрядчик кончил работу (событие `visit`): счёт — сегодня, НДС — к вычету; работу принимает человек завода — задача. */

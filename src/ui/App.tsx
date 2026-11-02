@@ -19,6 +19,7 @@ import { Dossier } from './Dossier';
 import { Inv } from './Inv';
 import { Journal } from './Journal';
 import { Kpi } from './Kpi';
+import { Policies } from './Policies';
 import { FloorTip, Layers } from './Layers';
 import { Lab } from './Lab';
 import { Morning } from './Morning';
@@ -119,6 +120,9 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
             <button type="button" className={s.kpi.open ? 'on' : ''} onClick={() => actions.toggleKpi()} title={T.kpi.hint} data-test="kpi-open">
               {T.kpi.button}
             </button>
+            <button type="button" className={s.policies.open ? 'on' : ''} onClick={() => actions.togglePolicies()} title={T.policies.hint} data-test="policies-open">
+              {T.policies.button}
+            </button>
             <button type="button" className={s.gantt.open ? 'on' : ''} onClick={() => actions.toggleGantt()} title={T.gantt.hint} data-test="gantt-open">
               {T.gantt.button}
             </button>
@@ -190,6 +194,9 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
       </Guard>
       <Guard name={T.kpi.button} close={s.kpi.open ? actions.toggleKpi : undefined}>
         {s.kpi.open && <Kpi hud={s} actions={actions} />}
+      </Guard>
+      <Guard name={T.policies.button} close={s.policies.open ? actions.togglePolicies : undefined}>
+        {s.policies.open && <Policies hud={s} actions={actions} />}
       </Guard>
       <Guard name={T.po.button} close={s.po.open ? actions.togglePo : undefined}>
         {s.po.open && <Po hud={s} actions={actions} />}

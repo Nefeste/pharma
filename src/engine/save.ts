@@ -17,6 +17,7 @@ import { newCustomers } from './market';
 import { bulkOut, stageTaskNorm } from './mes';
 import { seedContracts, seedPairs, specPairs } from './partners';
 import { planOf } from './plant';
+import { newPolicies } from './policies';
 import { nominal } from './quality';
 import { shiftEndAt } from './staff';
 import { rowsOf } from './quals';
@@ -465,6 +466,11 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   // 33 → 34 (Б5б): режимы отделов — выбора игрока нет, режимы по умолчанию взятых мест; открытых предложений нет
   33: raw => {
     (raw as unknown as PlantState).heads = newHeads();
+    return raw;
+  },
+  // 34 → 35 (Б5г): политики руководителей — значений игрока нет, все с записи сценария; истории нет
+  34: raw => {
+    (raw as unknown as PlantState).policies = newPolicies();
     return raw;
   },
 };

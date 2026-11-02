@@ -219,9 +219,11 @@ describe('поток прогона', () => {
         const msg: ToPlan = { kind: 'run', id: 7, json: toSave(s), variants, days: 14, seeds: 3 };
         w.postMessage(msg);
       });
-      expect(got.map(m => m.kind)).toEqual(['variant', 'variant', 'done']);
+      // ход по зёрнам (Б5г): три зерна, потом итог варианта
+      expect(got.map(m => m.kind)).toEqual(['seed', 'seed', 'seed', 'variant', 'seed', 'seed', 'seed', 'variant', 'done']);
+      expect(got.filter(m => m.kind === 'seed').map(m => [m.index, m.k])).toEqual([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]]);
       variants.forEach((v, i) => {
-        const m = got[i] as Extract<FromPlan, { kind: 'variant' }>;
+        const m = got.filter(m => m.kind === 'variant')[i] as Extract<FromPlan, { kind: 'variant' }>;
         expect(m.id).toBe(7);
         expect(m.index).toBe(i);
         expect(JSON.stringify(m.sum)).toBe(JSON.stringify(summarize(runPlan(game, s, v, { days: 14, seeds: 3 }), 14)));

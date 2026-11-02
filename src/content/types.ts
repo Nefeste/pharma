@@ -184,6 +184,34 @@ export interface ScenarioWaste {
   sign: number;
   trip: number;
   pallet: number;
+  /** порог коллеги склада на старте (Б5г): доля занятых мест зоны — числитель и знаменатель; срок ожидания, месяцев */
+  full: [number, number];
+  keep: number;
+}
+
+/** Руководитель политики (Б5г): по должности, как у журнала решений (src/engine/types.ts, `Head`). */
+export type PolicyHead = 'plan' | 'supply' | 'maint' | 'mes' | 'wms' | 'tech';
+
+/**
+ * Политика руководителя (Б5г; геймдизайн, §8.5): что задают и в каких пределах — гипотезы. Сутки и месяцы — от `min` до
+ * `max` с шагом `step`; износ узла — доли 1/10 000 ресурса так же, `off` — «после отказа»; уровень ЗИП — два целых от
+ * `min` до `max`, первое меньше; выбор — из `options`; доля мест — из `shares`. `each` — своя у каждого узла или запчасти;
+ * `off` у суток — «без» (кампаний нет). С чего начинает завод — запись сценария (src/engine/policies.ts).
+ */
+export interface Policy {
+  id: Id;
+  name: Text;
+  head: PolicyHead;
+  kind: 'days' | 'months' | 'wear' | 'level' | 'choice' | 'share';
+  each?: 'part' | 'spare';
+  min?: number;
+  max?: number;
+  step?: number;
+  off?: true;
+  options?: string[];
+  shares?: [number, number][];
+  source?: string[];
+  review: Review;
 }
 
 /**
@@ -275,7 +303,11 @@ export interface Scenario {
   /** контрагенты и договоры (Б3г): src/engine/partners.ts */
   partners: ScenarioPartners;
   /** политики отделов на старте (Б4а): сверхурочные — src/engine/hours.ts */
-  policies: { overtime: OvertimeMode };
+  /**
+   * политики отделов на старте: сверхурочные (Б4а) — src/engine/hours.ts; уборка после серии и уставки при уходе игрока с
+   * поста «Качество и технология» (Б5г) — src/engine/policies.ts
+   */
+  policies: { overtime: OvertimeMode; clean: 'minor' | 'major'; setpoints: 'target' | 'keep' };
   /** учётный период суммированного учёта сменных графиков по циклу, месяцев (Б4б): src/engine/shifts.ts */
   account: number;
   /**
@@ -1133,4 +1165,6 @@ export interface ContentDb {
   regimes: Record<Id, Regime>;
   makers: Record<Id, Maker>;
   agreements: Record<Id, Agreement>;
+  /** политики руководителей (Б5г): `content/policies/` */
+  policies: Record<Id, Policy>;
 }

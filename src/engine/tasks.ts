@@ -19,7 +19,7 @@ import { schedule } from './core/agenda';
 import { momentOf } from './core/calendar';
 import { endTask, fits, startTask } from './hours';
 import { awayOn, coversOn } from './leave';
-import { moved, waitEnd, waitNote } from './lean';
+import { lossAt, moved, moveThing, taskSpot, waitEnd, waitNote } from './lean';
 import { placesOf } from './places';
 import { dist, type PlantPlan, planOf, type Point, straight, travel } from './plant';
 import { admitted, lacking, needOf, vehicleNeed } from './quals';
@@ -301,7 +301,7 @@ export function dispatch(db: ContentDb, s: PlantState) {
     else {
       if (why !== 'qual') delete t.lack;
       if (why !== 'asset') delete t.unfit;
-      waitNote(s, t, why);
+      waitNote(db, s, t, why);
     }
   }
 }
@@ -522,7 +522,7 @@ function timesOf(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, pos: re
 
 function start(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, people: Person[], v: Vehicle | undefined, to: string | undefined, inst: Instrument | undefined) {
   const from = pointOf(plan, s, t.from);
-  waitEnd(s, t);
+  waitEnd(db, s, t);
   delete t.lack;
   delete t.unfit;
   // кто шёл на пост — остановился там, где его застала задача: путь к ней — оттуда
@@ -539,14 +539,24 @@ function start(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, people: P
     const dest = to ? plan.slot[to] : (destOf(plan, s, t) ?? from);
     v.task = t.id;
     t.vehicle = v.id;
-    // водитель идёт к технике — перемещение; техника едет порожняком и с грузом — транспортировка
-    moved(s, t.kind, dist(plan, people[0], v), travel(plan, people[0], v, WALK), dist(plan, v, from, 'drive'), dist(plan, from, dest, 'drive'), travel(plan, v, from, vt.speedEmpty, 'drive') + travel(plan, from, dest, vt.speedLoaded, 'drive'));
+    // водитель идёт к технике — перемещение; техника едет порожняком и с грузом — транспортировка; с Б1л — и у места
+    // задачи: переход — у водителя, перевозка — у груза
+    const walk = travel(plan, people[0], v, WALK);
+    const drive = travel(plan, v, from, vt.speedEmpty, 'drive') + travel(plan, from, dest, vt.speedLoaded, 'drive');
+    moved(s, t.kind, dist(plan, people[0], v), walk, dist(plan, v, from, 'drive'), dist(plan, from, dest, 'drive'), drive);
+    const spot = taskSpot(db, s, t);
+    lossAt(s, spot, 'walk', walk, `p:${people[0].id}`);
+    lossAt(s, spot, 'move', drive, moveThing(s, t));
   } else {
     const dest = to ? plan.slot[to] : destOf(plan, s, t);
     // каждый идёт к месту — перемещение; груз на руках — транспортировка
     // к посту, где учатся (Б3б), и к активу, чью работу принимают (Б3в), идут люди своего участка
     const area = t.kind === 'train' || t.kind === 'accept' ? db.roles[people[0].role].dept : undefined;
-    moved(s, t.kind, people.reduce((n, p) => n + dist(plan, p, from), 0), people.reduce((n, p) => n + travel(plan, p, from, WALK), 0), 0, dest ? dist(plan, from, dest) : 0, times[3] - times[2], area);
+    const walks = people.map(p => travel(plan, p, from, WALK));
+    moved(s, t.kind, people.reduce((n, p) => n + dist(plan, p, from), 0), walks.reduce((n, x) => n + x, 0), 0, dest ? dist(plan, from, dest) : 0, times[3] - times[2], area);
+    const spot = taskSpot(db, s, t);
+    people.forEach((p, i) => lossAt(s, spot, 'walk', walks[i], `p:${p.id}`));
+    lossAt(s, spot, 'move', times[3] - times[2], moveThing(s, t));
   }
   // до конца смены — работа по графику, после — сверхурочная (Б4а)
   for (const p of people) startTask(p, shiftEnd(db, s, p)!);
@@ -586,7 +596,7 @@ function start(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, people: P
  */
 export function dropTask(db: ContentDb, s: PlantState, t: Task) {
   if (t.state === 'busy') return release(db, s, t);
-  waitEnd(s, t);
+  waitEnd(db, s, t);
   s.open.splice(s.open.indexOf(t.id), 1);
   delete s.tasks[t.id];
 }

@@ -12,7 +12,7 @@ import { modeOf, moot, propose, seenAt } from './heads';
 import { expectedGain, posterior, quantize } from './infer';
 import { note, noteCmd } from './journal';
 import { labPlace, LAB_PRIO, QC, settleLot } from './lab';
-import { defect } from './lean';
+import { batchLost, defect } from './lean';
 import { planOf } from './plant';
 import { within } from './quality';
 import { roll } from './random';
@@ -427,6 +427,7 @@ function close(db: ContentDb, s: PlantState, inv: Investigation, cause: string, 
   } else {
     setLotStatus(s, lot, 'rejected');
     defect(s, 'batches');
+    if (lot.batch) batchLost(s, s.batches[lot.batch]);
     // серия отклонена — с ней решены и другие её открытые отклонения (режим, МОК)
     for (const d of Object.values(s.deviations)) if (d.status === 'open' && (d.batch === inv.batch || d.lot === lot.id)) d.status = 'closed';
   }

@@ -96,7 +96,7 @@ export function wasteHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   const o = s.waste.order;
   const yard = o?.truck !== undefined ? s.trucks[o.truck] : undefined;
   if (o && yard && !yard.docked && s.t >= at(s, momentOf(s.start, yard.arrived).day, w.hours[1])) {
-    dockWait(s, s.t - yard.arrived);
+    dockWait(s, s.t - yard.arrived, yard.dock, `w:${yard.waste}`);
     delete s.trucks[yard.id];
     delete o.truck;
     o.at = at(s, addWorkdays(calOf(db, s), now.day, 1), w.hours[0]);

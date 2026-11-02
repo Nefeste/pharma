@@ -414,7 +414,7 @@ function dockNext(db: ContentDb, s: PlantState, notices: Notice[]) {
   const next = trucks[0];
   if (!next) return;
   next.docked = true;
-  dockWait(s, s.t - next.arrived);
+  dockWait(s, s.t - next.arrived, dock, next.waste ? `w:${next.waste}` : next.customer ? `c:${next.customer}` : undefined);
   if (next.waste) return wasteDocked(db, s, next);
   next.open = true;
   loadReady(db, s, next);

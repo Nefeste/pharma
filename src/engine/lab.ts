@@ -10,7 +10,7 @@ import { MIN, momentOf } from './core/calendar';
 import { inForce } from './docs';
 import { incidentMeasured, invTestDone, modelFor, openInvestigation } from './investigation';
 import { note } from './journal';
-import { defect } from './lean';
+import { batchLost, defect } from './lean';
 import { approved, pairKey } from './partners';
 import { coldOf } from './places';
 import { type PlantPlan, planOf } from './plant';
@@ -251,6 +251,7 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
         s.deviations[d.id] = d;
         defect(s, 'deviations');
         defect(s, lot.batch ? 'batches' : 'lots');
+        if (lot.batch) batchLost(s, s.batches[lot.batch]);
         note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'reject', dev: d.id, why: { tests } });
         notices.push({ kind: 'lotRejected', lot: lot.id, deviation: d.id });
       }

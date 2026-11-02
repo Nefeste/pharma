@@ -55,10 +55,21 @@ const num = (id: string) => Number(id.slice(1));
 export type LineLoss = 'fail' | 'setup' | 'micro' | 'wait' | 'speed' | 'quality';
 
 /** Сутки линии на планёрке: номер линии по плану; ключевая машина, OEE, главная потеря; при ожидании — сосед. */
+/**
+ * OEE ключевой машины в видах: без времени работы нет производительности, без выпуска — качества — их нет и в виде, как
+ * у окна «Показатели» (`oeePartsOf`): делить не на что, и окно пишет прочерк, а не ноль (ISO 22400-2, табл. 10–11).
+ */
+export interface LineOee {
+  a: number;
+  p?: number;
+  q?: number;
+  oee: number;
+}
+
 export interface LineSum {
   line: number;
   key?: number;
-  oee?: Oee;
+  oee?: LineOee;
   loss?: { what: LineLoss; sec: number };
   neighbour?: { k: number; what: 'fail' | 'micro'; sec: number };
 }
@@ -302,7 +313,8 @@ export function lineSum(n: number, ld: LineDay | undefined): LineSum {
     quality: Math.max(0, Math.round((t.out - ld.good) / nu)),
   };
   const what = ORDER.reduce((a, b) => (sec[b] > sec[a] ? b : a));
-  const out: LineSum = { line: n, key, oee: o, ...(sec[what] > 0 ? { loss: { what, sec: sec[what] } } : {}) };
+  const shown: LineOee = { a: o.a, ...(ld.run[key] > 0 ? { p: o.p } : {}), ...(t.out > 0 ? { q: o.q } : {}), oee: o.oee };
+  const out: LineSum = { line: n, key, oee: shown, ...(sec[what] > 0 ? { loss: { what, sec: sec[what] } } : {}) };
   if (what === 'wait' && sec.wait > 0) {
     let best: LineSum['neighbour'];
     ld.times.forEach((m, k) => {

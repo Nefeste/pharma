@@ -64,7 +64,9 @@ const canvasTex = (c: HTMLCanvasElement) => {
 
 /** Число над столбиком словами: крупно — доля или OEE, мелко — что это. */
 export function labelLines(l: Label): [string, string] {
-  if (l.k === 'key') return [`OEE ${pctText(l.oee)}`, T.floor.apq(pctText(l.a), pctText(l.p), pctText(l.q))];
+  // без времени работы нет производительности, без выпуска — качества: прочерк, а не ноль (как в окне «Показатели»)
+  const part = (x?: number) => (x === undefined ? T.floor.none : pctText(x));
+  if (l.k === 'key') return [`OEE ${pctText(l.oee)}`, T.floor.apq(pctText(l.a), part(l.p), part(l.q))];
   const big = l.share === undefined ? T.floor.none : pctText(l.share);
   return [big, l.k === 'room' ? T.floor.work : T.floor.run];
 }

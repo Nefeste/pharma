@@ -3046,6 +3046,18 @@ async function mainPart() {
     sheet.push({ file: join(out, 'e2e-policies.png'), label: 'Б5г · «Политики» · итог прогона' });
     if (open < 0 || open > 6 || first !== 'plan' || !progress || run.n !== 2 || run.error || run.cells.length < 8) fail(`«Политики»: отклик P ${open} кадров, первая вкладка ${first}, ход ${progress}, итог ${JSON.stringify(run)}`);
     else ok(`«Политики» (P): отклик ${open} кадров, вкладка начальника отдела планирования; запас позиций ${cover0} → ${cover1} суток — черновик; «Прогнать» — ход по зёрнам, итог за ${Math.round(run.ms / 1000)} с: ${run.cells.slice(0, 3).join('; ')}`);
+    // «Стоп»: второй прогон того же черновика остановлен — итога нет, «Прогнать» снова доступно
+    await page.click('[data-test=policy-run-go]');
+    const second = await page.waitForSelector('[data-test=policy-stop]', { timeout: 20_000 }).then(() => true, () => false);
+    if (second) await page.click('[data-test=policy-stop]');
+    const stopped = await page
+      .waitForFunction(() => {
+        const r = window.__game.store.get().policies.run;
+        return !r.running && r.sums.length === 0 && !!document.querySelector('[data-test=policy-run-go]:not([disabled])');
+      }, null, { timeout: 20_000 })
+      .then(() => true, () => false);
+    if (!second || !stopped) fail(`«Стоп» в «Политиках»: прогон начался — ${second}, остановлен — ${stopped}`);
+    else ok('«Стоп» в «Политиках»: второй прогон остановлен, итога нет, «Прогнать» снова доступно');
     // «Применить»: отклик в кадрах; запись журнала «вы» с прежним значением
     const tApply = await gameT();
     const fApply = await apply('pol.plan.cover', cover1);
@@ -3160,6 +3172,20 @@ async function mainPart() {
     }
     if (!asset || !moved || moved.at === asset.at || !moved.rec || moved.rec.from !== asset.at || moved.rec.at !== moved.at) fail(`«Перенести визит»: актив ${JSON.stringify(asset)}, после ${JSON.stringify(moved)}`);
     else ok(`«Перенести визит»: ${asset.id} — визит с ${Math.floor(asset.at / 86400)}-х на ${Math.floor(moved.at / 86400)}-е сутки завода; в карточке «${moved.text}»; в журнале — «вы» с прежним днём`);
+    // чужой пост — без кнопок, с подписью, чей он: посты производства и качества без директора, вкладка снабжения
+    await seatsTo(['production', 'quality']);
+    await page.keyboard.press('KeyP');
+    await page.waitForSelector('#policies [data-test=policy-row]', { timeout: 20_000 });
+    await tabTo('supply');
+    const foreign = await page.evaluate(() => ({
+      label: document.querySelector('#policies [data-test=policy-foreign]')?.textContent ?? '',
+      live: [...document.querySelectorAll('#policies [data-test=policy-row] button')].filter(b => !b.disabled).length,
+      rows: document.querySelectorAll('#policies [data-test=policy-row]').length,
+    }));
+    await page.keyboard.press('Escape');
+    await seatsTo(['director', 'production', 'quality']);
+    if (!foreign.label || foreign.live > 0 || foreign.rows === 0) fail(`чужой пост в «Политиках»: ${JSON.stringify(foreign)}`);
+    else ok(`чужой пост в «Политиках»: у снабжения — «${foreign.label.slice(0, 90)}», ${foreign.rows} строк без кнопок`);
     await writeSheet(sheet);
   }
 

@@ -327,7 +327,8 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
             </button>
           </>
         ) : (
-          <button type="button" className="on" onClick={() => actions.runPlan()} title={T.plan.runHint(PLAN_RUN.days, PLAN_RUN.seeds)} data-test="plan-run">
+          // поток прогона один на расписание и политики (Б5г): пока идёт прогон политик, этот ждёт
+          <button type="button" className="on" disabled={hud.policies.run.running} onClick={() => actions.runPlan()} title={hud.policies.run.running ? T.plan.busyPolicies : T.plan.runHint(PLAN_RUN.days, PLAN_RUN.seeds)} data-test="plan-run">
             {T.plan.run}
           </button>
         )}

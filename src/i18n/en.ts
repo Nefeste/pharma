@@ -1245,6 +1245,8 @@ export const en: Strings = {
     runHint: (days: number, seeds: number) =>
       `The same engine runs the plant ${days}\u00a0days ahead on ${seeds}\u00a0seeds — with spread, failures and orders; with a draft, the draft too on the same seeds. The game does not stop`,
     running: 'Running…',
+    /** one plan-run thread (Б5г): a policies run is going */
+    busyPolicies: 'A policies run is going — wait for its outcome or stop it in the «Policies» window',
     stop: 'Stop',
     draft: (who: string) => `In the draft: ${who}`,
     noDraft: 'No draft: a released order goes into the draft',
@@ -1599,6 +1601,7 @@ export const en: Strings = {
     runHint: (weeks: number, seeds: number) =>
       `The same engine runs the plant ${groupEn(weeks)}\u00a0${pl(weeks, 'week', 'weeks')} ahead on ${seeds}\u00a0seeds — «as now» and with the draft. The game does not freeze`,
     running: (variant: string, k: number, n: number) => `${variant}: seed ${k} of ${n}…`,
+    busyPlan: 'A schedule run is going — wait for its outcome or stop it in the schedule',
     stop: 'Stop',
     apply: 'Apply',
     applyHint: 'The draft becomes commands: a «you» journal record; the head decides by the new number at the rule’s next hour',

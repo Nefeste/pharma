@@ -212,7 +212,7 @@ export function Policies({ hud, actions }: { hud: Hud; actions: Actions }) {
             {T.policies.stop}
           </button>
         ) : (
-          <button type="button" className={n > 0 ? 'on' : ''} disabled={n === 0 || busy} onClick={() => actions.runPolicies()} title={T.policies.runHint(WEEKS, POLICY_RUN.seeds)} data-test="policy-run-go">
+          <button type="button" className={n > 0 ? 'on' : ''} disabled={n === 0 || busy} onClick={() => actions.runPolicies()} title={hud.plan.running ? T.policies.busyPlan : T.policies.runHint(WEEKS, POLICY_RUN.seeds)} data-test="policy-run-go">
             {T.policies.run}
           </button>
         )}

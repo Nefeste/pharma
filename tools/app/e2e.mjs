@@ -14,7 +14,7 @@
 // границы. Расписание (3д): G открывает окно, на нём полосы; задание тянут мышью — виден призрак с причинами. Прогон плана
 // (часть 5): отпустили — задание в черновике, срок прежний; «Прогнать план» — итог «как сейчас» и черновика на пяти зёрнах,
 // часы завода в это время идут; «Утвердить» — срок задания сменился; Esc закрывает. «Кем вы будете» (3е): экран открыт с начала, мир стоит; взяли «Производство» —
-// часы пошли; на планёрке — «Ваше место»; «Поднять» без поста качества погашено, кнопкой «Место» добавили его — мир на
+// часы пошли; на планёрке — «Ваше место»; «Поднять» без поста качества — записка начальнику ОКК, кнопкой «Место» добавили его — мир на
 // паузе, после «Взять» поднять можно. Автопаузы (Б2а): меню — тринадцать автопауз, две — не места игрока; планёрку
 // отключили — окно это помнит, и «До события» (клавиша 6) встаёт не в 08:00, а на первом событии автопаузы, с извещением со
 // знаком паузы, и часы стоят. Расследование (часть 4б): «До события», пока растворение второй серии не выйдет за
@@ -54,7 +54,7 @@
 // часами; окно «вчера» — полные сутки; доска «План — факт» по часам смены; слой — не больше четырёх вызовов отрисовки;
 // снимок — в контактном листе; 9 октября за вчера у ключевой машины — OEE с множителями, как на планёрке. Отклонённое
 // (Б1з): после решения по серии на посту качества следующую серию ГП отклонили — её паллеты в зоне; на планёрке — места,
-// «Заказать вывоз» погашено без поста «Снабжение и склад»; директором — «Заказать вывоз»; фура подрядчика у рампы —
+// «Заказать вывоз» без поста «Снабжение и склад» — записка заведующему складом; директором — «Заказать вывоз»; фура подрядчика у рампы —
 // погрузка и подпись начальника ОКК в «Сейчас»; запись журнала отходов и свободные места в карточке помещения, в кассе —
 // «Вывоз отходов». Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png. Первая неделя
 // (docs/specs/2026-10-vertical-slice.md): путь новичка от «Кем вы будете» до «За эту игру» на планёрке 8 сентября в
@@ -174,6 +174,8 @@ const knobsCard = async () => {
       speed: document.querySelector(`[data-test=card-knobs][data-recipe="${p}"] [data-test=knob-speed]`)?.textContent?.replace(/\s*[−+]\s*[−+]?\s*$/, '').trim() ?? '',
       buttons: buttons.length,
       on: buttons.filter(b => !b.disabled).length,
+      // с Б5д кнопка чужого поста — записка руководителю его отдела
+      memo: buttons.filter(b => b.getAttribute('data-memo') === 'tech').length,
       warn: [...document.querySelectorAll('[data-test=card] .warn')].map(x => x.textContent ?? '').join(' '),
     };
   }, PARA);
@@ -322,13 +324,14 @@ async function mainPart() {
   }
 
   // режимы (Б1ж): в карточке помещения таблетирования — уставки на следующую стадию у обеих карт, скорость ротора по цели;
-  // на одном посту производства «−» и «+» погашены — уставки задаёт пост «Качество и технология». Мир на паузе
+  // на одном посту производства «−» и «+» — записки главному технологу (Б5д): уставки задаёт пост «Качество и
+  // технология». Мир на паузе
   {
     await page.evaluate(() => window.__game.actions.setSpeed(0));
     const k = await knobsCard();
-    if ([...k.recipes].sort().join() !== [LORA, PARA].join() || k.speed !== 'Скорость ротора: 50\u00a0об/мин · по цели' || k.on !== 0 || !/Качество и технология/.test(k.warn))
-      fail(`уставки без поста технолога: карты ${k.recipes.join(', ')}, скорость «${k.speed}», нажимается ${k.on} из ${k.buttons}, «${k.warn}»`);
-    else ok(`уставки без поста технолога: у ${k.recipes.length} карт, «${k.speed}», все ${k.buttons} кнопок погашены — «${k.warn}»`);
+    if ([...k.recipes].sort().join() !== [LORA, PARA].join() || k.speed !== 'Скорость ротора: 50\u00a0об/мин · по цели' || k.memo !== k.buttons || k.on !== k.buttons || !/записка главному технологу: ответит/.test(k.warn))
+      fail(`уставки без поста технолога: карты ${k.recipes.join(', ')}, скорость «${k.speed}», записок ${k.memo} и нажимается ${k.on} из ${k.buttons}, «${k.warn}»`);
+    else ok(`уставки без поста технолога: у ${k.recipes.length} карт, «${k.speed}», все ${k.buttons} кнопок — записки: «${k.warn}»`);
     await page.keyboard.press('Escape');
     // блистерная машина: паспорт и скорость по уставке инструкции у каждой позиции — по цели; кнопки погашены
     await page.evaluate(() => window.__game.actions.select({ kind: 'machine', line: 0, k: 0 }));
@@ -336,11 +339,12 @@ async function mainPart() {
     await frames(2);
     const b = await page.evaluate(() => ({
       rows: [...document.querySelectorAll('[data-test=speed-sku]')].map(x => (x.textContent ?? '').replace(/\s*[−+]\s*[−+]?\s*$/, '').trim()),
-      on: [...document.querySelectorAll('[data-test=card-speed] button')].filter(x => !x.disabled).length,
+      all: document.querySelectorAll('[data-test=card-speed] button').length,
+      memo: [...document.querySelectorAll('[data-test=card-speed] button')].filter(x => !x.disabled && x.getAttribute('data-memo') === 'tech').length,
     }));
-    if (b.rows.length < 2 || !b.rows.every(r => /: 120 блистеров\/мин · по цели, диапазон 100–135 блистеров\/мин$/.test(r)) || b.on !== 0)
+    if (b.rows.length < 2 || !b.rows.every(r => /: 120 блистеров\/мин · по цели, диапазон 100–135 блистеров\/мин$/.test(r)) || b.all === 0 || b.memo !== b.all)
       fail(`скорость блистерной без поста технолога: ${JSON.stringify(b)}`);
-    else ok(`скорость блистерной без поста технолога: позиций ${b.rows.length}, «${b.rows[0]}», кнопки погашены`);
+    else ok(`скорость блистерной без поста технолога: позиций ${b.rows.length}, «${b.rows[0]}», все ${b.all} кнопок — записки главному технологу`);
     await page.keyboard.press('Escape');
     await page.evaluate(() => window.__game.actions.setSpeed(1));
   }
@@ -890,12 +894,12 @@ async function mainPart() {
     await frames(2);
     if ((await page.$$eval('[data-test=lab-row]', r => r.length)) === 0) continue;
     const lot = await page.getAttribute('[data-test=lab-row]', 'data-lot');
-    // своё и чужое (3е): с одним производством «Поднять» погашено; кнопкой «Место» добавили качество — мир на паузе,
-    // после «Взять» поднять можно
+    // своё и чужое (3е): с одним производством «Поднять» — записка начальнику ОКК (Б5д); кнопкой «Место» добавили
+    // качество — мир на паузе, после «Взять» поднять можно самому
     {
-      const off = await page.$eval('[data-test=lab-rush]', b => ({ disabled: b.disabled, title: b.title }));
-      if (!off.disabled || !/Качество и технология/.test(off.title)) fail(`«Поднять» без поста качества: ${off.disabled ? 'погашено' : 'нажимается'}, подсказка «${off.title}»`);
-      else ok(`«Поднять» без поста качества погашено: «${off.title}»`);
+      const off = await page.$eval('[data-test=lab-rush]', b => ({ disabled: b.disabled, title: b.title, memo: b.getAttribute('data-memo'), text: b.textContent ?? '' }));
+      if (off.disabled || off.memo !== 'qc' || !/^Записка: /.test(off.text) || !/записка начальнику ОКК: ответит/.test(off.title)) fail(`«Поднять» без поста качества: ${off.disabled ? 'погашено' : 'нажимается'}, «${off.text}», подсказка «${off.title}»`);
+      else ok(`«Поднять» без поста качества — записка: «${off.text}», «${off.title}»`);
       await page.click('[data-test=seats-open]');
       await page.waitForSelector('#seats', { timeout: 20_000 });
       const paused = await page.evaluate(() => window.__game.speed === 0);
@@ -903,7 +907,7 @@ async function mainPart() {
       await page.click('[data-test=seats-take]');
       await page.waitForFunction(() => window.__game.store.get().top?.seats?.join() === 'production,quality', null, { timeout: 20_000 });
       await frames(2);
-      const on = await page.$eval('[data-test=lab-rush]', b => !b.disabled);
+      const on = await page.$eval('[data-test=lab-rush]', b => !b.disabled && !b.getAttribute('data-memo'));
       if (!paused || !on) fail(`«Место»: мир ${paused ? 'на паузе' : 'шёл'}, «Поднять» после «Взять» ${on ? 'нажимается' : 'погашено'}`);
       else ok('«Место»: мир на паузе; взяли ещё «Качество и технологию» — «Поднять» нажимается');
     }
@@ -1715,7 +1719,7 @@ async function mainPart() {
       await page.keyboard.press('Escape');
       const moved = await go('zone', 3, { mine });
       const fresh = await ofMine(mine);
-      // на планёрку — без места директора: «Заказать вывоз» погашено, его пост ведёт коллега
+      // на планёрку — без места директора: «Заказать вывоз» — записка заведующему складом (Б5д), его пост ведёт коллега
       await seatsTo(['production', 'quality']);
       await page.evaluate(() => window.__game.actions.openMorning());
       await page.waitForFunction(() => !!window.__game.store.get().morning.view, null, { timeout: 20_000 });
@@ -1724,6 +1728,8 @@ async function mainPart() {
         zone: document.querySelector('[data-test=morning-rejects-zone]')?.textContent ?? '',
         order: document.querySelector('[data-test=morning-rejects-order]')?.textContent ?? '',
         off: document.querySelector('[data-test=morning-rejects] [data-test=lever-waste] button')?.disabled,
+        memo: document.querySelector('[data-test=morning-rejects] [data-test=lever-waste]')?.getAttribute('data-memo'),
+        label: document.querySelector('[data-test=morning-rejects] [data-test=lever-waste] button')?.textContent ?? '',
         hint: document.querySelector('[data-test=morning-rejects] [data-test=lever-waste] .warn')?.textContent ?? '',
         used: window.__game.store.get().morning.view.rejects?.used,
       }));
@@ -1731,9 +1737,9 @@ async function mainPart() {
       await frames(2);
       await page.screenshot({ path: join(out, 'e2e-rejects.png') });
       await page.keyboard.press('Escape');
-      if (!moved || fresh.length === 0 || m.off !== true || !/Снабжение и склад/.test(m.hint) || !/занято/.test(m.zone) || !/не заказан/.test(m.order))
-        fail(`отклонённое: паллеты серии в зоне ${moved} (${fresh.length}); на планёрке «${m.zone}», «${m.order}», «Заказать вывоз» погашено ${m.off}, «${m.hint}»`);
-      else ok(`отклонённое: ${fresh.length} ${fresh.length === 1 ? 'паллета' : 'паллеты'} ГП — в зоне; на планёрке «${m.zone}», «${m.order}»; «Заказать вывоз» погашено — «${m.hint.replace(/^\s*·\s*/, '')}»; снимок ${join(out, 'e2e-rejects.png')}`);
+      if (!moved || fresh.length === 0 || m.off !== false || m.memo !== '1' || !/^Записка: /.test(m.label) || !/записка заведующему складом/.test(m.hint) || !/занято/.test(m.zone) || !/не заказан/.test(m.order))
+        fail(`отклонённое: паллеты серии в зоне ${moved} (${fresh.length}); на планёрке «${m.zone}», «${m.order}», «${m.label}» погашено ${m.off}, «${m.hint}»`);
+      else ok(`отклонённое: ${fresh.length} ${fresh.length === 1 ? 'паллета' : 'паллеты'} ГП — в зоне; на планёрке «${m.zone}», «${m.order}»; «${m.label}» — «${m.hint.replace(/^\s*·\s*/, '')}»; снимок ${join(out, 'e2e-rejects.png')}`);
       // директором — «Заказать вывоз» у строки планёрки
       await seatsTo(['director', 'production', 'quality']);
       await page.evaluate(() => window.__game.actions.openMorning());

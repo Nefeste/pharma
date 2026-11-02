@@ -183,10 +183,13 @@ async function director(x) {
     const after = await page.evaluate(r => document.querySelector(`${r} [data-test=q-end]`)?.textContent ?? '', row);
     await page.keyboard.press('Escape');
     const before = await boardSteps();
-    // сутки: шагов ООК больше нет — новые шаги начал бы только игрок
-    await page.evaluate(() => window.__game.actions.setSpeed(4));
+    // сутки: шагов ООК больше нет — новые шаги начал бы только игрок; автопаузы директора по дороге — дальше
     const t0 = await page.evaluate(() => window.__game.t);
-    await page.waitForFunction(t => window.__game.t >= t + 86400 || window.__game.speed === 0, t0, { timeout: 120_000 });
+    for (let i = 0; i < 30 && (await page.evaluate(() => window.__game.t)) < t0 + 86400; i++) {
+      if (await page.evaluate(() => window.__game.store.get().morning.open)) await page.keyboard.press('Escape');
+      await page.evaluate(() => window.__game.actions.setSpeed(4));
+      await page.waitForFunction(t => window.__game.t >= t + 86400 || window.__game.speed === 0, t0, { timeout: 120_000 });
+    }
     await page.evaluate(() => window.__game.actions.setSpeed(0));
     if (await page.evaluate(() => window.__game.store.get().morning.open)) await page.keyboard.press('Escape');
     const later = await boardSteps('«Веду сам»: через сутки на доске — шаг, начатый ООК до вопроса');

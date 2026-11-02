@@ -159,7 +159,7 @@ export interface Bar extends Spot {
  */
 export type Label =
   | { k: 'room'; share?: number }
-  | { k: 'key'; oee: number; a: number; p: number; q: number }
+  | { k: 'key'; oee: number; a: number; p?: number; q?: number }
   | { k: 'run'; share?: number };
 
 /** Доля 1/10 000. */
@@ -192,7 +192,7 @@ export function barsOf(spots: Spots, v: FloorView): Bar[] {
       const m = l?.machines[t.k];
       if (!l || !m) continue;
       const o = l.sum.key === t.k ? l.sum.oee : undefined;
-      const label: Label = o ? { k: 'key', oee: o.oee, a: o.a, p: o.p, q: o.q } : { k: 'run', ...(v.span > 0 ? { share: share(m.run + m.slow, v.span) } : {}) };
+      const label: Label = o ? { k: 'key', oee: o.oee, a: o.a, ...(o.p !== undefined ? { p: o.p } : {}), ...(o.q !== undefined ? { q: o.q } : {}) } : { k: 'run', ...(v.span > 0 ? { share: share(m.run + m.slow, v.span) } : {}) };
       out.push({ ...sp, n, parts: partsOf(MACHINE_PARTS.map(p => ({ part: p, sec: m[p] })), v.span), label });
     }
   }

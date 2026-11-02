@@ -877,11 +877,38 @@ async function mainPart() {
   // предложения (Б5б): на планёрках до 6 сентября — первое задание на серию «Отклонить» (задания нет), прочие — «Принять»
   const asked = [];
   let declined;
+  // главная потеря с местом (Б1л): на первой из этих планёрок, где главная потеря — ожидание, в строке — место, где его
+  // было больше всего; щелчок — карточка места с блоком «Потери» за вчера, раскрыто это место
+  let placed = false;
   while ((await page.evaluate(() => window.__game.day)) < 6) {
     await untilMorning(true);
     await page.waitForFunction(() => window.__game.store.get().morning.view?.day === window.__game.store.get().morning.day, null, { timeout: 20_000 });
     const before = await page.evaluate(() => window.__game.store.get().morning.view?.asks.length ?? 0);
     if (before > 0) asked.push(...(await answerAsks(r => r.kind === 'order' && !declined && (declined = r.n) > 0)));
+    const mm = placed
+      ? undefined
+      : await page.evaluate(() => {
+          const v = window.__game.store.get().morning.view;
+          return window.__game.store.get().morning.open && v?.main?.k === 'wait' && v.main.spot ? { spot: v.main.spot, text: document.querySelector('[data-test=morning-main-go]')?.textContent ?? '' } : undefined;
+        });
+    if (mm) {
+      placed = true;
+      await page.click('[data-test=morning-main-go]');
+      await page.waitForSelector('[data-test=card-loss-open]', { timeout: 20_000 }).catch(() => {});
+      const at = await page.evaluate(() => ({
+        morning: window.__game.store.get().morning.open,
+        win: window.__game.store.get().floor.win,
+        sel: window.__game.selected,
+        open: document.querySelector('[data-test=card-loss-open]')?.getAttribute('data-spot') ?? '',
+        wait: Number(document.querySelector('[data-test=card-loss-open] [data-test=card-loss-row][data-kind=wait]')?.getAttribute('data-sec') ?? 0),
+      }));
+      if (!/больше всего — /.test(mm.text) || at.morning || at.win !== 'yesterday' || !at.sel || at.open !== mm.spot || !(at.wait > 0)) fail(`планёрка → место главной потери: «${mm.text}», ${JSON.stringify(at)}, место ${mm.spot}`);
+      else ok(`планёрка: «${mm.text}» — щелчок: карточка ${at.sel.kind} ${at.sel.i ?? at.sel.k ?? ''}, «Потери» за вчера — ${mm.spot}, ожидание ${Math.round(at.wait / 60)} мин`);
+      await page.evaluate(() => {
+        window.__game.actions.setFloorWin('today');
+        window.__game.actions.select(undefined);
+      });
+    }
     if (await page.evaluate(() => window.__game.store.get().morning.open)) await page.keyboard.press('Escape');
     if (rushed) continue;
     await page.waitForFunction(() => !!window.__game.store.get().lab.view, null, { timeout: 20_000 });
@@ -911,6 +938,7 @@ async function mainPart() {
       .then(() => true, () => false);
     rushed = up ? lot : 'нет';
   }
+  if (!placed) fail('планёрки до 6 сентября: главной потерей ни разу не было ожидание с местом');
   if (!rushed || rushed === 'нет') fail(`лаборатория: «Поднять» ${rushed ? 'не дошло до движка' : 'не проверено — в очереди ни разу не было партии'}`);
   else ok(`лаборатория: партия ${rushed} поднята — команда дошла до движка и вернулась в вид`);
   await page.keyboard.press('Escape');

@@ -50,7 +50,9 @@
 // уже копится; вывоза посреди дела здесь нет — его держит образец схемы 31. С схемы 34 — посреди предложений: у постов
 // производства и качества руководители советуют, техслужба — «вручную» по выбору игрока; одно задание на серию принято,
 // другое отклонено, третье устарело, а предложение руководителя открыто и ждёт ответа; закрытых месяцев показателей здесь
-// нет — их держит образец схемы 33.
+// нет — их держит образец схемы 33. С схемы 35 — посреди учёта потерь у мест: у нынешних суток — места с вещами четырёх
+// видов и больше, у прошлых — не больше пяти вещей у вида, у грязного помещения — серия, после которой убирать;
+// предложений посреди дела здесь нет — их держит образец схемы 34.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { DAY, daysFromCivil, HOUR, MIN, momentOf } from '../../src/engine/core/calendar';
@@ -146,8 +148,14 @@ const kpied = () => s.kpi.months.length >= 2 && s.kpi.snap.n >= 3 && Object.valu
 // посреди предложений (Б5б): выбор режима у отдела, ответы всех трёх видов и открытое предложение
 const how = (h: string) => s.journal.some(r => r.ask?.end?.how === h);
 const asked = () => s.heads.mode.maint === 'manual' && how('ok') && how('no') && how('stale') && Object.keys(s.heads.open).length > 0;
+// посреди учёта потерь у мест (Б1л): вещи нынешних суток — четырёх видов и больше, прошлые сутки уже обрезаны в полночь
+const spotted = () => {
+  const d = s.losses.at(-1);
+  const kinds = new Set(Object.values(d?.spots ?? {}).flatMap(x => Object.keys(x.things ?? {})));
+  return s.losses.length >= 2 && kinds.size >= 4 && Object.values(s.rooms).some(r => r.after !== undefined && r.status === 'dirty');
+};
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : SCHEMA < 34 ? seated() && kpied() : seated() && asked();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : SCHEMA < 34 ? seated() && kpied() : SCHEMA < 35 ? seated() && asked() : seated() && spotted();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 const refused = new Set<string>();

@@ -9,6 +9,8 @@ import type { DevCard, Knobs, Regimes, ReleaseView } from '../sim/devs';
 import type { SpeedView } from '../sim/views';
 import { db } from './db';
 import { WhoList } from './Journal';
+import type { Command } from '../engine/types';
+import { actOf, actOn } from './memo';
 import { type Actions, holds, type Hud } from './store';
 import { attrText, paramNum, paramText } from './units';
 
@@ -286,7 +288,10 @@ function Steps({ set, step, range, edge, mine, label, apply, test }: { set: numb
  * с шагом режима на посту технолога; без поста — кнопки погашены, как у чужих команд (3е).
  */
 export function KnobsBlock({ list, hud, actions }: { list: Knobs[]; hud: Hud; actions: Actions }) {
-  const mine = holds(hud, 'quality');
+  // чужой пост (Б5д): уставка — запиской главному технологу
+  const act = actOf(hud, 'quality', { kind: 'setpoint', sku: '', value: 0 });
+  const mine = actOn(act);
+  const set = (c: Extract<Command, { kind: 'setpoint' }>) => (act.mine ? actions.setpoint(c) : actions.memo([c]));
   return (
     <>
       <div className="csec">{T.regimes.knobs}</div>
@@ -299,14 +304,14 @@ export function KnobsBlock({ list, hud, actions }: { list: Knobs[]; hud: Hud; ac
                 {T.regimes.knob(paramName(x.id), paramText(x.unit, x.set))}
                 {' · '}
                 {x.set === x.target ? T.regimes.atTarget : T.regimes.offTarget(paramText(x.unit, x.target))}
-                <Steps set={x.set} step={x.step} range={x.range} edge={T.regimes.edge} mine={mine} label={v => paramText(x.unit, v)} apply={value => actions.setpoint({ recipe: k.recipe, stage: k.stage, param: x.id, value })} test={`knob-${x.id}`} />
+                <Steps set={x.set} step={x.step} range={x.range} edge={T.regimes.edge} mine={mine} label={v => paramText(x.unit, v)} apply={value => set({ kind: 'setpoint', recipe: k.recipe, stage: k.stage, param: x.id, value })} test={`knob-${x.id}`} />
               </li>
             ))}
           </ul>
         </div>
       ))}
       <div className="muted">{T.regimes.knobsWhy}</div>
-      {!mine ? <div className="warn">{T.levers.seat(T.seats.names.quality)}</div> : null}
+      {!act.mine ? <div className="warn">{act.memo ? act.title : T.levers.seat(T.seats.names.quality)}</div> : null}
     </>
   );
 }
@@ -316,7 +321,9 @@ export function KnobsBlock({ list, hud, actions }: { list: Knobs[]; hud: Hud; ac
  * цель и диапазон инструкции и «−» и «+» с шагом на посту технолога.
  */
 export function SpeedBlock({ v, hud, actions }: { v: SpeedView; hud: Hud; actions: Actions }) {
-  const mine = holds(hud, 'quality');
+  // чужой пост (Б5д): скорость — запиской главному технологу
+  const act = actOf(hud, 'quality', { kind: 'setpoint', sku: '', value: 0 });
+  const mine = actOn(act);
   const per = (n: number) => T.ref.perMin(num(n), T.ref.items.blister ?? '');
   return (
     <>
@@ -327,12 +334,12 @@ export function SpeedBlock({ v, hud, actions }: { v: SpeedView; hud: Hud; action
         {v.list.map(x => (
           <li key={x.sku} data-test="speed-sku" data-sku={x.sku}>
             {T.speed.set(named(db?.skus[x.sku]?.name, x.sku), per(x.set), x.set === x.target ? T.regimes.atTarget : T.regimes.offTarget(per(x.target)), `${num(x.range[0])}–${per(x.range[1])}`)}
-            <Steps set={x.set} step={x.step} range={x.range} edge={T.speed.edge} mine={mine} label={per} apply={value => actions.setpoint({ sku: x.sku, value })} test="speed" />
+            <Steps set={x.set} step={x.step} range={x.range} edge={T.speed.edge} mine={mine} label={per} apply={value => (act.mine ? actions.setpoint({ sku: x.sku, value }) : actions.memo([{ kind: 'setpoint', sku: x.sku, value }]))} test="speed" />
           </li>
         ))}
       </ul>
       <div className="muted">{T.speed.why}</div>
-      {!mine ? <div className="warn">{T.levers.seat(T.seats.names.quality)}</div> : null}
+      {!act.mine ? <div className="warn">{act.memo ? act.title : T.levers.seat(T.seats.names.quality)}</div> : null}
     </>
   );
 }

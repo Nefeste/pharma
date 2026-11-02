@@ -387,6 +387,13 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
               </div>
             </Section>
           ) : null}
+          {v.memos.length > 0 ? (
+            <Section title={T.morning.memos}>
+              <div className="mblock" data-test="morning-memos">
+                <AskRows rows={v.memos} start={start} actions={actions} />
+              </div>
+            </Section>
+          ) : null}
           {v.month ? (
             <Section title={T.kpi.close.title(`${monthText(v.month)}${v.month.part ? ` · ${T.kpi.part}` : ''}`)}>
               <MonthBlock x={v.month} hud={hud} actions={actions} close={close} />

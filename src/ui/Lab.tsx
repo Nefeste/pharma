@@ -6,7 +6,8 @@ import { named, num, T, whenText } from '../i18n';
 import type { ChartView, LabLotRow, Limits, Signal, TaskNow } from '../sim/lab';
 import { assetClass } from './assets';
 import { db, docText } from './db';
-import { type Actions, type Hud, holds } from './store';
+import { type Act, actLabel, actOf, actOn } from './memo';
+import type { Actions, Hud } from './store';
 
 function nowText(n: TaskNow | undefined, start: Ymd): string {
   if (!n) return '';
@@ -26,7 +27,7 @@ export function causeText(n: TaskNow): string {
 /** Доли 1/10 000 номинала — процентами с двумя знаками. */
 const pct = (v: number) => `${num(v / 100, 2)} %`;
 
-function Queue({ rows, start, actions, mine }: { rows: LabLotRow[]; start: Ymd; actions: Actions; mine: boolean }) {
+function Queue({ rows, start, actions, act }: { rows: LabLotRow[]; start: Ymd; actions: Actions; act: Act }) {
   if (rows.length === 0) return <div className="muted empty">{T.lab.empty}</div>;
   return (
     <table className="grid lab" data-test="lab-queue">
@@ -40,14 +41,14 @@ function Queue({ rows, start, actions, mine }: { rows: LabLotRow[]; start: Ymd; 
       </thead>
       <tbody>
         {rows.map(r => (
-          <LotRows key={r.lot} r={r} start={start} actions={actions} mine={mine} />
+          <LotRows key={r.lot} r={r} start={start} actions={actions} act={act} />
         ))}
       </tbody>
     </table>
   );
 }
 
-function LotRows({ r, start, actions, mine }: { r: LabLotRow; start: Ymd; actions: Actions; mine: boolean }) {
+function LotRows({ r, start, actions, act }: { r: LabLotRow; start: Ymd; actions: Actions; act: Act }) {
   return (
     <>
       <tr className="lot" data-test="lab-row" data-lot={r.lot}>
@@ -66,12 +67,13 @@ function LotRows({ r, start, actions, mine }: { r: LabLotRow; start: Ymd; action
         <td className="nowrap">
           <button
             type="button"
-            disabled={r.rush || !mine}
-            onClick={() => actions.rush(r.lot)}
-            title={mine ? T.lab.rushHint : T.seats.notYours(T.seats.names.quality)}
+            disabled={r.rush || !actOn(act)}
+            onClick={() => (act.mine ? actions.rush(r.lot) : actions.memo([{ kind: 'rush', lot: r.lot }]))}
+            title={act.mine ? T.lab.rushHint : act.title}
             data-test="lab-rush"
+            data-memo={act.memo ?? undefined}
           >
-            {r.rush ? T.lab.rushed : T.lab.rush}
+            {r.rush ? T.lab.rushed : actLabel(act, T.lab.rush)}
           </button>
         </td>
       </tr>
@@ -212,7 +214,7 @@ export function Lab({ hud, actions }: { hud: Hud; actions: Actions }) {
                 .map(i => `${named(db?.instruments[i.type]?.name, i.type)} — ${i.method ? T.lab.busyWith(named(db?.tests[i.method]?.name, i.method)) : T.lab.free}`)
                 .join('; ')}
             </div>
-            <Queue rows={view.rows} start={hud.start} actions={actions} mine={holds(hud, 'quality')} />
+            <Queue rows={view.rows} start={hud.start} actions={actions} act={actOf(hud, 'quality', { kind: 'rush', lot: '' })} />
           </>
         ) : (
           <div className="muted">{T.app.loading}</div>

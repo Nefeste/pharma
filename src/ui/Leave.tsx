@@ -9,14 +9,19 @@ import { DEPT_SEAT } from '../engine/seats';
 import { dayText, daysText, money, named, T } from '../i18n';
 import type { LeavePerson, LeaveView, PartRow, PersonLeave, Who } from '../sim/leave';
 import { db } from './db';
+import { actOf, actOn } from './memo';
 import { type Actions, holds, type Hud } from './store';
 
-/** Пост отдела роли: его части и смежные профессии правит он или директор. */
-function seatOf(hud: Hud, role: Id): { mine: boolean; title: string } {
+/**
+ * Пост отдела роли: его части и смежные профессии правит он или директор; чужой пост (Б5д) — запиской руководителю
+ * отдела роли: `mine` — можно нажать, `memo` — уйдёт запиской.
+ */
+function seatOf(hud: Hud, role: Id): { mine: boolean; title: string; memo: boolean } {
   const dept = db?.roles[role]?.dept;
   const seat = dept ? DEPT_SEAT[dept] : undefined;
-  const mine = !seat || holds(hud, seat);
-  return { mine, title: mine || !seat ? '' : T.seats.notYours(T.seats.names[seat] ?? seat) };
+  if (!seat || holds(hud, seat)) return { mine: true, title: '', memo: false };
+  const a = actOf(hud, seat, { kind: 'leave', person: '', op: 'drop', part: '' }, role);
+  return { mine: actOn(a), title: a.title, memo: !!a.memo };
 }
 
 const roleName = (id: Id) => named(db?.roles[id]?.name, id);
@@ -36,7 +41,7 @@ const dayOf = (iso: string): number | undefined => {
 /** Одна часть: дни, заместитель, извещение, отпускные, что мешает; «Перенести…», «Убрать», «Заместитель…». */
 function Part({ x, p, st, hud, actions }: { x: PartRow; p: LeavePerson; st?: string; hud: Hud; actions: Actions }) {
   const [move, setMove] = useState<string | undefined>();
-  const { mine, title } = seatOf(hud, p.role);
+  const { mine, title, memo } = seatOf(hud, p.role);
   const words = [
     T.leave.part(dayText(x.from), dayText(x.to), daysText(x.days)),
     x.deputy ? T.leave.deputy(whoText(x.deputy)) : T.leave.noDeputy,
@@ -59,7 +64,7 @@ function Part({ x, p, st, hud, actions }: { x: PartRow; p: LeavePerson; st?: str
               </button>{' '}
               {st !== 'approved' ? (
                 <>
-                  <button type="button" className="link" disabled={!mine} title={title} onClick={() => actions.leaveDrop(p.person, x.id)} data-test="leave-drop">
+                  <button type="button" className="link" disabled={!mine} title={title} onClick={() => actions.leaveDrop(p.person, x.id, memo)} data-test="leave-drop">
                     {T.leave.drop}
                   </button>{' '}
                 </>
@@ -73,8 +78,8 @@ function Part({ x, p, st, hud, actions }: { x: PartRow; p: LeavePerson; st?: str
               title={title}
               onChange={e => {
                 const v = e.target.value;
-                if (v === 'none') actions.leaveDeputy(p.person, x.id);
-                else if (v) actions.leaveDeputy(p.person, x.id, Number(v));
+                if (v === 'none') actions.leaveDeputy(p.person, x.id, undefined, memo);
+                else if (v) actions.leaveDeputy(p.person, x.id, Number(v), memo);
               }}
               data-test="leave-deputy"
             >
@@ -96,7 +101,7 @@ function Part({ x, p, st, hud, actions }: { x: PartRow; p: LeavePerson; st?: str
                 disabled={!mine || dayOf(move) === undefined}
                 onClick={() => {
                   const z = dayOf(move);
-                  if (z !== undefined) actions.leaveMove(p.person, x.id, z);
+                  if (z !== undefined) actions.leaveMove(p.person, x.id, z, memo);
                   setMove(undefined);
                 }}
                 data-test="leave-move-do"
@@ -121,7 +126,7 @@ function AddPart({ p, years, today, hud, actions }: { p: LeavePerson; years: rea
   const first = left[0];
   const [from, setFrom] = useState(first ? isoOf(Math.max(today + 1, daysFromCivil({ y: first[0], m: 1, d: 1 }))) : '');
   const [days, setDays] = useState(first ? first[1] : 0);
-  const { mine, title } = seatOf(hud, p.role);
+  const { mine, title, memo } = seatOf(hud, p.role);
   if (!first) return null;
   if (!open) {
     return (
@@ -145,7 +150,7 @@ function AddPart({ p, years, today, hud, actions }: { p: LeavePerson; years: rea
         disabled={!mine || dayOf(from) === undefined || !(days > 0)}
         onClick={() => {
           const z = dayOf(from);
-          if (z !== undefined) actions.leaveAdd(p.person, z, days);
+          if (z !== undefined) actions.leaveAdd(p.person, z, days, memo);
           setOpen(false);
         }}
         data-test="leave-add-do"
@@ -191,7 +196,7 @@ function Line({ k, children, test }: { k: string; children: ReactNode; test?: st
 export function LeaveBlock({ v, also, hud, actions }: { v: PersonLeave; also?: readonly Id[]; hud: Hud; actions: Actions }) {
   const p = v.plan;
   const { today, years } = v;
-  const { mine, title } = seatOf(hud, p.role);
+  const { mine, title, memo } = seatOf(hud, p.role);
   return (
     <div data-test="card-leave">
       <div className="csec">{T.leave.title}</div>
@@ -229,7 +234,7 @@ export function LeaveBlock({ v, also, hud, actions }: { v: PersonLeave; also?: r
         {(also ?? []).map(r => (
           <span key={r} className="also">
             {roleName(r)}{' '}
-            <button type="button" className="link" disabled={!mine} title={title} onClick={() => actions.also(p.person, r, false)} data-test="also-drop">
+            <button type="button" className="link" disabled={!mine} title={title} onClick={() => actions.also(p.person, r, false, memo)} data-test="also-drop">
               {T.leave.alsoDrop}
             </button>{' '}
           </span>
@@ -241,7 +246,7 @@ export function LeaveBlock({ v, also, hud, actions }: { v: PersonLeave; also?: r
               disabled={!mine}
               title={title}
               onChange={e => {
-                if (e.target.value) actions.also(p.person, e.target.value, true);
+                if (e.target.value) actions.also(p.person, e.target.value, true, memo);
               }}
               data-test="also-add"
             >

@@ -109,7 +109,7 @@ export function assetInfo(db: ContentDb, s: PlantState, id: string): AssetInfo |
 }
 
 /** Рабочие дни, на которые можно перенести визит (Б5г): с завтра по последний день записи в силе. */
-function movable(db: ContentDb, s: PlantState, a: Asset): { move?: number[] } {
+export function movable(db: ContentDb, s: PlantState, a: Asset): { move?: number[] } {
   const today = momentOf(s.start, s.t).day;
   const cal = calOf(db, s);
   const move: number[] = [];

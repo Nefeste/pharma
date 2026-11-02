@@ -389,6 +389,14 @@ export class Game {
     this.stage.setSelection(this.outline());
   }
 
+  /**
+   * Команда игрока: своя — от игрока; пост её отдела не у игрока — служебная записка руководителю отдела (Б5д), кнопка уже
+   * сказала, кому.
+   */
+  private send(cmd: Command, memo?: boolean) {
+    this.client.command(memo ? { kind: 'memo', cmds: [cmd] } : ({ ...cmd, by: 'player' } as Command));
+  }
+
   private notice(n: Notice, stop: boolean) {
     const text =
       n.kind === 'morning' ? T.notices.morning(n.day)
@@ -441,6 +449,9 @@ export class Game {
       : n.kind === 'visitMoved' ? T.notices.visitMoved(`${workName(n, n.work)} — ${assetClass(n)}, ${T.assets.inv(n.inv)}`, whenText(this.store.get().start, n.at))
       : n.kind === 'noOne' ? T.notices.noOne(T.journal.namesOf[n.head] ?? n.head)
       : n.kind === 'deputy' ? T.notices.deputy(T.journal.namesOf[n.head] ?? n.head, n.role && n.tab !== undefined ? T.card.person(this.roleName(n.role), n.tab) : undefined)
+      : n.kind === 'memo' ? T.notices.memo(T.journal.namesTo[n.head] ?? n.head, n.at !== undefined ? whenText(this.store.get().start, n.at) : undefined)
+      : n.kind === 'memoDone' ? T.notices.memoDone(T.journal.names[n.head] ?? n.head, n.ok, n.of)
+      : n.kind === 'ask' ? T.notices.ask(T.journal.names[n.head] ?? n.head, T.journal.what.fork[n.fork] ?? n.fork)
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;
@@ -682,10 +693,12 @@ export class Game {
     },
     approveDraft: () => {
       // утвердить — команды `shift` по строкам по порядку и срочные задания — команды `order` (Б1г); черновик пуст.
-      // Расписание — команда производства (3е)
+      // Расписание — команда производства (3е); пост не у игрока — черновик уходит планированию одной запиской (Б5д)
       const h = this.store.get();
-      if ((h.gantt.draft.length === 0 && h.gantt.urgent.length === 0) || !holds(h, 'production')) return;
-      for (const cmd of [...commandsOf(h.gantt.draft), ...ordersOf(h.gantt.urgent)]) this.client.command(cmd);
+      if (h.gantt.draft.length === 0 && h.gantt.urgent.length === 0) return;
+      const cmds = [...commandsOf(h.gantt.draft), ...ordersOf(h.gantt.urgent)];
+      if (holds(h, 'production')) for (const cmd of cmds) this.client.command(cmd);
+      else this.client.command({ kind: 'memo', cmds: cmds.map(c => ({ ...c, by: undefined }) as Command) });
       this.store.set({ gantt: { ...h.gantt, draft: [], urgent: [] } });
       this.sendViews();
     },
@@ -925,6 +938,10 @@ export class Game {
     answer: (n, ok) => this.client.command({ kind: ok ? 'accept' : 'decline', n }),
     setMode: (head, mode) => this.client.command({ kind: 'mode', head, mode, by: 'player' }),
     maintain: (machine, part) => this.client.command({ kind: 'maintain', machine, part }),
+    // служебная записка (Б5д): команды чужого отдела — его руководителю; отозвать; ответ на «Просят решить»
+    memo: cmds => this.client.command({ kind: 'memo', cmds }),
+    withdraw: n => this.client.command({ kind: 'withdraw', n }),
+    answerFork: (n, opt, day) => this.client.command({ kind: 'answer', n, opt, ...(day !== undefined ? { day } : {}) }),
     togglePolicies: () => {
       // окно «Политики» (Б5г) — большое, как справочник и показатели: панели справа и другие большие окна закрываются
       const p = this.store.get().policies;
@@ -1007,24 +1024,27 @@ export class Game {
       this.sendViews();
     },
     sendPo: () => {
-      const po = this.store.get().po;
+      const h = this.store.get();
+      const po = h.po;
       const supplier = po.supplier ?? po.view?.supplier;
       if (!supplier || po.lines.length === 0) return;
-      this.client.command({ kind: 'po', supplier, lines: po.lines.map(l => ({ material: l.material, qty: l.qty })), by: 'player' });
+      const cmd: Command = { kind: 'po', supplier, lines: po.lines.map(l => ({ material: l.material, qty: l.qty })) };
+      // пост «Снабжение и склад» не у игрока — записка начальнику отдела снабжения (Б5д)
+      this.client.command(holds(h, 'supply') ? { ...cmd, by: 'player' } : { kind: 'memo', cmds: [cmd] });
       this.store.set({ po: { ...po, lines: [] } });
       this.sendViews();
     },
     roster: (person, shift) => this.client.command({ kind: 'roster', person: `E${person}`, shift, by: 'player' }),
-    vacancy: (role, shift, via) => this.client.command({ kind: 'vacancy', role, shift, via, by: 'player' }),
-    closeVacancy: id => this.client.command({ kind: 'close', vacancy: id, by: 'player' }),
-    hire: (candidate, trial) => this.client.command({ kind: 'hire', candidate, trial, by: 'player' }),
+    vacancy: (role, shift, via, memo) => this.send({ kind: 'vacancy', role, shift, via }, memo),
+    closeVacancy: (id, memo) => this.send({ kind: 'close', vacancy: id }, memo),
+    hire: (candidate, trial, memo) => this.send({ kind: 'hire', candidate, trial }, memo),
     dismiss: (person, why) => this.client.command({ kind: 'dismiss', person: `E${person}`, why, by: 'player' }),
-    leaveAdd: (person, from, days) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'add', from, days, by: 'player' }),
-    leaveMove: (person, part, from) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'move', part, from, by: 'player' }),
-    leaveDrop: (person, part) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'drop', part, by: 'player' }),
-    leaveDeputy: (person, part, deputy) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'deputy', part, ...(deputy !== undefined ? { deputy: `E${deputy}` } : {}), by: 'player' }),
+    leaveAdd: (person, from, days, memo) => this.send({ kind: 'leave', person: `E${person}`, op: 'add', from, days }, memo),
+    leaveMove: (person, part, from, memo) => this.send({ kind: 'leave', person: `E${person}`, op: 'move', part, from }, memo),
+    leaveDrop: (person, part, memo) => this.send({ kind: 'leave', person: `E${person}`, op: 'drop', part }, memo),
+    leaveDeputy: (person, part, deputy, memo) => this.send({ kind: 'leave', person: `E${person}`, op: 'deputy', part, ...(deputy !== undefined ? { deputy: `E${deputy}` } : {}) }, memo),
     deputy: (head, person) => this.client.command({ kind: 'deputy', head, person: person === null ? null : `E${person}`, by: 'player' }),
-    also: (person, role, on) => this.client.command({ kind: 'also', person: `E${person}`, role, on, by: 'player' }),
+    also: (person, role, on, memo) => this.send({ kind: 'also', person: `E${person}`, role, on }, memo),
     setCashPage: page => {
       this.store.set({ cash: { ...this.store.get().cash, page } });
       this.sendViews();

@@ -8,25 +8,29 @@ import type { ContentDb, Dept, Id, SeatId } from '../content/types';
 import { batchNo } from '../engine/batchno';
 import { FORK_HEAD } from '../engine/forks';
 import { MODED, modeOf as deptMode } from '../engine/heads';
-import { DEPT_HEAD, HEAD_SEAT } from '../engine/journal';
+import { DEPT_HEAD, HEAD_SEAT, recordOf, waits } from '../engine/journal';
 import { planOf } from '../engine/plant';
 import { policyHead } from '../engine/policies';
 import { foreign, held } from '../engine/seats';
 import { unitsOfLot } from '../engine/stock';
 import { quotePo } from '../engine/supply';
-import type { Ask, AssetFamily, Batch, Decided, Decision, DeptMode, Head, Lot, Person, PlantState } from '../engine/types';
-import { thingOf } from './places';
+import { memoAt } from '../engine/memos';
+import type { Ask, AssetFamily, Batch, Command, Decided, Decision, DeptMode, ForkAsk, Head, Lot, MemoRes, Person, PlantState } from '../engine/types';
+import { movable, thingOf } from './places';
 import type { Thing } from './views';
 
 type Code = [number, number, number];
 const num = (id: string) => Number(id.slice(1));
 const code = (c: { y: number; m: number; n: number }): Code => [c.y, c.m, c.n];
 
-/** Журнал на странице `page`: отбор по посту и автору; `focus` — открыть на этой записи (её страница). */
+/**
+ * Журнал на странице `page`: отбор по посту и автору, с Б5д — и «Записки»; `focus` — открыть на этой записи (её
+ * страница).
+ */
 export interface JournalQuery {
   view: 'journal';
   seat?: SeatId;
-  who?: 'heads' | 'player';
+  who?: 'heads' | 'player' | 'memos';
   page: number;
   focus?: number;
 }
@@ -54,6 +58,12 @@ export interface JournalRef {
   person?: { role: Id; tab: number; n?: number };
   mode?: { recipe?: Id; stage?: string; param?: string; sku?: Id };
   thing?: Thing;
+  /** записка (Б5д): ссылки каждой её команды — по порядку команд */
+  cmds?: JournalRef[];
+  /** развилка визита (Б5д): номера серий, которые ждут актив */
+  batches?: string[];
+  /** вакансия и кандидат команд найма (Б5д): роль */
+  role?: Id;
 }
 
 /**
@@ -77,6 +87,35 @@ export interface JournalRow {
   ask?: AskInfo;
   /** кто решил за руководителя (Б5в): человек штата — роль и табельный номер; «и. о.» — заместитель; на заводе — `n` */
   as?: JournalAs;
+  /** служебная записка игрока (Б5д): когда ответят и ответ */
+  memo?: MemoInfo;
+  /** решение руководителя по записке (Б5д): её номер и пост, с которого она */
+  via?: { n: number; seat?: SeatId };
+  /** вопрос «Просят решить» (Б5д): кого спросили, срок, ответ и может ли игрок ответить */
+  q?: QInfo;
+}
+
+/**
+ * Служебная записка в строке (Б5д): без ответа — когда руководитель ответит (назначено или по его рабочему времени),
+ * может ли игрок её отозвать; с ответом — когда, кто ответил за руководителя и по каждой команде — номер записи
+ * руководителя или отказ движка; отозвана — `off`.
+ */
+export interface MemoInfo {
+  at?: number;
+  can?: true;
+  end?: { t: number; off?: true; res?: MemoRes[]; as?: JournalAs };
+}
+
+/**
+ * Вопрос в строке (Б5д): кого спросили, до какого мгновения ждёт ответа, ответ; открыт и пост у игрока — `can`; у
+ * открытого вопроса о визите — рабочие дни, на которые его можно перенести.
+ */
+export interface QInfo {
+  to?: SeatId;
+  due?: number;
+  end?: ForkAsk['end'];
+  can?: true;
+  move?: number[];
 }
 
 /** Человек, решивший за руководителя (Б5в): записи завода, без истины. */
@@ -109,8 +148,10 @@ export interface JournalView {
   focus?: number;
   /** с какого мгновения журнал помнит решения — срок геймдизайна (§8.5) */
   since?: number;
-  /** ждут вашего решения (Б5б): открытые предложения, новые сверху — на любой странице и при любом отборе */
+  /** ждут вашего решения (Б5б): открытые предложения и, с Б5д, вопросы, новые сверху — на любой странице и при любом отборе */
   asks: JournalRow[];
+  /** записки без ответа (Б5д), новые сверху */
+  memos: JournalRow[];
   /** режимы отделов взятых постов (Б5б); у директора — всех отделов с выбором; мест не выбрано — нет */
   modes: ModeInfo[];
 }
@@ -262,6 +303,50 @@ export function refOf(db: ContentDb, s: PlantState, d: Decided, ask?: Ask): Jour
       const thing = pt ? thingOf(db, s, pt.machine, plan) : undefined;
       return pt ? { machine: pt.of, part: pt.type, ...(thing ? { thing } : {}) } : {};
     }
+    case 'memo':
+      // записка (Б5д): ссылки её команд — по порядку
+      return { cmds: d.cmds.map(c => cmdRef(db, s, c)) };
+    case 'fork':
+      // развилка (Б5д): визит — актив и серии, которые его ждут; замена — узел и серия; OOS — расследование
+      if (d.fork === 'visit') return { ...refOf(db, s, { kind: 'visit', asset: d.asset, work: d.work, at: d.start }), batches: d.batches.flatMap(id => (s.batches[id] ? [batchNo(s.batches[id].code) || id] : [])) };
+      if (d.fork === 'replace') return { ...refOf(db, s, { kind: 'replace', part: d.part }), ...batchRef(s, d.batch) };
+      return refOf(db, s, { kind: 'step', inv: d.inv, step: '' });
+    default:
+      return {};
+  }
+}
+
+/**
+ * Ссылки команды записки (Б5д): серия, партия, актив, узел, человек, вакансия или кандидат — по их номерам, как у записей
+ * журнала; у остального — нет.
+ */
+export function cmdRef(db: ContentDb, s: PlantState, c: Command): JournalRef {
+  switch (c.kind) {
+    case 'shift':
+    case 'pack':
+      return batchRef(s, c.batch);
+    case 'rush':
+      return lotRef(s, c.lot);
+    case 'visit':
+      return refOf(db, s, { kind: 'visit', asset: c.asset, work: 'qual', at: 0 });
+    case 'maintain':
+      return refOf(db, s, { kind: 'replace', part: `${c.machine}/${c.part}` });
+    case 'setpoint':
+      return 'sku' in c ? { mode: { sku: c.sku } } : { mode: { recipe: c.recipe, stage: c.stage, param: c.param } };
+    case 'roster':
+    case 'dismiss':
+    case 'leave':
+    case 'also':
+      return personRef(s, s.people[c.person] ?? s.former[c.person]);
+    case 'agency':
+    case 'close': {
+      const v = s.vacancies[c.vacancy];
+      return v ? { role: v.role } : {};
+    }
+    case 'hire': {
+      const k = s.candidates[c.candidate];
+      return k ? { role: k.role } : {};
+    }
     default:
       return {};
   }
@@ -274,19 +359,72 @@ export function askInfo(s: PlantState, r: Decision): AskInfo | undefined {
   return foreign(s, { kind: 'accept', n: r.n }) ? {} : { can: true };
 }
 
+/**
+ * Записка в строке (Б5д): без ответа — когда ответят — назначенное мгновение или по рабочему времени руководителя, —
+ * и отозвать её может игрок; с ответом — кто ответил за руководителя.
+ */
+export function memoInfo(db: ContentDb, s: PlantState, r: Decision): MemoInfo | undefined {
+  const m = r.memo;
+  if (!m || r.d.kind !== 'memo') return undefined;
+  if (!m.end) {
+    const at = m.due ?? memoAt(db, s, r.d.to);
+    return { ...(at !== undefined ? { at } : {}), can: true };
+  }
+  const as = m.end.p ? asOf(s, { ...r, p: m.end.p, ...(m.end.io ? { io: true as const } : {}) }) : undefined;
+  return { end: { t: m.end.t, ...(m.end.off ? { off: true as const } : {}), ...(m.end.res ? { res: m.end.res } : {}), ...(as ? { as } : {}) } };
+}
+
+/**
+ * Вопрос в строке (Б5д): открыт и игрок держит пост, которого спросили, или он директор — может ответить; у вопроса о
+ * визите — дни переноса (нужна база; «Кто решил» карточки обходится без них).
+ */
+export function qInfo(db: ContentDb | undefined, s: PlantState, r: Decision): QInfo | undefined {
+  const q = r.q;
+  if (!q) return undefined;
+  const can = !q.end && !foreign(s, { kind: 'answer', n: r.n, opt: 'wait' });
+  const a = !q.end && r.d.kind === 'fork' && r.d.fork === 'visit' ? s.assets[r.d.asset] : undefined;
+  const move = a && db ? movable(db, s, a) : {};
+  return { ...(q.to ? { to: q.to } : {}), ...(q.due !== undefined ? { due: q.due } : {}), ...(q.end ? { end: q.end } : {}), ...(can ? { can: true as const } : {}), ...move };
+}
+
 /** Строка журнала для окна. */
 export function rowOf(db: ContentDb, s: PlantState, r: Decision): JournalRow {
   const ask = askInfo(s, r);
   const as = asOf(s, r);
-  return { n: r.n, t: r.t, by: r.by, ...(r.seat ? { seat: r.seat } : {}), post: postOf(db, r), d: r.d, ref: refOf(db, s, r.d, r.ask), ...(ask ? { ask } : {}), ...(as ? { as } : {}) };
+  const memo = memoInfo(db, s, r);
+  const q = qInfo(db, s, r);
+  const via = r.via !== undefined ? { n: r.via, ...(recordOf(s, r.via)?.seat ? { seat: recordOf(s, r.via)!.seat } : {}) } : undefined;
+  return {
+    n: r.n,
+    t: r.t,
+    by: r.by,
+    ...(r.seat ? { seat: r.seat } : {}),
+    post: postOf(db, r),
+    d: r.d,
+    ref: refOf(db, s, r.d, r.ask),
+    ...(ask ? { ask } : {}),
+    ...(as ? { as } : {}),
+    ...(memo ? { memo } : {}),
+    ...(via ? { via } : {}),
+    ...(q ? { q } : {}),
+  };
 }
 
-/** Открытые предложения (Б5б), новые сверху. */
+/** Открытые предложения (Б5б) и вопросы «Просят решить» (Б5д), новые сверху. */
 export const openAsks = (db: ContentDb, s: PlantState): JournalRow[] =>
-  Object.values(s.heads.open)
+  [...Object.values(s.heads.open), ...Object.values(s.heads.qs ?? {})]
     .sort((a, b) => b - a)
     .flatMap(n => {
-      const r = s.journal.find(x => x.n === n);
+      const r = recordOf(s, n);
+      return r ? [rowOf(db, s, r)] : [];
+    });
+
+/** Записки без ответа (Б5д), новые сверху. */
+export const openMemos = (db: ContentDb, s: PlantState): JournalRow[] =>
+  [...(s.heads.memos ?? [])]
+    .sort((a, b) => b - a)
+    .flatMap(n => {
+      const r = recordOf(s, n);
       return r ? [rowOf(db, s, r)] : [];
     });
 
@@ -299,14 +437,16 @@ export function modesOf(s: PlantState): ModeInfo[] {
 
 /** Журнал: новые сверху; отбор по посту и автору; страница — по `focus`, если запись есть. */
 export function journalView(db: ContentDb, s: PlantState, q: JournalQuery): JournalView {
-  const all = s.journal.filter(r => (!q.who || (q.who === 'player') === (r.by === 'player')) && (!q.seat || postOf(db, r) === q.seat)).reverse();
+  const who = (r: Decision) => !q.who || (q.who === 'memos' ? r.d.kind === 'memo' : (q.who === 'player') === (r.by === 'player'));
+  const all = s.journal.filter(r => who(r) && (!q.seat || postOf(db, r) === q.seat)).reverse();
   const pages = Math.max(1, Math.ceil(all.length / JOURNAL_PAGE));
   const at = q.focus !== undefined ? all.findIndex(r => r.n === q.focus) : -1;
   const page = at >= 0 ? Math.floor(at / JOURNAL_PAGE) : Math.min(Math.max(0, q.page), pages - 1);
   const rows = all.slice(page * JOURNAL_PAGE, (page + 1) * JOURNAL_PAGE).map(r => rowOf(db, s, r));
-  // с какого мгновения журнал помнит решения: открытое предложение старше срока остаётся — его не считают
-  const kept = s.journal.find(r => !r.ask || r.ask.end);
-  return { view: 'journal', rows, total: all.length, page, pages, ...(at >= 0 ? { focus: q.focus } : {}), ...(kept ? { since: kept.t } : {}), asks: openAsks(db, s), modes: modesOf(s) };
+  // с какого мгновения журнал помнит решения: открытое предложение, записка без ответа и открытый вопрос старше срока
+  // остаются — их не считают
+  const kept = s.journal.find(r => !waits(r));
+  return { view: 'journal', rows, total: all.length, page, pages, ...(at >= 0 ? { focus: q.focus } : {}), ...(kept ? { since: kept.t } : {}), asks: openAsks(db, s), memos: openMemos(db, s), modes: modesOf(s) };
 }
 
 // ---------------------------------------------------------------- «Кто решил» в карточках
@@ -326,6 +466,10 @@ export interface WhoRow {
   ask?: AskInfo;
   /** кто решил за руководителя (Б5в) */
   as?: JournalAs;
+  /** по записке (Б5д): номер записки и пост, с которого она */
+  via?: { n: number; seat?: SeatId };
+  /** развилка «Просят решить» (Б5д): ответ — игрок, сам или «не нужно» */
+  q?: QInfo;
 }
 
 const verdictOf = (d: Decided): string | undefined => {
@@ -356,13 +500,15 @@ const whoRows = (s: PlantState, f: (d: Decided) => boolean): WhoRow[] =>
     .map(r => {
       const ask = askInfo(s, r);
       const as = asOf(s, r);
-      return { n: r.n, t: r.t, by: r.by, ...(r.seat ? { seat: r.seat } : {}), kind: r.d.kind, ...(verdictOf(r.d) ? { v: verdictOf(r.d) } : {}), ...(ask ? { ask } : {}), ...(as ? { as } : {}) };
+      const q = qInfo(undefined, s, r);
+      const via = r.via !== undefined ? { n: r.via, ...(recordOf(s, r.via)?.seat ? { seat: recordOf(s, r.via)!.seat } : {}) } : undefined;
+      return { n: r.n, t: r.t, by: r.by, ...(r.seat ? { seat: r.seat } : {}), kind: r.d.kind, ...(verdictOf(r.d) ? { v: verdictOf(r.d) } : {}), ...(ask ? { ask } : {}), ...(as ? { as } : {}), ...(via ? { via } : {}), ...(q ? { q } : {}) };
     });
 
-/** Серия: задание, решение по балку, вывод расследования, решения уполномоченного лица. */
+/** Серия: задание, решение по балку, вывод расследования, решения уполномоченного лица; с Б5д — кто ведёт OOS. */
 export function whoBatch(s: PlantState, b: Batch): WhoRow[] {
   const invs = new Set(Object.values(s.investigations).filter(i => i.batch === b.id).map(i => i.id));
-  return whoRows(s, d => ((d.kind === 'order' || d.kind === 'batch') && d.batch === b.id) || (d.kind === 'lot' && d.lot === b.bulk) || (d.kind === 'conclude' && invs.has(d.inv)));
+  return whoRows(s, d => ((d.kind === 'order' || d.kind === 'batch') && d.batch === b.id) || (d.kind === 'lot' && d.lot === b.bulk) || (d.kind === 'conclude' && invs.has(d.inv)) || (d.kind === 'fork' && d.fork === 'oos' && invs.has(d.inv)));
 }
 
 /** Партия: заказ поставщику, с которым она пришла, и решение начальника ОКК. */
@@ -376,15 +522,15 @@ export function whoDev(s: PlantState, id: string): WhoRow[] {
   return whoRows(s, d => (d.kind === 'assess' && d.dev === id) || (d.kind === 'lot' && d.dev === id) || (!!dev?.inv && d.kind === 'conclude' && d.inv === dev.inv));
 }
 
-/** Актив: визиты подрядчика. */
-export const whoAsset = (s: PlantState, id: string): WhoRow[] => whoRows(s, d => d.kind === 'visit' && d.asset === id);
+/** Актив: визиты подрядчика; с Б5д — развилки «визит держит серию». */
+export const whoAsset = (s: PlantState, id: string): WhoRow[] => whoRows(s, d => (d.kind === 'visit' || (d.kind === 'fork' && d.fork === 'visit')) && d.asset === id);
 
 /** Машина или оборудование: ремонты и замены её узлов, заказы ЗИП их запчастей. */
 export function whoMachine(db: ContentDb, s: PlantState, machine: string): WhoRow[] {
   const parts = Object.values(s.parts).filter(p => p.machine === machine);
   const ids = new Set(parts.map(p => p.id));
   const spares = new Set(parts.map(p => (p.line ? db.machines[p.of] : db.equipment[p.of])?.parts.find(x => x.id === p.type)?.spare).filter((x): x is Id => !!x));
-  return whoRows(s, d => ((d.kind === 'repair' || d.kind === 'replace') && ids.has(d.part)) || (d.kind === 'spare' && spares.has(d.spare)));
+  return whoRows(s, d => ((d.kind === 'repair' || d.kind === 'replace' || (d.kind === 'fork' && d.fork === 'replace')) && ids.has(d.part)) || (d.kind === 'spare' && spares.has(d.spare)));
 }
 
 /**
@@ -409,6 +555,20 @@ export function whoPerson(s: PlantState, p: Person): WhoRow[] {
   return whoRows(s, d => (!!p.cand && d.kind === 'hire' && d.cand === p.cand) || (!!vac && d.kind === 'vacancy' && d.vacancy === vac) || (d.kind === 'vacancy' && d.why?.instead === p.id));
 }
 
+// ---------------------------------------------------------------- записки и вопросы за сутки
+
+/**
+ * «Записки и вопросы» за сутки до планёрки (Б5д): ответы руководителей на записки и вопросы, решённые без игрока, — сам
+ * или «не нужно», — новые сверху.
+ */
+export function memoDays(db: ContentDb, s: PlantState, from: number, to: number): JournalRow[] {
+  const at = (t: number) => t >= from && t < to;
+  return s.journal
+    .filter(r => (r.memo?.end && !r.memo.end.off && at(r.memo.end.t)) || (r.q?.end && r.q.end.how !== 'player' && at(r.q.end.t)))
+    .reverse()
+    .map(r => rowOf(db, s, r));
+}
+
 // ---------------------------------------------------------------- решения за сутки
 
 /**
@@ -430,7 +590,7 @@ export interface HeadDay {
 export function headDays(s: PlantState, from: number, to: number): HeadDay[] {
   const out = new Map<Head, HeadDay>();
   for (const r of s.journal) {
-    if (r.by === 'player' || r.ask || r.t < from || r.t >= to) continue;
+    if (r.by === 'player' || r.ask || r.q || r.t < from || r.t >= to) continue;
     let h = out.get(r.by);
     if (!h) out.set(r.by, (h = { head: r.by, n: 0, kinds: [], last: r.n }));
     h.n++;

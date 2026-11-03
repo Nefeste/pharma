@@ -3252,7 +3252,9 @@ async function mainPart() {
     const tGone = await gameT();
     let io;
     let meet;
-    for (let i = 0; i < 8 && !io; i++) {
+    // заместитель бывает в отпуске сразу после ухода начальника: тогда на планёрке «Некому решить», а «и. о.» — когда
+    // он вернётся и отделу будет что решать; его часть отпуска — две недели
+    for (let i = 0; i < 20 && !io; i++) {
       await untilMorning(true);
       meet = await page.evaluate(() => document.querySelector('[data-test=morning-boss][data-head=plan]')?.textContent ?? '');
       await page.keyboard.press('Escape');
@@ -3271,16 +3273,18 @@ async function mainPart() {
     await page.waitForFunction(() => document.querySelector('[data-test=ref-bosses] [data-test=boss-head][data-head=plan]')?.getAttribute('data-now') === 'noOne', null, { timeout: 20_000 }).catch(() => {});
     const removed = (await bossNow()).plan;
     await page.keyboard.press('Escape');
+    // извещение — новое, после снятия: «Некому решить» за время отпуска заместителя могло остаться в ленте
+    const tRemoved = await gameT();
     let stop;
     for (let i = 0; i < 6 && !stop; i++) {
       await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
       await page.keyboard.press('Digit6');
       await page.waitForFunction(() => !window.__game.ff, null, { timeout: 120_000 });
       await frames(2);
-      stop = await page.evaluate(() => {
-        const n = window.__game.store.get().notices.find(x => x.stop && /^Некому решить за начальника отдела планирования/.test(x.text));
+      stop = await page.evaluate(tr => {
+        const n = window.__game.store.get().notices.find(x => x.t >= tr && x.stop && /^Некому решить за начальника отдела планирования/.test(x.text));
         return n ? { text: n.text, speed: window.__game.speed, go: n.go } : undefined;
-      });
+      }, tRemoved);
     }
     if (removed !== 'noOne' || !stop || stop.speed !== 0 || stop.go?.panel !== 'ref') fail(`заместителя сняли: в таблице ${removed}, стоп ${JSON.stringify(stop)}`);
     else ok(`заместителя сняли: «${stop.text.slice(0, 120)}» — мир стоит, щелчок ведёт во вкладку «Люди»`);

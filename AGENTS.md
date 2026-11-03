@@ -97,7 +97,8 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # then the first week of a newcomer (e2e-week.mjs, week.png), then memos and
                                    # questions (e2e-memo.mjs, memo.png), then a CAPA and its check three months on
                                    # (e2e-capa.mjs, capa.png), then batch orders from the production post (e2e-jobs.mjs,
-                                   # jobs.png); `-- --only main|week|memo|capa|jobs` for one
+                                   # jobs.png), then the launch plan and the daily lists (e2e-launch.mjs, launch.png);
+                                   # `-- --only main|week|memo|capa|jobs|launch` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -136,7 +137,14 @@ first, or copy the working code of Bolnitsa on the same versions.
   progress against demand per working day seen in customer orders, over five-day weeks ahead; SKUs in turn until demand
   is seen; campaigns — the product of the last batch order goes on while its SKUs need a batch and no SKU of the other
   product is urgent; with Б6а the due of a stock order — the truck hour of the workday the SKU runs out by the same
-  position, `stockDue` — and a cancelled stock order holding its SKU until its not-before, `heldOf`), `wms.ts` (truck,
+  position, `stockDue` — and a cancelled stock order holding its SKU until its not-before, `heldOf`; with Б6б the same
+  choice shared with the launch plan — `choose` — and the launch plan without writing, with the schedule draft —
+  `launchPlan`), `daily.ts` (with Б6б, the daily dispatch lists: at 08:00 each department's rows for the day — stages
+  and kits by the schedule run cut at the day's end, packing by the line master's norm in the shifts of the line's
+  people, the lab by the finite capacity of analysts on shift and instruments, shipments, supplier trucks, repairs,
+  visits, the qualified person's decisions and deviation assessments due; every hour when a row started and, an hour
+  late, what it waited for; at the next 08:00 the result — on time, later, not done; no rule reads them; kept 31 days;
+  the plan run's copy has none; which department a row waited for — `waitedFor`), `wms.ts` (truck,
   its check at the dock
   before unloading, unloading, receiving, putaway), `quality.ts` (true lot properties, the lab result, spec limits),
   `lab.ts` (sampling,
@@ -353,7 +361,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   the techservice colleague books a visit at 09:00 on a workday for the next workday; the contractor starts in his hours
   once the asset is free, the bill on the visit day, the acceptance by the QC head or the QA specialist; a pallet stored
   only in a zone whose regime fits and whose sensor is fit; what holds a stage or a line; with Б5г «Перенести визит» —
-  the `visit` command: a workday from tomorrow to the last day of the record in force, a running visit refused),
+  the `visit` command: a workday from tomorrow to the last day of the record in force, a running visit refused; with
+  Б6б the visits without writing — booked ones and the techservice colleague's rule — `visitPlan`),
   `partners.ts` (makers and
   suppliers — the maker itself or a distributor; approved supplier–maker pairs from the material spec in force; pair
   approvals with a term, start records by a hash, not before the pair entered a spec; the quality colleague books an
@@ -412,7 +421,12 @@ first, or copy the working code of Bolnitsa on the same versions.
   (`hours.ts`); with Б6а, the batch orders — a row per order with its purpose, due, state in words, the expected
   release by the schedule run and the median tail of batches released in 90 days, lateness by due, and the customer
   orders the FG will not cover by their due — free FG and what the orders bring into circulation — for the «Задания»
-  tab and the meeting (`jobs.ts`); people and admissions — a person's admission
+  tab and the meeting (`jobs.ts`); with Б6б, the launch plan — SKUs by days for 31 days: batch orders by their
+  not-before with the draft, the planning head's rule, contractor visits to stage equipment and line machines and the
+  days off, only while its tab is open (`launch.ts`), and the daily lists — rows with the names of their things, a
+  department's result and whom it waited for longest for the meeting, the marks of schedule bars and today's rows of a
+  room, equipment or line machine card, «после суток» from the plant's records (`daily.ts`); people and admissions — a
+  person's admission
   today and what they are losing within the warning period, training rows of the card, the training matrix of the
   reference with how many people of a role are admitted, and of other roles by the related profession, the meeting's
   summary — records are the plant's knowledge, not truth (`people.ts`); hiring — the staff by the scenario and now,
@@ -517,8 +531,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   (`Now.tsx`, N), the 08:00 meeting (`Morning.tsx`), the cash
   panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), the schedule window with dragging, the draft, «Прогнать
   план» and the run's outcome per variant (`Gantt.tsx`), with Б6а its «Задания» tab — filters, rows, «Отменить» into
-  the draft, «Полосы», the uncovered orders with «Срочное задание под заказ» (`Jobs.tsx`), the draft's pure rules — a
-  row per batch order, gone once kitting starts, `shift` commands on approval, with Б6а the cancels (`draft.ts`), the
+  the draft, «Полосы», the uncovered orders with «Срочное задание под заказ» (`Jobs.tsx`), with Б6б its «План запуска»
+  tab — the grid of SKUs by days, the dashed rule, a cell's contents, «Поставить сейчас» (`Launch.tsx`), the meeting's
+  «Сменно-суточные задания» block and a card's rows of the day (`Daily.tsx`), the draft's pure rules — a row per batch
+  order, gone once kitting starts, `shift` commands on approval, with Б6а the cancels, with Б6б an urgent order on a
+  day (`draft.ts`), the
   «Кем вы будете» screen of places (`Seats.tsx`), the investigation board — steps, findings in words with numbers
   from the records, version bars, the decision, the debrief, with Б5е the CAPA after the conclusion (`Inv.tsx`), the
   batch record over the other windows — opened from a
@@ -592,7 +609,9 @@ first, or copy the working code of Bolnitsa on the same versions.
 - `tools/app/` — page build (the page, the calculation thread and the plan run's thread), local server, browser scenario
   with the contact sheet and the first week of a newcomer in a clean window (`e2e-week.mjs`), memos and questions in two
   clean windows (`e2e-memo.mjs`), a CAPA from the quality post to its effectiveness check (`e2e-capa.mjs`), batch orders
-  from the production post — uncovered orders, an urgent order for one, a cancel (`e2e-jobs.mjs`), the «code —
+  from the production post — uncovered orders, an urgent order for one, a cancel (`e2e-jobs.mjs`), the launch plan and
+  the daily lists — the meeting's «ждали …», «Поставить сейчас» and «Утвердить», a bar's and a room card's rows of the
+  day (`e2e-launch.mjs`), the «code —
   Blender» sheet
   of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench
   (`bench.mjs`, `--art code` — machines in code), the release update archive — one `resources/app.asar`

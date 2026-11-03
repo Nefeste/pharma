@@ -137,6 +137,26 @@
     .jobs table.grid td:nth-child(1), .jobs table.grid td:nth-child(4), .jobs table.grid td:nth-child(5), .jobs table.grid td:nth-child(7), .jobs table.grid td:nth-child(8), .jobs table.grid td:nth-child(9) { white-space: nowrap; }
     .jobs ul.plain { margin: 0; padding-left: 18px; }
     .jobs ul.plain li { margin: 2px 0; }
+    /* вкладка «План запуска» (Б6б): дни — столбцы, позиции — строки; задания — сплошные, правило — пунктир; нерабочие дни —
+       серые; выбранная клетка — в рамке, под сеткой — что в ней */
+    .launch { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
+    .launch-scroll { overflow-x: auto; }
+    .launch table.grid { border-collapse: collapse; }
+    .launch table.grid th, .launch table.grid td { padding: 2px 3px; text-align: center; min-width: 34px; cursor: default; }
+    .launch table.grid tbody th { text-align: left; white-space: nowrap; color: var(--text); font-weight: 400; }
+    .launch table.grid thead th { font-size: 11px; line-height: 1.2; }
+    .launch .off { background: rgba(255, 255, 255, 0.05); color: var(--muted); }
+    .launch td.sel { outline: 1px solid var(--accent); outline-offset: -1px; }
+    .lchip { display: block; width: 100%; margin: 1px 0; padding: 1px 2px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-color: var(--accent); }
+    .lchip.rule { border-style: dashed; border-color: var(--muted); color: var(--muted); background: transparent; }
+    .lchip.drop { text-decoration: line-through; color: var(--muted); }
+    .lchip.moved { border-color: #fff; }
+    .lchip.visit { border-color: var(--yellow); }
+    .lchip.visit.rule { border-color: var(--yellow); color: var(--yellow); }
+    .launch-pick { min-height: 22px; }
+    .launch-pick ul { margin: 0; padding-left: 0; list-style: none; }
+    /* сменно-суточные задания (Б6б): строки задания у отдела планёрки и в карточке */
+    .daily-rows { margin: 2px 0 4px; padding-left: 16px; font-size: 12px; }
     .grow-row { display: flex; align-items: stretch; min-height: 30px; }
     .glabel { flex: 0 0 180px; padding: 7px 8px 0 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .gtrack { position: relative; flex: 1 1 auto; border-bottom: 1px solid rgba(255,255,255,.06); overflow: hidden; }

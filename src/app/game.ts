@@ -28,7 +28,7 @@ import type { Thing, ViewQuery } from '../sim/views';
 import { assetClass, workName } from '../ui/assets';
 import { capaName, headText } from '../ui/capa';
 import { useDb } from '../ui/db';
-import { cancelsOf, commandsOf, draftKey, ordersOf, prune, pruneDrop, toggleDrop, upsert } from '../ui/draft';
+import { cancelsOf, commandsOf, draftKey, freshOf, ordersOf, prune, pruneDrop, toggleDrop, upsert } from '../ui/draft';
 import { draftCommands, draftKey as policyKey, sameValue } from '../ui/policy';
 import { type Actions, holds, type Hud, LIVE, NO_POLICY_RUN, NO_RUN, PLAN_RUN, POLICY_RUN, type Speed, type Store } from '../ui/store';
 import { type ArtMode, loadArt } from './art';
@@ -810,17 +810,19 @@ export class Game {
     capa: (deviation, action) => this.client.command({ kind: 'capa', deviation, action, by: 'player' }),
     capaRun: capa => this.client.command({ kind: 'capaRun', capa, by: 'player' }),
     setpoint: x => this.client.command({ kind: 'setpoint', ...x, by: 'player' }),
-    urgent: (recipe, sku, order) => {
+    urgent: (recipe, sku, order, at) => {
       // срочное задание (Б1г) — строка черновика, его полосы — в расписании (0.0.39); «Прогнать план» — что оно изменит;
-      // под заказ покупателя (Б6а) — со сроком заказа
+      // под заказ покупателя (Б6а) — со сроком заказа; из плана запуска (Б6б) — на день пунктирной клетки
       const g = this.store.get().gantt;
-      this.store.set({ gantt: { ...g, urgent: [...g.urgent, { recipe, sku, ...(order ? { for: order } : {}) }] } });
+      this.store.set({ gantt: { ...g, urgent: [...g.urgent, { recipe, sku, ...(order ? { for: order } : {}), ...(at !== undefined ? { at } : {}) }] } });
       if (!g.open) this.actions.toggleGantt();
       else this.sendViews();
     },
     ganttTab: tab => {
       const g = this.store.get().gantt;
       this.store.set({ gantt: { ...g, tab } });
+      // план запуска (Б6б) считают, только пока открыта его вкладка
+      this.sendViews();
     },
     ganttBars: (batch, at) => {
       const g = this.store.get().gantt;
@@ -1209,10 +1211,10 @@ export class Game {
     // черновик: новые сроки заданий и новые срочные задания (0.0.39) — их полосы расписание показывает до «Утвердить»
     const draft = {
       ...(h.gantt.draft.length > 0 ? { draft: [...h.gantt.draft] } : {}),
-      ...(h.gantt.urgent.length > 0 ? { fresh: h.gantt.urgent.map(u => ({ recipe: u.recipe, sku: u.sku, ...(u.for ? { for: u.for } : {}) })) } : {}),
+      ...(h.gantt.urgent.length > 0 ? { fresh: freshOf(h.gantt.urgent) } : {}),
       ...(h.gantt.drop.length > 0 ? { drop: [...h.gantt.drop] } : {}),
     };
-    if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days), ...draft });
+    if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days), ...draft, ...(h.gantt.tab === 'launch' ? { launch: true as const } : {}) });
     if (h.gantt.open && h.gantt.drag) list.push({ id: 'ghost', view: 'ghost', ...h.gantt.drag, ...draft });
     if (h.inv.open) list.push({ id: 'inv', view: 'inv', ...(h.inv.id ? { inv: h.inv.id } : {}) });
     if (h.journal.open) list.push({ id: 'journal', view: 'journal', page: h.journal.page, ...(h.journal.seat ? { seat: h.journal.seat } : {}), ...(h.journal.who ? { who: h.journal.who } : {}), ...(h.journal.focus !== undefined ? { focus: h.journal.focus } : {}) });

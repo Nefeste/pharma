@@ -110,8 +110,8 @@ export interface Hud {
     urgent: readonly Urgent[];
     /** отмены черновика (Б6а): командами `cancel` станут при «Утвердить» */
     drop: readonly string[];
-    /** вкладка (Б6а): полосы расписания или список заданий; отбор списка */
-    tab?: 'jobs';
+    /** вкладка (Б6а): полосы расписания, список заданий или, с Б6б, план запуска; отбор списка */
+    tab?: 'jobs' | 'launch';
     jobs?: JobsFilter;
     /** чьи полосы подсвечены (Б6а): «Полосы» у строки вкладки «Задания» */
     focus?: string;
@@ -419,9 +419,9 @@ export interface Actions {
   /** уставка режима стадии карты или скорости блистерной позиции (Б1ж) — команда `setpoint` */
   setpoint(x: { recipe: Id; stage: string; param: string; value: number } | { sku: Id; value: number }): void;
   /** срочное задание черновика (Б1г); под заказ покупателя (Б6а) */
-  urgent(recipe: Id, sku: Id, order?: string): void;
+  urgent(recipe: Id, sku: Id, order?: string, at?: number): void;
   /** задания на серию (Б6а): вкладка окна расписания, отбор списка, «Отменить» в черновике, отмена из карточки */
-  ganttTab(tab?: 'jobs'): void;
+  ganttTab(tab?: 'jobs' | 'launch'): void;
   /** полосы задания в расписании (Б6а): вкладка полос, окно — с их начала, сами — подсвечены */
   ganttBars(batch: string, at: number): void;
   jobsFilter(f: JobsFilter): void;

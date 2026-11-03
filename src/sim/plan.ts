@@ -11,7 +11,9 @@ import { type Bar, type Change, type Fresh, forecast, freshBatches, type Why } f
 import { planOf } from '../engine/plant';
 import { shiftEndAt } from '../engine/staff';
 import type { Batch, BatchStatus, PlantState } from '../engine/types';
+import { type DailyMark, dailyMarks } from './daily';
 import { type Jobs, jobsOf } from './jobs';
+import { type LaunchView, launchView } from './launch';
 import { type AssetInfo, assetInfo } from './places';
 
 export interface GanttQuery {
@@ -25,6 +27,8 @@ export interface GanttQuery {
   fresh?: Fresh[];
   /** задания, которые черновик отменяет (Б6а) — ещё не команды */
   drop?: string[];
+  /** вкладка «План запуска» открыта (Б6б): собрать и его */
+  launch?: true;
 }
 
 export interface GhostQuery {
@@ -80,6 +84,10 @@ export interface GanttView {
   assets: Record<string, AssetInfo>;
   /** задания на серию и заказы без покрытия (Б6а) — по прогону с черновиком */
   jobs: Jobs;
+  /** план запуска (Б6б) — с черновиком; только когда открыта его вкладка */
+  launch?: LaunchView;
+  /** отметки полос (Б6б): строки заданий на сутки — комплектовки, стадии, упаковка — с итогом */
+  daily: DailyMark[];
 }
 
 export interface GhostView {
@@ -197,6 +205,11 @@ export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttVie
     }
   };
   for (const b of bars) seen(b.asset);
+  const launch = q.launch ? launchView(db, s, draft, fresh, drop) : undefined;
+  if (launch) {
+    for (const v of launch.visits) seen(v.asset);
+    for (const j of launch.jobs) ids.add(j.batch);
+  }
   for (const [id, list] of Object.entries(f.why)) {
     ids.add(id);
     for (const w of list) {
@@ -222,6 +235,8 @@ export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttVie
     gone: [...draft.filter(c => !movable(s, c.batch)).map(c => c.batch), ...drop.filter(id => !movable(s, id))],
     assets,
     jobs: jobsOf(db, s, f),
+    ...(launch ? { launch } : {}),
+    daily: dailyMarks(db, s, q.from, q.to),
   };
 }
 

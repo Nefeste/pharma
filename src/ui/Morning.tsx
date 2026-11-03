@@ -17,6 +17,7 @@ import type { Thing } from '../sim/views';
 import { assetName, workName } from './assets';
 import { BossMeeting } from './Bosses';
 import { capaName, headText } from './capa';
+import { DailyMeet } from './Daily';
 import { headName, kpiName, kpiText, kpiValue, monthText } from './Kpi';
 import { db } from './db';
 import { AskRows } from './Journal';
@@ -580,6 +581,9 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                 )),
               ]}
             />
+          </Section>
+          <Section title={T.daily.title}>
+            <DailyMeet d={v.daily} plant={plant} start={start} hud={hud} actions={actions} close={close} />
           </Section>
           <Section title={T.morning.now}>
             <div className="mblock" data-test="morning-now">

@@ -84,9 +84,12 @@ export function Jobs({ hud, actions, jobs, mine, items }: { hud: Hud; actions: A
                     {late(r)}
                   </td>
                   <td>
-                    <button type="button" className="small" onClick={() => actions.ganttBars(r.id, r.at)} title={T.jobs.showHint} data-test="jobs-bars">
-                      {T.jobs.show}
-                    </button>{' '}
+                    {/* у отменённого полос нет */}
+                    {r.status !== 'cancelled' ? (
+                      <button type="button" className="small" onClick={() => actions.ganttBars(r.id, r.at)} title={T.jobs.showHint} data-test="jobs-bars">
+                        {T.jobs.show}
+                      </button>
+                    ) : null}{' '}
                     {r.open ? (
                       <button
                         type="button"

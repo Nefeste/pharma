@@ -7,6 +7,7 @@
 // Щелчок по полосе — камера к помещению или линии. Виды собирает поток расчёта (src/sim/plan.ts), итог прогона — поток
 // прогона (src/sim/planHost.ts); здесь — слова, рисунок и мышь.
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
+import type { Id } from '../content/types';
 import { HOUR, momentOf, type Ymd } from '../engine/core/calendar';
 import type { Range, RunSum } from '../engine/plan/run';
 import type { Bar, Why } from '../engine/plan/schedule';
@@ -85,6 +86,14 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
   const moved = new Set(v.moved);
   // срочное задание (Б1г) — по позициям плана выпуска сценария этого завода
   const items = Object.values(db?.scenarios ?? {}).find(sc => sc.plant === plant)?.plan?.items ?? [];
+
+  /** Строка срочного задания черновика: позиция, а под заказ покупателя (Б6а) — и чей заказ. */
+  const urgentText = (u: { sku: Id; for?: string }) => {
+    const sku = named(db?.skus[u.sku]?.name, u.sku);
+    if (!u.for) return T.urgent.item(sku);
+    const c = v.jobs.uncovered.find(x => x.order === u.for)?.customer;
+    return T.urgent.itemFor(sku, c ? named(db?.customers[c]?.name, c) : u.for);
+  };
 
   /** Мгновение — словами для причин: сегодня — часы; в пределах недели — день недели и часы; дальше — дата и часы. */
   const timeText = (t: number) => {
@@ -317,7 +326,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         ) : null}
         {g.draft.length + g.urgent.length + g.drop.length > 0 ? (
           <>
-            <span data-test="draft-list">{T.plan.draft([...g.drop.map(id => T.jobs.dropped(who(labels, id) || T.jobs.order(Number(id.slice(1))))), ...g.draft.map(c => who(labels, c.batch) || c.batch), ...g.urgent.map(u => T.urgent.item(named(db?.skus[u.sku]?.name, u.sku)))].join(', '))}</span>
+            <span data-test="draft-list">{T.plan.draft([...g.drop.map(id => T.jobs.dropped(who(labels, id) || T.jobs.order(Number(id.slice(1))))), ...g.draft.map(c => who(labels, c.batch) || c.batch), ...g.urgent.map(u => urgentText(u))].join(', '))}</span>
             <button type="button" onClick={() => actions.approveDraft()} disabled={!mine} title={act.mine ? T.plan.approveHint : act.title} data-test="draft-approve" data-memo={act.memo ?? undefined}>
               {actLabel(act, T.plan.approve)}
             </button>

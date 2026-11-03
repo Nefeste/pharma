@@ -96,7 +96,8 @@ npm run build                      # content + page and its two workers (esbuild
 npm run e2e                        # after build: the game in headless Chromium; tools/app/out/e2e*.png and contact.png;
                                    # then the first week of a newcomer (e2e-week.mjs, week.png), then memos and
                                    # questions (e2e-memo.mjs, memo.png), then a CAPA and its check three months on
-                                   # (e2e-capa.mjs, capa.png); `-- --only main|week|memo|capa` for one
+                                   # (e2e-capa.mjs, capa.png), then batch orders from the production post (e2e-jobs.mjs,
+                                   # jobs.png); `-- --only main|week|memo|capa|jobs` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -134,7 +135,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   workday, a batch order for the workday two working weeks on, for the SKU that runs out first by FG and work in
   progress against demand per working day seen in customer orders, over five-day weeks ahead; SKUs in turn until demand
   is seen; campaigns — the product of the last batch order goes on while its SKUs need a batch and no SKU of the other
-  product is urgent), `wms.ts` (truck, its check at the dock
+  product is urgent; with Б6а the due of a stock order — the truck hour of the workday the SKU runs out by the same
+  position, `stockDue` — and a cancelled stock order holding its SKU until its not-before, `heldOf`), `wms.ts` (truck,
+  its check at the dock
   before unloading, unloading, receiving, putaway), `quality.ts` (true lot properties, the lab result, spec limits),
   `lab.ts` (sampling,
   lab tests by the spec revision in force when the sample was taken, the lot decision — a lot rejected without an
@@ -160,11 +163,13 @@ first, or copy the working code of Bolnitsa on the same versions.
   in the line room is in place, whatever pallet it lies on; a stage stopped by a part
   failure and resumed after the repair; with Б1з a rejected bulk carried out of the bulk room by the storekeeper, as
   a kit's rest, and on to the rejected zone (`bulkOut`); a new not-before time of a batch order from the player —
-  `shift`; room
+  `shift`; with Б6а a batch order's due and purpose — the SKU's stock or a customer order — and its cancel before
+  kitting, the reserve back to free stock (`cancelOrder`); room
   readiness, nominal stage time and cleaning time shared with the schedule run; new part budgets of a running stage for
   the plan run's twin — `stageRedraw`), `plan/schedule.ts` (the schedule run — a pure function: running tasks to their
   end, then kitting, stages and cleaning by the engine's rules and its own functions, with the player's draft changes
-  and the draft's new batch orders as the `order` commands would place them; bars and the reasons why not earlier),
+  and the draft's new batch orders as the `order` commands would place them, with Б6а without the draft's cancels; bars
+  and the reasons why not earlier),
   `plan/twin.ts` (the plan run's twin: on a copy, forget what the plant does not know —
   true lot and batch properties, causes, part budgets, unrecorded jams, results before review, the incident not yet
   seen, marks no step has looked for — and redraw it from what was measured, the root of an open investigation from its
@@ -404,7 +409,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   schedule, the calendar of
   twelve months, the schedules of this and the next month — by schedule and by role, department policies, the meeting's
   «Рабочее время» with transfers soon in force and the crews' extra days off — records are the plant's knowledge
-  (`hours.ts`); people and admissions — a person's admission
+  (`hours.ts`); with Б6а, the batch orders — a row per order with its purpose, due, state in words, the expected
+  release by the schedule run and the median tail of batches released in 90 days, lateness by due, and the customer
+  orders the FG will not cover by their due — free FG and what the orders bring into circulation — for the «Задания»
+  tab and the meeting (`jobs.ts`); people and admissions — a person's admission
   today and what they are losing within the warning period, training rows of the card, the training matrix of the
   reference with how many people of a role are admitted, and of other roles by the related profession, the meeting's
   summary — records are the plant's knowledge, not truth (`people.ts`); hiring — the staff by the scenario and now,
@@ -508,10 +516,12 @@ first, or copy the working code of Bolnitsa on the same versions.
   values in words (`units.ts`), what is going on now with «Смотреть»
   (`Now.tsx`, N), the 08:00 meeting (`Morning.tsx`), the cash
   panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), the schedule window with dragging, the draft, «Прогнать
-  план» and the run's outcome per variant (`Gantt.tsx`), the draft's pure rules — a row per batch order, gone once kitting
-  starts, `shift` commands on approval (`draft.ts`), the «Кем вы будете» screen of places (`Seats.tsx`), the
-  investigation board — steps, findings in words with numbers from the records, version bars, the decision, the
-  debrief, with Б5е the CAPA after the conclusion (`Inv.tsx`), the batch record over the other windows — opened from a
+  план» and the run's outcome per variant (`Gantt.tsx`), with Б6а its «Задания» tab — filters, rows, «Отменить» into
+  the draft, «Полосы», the uncovered orders with «Срочное задание под заказ» (`Jobs.tsx`), the draft's pure rules — a
+  row per batch order, gone once kitting starts, `shift` commands on approval, with Б6а the cancels (`draft.ts`), the
+  «Кем вы будете» screen of places (`Seats.tsx`), the investigation board — steps, findings in words with numbers
+  from the records, version bars, the decision, the debrief, with Б5е the CAPA after the conclusion (`Inv.tsx`), the
+  batch record over the other windows — opened from a
   card, «Сейчас», the meeting and a click
   on a batch bar of the schedule (`Dossier.tsx`), the rejected room's block of the card — the zone's places, the
   removal, the waste log (`Waste.tsx`), the levers of a row (`Levers.tsx`), the deviation card, the batch
@@ -581,7 +591,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   there and in `assets/models/sources.json`.
 - `tools/app/` — page build (the page, the calculation thread and the plan run's thread), local server, browser scenario
   with the contact sheet and the first week of a newcomer in a clean window (`e2e-week.mjs`), memos and questions in two
-  clean windows (`e2e-memo.mjs`), a CAPA from the quality post to its effectiveness check (`e2e-capa.mjs`), the «code —
+  clean windows (`e2e-memo.mjs`), a CAPA from the quality post to its effectiveness check (`e2e-capa.mjs`), batch orders
+  from the production post — uncovered orders, an urgent order for one, a cancel (`e2e-jobs.mjs`), the «code —
   Blender» sheet
   of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench
   (`bench.mjs`, `--art code` — machines in code), the release update archive — one `resources/app.asar`

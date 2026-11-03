@@ -1548,6 +1548,7 @@ export const en: Strings = {
     weighed: 'Weighed',
     reserve: 'FEFO reservation — weighed at the first stage',
     noReserve: 'No reservation yet: material is short',
+    noReserveCancelled: 'The order is cancelled: the reservation went back to free stock',
     material: 'Component',
     stageOf: 'Charged at',
     lots: 'Lots',
@@ -2164,6 +2165,7 @@ export const en: Strings = {
     hint: 'A batch order now. Until “Approve” it stays in the draft, and its bars are in the schedule: kitting starts as soon as the whole kit is there',
     pick: 'Which item',
     item: (sku: string) => `urgent order — ${sku}`,
+    itemFor: (sku: string, customer: string) => `urgent order — ${sku} for the order of ${customer}`,
   },
   floor: {
     layers: 'Layers',

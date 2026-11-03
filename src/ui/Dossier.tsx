@@ -77,7 +77,8 @@ function Disp({ v, start, actions }: { v: DossierView; start: Ymd; actions: Acti
   return (
     <div className="dsec" data-test="dossier-disp" data-weighed={v.weighed ? '1' : '0'}>
       <div className="msec">{T.dossier.weighed}</div>
-      {!v.weighed ? <div className="muted">{reserved ? T.dossier.reserve : T.dossier.noReserve}</div> : null}
+      {/* отменённое задание (Б6а): резерв вернулся в свободный запас, а не «не хватает материала» */}
+      {!v.weighed ? <div className="muted">{v.status === 'cancelled' ? T.dossier.noReserveCancelled : reserved ? T.dossier.reserve : T.dossier.noReserve}</div> : null}
       <table className="dtab">
         <thead>
           <tr>

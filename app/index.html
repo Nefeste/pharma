@@ -133,7 +133,8 @@
     /* вкладка «Задания» расписания (Б6а): строки заданий без щелчка по строке — номер ведёт к досье; заказы без покрытия */
     .jobs { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
     .jobs table.grid tbody tr { cursor: default; }
-    .jobs table.grid td.bad { white-space: nowrap; }
+    /* номер, сроки, выпуск, опоздание и кнопки — в строку; позиция, «под что» и состояние переносятся */
+    .jobs table.grid td:nth-child(1), .jobs table.grid td:nth-child(4), .jobs table.grid td:nth-child(5), .jobs table.grid td:nth-child(7), .jobs table.grid td:nth-child(8), .jobs table.grid td:nth-child(9) { white-space: nowrap; }
     .jobs ul.plain { margin: 0; padding-left: 18px; }
     .jobs ul.plain li { margin: 2px 0; }
     .grow-row { display: flex; align-items: stretch; min-height: 30px; }

@@ -1,7 +1,9 @@
 // Задания на серию (Б6а; docs/specs/2026-10-vertical-slice.md, «Б6а», «Проверки Б6а»): срок и «под что» — у заданий
 // начальника отдела планирования (запас позиции: когда он кончится по спросу), под заказ покупателя (срок заказа) и
 // игрока; `cancel` до комплектовки — резерв вернулся, задание отменено, запись журнала; начатое, отменённое и чужой пост —
-// отказ; отменённое на запас начальник не ставит до его «не раньше»; образец прежней схемы читается — задания без срока.
+// отказ; отменённое на запас начальник не ставит до его «не раньше»; прогон плана берёт срок, «под что» и отмены как
+// есть, отмена черновика — команда варианта; образец прежней схемы читается — задания без срока; образец схемы 39 —
+// посреди заданий.
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,6 +13,7 @@ import { apply, newPlant } from '../../src/engine/engine';
 import { check } from '../../src/engine/invariants';
 import { TRUCK_HOUR } from '../../src/engine/market';
 import { heldOf, positionOf, stockDue } from '../../src/engine/planner';
+import { runSeed } from '../../src/engine/plan/run';
 import { numOf, POL } from '../../src/engine/policies';
 import { fromSave } from '../../src/engine/save';
 import type { Batch, Notice, PlantState } from '../../src/engine/types';
@@ -173,6 +176,22 @@ describe('отмена', () => {
   }, 60_000);
 });
 
+describe('прогон плана', () => {
+  test('срок, «под что» и отмена — знание завода: двойник берёт их как есть, отмена черновика — команда варианта', () => {
+    const s = lived(12);
+    const b = pending(s);
+    const was = structuredClone(s.batches);
+    const c = runSeed(game, s, [{ kind: 'cancel', batch: b.id, by: 'player' }], { days: 2, seeds: 1 }, 0);
+    expect(c.batches[b.id].status).toBe('cancelled');
+    expect(s.batches[b.id].status).toBe(was[b.id].status);
+    for (const x of Object.values(was)) expect([c.batches[x.id].due, c.batches[x.id].for]).toEqual([x.due, x.for]);
+    // без варианта — отменённого нет, а то, что отменено на заводе, остаётся отменённым
+    apply(game, s, { kind: 'cancel', batch: b.id });
+    const d = runSeed(game, s, [], { days: 2, seeds: 1 }, 0);
+    expect(d.batches[b.id]).toMatchObject({ status: 'cancelled', cancelled: s.batches[b.id].cancelled });
+  }, 60_000);
+});
+
 describe('сохранение', () => {
   test('образец схемы 38: задания без срока и «под что», инварианты целы', () => {
     const s = fromSave(game, readFileSync(join(import.meta.dir, 'fixtures/save-v38.json'), 'utf8'));
@@ -181,4 +200,18 @@ describe('сохранение', () => {
     apply(game, s, { kind: 'advance', seconds: 3 * DAY });
     expect(check(game, s)).toEqual([]);
   });
+
+  test('образец схемы 39: отменённое держит позицию, задание под заказ ждёт; дальше — как у завода', () => {
+    const s = fromSave(game, readFileSync(join(import.meta.dir, 'fixtures/save-v39.json'), 'utf8'));
+    const gone = Object.values(s.batches).find(b => b.status === 'cancelled')!;
+    expect(heldOf(s, gone.sku!)).toEqual({ t: gone.cancelled!, until: gone.notBefore });
+    const mine = Object.values(s.batches).find(b => b.for?.kind === 'order')!;
+    expect(mine.due).toBe(s.orders[(mine.for as { order: string }).order].due);
+    expect(check(game, s)).toEqual([]);
+    while (s.t < Math.max(gone.notBefore, mine.notBefore) + 2 * DAY) apply(game, s, { kind: 'advance', seconds: HOUR });
+    expect(heldOf(s, gone.sku!)).toBeUndefined();
+    // задание под заказ пошло в работу в свой день
+    expect(s.batches[mine.id].status === 'waiting' || s.batches[mine.id].status === 'reserved').toBe(false);
+    expect(check(game, s)).toEqual([]);
+  }, 60_000);
 });

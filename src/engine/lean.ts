@@ -10,7 +10,7 @@ import { machineSpeed } from './modes';
 import { roomAt } from './places';
 import { planOf } from './plant';
 import type { PlantPlan } from './plant';
-import type { Batch, BatchPhase, DayLoss, Line, LineDay, MachineTimes, PlantState, Room, RoomPhase, RoomTimes, ShiftTask, Task, TaskKind, WaitCause } from './types';
+import type { Batch, BatchPhase, DayLoss, Line, LineDay, MachineTimes, PackJob, PlantState, Room, RoomPhase, RoomTimes, ShiftTask, Task, TaskKind, WaitCause } from './types';
 import { scheduleOn, spanOn } from './shifts';
 
 /** Участок задачи — отдел, чья это работа; отгрузку делает склад. */
@@ -274,6 +274,16 @@ function shiftsOf(db: ContentDb, s: PlantState, line: Line, day: number): Map<Id
   return out;
 }
 
+/**
+ * Пачек в минуту на ходу у узкого места линии для задания, ×10 000: у каждой машины — её ход, у блистерной — по уставке
+ * скорости задания (Б1ж), в пачках; узкое место — меньшая. Тем же счётом — сменное задание мастера и строки упаковки в
+ * задании на сутки (Б6б).
+ */
+export function packRate(db: ContentDb, s: PlantState, line: Line, job: Pick<PackJob, 'sku' | 'speed'>): number {
+  const sku = db.skus[job.sku];
+  return Math.min(...line.machines.map(mc => Math.floor((machineSpeed(db, s, mc.type, job) * P_ONE) / (db.machines[mc.type].item === 'blister' ? sku.blisters : 1))));
+}
+
 /** Задания на упаковку линии с материалами в резерве — по порядку: что мастер может дать смене. */
 const queueOf = (s: PlantState, line: Line) =>
   Object.values(s.batches).filter(b => b.status === 'packing' && b.pack!.line === line.id && b.pack!.expect !== undefined && b.pack!.state !== 'waiting');
@@ -286,10 +296,7 @@ function openShift(db: ContentDb, s: PlantState, line: Line, shift: Id, len: num
   const jobs = queueOf(s, line).map(b => b.pack!);
   let plan = 0;
   if (jobs.length > 0) {
-    const sku = db.skus[jobs[0].sku];
-    // пачек в минуту на ходу у каждой машины — ×10 000; блистерная — по уставке скорости первого задания (Б1ж); узкое
-    // место — меньшая
-    const rate = Math.min(...line.machines.map(mc => Math.floor((machineSpeed(db, s, mc.type, jobs[0]) * P_ONE) / (db.machines[mc.type].item === 'blister' ? sku.blisters : 1))));
+    const rate = packRate(db, s, line, jobs[0]);
     const cap = Math.floor(((len / 60) * rate * db.scenarios[s.scenario].norm) / (P_ONE * P_ONE));
     const left = jobs.reduce((n, j) => n + j.expect! - (j.state === 'running' ? line.made : 0), 0);
     plan = Math.max(0, Math.min(left, cap));

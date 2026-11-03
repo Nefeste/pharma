@@ -226,14 +226,25 @@ export interface Launch {
 }
 
 /**
+ * Черновик расписания для плана запуска (Б6б): новые срочные задания, отменённые до комплектовки и новые «не раньше» —
+ * как их поставят, отменят и сдвинут команды при «Утвердить» (Б6а).
+ */
+export interface LaunchDraft {
+  fresh?: readonly { recipe: Id; sku: Id; notBefore: number }[];
+  drop?: readonly string[];
+  shift?: readonly { batch: string; notBefore: number }[];
+}
+
+/**
  * План запуска (Б6б; геймдизайн, §9.4): что начальник отдела планирования поставит в свои рабочие дни на дни до `until` —
  * тем же правилом `choose`, без записи, как правило снабжения в «Заказе поставщику» (Б5б). Спрос впереди — тот, что в
  * заказах окна, ровно по рабочим дням: каждый рабочий день с сегодняшнего до дня правила убавляет запас позиции на
  * заказанное за рабочий день окна; поставленное правилом прибавляет ящики серии; отменённое на запас держит позицию до
  * своего «не раньше»; на день, где задание уже есть, правило не ставит. Первый день правила — сегодня, если его час ещё не
  * настал, иначе следующий рабочий. Отдел «вручную» (Б5б) — пусто. Навык — того, кто решает за руководителя сейчас.
+ * Черновик `draft` — как будто его уже утвердили.
  */
-export function launchPlan(db: ContentDb, s: PlantState, until: number): Launch[] {
+export function launchPlan(db: ContentDb, s: PlantState, until: number, draft: LaunchDraft = {}): Launch[] {
   const plan = db.scenarios[s.scenario].plan;
   if (!plan || modeOf(s, 'plan') === 'manual') return [];
   const cal = calOf(db, s);
@@ -243,20 +254,34 @@ export function launchPlan(db: ContentDb, s: PlantState, until: number): Launch[
   const urgent = numOf(db, s, POL.urgent);
   const byLot = containersByLot(s);
   // запас в «ящико-днях»: ящики × рабочие дни окна — так спрос рабочего дня убавляет его на заказанное, в целых
+  const drop = new Set(draft.drop ?? []);
+  const moved = new Map((draft.shift ?? []).map(x => [x.batch, x.notBefore]));
   const pos = plan.items.map(it => {
     const p = positionOf(db, s, it.sku, window, byLot);
-    return { it, work: p.work, p: { cases: p.cases * p.work, ordered: p.ordered, work: 1, span: p.span } };
+    // черновик: отменённое не придёт ящиками, новое срочное — придёт
+    let cases = p.cases;
+    for (const id of drop) if (s.batches[id]?.sku === it.sku && s.batches[id].status !== 'cancelled') cases -= casesOf(db.recipes[s.batches[id].recipe], db.skus[it.sku]);
+    for (const f of draft.fresh ?? []) if (f.sku === it.sku) cases += casesOf(db.recipes[f.recipe], db.skus[it.sku]);
+    return { it, work: p.work, p: { cases: cases * p.work, ordered: p.ordered, work: 1, span: p.span } };
   });
-  const known = Object.values(s.batches).filter(b => b.status !== 'cancelled');
-  const taken = new Set(known.map(b => momentOf(s.start, b.notBefore).day));
   const lastId = new Map<Id, number>();
   let next = 0;
   for (const b of Object.values(s.batches)) {
     next = Math.max(next, idNum(b.id) + 1);
     if (b.sku) lastId.set(b.sku, Math.max(lastId.get(b.sku) ?? -1, idNum(b.id)));
   }
-  const runs: { id: string; notBefore: number; product: Id }[] = known.map(b => ({ id: b.id, notBefore: b.notBefore, product: b.product }));
-  const gone = Object.values(s.batches).filter(b => b.status === 'cancelled' && b.for?.kind !== 'order');
+  const runs: { id: string; notBefore: number; product: Id }[] = Object.values(s.batches)
+    .filter(b => b.status !== 'cancelled' && !drop.has(b.id))
+    .map(b => ({ id: b.id, notBefore: moved.get(b.id) ?? b.notBefore, product: b.product }));
+  for (const f of draft.fresh ?? []) {
+    const id = `B${next++}`;
+    lastId.set(f.sku, idNum(id));
+    runs.push({ id, notBefore: f.notBefore, product: db.recipes[f.recipe].product });
+  }
+  const taken = new Set(runs.map(b => momentOf(s.start, b.notBefore).day));
+  const gone = Object.values(s.batches)
+    .filter(b => (b.status === 'cancelled' || drop.has(b.id)) && b.for?.kind !== 'order')
+    .map(b => ({ sku: b.sku, notBefore: b.notBefore, cancelled: b.status === 'cancelled' ? b.cancelled : s.t }));
   const out: Launch[] = [];
   const now = momentOf(s.start, s.t);
   const zero = daysFromCivil(s.start);

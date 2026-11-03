@@ -366,6 +366,7 @@ function startPackKitting(db: ContentDb, s: PlantState, b: Batch) {
   s.units[u.id] = u;
   job.kitUnit = u.id;
   job.state = 'kitting';
+  job.kitted = s.t;
   kitStep(db, s, b);
 }
 

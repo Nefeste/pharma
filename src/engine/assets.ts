@@ -176,18 +176,50 @@ function book(db: ContentDb, s: PlantState, today: number, who: Who) {
   const at = visitAt(db, s, today);
   for (const a of Object.values(s.assets)) {
     if (a.visit) continue;
-    const cls = classOf(db, a);
-    let due: { work: Work; until: number } | undefined;
-    for (const work of WORKS) {
-      if (!cls[work]) continue;
-      const until = recOf(a, work)?.until ?? Number.NEGATIVE_INFINITY;
-      if (until - today <= ahead && (!due || until < due.until)) due = { work, until };
-    }
-    if (!due) continue;
+    const due = dueWork(db, a);
+    if (!due || due.until - today > ahead) continue;
     a.visit = { work: due.work, at, booked: s.t, v: 0 };
     // журнал решений (Б5а): главный механик — до какого дня запись и срок предупреждения
     note(s, 'maint', { kind: 'visit', asset: a.id, work: due.work, at, why: { ...(Number.isFinite(due.until) ? { until: due.until } : {}), ahead } }, undefined, undefined, who);
   }
+}
+
+/** Работа актива, чья запись кончится раньше, и её последний день; записи нет — с минус бесконечности; работ нет — нет. */
+function dueWork(db: ContentDb, a: Asset): { work: Work; until: number } | undefined {
+  const cls = classOf(db, a);
+  let due: { work: Work; until: number } | undefined;
+  for (const work of WORKS) {
+    if (!cls[work]) continue;
+    const until = recOf(a, work)?.until ?? Number.NEGATIVE_INFINITY;
+    if (!due || until < due.until) due = { work, until };
+  }
+  return due;
+}
+
+/**
+ * Визиты подрядчика до мгновения `until` без записи (Б6б, план запуска): назначенные — как есть; у прочих — правило
+ * коллеги техслужбы (`book`): в 09:00 первого рабочего дня, когда запись работы кончится в срок предупреждения, — визит
+ * на следующий рабочий день.
+ */
+export function visitPlan(db: ContentDb, s: PlantState, until: number): { asset: string; work: Work; at: number }[] {
+  const out: { asset: string; work: Work; at: number }[] = [];
+  const ahead = numOf(db, s, POL.ahead)!;
+  const cal = calOf(db, s);
+  const now = momentOf(s.start, s.t);
+  const first = isWorkday(cal, now.day) && now.sec < BOOK_HOUR ? now.day : addWorkdays(cal, now.day, 1);
+  for (const a of Object.values(s.assets)) {
+    if (a.visit) {
+      if (a.visit.at < until) out.push({ asset: a.id, work: a.visit.work, at: a.visit.at });
+      continue;
+    }
+    const due = dueWork(db, a);
+    if (!due) continue;
+    let day = Math.max(first, Number.isFinite(due.until) ? due.until - ahead : first);
+    if (!isWorkday(cal, day)) day = addWorkdays(cal, day, 1);
+    const at = visitAt(db, s, day);
+    if (at < until) out.push({ asset: a.id, work: due.work, at });
+  }
+  return out.sort((x, y) => x.at - y.at || x.asset.localeCompare(y.asset));
 }
 
 /** Мгновение визита, назначенного в день `today` (Б3в): ближайший рабочий день, начало часов подрядчика. */

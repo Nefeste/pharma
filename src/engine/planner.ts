@@ -10,7 +10,7 @@
 // партий и заказов. Счёт — в целых.
 import type { ContentDb, Id, Recipe, Sku } from '../content/types';
 import { addWorkdays, DAY, daysFromCivil, isWorkday, momentOf, workdayOnOrAfter } from './core/calendar';
-import { coverBy, dueRule, skillOf } from './bosses';
+import { coverBy, dueRule, skillOf, whoDecides } from './bosses';
 import { modeOf, moot, propose } from './heads';
 import { asWho } from './journal';
 import { TRUCK_HOUR } from './market';
@@ -149,13 +149,49 @@ export function planHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   if (got) asWho('plan', who, () => placeOrder(db, s, { kind: 'order', recipe: got.it.recipe, notBefore: at, by: 'head:plan', sku: got.it.sku }, notices, got.why));
 }
 
+/** Позиция для выбора правила: что о ней знает завод — или, в плане запуска (Б6б), что о ней будет в день правила. */
+interface Cand {
+  it: { recipe: Id; sku: Id };
+  p: Pick<SkuPosition, 'cases' | 'ordered' | 'work' | 'span'>;
+  held?: { t: number; until: number };
+}
+
 /**
- * Какую серию ставить: из позиций, у которых запас меньше спроса на рабочие дни двух недель и ещё `cover` суток, — с
- * наименьшим запасом в днях спроса (запас × заказано у другой против запаса другой × заказано у этой — в целых); спроса
- * не видно — позицию, чьё последнее задание старше; поровну — первую в плане. Нужной нет — никакую. С `urgent` —
- * кампании (Б2г, геймдизайн, §9.4): продукт последнего задания до `at` идёт дальше, пока его позициям нужна серия, а ни
- * одной позиции другого продукта не хватит меньше чем на две недели и ещё `urgent` суток, — генеральных уборок меньше.
- * С позицией — причина для журнала решений (Б5а): правило, положение всех позиций плана и пороги.
+ * Выбор правила начальника отдела планирования — один для задания и плана запуска (Б6б): из позиций, у которых запас
+ * меньше спроса на рабочие дни двух недель и ещё `cover` суток (`ahead`), — с наименьшим запасом в днях спроса (запас ×
+ * заказано у другой против запаса другой × заказано у этой — в целых); отменённая на запас позиция (Б6а) — не в выборе;
+ * спроса не видно — позицию, чьё последнее задание старше (`last`); поровну — первую в плане. Нужной нет — никакую. С
+ * `urgent` — кампании (Б2г, геймдизайн, §9.4): продукт последнего задания `prev` идёт дальше, пока его позициям нужна
+ * серия, а ни одной позиции другого продукта не хватит меньше чем на две недели и ещё `urgent` суток.
+ */
+function choose(db: ContentDb, pos: readonly Cand[], ahead: number, urgent: number | undefined, prev: Id | undefined, last: (sku: Id) => number): { it: Cand['it']; rule: OrderWhy['rule']; soon?: number } | undefined {
+  const free = pos.filter(x => !x.held);
+  if (free.length === 0) return undefined;
+  if (pos.some(x => x.p.span === 0)) return { it: free.reduce((a, b) => (last(b.it.sku) < last(a.it.sku) ? b : a)).it, rule: 'turn' };
+  const need = free.filter(x => x.p.cases * x.p.work * 1000 < x.p.ordered * ahead);
+  if (need.length === 0) return undefined;
+  // у кого запаса меньше суток спроса: cases_a / ordered_a < cases_b / ordered_b; без заказов позиция — последней
+  const less = (a: Cand['p'], b: Cand['p']) => (a.ordered === 0 ? false : b.ordered === 0 ? true : a.cases * b.ordered < b.cases * a.ordered);
+  const neediest = (xs: readonly Cand[]) => xs.reduce((a, b) => (less(b.p, a.p) ? b : a)).it;
+  if (urgent === undefined) return { it: neediest(need), rule: 'need' };
+  const product = (x: Cand) => db.recipes[x.it.recipe].product;
+  const mine = need.filter(x => product(x) === prev);
+  const soon = aheadMilli(AHEAD + urgent);
+  const hurry = need.some(x => product(x) !== prev && x.p.cases * x.p.work * 1000 < x.p.ordered * soon);
+  if (mine.length > 0 && !hurry) return { it: neediest(mine), rule: 'campaign', soon };
+  return { it: neediest(need), rule: mine.length > 0 ? 'urgent' : 'need', soon };
+}
+
+/** Продукт кампании — у задания, которое пойдёт последним перед мигом `at`: позже «не раньше», при равных — новее. */
+function prevBefore(batches: readonly { id: string; notBefore: number; product: Id }[], at: number): Id | undefined {
+  let best: { id: string; notBefore: number; product: Id } | undefined;
+  for (const b of batches) if (b.notBefore < at && (!best || b.notBefore > best.notBefore || (b.notBefore === best.notBefore && idNum(b.id) > idNum(best.id)))) best = b;
+  return best?.product;
+}
+
+/**
+ * Какую серию ставить — правило `choose` по положению позиций сейчас. С позицией — причина для журнала решений (Б5а):
+ * правило, положение всех позиций плана и пороги.
  */
 function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], cover: number, window: number, urgent: number | undefined, at: number, policy?: number): { it: { recipe: Id; sku: Id }; why: OrderWhy } | undefined {
   const byLot = containersByLot(s);
@@ -164,27 +200,98 @@ function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], co
   // запас < заказано за рабочий день окна × рабочих дней пятидневки в AHEAD + cover суток (Б4а)
   const ahead = aheadMilli(AHEAD + cover);
   const why = (rule: OrderWhy['rule'], extra: Partial<OrderWhy> = {}): OrderWhy => ({ rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work, ...(x.held ? { held: x.held } : {}) })), ahead, cover, ...(policy !== undefined ? { policy } : {}), ...extra });
-  const free = pos.filter(x => !x.held);
-  if (free.length === 0) return undefined;
-  if (pos.some(x => x.p.span === 0)) {
-    const last = (sku: Id) => Math.max(-1, ...Object.values(s.batches).filter(b => b.sku === sku).map(b => idNum(b.id)));
-    return { it: free.reduce((a, b) => (last(b.it.sku) < last(a.it.sku) ? b : a)).it, why: why('turn', { seen: SEEN }) };
+  const last = (sku: Id) => Math.max(-1, ...Object.values(s.batches).filter(b => b.sku === sku).map(b => idNum(b.id)));
+  const prev = urgent === undefined ? undefined : prevBefore(Object.values(s.batches), at);
+  const c = choose(
+    db,
+    pos.map(x => (x.held ? x : { it: x.it, p: x.p })),
+    ahead,
+    urgent,
+    prev,
+    last,
+  );
+  if (!c) return undefined;
+  if (c.rule === 'turn') return { it: c.it, why: why('turn', { seen: SEEN }) };
+  return { it: c.it, why: why(c.rule, c.soon !== undefined ? { soon: c.soon, ...(prev ? { prev } : {}) } : {}) };
+}
+
+/** Строка плана запуска (Б6б): задание, которое начальник отдела планирования поставит в свой день `on` на день `day`. */
+export interface Launch {
+  on: number;
+  day: number;
+  /** «не раньше» задания */
+  at: number;
+  recipe: Id;
+  sku: Id;
+}
+
+/**
+ * План запуска (Б6б; геймдизайн, §9.4): что начальник отдела планирования поставит в свои рабочие дни на дни до `until` —
+ * тем же правилом `choose`, без записи, как правило снабжения в «Заказе поставщику» (Б5б). Спрос впереди — тот, что в
+ * заказах окна, ровно по рабочим дням: каждый рабочий день с сегодняшнего до дня правила убавляет запас позиции на
+ * заказанное за рабочий день окна; поставленное правилом прибавляет ящики серии; отменённое на запас держит позицию до
+ * своего «не раньше»; на день, где задание уже есть, правило не ставит. Первый день правила — сегодня, если его час ещё не
+ * настал, иначе следующий рабочий. Отдел «вручную» (Б5б) — пусто. Навык — того, кто решает за руководителя сейчас.
+ */
+export function launchPlan(db: ContentDb, s: PlantState, until: number): Launch[] {
+  const plan = db.scenarios[s.scenario].plan;
+  if (!plan || modeOf(s, 'plan') === 'manual') return [];
+  const cal = calOf(db, s);
+  const window = numOf(db, s, POL.window)!;
+  const cover = coverBy(skillOf(s, whoDecides(db, s, 'plan')), numOf(db, s, POL.cover)!);
+  const ahead = aheadMilli(AHEAD + cover);
+  const urgent = numOf(db, s, POL.urgent);
+  const byLot = containersByLot(s);
+  // запас в «ящико-днях»: ящики × рабочие дни окна — так спрос рабочего дня убавляет его на заказанное, в целых
+  const pos = plan.items.map(it => {
+    const p = positionOf(db, s, it.sku, window, byLot);
+    return { it, work: p.work, p: { cases: p.cases * p.work, ordered: p.ordered, work: 1, span: p.span } };
+  });
+  const known = Object.values(s.batches).filter(b => b.status !== 'cancelled');
+  const taken = new Set(known.map(b => momentOf(s.start, b.notBefore).day));
+  const lastId = new Map<Id, number>();
+  let next = 0;
+  for (const b of Object.values(s.batches)) {
+    next = Math.max(next, idNum(b.id) + 1);
+    if (b.sku) lastId.set(b.sku, Math.max(lastId.get(b.sku) ?? -1, idNum(b.id)));
   }
-  const need = free.filter(x => x.p.cases * x.p.work * 1000 < x.p.ordered * ahead);
-  if (need.length === 0) return undefined;
-  // у кого запаса меньше суток спроса: cases_a / ordered_a < cases_b / ordered_b; без заказов позиция — последней
-  const less = (a: SkuPosition, b: SkuPosition) => (a.ordered === 0 ? false : b.ordered === 0 ? true : a.cases * b.ordered < b.cases * a.ordered);
-  const neediest = (xs: typeof need) => xs.reduce((a, b) => (less(b.p, a.p) ? b : a)).it;
-  if (urgent === undefined) return { it: neediest(need), why: why('need') };
-  // продукт кампании — у задания, которое пойдёт последним перед этим
-  const prev = Object.values(s.batches)
-    .filter(b => b.notBefore < at)
-    .reduce<(typeof s.batches)[string] | undefined>((a, b) => (!a || b.notBefore > a.notBefore || (b.notBefore === a.notBefore && idNum(b.id) > idNum(a.id)) ? b : a), undefined);
-  const product = (x: (typeof need)[number]) => db.recipes[x.it.recipe].product;
-  const mine = need.filter(x => product(x) === prev?.product);
-  const soon = aheadMilli(AHEAD + urgent);
-  const hurry = need.some(x => product(x) !== prev?.product && x.p.cases * x.p.work * 1000 < x.p.ordered * soon);
-  const extra = { soon, ...(prev ? { prev: prev.product } : {}) };
-  if (mine.length > 0 && !hurry) return { it: neediest(mine), why: why('campaign', extra) };
-  return { it: neediest(need), why: why(mine.length > 0 ? 'urgent' : 'need', extra) };
+  const runs: { id: string; notBefore: number; product: Id }[] = known.map(b => ({ id: b.id, notBefore: b.notBefore, product: b.product }));
+  const gone = Object.values(s.batches).filter(b => b.status === 'cancelled' && b.for?.kind !== 'order');
+  const out: Launch[] = [];
+  const now = momentOf(s.start, s.t);
+  const zero = daysFromCivil(s.start);
+  let on = isWorkday(cal, now.day) && now.sec < BATCH_HOUR ? now.day : addWorkdays(cal, now.day, 1);
+  let z = now.day;
+  for (;;) {
+    const day = addWorkdays(cal, on, AHEAD_WORK);
+    const at = (day - zero) * DAY + BATCH_HOUR;
+    if (at >= until) break;
+    for (; z < on; z++) if (isWorkday(cal, z)) for (const x of pos) x.p.cases -= x.p.ordered;
+    if (!taken.has(day)) {
+      const when = (on - zero) * DAY + BATCH_HOUR;
+      const held = (sku: Id) => gone.find(b => b.sku === sku && when < b.notBefore);
+      const c = choose(
+        db,
+        pos.map(x => {
+          const h = held(x.it.sku);
+          return h ? { it: x.it, p: x.p, held: { t: h.cancelled ?? when, until: h.notBefore } } : { it: x.it, p: x.p };
+        }),
+        ahead,
+        urgent,
+        urgent === undefined ? undefined : prevBefore(runs, at),
+        sku => lastId.get(sku) ?? -1,
+      );
+      if (c) {
+        out.push({ on, day, at, recipe: c.it.recipe, sku: c.it.sku });
+        taken.add(day);
+        const x = pos.find(y => y.it.sku === c.it.sku)!;
+        x.p.cases += casesOf(db.recipes[c.it.recipe], db.skus[c.it.sku]) * x.work;
+        const id = `B${next++}`;
+        lastId.set(c.it.sku, idNum(id));
+        runs.push({ id, notBefore: at, product: db.recipes[c.it.recipe].product });
+      }
+    }
+    on = addWorkdays(cal, on, 1);
+  }
+  return out;
 }

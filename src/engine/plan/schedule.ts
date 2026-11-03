@@ -230,9 +230,10 @@ interface Proj {
  * перекладки). Стадия — когда кончилась прошлая, помещение свободно, убрано и готово (`readyFor`) и в смене есть люди
  * её роли. Ушла серия из помещения — уборка, как только аппаратчик в смене; генеральная — если грязно дольше суток.
  * `fresh` — новые задания черновика (0.0.39): прогон ставит их после существующих, как поставят команды. `drop` — задания,
- * которые черновик отменяет (Б6а): прогон считает без них.
+ * которые черновик отменяет (Б6а): прогон считает без них. `until` — горизонт (Б6б): комплектовки не раньше него прогон не
+ * ставит — их стадии и всё, что дальше по очереди, начнётся позже; у сменно-суточного задания он — конец суток.
  */
-export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[] = [], fresh: readonly Fresh[] = [], drop: readonly string[] = []): Forecast {
+export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[] = [], fresh: readonly Fresh[] = [], drop: readonly string[] = [], until?: number): Forecast {
   const asked = new Map(changes.map(c => [c.batch, c.notBefore]));
   const plan = planOf(db, s.plant);
   const now = s.t;
@@ -589,6 +590,8 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     }
     const c = queue.splice(i, 1)[0];
     const from = Math.max(slot, c.at);
+    // горизонт (Б6б): комплектовка не раньше него — и её стадии, и все дальше по очереди начнутся позже
+    if (until !== undefined && from >= until) break;
     if (holder && slot > c.at && !c.pack) note(c.b.id, { why: 'kitting', bar: 'kit', batch: holder.batch, pack: holder.pack, until: slot });
     const end = kitWork(c.pack ? undefined : c.b.id, c.pallets, from);
     if (end === undefined) {

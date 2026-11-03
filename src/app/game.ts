@@ -26,7 +26,7 @@ import { unpack } from '../sim/pack';
 import { PlanClient } from '../sim/planClient';
 import type { Thing, ViewQuery } from '../sim/views';
 import { assetClass, workName } from '../ui/assets';
-import { capaName } from '../ui/capa';
+import { capaName, headText } from '../ui/capa';
 import { useDb } from '../ui/db';
 import { commandsOf, draftKey, ordersOf, prune, upsert } from '../ui/draft';
 import { draftCommands, draftKey as policyKey, sameValue } from '../ui/policy';
@@ -412,8 +412,8 @@ export class Game {
       : n.kind === 'batchHeld' ? (n.mine ? T.notices.batchHeldMine : T.notices.batchHeld)
       : n.kind === 'deviation' ? T.notices.deviation(T.morning.devKinds[n.what], n.code ? T.gantt.batch(n.code) : '', T.dev.clsLow[n.cls] ?? n.cls)
       : n.kind === 'devLate' ? T.notices.devLate(T.dev.no(Number(n.id.slice(1))), n.code ? T.gantt.batch(n.code) : '')
-      : n.kind === 'capa' ? T.notices.capa(T.dev.no(Number(n.dev.slice(1))), capaName(n.action), T.journal.names[n.head] ?? n.head)
-      : n.kind === 'capaDone' ? T.notices.capaDone(T.dev.no(Number(n.dev.slice(1))), capaName(n.action), T.journal.names[n.head] ?? n.head)
+      : n.kind === 'capa' ? T.notices.capa(T.dev.no(Number(n.dev.slice(1))), capaName(n.action), headText(n.head))
+      : n.kind === 'capaDone' ? T.notices.capaDone(T.dev.no(Number(n.dev.slice(1))), capaName(n.action), headText(n.head))
       : n.kind === 'capaCheck' ? T.notices.capaCheck(T.dev.no(Number(n.dev.slice(1))), n.ok, n.rep ? T.dev.no(Number(n.rep.slice(1))) : '')
       : n.kind === 'shipped' ? T.notices.shipped
       : n.kind === 'lateOrder' ? T.notices.lateOrder

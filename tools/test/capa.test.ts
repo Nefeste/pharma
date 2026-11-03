@@ -11,14 +11,19 @@ import { join } from 'node:path';
 import { db as game } from '../../src/content';
 import type { ContentDb } from '../../src/content/types';
 import { capaKey, capaOptions, chainOf, lowerOf } from '../../src/engine/capa';
-import { DAY, HOUR } from '../../src/engine/core/calendar';
+import { DAY, HOUR, momentOf } from '../../src/engine/core/calendar';
 import { dueOf, openClass, ruleClass, sameDev, signsOf } from '../../src/engine/devclass';
 import { apply, newPlant } from '../../src/engine/engine';
 import { check } from '../../src/engine/invariants';
 import { policyOf, POL } from '../../src/engine/policies';
 import { fromSave } from '../../src/engine/save';
 import type { Batch, Capa, Deviation, Notice, PlantState } from '../../src/engine/types';
+import { invView } from '../../src/sim/inv';
+import { journalView } from '../../src/sim/journal';
+import { kpiView } from '../../src/sim/kpi';
 import { stopKey } from '../../src/sim/protocol';
+import { morningView } from '../../src/sim/report';
+import { cardView } from '../../src/sim/views';
 import { legacy } from './legacy';
 
 const SC = 'scn.proto';
@@ -230,7 +235,7 @@ describe('CAPA', () => {
     apply(bare, s, { kind: 'assess', deviation: 'D900', verdict: 'none', cause: tool });
     live(s, 1, () => d.status !== 'open');
     const p = bare.policies[POL.replace];
-    const was = policyOf(bare, s, POL.replace, PRESS);
+    const was = policyOf(bare, s, POL.replace, PRESS)!;
     const low = lowerOf(bare, s, PRESS)!;
     const sign = Math.floor((SCN.deviations.wear - p.min!) / p.step!) * p.step! + p.min!;
     expect(low).toEqual({ from: was, to: sign });
@@ -325,6 +330,53 @@ describe('проверка эффективности', () => {
     const next = chainOf(s, rep).filter(c => c.id !== 'G1' && c.id !== 'G2');
     expect(next.every(c => c.action !== 'capa.train')).toBe(true);
   });
+});
+
+describe('виды', () => {
+  /** Ключи вида — без полей истины: причины серии, запас узла, корень происшествия. */
+  const TRUTH = ['truth', 'causes', 'noise', 'budget', 'fired', 'root'];
+  const clean = (v: unknown) => {
+    const json = JSON.stringify(v);
+    for (const k of TRUTH) expect(json.includes(`"${k}"`)).toBe(false);
+  };
+
+  test('карточка, журнал, планёрка, «Почему?» результативности и доска — CAPA игры без мест за полгода', () => {
+    const s = newPlant(game, { scenario: SC });
+    const end = s.t + 200 * DAY;
+    while (s.t < end && !Object.values(s.capas).some(c => c.check)) apply(game, s, { kind: 'advance', seconds: DAY });
+    const c = Object.values(s.capas).find(x => x.check)!;
+    expect(c).toBeDefined();
+    const n = Number(c.dev.slice(1));
+    // карточка отклонения: класс, причина, CAPA с проверкой; узел и прибор — словами окна, ключи движка — как есть
+    const card = cardView(game, s, { kind: 'dev', n }).card as Extract<ReturnType<typeof cardView>['card'], { kind: 'dev' }>;
+    expect(card.cls).toBe(s.deviations[c.dev].cls);
+    expect(card.cause).toBe(s.deviations[c.dev].cause);
+    const row = card.capas.find(x => x.n === Number(c.id.slice(1)))!;
+    expect(row).toMatchObject({ action: c.action, head: c.head, check: { ok: c.check!.ok } });
+    expect(row.checkAt).toBe(c.done! + game.scenarios[SC].deviations.check * DAY);
+    for (const x of card.capas) if (x.part) expect(x.unit).toEqual({ machine: s.parts[x.part].of, part: s.parts[x.part].type });
+    clean(card);
+    // журнал: CAPA, выполнение и проверка — записи с номером CAPA и отклонения
+    const j = journalView(game, s, { view: 'journal', page: 0, focus: s.journal.find(r => r.d.kind === 'capaCheck')!.n });
+    const rec = j.rows.find(r => r.d.kind === 'capaCheck')!;
+    expect(rec.ref).toMatchObject({ capa: Number(c.id.slice(1)), dev: n });
+    clean(j);
+    // планёрка утра после проверки: она — в «проверках за сутки»
+    const day = momentOf(s.start, c.check!.t).day + 1;
+    const m = morningView(game, s, { view: 'morning', day });
+    expect(m.capa?.checks.map(x => x.n)).toContain(Number(c.id.slice(1)));
+    clean(m.capa);
+    // показатели ООК: «результативность CAPA» и её «Почему?» — записи проверок
+    const k = kpiView(game, s, { view: 'kpi', tab: 'quality', why: 'capaEff' });
+    expect(k.why?.rows.some(r => r.k === 'capa' && r.n === Number(c.id.slice(1)) && r.ok === c.check!.ok)).toBe(true);
+    // доска расследования: CAPA его отклонения
+    const inv = Object.values(s.investigations).find(i => i.status === 'closed');
+    if (inv) {
+      const b = invView(game, s, { view: 'inv', inv: inv.id }).board!;
+      expect(b.dev).toBe(Number(inv.deviation.slice(1)));
+      expect(b.capas.map(x => x.n)).toEqual(Object.values(s.capas).filter(x => x.dev === inv.deviation).map(x => Number(x.id.slice(1))));
+    }
+  }, 120_000);
 });
 
 describe('автопауза', () => {

@@ -30,7 +30,8 @@ export interface PolicyRow {
   machine?: Id;
   part?: Id;
   value: PolicyValue;
-  set?: { t: number; seat?: SeatId };
+  /** кто задал: игрок с места; с Б5е — по CAPA: её номер и кто её выполнил */
+  set?: { t: number; seat?: SeatId; capa?: number; by?: Head | 'player' };
   used?: number;
 }
 
@@ -73,8 +74,11 @@ export function policiesView(db: ContentDb, s: PlantState): PoliciesView {
   const from = s.t - USED_DAYS * DAY;
   const recent = s.journal.filter(r => r.t >= from && r.by !== 'player');
   // последняя смена каждой политики у каждой вещи
-  const last = new Map<string, { t: number; seat?: SeatId }>();
-  for (const x of s.policies.log) last.set(policyKey(x.policy, x.of), { t: x.t, ...(x.seat ? { seat: x.seat } : {}) });
+  const last = new Map<string, NonNullable<PolicyRow['set']>>();
+  for (const x of s.policies.log) {
+    const c = x.capa ? s.capas[x.capa] : undefined;
+    last.set(policyKey(x.policy, x.of), { t: x.t, ...(x.seat ? { seat: x.seat } : {}), ...(c ? { capa: Number(c.id.slice(1)), ...(c.doneBy ? { by: c.doneBy } : {}) } : {}) });
+  }
   const rowOf = (policy: Id, of?: string): PolicyRow | undefined => {
     const value = policyOf(db, s, policy, of);
     if (value === undefined) return undefined;

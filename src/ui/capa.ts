@@ -4,7 +4,8 @@
 import type { CapaOption } from '../engine/capa';
 import type { Head } from '../engine/types';
 import { durText, money, named, pctText, T } from '../i18n';
-import type { CapaRow } from '../sim/devs';
+import type { CapaMeter, CapaRow, CapaUnit } from '../sim/devs';
+import { assetClass } from './assets';
 import { db } from './db';
 import { policyText } from './policy';
 
@@ -23,21 +24,25 @@ export function causeText(cause: string | undefined): string {
 /** Класс словами: «Критическое», «Существенное», «Незначительное». */
 export const clsText = (cls: string) => T.dev.cls[cls] ?? cls;
 
-/** Кто исполняет — руководитель отдела действия, как в журнале. */
-export const headText = (h: Head) => T.journal.names[h] ?? h;
+/** Кто исполняет — руководитель отдела действия посреди фразы: «исполняет главный механик». */
+export const headText = (h: Head) => T.journal.namesIn[h] ?? T.journal.names[h] ?? h;
 
-/** Узел словами — узел и машина по ключу `<машина>/<узел>`. */
-function partWords(key: string): string {
-  const [machine, part] = key.split('/');
-  const rec = db?.equipment[machine.replace(/-\d+$/, '')] ?? db?.machines[machine.replace(/-\d+$/, '')];
-  const name = named(rec?.parts.find(x => x.id === part)?.name, part);
-  return rec ? `${name} · ${named(rec.name, machine)}` : name;
+/** Узел словами — узел и машина по записи вида машины. */
+function partWords(u: CapaUnit): string {
+  const rec = db?.equipment[u.machine] ?? db?.machines[u.machine];
+  const name = named(rec?.parts.find(x => x.id === u.part)?.name, u.part);
+  return rec ? `${name} · ${named(rec.name, u.machine)}` : name;
 }
 
+/** Прибор словами: класс и инвентарный номер. */
+const meterWords = (m: CapaMeter) => T.assets.named(assetClass(m), T.assets.inv(m.inv));
+
 /** Вещь действия словами: узел, сколько документов, прибор, пара. */
-export function thingText(x: Pick<CapaRow, 'part' | 'docs' | 'asset' | 'pair'>): string {
-  if (x.part) return partWords(x.part);
+export function thingText(x: Pick<CapaRow, 'part' | 'docs' | 'asset' | 'pair' | 'unit' | 'meter'>): string {
+  if (x.unit) return partWords(x.unit);
+  if (x.part) return x.part;
   if (x.docs) return T.dev.capaDocs(x.docs.length);
+  if (x.meter) return meterWords(x.meter);
   if (x.asset) return x.asset;
   if (x.pair) {
     const [sup, mkr] = x.pair.split('|');

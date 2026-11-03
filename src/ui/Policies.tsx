@@ -11,6 +11,7 @@ import type { Head, PolicyValue } from '../engine/types';
 import { hText, money, num, pctText, T, whenText } from '../i18n';
 import type { PolicyRow, PolicyTab } from '../sim/policies';
 import { USED_DAYS } from '../sim/policies';
+import { headText } from './capa';
 import { db } from './db';
 import { draftKey, overtimeKey, policyName, policyText, rangeText, sameValue, stepLevel, stepValue } from './policy';
 import { type Actions, holds, type Hud, POLICY_RUN } from './store';
@@ -18,10 +19,12 @@ import { type Actions, holds, type Hud, POLICY_RUN } from './store';
 const WEEKS = Math.round(POLICY_RUN.days / 7);
 const OVERTIME: readonly OvertimeMode[] = ['need', 'finish'];
 
-/** Кто задал политику: вы с места и с какого мгновения или запись сценария. */
+/** Кто задал политику: вы с места и с какого мгновения, с Б5е — кто выполнил CAPA, или запись сценария. */
 function setText(r: PolicyRow, hud: Hud): string {
   if (!r.set) return T.policies.scenario;
-  return T.policies.setBy(T.journal.player(r.set.seat ? (T.seats.names[r.set.seat] ?? r.set.seat) : ''), whenText(hud.start, r.set.t));
+  const when = whenText(hud.start, r.set.t);
+  if (r.set.capa !== undefined) return T.policies.setByCapa(!r.set.by || r.set.by === 'player' ? T.journal.player('') : headText(r.set.by), r.set.capa, when);
+  return T.policies.setBy(T.journal.player(r.set.seat ? (T.seats.names[r.set.seat] ?? r.set.seat) : ''), when);
 }
 
 /** Управление значением: «−» и «+» у суток, месяцев, износа и числа; два у уровня ЗИП; кнопки у выбора и доли мест. */

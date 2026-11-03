@@ -49,7 +49,8 @@ const ALLOWED = new Set(
     // Б5б: «Кто решил» — предложение начальника ООК и ответ на него, записи журнала
     'who by v ask can how seat ' +
     // Б5е: класс, срок прошёл, вероятная причина, признаки в записях, CAPA и действия каталога с вещью и ценой
-    'cls clsBy late cause signs capas options action head part docs asset pair doneBy checkAt check ok cost work learners'
+    'cls clsBy late cause signs capas options action head part docs asset pair doneBy checkAt check ok cost work learners ' +
+    'machine meter family type inv'
   ).split(' '),
 );
 
@@ -104,8 +105,8 @@ describe('рычаги планёрки — по таблице специфик
     expect(kinds(riskLevers({ ...risk, pending: 0 }, sc, []))).toEqual(['urgent', 'later:sales', 'later:sop']);
   });
 
-  test('отклонение: оценить в карточке, а с расследованием — его доска; будут классификация и CAPA', () => {
-    expect(devLevers({ dev: 3 })).toEqual([{ k: 'dev', n: 3, seat: 'quality' }, { k: 'later', what: 'capa' }]);
+  test('отклонение: оценить в карточке — там же класс и CAPA, а с расследованием — его доска', () => {
+    expect(devLevers({ dev: 3 })).toEqual([{ k: 'dev', n: 3, seat: 'quality' }]);
     expect(devLevers({ dev: 3, inv: 'I1' })[0]).toEqual({ k: 'inv', id: 'I1', seat: 'quality' });
     expect(heldLevers({ code: 'PA0070927', bn: 1, sku: N20, unit: 7, open: [1], reject: [] })).toEqual([{ k: 'batch', unit: 7, code: 'PA0070927', seat: 'quality' }]);
   });

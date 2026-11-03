@@ -1407,7 +1407,6 @@ export const en: Strings = {
       build: 'Coming in B7: move a post or a room — building',
       sales: 'Coming in B5: who gets FG when short and moving due dates — sales policies',
       sop: 'Coming in B6: plan to demand — S&OP',
-      capa: 'Coming in B5: deviation classification, CAPA and effectiveness checks',
     } as Record<string, string>,
   },
   dev: {
@@ -1475,7 +1474,7 @@ export const en: Strings = {
     capaAssign: 'Assign a CAPA',
     capaRun: 'Do it',
     capaRunHint: (who: string) => `Do it for ${who}`,
-    capaBy: { player: 'you', qa: 'the QA head' } as Record<string, string>,
+    capaBy: { player: 'you', qa: 'the head of QA' } as Record<string, string>,
     capaRow: (no: number, action: string, who: string, by: string, when: string) => `CAPA ${no}: «${action}» — done by ${who}; assigned by ${by}, ${when}`,
     capaDue: (date: string) => `due ${date}`,
     capaDone: (when: string, who: string) => `done ${when}, ${who}`,
@@ -1711,6 +1710,7 @@ export const en: Strings = {
     count: (n: number) => `${n} or more`,
     scenario: 'from the scenario record',
     setBy: (who: string, when: string) => `${who}, since ${when}`,
+    setByCapa: (who: string, n: number, when: string) => `${who} by CAPA ${n}, since ${when}`,
     used: (n: number, days: number) => `read by decisions over ${daysEn(days)}: ${groupEn(n)}`,
     noUsed: 'the journal does not keep this rule’s decisions',
     overtime: (dept: string) => `Overtime: ${dept}`,
@@ -1780,6 +1780,20 @@ export const en: Strings = {
       hr: 'HR',
     } as Record<string, string>,
     player: (seat: string) => (seat ? `You, ${seat}` : 'You'),
+    /** a head inside a sentence (Б5е): «done by the chief mechanic» */
+    namesIn: {
+      plan: 'the head of planning',
+      mes: 'the head of production',
+      maint: 'the chief mechanic',
+      qa: 'the head of QA',
+      qc: 'the head of QC',
+      qp: 'the qualified person',
+      tech: 'the chief technologist',
+      supply: 'the head of purchasing',
+      wms: 'the warehouse manager',
+      sales: 'the head of sales',
+      hr: 'HR',
+    } as Record<string, string>,
     /** whom an acting head stands in for (Б5в) */
     namesOf: {
       plan: 'head of planning',

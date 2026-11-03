@@ -12,7 +12,7 @@ import { inForce } from '../engine/docs';
 import { setpointOf } from '../engine/modes';
 import { assessBlock, devsOf, type LinkedTest, linkedTests, openDevs } from '../engine/qa';
 import { unitsOfLot } from '../engine/stock';
-import type { Batch, BatchStatus, Capa, Deviation, Head, LotStatus, PlantState, Refusal } from '../engine/types';
+import type { AssetFamily, Batch, BatchStatus, Capa, Deviation, Head, LotStatus, PlantState, Refusal } from '../engine/types';
 import { whoDev, type WhoRow } from './journal';
 
 const num = (id: string) => Number(id.slice(1));
@@ -78,7 +78,30 @@ export interface DevCard {
   cause?: string;
   signs: string[];
   capas: CapaRow[];
-  options: CapaOption[];
+  options: CapaChoice[];
+}
+
+/** Узел CAPA для слов окна (Б5е): вид машины и узел в её записи. */
+export interface CapaUnit {
+  machine: Id;
+  part: string;
+}
+
+/** Прибор CAPA для слов окна (Б5е): семейство и класс актива, инвентарный номер. */
+export interface CapaMeter {
+  family: AssetFamily;
+  type: Id;
+  inv: number;
+}
+
+/** Действие каталога у отклонения для окна (Б5е): как у движка, и узел и прибор — для слов. */
+export type CapaChoice = CapaOption & { unit?: CapaUnit; meter?: CapaMeter };
+
+/** Узел и прибор вещи CAPA — для слов окна; ключи движка остаются как есть. */
+function names(s: PlantState, x: { part?: string; asset?: string }): { unit?: CapaUnit; meter?: CapaMeter } {
+  const pt = x.part ? s.parts[x.part] : undefined;
+  const a = x.asset ? s.assets[x.asset] : undefined;
+  return { ...(pt ? { unit: { machine: pt.of, part: pt.type } } : {}), ...(a ? { meter: { family: a.family, type: a.type, inv: a.inv } } : {}) };
 }
 
 /**
@@ -103,6 +126,8 @@ export interface CapaRow {
   check?: { t: number; ok: boolean; dev?: number };
   /** когда проверят эффективность: выполнено + срок процедуры */
   checkAt?: number;
+  unit?: CapaUnit;
+  meter?: CapaMeter;
 }
 
 /** CAPA в строку окна. */
@@ -124,6 +149,7 @@ export function capaRow(db: ContentDb, s: PlantState, c: Capa): CapaRow {
     ...(c.doneBy ? { doneBy: c.doneBy } : {}),
     ...(c.why ? { why: c.why } : {}),
     ...(c.check ? { check: { t: c.check.t, ok: c.check.ok, ...(c.check.dev ? { dev: num(c.check.dev) } : {}) } } : {}),
+    ...names(s, c),
   };
 }
 
@@ -160,7 +186,7 @@ export function devCard(db: ContentDb, s: PlantState, n: number): DevCard | unde
     capas: Object.values(s.capas)
       .filter(c => c.dev === d.id)
       .map(c => capaRow(db, s, c)),
-    options: capaOptions(db, s, d),
+    options: capaOptions(db, s, d).map(o => ({ ...o, ...names(s, o) })),
   };
   if (b) {
     const unit = fgUnit(s, b);

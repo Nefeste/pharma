@@ -95,7 +95,8 @@ npm test                           # content + bun test tools/test
 npm run build                      # content + page and its two workers (esbuild) → dist/ (not in git)
 npm run e2e                        # after build: the game in headless Chromium; tools/app/out/e2e*.png and contact.png;
                                    # then the first week of a newcomer (e2e-week.mjs, week.png), then memos and
-                                   # questions (e2e-memo.mjs, memo.png); `-- --only main|week|memo` for one
+                                   # questions (e2e-memo.mjs, memo.png), then a CAPA and its check three months on
+                                   # (e2e-capa.mjs, capa.png); `-- --only main|week|memo|capa` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -580,7 +581,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   there and in `assets/models/sources.json`.
 - `tools/app/` — page build (the page, the calculation thread and the plan run's thread), local server, browser scenario
   with the contact sheet and the first week of a newcomer in a clean window (`e2e-week.mjs`), memos and questions in two
-  clean windows (`e2e-memo.mjs`), the «code — Blender» sheet
+  clean windows (`e2e-memo.mjs`), a CAPA from the quality post to its effectiveness check (`e2e-capa.mjs`), the «code —
+  Blender» sheet
   of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench
   (`bench.mjs`, `--art code` — machines in code), the release update archive — one `resources/app.asar`
   (`update-zip.mjs`); `tools/test/` — Bun tests

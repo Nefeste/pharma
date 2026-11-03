@@ -106,6 +106,8 @@ export interface DevRow {
   material?: Id;
   /** расследование отклонения (часть 4): к его доске ведёт строка */
   inv?: string;
+  /** класс сейчас (Б5е) */
+  cls: DevClass;
 }
 
 export interface DecisionRow {
@@ -396,6 +398,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
       ...(d.lot && s.lots[d.lot] ? { lot: code(s.lots[d.lot].code), material: s.lots[d.lot].material } : {}),
       ...(d.batch && s.batches[d.batch] ? { batch: batchNo(s.batches[d.batch].code) } : {}),
       ...(d.inv ? { inv: d.inv } : {}),
+      cls: d.cls,
     }));
   const decisions: DecisionRow[] = Object.values(s.lots)
     .filter(l => l.supplier !== 'start' && (l.status === 'released' || l.status === 'rejected') && l.since !== undefined && inW(l.since))

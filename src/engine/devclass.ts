@@ -25,8 +25,8 @@ export const before = (a: Deviation, b: Deviation) => a.opened < b.opened || (a.
  */
 export const openClass = (kind: Deviation['kind']): DevClass => (kind === 'yield' ? 'minor' : 'major');
 
-/** Подпись отклонения для повтора: вид, стадия и то, что вне пределов, — режим, испытание МОК, материал или испытание. */
-export const devSig = (d: Deviation) => `${d.kind}/${d.stage ?? ''}/${d.param ?? d.test ?? d.material ?? d.tests?.[0] ?? ''}`;
+/** Подпись отклонения для повтора: вид, стадия и то, что вне пределов, — режим или методика, и материал. */
+export const devSig = (d: Deviation) => `${d.kind}/${d.stage ?? ''}/${d.param ?? d.test ?? ''}/${d.material ?? ''}`;
 
 /** Причина для повтора: причина базы; «не установлена», ошибка лаборатории и партия поставщика — не она. */
 export const causeKey = (d: Deviation): string | undefined => (d.cause?.startsWith('cause.') ? d.cause : undefined);

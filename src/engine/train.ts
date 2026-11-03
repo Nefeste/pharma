@@ -81,15 +81,17 @@ function study(db: ContentDb, s: PlantState, p: Person, day: number, open: Reado
 }
 
 /**
- * Учить заново (Б5е, CAPA «обучить заново»): задача изучить документ `code` — редакцию, действующую сегодня, — у тех, кого
- * ему учат по строкам матрицы, если у человека такой задачи ещё нет; проверка знаний — как всегда. Сколько задач.
+ * Учить заново (Б5е, CAPA «обучить заново»): задача изучить документ — редакцию, действующую сегодня, — у тех из `people`
+ * (нет — у всех), кого ему учат по строкам матрицы, если у человека такой задачи ещё нет; проверка знаний — как всегда.
+ * Сколько задач.
  */
-export function retrain(db: ContentDb, s: PlantState, codes: readonly string[]): number {
+export function retrain(db: ContentDb, s: PlantState, codes: readonly string[], people?: readonly string[]): number {
   const day = momentOf(s.start, s.t).day;
   const plan = planOf(db, s.plant);
   const open = openStudies(db, s);
   let n = 0;
-  for (const p of Object.values(s.people)) {
+  const who = people ? people.flatMap(id => (s.people[id] ? [s.people[id]] : [])) : Object.values(s.people);
+  for (const p of who) {
     const rows = rowsOf(db, p);
     for (const code of codes) {
       if (!rows.includes(code) || open.has(`${p.id}/${code}`)) continue;

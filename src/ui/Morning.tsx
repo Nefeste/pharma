@@ -10,11 +10,13 @@ import { DEPT_SEAT } from '../engine/seats';
 import { dateText, daysText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { HeadDay } from '../sim/journal';
 import type { MonthClose } from '../sim/kpi';
-import type { LineSum, MainLoss, ModeRow, MorningView, SeatSum, SessionSum } from '../sim/report';
+import type { CapaRow } from '../sim/devs';
+import type { CapaMeeting, LineSum, MainLoss, ModeRow, MorningView, SeatSum, SessionSum } from '../sim/report';
 import type { RejectSum } from '../sim/waste';
 import type { Thing } from '../sim/views';
 import { assetName, workName } from './assets';
 import { BossMeeting } from './Bosses';
+import { capaName, headText } from './capa';
 import { headName, kpiName, kpiText, kpiValue, monthText } from './Kpi';
 import { db } from './db';
 import { AskRows } from './Journal';
@@ -334,6 +336,39 @@ function Rejects({ r, start, hud, actions, close }: { r: RejectSum; start: Ymd; 
   );
 }
 
+/**
+ * CAPA (Б5е): назначенные и ждущие исполнения — с исполнителем и сроком; назначенные и выполненные за сутки; проверки
+ * эффективности за сутки с итогом и те, что придутся на неделю после планёрки. Строка ведёт к карточке отклонения.
+ */
+function CapaMeet({ c, start, go }: { c: CapaMeeting; start: Ymd; go: (t: Thing | undefined) => (() => void) | undefined }) {
+  const day = (t: number) => dayText(momentOf(start, t).day);
+  const line = (x: CapaRow) => T.morning.capaLine(x.n, capaName(x.action), T.dev.no(x.dev), headText(x.head));
+  const rows = (title: string, list: CapaRow[], tail: (x: CapaRow) => string, cls: (x: CapaRow) => string, test: string) =>
+    list.length === 0 ? null : (
+      <>
+        <div className="muted">{title}</div>
+        <ul className="mlist">
+          {list.map(x => (
+            <li key={`${test}${x.n}`} className={`go ${cls(x)}`} onClick={go({ kind: 'dev', n: x.dev })} data-test={test} data-capa={x.n}>
+              {line(x)}
+              {tail(x) ? <span className="muted"> · {tail(x)}</span> : null}
+            </li>
+          ))}
+        </ul>
+      </>
+    );
+  if (c.open.length + c.day.length + c.checks.length + c.soon.length === 0) return null;
+  return (
+    <div className="mblock" data-test="morning-capa">
+      <div className="mhead">{T.morning.capaTitle}</div>
+      {rows(T.morning.capaOpen, c.open, x => (x.why ? T.dev.capaWait(T.notices.why[x.why] ?? x.why) : T.dev.capaDue(day(x.due))), x => (x.why ? 'warn' : ''), 'morning-capa-open')}
+      {rows(T.morning.capaDay, c.day, x => (x.done !== undefined ? T.dev.capaDone(whenText(start, x.done), headText(x.head)) : ''), () => '', 'morning-capa-day')}
+      {rows(T.morning.capaChecks, c.checks, x => (x.check ? (x.check.ok ? T.journal.check.ok : T.dev.capaNo(day(x.check.t), x.check.dev !== undefined ? T.dev.no(x.check.dev) : '')) : ''), x => (x.check && !x.check.ok ? 'bad' : ''), 'morning-capa-check')}
+      {rows(T.morning.capaSoon, c.soon, x => (x.checkAt !== undefined ? T.dev.capaCheckAt(day(x.checkAt)) : ''), () => '', 'morning-capa-soon')}
+    </div>
+  );
+}
+
 /** Часть OEE ключевой машины: без времени работы нет производительности, без выпуска — качества — прочерк, как в окне
  * «Показатели»; выше 100 % — 100 %. */
 const part = (x?: number) => (x === undefined ? T.floor.none : pctText(Math.min(x, 10000)));
@@ -493,6 +528,10 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
               rows={v.deviations.map((x, i) => (
                 <li key={i} className="go" onClick={x.inv ? undefined : go({ kind: 'dev', n: x.dev })} data-test="morning-dev">
                   <span className="mono muted">{when(x.t)}</span> {T.morning.devKinds[x.kind]} <span className="mono">{T.dev.no(x.dev)}</span>
+                  <span className={x.cls === 'minor' ? 'muted' : 'warn'} data-test="morning-dev-cls">
+                    {' · '}
+                    {T.dev.clsLow[x.cls] ?? x.cls}
+                  </span>
                   {x.lot ? ` · ${named(db?.materials[x.material ?? '']?.name, x.material)} ${T.lotCode(...x.lot)}` : ''}
                   {x.batch ? ` · ${T.card.batch} ${x.batch}` : ''}
                   {x.inv ? (
@@ -592,6 +631,11 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                 ...v.pending.map(x => (
                   <li key={`d${x.dev}`} className={hud.t > x.due ? 'bad' : ''} data-test="morning-pending">
                     {T.morning.pendingDev(T.morning.devKinds[x.kind], T.dev.no(x.dev), x.batch ?? '', dayText(momentOf(start, x.due).day))}
+                    <span className={x.cls === 'minor' ? 'muted' : 'warn'}>
+                      {' · '}
+                      {T.dev.clsLow[x.cls] ?? x.cls}
+                    </span>
+                    {x.late ? <span className="bad" data-test="morning-late"> · {T.morning.late}</span> : null}
                     {x.assessing ? <span className="muted"> · {T.morning.assessing}</span> : null}
                     {x.assessing ? null : <Levers list={devLevers(x)} hud={hud} actions={actions} close={close} />}
                     {x.bn !== undefined ? (
@@ -612,6 +656,7 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                 )),
               ]}
             />
+            {v.capa ? <CapaMeet c={v.capa} start={start} go={go} /> : null}
             {v.rejects ? <Rejects r={v.rejects} start={start} hud={hud} actions={actions} close={close} /> : null}
             <Rows
               title={T.morning.trainTitle}

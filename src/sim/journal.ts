@@ -510,6 +510,14 @@ const verdictOf = (d: Decided): string | undefined => {
       return d.work;
     case 'vacancy':
       return d.via;
+    // Б5е: класс, действие каталога, итог проверки
+    case 'classify':
+      return d.to;
+    case 'capa':
+    case 'capaRun':
+      return d.action;
+    case 'capaCheck':
+      return d.ok ? 'ok' : 'no';
     default:
       return undefined;
   }

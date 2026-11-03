@@ -10,7 +10,7 @@ import { visitAt } from './assets';
 import { batchNo } from './batchno';
 import { decider } from './bosses';
 import { DAY, momentOf } from './core/calendar';
-import { before, causeClass, dueOf, sameBefore, sameDev } from './devclass';
+import { before, causeClass, causeKey, dueOf, sameBefore, sameDev } from './devclass';
 import { modeOf, propose, round } from './heads';
 import { asWho, note, noteCmd } from './journal';
 import { partType, planReplace } from './maint';
@@ -35,6 +35,7 @@ export interface Target {
   head: Head;
   part?: string;
   docs?: string[];
+  people?: string[];
   asset?: string;
   pair?: string;
 }
@@ -61,40 +62,46 @@ export function lowerOf(db: ContentDb, s: PlantState, part: string): { from: Pol
   const p = db.policies[POL.replace];
   const from = policyOf(db, s, POL.replace, part);
   if (!p || from === undefined) return undefined;
-  if (from === OFF) return { from, to: p.max! };
+  // порог признака процедуры: с этого износа завод связывает узел с отклонениями — заменять раньше, чем он туда дойдёт
+  const sign = Math.floor((db.scenarios[s.scenario].deviations.wear - p.min!) / p.step!) * p.step! + p.min!;
+  if (from === OFF || (typeof from === 'number' && from > sign)) return sign >= p.min! ? { from, to: sign } : undefined;
   if (typeof from !== 'number' || from - p.step! < p.min!) return undefined;
   return { from, to: from - p.step! };
 }
 
 /**
- * Чему учить заново (Б5е): у отклонения стадии — процедуры её оборудования, у МОК — и методика испытания; у сверки —
- * процедуры машин линии; у результата вне спецификации — по причине: режим или сито — процедуры оборудования стадии
- * причины, иначе — методика испытания. Руководитель — отдела тех, кого учат: производство или ОКК.
+ * Чему и кого учить заново (Б5е): у отклонения стадии — процедуры её оборудования, у МОК — и методика испытания, тех,
+ * кто работал на стадии по досье; у сверки — процедуры машин линии, тех, кто работал на задание; у результата вне
+ * спецификации — по причине: режим или сито — процедуры оборудования стадии причины и её люди, иначе — методика
+ * испытания, аналитик и тот, кто проверил. Учат тех, кто ещё на заводе. Руководитель — отдела тех, кого учат:
+ * производство или ОКК.
  */
-function docsOf(db: ContentDb, s: PlantState, d: Deviation): { docs: string[]; head: Head } | undefined {
+function docsOf(db: ContentDb, s: PlantState, d: Deviation): { docs: string[]; people: string[]; head: Head } | undefined {
   const b = d.batch ? s.batches[d.batch] : undefined;
-  const test = d.test ?? d.tests?.[0];
+  const here = (ids: readonly (string | undefined)[]) => [...new Set(ids.filter((x): x is string => !!x && !!s.people[x]))];
+  const recOf = (stage: string | undefined) => (b && stage ? b.records.find(x => x.stage === stage) : undefined);
+  const out = (docs: string[], people: string[], head: Head) => (docs.length && people.length ? { docs: [...docs].sort(), people, head } : undefined);
   if (d.kind === 'recon') {
     const line = b?.pack?.line ? planOf(db, s.plant).plant.lines.find(l => l.id === b.pack!.line) : undefined;
-    const docs = line ? equipmentDocs(db, [], line.machines.map(m => m.type)) : [];
-    return docs.length ? { docs, head: 'mes' } : undefined;
+    return out(line ? equipmentDocs(db, [], line.machines.map(m => m.type)) : [], here(b?.pack?.people ?? []), 'mes');
   }
   if (d.kind === 'oos') {
     const c = d.cause ? db.causes[d.cause] : undefined;
     const dr = c?.driver;
     const st = b && dr && ('param' in dr || 'screen' in dr) ? db.recipes[b.recipe].stages.find(x => ('param' in dr ? x.params.some(p => p.id === dr.param) : x.screen !== undefined)) : undefined;
     if (st) {
-      const docs = equipmentDocs(db, st.equipment);
-      if (docs.length) return { docs, head: 'mes' };
+      const got = out(equipmentDocs(db, st.equipment), here(recOf(st.id)?.people ?? []), 'mes');
+      if (got) return got;
     }
-    const method = test ? db.tests[test] : undefined;
-    return method ? { docs: [method.doc.code], head: 'qc' } : undefined;
+    const inv = d.inv ? s.investigations[d.inv] : undefined;
+    const q = s.tests[inv?.test ?? d.tests?.[0] ?? ''];
+    return d.test ? out([db.tests[d.test].doc.code], here([q?.by, q?.checker]), 'qc') : undefined;
   }
   const st = b ? stageOf(db, b.recipe, d.stage) : undefined;
   if (!st) return undefined;
   const docs = equipmentDocs(db, st.equipment);
   if (d.kind === 'ipc' && d.test && !docs.includes(db.tests[d.test].doc.code)) docs.push(db.tests[d.test].doc.code);
-  return docs.length ? { docs: docs.sort(), head: 'mes' } : undefined;
+  return out(docs, here(recOf(d.stage)?.people ?? []), 'mes');
 }
 
 /** Прибор, давший результат: у МОК — прибор вида испытания в помещении стадии; у ошибки лаборатории — прибор испытания. */
@@ -135,7 +142,7 @@ export function targetOf(db: ContentDb, s: PlantState, d: Deviation, a: CapaActi
     }
     case 'train': {
       const t = docsOf(db, s, d);
-      return t ? { head: t.head, docs: t.docs } : undefined;
+      return t ? { head: t.head, docs: t.docs, people: t.people } : undefined;
     }
     case 'calib': {
       const asset = meterOf(db, s, d);
@@ -157,7 +164,8 @@ export function targetOf(db: ContentDb, s: PlantState, d: Deviation, a: CapaActi
 export interface CapaPrice {
   cost: number;
   work: number;
-  people?: number;
+  /** обучить: сколько людей будут учить */
+  learners?: number;
   from?: PolicyValue;
   to?: number;
 }
@@ -181,13 +189,14 @@ export function priceOf(db: ContentDb, s: PlantState, a: CapaAction, t: Target):
         const d = learnable(db, code);
         if (!d) continue;
         const study = learnRec(db, d, inForce(db, d.kind, d.id, day)).study + sc.training.check;
-        for (const p of Object.values(s.people)) {
-          if (!rowsOf(db, p).includes(code)) continue;
+        for (const id of t.people ?? []) {
+          const p = s.people[id];
+          if (!p || !rowsOf(db, p).includes(code)) continue;
           who.add(p.id);
           work += study;
         }
       }
-      return { cost: 0, work, people: who.size };
+      return { cost: 0, work, learners: who.size };
     }
     case 'calib': {
       const w = classOf(db, s.assets[t.asset!]).cal!;
@@ -227,12 +236,16 @@ export const capaKey = (capa: string) => `capa/${capa}`;
 
 /**
  * Цепочка CAPA отклонения (Б5е): CAPA, чьё исходное отклонение — то же по правилу повтора; по ней видно, что уже пробовали
- * и что ещё не проверено.
+ * и что ещё не проверено. Причина у отклонения установлена, а у исходного — нет или другая: CAPA не той цепочки —
+ * действие по установленной причине не ждёт проверки CAPA, назначенной без неё.
  */
 export function chainOf(s: PlantState, d: Deviation): Capa[] {
+  const k = causeKey(d);
   return Object.values(s.capas).filter(c => {
     const src = s.deviations[c.dev];
-    return src === d || (!!src && sameDev(src, d));
+    if (!src) return false;
+    if (src === d) return true;
+    return k ? causeKey(src) === k : sameDev(src, d);
   });
 }
 
@@ -241,7 +254,7 @@ const openIn = (s: PlantState, d: Deviation, action?: Id) => chainOf(s, d).some(
 
 /** Назначить: запись CAPA со сроком по классу отклонения; извещение исполнителю. */
 function assign(db: ContentDb, s: PlantState, d: Deviation, a: CapaAction, t: Target, by: 'player' | 'qa', notices: Notice[]): Capa {
-  const c: Capa = { id: nextId(s, 'G'), dev: d.id, action: a.id, ...(t.part ? { part: t.part } : {}), ...(t.docs ? { docs: t.docs } : {}), ...(t.asset ? { asset: t.asset } : {}), ...(t.pair ? { pair: t.pair } : {}), head: t.head, t: s.t, by, due: s.t + db.scenarios[s.scenario].deviations.term[d.cls] * DAY };
+  const c: Capa = { id: nextId(s, 'G'), dev: d.id, action: a.id, ...(t.part ? { part: t.part } : {}), ...(t.docs ? { docs: t.docs } : {}), ...(t.people ? { people: t.people } : {}), ...(t.asset ? { asset: t.asset } : {}), ...(t.pair ? { pair: t.pair } : {}), head: t.head, t: s.t, by, due: s.t + db.scenarios[s.scenario].deviations.term[d.cls] * DAY };
   s.capas[c.id] = c;
   delete d.capaDue;
   notices.push({ kind: 'capa', id: c.id, dev: d.id, action: a.id, head: c.head });
@@ -312,7 +325,7 @@ export function capaRunCommand(db: ContentDb, s: PlantState, cmd: Extract<Comman
       break;
     }
     case 'train':
-      if (retrain(db, s, c.docs ?? []) === 0) return refuse('busy');
+      if (retrain(db, s, c.docs ?? [], c.people) === 0) return refuse('busy');
       break;
     case 'calib': {
       const x = s.assets[c.asset!];
@@ -382,6 +395,11 @@ function qaRule(db: ContentDb, s: PlantState, notices: Notice[]) {
   if (!who) return;
   const r = mode === 'advise' ? round(s, ['capaFor/']) : undefined;
   for (const d of due) {
+    // повтор ещё не оценён — следующее действие подождёт его причины
+    if (d.cause === undefined && d.status === 'open') {
+      r?.keep(capaForKey(d.id));
+      continue;
+    }
     const pick = rulePick(db, s, d);
     if (!pick) {
       delete d.capaDue;
@@ -443,9 +461,10 @@ function checkHour(db: ContentDb, s: PlantState, notices: Notice[]) {
       .filter(x => x !== src && x.opened > c.done! && sameDev(src, x))
       .sort((a, b) => (before(a, b) ? -1 : 1))[0];
     c.check = { t: s.t, ok: !rep, ...(rep ? { dev: rep.id } : {}) };
-    note(s, 'qa', { kind: 'capaCheck', capa: c.id, ok: !rep, ...(rep ? { dev: rep.id } : {}) }, undefined, undefined, who);
+    note(s, 'qa', { kind: 'capaCheck', capa: c.id, ok: !rep, days: span / DAY, ...(rep ? { dev: rep.id } : {}) }, undefined, undefined, who);
     notices.push({ kind: 'capaCheck', id: c.id, dev: c.dev, ok: !rep, ...(rep ? { rep: rep.id } : {}) });
-    if (rep && !src.capaDue) src.capaDue = 'next';
+    // следующее действие — по повтору: его причина могла установиться, когда у исходного её не было
+    if (rep && !rep.capaDue) rep.capaDue = 'next';
   }
 }
 

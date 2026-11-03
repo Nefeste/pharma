@@ -201,7 +201,7 @@ export interface Deviation {
   batch?: string;
   /** стадия серии */
   stage?: string;
-  /** испытания вне пределов; методика МОК; режим; материал сверки */
+  /** испытания вне пределов; методика МОК, с Б5е — и методика результата вне спецификации; режим; материал сверки и купленной партии */
   tests?: string[];
   test?: Id;
   param?: string;
@@ -244,9 +244,10 @@ export interface Capa {
   id: string;
   dev: string;
   action: Id;
-  /** вещь действия: узел (`<машина>/<узел>`), коды документов, актив прибора, пара «поставщик — изготовитель» */
+  /** вещь действия: узел (`<машина>/<узел>`), коды документов и кого учить, актив прибора, пара «поставщик — изготовитель» */
   part?: string;
   docs?: string[];
+  people?: string[];
   asset?: string;
   pair?: string;
   head: Head;
@@ -1500,7 +1501,7 @@ export type Decided =
   /** CAPA выполнена (Б5е): исполнитель — руководитель отдела действия; у «заменять раньше» порог политики был и стал, доли 1/10 000 */
   | { kind: 'capaRun'; capa: string; action: Id; head: Head; from?: PolicyValue; to?: PolicyValue }
   /** проверка эффективности CAPA (Б5е): эффективна или повтор — первое такое же отклонение после выполнения */
-  | { kind: 'capaCheck'; capa: string; ok: boolean; dev?: string }
+  | { kind: 'capaCheck'; capa: string; ok: boolean; days: number; dev?: string }
   /** оценка пары «поставщик — изготовитель»: до какого дня одобрение и срок предупреждения, суток */
   | { kind: 'pairEval'; pair: string; how: 'audit' | 'docs'; why: { until: number; ahead: number } }
   /**

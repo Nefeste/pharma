@@ -26,6 +26,7 @@ import { unpack } from '../sim/pack';
 import { PlanClient } from '../sim/planClient';
 import type { Thing, ViewQuery } from '../sim/views';
 import { assetClass, workName } from '../ui/assets';
+import { capaName } from '../ui/capa';
 import { useDb } from '../ui/db';
 import { commandsOf, draftKey, ordersOf, prune, upsert } from '../ui/draft';
 import { draftCommands, draftKey as policyKey, sameValue } from '../ui/policy';
@@ -409,7 +410,11 @@ export class Game {
       : n.kind === 'batchReleased' ? T.notices.batchReleased
       : n.kind === 'batchRejected' ? T.notices.batchRejected
       : n.kind === 'batchHeld' ? (n.mine ? T.notices.batchHeldMine : T.notices.batchHeld)
-      : n.kind === 'deviation' ? T.notices.deviation(T.morning.devKinds[n.what], n.code ? T.gantt.batch(n.code) : '')
+      : n.kind === 'deviation' ? T.notices.deviation(T.morning.devKinds[n.what], n.code ? T.gantt.batch(n.code) : '', T.dev.clsLow[n.cls] ?? n.cls)
+      : n.kind === 'devLate' ? T.notices.devLate(T.dev.no(Number(n.id.slice(1))), n.code ? T.gantt.batch(n.code) : '')
+      : n.kind === 'capa' ? T.notices.capa(T.dev.no(Number(n.dev.slice(1))), capaName(n.action), T.journal.names[n.head] ?? n.head)
+      : n.kind === 'capaDone' ? T.notices.capaDone(T.dev.no(Number(n.dev.slice(1))), capaName(n.action), T.journal.names[n.head] ?? n.head)
+      : n.kind === 'capaCheck' ? T.notices.capaCheck(T.dev.no(Number(n.dev.slice(1))), n.ok, n.rep ? T.dev.no(Number(n.rep.slice(1))) : '')
       : n.kind === 'shipped' ? T.notices.shipped
       : n.kind === 'lateOrder' ? T.notices.lateOrder
       : n.kind === 'cashLow' ? T.notices.cashLow
@@ -792,7 +797,10 @@ export class Game {
     },
     investigate: (inv, step) => this.client.command({ kind: 'investigate', inv, step, by: 'player' }),
     release: (batch, decision) => this.client.command({ kind: 'release', batch, decision }),
-    assess: (deviation, verdict) => this.client.command({ kind: 'assess', deviation, verdict, by: 'player' }),
+    assess: (deviation, verdict, cause) => this.client.command({ kind: 'assess', deviation, verdict, ...(cause !== undefined ? { cause } : {}), by: 'player' }),
+    classify: (deviation, cls) => this.client.command({ kind: 'classify', deviation, cls, by: 'player' }),
+    capa: (deviation, action) => this.client.command({ kind: 'capa', deviation, action, by: 'player' }),
+    capaRun: capa => this.client.command({ kind: 'capaRun', capa, by: 'player' }),
     setpoint: x => this.client.command({ kind: 'setpoint', ...x, by: 'player' }),
     urgent: (recipe, sku) => {
       // срочное задание (Б1г) — строка черновика, его полосы — в расписании (0.0.39); «Прогнать план» — что оно изменит

@@ -2,11 +2,13 @@
 // что это значит, какие испытания покажут влияние, оценка и срок; решение по серии на выпуске — условия и три кнопки;
 // режимы стадии в карточке помещения и оборудования; пояснение при первом событии. Виды — из потока расчёта
 // (src/sim/devs.ts) без истины; здесь — слова и щелчок.
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { type Ymd, momentOf } from '../engine/core/calendar';
+import { HEAD_SEAT } from '../engine/journal';
 import { dayText, named, num, qtyText, T, whenText } from '../i18n';
 import type { DevCard, Knobs, Regimes, ReleaseView } from '../sim/devs';
 import type { SpeedView } from '../sim/views';
+import { capaName, causeText, clsText, headText, priceText, thingText } from './capa';
 import { db } from './db';
 import { WhoList } from './Journal';
 import type { Command } from '../engine/types';
@@ -83,6 +85,9 @@ export function DevBody({ c, start, hud, actions }: { c: DevCard; start: Ymd; hu
   const why = (r: string) => T.notices.why[r] ?? r;
   const noneNo = c.block ? why(c.block) : c.none ? `${why(c.none.why)}: ${testName(c.none.test)}` : undefined;
   const who = (colleague: boolean) => (colleague ? T.dev.who_.colleague : T.dev.who_.player);
+  // причина при оценке (Б5е): выбор игрока из причин с признаком или «не установлена»; по умолчанию — правило ООК
+  const [pick, setPick] = useState<string | undefined>(undefined);
+  const cause = pick !== undefined && (pick === 'none' || c.signs.includes(pick)) ? pick : (c.signs[0] ?? 'none');
   return (
     <>
       <dl>
@@ -112,6 +117,12 @@ export function DevBody({ c, start, hud, actions }: { c: DevCard; start: Ymd; hu
             {c.at ? <span className="muted"> · {whenText(start, c.at.from)}</span> : null}
           </Row>
         ) : null}
+        <Row k={T.dev.clsTitle}>
+          <span className={c.cls === 'minor' ? '' : 'warn'} title={T.dev.clsHint[c.cls]} data-test="dev-cls" data-cls={c.cls}>
+            {clsText(c.cls)}
+          </span>
+          <span className="muted"> · {c.clsBy ? T.dev.clsMine : T.dev.clsRule}</span>
+        </Row>
         {c.status === 'open' ? (
           <Row k={T.dev.due}>
             <span className={late ? 'bad' : ''} data-test="dev-due">
@@ -119,7 +130,22 @@ export function DevBody({ c, start, hud, actions }: { c: DevCard; start: Ymd; hu
             </span>
           </Row>
         ) : null}
+        <Row k={T.dev.cause}>
+          <span data-test="dev-cause">{causeText(c.cause)}</span>
+        </Row>
       </dl>
+      {mine && c.status !== 'closed' ? (
+        <div className="cbtns" data-test="dev-cls-set">
+          <span className="muted">{T.dev.clsSet}:</span>{' '}
+          {(['critical', 'major', 'minor'] as const)
+            .filter(x => x !== c.cls)
+            .map(x => (
+              <button key={x} type="button" title={T.dev.clsHint[x]} onClick={() => actions.classify(`D${c.dev}`, x)} data-test={`dev-cls-${x}`}>
+                {clsText(x)}
+              </button>
+            ))}
+        </div>
+      ) : null}
       <div className="csec">{T.dev.what}</div>
       <ul className="why" data-test="dev-what">
         {whatRows(c).map((r, i) => (
@@ -148,15 +174,37 @@ export function DevBody({ c, start, hud, actions }: { c: DevCard; start: Ymd; hu
           ))}
         </ul>
       )}
+      <div className="csec">{T.dev.signs}</div>
+      {c.signs.length === 0 ? (
+        <div className="muted" data-test="dev-signs">
+          {T.dev.noSigns}
+        </div>
+      ) : (
+        <ul className="why" data-test="dev-signs">
+          {c.signs.map(x => (
+            <li key={x}>{causeText(x)}</li>
+          ))}
+        </ul>
+      )}
       <div className="csec">{T.dev.assess}</div>
       {c.assess ? (
         <div data-test="dev-assess">{c.assess.done === undefined ? T.dev.assessing(c.assess.verdict, who(c.assess.colleague)) : T.dev.assessed(c.assess.verdict, who(c.assess.colleague), whenText(start, c.assess.done))}</div>
       ) : c.status === 'open' ? (
         <div className="cbtns" data-test="dev-buttons">
-          <button type="button" disabled={!mine || noneNo !== undefined} title={noneNo ?? T.dev.noneWhat} onClick={() => actions.assess(`D${c.dev}`, 'none')} data-test="dev-none">
+          {mine && !c.inv ? (
+            <div data-test="dev-cause-pick">
+              <span className="muted">{T.dev.causePick}:</span>{' '}
+              {[...c.signs, 'none'].map(x => (
+                <label key={x} className="pick">
+                  <input type="radio" name={`cause-${c.dev}`} checked={cause === x} onChange={() => setPick(x)} data-test={`dev-cause-${x}`} /> {causeText(x)}
+                </label>
+              ))}
+            </div>
+          ) : null}
+          <button type="button" disabled={!mine || noneNo !== undefined} title={noneNo ?? T.dev.noneWhat} onClick={() => actions.assess(`D${c.dev}`, 'none', c.inv ? undefined : cause)} data-test="dev-none">
             {T.dev.none}
           </button>
-          <button type="button" disabled={!mine || c.block !== undefined} title={c.block ? why(c.block) : T.dev.rejectWhat} onClick={() => actions.assess(`D${c.dev}`, 'reject')} data-test="dev-reject">
+          <button type="button" disabled={!mine || c.block !== undefined} title={c.block ? why(c.block) : T.dev.rejectWhat} onClick={() => actions.assess(`D${c.dev}`, 'reject', c.inv ? undefined : cause)} data-test="dev-reject">
             {T.dev.reject}
           </button>
           {c.inv ? (
@@ -168,7 +216,94 @@ export function DevBody({ c, start, hud, actions }: { c: DevCard; start: Ymd; hu
           {!mine ? <div className="warn">{T.levers.seat(T.seats.names.quality)}</div> : null}
         </div>
       ) : null}
+      <CapaBlock c={c} start={start} hud={hud} actions={actions} />
       <WhoList rows={c.who} start={start} actions={actions} />
+    </>
+  );
+}
+
+/**
+ * CAPA отклонения (Б5е): назначенные — действие, вещь, исполнитель, кто назначил, срок, выполнена или чего ждёт, проверка
+ * эффективности; «Выполнить» — у CAPA отдела, чей пост у игрока. Действия каталога — с вещью, исполнителем и ценой,
+ * «Назначить CAPA» — посту «Качество».
+ */
+function CapaBlock({ c, start, hud, actions }: { c: DevCard; start: Ymd; hud: Hud; actions: Actions }) {
+  const mine = holds(hud, 'quality');
+  const day = (t: number) => dayText(momentOf(start, t).day);
+  const by = (x: string) => T.dev.capaBy[x] ?? headText(x as Parameters<typeof headText>[0]);
+  const why = (r: string) => T.notices.why[r] ?? r;
+  return (
+    <>
+      <div className="csec">{T.dev.capa}</div>
+      {c.capas.length === 0 ? <div className="muted">{T.dev.capaNone}</div> : null}
+      <ul className="why" data-test="dev-capas">
+        {c.capas.map(x => {
+          const run = x.done === undefined && holds(hud, HEAD_SEAT[x.head]);
+          const thing = thingText(x);
+          return (
+            <li key={x.n} data-test="dev-capa" data-capa={x.n} data-action={x.action} data-done={x.done !== undefined ? '1' : '0'}>
+              <div>{T.dev.capaRow(x.n, capaName(x.action), headText(x.head), by(x.by), whenText(start, x.t))}</div>
+              {thing ? <div className="muted">{thing}</div> : null}
+              {x.done !== undefined ? (
+                <div>
+                  {T.dev.capaDone(whenText(start, x.done), by(x.doneBy ?? x.head))}
+                  {x.check ? (
+                    <span className={x.check.ok ? '' : 'bad'} data-test="dev-capa-check" data-ok={x.check.ok ? '1' : '0'}>
+                      {' · '}
+                      {x.check.ok ? T.dev.capaOk(day(x.check.t)) : T.dev.capaNo(day(x.check.t), x.check.dev !== undefined ? T.dev.no(x.check.dev) : '')}
+                    </span>
+                  ) : x.checkAt !== undefined ? (
+                    <span className="muted">
+                      {' · '}
+                      {T.dev.capaCheckAt(day(x.checkAt))}
+                    </span>
+                  ) : null}
+                </div>
+              ) : (
+                <div className={x.why ? 'warn' : 'muted'}>
+                  {x.why ? T.dev.capaWait(why(x.why)) : T.dev.capaWaiting}
+                  {' · '}
+                  <span className={hud.t > x.due ? 'bad' : ''}>{T.dev.capaDue(day(x.due))}</span>
+                  {run ? (
+                    <>
+                      {' '}
+                      <button type="button" title={T.dev.capaRunHint(headText(x.head))} onClick={() => actions.capaRun(`G${x.n}`)} data-test="dev-capa-run">
+                        {T.dev.capaRun}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {c.status !== 'closed' || c.options.length > 0 ? (
+        c.options.length === 0 ? (
+          <div className="muted" data-test="dev-capa-none">
+            {T.dev.capaNoOption}
+          </div>
+        ) : (
+          <ul className="why" data-test="dev-capa-options">
+            {c.options.map(o => {
+              const thing = thingText(o);
+              return (
+                <li key={o.action} data-test="dev-capa-option" data-action={o.action}>
+                  <span>{capaName(o.action)}</span>
+                  {thing ? <span className="muted"> · {thing}</span> : null}
+                  <span className="muted">
+                    {' · '}
+                    {headText(o.head)} · {priceText(o)}
+                  </span>{' '}
+                  <button type="button" disabled={!mine || !!o.open} title={o.open ? T.dev.capaOpen : !mine ? T.levers.seat(T.seats.names.quality) : capaName(o.action)} onClick={() => actions.capa(`D${c.dev}`, o.action)} data-test="dev-capa-assign">
+                    {T.dev.capaAssign}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )
+      ) : null}
     </>
   );
 }

@@ -50,7 +50,7 @@ export interface PoliciesView {
 /**
  * Какие решения журнала читали политику: задания на серию — запас, окно спроса и, у кампании, «срочно»; заказы поставщику
  * — страховой запас и сколько суток; замена узла по наработке и заказ ЗИП — своей вещи; визит — срок предупреждения;
- * вывоз — доля мест или срок; уставки к цели. Уборку журнал не пишет.
+ * вывоз — доля мест или срок; уставки к цели; с Б5е — CAPA по повтору и оценка пары. Уборку журнал не пишет.
  */
 const READS: Record<string, (d: Decided, of?: string) => boolean> = {
   'pol.plan.cover': d => d.kind === 'order' && !!d.why && d.why.rule !== 'turn',
@@ -64,6 +64,8 @@ const READS: Record<string, (d: Decided, of?: string) => boolean> = {
   'pol.wms.full': d => d.kind === 'waste' && !!d.why && d.why.since === undefined,
   'pol.wms.keep': d => d.kind === 'waste' && !!d.why && d.why.since !== undefined,
   'pol.tech.setpoints': d => d.kind === 'targets',
+  'pol.qa.capa': d => d.kind === 'capa' && d.why?.rule === 'repeat',
+  'pol.qa.ahead': d => d.kind === 'pairEval',
 };
 
 /** Политики руководителей и сверхурочные отделов: вкладки по порядку — сначала руководители взятых постов. */

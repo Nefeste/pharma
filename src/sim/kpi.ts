@@ -11,6 +11,7 @@ import { DAY, momentOf } from '../engine/core/calendar';
 import { HEAD_SEAT } from '../engine/journal';
 import {
   assessTimes,
+  capaChecks,
   cleanBatch,
   cpkOf,
   CPK_MIN,
@@ -112,7 +113,9 @@ export type KpiWhyRow =
   | { k: 'lot'; code: [number, number, number]; material: Id; sec?: number; unit?: number; rejected?: true }
   | { k: 'fail'; thing?: Thing; type?: Id; part: string; t: number; sec?: number; spare?: true }
   | { k: 'person'; role: Id; tab: number; person?: number; day?: number; days?: number }
-  | { k: 'cpk'; recipe: Id; test: Id; cpk: number; n: number };
+  | { k: 'cpk'; recipe: Id; test: Id; cpk: number; n: number }
+  /** проверка эффективности CAPA (Б5е): CAPA, её отклонение и действие, когда проверили, итог и повтор */
+  | { k: 'capa'; n: number; dev: number; action: Id; t: number; ok: boolean; rep?: number };
 
 export interface KpiView {
   view: 'kpi';
@@ -140,7 +143,7 @@ export const HIST = 12;
 export const WHY_MAX = 30;
 
 /** Показатели, у которых есть «Почему?». */
-export const WHY: ReadonlySet<string> = new Set(['otif', 'otifOrders', 'rft', 'lar', 'testTime', 'incoming', 'assess', 'release', 'devs', 'repeat', 'mtbf', 'mttr', 'spares', 'dockToStock', 'matWait', 'cpk', 'turnover', 'vacancy', 'onDay', 'supRej']);
+export const WHY: ReadonlySet<string> = new Set(['otif', 'otifOrders', 'rft', 'lar', 'testTime', 'incoming', 'assess', 'release', 'devs', 'repeat', 'mtbf', 'mttr', 'spares', 'dockToStock', 'matWait', 'cpk', 'turnover', 'vacancy', 'onDay', 'supRej', 'capaEff']);
 
 /** Руководители вкладки: у поста — его отделы (журнал решений, Б5а), у директора — он сам и отдел кадров. */
 export function headsOf(tab: SeatId): KpiHead[] {
@@ -255,6 +258,12 @@ export function whyRows(db: ContentDb, s: PlantState, c: KpiCtx, id: string): Kp
         .filter(x => x.prev)
         .reverse()
         .map(x => devRow(s, x.dev, undefined, x.prev));
+    case 'capaEff':
+      // проверки эффективности окна (Б5е): новые первыми
+      return capaChecks(c)
+        .map(x => s.capas[x.capa])
+        .sort((a, b) => b.check!.t - a.check!.t || num(b.id) - num(a.id))
+        .map(x => ({ k: 'capa' as const, n: num(x.id), dev: num(x.dev), action: x.action, t: x.check!.t, ok: x.check!.ok, ...(x.check!.dev ? { rep: num(x.check!.dev) } : {}) }));
     case 'mtbf':
     case 'mttr':
       return failuresOf(s, p.yFrom, p.to)

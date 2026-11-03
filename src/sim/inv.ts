@@ -9,6 +9,7 @@ import { batchNo } from '../engine/batchno';
 import { posterior } from '../engine/infer';
 import { type Debrief, debrief, labProven } from '../engine/investigation';
 import type { Investigation, InvObs, PlantState, StepWhy } from '../engine/types';
+import { type CapaRow, capaRow } from './devs';
 import { nowOf, type TaskNow } from './lab';
 
 export interface InvQuery {
@@ -85,6 +86,9 @@ export interface InvBoard {
   concluded?: { n: number; why?: { p: number; threshold: number; proven: boolean } };
   /** только у решённого */
   debrief?: Debrief;
+  /** отклонение расследования и его CAPA (Б5е): после вывода начальник ООК назначает CAPA по причине */
+  dev: number;
+  capas: CapaRow[];
 }
 
 export interface InvView {
@@ -154,6 +158,10 @@ function boardOf(db: ContentDb, s: PlantState, inv: Investigation): InvBoard {
     ...(inv.conclusion ? { conclusion: { ...inv.conclusion } } : {}),
     ...(cj ? { concluded: { n: cj.n, ...(cwhy ? { why: cwhy } : {}) } } : {}),
     ...(d ? { debrief: d } : {}),
+    dev: Number(inv.deviation.slice(1)),
+    capas: Object.values(s.capas)
+      .filter(c => c.dev === inv.deviation)
+      .map(c => capaRow(db, s, c)),
   };
 }
 

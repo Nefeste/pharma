@@ -253,7 +253,8 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
         // (Б5е); у купленной партии — материал для подписи повтора и причина «партия поставщика», у своей — «не
         // установлена»; начальник ООК посмотрит, нужна ли CAPA
         const own = lot.batch !== undefined;
-        const d: Deviation = { id: nextId(s, 'D'), opened: s.t, kind: 'oos', lot: lot.id, ...(own ? {} : { material: lot.material }), tests: out, status: 'closed', cls: openClass('oos'), cause: own ? 'none' : 'lot', capaDue: 'rule' };
+        const method = s.tests[out[0]]?.method;
+        const d: Deviation = { id: nextId(s, 'D'), opened: s.t, kind: 'oos', lot: lot.id, ...(own ? {} : { material: lot.material }), tests: out, ...(method ? { test: method } : {}), status: 'closed', cls: openClass('oos'), cause: own ? 'none' : 'lot', capaDue: 'rule' };
         if (lot.batch) for (const x of openDevs(s, s.batches[lot.batch])) x.status = 'closed';
         s.deviations[d.id] = d;
         defect(s, 'deviations');

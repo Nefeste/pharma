@@ -510,7 +510,7 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   // открытых нет, расследования ведёт ООК
   36: raw => raw,
   // 37 → 38 (Б5е): у отклонения — класс по правилу открытия; у оценённого и решённого — причина «не установлена»; у
-  // купленной партии вне спецификации — материал для подписи повтора; CAPA нет
+  // результата вне спецификации — методика, у купленной партии — и материал для подписи повтора; CAPA нет
   37: raw => {
     const s = raw as unknown as PlantState;
     for (const d of Object.values(s.deviations)) {
@@ -518,6 +518,9 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
       if (d.status !== 'open' || d.assess?.done !== undefined) d.cause = 'none';
       const lot = d.lot ? s.lots[d.lot] : undefined;
       if (d.kind === 'oos' && !d.batch && lot && !lot.batch) d.material ??= lot.material;
+      // методика результата вне спецификации — для подписи повтора
+      const q = d.kind === 'oos' && d.tests?.[0] ? s.tests[d.tests[0]] : undefined;
+      if (q && d.test === undefined) d.test = q.method;
     }
     s.capas = {};
     return raw;

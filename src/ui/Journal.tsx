@@ -14,6 +14,7 @@ import type { Command, Decided, DeptMode, Head } from '../engine/types';
 import { dayText, durText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { AskInfo, JournalAs, JournalRef, JournalRow, ModeInfo, WhoRow } from '../sim/journal';
 import { assetClass, workName } from './assets';
+import { capaName, causeText } from './capa';
 import { db } from './db';
 import { policyName, policyText } from './policy';
 import type { Actions, Hud } from './store';
@@ -82,6 +83,15 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
       return `${J.conclude(cause(r, d.cause), d.fate === 'release')}${batchCode(r) ? ` · ${T.now.batch(batchCode(r))}` : ''}`;
     case 'assess':
       return `${J.assess(T.dev.no(r.dev ?? 0), d.verdict === 'none')}${batchCode(r) ? ` · ${T.now.batch(batchCode(r))}` : ''}`;
+    case 'classify':
+      // класс отклонения (Б5е): был и стал
+      return `${J.classify(T.dev.no(r.dev ?? 0), T.dev.clsLow[d.from] ?? d.from, T.dev.clsLow[d.to] ?? d.to)}${batchCode(r) ? ` · ${T.now.batch(batchCode(r))}` : ''}`;
+    case 'capa':
+      return `${J.capa(capaName(d.action), T.dev.no(r.dev ?? 0))}${batchCode(r) ? ` · ${T.now.batch(batchCode(r))}` : ''}`;
+    case 'capaRun':
+      return J.capaRun(capaName(d.action), r.dev !== undefined ? T.dev.no(r.dev) : '');
+    case 'capaCheck':
+      return J.capaCheck(r.dev !== undefined ? T.dev.no(r.dev) : '', d.ok);
     case 'pairEval':
       return J.pairEval(pairName(d.pair), d.how === 'audit');
     case 'visit': {
@@ -262,10 +272,29 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
     case 'assess': {
       const w = d.why;
       if (!w) return [];
-      if (w.tests.length === 0) return [J.assess.empty];
+      // вероятная причина (Б5е): названная и признаки в записях завода
+      const cause = [...(d.cause !== undefined ? [J.assess.cause(causeText(d.cause))] : []), ...(w.signs?.length ? [J.assess.signs(w.signs.map(causeText).join(', '))] : [])];
+      if (w.tests.length === 0) return [J.assess.empty, ...cause];
       const list = w.tests.map(x => (x.kind === 'ipc' ? J.assess.ipc(testName(x.test), x.n ?? 0, x.out ?? 0) : J.assess.lab(testName(x.test), x.result !== undefined && db?.tests[x.test] ? attrText(db.tests[x.test].attr, x.result) : '—', (x.out ?? 0) > 0)));
-      return [J.assess.tests(list.join('; ')), d.verdict === 'none' ? J.assess.none : J.assess.reject];
+      return [J.assess.tests(list.join('; ')), d.verdict === 'none' ? J.assess.none : J.assess.reject, ...cause];
     }
+    case 'capa': {
+      // правило начальника ООК (Б5е): вывод расследования, повторы с порогом политики, неэффективная CAPA цепочки
+      const w = d.why;
+      if (!w) return [];
+      if (w.rule === 'inv') return [J.capa.inv];
+      if (w.rule === 'next') return [J.capa.next(w.prev ? w.prev.slice(1) : '')];
+      return [J.capa.repeat(w.n ?? 0, w.of ?? 0)];
+    }
+    case 'capaRun': {
+      // «Заменять раньше» (Б5е): порог политики узла был и стал
+      if (d.from === undefined || d.to === undefined) return [];
+      const p = db?.policies['pol.maint.replace'];
+      const at = r.machine && r.part ? `${partName(r.machine, r.part)} · ${machineName(r.machine)}: ` : '';
+      return [`${at}${J.capa.from(policyText(p, d.from), policyText(p, d.to))}`];
+    }
+    case 'capaCheck':
+      return [d.ok ? J.capa.ok(d.days) : J.capa.no(d.dev ? T.dev.no(Number(d.dev.slice(1))) : '')];
     case 'pairEval':
       return [`${J.pair(J.until(dayText(d.why.until), d.why.until - day, d.why.ahead))}; ${d.how === 'audit' ? J.audit : J.docs}`];
     case 'visit': {
@@ -712,7 +741,10 @@ function WhoMemo({ n, memo, start, actions }: { n: number; memo: NonNullable<Who
   );
 }
 
-/** Вердикт строки «Кто решил»: решение по партии и серии, оценка, вывод, работа подрядчика, канал вакансии. */
+/**
+ * Вердикт строки «Кто решил»: решение по партии и серии, оценка, вывод, работа подрядчика, канал вакансии; с Б5е — класс
+ * отклонения, действие CAPA и итог её проверки.
+ */
 function verdictWord(r: WhoRow): string {
   switch (r.kind) {
     case 'lot':
@@ -726,6 +758,13 @@ function verdictWord(r: WhoRow): string {
       return r.v === 'qual' ? T.assets.work.qual : T.assets.work.cal;
     case 'vacancy':
       return T.journal.via[r.v ?? ''] ?? '';
+    case 'classify':
+      return T.dev.clsLow[r.v ?? ''] ?? '';
+    case 'capa':
+    case 'capaRun':
+      return r.v ? capaName(r.v) : '';
+    case 'capaCheck':
+      return T.journal.check[r.v ?? ''] ?? '';
     default:
       return '';
   }

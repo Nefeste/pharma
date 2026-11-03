@@ -193,7 +193,7 @@ function truthOf(db: ContentDb, s: PlantState, m: InvModel, b: Batch, lot: Lot):
 export function openInvestigation(db: ContentDb, s: PlantState, m: InvModel, lot: Lot, out: string[], notices: Notice[]) {
   const b = s.batches[lot.batch!];
   const id = nextId(s, 'I');
-  const d = { id: nextId(s, 'D'), opened: s.t, kind: 'oos' as const, lot: lot.id, batch: b.id, tests: out, status: 'open' as const, inv: id, cls: openClass('oos') };
+  const d = { id: nextId(s, 'D'), opened: s.t, kind: 'oos' as const, lot: lot.id, batch: b.id, tests: out, test: s.tests[out[0]]?.method ?? m.test, status: 'open' as const, inv: id, cls: openClass('oos') };
   s.deviations[d.id] = d;
   defect(s, 'deviations');
   const inc = s.incident;

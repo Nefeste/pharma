@@ -9,7 +9,7 @@ import { db } from './db';
 /** «Без»: кампаний нет; узел меняют после отказа — как в движке. */
 export const OFF = 'off';
 
-/** Значение политики словами: сутки, месяцы, % ресурса, «без», уровень ЗИП, вариант, доля мест. */
+/** Значение политики словами: сутки, месяцы, % ресурса, «без», уровень ЗИП, вариант, доля мест, число (Б5е). */
 export function policyText(p: Policy | undefined, v: PolicyValue): string {
   if (!p) return Array.isArray(v) ? v.join('/') : String(v);
   if (v === OFF) return T.policies.off[p.id] ?? OFF;
@@ -30,6 +30,8 @@ export function policyText(p: Policy | undefined, v: PolicyValue): string {
       const [a, b] = v as [number, number];
       return T.policies.shares[`${a}/${b}`] ?? `${a}/${b}`;
     }
+    case 'count':
+      return T.policies.count(v as number);
   }
 }
 
@@ -38,16 +40,17 @@ export function rangeText(p: Policy): string {
   const at = (n: number) => policyText(p, n);
   const or = p.off ? ` ${T.policies.orOff(T.policies.off[p.id] ?? OFF)}` : '';
   if (p.kind === 'days' || p.kind === 'months' || p.kind === 'wear') return `${T.policies.range(at(p.min!), at(p.max!), p.kind === 'wear' ? pctText(p.step!) : p.kind === 'days' ? T.policies.days(p.step!) : T.policies.months(p.step!))}${or}`;
+  if (p.kind === 'count') return T.policies.span(String(p.min), String(p.max));
   if (p.kind === 'level') return T.policies.span(String(p.min), String(p.max));
   return '';
 }
 
 /**
  * Следующее значение на шаг вниз (`-1`) или вверх: ниже нижнего у политики с «без» — «без», выше «без» — нижнее; за
- * пределами — нет. Только у суток, месяцев и износа.
+ * пределами — нет. Только у суток, месяцев, износа и числа.
  */
 export function stepValue(p: Policy, v: PolicyValue, dir: -1 | 1): PolicyValue | undefined {
-  if (p.kind !== 'days' && p.kind !== 'months' && p.kind !== 'wear') return undefined;
+  if (p.kind !== 'days' && p.kind !== 'months' && p.kind !== 'wear' && p.kind !== 'count') return undefined;
   if (v === OFF) return dir > 0 ? p.min : undefined;
   if (typeof v !== 'number') return undefined;
   const n = v + dir * p.step!;

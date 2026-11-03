@@ -24,7 +24,7 @@ function setText(r: PolicyRow, hud: Hud): string {
   return T.policies.setBy(T.journal.player(r.set.seat ? (T.seats.names[r.set.seat] ?? r.set.seat) : ''), whenText(hud.start, r.set.t));
 }
 
-/** Управление значением: «−» и «+» у суток, месяцев и износа; два у уровня ЗИП; кнопки у выбора и доли мест. */
+/** Управление значением: «−» и «+» у суток, месяцев, износа и числа; два у уровня ЗИП; кнопки у выбора и доли мест. */
 function Control({ p, v, mine, set }: { p: Policy; v: PolicyValue; mine: boolean; set: (x: PolicyValue) => void }) {
   const step = (dir: -1 | 1) => stepValue(p, v, dir);
   const btn = (label: string, next: PolicyValue | undefined, test: string) => (
@@ -32,7 +32,7 @@ function Control({ p, v, mine, set }: { p: Policy; v: PolicyValue; mine: boolean
       {test.endsWith('less') ? '−' : '+'}
     </button>
   );
-  if (p.kind === 'days' || p.kind === 'months' || p.kind === 'wear')
+  if (p.kind === 'days' || p.kind === 'months' || p.kind === 'wear' || p.kind === 'count')
     return (
       <span className="pctl">
         {btn(T.policies.less, step(-1), 'policy-less')} <b data-test="policy-value">{policyText(p, v)}</b> {btn(T.policies.more, step(1), 'policy-more')}

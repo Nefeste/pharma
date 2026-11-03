@@ -5,9 +5,9 @@
 import { useState } from 'react';
 import { dailyLevers } from '../app/levers';
 import type { Dept } from '../content/types';
-import type { Ymd } from '../engine/core/calendar';
+import { momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
-import { hText, named, T, whenText } from '../i18n';
+import { clock, hText, named, T, whenText } from '../i18n';
 import type { DailyDeptSum, DailyMeeting, DailyRowView } from '../sim/daily';
 import { db } from './db';
 import { Levers } from './Levers';
@@ -24,9 +24,13 @@ export function rowText(r: DailyRowView, plant: string): string {
   const line = (id?: string) => T.gantt.line((plan?.plant.lines.findIndex(l => l.id === id) ?? -1) + 1);
   switch (r.kind) {
     case 'kit':
-      return r.pack ? T.daily.kind.kitPack(code) : T.daily.kind.kit(code);
-    case 'stage':
-      return T.daily.kind.stage(T.stages[r.stage ?? ''] ?? r.stage ?? '', code, room(r.room));
+      return r.pack ? T.daily.kind.kitPack(code) : r.code ? T.daily.kind.kit(r.code) : T.daily.kind.kitJob(Number((r.batch ?? '').slice(1)));
+    case 'stage': {
+      // помещение названо так же, как стадия (отвешивание), — без повтора
+      const st = T.stages[r.stage ?? ''] ?? r.stage ?? '';
+      const at = room(r.room);
+      return at && at !== st ? T.daily.kind.stage(st, code, at) : T.daily.kind.stageIn(st, code);
+    }
     case 'pack':
       return T.daily.kind.pack(code, line(r.line));
     case 'ship':
@@ -83,6 +87,8 @@ function Rows({ rows, plant, start }: { rows: DailyRowView[]; plant: string; sta
 export function DailyMeet({ d, plant, start, hud, actions, close }: { d: DailyMeeting; plant: string; start: Ymd; hud: Hud; actions: Actions; close: () => void }) {
   const [open, setOpen] = useState<string | null>(null);
   const dept = (x: Dept) => T.morning.depts[x] ?? x;
+  // мгновение строки сегодня: в день планёрки — часы, после полуночи — и дата
+  const atText = (t: number) => (d.today && momentOf(start, t).day === momentOf(start, d.today.from).day ? clock(momentOf(start, t).sec) : whenText(start, t));
   const toggle = (k: string) => setOpen(open === k ? null : k);
   if (!d.yday && !d.today) return <div className="muted" data-test="morning-daily">{T.daily.none}</div>;
   return (
@@ -95,8 +101,10 @@ export function DailyMeet({ d, plant, start, hud, actions, close }: { d: DailyMe
               const rows = d.yday!.rows.filter(r => r.dept === x.dept);
               const thing = rows.find(r => r.res !== 'ok' && r.thing)?.thing ?? rows.find(r => r.thing)?.thing;
               return (
-                <li key={x.dept} className={x.no > 0 ? 'bad' : x.late > 0 ? 'warn' : undefined} data-test="daily-yday" data-dept={x.dept}>
-                  <b>{dept(x.dept)}</b>: {sumText(x)}{' '}
+                <li key={x.dept} data-test="daily-yday" data-dept={x.dept}>
+                  <span className={x.no > 0 ? 'bad' : x.late > 0 ? 'warn' : undefined}>
+                    <b>{dept(x.dept)}</b>: {sumText(x)}
+                  </span>{' '}
                   <button type="button" className="link" onClick={() => toggle(`y/${x.dept}`)} data-test="daily-open">
                     {open === `y/${x.dept}` ? T.daily.hide : T.daily.rows}
                   </button>
@@ -122,7 +130,7 @@ export function DailyMeet({ d, plant, start, hud, actions, close }: { d: DailyMe
                       {' '}
                       — {T.daily.first}: {rows
                         .slice(0, 2)
-                        .map(r => `${rowText(r, plant)} ${whenText(start, r.at).split(' ').at(-1)}`)
+                        .map(r => `${rowText(r, plant)} ${atText(r.at)}`)
                         .join('; ')}
                     </span>
                   ) : null}{' '}

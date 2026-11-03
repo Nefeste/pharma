@@ -18,6 +18,9 @@ import type { Actions, Hud } from './store';
 /** Подпись задания: номер серии, если досье выдано, иначе номер задания. */
 const label = (labels: Record<string, BatchLabel>, j: LaunchJob) => labels[j.batch]?.code ?? T.jobs.order(Number(j.batch.slice(1)));
 
+/** Подпись в узкой клетке: короткий номер серии — продукт и номер, без месяца и года, — или номер задания. */
+const short = (labels: Record<string, BatchLabel>, j: LaunchJob) => labels[j.batch]?.code?.slice(0, 5) ?? T.launch.jobShort(Number(j.batch.slice(1)));
+
 export function Launch({ hud, actions, v, labels, assets, mine, title }: { hud: Hud; actions: Actions; v: LaunchView; labels: Record<string, BatchLabel>; assets: Record<string, AssetInfo>; mine: boolean; title?: string }) {
   const [sel, setSel] = useState<{ sku?: Id; day: number } | null>(null);
   const start = hud.start;
@@ -61,7 +64,7 @@ export function Launch({ hud, actions, v, labels, assets, mine, title }: { hud: 
           <tbody>
             {v.skus.map(row => (
               <tr key={row.sku} data-test="launch-row" data-sku={row.sku}>
-                <th>{skuName(row.sku)}</th>
+                <th title={skuName(row.sku)}>{skuName(row.sku)}</th>
                 {days.map(d => {
                   const jobs = cellJobs(row.sku, d);
                   const rule = cellRule(row.sku, d);
@@ -78,7 +81,7 @@ export function Launch({ hud, actions, v, labels, assets, mine, title }: { hud: 
                           data-test="launch-job"
                           data-batch={j.batch}
                         >
-                          {label(labels, j)}
+                          {short(labels, j)}
                         </button>
                       ))}
                       {rule.map(x => (

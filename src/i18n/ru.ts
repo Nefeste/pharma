@@ -2300,6 +2300,7 @@ export const ru = {
     visits: 'Визиты подрядчика',
     legend: 'Сплошные — задания на серию по «не раньше»; пунктир — что поставит начальник отдела планирования по своему правилу; серые столбцы — нерабочие дни',
     manual: 'Отдел планирования «вручную»: по правилу ничего не поставят. Сплошные — задания на серию по «не раньше»; серые столбцы — нерабочие дни',
+    jobShort: (n: number) => `№${n}`,
     ruleMark: 'план',
     ruleWhat: (on: string, day: string) => `начальник отдела планирования поставит ${on} — на ${day}`,
     now: 'Поставить сейчас',
@@ -2366,8 +2367,10 @@ export const ru = {
     why: (what: string) => `ждали ${what}`,
     kind: {
       kit: (code: string) => `комплект серии ${code}`,
+      kitJob: (n: number) => `комплект задания ${n}`,
       kitPack: (code: string) => `комплект упаковки серии ${code}`,
       stage: (stage: string, code: string, room: string) => `${stage} ${code} — ${room}`,
+      stageIn: (stage: string, code: string) => `${stage} ${code}`,
       pack: (code: string, line: string) => `упаковка ${code} — ${line}`,
       ship: (customer: string) => `отгрузка: ${customer}`,
       truck: (supplier: string) => `фура поставщика: ${supplier}`,

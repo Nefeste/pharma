@@ -2181,6 +2181,7 @@ export const en: Strings = {
     visits: 'Contractor visits',
     legend: 'Solid — batch orders by their “not before”; dashed — what the head of planning will place by their rule; grey columns — days off',
     manual: 'Planning is “manual”: the rule places nothing. Solid — batch orders by their “not before”; grey columns — days off',
+    jobShort: (n: number) => `#${n}`,
     ruleMark: 'plan',
     ruleWhat: (on: string, day: string) => `the head of planning will place it on ${on} — for ${day}`,
     now: 'Place now',
@@ -2243,8 +2244,10 @@ export const en: Strings = {
     why: (what: string) => `waited for ${what}`,
     kind: {
       kit: (code: string) => `kit of batch ${code}`,
+      kitJob: (n: number) => `kit of batch order ${n}`,
       kitPack: (code: string) => `packaging kit of batch ${code}`,
       stage: (stage: string, code: string, room: string) => `${stage} ${code} — ${room}`,
+      stageIn: (stage: string, code: string) => `${stage} ${code}`,
       pack: (code: string, line: string) => `packing ${code} — ${line}`,
       ship: (customer: string) => `shipment: ${customer}`,
       truck: (supplier: string) => `supplier truck: ${supplier}`,

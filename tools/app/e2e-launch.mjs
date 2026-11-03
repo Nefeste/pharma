@@ -177,6 +177,8 @@ async function production(x) {
     if (!/^Производство: сделано \d+ из \d+, в срок \d+/.test(sum)) fail(`строка планёрки: «${sum}»`);
     else ok(`планёрка — ${await s.clock()}: «${sum}»`);
     const today = await page.evaluate(() => [...document.querySelectorAll('[data-test=daily-today]')].map(e => e.textContent.replace(/Строки$/, '').trim()));
+    // помещение первой стадии сегодняшнего задания — для карточки: планёрку закроет рычаг
+    const room = await page.evaluate(() => window.__game.store.get().morning.view?.daily.today?.rows.find(r => r.kind === 'stage')?.room);
     if (today.length === 0) fail('планёрка: сегодняшнего задания нет');
     else ok(`сегодня: ${today.slice(0, 3).join(' | ')}`);
 
@@ -227,7 +229,7 @@ async function production(x) {
     await page.evaluate(c => document.querySelector(c)?.scrollIntoView({ block: 'center', inline: 'center' }), `[data-test=launch-row][data-sku="${rule.sku}"]`);
     await s.shot('План запуска: задание на этот день');
     if (!after.job || after.rule || !/срочное задание — .+ на \d\d\.\d\d\.\d{4}/.test(draft)) fail(`«Поставить сейчас»: задание ${JSON.stringify(after.job)}, пунктир на дне ${after.rule}, черновик «${draft}»`);
-    else ok(`«Поставить сейчас» → «Утвердить»: задание ${after.job.batch} на ${rule.day}, пунктира там нет; черновик был «${draft.trim()}»`);
+    else ok(`«Поставить сейчас» → «Утвердить»: задание ${after.job.batch} на ${new Date(rule.day * 86_400_000).toISOString().slice(0, 10)}, пунктира там нет; черновик был «${draft.trim()}»`);
 
     // у полосы расписания — «в задании на сутки»
     await page.click('[data-test=gantt-tab-plan]');
@@ -240,7 +242,6 @@ async function production(x) {
     await page.keyboard.press('Escape');
 
     // карточка помещения — его строки сегодня: помещение первой стадии сегодняшнего задания
-    const room = await page.evaluate(() => window.__game.store.get().morning.view?.daily.today?.rows.find(r => r.kind === 'stage')?.room);
     if (!room) ok('карточка помещения: стадий в сегодняшнем задании нет — пропуск');
     else {
       const i = await page.evaluate(id => window.__game.layout.plan.plant.rooms.findIndex(r => r.id === id), room);
@@ -250,7 +251,7 @@ async function production(x) {
       await s.shot('Карточка помещения: задание на сутки');
       await page.keyboard.press('Escape');
       if (lines.length === 0 || !lines.every(l => /по плану \d\d\.\d\d \d\d:\d\d/.test(l))) fail(`карточка помещения ${room}: ${JSON.stringify(lines)}`);
-      else ok(`карточка помещения ${room}: ${lines.length} строк сегодня — «${lines[0].slice(0, 140)}»`);
+      else ok(`карточка помещения ${room}: строк сегодня — ${lines.length}, первая — «${lines[0].slice(0, 140)}»`);
     }
   } finally {
     await ctx.close();

@@ -141,13 +141,14 @@
        серые; выбранная клетка — в рамке, под сеткой — что в ней */
     .launch { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
     .launch-scroll { overflow-x: auto; }
-    .launch table.grid { border-collapse: collapse; }
-    .launch table.grid th, .launch table.grid td { padding: 2px 3px; text-align: center; min-width: 34px; cursor: default; }
-    .launch table.grid tbody th { text-align: left; white-space: nowrap; color: var(--text); font-weight: 400; }
-    .launch table.grid thead th { font-size: 11px; line-height: 1.2; }
+    /* дни — равные узкие столбцы, 31 сутки помещаются в окно; позиция — слева и на месте при прокрутке */
+    .launch table.grid { border-collapse: collapse; table-layout: fixed; width: max-content; }
+    .launch table.grid th, .launch table.grid td { padding: 2px 1px; text-align: center; width: 31px; min-width: 31px; max-width: 31px; overflow: hidden; cursor: default; }
+    .launch table.grid th:first-child { width: 240px; min-width: 240px; max-width: 240px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: sticky; left: 0; z-index: 1; background: rgb(28, 38, 43); color: var(--text); font-weight: 400; }
+    .launch table.grid thead th { font-size: 10px; line-height: 1.2; }
     .launch .off { background: rgba(255, 255, 255, 0.05); color: var(--muted); }
     .launch td.sel { outline: 1px solid var(--accent); outline-offset: -1px; }
-    .lchip { display: block; width: 100%; margin: 1px 0; padding: 1px 2px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-color: var(--accent); }
+    .lchip { display: block; width: 100%; margin: 1px 0; padding: 1px 0; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: clip; border-color: var(--accent); }
     .lchip.rule { border-style: dashed; border-color: var(--muted); color: var(--muted); background: transparent; }
     .lchip.drop { text-decoration: line-through; color: var(--muted); }
     .lchip.moved { border-color: #fff; }

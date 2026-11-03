@@ -705,10 +705,12 @@ export class Game {
       // Расписание — команда производства (3е); пост не у игрока — черновик уходит планированию одной запиской (Б5д)
       const h = this.store.get();
       if (h.gantt.draft.length === 0 && h.gantt.urgent.length === 0 && h.gantt.drop.length === 0) return;
-      // отмены (Б6а) — первыми: их резерв нужен заданиям черновика
-      const cmds = [...cancelsOf(h.gantt.drop), ...commandsOf(h.gantt.draft), ...ordersOf(h.gantt.urgent)];
-      if (holds(h, 'production')) for (const cmd of cmds) this.client.command(cmd);
-      else this.client.command({ kind: 'memo', cmds: cmds.map(c => ({ ...c, by: undefined }) as Command) });
+      // отмены (Б6а) — первыми: их резерв нужен заданиям черновика; записку об отмене не пишут — пост отдали, пока
+      // черновик ждал, — отмены уходят из него
+      const own = holds(h, 'production');
+      const cmds = [...(own ? cancelsOf(h.gantt.drop) : []), ...commandsOf(h.gantt.draft), ...ordersOf(h.gantt.urgent)];
+      if (own) for (const cmd of cmds) this.client.command(cmd);
+      else if (cmds.length > 0) this.client.command({ kind: 'memo', cmds: cmds.map(c => ({ ...c, by: undefined }) as Command) });
       this.store.set({ gantt: { ...h.gantt, draft: [], urgent: [], drop: [] } });
       this.sendViews();
     },
@@ -820,6 +822,15 @@ export class Game {
       const g = this.store.get().gantt;
       this.store.set({ gantt: { ...g, tab } });
     },
+    ganttBars: (batch, at) => {
+      const g = this.store.get().gantt;
+      const { from: now } = this.ganttWindow(undefined, g.days);
+      // окно — с суток начала его полос, а если это нынешнее окно — снова вслед за часами
+      const from = Math.floor(at / DAY) * DAY - (g.days > 1 ? DAY : 0);
+      const { from: _f, ...rest } = g;
+      this.store.set({ gantt: { ...rest, tab: undefined, focus: batch, ...(from === now ? {} : { from }) } });
+      this.sendViews();
+    },
     jobsFilter: f => {
       const g = this.store.get().gantt;
       this.store.set({ gantt: { ...g, jobs: f } });
@@ -831,10 +842,9 @@ export class Game {
       this.sendViews();
     },
     cancelJob: batch => {
-      // «Отменить» в карточке серии (Б6а): команда поста «Производство»; пост не у игрока — записка планированию (Б5д)
-      const h = this.store.get();
-      if (holds(h, 'production')) this.client.command({ kind: 'cancel', batch, by: 'player' });
-      else this.client.command({ kind: 'memo', cmds: [{ kind: 'cancel', batch }] });
+      // «Отменить» в карточке серии (Б6а): команда поста «Производство» или директора; записку об отмене не пишут —
+      // у чужого поста кнопка погашена
+      if (holds(this.store.get(), 'production')) this.client.command({ kind: 'cancel', batch, by: 'player' });
     },
     toggleFlows: () => this.actions.setLayer(this.store.get().layer === 'people' ? 'plain' : 'people'),
     setLayer: l => {

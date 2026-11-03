@@ -398,6 +398,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
                   can ? 'move' : '',
                   b.batch && b.when === 'plan' && moved.has(b.batch) ? 'draft' : '',
                   ghost && b.batch === ghost.batch && b.when === 'plan' ? 'dim' : '',
+                  b.batch && b.batch === g.focus ? 'focus' : '',
                 ].filter(Boolean).join(' ');
                 return (
                   <div

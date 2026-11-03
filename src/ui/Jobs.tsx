@@ -1,13 +1,14 @@
-// Вкладка «Задания» окна расписания (Б6а; docs/specs/2026-10-vertical-slice.md, «Б6а»): строка на задание — номер,
-// позиция, под что, срок, «не раньше», состояние словами, ожидаемый выпуск и опоздание к сроку; отбор — в плане, в
-// работе, выпущены и отменены за 7 суток; у задания до комплектовки — «Отменить» в черновик. Под списком — заказы без
-// покрытия со «Срочным заданием под заказ». Вид собран в потоке расчёта (src/sim/jobs.ts) — истины в нём нет.
+// Вкладка «Задания» окна расписания (Б6а; docs/specs/2026-10-vertical-slice.md, «Б6а»): строка на задание — номер к
+// досье, позиция, под что, срок, «не раньше», состояние словами, ожидаемый выпуск, опоздание к сроку и «Полосы» — его
+// полосы в расписании; отбор — в плане, в работе, выпущены и отменены за 7 суток; у задания до комплектовки —
+// «Отменить» в черновик, у чужого поста погашена. Под списком — заказы без покрытия со «Срочным заданием под заказ». Вид
+// собран в потоке расчёта (src/sim/jobs.ts) — истины в нём нет.
 import type { Id } from '../content/types';
 import { DAY } from '../engine/core/calendar';
 import { named, T, whenText } from '../i18n';
 import type { JobRow, Jobs as JobsView } from '../sim/jobs';
 import { db } from './db';
-import type { Actions, Hud, JobsFilter } from './store';
+import { type Actions, holds, type Hud, type JobsFilter } from './store';
 
 const FILTERS: JobsFilter[] = ['plan', 'work', 'done', 'cancelled'];
 
@@ -27,6 +28,8 @@ export function Jobs({ hud, actions, jobs, mine, items }: { hud: Hud; actions: A
   const when = (t?: number) => (t === undefined ? '—' : whenText(start, t));
   const rows = jobs.rows.filter(r => filterOf(r) === f);
   const count = (x: JobsFilter) => jobs.rows.filter(r => filterOf(r) === x).length;
+  // отменяет пост «Производство» или директор; у чужого поста записку об отмене не пишут — кнопка погашена (Б5б)
+  const own = holds(hud, 'production');
 
   /** Состояние словами: ждёт своего дня или материала — какого, на стадии — какой; остальное — как в карточке. */
   const state = (r: JobRow): string => {
@@ -52,7 +55,7 @@ export function Jobs({ hud, actions, jobs, mine, items }: { hud: Hud; actions: A
       {rows.length === 0 ? (
         <div className="muted">{T.jobs.empty}</div>
       ) : (
-        <table className="ref" data-test="jobs-table">
+        <table className="grid jobs-grid" data-test="jobs-table">
           <thead>
             <tr>
               {T.jobs.cols.map(c => (
@@ -81,8 +84,18 @@ export function Jobs({ hud, actions, jobs, mine, items }: { hud: Hud; actions: A
                     {late(r)}
                   </td>
                   <td>
-                    {r.open && mine ? (
-                      <button type="button" className="small" onClick={() => actions.dropJob(r.id)} title={dropped ? T.jobs.undoHint : T.jobs.cancelHint} data-test="jobs-cancel">
+                    <button type="button" className="small" onClick={() => actions.ganttBars(r.id, r.at)} title={T.jobs.showHint} data-test="jobs-bars">
+                      {T.jobs.show}
+                    </button>{' '}
+                    {r.open ? (
+                      <button
+                        type="button"
+                        className="small"
+                        disabled={!own}
+                        onClick={() => actions.dropJob(r.id)}
+                        title={!own ? T.seats.notYours(T.seats.names.production) : dropped ? T.jobs.undoHint : T.jobs.cancelHint}
+                        data-test="jobs-cancel"
+                      >
                         {dropped ? T.jobs.undo : T.jobs.cancel}
                       </button>
                     ) : null}

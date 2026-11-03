@@ -5,10 +5,9 @@
 // завода и прогон расписания, истины нет.
 import type { ContentDb, Id } from '../content/types';
 import { batchNo } from '../engine/batchno';
-import { DAY } from '../engine/core/calendar';
+import { DAY, momentOf } from '../engine/core/calendar';
 import type { Forecast } from '../engine/plan/schedule';
 import { casesOf } from '../engine/planner';
-import { containersByLot } from '../engine/stock';
 import type { Batch, BatchStatus, PlantState } from '../engine/types';
 
 /** Сколько суток после выпуска или отмены задание ещё в списке; за сколько суток выпущенные дают медиану. */
@@ -38,6 +37,8 @@ export interface JobRow {
   cancelled?: number;
   /** до комплектовки: отменить можно */
   open: boolean;
+  /** с чего начинаются его полосы в расписании: прогон расписания, а прошли — досье; ни того ни другого — «не раньше» */
+  at: number;
 }
 
 /** Заказ покупателя, у строки которого к сроку не хватит ящиков. */
@@ -61,6 +62,8 @@ export interface Jobs {
 }
 
 const num = (id: string) => Number(id.slice(1));
+/** доли — 1/10 000, как у остаточного срока заказа */
+const P = 10000;
 
 /** Медиана целых (нижняя из двух средних); пусто — нет. */
 function median(xs: number[]): number | undefined {
@@ -83,6 +86,8 @@ function plannedEnd(db: ContentDb, f: Forecast, b: Batch): number | undefined {
 /** Задания окна и заказы без покрытия — по прогону расписания `f` (с черновиком, если он есть). */
 export function jobsOf(db: ContentDb, s: PlantState, f: Forecast): Jobs {
   const all = Object.values(s.batches);
+  const first = new Map<string, number>();
+  for (const x of f.bars) if (x.batch && x.from < (first.get(x.batch) ?? Number.MAX_SAFE_INTEGER)) first.set(x.batch, x.from);
   const recent = all.filter(b => b.status === 'released' && b.released !== undefined && b.released >= s.t - TAIL_DAYS * DAY);
   const tail = median(recent.flatMap(b => (bulkEnd(b) !== undefined ? [b.released! - bulkEnd(b)!] : [])));
   const pub = median(recent.flatMap(b => (b.pack?.fg && s.lots[b.pack.fg]?.circulation !== undefined ? [s.lots[b.pack.fg].circulation! - b.released!] : [])));
@@ -116,6 +121,7 @@ export function jobsOf(db: ContentDb, s: PlantState, f: Forecast): Jobs {
       ...(b.due !== undefined && circ !== undefined && circ > b.due ? { late: circ - b.due } : {}),
       ...(b.cancelled !== undefined ? { cancelled: b.cancelled } : {}),
       open: b.status === 'waiting' || b.status === 'reserved',
+      at: b.records.length > 0 ? Math.min(...b.records.map(r => r.start)) : (first.get(b.id) ?? b.notBefore),
     });
   }
   // по сроку, без срока — после; дальше — по «не раньше» и номеру
@@ -124,38 +130,50 @@ export function jobsOf(db: ContentDb, s: PlantState, f: Forecast): Jobs {
 }
 
 /**
- * Заказы без покрытия: по каждой позиции открытые заказы по сроку берут свободную ГП сейчас — ящики выпущенных партий, —
- * потом ГП заданий, которая по прогону расписания выйдет в оборот к их сроку, раньше вышедшая — раньше. Не хватило —
- * строка с тем, сколько не хватит.
+ * Заказы без покрытия: открытые заказы по сроку берут ГП позиции — сначала свободные ящики разрешённых партий в обороте
+ * (FEFO), потом разрешённых, которые выйдут в оборот через медиану от выпуска до оборота, потом ГП заданий, которая по
+ * прогону расписания выйдет в оборот к их сроку, раньше вышедшая — раньше. Ящики, зарезервированные под заказы, не
+ * свободны; партия с остаточным сроком годности к сроку заказа меньше того, что просит покупатель, ему не идёт — как у
+ * правила «заказ под угрозой» (`orderRisks`, market.ts). Не хватило — строка с тем, сколько не хватит.
  */
 function uncoveredOf(db: ContentDb, s: PlantState, all: Batch[], expectOf: (b: Batch) => number | undefined, pub: number): UncoveredRow[] {
-  const byLot = containersByLot(s);
+  const free = new Map<string, number>();
+  for (const c of Object.values(s.containers)) if (!c.reserved) free.set(c.lot, (free.get(c.lot) ?? 0) + 1);
   const out: UncoveredRow[] = [];
   const open = Object.values(s.orders)
     .filter(o => o.status === 'open')
     .sort((a, c) => a.due - c.due || num(a.id) - num(c.id));
   for (const [sku, k] of Object.entries(db.skus)) {
-    let stock = 0;
-    for (const l of Object.values(s.lots)) if (l.material === k.fg && l.status === 'released') stock += byLot.get(l.id)?.length ?? 0;
-    const supply = all
-      .filter(b => b.sku === sku && b.status !== 'released' && b.status !== 'rejected' && b.status !== 'cancelled')
-      .flatMap(b => {
-        const e = expectOf(b);
-        return e === undefined ? [] : [{ at: e + pub, cases: casesOf(db.recipes[b.recipe], k) }];
-      })
-      .sort((a, c) => a.at - c.at);
-    let next = 0;
+    if (!open.some(o => o.lines.some(l => l.sku === sku))) continue;
+    // срок годности целиком, сутки — как у распределения (market.ts)
+    const full = Math.floor((db.materials[k.fg].shelf * 36525) / 1200);
+    const supply: { at: number; cases: number; expiry?: number }[] = [];
+    for (const l of Object.values(s.lots)) {
+      if (l.material !== k.fg || l.status !== 'released' || !free.get(l.id)) continue;
+      supply.push({ at: l.circulation !== undefined ? s.t : Math.max(s.t, (l.since ?? s.t) + pub), cases: free.get(l.id)!, expiry: l.expiry });
+    }
+    for (const b of all) {
+      if (b.sku !== sku || b.status === 'released' || b.status === 'rejected' || b.status === 'cancelled') continue;
+      const e = expectOf(b);
+      if (e !== undefined) supply.push({ at: e + pub, cases: casesOf(db.recipes[b.recipe], k) });
+    }
+    supply.sort((a, c) => a.at - c.at || (a.expiry ?? Number.MAX_SAFE_INTEGER) - (c.expiry ?? Number.MAX_SAFE_INTEGER));
     for (const o of open) {
+      const day = momentOf(s.start, o.due).day;
       for (const l of o.lines) {
         if (l.sku !== sku) continue;
-        const need = l.cases - l.shipped;
+        let need = l.cases - l.reserved;
         if (need <= 0) continue;
-        while (stock < need && next < supply.length && supply[next].at <= o.due) stock += supply[next++].cases;
-        const got = Math.min(stock, need);
-        stock -= got;
-        if (got < need) out.push({ order: o.id, customer: o.customer, due: o.due, sku, cases: need, short: need - got });
+        for (const x of supply) {
+          if (need === 0) break;
+          if (x.cases === 0 || x.at > o.due || (x.expiry !== undefined && (x.expiry - day) * P < o.minShelf * full)) continue;
+          const take = Math.min(need, x.cases);
+          x.cases -= take;
+          need -= take;
+        }
+        if (need > 0) out.push({ order: o.id, customer: o.customer, due: o.due, sku, cases: l.cases - l.shipped, short: need });
       }
     }
   }
-  return out.sort((a, c) => a.due - c.due || a.order.localeCompare(c.order));
+  return out.sort((a, c) => a.due - c.due || num(a.order) - num(c.order) || a.sku.localeCompare(c.sku));
 }

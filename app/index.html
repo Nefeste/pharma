@@ -130,6 +130,12 @@
     /* расписание (3д) — большое окно во всю ширину под полосой: строки — комплектовка, помещения, линия; полосы — по времени */
     .gantt { position: absolute; left: 8px; right: 8px; top: calc(var(--top-h, 48px) + 8px); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
     .gantt .phead .filters { margin-left: 12px; }
+    /* вкладка «Задания» расписания (Б6а): строки заданий без щелчка по строке — номер ведёт к досье; заказы без покрытия */
+    .jobs { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
+    .jobs table.grid tbody tr { cursor: default; }
+    .jobs table.grid td.bad { white-space: nowrap; }
+    .jobs ul.plain { margin: 0; padding-left: 18px; }
+    .jobs ul.plain li { margin: 2px 0; }
     .grow-row { display: flex; align-items: stretch; min-height: 30px; }
     .glabel { flex: 0 0 180px; padding: 7px 8px 0 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .gtrack { position: relative; flex: 1 1 auto; border-bottom: 1px solid rgba(255,255,255,.06); overflow: hidden; }
@@ -165,6 +171,7 @@
     .gtip { position: fixed; z-index: 10; max-width: 380px; padding: 6px 10px; font-size: 12px; pointer-events: none; }
     /* черновик и прогон плана (часть 5): полосы черновика — в белой рамке, прежние — бледнее; итог — таблица по вариантам */
     .gbar.draft { border: 1px solid #fff; background: color-mix(in srgb, var(--c) 55%, transparent); }
+    .gbar.focus { outline: 2px solid var(--accent); outline-offset: 1px; z-index: 1; }
     .gbar.was { opacity: .3; pointer-events: none; }
     .gdraft { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 4px 0 6px; font-size: 12px; }
     .gplan { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }

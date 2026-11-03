@@ -49,6 +49,7 @@ const actions: Actions = {
   setpoint: later('setpoint'),
   urgent: later('urgent'),
   ganttTab: later('ganttTab'),
+  ganttBars: later('ganttBars'),
   jobsFilter: later('jobsFilter'),
   dropJob: later('dropJob'),
   cancelJob: later('cancelJob'),

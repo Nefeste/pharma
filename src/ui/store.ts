@@ -113,6 +113,8 @@ export interface Hud {
     /** вкладка (Б6а): полосы расписания или список заданий; отбор списка */
     tab?: 'jobs';
     jobs?: JobsFilter;
+    /** чьи полосы подсвечены (Б6а): «Полосы» у строки вкладки «Задания» */
+    focus?: string;
   };
   /** прогон плана (часть 5) */
   plan: PlanRun;
@@ -420,6 +422,8 @@ export interface Actions {
   urgent(recipe: Id, sku: Id, order?: string): void;
   /** задания на серию (Б6а): вкладка окна расписания, отбор списка, «Отменить» в черновике, отмена из карточки */
   ganttTab(tab?: 'jobs'): void;
+  /** полосы задания в расписании (Б6а): вкладка полос, окно — с их начала, сами — подсвечены */
+  ganttBars(batch: string, at: number): void;
   jobsFilter(f: JobsFilter): void;
   dropJob(batch: string): void;
   cancelJob(batch: string): void;

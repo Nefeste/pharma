@@ -10,7 +10,7 @@ import { dayText, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { DispRow, DossierView, LotQty, PackDossier, StageRow, Who } from '../sim/dossier';
 import { db, docText } from './db';
 import { WhoList } from './Journal';
-import type { Actions, Hud } from './store';
+import { type Actions, holds, type Hud } from './store';
 import { paramNum, paramText } from './units';
 
 /** Количество материала в его единице: масса — кг до граммов, штуки — штуками. */
@@ -407,7 +407,15 @@ export function Dossier({ hud, actions }: { hud: Hud; actions: Actions }) {
             {v.due !== undefined ? head(T.dossier.due, whenText(start, v.due)) : null}
             {v.open ? (
               <div>
-                <button type="button" className="small" onClick={() => actions.cancelJob(`B${v.batch}`)} title={T.dossier.cancelHint} data-test="dossier-cancel">
+                {/* отменяет пост «Производство» или директор; у чужого поста — погашена с подписью, чей он (Б5б) */}
+                <button
+                  type="button"
+                  className="small"
+                  disabled={!holds(hud, 'production')}
+                  onClick={() => actions.cancelJob(`B${v.batch}`)}
+                  title={holds(hud, 'production') ? T.dossier.cancelHint : T.seats.notYours(T.seats.names.production)}
+                  data-test="dossier-cancel"
+                >
                   {T.jobs.cancel}
                 </button>
               </div>

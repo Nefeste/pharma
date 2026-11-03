@@ -280,7 +280,9 @@ describe('масса по стадиям и запись упаковки — п
         // Б1ж: уставка режима стадии — её задал завод
         'sp ' +
         // Б5а: «Кто решил» — записи журнала решений; Б5в: кто из людей решал — роль, табельный номер, «и. о.»
-        'who t v seat as io').split(' '),
+        'who t v seat as io ' +
+        // Б6а: задание — под что (заказ покупателя и его покупатель) и срок, отменить ли ещё можно
+        'goal order customer due open').split(' '),
     );
     expect([...keys].filter(k => !ALLOWED.has(k))).toEqual([]);
     for (const k of ['truth', 'noise', 'causes', 'screen', 'budget', 'lost', 'jammed', 'wear']) expect(keys.has(k)).toBe(false);

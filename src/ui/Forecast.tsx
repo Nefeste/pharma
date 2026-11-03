@@ -190,7 +190,7 @@ function ErrTable({ e, method }: { e: FcErrs; method: FcMethod }) {
       <tbody>
         {row('plan', T.fc.plan, e.plan, closer === 'plan' ? T.fc.closer : undefined)}
         {row('sales', T.fc.sales, e.sales, closer === 'sales' ? T.fc.closer : undefined)}
-        {(['last-year', 'ma', 'ses', 'holt', 'group'] as const).map(m => row(m, `${T.fc.byMethod} «${T.fc.methods[m]}»`, e.by[m], m === method ? T.fc.methodNow(T.fc.methods[m]) : undefined))}
+        {(['last-year', 'ma', 'ses', 'holt', 'group'] as const).map(m => row(m, T.fc.byMethodName(T.fc.methods[m]), e.by[m], m === method ? T.fc.current : undefined))}
       </tbody>
     </table>
   );

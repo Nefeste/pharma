@@ -3,8 +3,14 @@
 // (tools/test/palette.test.ts), а ряд называет ещё и знак: столбик — факт, кружок — планирование, квадрат — отдел продаж.
 import type { FcPoint } from '../sim/forecast';
 
-/** Цвета рядов: факт — приглушённый столбик, планирование — акцент окна, отдел продаж — янтарный. */
-export const FC_COLOR = { fact: 0x6f8790, plan: 0x2fb5c9, sales: 0xe8a33d } as const;
+/**
+ * Цвета рядов: факт — тёплый серый столбик, планирование — акцент окна, отдел продаж — янтарный; каждый — контрастом не
+ * ниже 3:1 к фону графика (`FC_BG`).
+ */
+export const FC_COLOR = { fact: 0x857e74, plan: 0x2fb5c9, sales: 0xe8a33d } as const;
+
+/** Фон графика: панель окна под затемнением `svg.chart` (app/index.html). */
+export const FC_BG = 0x161f23;
 
 /** Цвет числом — строкой CSS. */
 export const css = (c: number) => `#${c.toString(16).padStart(6, '0')}`;

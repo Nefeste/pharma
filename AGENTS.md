@@ -97,8 +97,9 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # then the first week of a newcomer (e2e-week.mjs, week.png), then memos and
                                    # questions (e2e-memo.mjs, memo.png), then a CAPA and its check three months on
                                    # (e2e-capa.mjs, capa.png), then batch orders from the production post (e2e-jobs.mjs,
-                                   # jobs.png), then the launch plan and the daily lists (e2e-launch.mjs, launch.png);
-                                   # `-- --only main|week|memo|capa|jobs|launch` for one
+                                   # jobs.png), then the launch plan and the daily lists (e2e-launch.mjs, launch.png),
+                                   # then the forecast to the meeting of 1 November (e2e-forecast.mjs, forecast.png);
+                                   # `-- --only main|week|memo|capa|jobs|launch|forecast` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -139,12 +140,20 @@ first, or copy the working code of Bolnitsa on the same versions.
   product is urgent; with Б6а the due of a stock order — the truck hour of the workday the SKU runs out by the same
   position, `stockDue` — and a cancelled stock order holding its SKU until its not-before, `heldOf`; with Б6б the same
   choice shared with the launch plan — `choose` — and the launch plan without writing, with the schedule draft —
-  `launchPlan`), `daily.ts` (with Б6б, the daily dispatch lists: at 08:00 each department's rows for the day — stages
-  and kits by the schedule run cut at the day's end, packing by the line master's norm in the shifts of the line's
-  people, the lab by the finite capacity of analysts on shift and instruments, shipments, supplier trucks, repairs,
-  visits, the qualified person's decisions and deviation assessments due; every hour when a row started and, an hour
-  late, what it waited for; at the next 08:00 the result — on time, later, not done; no rule reads them; kept 31 days;
-  the plan run's copy has none; which department a row waited for — `waitedFor`), `wms.ts` (truck,
+  `launchPlan`; with Б6в the demand of the rule from the planning forecast by the policy «спрос», named in the reason),
+  `forecast.ts` (with Б6в, the sales forecast: the season of a product group in customer demand — `seasonSec`; demand
+  history for 24 months before the start by the same rule on its own branch, then cases ordered by the order's month;
+  at 00:00 on the 1st, after the month's indicators, 18 months by five methods on the rate per calendar day — same as
+  last year, moving average, smoothing, damped Holt, the group's season by a 2 × 12 decomposition; the planning
+  forecast by the method policy or «best» by a rolling-origin backtest over 12 months, with edits by hand — `replan`,
+  at once on a policy change; the sales department — smoothing and the scenario's optimism, a journal record of the
+  sales head; accuracy at a lag of one month — WAPE and bias, `lagError`; the `forecast` command; the rule's demand
+  ahead — `forecastAhead`), `daily.ts` (with Б6б, the daily dispatch lists: at 08:00 each department's rows for the
+  day — stages and kits by the schedule run cut at the day's end, packing by the line master's norm in the shifts of the
+  line's people, the lab by the finite capacity of analysts on shift and instruments, shipments, supplier trucks,
+  repairs, visits, the qualified person's decisions and deviation assessments due; every hour when a row started and, an
+  hour late, what it waited for; at the next 08:00 the result — on time, later, not done; no rule reads them; kept 31
+  days; the plan run's copy has none; which department a row waited for — `waitedFor`), `wms.ts` (truck,
   its check at the dock
   before unloading, unloading, receiving, putaway), `quality.ts` (true lot properties, the lab result, spec limits),
   `lab.ts` (sampling,
@@ -330,7 +339,7 @@ first, or copy the working code of Bolnitsa on the same versions.
   after every event, but the batches are scanned for a machine's next work only when one work could bring the part to
   the threshold — a bound from the recipes),
   `kpi.ts` (with Б5ж, the heads'
-  indicators: 47 definitions — the head, unit, direction, month or rolling 12 months, source keys, the counterweight —,
+  indicators: 48 definitions — the head, unit, direction, month or rolling 12 months, source keys, the counterweight —,
   each a pure function of plant
   records over a period and never of truth; the midnight snapshot of what records do not keep — stock at lot price, FG
   packs, receivables and payables, taken places, people without full admission — summed per month; at 00:00 on the 1st
@@ -429,7 +438,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   not-before with the draft, the planning head's rule, contractor visits to stage equipment and line machines and the
   days off, only while its tab is open (`launch.ts`), and the daily lists — rows with the names of their things, a
   department's result and whom it waited for longest for the meeting, the marks of schedule bars and today's rows of a
-  room, equipment or line machine card, «после суток» from the plant's records (`daily.ts`); people and admissions — a
+  room, equipment or line machine card, «после суток» from the plant's records (`daily.ts`); with Б6в, the forecast —
+  the grid of SKUs by 18 months with the planning and sales forecasts and an edit with what the method gave, «прогноз
+  против факта» of a SKU, a product or all — ordered cases and lag forecasts back, forecasts ahead —, the error of
+  planning, sales and each method, only while its tab is open, and the meeting's block on the first day after a month
+  close (`forecast.ts`); people and admissions — a
   person's admission
   today and what they are losing within the warning period, training rows of the card, the training matrix of the
   reference with how many people of a role are admitted, and of other roles by the related profession, the meeting's
@@ -536,7 +549,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), the schedule window with dragging, the draft, «Прогнать
   план» and the run's outcome per variant (`Gantt.tsx`), with Б6а its «Задания» tab — filters, rows, «Отменить» into
   the draft, «Полосы», the uncovered orders with «Срочное задание под заказ» (`Jobs.tsx`), with Б6б its «План запуска»
-  tab — the grid of SKUs by days, the dashed rule, a cell's contents, «Поставить сейчас» (`Launch.tsx`), the meeting's
+  tab — the grid of SKUs by days, the dashed rule, a cell's contents, «Поставить сейчас» (`Launch.tsx`), with Б6в its
+  «Прогноз» tab — the method and demand policies, the grid, a cell's edit and its removal, «прогноз против факта» with
+  the error table and «Таблицей» (`Forecast.tsx`) and the chart's pure rules — colours, ticks, places (`fcchart.ts`),
+  the meeting's
   «Сменно-суточные задания» block and a card's rows of the day (`Daily.tsx`), the draft's pure rules — a row per batch
   order, gone once kitting starts, `shift` commands on approval, with Б6а the cancels, with Б6б an urgent order on a
   day (`draft.ts`), the
@@ -571,7 +587,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   Б5г — `policies/`: the heads' policies — the head by the id, the kind, range and step, «off», of each part or spare;
   with Б5е — `capa/`: the CAPA catalog — what an action does, its executor's head (training — the head of those taught),
   the cause classes and deviation kinds it fits, its place in the QA head's rule — and the scenario's `deviations`: the
-  terms by class, the sign threshold of wear, the check's days and the repeats before a CAPA);
+  terms by class, the sign threshold of wear, the check's days and the repeats before a CAPA; with Б6в — `seasons/`: a
+  product group's index of each month, and the scenario's `forecast` — the sales department's optimism);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
@@ -615,7 +632,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   clean windows (`e2e-memo.mjs`), a CAPA from the quality post to its effectiveness check (`e2e-capa.mjs`), batch orders
   from the production post — uncovered orders, an urgent order for one, a cancel (`e2e-jobs.mjs`), the launch plan and
   the daily lists — the meeting's «ждали …», «Поставить сейчас» and «Утвердить», a bar's and a room card's rows of the
-  day (`e2e-launch.mjs`), the «code —
+  day (`e2e-launch.mjs`), the forecast — the meeting's block on 1 November, the method, a cell's edit and its removal,
+  «прогноз против факта» (`e2e-forecast.mjs`), the «code —
   Blender» sheet
   of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench
   (`bench.mjs`, `--art code` — machines in code), the release update archive — one `resources/app.asar`

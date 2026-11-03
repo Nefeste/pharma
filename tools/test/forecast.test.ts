@@ -3,8 +3,9 @@
 // пять способов на примерах — до ящика; «лучший» — по проверке на скользящем начале; запаздывание в месяц, WAPE и
 // смещение; правка руками стоит вместо способа и уходит с месяцем; отдел продаж — сглаживание × 1,15 и запись журнала;
 // «спрос — по прогнозу» — правило задания читает прогноз по дням; показатель отдела продаж; миграция схемы 40 → 41.
-import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { afterAll, describe, expect, test } from 'bun:test';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { db } from '../../src/content';
 import { DAY, daysFromCivil, HOUR, isWorkday, momentOf } from '../../src/engine/core/calendar';
@@ -18,6 +19,7 @@ import { fromSave } from '../../src/engine/save';
 import type { FcMethod } from '../../src/content/types';
 import type { Command, ForecastState, Notice, PlantState } from '../../src/engine/types';
 import { calOf } from '../../src/engine/workdays';
+import { buildDb } from '../content/load';
 import { legacy } from './legacy';
 
 const SC = 'scn.proto';
@@ -384,4 +386,40 @@ describe('сохранение', () => {
     expect(s.journal.some(r => r.by === 'plan' && r.d.kind === 'order' && r.d.why?.fc)).toBe(true);
     expect(check(db, s)).toEqual([]);
   }, 60_000);
+});
+
+describe('сборщик базы — на испорченной копии content/', () => {
+  const dirs: string[] = [];
+  afterAll(() => {
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+  });
+  /** Копия content/ с правками: файл → что на что заменить. */
+  function broken(edits: Record<string, [string, string][]>): string[] {
+    const dir = mkdtempSync(join(tmpdir(), 'pharma-content-'));
+    dirs.push(dir);
+    cpSync(join(import.meta.dir, '../../content'), dir, { recursive: true });
+    for (const [file, e] of Object.entries(edits)) {
+      const p = join(dir, file);
+      let text = readFileSync(p, 'utf8');
+      for (const [a, b] of e) {
+        expect(text.includes(a)).toBe(true);
+        text = text.replace(a, b);
+      }
+      writeFileSync(p, text);
+    }
+    return buildDb(dir).errors;
+  }
+  const has = (errs: string[], part: string) => expect([part, errs.some(e => e.includes(part))]).toEqual([part, true]);
+  const MONTHS = 'months: [125, 125, 110, 95, 85, 80, 80, 85, 100, 105, 105, 105]';
+
+  test('группа сезона: 12 индексов больше нуля, в сумме 1200; у продукта — группа, которая есть; варианты политик — из списка', () => {
+    expect(broken({})).toEqual([]);
+    has(broken({ 'seasons/cold.yaml': [[MONTHS, 'months: [125, 125, 110, 95, 85, 80, 80, 85, 100, 105, 210]']] }), 'seasons/cold.yaml: months');
+    has(broken({ 'seasons/cold.yaml': [[MONTHS, 'months: [250, 125, 110, 95, 85, 80, 80, 85, 100, 105, 105, 0]']] }), 'seasons/cold.yaml: months');
+    has(broken({ 'seasons/cold.yaml': [[MONTHS, 'months: [125, 125, 110, 95, 85, 80, 80, 85, 100, 105, 105, 106]']] }), 'вместе 1200');
+    has(broken({ 'products/paracetamol500.yaml': [['season: sea.cold', 'season: sea.flu']] }), 'нет сезона спроса sea.flu');
+    has(broken({ 'products/paracetamol500.yaml': [['season: sea.cold\n', '']] }), 'products/paracetamol500.yaml: season');
+    has(broken({ 'policies/plan/method.yaml': [['options: [best, last-year, ma, ses, holt, group]', 'options: [best, last-year, ma, ses, holt]']] }), 'политика pol.plan.method: варианты правила');
+    has(broken({ 'scenarios/proto.yaml': [['  method: best', '  method: arima']] }), 'scenarios/proto.yaml: plan.method');
+  });
 });

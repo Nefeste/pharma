@@ -284,6 +284,8 @@ export class Game {
         if (hud.ref.open) this.store.set({ ref: { ...this.store.get().ref, view: d } });
       } else if (d.view === 'policies') {
         if (hud.policies.open) this.store.set({ policies: { ...this.store.get().policies, view: d } });
+      } else if (d.view === 'sop') {
+        if (hud.sop.open) this.store.set({ sop: { ...this.store.get().sop, view: d } });
       } else if (d.view === 'kpi') {
         // окно «Показатели» (Б5ж): вид прежней вкладки или месяца, отправленный до нового запроса, не показываем
         const k = this.store.get().kpi;
@@ -314,6 +316,8 @@ export class Game {
     for (const n of s.notices) if (stop(n) && n.kind === 'proposal') this.notice(n, true);
     for (const n of s.notices) if (stop(n) && n.kind !== 'proposal') this.notice(n, true);
     if (s.notices.some(n => n.kind === 'morning')) this.morning(sl.t);
+    // совещание S&OP (Б6г) открылось и ждёт игрока — окно совещания открывается само, как планёрка
+    if (s.notices.some(n => n.kind === 'sop' && n.open) && !this.store.get().sop.open) this.actions.toggleSop();
     if (s.stopped) this.autopause();
     this.gotSlice();
   }
@@ -454,6 +458,7 @@ export class Game {
       : n.kind === 'pairSuspended' ? T.notices.pairSuspended(named(this.db.suppliers[n.supplier]?.name, n.supplier), named(this.db.makers[n.maker]?.name, n.maker))
       : n.kind === 'setpoints' ? T.notices.setpoints(n.n)
       : n.kind === 'proposal' ? T.notices.proposal(T.journal.names[n.head] ?? n.head)
+      : n.kind === 'sop' ? T.notices.sop(T.sop.month(n.m), n.open)
       : n.kind === 'policy' ? (n.policy === 'pol.plan.method' ? T.notices.policyFc(named(this.db.policies[n.policy]?.name, n.policy)) : T.notices.policy(T.journal.names[n.head] ?? n.head, named(this.db.policies[n.policy]?.name, n.policy)))
       : n.kind === 'visitMoved' ? T.notices.visitMoved(`${workName(n, n.work)} — ${assetClass(n)}, ${T.assets.inv(n.inv)}`, whenText(this.store.get().start, n.at))
       : n.kind === 'noOne' ? T.notices.noOne(T.journal.namesOf[n.head] ?? n.head)
@@ -618,6 +623,8 @@ export class Game {
         if (!this.store.get().lab.open) this.actions.toggleLab();
       } else if (g.panel === 'policies') {
         if (!this.store.get().policies.open) this.actions.togglePolicies();
+      } else if (g.panel === 'sop') {
+        if (!this.store.get().sop.open) this.actions.toggleSop();
       } else if (g.panel === 'ref') {
         // справочник на вкладке извещения: «Места» (Б3в), «Контрагенты» (Б3г), «Люди» (Б4в)
         if (!this.store.get().ref.open) this.actions.toggleRef();
@@ -663,7 +670,7 @@ export class Game {
       const g = this.store.get().gantt;
       // большое окно поверх карты во всю ширину: панели справа закрываются; закрыли — то, что тянули, отменено
       const open = !g.open;
-      this.store.set({ gantt: { ...ganttKept(g), open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, ...this.policiesClosed() } : {}) });
+      this.store.set({ gantt: { ...ganttKept(g), open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, ...this.policiesClosed(), ...this.sopClosed() } : {}) });
       this.sendViews();
     },
     setGanttDays: days => {
@@ -745,11 +752,11 @@ export class Game {
     toggleInv: () => {
       // большое окно поверх карты, как расписание: панели справа, расписание и справочник закрываются
       const open = !this.store.get().inv.open;
-      this.store.set({ inv: { open }, ...(open ? { ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ inv: { open }, ...(open ? { ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.sopClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     openInv: id => {
-      this.store.set({ inv: { open: true, id }, ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ inv: { open: true, id }, ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.sopClosed(), ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     // досье серии (Б1д) — поверх остальных окон: открыли из карточки, «Сейчас» или расписания — они остаются под ним
@@ -766,7 +773,7 @@ export class Game {
       // справочник — большое окно поверх карты, как доска расследования
       const r = this.store.get().ref;
       const open = !r.open;
-      this.store.set({ ref: { ...r, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ ref: { ...r, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.sopClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     setRefTab: tab => this.store.set({ ref: { ...this.store.get().ref, tab } }),
@@ -784,7 +791,7 @@ export class Game {
       const held = this.store.get().top?.seats?.[0];
       const tab = !k.view && held ? held : k.tab;
       const keep = k.view?.tab === tab && (k.view.month.closed ? k.view.month.from : undefined) === month;
-      this.store.set({ kpi: { open: true, tab, ...(k.why ? { why: k.why } : {}), ...(month !== undefined ? { month } : {}), ...(keep ? { view: k.view } : {}) }, ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, ...this.policiesClosed(), ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ kpi: { open: true, tab, ...(k.why ? { why: k.why } : {}), ...(month !== undefined ? { month } : {}), ...(keep ? { view: k.view } : {}) }, ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, ...this.policiesClosed(), ...this.sopClosed(), ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     setKpiTab: tab => {
@@ -1004,7 +1011,7 @@ export class Game {
       // окно «Политики» (Б5г) — большое, как справочник и показатели: панели справа и другие большие окна закрываются
       const p = this.store.get().policies;
       const open = !p.open;
-      this.store.set({ policies: { ...p, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false } } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ policies: { ...p, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.sopClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     setPolicyTab: head => this.store.set({ policies: { ...this.store.get().policies, tab: head } }),
@@ -1057,6 +1064,39 @@ export class Game {
     resetPolicies: () => {
       const p = this.store.get().policies;
       if (Object.keys(p.draft).length > 0) this.store.set({ policies: { ...p, draft: {} } });
+    },
+    toggleSop: () => {
+      // окно совещания S&OP (Б6г) — большое, как политики: панели справа и другие большие окна закрываются
+      const p = this.store.get().sop;
+      const open = !p.open;
+      this.store.set({ sop: { ...p, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.sendViews();
+    },
+    setSopCell: (product, i, days) => {
+      // черновик — от показанного плана: клетка меняется, остальные — как в окне; совпал с показанным — черновика нет
+      const p = this.store.get().sop;
+      const shown = p.view?.cover;
+      if (!shown || !shown[product]) return;
+      const base = p.draft ?? shown;
+      const draft = Object.fromEntries(Object.entries(base).map(([k, xs]) => [k, k === product ? xs.map((x, j) => (j === i ? days : x)) : [...xs]]));
+      const same = p.view?.shown !== 'draft' && Object.entries(draft).every(([k, xs]) => xs.every((x, j) => x === shown[k]?.[j]));
+      this.store.set({ sop: { ...p, draft: same ? undefined : draft } });
+      this.sendViews();
+    },
+    resetSop: () => {
+      const p = this.store.get().sop;
+      if (!p.draft) return;
+      this.store.set({ sop: { ...p, draft: undefined } });
+      this.sendViews();
+    },
+    approveSop: () => {
+      // «Утвердить» (Б6г): показанный план — черновик или лучший план совещания — команда `sop`; черновик больше не нужен
+      const p = this.store.get().sop;
+      const cover = p.view?.cover;
+      if (!cover || !p.view?.open) return;
+      this.client.command({ kind: 'sop', cover: Object.fromEntries(Object.entries(cover).map(([k, xs]) => [k, [...xs]])), by: 'player' });
+      this.store.set({ sop: { ...p, draft: undefined } });
+      this.sendViews();
     },
     moveVisit: (asset, day) => this.client.command({ kind: 'visit', asset, day, by: 'player' }),
     togglePo: () => {
@@ -1195,6 +1235,12 @@ export class Game {
     return p.open ? { policies: { ...p, open: false } } : {};
   }
 
+  /** Окно совещания S&OP закрыто (Б6г): черновик живёт до «Утвердить» или «Сбросить». */
+  private sopClosed(): Partial<Hud> {
+    const p = this.store.get().sop;
+    return p.open ? { sop: { ...p, open: false } } : {};
+  }
+
   private ganttClosed(): Partial<Hud> {
     const g = this.store.get().gantt;
     return { gantt: { ...ganttKept(g), open: false } };
@@ -1234,6 +1280,7 @@ export class Game {
     if (h.po.open) list.push({ id: 'po', view: 'po', ...(h.po.supplier ? { supplier: h.po.supplier } : {}), lines: h.po.lines.map(l => ({ material: l.material, qty: l.qty })) });
     if (h.kpi.open) list.push({ id: 'kpi', view: 'kpi', tab: h.kpi.tab, ...(h.kpi.why ? { why: h.kpi.why } : {}), ...(h.kpi.month !== undefined ? { month: h.kpi.month } : {}) });
     if (h.policies.open) list.push({ id: 'policies', view: 'policies' });
+    if (h.sop.open) list.push({ id: 'sop', view: 'sop', ...(h.sop.draft ? { draft: Object.fromEntries(Object.entries(h.sop.draft).map(([p, xs]) => [p, [...xs]])) } : {}) });
     // «Сейчас» — и при закрытой панели: карточке — для «Смотреть», смотрящему — чтобы знать, когда работа кончилась
     if (h.now.open || this.selected || this.watching) list.push({ id: 'now', view: 'now' });
     // «Пол» (Б1и) — пока включён слой «Загрузка» или «Узкие места» (Б1к) и пока открыта карточка помещения или машины: в
@@ -1459,6 +1506,7 @@ export class Game {
       else if (k === 'KeyJ') this.actions.toggleJournal();
       else if (k === 'KeyK') this.actions.toggleKpi();
       else if (k === 'KeyP') this.actions.togglePolicies();
+      else if (k === 'KeyO') this.actions.toggleSop();
       else if (k === 'KeyL') this.actions.nextLayer();
       else if (k === 'F1') {
         e.preventDefault();
@@ -1480,6 +1528,7 @@ export class Game {
         else if (h.ref.open) this.actions.toggleRef();
         else if (h.kpi.open) this.actions.toggleKpi();
         else if (h.policies.open) this.actions.togglePolicies();
+        else if (h.sop.open) this.actions.toggleSop();
         else if (h.morning.open) this.actions.closeMorning(false);
         else if (h.cash.open) this.actions.toggleCash();
         else if (h.lab.open) this.actions.toggleLab();

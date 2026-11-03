@@ -24,10 +24,10 @@ const MEMO_SEATS: readonly SeatId[] = ['production', 'quality', 'supply', 'comme
 /**
  * Автопаузы прототипа — по порядку меню. Из событий сотрудника есть потеря допуска (Б3б), сверхурочные года на исходе
  * (Б4а) и заявление об увольнении (Б4в); срок квалификации или калибровки актива (Б3в); приостановленная пара поставщика
- * (Б3г); черновик графика отпусков (Б4г); некому решить за руководителя (Б5в); предложение руководителя (Б5б); жалобы,
- * совещания S&OP и инспекции в прототипе нет.
+ * (Б3г); черновик графика отпусков (Б4г); некому решить за руководителя (Б5в); предложение руководителя (Б5б); совещание
+ * S&OP (Б6г); жалоб и инспекций в прототипе нет.
  */
-export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'leaveDraft', 'noOne', 'proposal', 'ask', 'memoDone', 'morning'] as const;
+export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'leaveDraft', 'noOne', 'proposal', 'ask', 'memoDone', 'sop', 'morning'] as const;
 export type Pause = (typeof PAUSES)[number];
 
 /**
@@ -57,6 +57,8 @@ export const PAUSE_NOTICES: Record<Pause, readonly string[]> = {
   ask: ASK_SEATS.map(x => `ask/${x}`),
   // ответ на служебную записку (Б5д): у поста, с которого она
   memoDone: MEMO_SEATS.map(x => `memoDone/${x}`),
+  // совещание S&OP (Б6г): открытое ждёт «Утвердить»; план, который утвердил коллега, — извещение без стопа
+  sop: ['sop'],
   morning: ['morning'],
 };
 
@@ -90,6 +92,8 @@ export const PAUSE_SEATS: Record<Pause, readonly SeatId[] | 'all'> = {
   ask: ASK_SEATS,
   // ответ на записку (Б5д) — у поста, с которого она (`KEY_SEATS`)
   memoDone: MEMO_SEATS,
+  // совещание S&OP (Б6г) ведёт директор, план готовит «Производство»: открытое совещание — только у этих мест
+  sop: ['production'],
   morning: 'all',
 };
 
@@ -161,7 +165,7 @@ export function keepOff(keep: Keep | undefined, off: readonly Pause[]) {
 }
 
 /** Куда ведёт щелчок по извещению: вещь на полу, окно, справочник на своей вкладке, доска расследования или журнал на записи. */
-export type Go = { thing: Thing } | { panel: 'gantt' | 'morning' | 'lab' | 'policies' } | { panel: 'ref'; tab: 'places' | 'partners' | 'people' } | { inv: string } | { journal: number };
+export type Go = { thing: Thing } | { panel: 'gantt' | 'morning' | 'lab' | 'policies' | 'sop' } | { panel: 'ref'; tab: 'places' | 'partners' | 'people' } | { inv: string } | { journal: number };
 
 /** Машина линии или оборудование участка по имени в плане — вещь для карточки. */
 export function machineThing(plant: Plant, id: string): Thing | undefined {
@@ -190,6 +194,8 @@ export function goOf(plant: Plant, n: Notice): Go | undefined {
       return { thing: { kind: 'truck', n: Number(n.truck.slice(1)), customer: false } };
     case 'materialLate':
       return { panel: 'gantt' };
+    case 'sop':
+      return { panel: 'sop' };
     case 'orderRisk':
       return { panel: 'morning' };
     case 'lotRejected':

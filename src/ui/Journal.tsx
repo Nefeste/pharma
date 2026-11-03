@@ -143,7 +143,7 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
     case 'fcEdit':
       return J.fcEdit(sku(d.sku), monthWord(d.m), d.cases !== undefined ? T.fc.cases(d.cases) : undefined);
     case 'sop':
-      return J.sop(monthWord(d.from), sopCovers(d.cover));
+      return J.sop(T.sop.month(d.from), sopCovers(d.cover));
     case 'waste':
       return J.waste(d.at !== undefined ? whenText(start, d.at) : undefined);
     case 'mode':
@@ -264,7 +264,9 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
       const held = w.items.filter(x => x.held).map(x => J.order.held(sku(x.sku), whenText(start, x.held!.t), whenText(start, x.held!.until)));
       // спрос по прогнозу планирования (Б6в)
       const fc = w.fc ? [J.order.fc] : [];
-      return [[head, J.order.threshold(Number.isInteger(ahead) ? ahead : Math.round(ahead * 10) / 10, w.cover), rule].filter(Boolean).join('; '), ...fc, ...(due ? [due] : []), others, ...held, ...(limited ? [limited] : [])];
+      // запас позиций продукта — из утверждённого плана S&OP (Б6г)
+      const sop = w.sop ? [J.order.sop] : [];
+      return [[head, J.order.threshold(Number.isInteger(ahead) ? ahead : Math.round(ahead * 10) / 10, w.cover), rule].filter(Boolean).join('; '), ...fc, ...sop, ...(due ? [due] : []), others, ...held, ...(limited ? [limited] : [])];
     }
     case 'po': {
       const out = (d.why ?? []).map(w => {

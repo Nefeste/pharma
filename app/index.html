@@ -355,6 +355,14 @@
     .pol .prow { display: grid; grid-template-columns: minmax(220px, 1.2fr) minmax(240px, 1.4fr) 2fr; gap: 4px 12px; align-items: center; padding: 5px 0 5px 8px; border-bottom: 1px solid rgba(255,255,255,.06); border-left: 3px solid transparent; }
     .pol .prow.drafted { border-left-color: var(--accent); background: rgba(47,181,201,.06); }
     .pol .pctl { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    /* окно совещания S&OP (Б6г): таблицы месяцев, клетки целей с выбором, итог плана */
+    .sop table.sopgrid { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 12px; }
+    .sop table.sopgrid th, .sop table.sopgrid td { padding: 2px 6px; text-align: right; border-bottom: 1px solid rgba(255,255,255,.06); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sop table.sopgrid th:first-child, .sop table.sopgrid td:first-child { text-align: left; width: 26%; }
+    .sop table.sopgrid tr.sopsub td { color: var(--accent); padding-top: 6px; }
+    .sop table.sopgrid td.drafted { box-shadow: inset 3px 0 0 var(--accent); }
+    .sop table.sopgrid select { width: 100%; }
+    .sop .sopres { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }
     .pol .pctl b { min-width: 3.5em; text-align: center; }
     .pol .pfoot { display: flex; align-items: center; gap: 8px; padding: 8px 0 4px; flex-wrap: wrap; }
     .pol .pfoot > .muted { margin-right: auto; }

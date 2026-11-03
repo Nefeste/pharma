@@ -73,5 +73,7 @@ export function stopKey(n: Notice): string {
   // «Просят решить» и ответ на записку (Б5д): у того, кого спросили, и у поста, с которого записка
   if (n.kind === 'ask') return `ask/${n.seat}`;
   if (n.kind === 'memoDone') return `memoDone/${n.seat ?? 'director'}`;
+  // совещание S&OP (Б6г): встаёт только открытое — план, который утвердил коллега, лишь извещение
+  if (n.kind === 'sop') return n.open ? 'sop' : 'sop/approved';
   return n.kind === 'assetExpired' ? `${n.kind}/${n.family}` : n.kind === 'overtimeLow' || n.kind === 'resign' ? `${n.kind}/${n.dept}` : n.kind;
 }

@@ -51,12 +51,16 @@ export interface PoliciesView {
 /**
  * Какие решения журнала читали политику: задания на серию — запас, окно спроса и, у кампании, «срочно»; заказы поставщику
  * — страховой запас и сколько суток; замена узла по наработке и заказ ЗИП — своей вещи; визит — срок предупреждения;
- * вывоз — доля мест или срок; уставки к цели; с Б5е — CAPA по повтору и оценка пары. Уборку журнал не пишет.
+ * вывоз — доля мест или срок; уставки к цели; с Б5е — CAPA по повтору и оценка пары; с Б6в — спрос и, когда спрос по
+ * прогнозу, способ прогноза. Уборку журнал не пишет.
  */
 const READS: Record<string, (d: Decided, of?: string) => boolean> = {
   'pol.plan.cover': d => d.kind === 'order' && !!d.why && d.why.rule !== 'turn',
   'pol.plan.window': d => d.kind === 'order' && !!d.why && d.why.rule !== 'turn',
   'pol.plan.urgent': d => d.kind === 'order' && (d.why?.rule === 'campaign' || d.why?.rule === 'urgent'),
+  // прогноз продаж (Б6в): спрос правила — и по заказам окна, и по прогнозу; способ прогноза — когда спрос по нему
+  'pol.plan.demand': d => d.kind === 'order' && !!d.why && d.why.rule !== 'turn',
+  'pol.plan.method': d => d.kind === 'order' && !!d.why?.fc,
   'pol.supply.safety': d => d.kind === 'po' && (d.why?.length ?? 0) > 0,
   'pol.supply.every': d => d.kind === 'po' && (d.why?.length ?? 0) > 0,
   'pol.maint.replace': (d, of) => d.kind === 'replace' && !!d.why && d.part === of,

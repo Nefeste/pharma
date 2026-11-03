@@ -17,9 +17,12 @@ const SC = 'scn.proto';
 const plan = planOf(db, db.scenarios[SC].plant);
 const PHASES: RoomPhase[] = ['work', 'clean', 'held', 'dirty', 'free'];
 
-/** Завод после 40 суток и ещё 10 часов: сегодня — неполные сутки, у линии идёт смена. */
+/**
+ * Завод после 47 суток и ещё 10 часов — понедельник: сегодня — неполные сутки, у линии идёт смена, серия держит помещение
+ * без работы (с сезоном спроса Б6в — с 47-х суток, а не с 40-х).
+ */
 const s: PlantState = newPlant(db, { scenario: SC });
-apply(db, s, { kind: 'advance', seconds: 40 * DAY + 10 * HOUR });
+apply(db, s, { kind: 'advance', seconds: 47 * DAY + 10 * HOUR });
 const today = momentOf(s.start, s.t).day;
 
 describe('помещения', () => {

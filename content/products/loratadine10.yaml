@@ -10,5 +10,7 @@ form: tablet
 strength: { mg: 10 }
 # в перечне ЖНВЛП: твёрдые формы для приёма внутрь с обычным высвобождением (распоряжение № 3867-р, с. 103 копии)
 jnvlp: true
+# сезон спроса (Б6в): группа «аллергия»
+season: sea.allergy
 source: [jnvlp-3867, meb-loratadine-2022, ru-loratadine]
 review: draft

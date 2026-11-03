@@ -21,6 +21,8 @@ import type { Actions, Hud } from './store';
 import { attrNum, attrText, paramText } from './units';
 
 const sku = (id?: string) => (id ? named(db?.skus[id]?.name, id) : '');
+/** Месяц прогноза (Б6в) словом: номер — год × 12 + месяц − 1. */
+const monthWord = (n: number) => T.fc.month(Math.floor(n / 12), (n % 12) + 1);
 const product = (id?: string) => (id ? named(db?.products[id]?.name, id) : '');
 const material = (id: string) => named(db?.materials[id]?.name, id);
 const role = (id: string) => named(db?.roles[id]?.name, id);
@@ -134,6 +136,10 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
       return J.contract(d.contract, party(d.party), dayText(d.to));
     case 'extend':
       return J.extend(d.contract, party(d.party), dayText(d.to));
+    case 'forecast':
+      return J.forecast(monthWord(d.m), T.fc.cases(d.cases));
+    case 'fcEdit':
+      return J.fcEdit(sku(d.sku), monthWord(d.m), d.cases !== undefined ? T.fc.cases(d.cases) : undefined);
     case 'waste':
       return J.waste(d.at !== undefined ? whenText(start, d.at) : undefined);
     case 'mode':
@@ -252,7 +258,9 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
       // срок (Б6а): когда кончится запас позиции; отменённое на запас — до его «не раньше» позицию не ставят
       const due = d.due !== undefined && d.for?.kind !== 'order' ? J.order.due(whenText(start, d.due)) : '';
       const held = w.items.filter(x => x.held).map(x => J.order.held(sku(x.sku), whenText(start, x.held!.t), whenText(start, x.held!.until)));
-      return [[head, J.order.threshold(Number.isInteger(ahead) ? ahead : Math.round(ahead * 10) / 10, w.cover), rule].filter(Boolean).join('; '), ...(due ? [due] : []), others, ...held, ...(limited ? [limited] : [])];
+      // спрос по прогнозу планирования (Б6в)
+      const fc = w.fc ? [J.order.fc] : [];
+      return [[head, J.order.threshold(Number.isInteger(ahead) ? ahead : Math.round(ahead * 10) / 10, w.cover), rule].filter(Boolean).join('; '), ...fc, ...(due ? [due] : []), others, ...held, ...(limited ? [limited] : [])];
     }
     case 'po': {
       const out = (d.why ?? []).map(w => {
@@ -356,6 +364,10 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
       return [d.why.prev ? J.contract(d.why.prev, dayText(d.why.end ?? 0)) : J.contractNew];
     case 'extend':
       return [J.extend(dayText(d.why.end))];
+    case 'forecast':
+      return [J.forecast(T.fc.methods[d.method] ?? d.method, `+${pctText(d.optimism)}`)];
+    case 'fcEdit':
+      return [J.fcEdit(T.fc.cases(d.was))];
     case 'waste': {
       // коллега склада (Б1з): по заполнению зоны или по сроку; у игрока причины нет
       const w = d.why;

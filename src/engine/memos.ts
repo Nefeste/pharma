@@ -45,6 +45,8 @@ export function cmdHead(db: ContentDb, cmd: Command, role?: Id): Head | undefine
     case 'order':
     case 'shift':
     case 'pack':
+    // правка прогноза планирования (Б6в)
+    case 'forecast':
       return 'plan';
     case 'maintain':
     case 'visit':

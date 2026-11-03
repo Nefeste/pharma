@@ -12,6 +12,7 @@ import { planOf } from '../engine/plant';
 import { shiftEndAt } from '../engine/staff';
 import type { Batch, BatchStatus, PlantState } from '../engine/types';
 import { type DailyMark, dailyMarks } from './daily';
+import { type ForecastView, forecastView } from './forecast';
 import { type Jobs, jobsOf } from './jobs';
 import { type LaunchView, launchView } from './launch';
 import { type AssetInfo, assetInfo } from './places';
@@ -29,6 +30,8 @@ export interface GanttQuery {
   drop?: string[];
   /** вкладка «План запуска» открыта (Б6б): собрать и его */
   launch?: true;
+  /** вкладка «Прогноз» открыта (Б6в): собрать и его; ключ «прогноза против факта» — позиция или продукт */
+  forecast?: { key?: string };
 }
 
 export interface GhostQuery {
@@ -86,6 +89,8 @@ export interface GanttView {
   jobs: Jobs;
   /** план запуска (Б6б) — с черновиком; только когда открыта его вкладка */
   launch?: LaunchView;
+  /** прогноз продаж (Б6в) — только когда открыта его вкладка и у сценария есть прогноз */
+  forecast?: ForecastView;
   /** отметки полос (Б6б): строки заданий на сутки — комплектовки, стадии, упаковка — с итогом */
   daily: DailyMark[];
 }
@@ -206,6 +211,7 @@ export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttVie
   };
   for (const b of bars) seen(b.asset);
   const launch = q.launch ? launchView(db, s, draft, fresh, drop) : undefined;
+  const fc = q.forecast ? forecastView(db, s, q.forecast.key) : undefined;
   if (launch) {
     for (const v of launch.visits) seen(v.asset);
     for (const j of launch.jobs) ids.add(j.batch);
@@ -236,6 +242,7 @@ export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttVie
     assets,
     jobs: jobsOf(db, s, f),
     ...(launch ? { launch } : {}),
+    ...(fc ? { forecast: fc } : {}),
     daily: dailyMarks(db, s, q.from, q.to),
   };
 }

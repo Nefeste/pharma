@@ -9,6 +9,7 @@ import type { Rng } from './core/rng';
 import { addWorkdays, civilFromDays, DAY, daysFromCivil, HOUR, isWorkday, momentOf, workdayOnOrAfter, workdayOnOrBefore } from './core/calendar';
 import { BANK_HOUR, dueIn, owe, part } from './cash';
 import { dockWait } from './lean';
+import { addDemand, seasonSec } from './forecast';
 import { fgExpiry } from './line';
 import { coldOf } from './places';
 import { casesOf } from './planner';
@@ -157,14 +158,18 @@ export function marketHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   if (now.sec === TRUCK_HOUR) trucksArrive(db, s, notices);
 }
 
-/** Заказ покупателя: по каждой позиции — целые ящики, пуассоновское число со средним по спросу с прошлого заказа. */
+/**
+ * Заказ покупателя: по каждой позиции — целые ящики, пуассоновское число со средним по спросу с прошлого заказа; у
+ * сценария с прогнозом (Б6в) — с сезоном группы товаров каждого месяца этих суток, и ящики — в факт спроса месяца.
+ */
 function placeOrder(db: ContentDb, s: PlantState, c: Customer) {
   const st = s.customers[c.id];
   const lines: Order['lines'] = [];
   for (const [sku, perDay] of Object.entries(c.demand)) {
     const per = db.skus[sku].case.per;
-    const cases = roll(s, `market/${c.id}/${sku}`, r => poisson(r, (perDay * (s.t - st.last)) / (DAY * per)));
+    const cases = roll(s, `market/${c.id}/${sku}`, r => poisson(r, (perDay * seasonSec(db, s, sku, st.last, s.t)) / (DAY * per)));
     if (cases > 0) lines.push({ sku, cases, reserved: 0, shipped: 0 });
+    if (cases > 0) addDemand(s, sku, cases);
   }
   st.last = s.t;
   if (lines.length === 0) return;

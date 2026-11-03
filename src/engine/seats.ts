@@ -14,6 +14,8 @@ export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
   order: 'production',
   shift: 'production',
   cancel: 'production',
+  // правка прогноза планирования (Б6в) — пост планирования
+  forecast: 'production',
   pack: 'production',
   maintain: 'production',
   rush: 'quality',

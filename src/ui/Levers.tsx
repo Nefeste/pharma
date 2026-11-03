@@ -40,6 +40,8 @@ function words(l: Exclude<Lever, { k: 'later' }>): [string, string] {
       return [T.levers.jobs, T.levers.jobsWhat];
     case 'launch':
       return [T.levers.launch, T.levers.launchWhat];
+    case 'forecast':
+      return [T.levers.forecast, T.levers.forecastWhat];
     case 'stock':
       return [T.levers.stock, T.levers.stockWhat];
     case 'thing':
@@ -101,6 +103,11 @@ function run(l: Lever, hud: Hud, actions: Actions) {
     case 'launch':
       // вкладка «План запуска» (Б6б): сначала вкладка, потом окно — оно откроется на ней
       actions.ganttTab('launch');
+      if (!hud.gantt.open) actions.toggleGantt();
+      return;
+    case 'forecast':
+      // вкладка «Прогноз» (Б6в): так же
+      actions.ganttTab('forecast');
       if (!hud.gantt.open) actions.toggleGantt();
       return;
     case 'stock':

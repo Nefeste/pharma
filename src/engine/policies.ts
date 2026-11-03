@@ -14,6 +14,8 @@ export const POL = {
   cover: 'pol.plan.cover',
   window: 'pol.plan.window',
   urgent: 'pol.plan.urgent',
+  method: 'pol.plan.method',
+  demand: 'pol.plan.demand',
   safety: 'pol.supply.safety',
   every: 'pol.supply.every',
   replace: 'pol.maint.replace',
@@ -44,7 +46,8 @@ export const policyHead = (policy: Id): PolicyHead | undefined => {
 /**
  * С чего начинает завод — запись сценария: запас позиций, окно спроса и кампании планирования; страховой запас и заказ
  * снабжения; порог замены узла (нет — после отказа) и уровень ЗИП запчасти; срок визита подрядчика; уборка после серии;
- * порог вывоза отклонённого; уставки при уходе с поста; с Б5е — CAPA по повтору и срок оценки пары у начальника ООК.
+ * порог вывоза отклонённого; уставки при уходе с поста; с Б5е — CAPA по повтору и срок оценки пары у начальника ООК;
+ * с Б6в — способ прогноза и откуда спрос правила задания, если у сценария есть прогноз.
  * Сценарий правила не задаёт — `undefined`: политики нет.
  */
 export function policyDefault(db: ContentDb, sc: Scenario, policy: Id, of?: string): PolicyValue | undefined {
@@ -55,6 +58,11 @@ export function policyDefault(db: ContentDb, sc: Scenario, policy: Id, of?: stri
       return sc.plan?.window;
     case POL.urgent:
       return sc.plan ? (sc.plan.urgent ?? OFF) : undefined;
+    // прогноз продаж (Б6в): только у сценария с прогнозом
+    case POL.method:
+      return sc.forecast ? sc.plan?.method : undefined;
+    case POL.demand:
+      return sc.forecast ? sc.plan?.demand : undefined;
     case POL.safety:
       return sc.supply?.safety;
     case POL.every:
@@ -168,6 +176,8 @@ const SHAPE: Record<string, Pick<Policy, 'kind' | 'each' | 'off' | 'options'>> =
   [POL.cover]: { kind: 'days' },
   [POL.window]: { kind: 'days' },
   [POL.urgent]: { kind: 'days', off: true },
+  [POL.method]: { kind: 'choice', options: ['best', 'last-year', 'ma', 'ses', 'holt', 'group'] },
+  [POL.demand]: { kind: 'choice', options: ['orders', 'forecast'] },
   [POL.safety]: { kind: 'days' },
   [POL.every]: { kind: 'days' },
   [POL.replace]: { kind: 'wear', each: 'part', off: true },

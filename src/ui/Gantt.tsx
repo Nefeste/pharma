@@ -19,6 +19,7 @@ import { assetClass, assetName, unfitText, workName } from './assets';
 import { db } from './db';
 import { Jobs } from './Jobs';
 import { Launch } from './Launch';
+import { Forecast } from './Forecast';
 import { draftKey } from './draft';
 import { actLabel, actOf, actOn } from './memo';
 import { type Actions, type GanttDays, type Hud, PLAN_RUN, type PlanRun } from './store';
@@ -86,7 +87,10 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
   // черновик: полосы сдвинутых им серий — в белой рамке; прежние — бледнее
   const moved = new Set(v.moved);
   // срочное задание (Б1г) — по позициям плана выпуска сценария этого завода
-  const items = Object.values(db?.scenarios ?? {}).find(sc => sc.plant === plant)?.plan?.items ?? [];
+  const scen = Object.values(db?.scenarios ?? {}).find(sc => sc.plant === plant);
+  const items = scen?.plan?.items ?? [];
+  // вкладка «Прогноз» (Б6в) — у сценария с прогнозом
+  const fcOn = !!scen?.forecast;
 
   /** Строка срочного задания черновика: позиция, а под заказ покупателя (Б6а) — и чей заказ; из плана запуска (Б6б) — день. */
   const urgentText = (u: { sku: Id; for?: string; at?: number }) => {
@@ -298,8 +302,13 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
           <button type="button" className={g.tab === 'launch' ? 'on' : ''} onClick={() => actions.ganttTab('launch')} data-test="gantt-tab-launch">
             {T.launch.tab}
           </button>
+          {fcOn ? (
+            <button type="button" className={g.tab === 'forecast' ? 'on' : ''} onClick={() => actions.ganttTab('forecast')} data-test="gantt-tab-forecast">
+              {T.fc.tab}
+            </button>
+          ) : null}
         </span>
-        <span className="muted">{g.tab === 'jobs' ? T.jobs.question : g.tab === 'launch' ? T.launch.question : T.gantt.question}</span>
+        <span className="muted">{g.tab === 'jobs' ? T.jobs.question : g.tab === 'launch' ? T.launch.question : g.tab === 'forecast' ? T.fc.question : T.gantt.question}</span>
         <span className="filters grow">
           {DAYS.map(d => (
             <button type="button" key={d} className={g.days === d ? 'on' : ''} onClick={() => actions.setGanttDays(d)} data-test={`gantt-days-${d}`}>
@@ -381,6 +390,12 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
       ) : g.tab === 'launch' ? (
         v.launch ? (
           <Launch hud={hud} actions={actions} v={v.launch} labels={labels} assets={v.assets} mine={mine} title={act.title} />
+        ) : (
+          <div className="muted">{T.app.loading}</div>
+        )
+      ) : g.tab === 'forecast' ? (
+        v.forecast ? (
+          <Forecast hud={hud} actions={actions} v={v.forecast} />
         ) : (
           <div className="muted">{T.app.loading}</div>
         )

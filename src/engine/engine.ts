@@ -27,6 +27,7 @@ import { leanHour, leanStep, newLoss } from './lean';
 import { leaveCommand, leaveHour } from './leave';
 import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from './line';
 import { maintainCommand, maintDone, maintStep, newParts, spareArrives } from './maint';
+import { forecastCommand, forecastHour, newForecast, replan, runForecast } from './forecast';
 import { marketDone, marketHour, marketStep, newCustomers, rznPublished, seedFg } from './market';
 import { memoCommand, memoDue, memoHour, withdrawCommand } from './memos';
 import { BATCH_HOUR, cancelOrder, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
@@ -35,7 +36,7 @@ import { auditDone, partnersDone, partnersHour, seedContracts, seedPairs, specPa
 import { coldOf } from './places';
 import { planHour } from './planner';
 import { planOf } from './plant';
-import { newPolicies, policyCommand } from './policies';
+import { newPolicies, POL, policyCommand } from './policies';
 import { assessCommand, devHour, qaDone, qaStep, releaseCommand } from './qa';
 import { foreign, seatCommand } from './seats';
 import { goHome, LAST_CALL, postArrive, toPosts } from './staff';
@@ -167,6 +168,10 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   }
   // склад ГП на старте (Б1г): завод уже работает — выпущенная ГП в обороте, ближе к экспедиции
   seedFg(db, sc, s, startDay);
+  // прогноз продаж (Б6в): история спроса до старта и первый прогноз — в начале игры, без записи журнала
+  s.forecast = newForecast(db, s);
+  if (s.forecast) runForecast(db, s, s.forecast.at, { lag: true, journal: false });
+  else delete s.forecast;
   // первая планёрка — ближайшие 08:00; часы — с ближайшего целого часа
   const today = Math.floor(s.t / DAY) * DAY;
   schedule(s.agenda, s.t < today + MORNING ? today + MORNING : today + DAY + MORNING, { kind: 'morning' });
@@ -249,6 +254,12 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
     case 'cancel': {
       const notices: Notice[] = [];
       cancelOrder(s, cmd, notices);
+      steps(db, s, notices);
+      return notices;
+    }
+    case 'forecast': {
+      const notices: Notice[] = [];
+      forecastCommand(db, s, cmd, notices);
       steps(db, s, notices);
       return notices;
     }
@@ -339,6 +350,8 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       // политика руководителя (Б5г): с ближайшего часа его правила — сейчас раздавать нечего
       const notices: Notice[] = [];
       policyCommand(db, s, cmd, notices);
+      // способ прогноза (Б6в): прогноз планирования — сразу по новому способу
+      if (cmd.policy === POL.method && notices.some(n => n.kind === 'policy')) replan(db, s);
       return notices;
     }
     case 'deputy': {
@@ -491,6 +504,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       leanHour(db, s);
       // показатели руководителей (Б5ж): в полночь — срез суток, на 1-е — итог прошлого месяца; после учёта потерь часа
       kpiHour(db, s);
+      // прогноз продаж (Б6в): в 00:00 1-го числа — после итога месяца, по которому показатель меряет прошлый прогноз
+      forecastHour(db, s);
       // вывоз отклонённого (Б1з): коллега склада в 09:00, фура подрядчика в его час — к рампе её поставит шаг отгрузки
       wasteHour(db, s, notices);
       marketHour(db, s, notices);

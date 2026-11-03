@@ -1,13 +1,13 @@
 // Состояние завода и обмен с движком (docs/02-architecture.md, §1, §3, §7; docs/specs/2026-10-engine.md). Состояние —
 // обычный сериализуемый объект: сохранение — его снимок со схемой и миграциями (ADR студии 0004). Сущности — словари с
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
-import type { Attr, Dept, DevClass, HeadId, Id, IncidentRoot, OvertimeMode, SeatId, TaskKind, ZoneKind } from '../content/types';
+import type { Attr, Dept, DevClass, FcMethod, HeadId, Id, IncidentRoot, OvertimeMode, SeatId, TaskKind, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 40;
+export const SCHEMA = 41;
 
 // ---------------------------------------------------------------- склад
 
@@ -1455,6 +1455,39 @@ export interface DailyTask {
   closed?: true;
 }
 
+// ---------------------------------------------------------------- прогноз продаж (Б6в)
+
+/** Прогноз позиций на месяц: позиция → ящики. */
+export type FcCases = Record<Id, number>;
+
+/**
+ * Прогноз месяца с запаздыванием в месяц (Б6в): сделанный 1-го числа прошлого месяца — у планирования (с правками) и
+ * отдела продаж; месяц — год × 12 + месяц − 1. Ошибку способов движок считает заново по ряду спроса.
+ */
+export interface FcLag {
+  m: number;
+  plan: FcCases;
+  sales: FcCases;
+}
+
+/**
+ * Прогноз продаж завода (Б6в; src/engine/forecast.ts). Спрос — ящики, заказанные покупателями, по месяцу заказа: с
+ * `from` — история до старта, потом факт. Нынешний прогноз — с месяца `at` на 18 месяцев: каждым способом, планирования —
+ * способом `method` с правками руками, отдела продаж — сглаживанием с оптимизмом. С запаздыванием в месяц — за 24 месяца.
+ */
+export interface ForecastState {
+  from: number;
+  demand: Record<Id, number[]>;
+  at: number;
+  method: FcMethod;
+  by: Record<FcMethod, Record<Id, number[]>>;
+  plan: Record<Id, number[]>;
+  sales: Record<Id, number[]>;
+  /** правки руками: позиция → месяц → ящики */
+  edits: Record<Id, Record<number, number>>;
+  lag: FcLag[];
+}
+
 // ---------------------------------------------------------------- журнал решений (Б5а)
 
 /**
@@ -1494,6 +1527,8 @@ export interface OrderWhy {
   seen?: number;
   soon?: number;
   prev?: Id;
+  /** спрос позиций — по прогнозу планирования, а не по заказам окна (Б6в, политика «спрос») */
+  fc?: true;
 }
 
 /**
@@ -1607,6 +1642,13 @@ export type Decided =
   | { kind: 'contract'; contract: string; party: Id; to: number; why: { prev?: string; end?: number } }
   /** продлён договор поставки покупателя: прежний последний день и новый */
   | { kind: 'extend'; contract: string; party: Id; to: number; why: { end: number } }
+  /**
+   * прогноз отдела продаж (Б6в) в 00:00 1-го числа: на какой месяц, ящиков всех позиций, каким способом и с каким
+   * оптимизмом, доля 1/10 000
+   */
+  | { kind: 'forecast'; m: number; cases: number; method: FcMethod; optimism: number }
+  /** правка прогноза планирования руками (Б6в): позиция, месяц, ящики — нет, значит сняли; что было по способу */
+  | { kind: 'fcEdit'; sku: Id; m: number; cases?: number; was: number }
   /**
    * вывоз отклонённого (Б1з): заказ и мгновение приезда подрядчика; у коллеги склада — сколько мест зоны занято из
    * скольких и, если паллета ждёт вывоза дольше срока, — с какого мгновения она отклонена и срок, месяцев; с Б5г — и порог
@@ -1855,6 +1897,8 @@ export interface PlantState {
    * правила их не читают. Нет — заданий не ставят: так у копии прогона плана; сохранения до схемы 40 начинают их пустыми
    */
   daily?: DailyTask[];
+  /** прогноз продаж (Б6в; src/engine/forecast.ts): у сценария без прогноза — нет */
+  forecast?: ForecastState;
   /** вывоз отклонённого (Б1з; src/engine/waste.ts): заказанный вывоз — один, пока подрядчик не уехал; журнал отходов */
   waste: WasteState;
   /** показатели руководителей (Б5ж; src/engine/kpi.ts): срезы суток этого месяца и закрытые месяцы */
@@ -1975,6 +2019,11 @@ export type Command =
   /** отменить задание на серию до комплектовки (Б6а) */
   | { kind: 'cancel'; batch: string; by?: string }
   /**
+   * правка прогноза планирования (Б6в): позиция плана выпуска, номер месяца — год × 12 + месяц − 1 — из 18 нынешнего
+   * прогноза, ящики; без ящиков — правку снять
+   */
+  | { kind: 'forecast'; sku: Id; m: number; cases?: number; by?: string }
+  /**
    * оценка влияния отклонения (Б1г): пост качества решает, специалист ООК делает работу; «без влияния» — только когда
    * связанные испытания серии готовы и в спецификации
    */
@@ -2079,6 +2128,10 @@ export type Refusal =
   | 'noBatch'
   | 'notBulk'
   | 'noSku'
+  /** прогноз продаж (Б6в): у сценария его нет; месяц не из нынешнего прогноза; ящики — не целое число не меньше нуля */
+  | 'noForecast'
+  | 'fcMonth'
+  | 'fcCases'
   | 'notReady'
   | 'noPart'
   | 'busy'

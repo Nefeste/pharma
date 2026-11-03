@@ -110,8 +110,10 @@ export interface Hud {
     urgent: readonly Urgent[];
     /** отмены черновика (Б6а): командами `cancel` станут при «Утвердить» */
     drop: readonly string[];
-    /** вкладка (Б6а): полосы расписания, список заданий или, с Б6б, план запуска; отбор списка */
-    tab?: 'jobs' | 'launch';
+    /** вкладка (Б6а): полосы расписания, список заданий или, с Б6б, план запуска, с Б6в — прогноз; отбор списка */
+    tab?: 'jobs' | 'launch' | 'forecast';
+    /** «прогноз против факта» (Б6в): позиция или продукт; нет — первый продукт плана */
+    fcKey?: string;
     jobs?: JobsFilter;
     /** чьи полосы подсвечены (Б6а): «Полосы» у строки вкладки «Задания» */
     focus?: string;
@@ -421,7 +423,14 @@ export interface Actions {
   /** срочное задание черновика (Б1г); под заказ покупателя (Б6а) */
   urgent(recipe: Id, sku: Id, order?: string, at?: number): void;
   /** задания на серию (Б6а): вкладка окна расписания, отбор списка, «Отменить» в черновике, отмена из карточки */
-  ganttTab(tab?: 'jobs' | 'launch'): void;
+  ganttTab(tab?: 'jobs' | 'launch' | 'forecast'): void;
+  /**
+   * прогноз продаж (Б6в): позиция или продукт «прогноза против факта»; правка прогноза планирования — команда `forecast`
+   * (без ящиков — снять), с чужого поста — записка начальнику отдела планирования; политика способа или спроса — `policy`
+   */
+  fcKey(key: string): void;
+  fcEdit(sku: Id, m: number, cases?: number, memo?: boolean): void;
+  fcPolicy(policy: Id, value: string): void;
   /** полосы задания в расписании (Б6а): вкладка полос, окно — с их начала, сами — подсвечены */
   ganttBars(batch: string, at: number): void;
   jobsFilter(f: JobsFilter): void;

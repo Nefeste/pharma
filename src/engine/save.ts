@@ -541,6 +541,9 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     runForecast(db, s, monthAt(s, s.t), { lag: true, journal: false });
     return raw;
   },
+  // 41 → 42 (Б6г): совещание S&OP — утверждённых планов нет: правило берёт политику «запас позиций», как раньше; первое
+  // совещание — в третий рабочий день ближайшего месяца
+  41: raw => raw,
 };
 
 export function toSave(s: PlantState): string {

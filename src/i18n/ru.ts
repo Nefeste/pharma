@@ -310,7 +310,7 @@ export const ru = {
   kinds: { api: 'АФС', excipient: 'Вспомогательные', packaging: 'Упаковка', bulk: 'Балк', fg: 'Готовая продукция' },
   /** внутренний номер партии и номер серии */
   lotCode: (y: number, m: number, n: number) => `П-${String(y).padStart(2, '0')}${String(m).padStart(2, '0')}-${String(n).padStart(4, '0')}`,
-  units: { kg: 'кг', pcs: 'шт.', h: 'ч', min: 'мин', km: 'км', N: 'Н', kN: 'кН', um: 'мкм', rpm: 'об/мин', C: '°C', pct: '%', pp: 'п.\u00a0п.' },
+  units: { kg: 'кг', pcs: 'шт.', h: 'ч', min: 'мин', km: 'км', N: 'Н', kN: 'кН', um: 'мкм', rpm: 'об/мин', C: '°C', pct: '%', pp: 'п.\u00a0п.', day: 'сут.' },
   /** панель склада (docs/specs/2026-10-panels.md, 3б) */
   stock: {
     title: 'Склад',
@@ -1953,6 +1953,7 @@ export const ru = {
       extend: (no: string, party: string, to: string) => `Договор поставки ${no} продлён: ${party}, до ${to}`,
       forecast: (month: string, cases: string) => `Прогноз отдела продаж на ${month} — ${cases}`,
       fcEdit: (sku: string, month: string, cases?: string) => (cases ? `Прогноз планирования: ${sku}, ${month} — ${cases}` : `Прогноз планирования: ${sku}, ${month} — правка снята`),
+      sop: (month: string, covers: string) => `План S&OP с ${month}: запас — ${covers}`,
       waste: (at?: string) => (at ? `Вывоз отклонённого: подрядчик приедет ${at}` : 'Вывоз отклонённого: подрядчик приедет на следующий рабочий день'),
       mode: (head: string, mode: string) => `Режим отдела: ${head} — ${mode}`,
       policy: (what: string, to: string, from: string) => `Политика: ${what} — ${to} вместо ${from}`,
@@ -2162,6 +2163,7 @@ export const ru = {
     /** прогноз продаж (Б6в) */
     forecast: (method: string, pct: string) => `${method}, оптимизм отдела продаж ${pct}`,
     fcEdit: (was: string) => `По способу было ${was}`,
+    sop: (value: string, gap: string, lost: string) => `цель плана — ${value}; до лучшего плана — ${gap}; не продано по прогнозу — на ${lost}`,
     /** вывоз отклонённого (Б1з): правило коллеги склада */
     waste: {
       full: (used: number, places: number, share?: string) =>
@@ -2232,6 +2234,7 @@ export const ru = {
       extend: (n: number) => `${groupRu(n)} ${pluralRu(n, 'договор поставки продлён', 'договора поставки продлены', 'договоров поставки продлено')}`,
       forecast: (n: number) => `${groupRu(n)} ${pluralRu(n, 'прогноз продаж', 'прогноза продаж', 'прогнозов продаж')}`,
       fcEdit: (n: number) => `${groupRu(n)} ${pluralRu(n, 'правка прогноза', 'правки прогноза', 'правок прогноза')}`,
+      sop: (n: number) => `${groupRu(n)} ${pluralRu(n, 'план S&OP', 'плана S&OP', 'планов S&OP')}`,
       waste: (n: number) => `${groupRu(n)} ${pluralRu(n, 'вывоз', 'вывоза', 'вывозов')} отклонённого`,
       policy: (n: number) => `${groupRu(n)} ${pluralRu(n, 'политика задана', 'политики заданы', 'политик задано')}`,
     } as Record<string, (n: number, v?: string) => string>,
@@ -2610,6 +2613,7 @@ export const ru = {
       shelf: 'Остаток срока годности',
       otif: 'OTIF по строкам заказов',
       revenue: 'Выручка по отгрузкам',
+      margin: 'Маржинальный доход отгрузок',
       dso: 'Дебиторская задолженность в днях',
       fcErr: 'Ошибка прогноза отдела продаж',
       turnover: 'Текучесть',
@@ -2661,6 +2665,7 @@ export const ru = {
       shelf: 'Дни до конца срока годности материалов, взвешенные по их стоимости, — среднее по срезам',
       otif: 'Строки закрытых за месяц заказов, отгруженные полностью в день отгрузки, ко всем строкам',
       revenue: 'Сумма отгрузок за месяц без НДС',
+      margin: 'Пачки отгрузок месяца × (цена − материалы и упаковка по цене пары в силе − энергия серии); люди на окладе — постоянные затраты',
       dso: 'Средняя задолженность покупателей по срезам в полночь к выручке в сутки',
       fcErr: 'Сумма модулей «факт минус прогноз» по позициям за месяц к сумме факта; прогноз — сделанный 1-го числа прошлого месяца',
       turnover: 'Ушедшие за 12 месяцев к среднему числу людей в начале и в конце окна',

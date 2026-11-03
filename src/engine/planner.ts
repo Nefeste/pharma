@@ -17,6 +17,7 @@ import { asWho } from './journal';
 import { TRUCK_HOUR } from './market';
 import { BATCH_HOUR, placeOrder } from './mes';
 import { numOf, POL, policyOf } from './policies';
+import { sopCover } from './sop';
 import { containersByLot } from './stock';
 import type { Notice, OrderWhy, PlantState } from './types';
 import { calOf } from './workdays';
@@ -28,7 +29,7 @@ export const AHEAD_WORK = 10;
 /** Пока заказы покупателей идут меньше стольких суток, спроса ещё не видно — позиции по очереди. */
 export const SEEN = 7;
 
-const idNum = (id: string) => Number(id.slice(1));
+export const idNum = (id: string) => Number(id.slice(1));
 
 /** Ящиков ГП с серии по карте: таблетки серии по номиналу, пачки позиции, ящики — целые. */
 export function casesOf(r: Recipe, sku: Sku): number {
@@ -146,7 +147,10 @@ export function planHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   // горизонт — политика, а навык руководителя ниже 4 его сокращает (геймдизайн, §8.5)
   const policy = numOf(db, s, POL.cover)!;
   const cover = coverBy(skillOf(s, who), policy);
-  const got = Object.values(s.batches).some(b => b.status !== 'cancelled' && momentOf(s.start, b.notBefore).day === day) ? undefined : pick(db, s, plan.items, cover, numOf(db, s, POL.window)!, numOf(db, s, POL.urgent), at, cover < policy ? policy : undefined);
+  // план S&OP (Б6г): запас позиций продукта — цель утверждённого плана на месяц дня задания, с пределом навыка
+  const ofSop = (product: Id) => sopCover(s, product, day);
+  const coverOf = (product: Id) => coverBy(skillOf(s, who), ofSop(product) ?? policy);
+  const got = Object.values(s.batches).some(b => b.status !== 'cancelled' && momentOf(s.start, b.notBefore).day === day) ? undefined : pick(db, s, plan.items, cover, numOf(db, s, POL.window)!, numOf(db, s, POL.urgent), at, cover < policy ? policy : undefined, coverOf, ofSop);
   if (mode === 'advise') {
     if (!got) return moot(s, ORDER_KEY);
     const cmd = { kind: 'order' as const, recipe: got.it.recipe, notBefore: at, sku: got.it.sku };
@@ -156,7 +160,7 @@ export function planHour(db: ContentDb, s: PlantState, notices: Notice[]) {
 }
 
 /** Позиция для выбора правила: что о ней знает завод — или, в плане запуска (Б6б), что о ней будет в день правила. */
-interface Cand {
+export interface Cand {
   it: { recipe: Id; sku: Id };
   p: Pick<SkuPosition, 'cases' | 'ordered' | 'work' | 'span'>;
   held?: { t: number; until: number };
@@ -170,11 +174,13 @@ interface Cand {
  * `urgent` — кампании (Б2г, геймдизайн, §9.4): продукт последнего задания `prev` идёт дальше, пока его позициям нужна
  * серия, а ни одной позиции другого продукта не хватит меньше чем на две недели и ещё `urgent` суток.
  */
-function choose(db: ContentDb, pos: readonly Cand[], ahead: number, urgent: number | undefined, prev: Id | undefined, last: (sku: Id) => number): { it: Cand['it']; rule: OrderWhy['rule']; soon?: number } | undefined {
+export function choose(db: ContentDb, pos: readonly Cand[], ahead: number | ((it: Cand['it']) => number), urgent: number | undefined, prev: Id | undefined, last: (sku: Id) => number): { it: Cand['it']; rule: OrderWhy['rule']; soon?: number } | undefined {
+  // запас позиций — один на все позиции или, с планом S&OP (Б6г), у продукта свой
+  const aheadOf = typeof ahead === 'number' ? () => ahead : ahead;
   const free = pos.filter(x => !x.held);
   if (free.length === 0) return undefined;
   if (pos.some(x => x.p.span === 0)) return { it: free.reduce((a, b) => (last(b.it.sku) < last(a.it.sku) ? b : a)).it, rule: 'turn' };
-  const need = free.filter(x => x.p.cases * x.p.work * 1000 < x.p.ordered * ahead);
+  const need = free.filter(x => x.p.cases * x.p.work * 1000 < x.p.ordered * aheadOf(x.it));
   if (need.length === 0) return undefined;
   // у кого запаса меньше суток спроса: cases_a / ordered_a < cases_b / ordered_b; без заказов позиция — последней
   const less = (a: Cand['p'], b: Cand['p']) => (a.ordered === 0 ? false : b.ordered === 0 ? true : a.cases * b.ordered < b.cases * a.ordered);
@@ -189,7 +195,7 @@ function choose(db: ContentDb, pos: readonly Cand[], ahead: number, urgent: numb
 }
 
 /** Продукт кампании — у задания, которое пойдёт последним перед мигом `at`: позже «не раньше», при равных — новее. */
-function prevBefore(batches: readonly { id: string; notBefore: number; product: Id }[], at: number): Id | undefined {
+export function prevBefore(batches: readonly { id: string; notBefore: number; product: Id }[], at: number): Id | undefined {
   let best: { id: string; notBefore: number; product: Id } | undefined;
   for (const b of batches) if (b.notBefore < at && (!best || b.notBefore > best.notBefore || (b.notBefore === best.notBefore && idNum(b.id) > idNum(best.id)))) best = b;
   return best?.product;
@@ -199,7 +205,7 @@ function prevBefore(batches: readonly { id: string; notBefore: number; product: 
  * Какую серию ставить — правило `choose` по положению позиций сейчас. С позицией — причина для журнала решений (Б5а):
  * правило, положение всех позиций плана и пороги.
  */
-function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], cover: number, window: number, urgent: number | undefined, at: number, policy?: number): { it: { recipe: Id; sku: Id }; why: OrderWhy } | undefined {
+function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], cover: number, window: number, urgent: number | undefined, at: number, policy?: number, coverOf?: (product: Id) => number, ofSop?: (product: Id) => number | undefined): { it: { recipe: Id; sku: Id }; why: OrderWhy } | undefined {
   const byLot = containersByLot(s);
   // отменённое на запас (Б6а): позицию не ставят до «не раньше» отменённого
   const pos = items.map(it => ({ it, p: positionOf(db, s, it.sku, window, byLot), held: heldOf(s, it.sku) }));
@@ -207,20 +213,27 @@ function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], co
   const ahead = aheadMilli(AHEAD + cover);
   // спрос по прогнозу (Б6в) — в причине: положение позиций считали по нему
   const fc = !!s.forecast && policyOf(db, s, POL.demand) === 'forecast';
-  const why = (rule: OrderWhy['rule'], extra: Partial<OrderWhy> = {}): OrderWhy => ({ rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work, ...(x.held ? { held: x.held } : {}) })), ahead, cover, ...(policy !== undefined ? { policy } : {}), ...(fc ? { fc: true as const } : {}), ...extra });
+  // с планом S&OP (Б6г) — запас позиций у продукта свой; в причине — у продукта выбранной позиции
+  const productOf = (it: { recipe: Id }) => db.recipes[it.recipe].product;
+  const aheadOf = coverOf ? (it: { recipe: Id }) => aheadMilli(AHEAD + coverOf(productOf(it))) : ahead;
+  const why = (rule: OrderWhy['rule'], extra: Partial<OrderWhy> = {}, it?: { recipe: Id }): OrderWhy => {
+    const c = it && coverOf ? coverOf(productOf(it)) : cover;
+    const sop = it && ofSop?.(productOf(it)) !== undefined;
+    return { rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work, ...(x.held ? { held: x.held } : {}) })), ahead: aheadMilli(AHEAD + c), cover: c, ...(policy !== undefined ? { policy } : {}), ...(fc ? { fc: true as const } : {}), ...(sop ? { sop: true as const } : {}), ...extra };
+  };
   const last = (sku: Id) => Math.max(-1, ...Object.values(s.batches).filter(b => b.sku === sku).map(b => idNum(b.id)));
   const prev = urgent === undefined ? undefined : prevBefore(Object.values(s.batches), at);
   const c = choose(
     db,
     pos.map(x => (x.held ? x : { it: x.it, p: x.p })),
-    ahead,
+    aheadOf,
     urgent,
     prev,
     last,
   );
   if (!c) return undefined;
-  if (c.rule === 'turn') return { it: c.it, why: why('turn', { seen: SEEN }) };
-  return { it: c.it, why: why(c.rule, c.soon !== undefined ? { soon: c.soon, ...(prev ? { prev } : {}) } : {}) };
+  if (c.rule === 'turn') return { it: c.it, why: why('turn', { seen: SEEN }, c.it) };
+  return { it: c.it, why: why(c.rule, c.soon !== undefined ? { soon: c.soon, ...(prev ? { prev } : {}) } : {}, c.it) };
 }
 
 /** Строка плана запуска (Б6б): задание, которое начальник отдела планирования поставит в свой день `on` на день `day`. */
@@ -257,8 +270,10 @@ export function launchPlan(db: ContentDb, s: PlantState, until: number, draft: L
   if (!plan || modeOf(s, 'plan') === 'manual') return [];
   const cal = calOf(db, s);
   const window = numOf(db, s, POL.window)!;
-  const cover = coverBy(skillOf(s, whoDecides(db, s, 'plan')), numOf(db, s, POL.cover)!);
-  const ahead = aheadMilli(AHEAD + cover);
+  const skill = skillOf(s, whoDecides(db, s, 'plan'));
+  const policy = numOf(db, s, POL.cover)!;
+  // план S&OP (Б6г): запас позиций продукта — цель плана на месяц дня задания
+  const aheadAt = (day: number) => (it: { recipe: Id }) => aheadMilli(AHEAD + coverBy(skill, sopCover(s, db.recipes[it.recipe].product, day) ?? policy));
   const urgent = numOf(db, s, POL.urgent);
   const byLot = containersByLot(s);
   // запас в «ящико-днях»: ящики × рабочие дни окна — так спрос рабочего дня убавляет его на заказанное, в целых
@@ -309,7 +324,7 @@ export function launchPlan(db: ContentDb, s: PlantState, until: number, draft: L
           const h = held(x.it.sku);
           return h ? { it: x.it, p: x.p, held: { t: h.cancelled ?? when, until: h.notBefore } } : { it: x.it, p: x.p };
         }),
-        ahead,
+        aheadAt(day),
         urgent,
         urgent === undefined ? undefined : prevBefore(runs, at),
         sku => lastId.get(sku) ?? -1,

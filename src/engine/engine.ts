@@ -28,6 +28,7 @@ import { leaveCommand, leaveHour } from './leave';
 import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from './line';
 import { maintainCommand, maintDone, maintStep, newParts, spareArrives } from './maint';
 import { forecastCommand, forecastHour, newForecast, replan, runForecast } from './forecast';
+import { sopCommand, sopHour } from './sop';
 import { marketDone, marketHour, marketStep, newCustomers, rznPublished, seedFg } from './market';
 import { memoCommand, memoDue, memoHour, withdrawCommand } from './memos';
 import { BATCH_HOUR, cancelOrder, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
@@ -260,6 +261,12 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
     case 'forecast': {
       const notices: Notice[] = [];
       forecastCommand(db, s, cmd, notices);
+      steps(db, s, notices);
+      return notices;
+    }
+    case 'sop': {
+      const notices: Notice[] = [];
+      sopCommand(db, s, cmd, notices);
       steps(db, s, notices);
       return notices;
     }
@@ -506,6 +513,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       kpiHour(db, s);
       // прогноз продаж (Б6в): в 00:00 1-го числа — после итога месяца, по которому показатель меряет прошлый прогноз
       forecastHour(db, s);
+      // совещание S&OP (Б6г): в 10:00 третьего рабочего дня — лучший план; без игрока его утверждает коллега
+      sopHour(db, s, notices);
       // вывоз отклонённого (Б1з): коллега склада в 09:00, фура подрядчика в его час — к рампе её поставит шаг отгрузки
       wasteHour(db, s, notices);
       marketHour(db, s, notices);

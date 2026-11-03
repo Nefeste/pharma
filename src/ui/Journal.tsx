@@ -23,6 +23,8 @@ import { attrNum, attrText, paramText } from './units';
 const sku = (id?: string) => (id ? named(db?.skus[id]?.name, id) : '');
 /** Месяц прогноза (Б6в) словом: номер — год × 12 + месяц − 1. */
 const monthWord = (n: number) => T.fc.month(Math.floor(n / 12), (n % 12) + 1);
+/** Цели плана S&OP (Б6г) по продуктам: «Парацетамол 500 мг — 28, 28, 35, 35, 21, 21 сут.». */
+const sopCovers = (cover: Record<string, number[]>) => Object.entries(cover).map(([p, xs]) => `${named(db?.products[p]?.name) || p} — ${xs.join(', ')} ${T.units.day}`).join('; ');
 const product = (id?: string) => (id ? named(db?.products[id]?.name, id) : '');
 const material = (id: string) => named(db?.materials[id]?.name, id);
 const role = (id: string) => named(db?.roles[id]?.name, id);
@@ -140,6 +142,8 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
       return J.forecast(monthWord(d.m), T.fc.cases(d.cases));
     case 'fcEdit':
       return J.fcEdit(sku(d.sku), monthWord(d.m), d.cases !== undefined ? T.fc.cases(d.cases) : undefined);
+    case 'sop':
+      return J.sop(monthWord(d.from), sopCovers(d.cover));
     case 'waste':
       return J.waste(d.at !== undefined ? whenText(start, d.at) : undefined);
     case 'mode':
@@ -368,6 +372,8 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
       return [J.forecast(T.fc.methods[d.method] ?? d.method, `+${pctText(d.optimism)}`)];
     case 'fcEdit':
       return [J.fcEdit(T.fc.cases(d.was))];
+    case 'sop':
+      return [J.sop(money(d.value), money(Math.max(0, d.best - d.value)), money(d.lost))];
     case 'waste': {
       // коллега склада (Б1з): по заполнению зоны или по сроку; у игрока причины нет
       const w = d.why;

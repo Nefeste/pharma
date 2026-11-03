@@ -16,6 +16,7 @@ export const POL = {
   urgent: 'pol.plan.urgent',
   method: 'pol.plan.method',
   demand: 'pol.plan.demand',
+  reserve: 'pol.plan.reserve',
   safety: 'pol.supply.safety',
   every: 'pol.supply.every',
   replace: 'pol.maint.replace',
@@ -63,6 +64,9 @@ export function policyDefault(db: ContentDb, sc: Scenario, policy: Id, of?: stri
       return sc.forecast ? sc.plan?.method : undefined;
     case POL.demand:
       return sc.forecast ? sc.plan?.demand : undefined;
+    // резерв мощности (Б6г): только у сценария с прогнозом — совещание S&OP идёт по нему
+    case POL.reserve:
+      return sc.forecast ? sc.plan?.reserve : undefined;
     case POL.safety:
       return sc.supply?.safety;
     case POL.every:
@@ -178,6 +182,7 @@ const SHAPE: Record<string, Pick<Policy, 'kind' | 'each' | 'off' | 'options'>> =
   [POL.urgent]: { kind: 'days', off: true },
   [POL.method]: { kind: 'choice', options: ['best', 'last-year', 'ma', 'ses', 'holt', 'group'] },
   [POL.demand]: { kind: 'choice', options: ['orders', 'forecast'] },
+  [POL.reserve]: { kind: 'share' },
   [POL.safety]: { kind: 'days' },
   [POL.every]: { kind: 'days' },
   [POL.replace]: { kind: 'wear', each: 'part', off: true },

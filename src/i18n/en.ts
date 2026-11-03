@@ -286,7 +286,7 @@ export const en: Strings = {
   },
   kinds: { api: 'API', excipient: 'Excipients', packaging: 'Packaging', bulk: 'Bulk', fg: 'Finished goods' },
   lotCode: (y: number, m: number, n: number) => `L-${String(y).padStart(2, '0')}${String(m).padStart(2, '0')}-${String(n).padStart(4, '0')}`,
-  units: { kg: 'kg', pcs: 'pcs', h: 'h', min: 'min', km: 'km', N: 'N', kN: 'kN', um: 'µm', rpm: 'rpm', C: '°C', pct: '%', pp: 'pp' },
+  units: { kg: 'kg', pcs: 'pcs', h: 'h', min: 'min', km: 'km', N: 'N', kN: 'kN', um: 'µm', rpm: 'rpm', C: '°C', pct: '%', pp: 'pp', day: 'd' },
   stock: {
     title: 'Warehouse',
     question: 'What is in the warehouse and in what status',
@@ -1852,6 +1852,7 @@ export const en: Strings = {
       extend: (no: string, party: string, to: string) => `Supply contract ${no} extended: ${party}, until ${to}`,
       forecast: (month: string, cases: string) => `Sales department forecast for ${month}: ${cases}`,
       fcEdit: (sku: string, month: string, cases?: string) => (cases ? `Planning forecast: ${sku}, ${month}: ${cases}` : `Planning forecast: ${sku}, ${month}: edit removed`),
+      sop: (month: string, covers: string) => `S&OP plan from ${month}: stock — ${covers}`,
       waste: (at?: string) => (at ? `Removal of rejected material: the contractor comes ${at}` : 'Removal of rejected material: the contractor comes the next working day'),
       mode: (head: string, mode: string) => `Department mode: ${head} — ${mode}`,
       policy: (what: string, to: string, from: string) => `Policy: ${what} — ${to} instead of ${from}`,
@@ -2058,6 +2059,7 @@ export const en: Strings = {
     /** sales forecast (Б6в) */
     forecast: (method: string, pct: string) => `${method}, sales department optimism ${pct}`,
     fcEdit: (was: string) => `The method gave ${was}`,
+    sop: (value: string, gap: string, lost: string) => `plan goal ${value}; to the best plan ${gap}; unsold by the forecast — ${lost}`,
     waste: {
       full: (used: number, places: number, share?: string) =>
         `${groupEn(used)} of ${groupEn(places)} ${pl(places, 'place', 'places')} of the rejected zone are taken${share ? ` — the policy threshold is ${share}` : ''}`,
@@ -2115,6 +2117,7 @@ export const en: Strings = {
       extend: (n: number) => `${groupEn(n)} supply ${pl(n, 'contract', 'contracts')} extended`,
       forecast: (n: number) => `${groupEn(n)} sales ${pl(n, 'forecast', 'forecasts')}`,
       fcEdit: (n: number) => `${groupEn(n)} forecast ${pl(n, 'edit', 'edits')}`,
+      sop: (n: number) => `${groupEn(n)} S&OP ${pl(n, 'plan', 'plans')}`,
       waste: (n: number) => `${groupEn(n)} ${pl(n, 'removal', 'removals')} of rejected material`,
       policy: (n: number) => `${groupEn(n)} ${pl(n, 'policy set', 'policies set')}`,
     } as Record<string, (n: number, v?: string) => string>,
@@ -2482,6 +2485,7 @@ export const en: Strings = {
       shelf: 'Residual shelf life',
       otif: 'OTIF by order lines',
       revenue: 'Revenue by shipments',
+      margin: 'Contribution margin of shipments',
       dso: 'Receivables in days',
       fcErr: 'Sales department forecast error',
       turnover: 'Turnover',
@@ -2533,6 +2537,7 @@ export const en: Strings = {
       shelf: 'Days left to the expiry of materials weighted by their value — mean over midnights',
       otif: 'Lines of orders closed in the month and shipped in full on the shipping day, over all lines',
       revenue: 'Shipments of the month without VAT',
+      margin: 'Packs shipped in the month × (price − materials and packaging at the pair price in force − energy of the batch); salaried people are fixed costs',
       dso: 'Average customer debt at midnights over revenue per day',
       fcErr: 'Sum of |actual − forecast| over SKUs for the month over the sum of actuals; the forecast made on the 1st of the previous month',
       turnover: 'People who left in 12 months over the mean headcount at the start and end of the window',

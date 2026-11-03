@@ -10,6 +10,7 @@ import { P_ONE } from './core/rng';
 import { baseLoad } from './cash';
 import { before, REPEAT, sameDev } from './devclass';
 import { lagError, monthAt, shares } from './forecast';
+import { packMargin } from './plan/sop';
 import { yearOver } from './hours';
 import { oee, type Oee, rhythm, roomsOf } from './lean';
 import { planOf } from './plant';
@@ -105,6 +106,8 @@ export const KPIS: readonly KpiDef[] = [
   { id: 'dso', head: 'sales', unit: 'day', dir: -1, win: 'm', src: ['gks-fhd-2002'], pair: 'revenue' },
   // точность прогноза (Б6в; §8.6): WAPE прогноза отдела продаж с запаздыванием в месяц
   { id: 'fcErr', head: 'sales', unit: 'share', dir: -1, win: 'm', src: ['ghsc-fy2019', 'fpp3'], pair: 'otif' },
+  // маржинальный доход отгрузок (Б6г; §8.6, §12.2): цель плана S&OP; противовес — дебиторская задолженность
+  { id: 'margin', head: 'sales', unit: 'kop', dir: 1, win: 'm', src: ['openstax-ma', 'acca-ta-2'], pair: 'dso', acc: true },
   // кадры
   { id: 'turnover', head: 'hr', unit: 'share', dir: -1, win: 'y', src: ['ispe-qm-w2'], pair: 'otLimit', also: ['dir'] },
   { id: 'vacancy', head: 'hr', unit: 'day', dir: -1, win: 'y', src: ['iso-30414'] },
@@ -629,6 +632,24 @@ const CALC: Record<string, Calc> = {
     return share(closed.filter(o => o.status === 'shipped').length, closed.length);
   },
   revenue: c => Object.values(c.s.shipments).reduce((n, x) => n + (inside(x.t, c.p.from, c.p.to) ? x.sum : 0), 0),
+  // пачки отгрузок месяца × маржинальный доход пачки позиции — по ценам пар в силе (Б6г)
+  margin: c => {
+    const plan = c.db.scenarios[c.s.scenario].plan;
+    if (!plan) return undefined;
+    const skuOf = new Map(plan.items.map(i => [c.db.skus[i.sku].fg, i.sku]));
+    const per = new Map<string, number>();
+    let n = 0;
+    for (const x of Object.values(c.s.shipments)) {
+      if (!inside(x.t, c.p.from, c.p.to)) continue;
+      for (const k of x.cases) {
+        const sku = skuOf.get(c.s.lots[k.lot]?.material);
+        if (!sku) continue;
+        if (!per.has(sku)) per.set(sku, packMargin(c.db, c.s, sku).margin);
+        n += k.qty * per.get(sku)!;
+      }
+    }
+    return n;
+  },
   // месяцы периода, закрытые к этому мигу; записи с запаздыванием нет — нет и значения
   fcErr: c => shares(lagError(c.s, 'sales', monthAt(c.s, c.p.from), monthAt(c.s, c.p.to - 1) + 1))?.wape,
   dso: c => {

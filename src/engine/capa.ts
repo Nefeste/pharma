@@ -14,7 +14,6 @@ import { before, causeClass, causeKey, dueOf, sameBefore, sameDev } from './devc
 import { modeOf, propose, round } from './heads';
 import { asWho, note, noteCmd } from './journal';
 import { partType, planReplace } from './maint';
-import { answerer, MEMO_AFTER } from './memos';
 import { bookEval, howOf, pairKey } from './partners';
 import { classOf, placesOf } from './places';
 import { planOf } from './plant';
@@ -424,20 +423,18 @@ function qaRule(db: ContentDb, s: PlantState, notices: Notice[]) {
 
 /**
  * Исполнитель CAPA в свой час (Б5е): режим его отдела (Б5б) — «советует» — предложение «Выполнить», «вручную» — молчит,
- * «сам» — выполняет в свой час, как служебную записку (Б5д): не раньше часа после назначения, тем же движком; отказ —
- * причина в CAPA, она ждёт следующего часа.
+ * «сам» — выполняет, как служебную записку (Б5д), тем же движком, но в первый же час, когда есть кому решить: принятое в
+ * ту же минуту предложение — то же мгновение, что «сам». Отказ — причина в CAPA, она ждёт следующего часа.
  */
 function runHour(db: ContentDb, s: PlantState, c: Capa, notices: Notice[], run: (cmd: Command) => Notice[]) {
   const mode = modeOf(s, c.head);
   if (mode === 'manual') return;
+  const who = decider(db, s, c.head, notices);
+  if (!who) return;
   if (mode === 'advise') {
-    const who = decider(db, s, c.head, notices);
-    if (who) propose(s, c.head, capaKey(c.id), { kind: 'capaRun', capa: c.id }, { kind: 'capaRun', capa: c.id, action: c.action, head: c.head }, notices, undefined, who);
+    propose(s, c.head, capaKey(c.id), { kind: 'capaRun', capa: c.id }, { kind: 'capaRun', capa: c.id, action: c.action, head: c.head }, notices, undefined, who);
     return;
   }
-  if (s.t < c.t + MEMO_AFTER) return;
-  const who = answerer(db, s, c.head, notices);
-  if (!who) return;
   const out = asWho(c.head, who, () => run({ kind: 'capaRun', capa: c.id, by: `head:${c.head}` }));
   const no = out.find((x): x is Extract<Notice, { kind: 'refused' }> => x.kind === 'refused' && x.cmd === 'capaRun');
   if (no) c.why = no.why;

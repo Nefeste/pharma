@@ -183,7 +183,23 @@ first, or copy the working code of Bolnitsa on the same versions.
   `lineRedraw`), `qa.ts` (QA check of finished goods with
   retention samples, the qualified person's decision — «hold» blocks the FG and puts it on the racks, FG shelf life;
   the deviation impact assessment — tests linked by the cause records, `assess` by the quality post, the quality
-  colleague by the same rule, release only with assessed deviations),
+  colleague by the same rule, release only with assessed deviations; with Б5е the probable cause named at the
+  assessment — the player's from the causes with a sign or the rule's first, none — «не установлена»), `devclass.ts`
+  (with Б5е, a deviation's class and repeat: the class at opening by kind — a low yield minor, the rest major; «без
+  влияния» minor; a repeat within 12 months raises minor to major and never higher, «critical» only by the player, a
+  class the player set the rule leaves; the same deviation — the same cause when both have one recorded, otherwise the
+  same signature: kind, stage, parameter or test method, material; the probable cause — a cause of the base whose sign
+  is in the plant's records: a stage parameter out of the recipe's range up to the deviation's stage, a part's wear at
+  the stage at the procedure's threshold or above; the term by class — `dueOf`), `capa.ts` (with Б5е, CAPA: the
+  catalog's actions that fit a deviation by its cause or kind and their thing — the worn part, the documents of the
+  stage and the people who worked on it, the IPC or lab instrument, the supplier–maker pair of the lot —, their price
+  from the records they touch (`capaOptions`); the `capa`, `classify` and `capaRun` commands; the QA head's rule in
+  the head's hour — after an investigation's conclusion, after an assessment when the deviation repeated as many times
+  as the QA policy says, after a failed check the next action of the chain, waiting while an action of the chain is
+  unchecked; the executor — the head of the action's department in the first hour someone may decide, a held post's
+  department — a proposal, a refusal kept with the engine's reason; «заменять раньше» lowers the part's replacement
+  threshold to the procedure's sign threshold, at or below it by a step; the effectiveness check the procedure's days
+  after it was done — «эффективна» or the first repeat after it; the late deviation's notice once),
   `market.ts` (customers and their orders, FG into circulation after the regulator publishes the batch, FEFO allocation
   with the residual shelf life, the FG stock at the start — `seedFg`, whole pallets and case picking, the customer's
   truck at 15:00, shipments with codes; with
@@ -352,7 +368,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   stage or a line — and a line machine's job
   waiting for the room's cleaning, with Б1ж the blister machine's speed — rated, the job's and each SKU's setpoint —,
   built here on request and sent with the slice only when they changed, without truth
-  fields (`views.ts`); the deviation card, the batch decision at release and
+  fields (`views.ts`); the deviation card — with Б5е its class, the probable cause, the causes with a sign, its CAPA
+  with their check and the catalog's actions with their thing, executor and price (`capaRow`) —, the batch decision at
+  release and
   the stage parameters of a room or equipment card with their setpoints, and with Б1ж the setpoints for the next stage
   of each recipe in force whose stages run there — `knobsAt` (`devs.ts`); with Б1д, the batch record — what was
   weighed by lots, who weighed and who checked, what each stage loaded, mass in and out, with Б1ж each parameter's
@@ -370,15 +388,18 @@ first, or copy the working code of Bolnitsa on the same versions.
   and a packing job's blister speed (`now.ts`); the 08:00 meeting — the player's places over
   their tenure, yesterday by calendar day with its cleanings and changeovers, events of the 24 hours before it, what
   waits now, with Б1ж the setpoints off target and since when, from a day of play on — what the plant did this session
-  («За эту игру») — the cash panel and the top-bar cash with the player's places (`report.ts`); the places and assets — the
-  «Места» tab, an asset in a card, the meeting's calibration and qualification, which batch waits for which asset —
+  («За эту игру»), with Б5е the deviations' class and «срок прошёл» and the «CAPA» block — open, of the day, checks of
+  the day and of the week — the cash panel and the top-bar cash with the player's places (`report.ts`); the places and
+  assets — the «Места» tab, an asset in a card, the meeting's calibration and qualification, which batch waits for
+  which asset —
   records and visits are the plant's knowledge (`places.ts`); the partners — makers, pairs with their approval and
   evaluation, agreements and contracts in force for the «Контрагенты» tab, the meeting's suppliers, a lot's maker and
   contract (`partners.ts`); the lab queue and the X–Rm control chart of the in-process
   average tablet mass with its limits and special-cause signs, a lot under investigation and its steps' tests
   (`lab.ts`); the investigation board — what happened, participants, steps, findings, versions from the findings only,
-  whether release is proven, the debrief only once concluded (`inv.ts`); working time — the month's time sheet of a
-  person's card with its totals and the year, «ОТ» on vacation days, the accounting period of a person on a cyclic
+  whether release is proven, the debrief only once concluded, with Б5е the CAPA of its deviation (`inv.ts`); working
+  time — the month's time sheet of a person's card with its totals and the year, «ОТ» on vacation days, the accounting
+  period of a person on a cyclic
   schedule, the calendar of
   twelve months, the schedules of this and the next month — by schedule and by role, department policies, the meeting's
   «Рабочее время» with transfers soon in force and the crews' extra days off — records are the plant's knowledge
@@ -489,12 +510,16 @@ first, or copy the working code of Bolnitsa on the same versions.
   план» and the run's outcome per variant (`Gantt.tsx`), the draft's pure rules — a row per batch order, gone once kitting
   starts, `shift` commands on approval (`draft.ts`), the «Кем вы будете» screen of places (`Seats.tsx`), the
   investigation board — steps, findings in words with numbers from the records, version bars, the decision, the
-  debrief (`Inv.tsx`), the batch record over the other windows — opened from a card, «Сейчас», the meeting and a click
+  debrief, with Б5е the CAPA after the conclusion (`Inv.tsx`), the batch record over the other windows — opened from a
+  card, «Сейчас», the meeting and a click
   on a batch bar of the schedule (`Dossier.tsx`), the rejected room's block of the card — the zone's places, the
   removal, the waste log (`Waste.tsx`), the levers of a row (`Levers.tsx`), the deviation card, the batch
   decision, stage parameters, with Б1ж the setpoints with «−» and «+» and a blister machine's speed, and
-  the first-event explanation in the card (`Decide.tsx`), with Б5д a button of another's post — «Записка: …» with whom
-  and when, or dimmed with why (`memo.ts`), status and work icons (`icons.tsx`), asset words — class and
+  the first-event explanation in the card, with Б5е the class with «Сменить класс», the cause, the signs and the cause
+  chosen at the assessment, the CAPA rows with «Выполнить» for a held post's department and the catalog's actions with
+  «Назначить CAPA» (`Decide.tsx`), CAPA and deviation words — class, cause, action, its thing and price (`capa.ts`),
+  with Б5д a button of another's post — «Записка: …» with whom and when, or dimmed with why (`memo.ts`), status and
+  work icons (`icons.tsx`), asset words — class and
   inventory number, the work's name, «until» and why it does not work
   (`assets.ts`), the content base for names (`db.ts`); `src/i18n/` — every player-facing string, Russian
   and English, and number, quantity, money, duration and date formats.
@@ -511,7 +536,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   Б1ж — a parameter's setpoint step, the turret speed of compression, a part's load by a parameter (`stress`), a cause's
   IPC scatter, a line machine's rated speed and the blister machine's speed factors (`fast`), a SKU's blister speed;
   with Б1з — the scenario's contractor `waste`: his hours, the minutes of the handover signature and the prices; with
-  Б5г — `policies/`: the heads' policies — the head by the id, the kind, range and step, «off», of each part or spare);
+  Б5г — `policies/`: the heads' policies — the head by the id, the kind, range and step, «off», of each part or spare;
+  with Б5е — `capa/`: the CAPA catalog — what an action does, its executor's head (training — the head of those taught),
+  the cause classes and deviation kinds it fits, its place in the QA head's rule — and the scenario's `deviations`: the
+  terms by class, the sign threshold of wear, the check's days and the repeats before a CAPA);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
@@ -534,7 +562,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   verified sensor per storage zone, an IPC instrument for each stage test in the stage room, a zone for every material by
   its regime, contractor works within his day, the warning period shorter than the shortest interval: `placeErrors`;
   pairs — every revision of a starting or packaging material spec has a pair its supplier sells from that maker, every
-  pair of the start has a quality agreement in force: `pairErrors`).
+  pair of the start has a quality agreement in force: `pairErrors`; with Б5е the CAPA catalog — one action per work
+  the engine does, a head for all but training, the QA head's rule order unique among the actions of one cause class).
 - `blender/` — Python scripts for Blender in the background (#109; by the owner's decision #112 — a mix: silhouettes
   of every class in code, a detailed model from Blender for the machines seen up close, AO only on static parts, room
   light not baked): `lib.py` (scene, axes of the window, finishes shared by all machines, parts with bevels in one

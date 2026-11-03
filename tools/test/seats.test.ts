@@ -139,7 +139,7 @@ describe('сохранение и база', () => {
       assets: { ahead: 14, hours: [9, 17], accept: 15, inv: 1 },
       partners: { ahead: 30, every: { api: 24, excipient: 36, packaging: 12 }, audit: { days: 3, review: 4, price: 350000 }, docs: { review: 3 }, markup: 10, share: 50, months: 12, ctr: 1 },
       policies: { overtime: 'need', clean: 'minor', setpoints: 'target' },
-      deviations: { term: 30 },
+      deviations: { term: { critical: 15, major: 30, minor: 30 }, wear: 80, check: 90, capa: 2 },
       account: 3,
       ...(seats === undefined ? {} : { seats }),
     });

@@ -47,7 +47,9 @@ const ALLOWED = new Set(
     // Б1ж: уставка режима стадии — её задал завод
     'sp ' +
     // Б5б: «Кто решил» — предложение начальника ООК и ответ на него, записи журнала
-    'who by v ask can how seat'
+    'who by v ask can how seat ' +
+    // Б5е: класс, срок прошёл, вероятная причина, признаки в записях, CAPA и действия каталога с вещью и ценой
+    'cls clsBy late cause signs capas options action head part docs asset pair doneBy checkAt check ok cost work learners'
   ).split(' '),
 );
 
@@ -117,7 +119,7 @@ describe('карточка отклонения', () => {
   live(s, 12, () => b.bulk !== undefined && s.lots[b.bulk].status === 'released');
   const rec = b.records.find(r => r.stage === 'blend')!;
   rec.params.lubeTime = 8 * 60;
-  s.deviations.D900 = { id: 'D900', opened: rec.end, kind: 'param', batch: b.id, stage: 'blend', param: 'lubeTime', status: 'open' };
+  s.deviations.D900 = { id: 'D900', opened: rec.end, kind: 'param', batch: b.id, stage: 'blend', param: 'lubeTime', status: 'open', cls: 'major' };
 
   test('режим из досье, цель и диапазон по карте; кто и на чём; связанные испытания готовы; можно «без влияния»', () => {
     const c = devCard(bare, s, 900)!;
@@ -132,7 +134,9 @@ describe('карточка отклонения', () => {
     expect(c.linked.every(x => x.done)).toBe(true);
     expect(c.block).toBeUndefined();
     expect(c.none).toBeUndefined();
-    expect(c.due).toBe(rec.end + bare.scenarios[SC].deviations.term * DAY);
+    // срок — по классу (Б5е): режим вне диапазона — существенное
+    expect(c.cls).toBe('major');
+    expect(c.due).toBe(rec.end + bare.scenarios[SC].deviations.term.major * DAY);
   });
 
   test('без истины: полей истины нет; заводы, у которых различаются только скрытые поля, дают один вид', () => {
@@ -182,10 +186,10 @@ describe('планёрка: что ждёт решения', () => {
     apply(bare, s, { kind: 'seat', seats: ['production', 'quality'] });
     const b = order(s);
     live(s, 12, () => b.status === 'fg');
-    s.deviations.D900 = { id: 'D900', opened: s.t, kind: 'ipc', batch: b.id, stage: 'compress', test: 'test.ipc.mass', status: 'open' };
+    s.deviations.D900 = { id: 'D900', opened: s.t, kind: 'ipc', batch: b.id, stage: 'compress', test: 'test.ipc.mass', status: 'open', cls: 'major' };
     live(s, 5, () => b.held === true);
     const v = morningView(bare, s, { view: 'morning', day: momentOf(s.start, s.t).day });
-    expect(v.pending).toEqual([{ dev: 900, kind: 'ipc', batch: expect.any(String), bn: Number(b.id.slice(1)), opened: s.deviations.D900.opened, due: s.deviations.D900.opened + 30 * DAY }]);
+    expect(v.pending).toEqual([{ dev: 900, kind: 'ipc', batch: expect.any(String), bn: Number(b.id.slice(1)), opened: s.deviations.D900.opened, due: s.deviations.D900.opened + 30 * DAY, cls: 'major' }]);
     expect(v.held).toEqual([{ code: expect.any(String), bn: Number(b.id.slice(1)), sku: N20, unit: expect.any(Number), open: [900], reject: [] }]);
     expect(v.policy).toEqual(s.policy);
     expect([...keysOf([v.pending, v.held])].filter(k => !ALLOWED.has(k))).toEqual([]);

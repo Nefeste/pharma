@@ -28,6 +28,9 @@ import type { CashView, MorningView, TopView } from '../sim/report';
 import type { CardView, StockQuery, StockView, Thing } from '../sim/views';
 import type { Urgent } from './draft';
 
+/** Отбор списка заданий (Б6а): в плане — до комплектовки; в работе; выпущены и отменены за 7 суток. */
+export type JobsFilter = 'plan' | 'work' | 'done' | 'cancelled';
+
 /** Скорости геймдизайна (§2): 0 — пауза; 1–4 — минута, 5 минут, 20 минут, 2 часа за секунду; 5 — «живое время» 1:1. */
 export type Speed = 0 | 1 | 2 | 3 | 4 | 5;
 export const LIVE: Speed = 5;
@@ -105,6 +108,11 @@ export interface Hud {
     draft: readonly Change[];
     /** срочные задания черновика (Б1г): командами `order` станут при «Утвердить» */
     urgent: readonly Urgent[];
+    /** отмены черновика (Б6а): командами `cancel` станут при «Утвердить» */
+    drop: readonly string[];
+    /** вкладка (Б6а): полосы расписания или список заданий; отбор списка */
+    tab?: 'jobs';
+    jobs?: JobsFilter;
   };
   /** прогон плана (часть 5) */
   plan: PlanRun;
@@ -228,7 +236,7 @@ export const initial: Hud = {
   now: { open: false },
   journal: { open: false, page: 0 },
   po: { open: false, lines: [] },
-  gantt: { open: false, days: 3, draft: [], urgent: [] },
+  gantt: { open: false, days: 3, draft: [], urgent: [], drop: [] },
   plan: NO_RUN,
   inv: { open: false },
   dossier: { open: false },
@@ -408,7 +416,13 @@ export interface Actions {
   capaRun(capa: string): void;
   /** уставка режима стадии карты или скорости блистерной позиции (Б1ж) — команда `setpoint` */
   setpoint(x: { recipe: Id; stage: string; param: string; value: number } | { sku: Id; value: number }): void;
-  urgent(recipe: Id, sku: Id): void;
+  /** срочное задание черновика (Б1г); под заказ покупателя (Б6а) */
+  urgent(recipe: Id, sku: Id, order?: string): void;
+  /** задания на серию (Б6а): вкладка окна расписания, отбор списка, «Отменить» в черновике, отмена из карточки */
+  ganttTab(tab?: 'jobs'): void;
+  jobsFilter(f: JobsFilter): void;
+  dropJob(batch: string): void;
+  cancelJob(batch: string): void;
   toggleFlows(): void;
   /** слой слева (Б1и): выбрать; следующий по кругу — клавиша L; окно слоя данных */
   setLayer(l: Layer): void;

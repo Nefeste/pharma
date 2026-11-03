@@ -16,6 +16,7 @@ import type { BatchLabel, GanttRow, GanttView } from '../sim/plan';
 import type { Thing } from '../sim/views';
 import { assetClass, assetName, unfitText, workName } from './assets';
 import { db } from './db';
+import { Jobs } from './Jobs';
 import { draftKey } from './draft';
 import { actLabel, actOf, actOn } from './memo';
 import { type Actions, type GanttDays, type Hud, PLAN_RUN, type PlanRun } from './store';
@@ -259,7 +260,15 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
     <div className="gantt panel" id="gantt" role="dialog" aria-labelledby="gantt-title" data-test="gantt">
       <div className="phead">
         <b id="gantt-title">{T.gantt.title}</b>
-        <span className="muted">{T.gantt.question}</span>
+        <span className="filters" data-test="gantt-tabs">
+          <button type="button" className={g.tab ? '' : 'on'} onClick={() => actions.ganttTab()} data-test="gantt-tab-plan">
+            {T.jobs.bars}
+          </button>
+          <button type="button" className={g.tab === 'jobs' ? 'on' : ''} onClick={() => actions.ganttTab('jobs')} data-test="gantt-tab-jobs">
+            {T.jobs.tab}
+          </button>
+        </span>
+        <span className="muted">{g.tab === 'jobs' ? T.jobs.question : T.gantt.question}</span>
         <span className="filters grow">
           {DAYS.map(d => (
             <button type="button" key={d} className={g.days === d ? 'on' : ''} onClick={() => actions.setGanttDays(d)} data-test={`gantt-days-${d}`}>
@@ -306,9 +315,9 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
             ) : null}
           </span>
         ) : null}
-        {g.draft.length + g.urgent.length > 0 ? (
+        {g.draft.length + g.urgent.length + g.drop.length > 0 ? (
           <>
-            <span data-test="draft-list">{T.plan.draft([...g.draft.map(c => who(labels, c.batch) || c.batch), ...g.urgent.map(u => T.urgent.item(named(db?.skus[u.sku]?.name, u.sku)))].join(', '))}</span>
+            <span data-test="draft-list">{T.plan.draft([...g.drop.map(id => T.jobs.dropped(who(labels, id) || T.jobs.order(Number(id.slice(1))))), ...g.draft.map(c => who(labels, c.batch) || c.batch), ...g.urgent.map(u => T.urgent.item(named(db?.skus[u.sku]?.name, u.sku)))].join(', '))}</span>
             <button type="button" onClick={() => actions.approveDraft()} disabled={!mine} title={act.mine ? T.plan.approveHint : act.title} data-test="draft-approve" data-memo={act.memo ?? undefined}>
               {actLabel(act, T.plan.approve)}
             </button>
@@ -336,6 +345,10 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
           </button>
         )}
       </div>
+      {g.tab === 'jobs' ? (
+        <Jobs hud={hud} actions={actions} jobs={v.jobs} mine={mine} items={items} />
+      ) : (
+        <>
       <div className="grow-row gaxis">
         <div className="glabel" />
         <div className="gtrack">
@@ -436,7 +449,9 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         </span>
         {v.stuck.length > 0 ? <span className="bad">{T.gantt.stuck(v.stuck.map(id => who(labels, id)).join(', '))}</span> : null}
       </div>
-      {p.running || p.error || p.sums.some(Boolean) ? <PlanSum p={p} start={start} stale={p.key !== draftKey(g.draft, g.urgent)} rowName={rowName} lineNo={lineNo} /> : null}
+        </>
+      )}
+      {p.running || p.error || p.sums.some(Boolean) ? <PlanSum p={p} start={start} stale={p.key !== draftKey(g.draft, g.urgent, g.drop)} rowName={rowName} lineNo={lineNo} /> : null}
       {g.drag && tip ? (
         <div className="gtip panel" style={{ left: Math.min(tip.x + 14, window.innerWidth - 380), top: tip.y + 14 }} data-test="gtip">
           <div>

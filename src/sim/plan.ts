@@ -11,6 +11,7 @@ import { type Bar, type Change, type Fresh, forecast, freshBatches, type Why } f
 import { planOf } from '../engine/plant';
 import { shiftEndAt } from '../engine/staff';
 import type { Batch, BatchStatus, PlantState } from '../engine/types';
+import { type Jobs, jobsOf } from './jobs';
 import { type AssetInfo, assetInfo } from './places';
 
 export interface GanttQuery {
@@ -22,6 +23,8 @@ export interface GanttQuery {
   draft?: Change[];
   /** новые задания черновика (0.0.39): срочные задания — ещё не команды */
   fresh?: Fresh[];
+  /** задания, которые черновик отменяет (Б6а) — ещё не команды */
+  drop?: string[];
 }
 
 export interface GhostQuery {
@@ -32,6 +35,7 @@ export interface GhostQuery {
   /** черновик — призрак считает его вместе с тем, что тянут */
   draft?: Change[];
   fresh?: Fresh[];
+  drop?: string[];
 }
 
 /** Строка Ганта: комплектовка у шлюза, помещение производства (тип — для названия), упаковочная линия. */
@@ -74,6 +78,8 @@ export interface GanttView {
   gone: string[];
   /** активы полос визитов и причин (Б3в): название класса, номер, работа — для слов */
   assets: Record<string, AssetInfo>;
+  /** задания на серию и заказы без покрытия (Б6а) — по прогону с черновиком */
+  jobs: Jobs;
 }
 
 export interface GhostView {
@@ -174,8 +180,9 @@ export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttVie
   const base = forecast(db, s);
   const draft = q.draft ?? [];
   const fresh = q.fresh ?? [];
-  const changed = draft.length + fresh.length > 0;
-  const f = changed ? forecast(db, s, draft, fresh) : base;
+  const drop = q.drop ?? [];
+  const changed = draft.length + fresh.length + drop.length > 0;
+  const f = changed ? forecast(db, s, draft, fresh, drop) : base;
   const inWindow = (b: Bar) => b.to > q.from && b.from < q.to && b.to > b.from;
   const bars = [...pastBars(db, s), ...f.bars].filter(inWindow);
   // новые задания черновика — среди сдвинутых: у них полосы по плану есть только с черновиком
@@ -212,8 +219,9 @@ export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttVie
     off: offOf(db, s, q.from, Math.min(q.to, q.from + 31 * 24 * HOUR)),
     moved,
     was,
-    gone: draft.filter(c => !movable(s, c.batch)).map(c => c.batch),
+    gone: [...draft.filter(c => !movable(s, c.batch)).map(c => c.batch), ...drop.filter(id => !movable(s, id))],
     assets,
+    jobs: jobsOf(db, s, f),
   };
 }
 
@@ -228,8 +236,9 @@ export function ghostView(db: ContentDb, s: PlantState, q: GhostQuery): GhostVie
   if (!movable(s, q.batch)) return { ...empty, refused: 'started' };
   const rest = (q.draft ?? []).filter(c => c.batch !== q.batch);
   const fresh = q.fresh ?? [];
-  const base = forecast(db, s, rest, fresh);
-  const f = forecast(db, s, [...rest, { batch: q.batch, notBefore: q.notBefore }], fresh);
+  const drop = q.drop ?? [];
+  const base = forecast(db, s, rest, fresh, drop);
+  const f = forecast(db, s, [...rest, { batch: q.batch, notBefore: q.notBefore }], fresh, drop);
   const moved = movedOf(base.bars, f.bars, q.batch);
   const why = f.why[q.batch] ?? [];
   const ids = new Set<string>([q.batch, ...moved, ...why.flatMap(w => (whyBatch(w) ? [whyBatch(w)!] : []))]);

@@ -403,6 +403,15 @@ export function Dossier({ hud, actions }: { hud: Hud; actions: Actions }) {
             {v.sku ? head(T.dossier.sku, `${named(db?.skus[v.sku]?.name, v.sku)} · ${T.card.packingOf(docText('skus', v.sku))}`) : null}
             {v.mass !== undefined && v.units !== undefined ? head(T.dossier.size, T.dossier.sizeText(kg(v.mass), num(v.units))) : null}
             {v.status ? head(T.dossier.state, T.dossier.status[v.status]) : null}
+            {v.goal ? head(T.dossier.goal, v.goal.kind === 'stock' ? T.jobs.stock : T.jobs.forOrder(v.goal.customer ? named(db?.customers[v.goal.customer]?.name, v.goal.customer) : v.goal.order)) : null}
+            {v.due !== undefined ? head(T.dossier.due, whenText(start, v.due)) : null}
+            {v.open ? (
+              <div>
+                <button type="button" className="small" onClick={() => actions.cancelJob(`B${v.batch}`)} title={T.dossier.cancelHint} data-test="dossier-cancel">
+                  {T.jobs.cancel}
+                </button>
+              </div>
+            ) : null}
             {v.issued !== undefined ? head(T.dossier.issued, whenText(start, v.issued)) : null}
             {v.produced !== undefined ? head(T.dossier.produced, <span title={T.dossier.producedHint}>{dayText(momentOf(start, v.produced).day)}</span>) : null}
           </dl>

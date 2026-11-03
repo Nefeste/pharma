@@ -248,6 +248,8 @@ async function quality(x) {
     }
     await s.dev(n);
     const check = await page.evaluate(r => ({ text: document.querySelector(`${r} [data-test=dev-capa-check]`)?.textContent ?? '', ok: document.querySelector(`${r} [data-test=dev-capa-check]`)?.getAttribute('data-ok') }), row);
+    // на снимке — сама запись проверки, а не верх карточки
+    await page.evaluate(r => document.querySelector(`${r} [data-test=dev-capa-check]`)?.scrollIntoView({ block: 'center' }), row);
     await s.shot('Проверка эффективности CAPA');
     await page.keyboard.press('Escape');
     if (!/эффективна/.test(check.text)) fail(`проверка эффективности: «${check.text}»`);

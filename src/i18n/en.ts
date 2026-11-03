@@ -1538,6 +1538,7 @@ export const en: Strings = {
       fg: 'finished goods awaiting a decision',
       released: 'released',
       rejected: 'rejected',
+      cancelled: 'order cancelled',
     } as Record<string, string>,
     weighed: 'Weighed',
     reserve: 'FEFO reservation — weighed at the first stage',
@@ -1808,6 +1809,9 @@ export const en: Strings = {
     acting: (head: string, person: string) => `Acting ${head} — ${person}`,
     what: {
       order: (sku: string, nb: string) => `Batch order: ${sku}, not before ${nb}`,
+      cancel: (what: string, nb: string) => `Batch order cancelled: ${what}, not before ${nb}`,
+      due: (when: string) => ` · due ${when}`,
+      forOrder: (customer: string) => ` · for an order of ${customer}`,
       po: (supplier: string, lines: string) => `Purchase order: ${supplier} — ${lines}`,
       step: (step: string) => `Investigation step: ${step}`,
       conclude: (cause: string, release: boolean) => `Investigation conclusion: ${cause} — ${release ? 'release the batch' : 'reject the batch'}`,
@@ -1865,6 +1869,7 @@ export const en: Strings = {
       viaYou: (n: number) => `on your memo No. ${n}`,
       cmd: {
         order: (what: string, nb: string) => `batch order: ${what}, not before ${nb}`,
+        cancel: (what: string) => `cancel the order ${what}`,
         shift: (what: string, nb: string) => `move ${what} to ${nb}`,
         pack: (what: string, sku: string) => `pack ${what} into ${sku}`,
         maintain: (part: string, machine: string) => `replace a part: ${part} · ${machine}`,
@@ -1955,6 +1960,8 @@ export const en: Strings = {
       alone: 'No other item is below the threshold',
       other: (sku: string, days: number) => `${sku} — for ${workEn(days)}`,
       limited: (cover: number, policy: number) => `the head's skill: a cover of ${daysEn(cover)} instead of ${daysEn(policy)} by the policy`,
+      due: (when: string) => `Due ${when}: the item's stock runs out then at this demand`,
+      held: (sku: string, t: string, until: string) => `${sku}: you cancelled its stock order on ${t}; not placing one before ${until}`,
     },
     po: {
       line: (material: string, have: string, point: string, per: string, lead: number, qc: number, safety: number) =>

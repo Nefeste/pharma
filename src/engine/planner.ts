@@ -9,10 +9,11 @@
 // позициям нужна серия, а другому продукту не срочно. Своего состояния у коллеги нет: всё — из заводских заданий,
 // партий и заказов. Счёт — в целых.
 import type { ContentDb, Id, Recipe, Sku } from '../content/types';
-import { addWorkdays, DAY, daysFromCivil, isWorkday, momentOf } from './core/calendar';
+import { addWorkdays, DAY, daysFromCivil, isWorkday, momentOf, workdayOnOrAfter } from './core/calendar';
 import { coverBy, dueRule, skillOf } from './bosses';
 import { modeOf, moot, propose } from './heads';
 import { asWho } from './journal';
+import { TRUCK_HOUR } from './market';
 import { BATCH_HOUR, placeOrder } from './mes';
 import { numOf, POL } from './policies';
 import { containersByLot } from './stock';
@@ -74,7 +75,7 @@ export function positionOf(db: ContentDb, s: PlantState, sku: Id, window: number
   // удержанная (заблокированная) ГП — не запас: её могут и отклонить
   for (const l of Object.values(s.lots)) if (l.material === k.fg && l.status !== 'rejected' && l.status !== 'blocked') cases += byLot.get(l.id)?.length ?? 0;
   for (const b of Object.values(s.batches)) {
-    if (b.sku !== sku || b.status === 'released' || b.status === 'rejected' || b.status === 'fg') continue;
+    if (b.sku !== sku || b.status === 'released' || b.status === 'rejected' || b.status === 'fg' || b.status === 'cancelled') continue;
     const expect = casesOf(db.recipes[b.recipe], k);
     cases += b.status === 'packing' && b.pack?.fg ? Math.max(0, expect - (byLot.get(b.pack.fg)?.length ?? 0)) : expect;
   }
@@ -84,6 +85,34 @@ export function positionOf(db: ContentDb, s: PlantState, sku: Id, window: number
   let ordered = 0;
   for (const o of Object.values(s.orders)) if (o.placed > s.t - span) for (const l of o.lines) if (l.sku === sku) ordered += l.cases;
   return { sku, cases, ordered, span, work: workBack(db, s, span) };
+}
+
+/**
+ * Срок задания на запас позиции (Б6а): отгрузка того рабочего дня, когда запас позиции — ГП и серии в работе против
+ * спроса за рабочий день — кончится; тот же расчёт, которым правило выбирает позицию. Спроса не видно — срока нет.
+ */
+export function stockDue(db: ContentDb, s: PlantState, sku: Id, window: number, byLot = containersByLot(s)): number | undefined {
+  const p = positionOf(db, s, sku, window, byLot);
+  if (p.span === 0 || p.ordered === 0) return undefined;
+  const cal = calOf(db, s);
+  const today = momentOf(s.start, s.t).day;
+  // рабочих дней спроса, которые покрывает запас: сегодня и дальше
+  const days = p.cases <= 0 ? 0 : Math.floor((p.cases * p.work) / p.ordered);
+  const z = days > 0 ? addWorkdays(cal, today, days) : workdayOnOrAfter(cal, today);
+  return (z - daysFromCivil(s.start)) * DAY + TRUCK_HOUR;
+}
+
+/**
+ * Отменённое задание на запас позиции (Б6а): последнее, чьё «не раньше» ещё не наступило, — до него начальник отдела
+ * планирования эту позицию заново не ставит; отменённое под заказ покупателя не держит ничего.
+ */
+export function heldOf(s: PlantState, sku: Id): { t: number; until: number } | undefined {
+  let out: { t: number; until: number } | undefined;
+  for (const b of Object.values(s.batches)) {
+    if (b.status !== 'cancelled' || b.sku !== sku || b.for?.kind === 'order' || s.t >= b.notBefore) continue;
+    if (!out || b.notBefore > out.until) out = { t: b.cancelled ?? b.ordered, until: b.notBefore };
+  }
+  return out;
 }
 
 /** Вещь предложения начальника отдела планирования (Б5б): следующее задание на серию — одно открытое. */
@@ -111,7 +140,7 @@ export function planHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   // горизонт — политика, а навык руководителя ниже 4 его сокращает (геймдизайн, §8.5)
   const policy = numOf(db, s, POL.cover)!;
   const cover = coverBy(skillOf(s, who), policy);
-  const got = Object.values(s.batches).some(b => momentOf(s.start, b.notBefore).day === day) ? undefined : pick(db, s, plan.items, cover, numOf(db, s, POL.window)!, numOf(db, s, POL.urgent), at, cover < policy ? policy : undefined);
+  const got = Object.values(s.batches).some(b => b.status !== 'cancelled' && momentOf(s.start, b.notBefore).day === day) ? undefined : pick(db, s, plan.items, cover, numOf(db, s, POL.window)!, numOf(db, s, POL.urgent), at, cover < policy ? policy : undefined);
   if (mode === 'advise') {
     if (!got) return moot(s, ORDER_KEY);
     const cmd = { kind: 'order' as const, recipe: got.it.recipe, notBefore: at, sku: got.it.sku };
@@ -130,15 +159,18 @@ export function planHour(db: ContentDb, s: PlantState, notices: Notice[]) {
  */
 function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], cover: number, window: number, urgent: number | undefined, at: number, policy?: number): { it: { recipe: Id; sku: Id }; why: OrderWhy } | undefined {
   const byLot = containersByLot(s);
-  const pos = items.map(it => ({ it, p: positionOf(db, s, it.sku, window, byLot) }));
+  // отменённое на запас (Б6а): позицию не ставят до «не раньше» отменённого
+  const pos = items.map(it => ({ it, p: positionOf(db, s, it.sku, window, byLot), held: heldOf(s, it.sku) }));
   // запас < заказано за рабочий день окна × рабочих дней пятидневки в AHEAD + cover суток (Б4а)
   const ahead = aheadMilli(AHEAD + cover);
-  const why = (rule: OrderWhy['rule'], extra: Partial<OrderWhy> = {}): OrderWhy => ({ rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work })), ahead, cover, ...(policy !== undefined ? { policy } : {}), ...extra });
+  const why = (rule: OrderWhy['rule'], extra: Partial<OrderWhy> = {}): OrderWhy => ({ rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work, ...(x.held ? { held: x.held } : {}) })), ahead, cover, ...(policy !== undefined ? { policy } : {}), ...extra });
+  const free = pos.filter(x => !x.held);
+  if (free.length === 0) return undefined;
   if (pos.some(x => x.p.span === 0)) {
     const last = (sku: Id) => Math.max(-1, ...Object.values(s.batches).filter(b => b.sku === sku).map(b => idNum(b.id)));
-    return { it: pos.reduce((a, b) => (last(b.it.sku) < last(a.it.sku) ? b : a)).it, why: why('turn', { seen: SEEN }) };
+    return { it: free.reduce((a, b) => (last(b.it.sku) < last(a.it.sku) ? b : a)).it, why: why('turn', { seen: SEEN }) };
   }
-  const need = pos.filter(x => x.p.cases * x.p.work * 1000 < x.p.ordered * ahead);
+  const need = free.filter(x => x.p.cases * x.p.work * 1000 < x.p.ordered * ahead);
   if (need.length === 0) return undefined;
   // у кого запаса меньше суток спроса: cases_a / ordered_a < cases_b / ordered_b; без заказов позиция — последней
   const less = (a: SkuPosition, b: SkuPosition) => (a.ordered === 0 ? false : b.ordered === 0 ? true : a.cases * b.ordered < b.cases * a.ordered);

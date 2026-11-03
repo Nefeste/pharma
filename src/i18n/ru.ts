@@ -1628,6 +1628,7 @@ export const ru = {
       fg: 'готовая продукция ждёт решения',
       released: 'выпущена',
       rejected: 'отклонена',
+      cancelled: 'задание отменено',
     } as Record<string, string>,
     weighed: 'Отвешено',
     reserve: 'Резерв по FEFO — отвесят на первой стадии',
@@ -1908,6 +1909,9 @@ export const ru = {
     /** что решено */
     what: {
       order: (sku: string, nb: string) => `Задание на серию: ${sku}, не раньше ${nb}`,
+      cancel: (what: string, nb: string) => `Отмена задания на серию: ${what}, не раньше ${nb}`,
+      due: (when: string) => ` · срок ${when}`,
+      forOrder: (customer: string) => ` · под заказ: ${customer}`,
       po: (supplier: string, lines: string) => `Заказ поставщику: ${supplier} — ${lines}`,
       step: (step: string) => `Шаг расследования: ${step}`,
       conclude: (cause: string, release: boolean) => `Вывод расследования: ${cause} — ${release ? 'выпустить серию' : 'отклонить серию'}`,
@@ -1966,6 +1970,7 @@ export const ru = {
       viaYou: (n: number) => `по вашей записке № ${n}`,
       cmd: {
         order: (what: string, nb: string) => `задание на серию: ${what}, не раньше ${nb}`,
+        cancel: (what: string) => `отменить задание ${what}`,
         shift: (what: string, nb: string) => `сдвинуть ${what} на ${nb}`,
         pack: (what: string, sku: string) => `упаковать ${what} в позицию ${sku}`,
         maintain: (part: string, machine: string) => `заменить узел: ${part} · ${machine}`,
@@ -2058,6 +2063,8 @@ export const ru = {
       alone: 'Других позиций ниже порога нет',
       other: (sku: string, days: number) => `${sku} — на ${workRu(days)}`,
       limited: (cover: number, policy: number) => `навык руководителя: запас на ${daysRu(cover)} вместо ${daysRu(policy)} по политике`,
+      due: (when: string) => `Срок — ${when}: тогда кончится запас позиции при этом спросе`,
+      held: (sku: string, t: string, until: string) => `${sku}: задание на запас отменено вами ${t}, до ${until} не ставлю`,
     },
     po: {
       line: (material: string, have: string, point: string, per: string, lead: number, qc: number, safety: number) =>

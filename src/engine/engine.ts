@@ -28,7 +28,7 @@ import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from '.
 import { maintainCommand, maintDone, maintStep, newParts, spareArrives } from './maint';
 import { marketDone, marketHour, marketStep, newCustomers, rznPublished, seedFg } from './market';
 import { memoCommand, memoDue, memoHour, withdrawCommand } from './memos';
-import { BATCH_HOUR, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
+import { BATCH_HOUR, cancelOrder, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
 import { setpointCommand } from './modes';
 import { auditDone, partnersDone, partnersHour, seedContracts, seedPairs, specPairs } from './partners';
 import { coldOf } from './places';
@@ -241,6 +241,12 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
     case 'shift': {
       const notices: Notice[] = [];
       shiftCommand(s, cmd, notices);
+      steps(db, s, notices);
+      return notices;
+    }
+    case 'cancel': {
+      const notices: Notice[] = [];
+      cancelOrder(s, cmd, notices);
       steps(db, s, notices);
       return notices;
     }

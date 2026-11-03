@@ -13,6 +13,7 @@ import type { Command, Notice, PlantState } from './types';
 export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
   order: 'production',
   shift: 'production',
+  cancel: 'production',
   pack: 'production',
   maintain: 'production',
   rush: 'quality',

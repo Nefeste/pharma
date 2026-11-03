@@ -152,7 +152,7 @@ export function runSeed(db: ContentDb, s: PlantState, variant: Command[], o: Run
 /** Прогон варианта: итог каждого зерна; `seed` — после каждого зерна (ход прогона, Б5г). Состояние `s` не меняется. */
 export function runPlan(db: ContentDb, s: PlantState, variant: Command[], o: RunOpts, seed?: (k: number) => void): SeedOut[] {
   const open = Object.values(s.batches)
-    .filter(b => b.status !== 'released' && b.status !== 'rejected')
+    .filter(b => b.status !== 'released' && b.status !== 'rejected' && b.status !== 'cancelled')
     .map(b => b.id);
   const known = new Set(Object.keys(s.orders));
   const day = momentOf(s.start, s.t).day;

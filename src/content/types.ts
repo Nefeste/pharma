@@ -189,20 +189,21 @@ export interface ScenarioWaste {
   keep: number;
 }
 
-/** Руководитель политики (Б5г): по должности, как у журнала решений (src/engine/types.ts, `Head`). */
-export type PolicyHead = 'plan' | 'supply' | 'maint' | 'mes' | 'wms' | 'tech';
+/** Руководитель политики (Б5г): по должности, как у журнала решений (src/engine/types.ts, `Head`); с Б5е — и начальник ООК. */
+export type PolicyHead = 'plan' | 'supply' | 'maint' | 'mes' | 'wms' | 'tech' | 'qa';
 
 /**
  * Политика руководителя (Б5г; геймдизайн, §8.5): что задают и в каких пределах — гипотезы. Сутки и месяцы — от `min` до
  * `max` с шагом `step`; износ узла — доли 1/10 000 ресурса так же, `off` — «после отказа»; уровень ЗИП — два целых от
  * `min` до `max`, первое меньше; выбор — из `options`; доля мест — из `shares`. `each` — своя у каждого узла или запчасти;
- * `off` у суток — «без» (кампаний нет). С чего начинает завод — запись сценария (src/engine/policies.ts).
+ * `off` у суток — «без» (кампаний нет); число (Б5е) — от `min` до `max` с шагом `step`, как сутки. С чего начинает
+ * завод — запись сценария (src/engine/policies.ts).
  */
 export interface Policy {
   id: Id;
   name: Text;
   head: PolicyHead;
-  kind: 'days' | 'months' | 'wear' | 'level' | 'choice' | 'share';
+  kind: 'days' | 'months' | 'wear' | 'level' | 'choice' | 'share' | 'count';
   each?: 'part' | 'spare';
   min?: number;
   max?: number;
@@ -316,8 +317,13 @@ export interface Scenario {
    * src/engine/market.ts, `seedFg`
    */
   fg?: { days: number; age: [number, number] };
-  /** отклонения (Б1г; геймдизайн, §6.4): срок расследования по процедуре завода, сутки */
-  deviations: { term: number };
+  /**
+   * отклонения (Б1г, Б5е; геймдизайн, §6.4) — процедура завода: срок расследования по классу, сутки; порог износа узла
+   * стадии, с которого он — признак вероятной причины, доли 1/10 000 ресурса; через сколько суток после выполнения CAPA —
+   * проверка эффективности; с какого такого же отклонения за 12 месяцев начальник ООК назначает CAPA — с этого начинает
+   * политика ООК (src/engine/capa.ts)
+   */
+  deviations: { term: Record<DevClass, number>; wear: number; check: number; capa: number };
   /** рынок труда города (Б4в; src/engine/hire.ts); нет — ни кандидатов, ни заявлений */
   labor?: Labor;
   /**
@@ -1149,6 +1155,39 @@ export interface Spare {
   review?: Review;
 }
 
+/** Класс отклонения (Б5е; геймдизайн, §6.4; `pics-pi040`): критическое, существенное, незначительное. */
+export type DevClass = 'critical' | 'major' | 'minor';
+
+/**
+ * Род вероятной причины отклонения (Б5е; src/engine/capa.ts): износ узла, режим вне диапазона карты, партия поставщика,
+ * ошибка лаборатории, «не установлена».
+ */
+export type CauseClass = 'wear' | 'param' | 'lots' | 'lab' | 'none';
+
+/** Что делает действие CAPA (Б5е): заменить узел, заменять раньше, обучить, калибровка прибора МОК, оценка пары. */
+export type CapaDoes = 'replace' | 'earlier' | 'train' | 'calib' | 'pair';
+
+/** Кто исполняет CAPA (Б5е): руководитель отдела действия — главный механик, начальник ООК, производства, ОКК. */
+export type CapaHead = 'maint' | 'qa' | 'mes' | 'qc';
+
+/**
+ * Действие CAPA каталога (Б5е; `content/capa/`; геймдизайн, §6.4): что делает движок; кто исполняет — руководитель
+ * отдела, у обучения — отдела тех, кого учат; к каким отклонениям подходит — по роду вероятной причины или по виду
+ * отклонения; порядок у правила начальника ООК — нет его, действие назначает только игрок. Часы и цена — из записей,
+ * которые действие трогает: узла и запчасти, документа и обучения, класса прибора, пары и аудита.
+ */
+export interface CapaAction {
+  id: Id;
+  name: Text;
+  does: CapaDoes;
+  head?: CapaHead;
+  causes?: CauseClass[];
+  kinds?: ('oos' | 'ipc' | 'param' | 'yield' | 'recon')[];
+  rule?: number;
+  source: string[];
+  review: Review;
+}
+
 export interface ContentDb {
   /** отпечаток базы: сохранение помнит, с какой базой оно сделано */
   hash: string;
@@ -1180,4 +1219,6 @@ export interface ContentDb {
   agreements: Record<Id, Agreement>;
   /** политики руководителей (Б5г): `content/policies/` */
   policies: Record<Id, Policy>;
+  /** каталог действий CAPA (Б5е): `content/capa/` */
+  capa: Record<Id, CapaAction>;
 }

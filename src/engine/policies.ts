@@ -4,7 +4,7 @@
 // Игрок меняет политику с поста отдела руководителя или директором — команда `policy`: с ближайшего часа правила, начатое
 // не меняется; смена — запись журнала с прежним значением, открытые предложения руководителя устаревают. Сверхурочные
 // (Б4а) — своё поле и своя команда `overtime`.
-import type { ContentDb, Id, Policy, PolicyHead, Scenario } from '../content/types';
+import type { ContentDb, Id, Policy, PolicyHead, Scenario, SeatId } from '../content/types';
 import { staleHead } from './heads';
 import { noteCmd, seatOf } from './journal';
 import type { Command, Notice, PlantState, PoliciesState, PolicyValue } from './types';
@@ -23,6 +23,8 @@ export const POL = {
   full: 'pol.wms.full',
   keep: 'pol.wms.keep',
   setpoints: 'pol.tech.setpoints',
+  capa: 'pol.qa.capa',
+  pairAhead: 'pol.qa.ahead',
 } as const;
 
 /** «Без»: кампаний нет; узел меняют после отказа. */
@@ -36,13 +38,14 @@ export const policyKey = (policy: Id, of?: string) => (of ? `${policy}:${of}` : 
 /** Руководитель политики по её номеру: `pol.<руководитель>.<что>` — так его знает и пост команды (seats.ts). */
 export const policyHead = (policy: Id): PolicyHead | undefined => {
   const h = policy.split('.')[1];
-  return h === 'plan' || h === 'supply' || h === 'maint' || h === 'mes' || h === 'wms' || h === 'tech' ? h : undefined;
+  return h === 'plan' || h === 'supply' || h === 'maint' || h === 'mes' || h === 'wms' || h === 'tech' || h === 'qa' ? h : undefined;
 };
 
 /**
  * С чего начинает завод — запись сценария: запас позиций, окно спроса и кампании планирования; страховой запас и заказ
  * снабжения; порог замены узла (нет — после отказа) и уровень ЗИП запчасти; срок визита подрядчика; уборка после серии;
- * порог вывоза отклонённого; уставки при уходе с поста. Сценарий правила не задаёт — `undefined`: политики нет.
+ * порог вывоза отклонённого; уставки при уходе с поста; с Б5е — CAPA по повтору и срок оценки пары у начальника ООК.
+ * Сценарий правила не задаёт — `undefined`: политики нет.
  */
 export function policyDefault(db: ContentDb, sc: Scenario, policy: Id, of?: string): PolicyValue | undefined {
   switch (policy) {
@@ -72,6 +75,10 @@ export function policyDefault(db: ContentDb, sc: Scenario, policy: Id, of?: stri
       return sc.waste?.keep;
     case POL.setpoints:
       return sc.policies.setpoints;
+    case POL.capa:
+      return sc.deviations.capa;
+    case POL.pairAhead:
+      return sc.partners.ahead;
   }
   return undefined;
 }
@@ -84,7 +91,7 @@ export function policyOf(db: ContentDb, s: PlantState, policy: Id, of?: string):
   return s.policies?.v[policyKey(policy, of)] ?? policyDefault(db, db.scenarios[s.scenario], policy, of);
 }
 
-/** Сутки, месяцы или порог износа политики; «без» — `undefined`. */
+/** Сутки, месяцы, порог износа или число политики; «без» — `undefined`. */
 export function numOf(db: ContentDb, s: PlantState, policy: Id, of?: string): number | undefined {
   const v = policyOf(db, s, policy, of);
   return typeof v === 'number' ? v : undefined;
@@ -102,6 +109,7 @@ export function fits(p: Policy, v: PolicyValue): boolean {
     case 'days':
     case 'months':
     case 'wear':
+    case 'count':
       if (v === OFF) return !!p.off;
       return typeof v === 'number' && Number.isInteger(v) && v >= p.min! && v <= p.max! && (v - p.min!) % p.step! === 0;
     case 'level':
@@ -136,11 +144,18 @@ export function policyCommand(db: ContentDb, s: PlantState, cmd: Extract<Command
   if (from === undefined) return notices.push({ kind: 'refused', cmd: 'policy', why: 'noPolicy', detail: cmd.policy });
   if (!fits(p, cmd.value)) return notices.push({ kind: 'refused', cmd: 'policy', why: 'policyRange', detail: cmd.policy });
   if (sameValue(from, cmd.value)) return notices.push({ kind: 'refused', cmd: 'policy', why: 'policySame', detail: cmd.policy });
-  const key = policyKey(p.id, thing);
-  s.policies.v[key] = cmd.value;
   const seat = seatOf(s, cmd);
-  s.policies.log.push({ policy: p.id, ...(thing ? { of: thing } : {}), t: s.t, ...(seat ? { seat } : {}), from, to: cmd.value });
+  setPolicy(s, p, thing, from, cmd.value, notices, seat ? { seat } : {});
   noteCmd(s, cmd, { kind: 'policy', policy: p.id, ...(thing ? { of: thing } : {}), from, to: cmd.value });
+}
+
+/**
+ * Задать политику (Б5г; с Б5е — и по CAPA): новое значение; в историю политик — когда, с какого места игрока или по
+ * какой CAPA, прежнее и новое; открытые предложения руководителя устаревают; извещение. Значение проверяет тот, кто зовёт.
+ */
+export function setPolicy(s: PlantState, p: Policy, thing: string | undefined, from: PolicyValue, value: PolicyValue, notices: Notice[], mark: { seat?: SeatId; capa?: string }) {
+  s.policies.v[policyKey(p.id, thing)] = value;
+  s.policies.log.push({ policy: p.id, ...(thing ? { of: thing } : {}), t: s.t, ...(mark.seat ? { seat: mark.seat } : {}), ...(mark.capa ? { capa: mark.capa } : {}), from, to: value });
   staleHead(s, p.head);
   notices.push({ kind: 'policy', policy: p.id, ...(thing ? { of: thing } : {}), head: p.head });
 }
@@ -162,6 +177,8 @@ const SHAPE: Record<string, Pick<Policy, 'kind' | 'each' | 'off' | 'options'>> =
   [POL.full]: { kind: 'share' },
   [POL.keep]: { kind: 'months' },
   [POL.setpoints]: { kind: 'choice', options: ['target', 'keep'] },
+  [POL.capa]: { kind: 'count' },
+  [POL.pairAhead]: { kind: 'days' },
 };
 
 /**

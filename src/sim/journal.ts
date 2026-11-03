@@ -64,6 +64,8 @@ export interface JournalRef {
   batches?: string[];
   /** вакансия и кандидат команд найма (Б5д): роль */
   role?: Id;
+  /** CAPA (Б5е): номер */
+  capa?: number;
 }
 
 /**
@@ -171,7 +173,12 @@ function headOf(db: ContentDb, d: Decided): Head {
     case 'conclude':
     case 'assess':
     case 'pairEval':
+    case 'classify':
+    case 'capa':
+    case 'capaCheck':
       return 'qa';
+    case 'capaRun':
+      return d.head;
     case 'lot':
       return 'qc';
     case 'batch':
@@ -271,9 +278,25 @@ export function refOf(db: ContentDb, s: PlantState, d: Decided, ask?: Ask): Jour
       const inv = s.investigations[d.inv];
       return inv ? { inv: inv.id, model: inv.model, dev: num(inv.deviation), ...batchRef(s, inv.batch) } : { inv: d.inv };
     }
-    case 'assess': {
+    case 'assess':
+    case 'classify':
+    case 'capa': {
       const dev = s.deviations[d.dev];
-      return { dev: num(d.dev), ...(dev?.batch ? batchRef(s, dev.batch) : {}), thing: { kind: 'dev', n: num(d.dev) } };
+      return { dev: num(d.dev), ...(dev?.batch ? batchRef(s, dev.batch) : {}), thing: { kind: 'dev', n: num(d.dev) }, ...(d.kind === 'capa' && d.capa ? { capa: num(d.capa) } : {}) };
+    }
+    case 'capaRun':
+    case 'capaCheck': {
+      // CAPA (Б5е): её отклонение; у «заменять раньше» — узел политики
+      const c = s.capas[d.capa];
+      const dev = c ? s.deviations[c.dev] : undefined;
+      const pt = c?.part ? s.parts[c.part] : undefined;
+      const thing = pt ? thingOf(db, s, pt.machine, plan) : undefined;
+      return {
+        capa: num(d.capa),
+        ...(dev ? { dev: num(dev.id), ...(dev.batch ? batchRef(s, dev.batch) : {}) } : {}),
+        ...(pt ? { machine: pt.of, part: pt.type } : {}),
+        ...(thing ? { thing } : dev ? { thing: { kind: 'dev' as const, n: num(dev.id) } } : {}),
+      };
     }
     case 'lot':
       return { ...lotRef(s, d.lot), ...(d.dev ? { dev: num(d.dev) } : {}), ...(d.inv ? { inv: d.inv } : {}) };
@@ -529,7 +552,15 @@ export function whoLot(s: PlantState, lot: Lot, db?: ContentDb): WhoRow[] {
 /** Отклонение: оценка влияния; у результата вне спецификации — решение по партии и вывод расследования. */
 export function whoDev(s: PlantState, id: string): WhoRow[] {
   const dev = s.deviations[id];
-  return whoRows(s, d => (d.kind === 'assess' && d.dev === id) || (d.kind === 'lot' && d.dev === id) || (!!dev?.inv && d.kind === 'conclude' && d.inv === dev.inv));
+  const ofDev = (capa: string) => s.capas[capa]?.dev === id;
+  return whoRows(
+    s,
+    d =>
+      ((d.kind === 'assess' || d.kind === 'classify' || d.kind === 'capa') && d.dev === id) ||
+      (d.kind === 'lot' && d.dev === id) ||
+      (!!dev?.inv && d.kind === 'conclude' && d.inv === dev.inv) ||
+      ((d.kind === 'capaRun' || d.kind === 'capaCheck') && ofDev(d.capa)),
+  );
 }
 
 /** Актив: визиты подрядчика; с Б5д — развилки «визит держит серию» и записки о переносе визита. */

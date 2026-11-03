@@ -8,6 +8,7 @@ import type { Attr, ContentDb, Id } from '../content/types';
 import { batchNo } from './batchno';
 import { part, post } from './cash';
 import { MIN, momentOf } from './core/calendar';
+import { probable, reclass, signsOf } from './devclass';
 import { inForce } from './docs';
 import { decider } from './bosses';
 import { modeOf, round } from './heads';
@@ -325,14 +326,18 @@ export function assessCommand(db: ContentDb, s: PlantState, cmd: Extract<Command
     const bad = tests.find(x => x.out > 0);
     if (bad) return notices.push({ kind: 'refused', cmd: 'assess', why: 'outOfSpec', detail: bad.test });
   }
-  noteCmd(s, cmd, { kind: 'assess', dev: d.id, verdict: cmd.verdict });
-  startAssess(db, s, d, cmd.verdict, cmd.by ?? 'player');
+  // вероятная причина (Б5е): из причин с признаком в записях завода или «не установлена»; не названа — по правилу
+  const signs = signsOf(db, s, d);
+  if (cmd.cause !== undefined && cmd.cause !== 'none' && !signs.includes(cmd.cause)) return notices.push({ kind: 'refused', cmd: 'assess', why: 'noSign', detail: cmd.cause });
+  const cause = cmd.cause ?? signs[0] ?? 'none';
+  noteCmd(s, cmd, { kind: 'assess', dev: d.id, verdict: cmd.verdict, cause });
+  startAssess(db, s, d, cmd.verdict, cmd.by ?? 'player', cause);
 }
 
-function startAssess(db: ContentDb, s: PlantState, d: Deviation, verdict: 'none' | 'reject', by: string) {
+function startAssess(db: ContentDb, s: PlantState, d: Deviation, verdict: 'none' | 'reject', by: string, cause: string) {
   const plan = planOf(db, s.plant);
   const t = addTask(s, { kind: 'devAssess', roles: [...QA.specialists], from: { kind: 'point', x: plan.lab.x, z: plan.lab.z }, work: DEV_WORK, prio: QA_PRIO.devAssess, dev: d.id, batch: d.batch });
-  d.assess = { verdict, by, t: s.t, task: t.id };
+  d.assess = { verdict, by, t: s.t, task: t.id, cause };
 }
 
 /**
@@ -344,15 +349,24 @@ function assessed(db: ContentDb, s: PlantState, d: Deviation, notices: Notice[])
   const a = d.assess!;
   delete a.task;
   a.done = s.t;
-  if (d.status !== 'open') return;
+  // вероятная причина — в отклонение (Б5е); начальник ООК посмотрит, нужна ли CAPA
+  d.cause = a.cause ?? probable(db, s, d);
+  d.capaDue = 'rule';
+  if (d.status !== 'open') {
+    reclass(s, d);
+    return;
+  }
   const b = s.batches[d.batch!];
   notices.push({ kind: 'assessed', id: d.id, verdict: a.verdict, code: batchNo(b.code) });
   if (a.verdict === 'none') {
     d.status = 'assessed';
+    // класс (Б5е): без влияния — незначительное, а повтор по причине — существенное
+    reclass(s, d);
     redecide(db, s, b);
     return;
   }
   d.status = 'closed';
+  reclass(s, d);
   b.decision = 'reject';
   if (b.status === 'bulk') {
     // балк разрешён, а упаковки у серии нет: отклонить партию балка — серия отклонится шагом производства
@@ -392,14 +406,17 @@ export function devHour(db: ContentDb, s: PlantState, notices: Notice[]): boolea
   let acted = false;
   for (const { d, tests } of ready) {
     const verdict = tests.some(x => x.out > 0) ? 'reject' : 'none';
-    // журнал решений (Б5а): начальник ООК — по связанным испытаниям серии
-    const why = { tests: tests.map(x => ({ test: x.test, kind: x.kind, n: x.n, out: x.out, ...(x.result !== undefined ? { result: x.result } : {}) })) };
+    // вероятная причина (Б5е): первая с признаком в записях завода, нет — «не установлена»
+    const signs = signsOf(db, s, d);
+    const cause = signs[0] ?? 'none';
+    // журнал решений (Б5а): начальник ООК — по связанным испытаниям серии и признакам причин в записях
+    const why = { tests: tests.map(x => ({ test: x.test, kind: x.kind, n: x.n, out: x.out, ...(x.result !== undefined ? { result: x.result } : {}) })), ...(signs.length ? { signs } : {}) };
     if (r) {
-      r.propose('qa', devKey(d.id), { kind: 'assess', deviation: d.id, verdict }, { kind: 'assess', dev: d.id, verdict, why }, notices, who);
+      r.propose('qa', devKey(d.id), { kind: 'assess', deviation: d.id, verdict, cause }, { kind: 'assess', dev: d.id, verdict, cause, why }, notices, who);
       continue;
     }
-    note(s, 'qa', { kind: 'assess', dev: d.id, verdict, why }, undefined, undefined, who);
-    startAssess(db, s, d, verdict, 'head:quality');
+    note(s, 'qa', { kind: 'assess', dev: d.id, verdict, cause, why }, undefined, undefined, who);
+    startAssess(db, s, d, verdict, 'head:quality', cause);
     acted = true;
   }
   r?.done();

@@ -1,0 +1,10 @@
+# CAPA (Б5е): внеочередная калибровка прибора — визит подрядчика по цене класса прибора (Б3в): прибор МОК стадии или
+# прибор лаборатории, давший результат. Назначает только игрок.
+id: capa.calib
+name: { ru: Внеочередная калибровка прибора, en: Extra calibration of the instrument }
+does: calib
+head: maint
+causes: [lab]
+kinds: [ipc]
+source: [gmp-eaeu, ich-q10]
+review: draft

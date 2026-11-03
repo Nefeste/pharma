@@ -232,8 +232,18 @@ export const scenario = z.strictObject({
       age: z.tuple([z.number().int().min(1).max(365), z.number().int().min(1).max(365)]).refine(([a, b]) => a <= b, { message: 'age: младшая серия старше самой старой' }),
     })
     .optional(),
-  /** отклонения (Б1г): срок расследования по процедуре завода, сутки */
-  deviations: z.strictObject({ term: z.number().int().min(1).max(365) }),
+  /**
+   * отклонения (Б1г, Б5е) — процедура завода: срок расследования по классу, сутки — у критического не длиннее, чем у
+   * существенного, у существенного — чем у незначительного (load.ts); порог износа узла стадии — признак вероятной
+   * причины, % ресурса; проверка эффективности CAPA — через столько суток после выполнения; с какого такого же
+   * отклонения за 12 месяцев начальник ООК назначает CAPA — с этого начинает политика ООК
+   */
+  deviations: z.strictObject({
+    term: z.strictObject({ critical: z.number().int().min(1).max(365), major: z.number().int().min(1).max(365), minor: z.number().int().min(1).max(365) }),
+    wear: z.number().int().min(1).max(100),
+    check: z.number().int().min(1).max(365),
+    capa: z.number().int().min(2).max(12),
+  }),
   /**
    * рынок труда города (Б4в): объявление — ₽ в неделю; кадровое агентство — % годового оклада принятого, опытный
    * кандидат с навыком от и до через столько-то суток от и до; медосмотр при приёме — рабочих дней и ₽; кандидат ищет
@@ -1100,8 +1110,8 @@ export const policy = z
   .strictObject({
     id: z.string(),
     name: text,
-    head: z.enum(['plan', 'supply', 'maint', 'mes', 'wms', 'tech']),
-    kind: z.enum(['days', 'months', 'wear', 'level', 'choice', 'share']),
+    head: z.enum(['plan', 'supply', 'maint', 'mes', 'wms', 'tech', 'qa']),
+    kind: z.enum(['days', 'months', 'wear', 'level', 'choice', 'share', 'count']),
     each: z.enum(['part', 'spare']).optional(),
     min: z.number().int().min(0).optional(),
     max: z.number().int().positive().optional(),
@@ -1113,7 +1123,7 @@ export const policy = z
     review,
   })
   .superRefine((p, ctx) => {
-    const numeric = p.kind === 'days' || p.kind === 'months' || p.kind === 'wear';
+    const numeric = p.kind === 'days' || p.kind === 'months' || p.kind === 'wear' || p.kind === 'count';
     if (numeric || p.kind === 'level') {
       if (p.min === undefined || p.max === undefined || p.min >= p.max) ctx.addIssue({ code: 'custom', message: 'нужны min и max, min меньше max' });
       if (numeric && (p.step === undefined || (p.max! - p.min!) % p.step !== 0)) ctx.addIssue({ code: 'custom', message: 'от min до max — целое число шагов step' });
@@ -1121,6 +1131,28 @@ export const policy = z
     if (p.kind === 'choice' && !p.options) ctx.addIssue({ code: 'custom', message: 'у выбора нужны options' });
     if (p.kind === 'share' && !p.shares) ctx.addIssue({ code: 'custom', message: 'у доли мест нужны shares' });
     if (p.kind === 'wear' && p.max! > 100) ctx.addIssue({ code: 'custom', message: 'износ — не больше 100 % ресурса' });
+  });
+
+/**
+ * Действие CAPA каталога (Б5е; геймдизайн, §6.4): что делает движок; кто исполняет — руководитель отдела действия, у
+ * обучения — нет: его исполняет руководитель отдела тех, кого учат; к каким отклонениям подходит — по роду вероятной
+ * причины или по виду отклонения, хоть одно; порядок у правила начальника ООК — нет, назначает только игрок.
+ */
+export const capa = z
+  .strictObject({
+    id: z.string(),
+    name: text,
+    does: z.enum(['replace', 'earlier', 'train', 'calib', 'pair']),
+    head: z.enum(['maint', 'qa', 'mes', 'qc']).optional(),
+    causes: z.array(z.enum(['wear', 'param', 'lots', 'lab', 'none'])).min(1).optional(),
+    kinds: z.array(z.enum(['oos', 'ipc', 'param', 'yield', 'recon'])).min(1).optional(),
+    rule: z.number().int().min(1).max(9).optional(),
+    source: sources,
+    review,
+  })
+  .superRefine((c, ctx) => {
+    if (c.does === 'train' ? c.head !== undefined : c.head === undefined) ctx.addIssue({ code: 'custom', message: 'head — у всех, кроме обучения: его исполняет руководитель отдела тех, кого учат' });
+    if (!c.causes && !c.kinds) ctx.addIssue({ code: 'custom', message: 'нужны causes или kinds: к чему действие подходит' });
   });
 
 /** Папка в content/ → приставка идентификатора и схема. */
@@ -1152,6 +1184,7 @@ export const KINDS = {
   makers: { prefix: 'mkr', schema: maker },
   agreements: { prefix: 'qag', schema: agreement },
   policies: { prefix: 'pol', schema: policy },
+  capa: { prefix: 'capa', schema: capa },
 } as const;
 
 export type Kind = keyof typeof KINDS;

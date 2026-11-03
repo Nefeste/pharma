@@ -172,9 +172,8 @@ function expired(db: ContentDb, s: PlantState, day: number, notices: Notice[]) {
  * политика главного механика (Б5г): с чего начинает завод — запись сценария.
  */
 function book(db: ContentDb, s: PlantState, today: number, who: Who) {
-  const sc = db.scenarios[s.scenario];
   const ahead = numOf(db, s, POL.ahead)!;
-  const at = (addWorkdays(calOf(db, s), today, 1) - daysFromCivil(s.start)) * DAY + sc.assets.hours[0];
+  const at = visitAt(db, s, today);
   for (const a of Object.values(s.assets)) {
     if (a.visit) continue;
     const cls = classOf(db, a);
@@ -189,6 +188,11 @@ function book(db: ContentDb, s: PlantState, today: number, who: Who) {
     // журнал решений (Б5а): главный механик — до какого дня запись и срок предупреждения
     note(s, 'maint', { kind: 'visit', asset: a.id, work: due.work, at, why: { ...(Number.isFinite(due.until) ? { until: due.until } : {}), ahead } }, undefined, undefined, who);
   }
+}
+
+/** Мгновение визита, назначенного в день `today` (Б3в): ближайший рабочий день, начало часов подрядчика. */
+export function visitAt(db: ContentDb, s: PlantState, today: number): number {
+  return (addWorkdays(calOf(db, s), today, 1) - daysFromCivil(s.start)) * DAY + db.scenarios[s.scenario].assets.hours[0];
 }
 
 /**

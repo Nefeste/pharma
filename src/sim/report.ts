@@ -2,9 +2,10 @@
 // (views.ts). Планёрка говорит о вчерашних календарных сутках — потери, смены и OEE движок ведёт по ним, — о событиях за
 // 24 часа до неё и о том, что ждёт сейчас. Данные — без слов и без истины: время машин, счётчики линии, ожидания задач,
 // записи отклонений, журнал оборудования, решения, заказы и проводки — то, что завод мог узнать.
-import type { ContentDb, Dept, Id, OvertimeMode, ParamUnit, SeatId } from '../content/types';
+import type { ContentDb, Dept, DevClass, Id, OvertimeMode, ParamUnit, SeatId } from '../content/types';
 import { batchNo } from '../engine/batchno';
 import { DAY, momentOf } from '../engine/core/calendar';
+import { dueOf } from '../engine/devclass';
 import { inForce } from '../engine/docs';
 import { MORNING } from '../engine/engine';
 import { HEAD_SEAT } from '../engine/journal';
@@ -17,6 +18,7 @@ import { devsOf, openDevs } from '../engine/qa';
 import { unitsOfLot } from '../engine/stock';
 import type { AssetFamily, Batch, CashItem, DayLoss, DeptMode, Deviation, Head, LineDay, MachineTimes, PlantState, TaskKind, WageParts, WaitCause } from '../engine/types';
 import { type BossRow, bossMeeting } from './bosses';
+import { type CapaRow, capaRow } from './devs';
 import { type PeopleMeeting, peopleMeeting } from './hire';
 import { type LeaveMeeting, leaveMeeting } from './leave';
 import { type HoursMeeting, hoursMeeting } from './hours';
@@ -171,6 +173,20 @@ export interface PendingDev {
   due: number;
   assessing?: true;
   inv?: string;
+  /** класс (Б5е) и срок прошёл */
+  cls: DevClass;
+  late?: true;
+}
+
+/**
+ * CAPA на планёрке (Б5е): назначенные и ещё не выполненные; выполненные и назначенные за сутки до планёрки; проверки
+ * эффективности — сделанные за сутки и те, что придутся на семь суток после неё.
+ */
+export interface CapaMeeting {
+  open: CapaRow[];
+  day: CapaRow[];
+  checks: CapaRow[];
+  soon: CapaRow[];
 }
 
 /**
@@ -236,6 +252,8 @@ export interface MorningView {
   asks: JournalRow[];
   /** записки и вопросы за сутки (Б5д): ответы на записки и вопросы, решённые без игрока */
   memos: JournalRow[];
+  /** CAPA (Б5е): назначенные, за сутки и проверки эффективности; нет ни одной CAPA — нет */
+  capa?: CapaMeeting;
   /** итог игры (обёртка): что завод сделал с мгновения `since` запроса; меньше суток игры — нет */
   session?: SessionSum;
   /** отклонённое (Б1з): места зоны, ждущие места, вывоз, вывозы с прошлой планёрки; у сценария без подрядчика — нет */
@@ -474,6 +492,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     heads: headDays(s, from, at),
     asks: openAsks(db, s),
     memos: memoDays(db, s, from, at),
+    ...capaOf(db, s, from, at),
     ...(q.since !== undefined && at - q.since >= DAY ? { session: sessionSum(s, q.since, at) } : {}),
     ...(rejects ? { rejects } : {}),
     ...(month ? { month } : {}),
@@ -535,6 +554,22 @@ export function sessionSum(s: PlantState, from: number, to: number): SessionSum 
   };
 }
 
+/** CAPA на планёрке (Б5е): по номеру; CAPA ещё нет — блока нет. */
+function capaOf(db: ContentDb, s: PlantState, from: number, at: number): { capa?: CapaMeeting } {
+  const all = Object.values(s.capas);
+  if (all.length === 0) return {};
+  const rows = all.map(c => ({ c, r: capaRow(db, s, c) }));
+  const inW = (t: number | undefined) => t !== undefined && t >= from && t < at;
+  return {
+    capa: {
+      open: rows.filter(x => x.c.done === undefined).map(x => x.r),
+      day: rows.filter(x => inW(x.c.t) || inW(x.c.done)).map(x => x.r),
+      checks: rows.filter(x => inW(x.c.check?.t)).map(x => x.r),
+      soon: rows.filter(x => !x.c.check && x.r.checkAt !== undefined && x.r.checkAt >= at && x.r.checkAt < at + 7 * DAY).map(x => x.r),
+    },
+  };
+}
+
 /** Что ждёт решения (Б1г): неоценённые отклонения — старшие первыми; удержанные серии — по номеру задания. */
 function leaveOf(db: ContentDb, s: PlantState): { leave?: LeaveMeeting } {
   const l = leaveMeeting(db, s);
@@ -542,7 +577,6 @@ function leaveOf(db: ContentDb, s: PlantState): { leave?: LeaveMeeting } {
 }
 
 function pendingOf(db: ContentDb, s: PlantState): { pending: PendingDev[]; held: HeldRow[] } {
-  const term = db.scenarios[s.scenario].deviations.term * DAY;
   const pending: PendingDev[] = Object.values(s.deviations)
     .filter(d => d.status === 'open')
     .sort((a, b) => a.opened - b.opened || num(a.id) - num(b.id))
@@ -554,9 +588,11 @@ function pendingOf(db: ContentDb, s: PlantState): { pending: PendingDev[]; held:
         kind: d.kind,
         ...(b ? { batch: batchNo(b.code), bn: num(b.id) } : {}),
         opened: d.opened,
-        due: d.opened + term,
+        due: dueOf(db, s, d),
         ...(d.assess?.task !== undefined ? { assessing: true as const } : {}),
         ...(inv ? { inv } : {}),
+        cls: d.cls,
+        ...(d.late ? { late: true as const } : {}),
       };
     });
   const held: HeldRow[] = Object.values(s.batches)

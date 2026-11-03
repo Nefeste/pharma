@@ -32,7 +32,8 @@ export type Pause = (typeof PAUSES)[number];
 
 /**
  * Ключи извещений движка каждой автопаузы (`stopKey`). Результат вне спецификации — расследование растворения и партия,
- * отклонённая лабораторией. Отклонения в прототипе не делятся на критические и прочие (геймдизайн, §6.4): встаёт на каждом.
+ * отклонённая лабораторией. Отклонение (Б5е; геймдизайн, §6.4) — критическое и существенное; на незначительном мир не
+ * встаёт: его ключ — `deviation/minor`.
  * Срок актива (Б3в) — по роду актива: чьё это дело, решает род.
  */
 export const PAUSE_NOTICES: Record<Pause, readonly string[]> = {
@@ -195,7 +196,13 @@ export function goOf(plant: Plant, n: Notice): Go | undefined {
       return { panel: 'lab' };
     case 'deviation':
     case 'assessed':
+    case 'devLate':
       return { thing: { kind: 'dev', n: Number(n.id.slice(1)) } };
+    case 'capa':
+    case 'capaDone':
+    case 'capaCheck':
+      // CAPA (Б5е) — к карточке её отклонения: класс, причина, CAPA и проверка
+      return { thing: { kind: 'dev', n: Number(n.dev.slice(1)) } };
     case 'investigation':
     case 'invStep':
     case 'concluded':

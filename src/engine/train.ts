@@ -80,6 +80,29 @@ function study(db: ContentDb, s: PlantState, p: Person, day: number, open: Reado
   }
 }
 
+/**
+ * Учить заново (Б5е, CAPA «обучить заново»): задача изучить документ `code` — редакцию, действующую сегодня, — у тех, кого
+ * ему учат по строкам матрицы, если у человека такой задачи ещё нет; проверка знаний — как всегда. Сколько задач.
+ */
+export function retrain(db: ContentDb, s: PlantState, codes: readonly string[]): number {
+  const day = momentOf(s.start, s.t).day;
+  const plan = planOf(db, s.plant);
+  const open = openStudies(db, s);
+  let n = 0;
+  for (const p of Object.values(s.people)) {
+    const rows = rowsOf(db, p);
+    for (const code of codes) {
+      if (!rows.includes(code) || open.has(`${p.id}/${code}`)) continue;
+      const d = learnable(db, code);
+      if (!d) continue;
+      const rev = inForce(db, d.kind, d.id, day);
+      addTask(s, { kind: 'train', roles: [p.role], from: point(postOf(plan, p.role)), work: learnRec(db, d, rev).study, prio: TRAIN_PRIO.train, trainee: p.id, doc: rev });
+      n++;
+    }
+  }
+  return n;
+}
+
 /** Новый человек (Б4в) и новая смежная профессия (Б4г): задачи изучить всё, чему пора, — сейчас, не дожидаясь полуночи. */
 export function trainNow(db: ContentDb, s: PlantState, p: Person) {
   study(db, s, p, momentOf(s.start, s.t).day, openStudies(db, s));

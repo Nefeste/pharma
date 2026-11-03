@@ -24,6 +24,8 @@ export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
   po: 'supply',
   waste: 'supply',
   visit: 'production',
+  classify: 'quality',
+  capa: 'quality',
 };
 
 /** Пост отдела (Б4а): производство, линию и техслужбу ведёт «Производство», ОКК и ООК — «Качество», склад — «Снабжение и склад». */
@@ -92,7 +94,7 @@ export function held(s: PlantState): SeatId[] | undefined {
  */
 export function foreign(s: PlantState, cmd: Command, db?: ContentDb): SeatId | undefined {
   const role = roleOf(s, cmd);
-  const own = cmd.kind === 'accept' || cmd.kind === 'decline' ? askOwner(s, cmd.n) : cmd.kind === 'answer' ? forkOwner(s, cmd.n) : ownerOf(cmd, role ? db?.roles[role]?.dept : undefined);
+  const own = cmd.kind === 'accept' || cmd.kind === 'decline' ? askOwner(s, cmd.n) : cmd.kind === 'answer' ? forkOwner(s, cmd.n) : cmd.kind === 'capaRun' ? capaOwner(s, cmd.capa) : ownerOf(cmd, role ? db?.roles[role]?.dept : undefined);
   if (!own || ('by' in cmd && cmd.by !== undefined && cmd.by !== 'player')) return undefined;
   const h = held(s);
   return !h || h.includes('director') || h.includes(own) ? undefined : own;
@@ -102,6 +104,12 @@ export function foreign(s: PlantState, cmd: Command, db?: ContentDb): SeatId | u
 function askOwner(s: PlantState, n: number): SeatId | undefined {
   const r = recordOf(s, n);
   return r && r.by !== 'player' ? HEAD_SEAT[r.by] : undefined;
+}
+
+/** Пост исполнения CAPA (Б5е): пост отдела её исполнителя; CAPA нет — ничей, отказ даст команда. */
+export function capaOwner(s: PlantState, capa: string): SeatId | undefined {
+  const c = s.capas?.[capa];
+  return c ? HEAD_SEAT[c.head] : undefined;
 }
 
 /** Пост ответа на вопрос «Просят решить» (Б5д): кого спросили — пост развилки или директор; вопроса нет — ничей. */

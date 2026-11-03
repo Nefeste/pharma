@@ -26,7 +26,7 @@ export const DESK: readonly [number, number] = [8 * HOUR, 17 * HOUR];
 export const MEMO_HORIZON = 15 * DAY;
 
 /** Решения ООК и уполномоченного лица по процедуре: о них записку не пишут (GMP ЕАЭС, ч. I, пп. 2.5–2.8). */
-export const QA_OWN: ReadonlySet<Command['kind']> = new Set(['release', 'assess', 'investigate', 'conclude']);
+export const QA_OWN: ReadonlySet<Command['kind']> = new Set(['release', 'assess', 'investigate', 'conclude', 'classify', 'capa']);
 
 /**
  * Кому записка о команде (Б5д): задание на серию, сдвиг и позиция упаковки — начальнику отдела планирования; замена узла
@@ -179,7 +179,7 @@ export function withdrawCommand(s: PlantState, cmd: Extract<Command, { kind: 'wi
 }
 
 /** Кто ответит сейчас: человек — правилом Б5в, с извещением «Некому решить»; должность — в рабочее время. */
-const answerer = (db: ContentDb, s: PlantState, head: Head, notices: Notice[]): Who | undefined =>
+export const answerer = (db: ContentDb, s: PlantState, head: Head, notices: Notice[]): Who | undefined =>
   isPerson(db, s, head) ? decider(db, s, head, notices) : onDuty(db, s, head, s.t);
 
 /**

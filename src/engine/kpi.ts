@@ -8,6 +8,7 @@ import type { ContentDb } from '../content/types';
 import { addMonths, civilFromDays, DAY, daysFromCivil, HOUR, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { baseLoad } from './cash';
+import { before, REPEAT, sameDev } from './devclass';
 import { yearOver } from './hours';
 import { oee, type Oee, rhythm, roomsOf } from './lean';
 import { planOf } from './plant';
@@ -79,6 +80,7 @@ export const KPIS: readonly KpiDef[] = [
   // начальник ООК
   { id: 'devs', head: 'qa', unit: 'per', dir: -1, win: 'y', src: ['ispe-qm-w2'] },
   { id: 'repeat', head: 'qa', unit: 'share', dir: -1, win: 'y', src: ['ispe-qm-w1', 'fda-qm-2022'] },
+  { id: 'capaEff', head: 'qa', unit: 'share', dir: 1, win: 'y', src: ['gmp-eaeu', 'ich-q10'], pair: 'repeat' },
   { id: 'assess', head: 'qa', unit: 'sec', dir: -1, win: 'm', src: ['ispe-qm-w2'], pair: 'repeat' },
   { id: 'supRej', head: 'qa', unit: 'share', dir: -1, win: 'y', src: ['fda-qm-2022'] },
   // уполномоченное лицо
@@ -312,8 +314,6 @@ export function valueOf(db: ContentDb, material: string, qty: number, price: num
 /** Сколько партии на руках, мг или шт. */
 const left = (l: Lot) => l.qty - l.used - l.sampled - l.written - (l.shipped ?? 0);
 
-/** Отпечаток отклонения для повтора: вид, стадия и то, что вне пределов (ISPE — та же причина; причину запишет Б5е). */
-export const devSig = (d: PlantState['deviations'][string]) => `${d.kind}/${d.stage ?? ''}/${d.param ?? d.test ?? d.material ?? ''}`;
 
 // ---------------------------------------------------------------- срез суток
 
@@ -572,6 +572,10 @@ const CALC: Record<string, Calc> = {
     const r = repeats(c);
     return share(r.filter(x => x.prev).length, r.length);
   },
+  capaEff: c => {
+    const r = capaChecks(c);
+    return share(r.filter(x => x.ok).length, r.length);
+  },
   assess: c => median(assessTimes(c).map(x => x.sec)),
   supRej: c => {
     const lots = Object.values(c.s.lots).filter(l => bought(c.db, l) && inside(lotDecided(l), c.p.yFrom, c.p.to));
@@ -684,15 +688,23 @@ export function vacancyDays(c: Ctx): { person: string; days: number }[] {
   );
 }
 
-/** Отклонения окна 12 месяцев и было ли за 12 месяцев до каждого такое же — по виду, стадии и тому, что вне пределов. */
+/**
+ * Отклонения окна 12 месяцев и было ли за 12 месяцев до каждого такое же — правилом повтора Б5е (src/engine/devclass.ts):
+ * та же подпись, а когда причина записана у обоих — та же причина; первое такое по порядку открытия.
+ */
 export function repeats(c: Ctx): { dev: string; prev?: string }[] {
-  const all = Object.values(c.s.deviations).sort((a, b) => a.opened - b.opened || (a.id < b.id ? -1 : 1));
+  const all = Object.values(c.s.deviations).sort((a, b) => (before(a, b) ? -1 : 1));
   return all
     .filter(d => inside(d.opened, c.p.yFrom, c.p.to))
     .map(d => {
-      const prev = all.find(x => x !== d && x.opened <= d.opened && d.opened - x.opened <= 365 * DAY && devSig(x) === devSig(d) && (x.opened < d.opened || x.id < d.id));
+      const prev = all.find(x => x !== d && before(x, d) && d.opened - x.opened <= REPEAT && sameDev(x, d));
       return { dev: d.id, ...(prev ? { prev: prev.id } : {}) };
     });
+}
+
+/** Проверки эффективности CAPA в окне 12 месяцев (Б5е): CAPA, эффективна ли и повтор. */
+export function capaChecks(c: Ctx): { capa: string; ok: boolean; dev?: string }[] {
+  return Object.values(c.s.capas).flatMap(x => (x.check && inside(x.check.t, c.p.yFrom, c.p.to) ? [{ capa: x.id, ok: x.check.ok, ...(x.check.dev ? { dev: x.check.dev } : {}) }] : []));
 }
 
 /** Строки заказов, закрытых в периоде: полностью и в срок — `ok` (заказ не опоздал, строка отгружена вся). */

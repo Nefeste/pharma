@@ -8,6 +8,7 @@ import { batchNo } from './batchno';
 import { type Agenda, schedule } from './core/agenda';
 import { HOUR, isWorkday, momentOf } from './core/calendar';
 import { newCash } from './cash';
+import { openClass } from './devclass';
 import { inForce } from './docs';
 import { LABOR_HOUR } from './hire';
 import { newPolicy } from './hours';
@@ -508,6 +509,19 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   // 36 → 37 (Б5д): служебные записки и вопросы «Просят решить» — записи журнала с ответом; до этой версии их нет:
   // открытых нет, расследования ведёт ООК
   36: raw => raw,
+  // 37 → 38 (Б5е): у отклонения — класс по правилу открытия; у оценённого и решённого — причина «не установлена»; у
+  // купленной партии вне спецификации — материал для подписи повтора; CAPA нет
+  37: raw => {
+    const s = raw as unknown as PlantState;
+    for (const d of Object.values(s.deviations)) {
+      d.cls = openClass(d.kind);
+      if (d.status !== 'open' || d.assess?.done !== undefined) d.cause = 'none';
+      const lot = d.lot ? s.lots[d.lot] : undefined;
+      if (d.kind === 'oos' && !d.batch && lot && !lot.batch) d.material ??= lot.material;
+    }
+    s.capas = {};
+    return raw;
+  },
 };
 
 export function toSave(s: PlantState): string {

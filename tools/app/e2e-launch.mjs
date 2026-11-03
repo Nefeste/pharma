@@ -162,10 +162,13 @@ async function production(x) {
 
     // «До утра» — до планёрки, где у производства во вчерашнем задании «ждали …»
     let row = '';
-    for (let i = 0; i < 40 && !row; i++) if (await s.untilMorning()) row = await page.evaluate(() => document.querySelector('[data-test=daily-yday][data-dept=mes]')?.textContent ?? '');
-    for (let i = 0; i < 40 && !/ждали /.test(row); i++) if (await s.untilMorning()) row = await page.evaluate(() => document.querySelector('[data-test=daily-yday][data-dept=mes]')?.textContent ?? '');
+    let block = '';
+    for (let i = 0; i < 30 && !/ждали /.test(row); i++) {
+      if (!(await s.untilMorning())) continue;
+      [row, block] = await page.evaluate(() => [document.querySelector('[data-test=daily-yday][data-dept=mes]')?.textContent ?? '', document.querySelector('[data-test=morning-daily]')?.textContent ?? '']);
+    }
     if (!/ждали /.test(row)) {
-      fail(`планёрка: у производства во вчерашнем задании «ждали …» не было за 80 «До утра» — «${row}»`);
+      fail(`планёрка: у производства во вчерашнем задании «ждали …» не было за 30 «До утра» — блок «${block.slice(0, 200)}»`);
       return;
     }
     await page.evaluate(() => document.querySelector('[data-test=morning-daily]')?.scrollIntoView({ block: 'center' }));

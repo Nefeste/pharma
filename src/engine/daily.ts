@@ -26,21 +26,25 @@ export const ON_TIME = HOUR;
 export const DAILY_KEEP = 31;
 
 /**
- * Час задания (src/engine/engine.ts, событие часа): в `at` — 08:00 — закрыть вчерашнее и поставить сегодняшнее; в
- * остальные часы — отметить у строк сегодняшнего, что начато и чего ждали. Заданий нет (`s.daily` не задан) — ничего:
- * так у копии прогона плана.
+ * Событие 08:00 (src/engine/engine.ts, `morning`): закрыть вчерашнее задание и поставить сегодняшнее — до планёрки,
+ * которую это событие открывает, и до раздачи задач часа 08:00. Заданий нет (`s.daily` не задан) — ничего: так у копии
+ * прогона плана.
  */
-export function dailyHour(db: ContentDb, s: PlantState, at: number) {
+export function dailyMorning(db: ContentDb, s: PlantState) {
   if (!s.daily) return;
   const cur = s.daily[s.daily.length - 1];
-  if (cur && !cur.closed) watch(db, s, cur);
-  if (momentOf(s.start, s.t).sec !== at) return;
   if (cur && !cur.closed) close(db, s, cur);
   s.daily.push(open(db, s));
   while (s.daily.length > DAILY_KEEP) s.daily.shift();
 }
 
-/** Задача очереди в задании: ждёт людей или её взяли в этот миг — диспетчер раздаёт работу раньше часа задания. */
+/** Каждый час (событие часа): у строк сегодняшнего задания — что начато и чего ждали. */
+export function dailyHour(db: ContentDb, s: PlantState) {
+  const cur = s.daily?.[s.daily.length - 1];
+  if (cur && !cur.closed) watch(db, s, cur);
+}
+
+/** Задача очереди в задании: ждёт людей или её взяли в этот же миг. */
 const queued = (t: Task, t0: number) => t.state === 'open' || (t.state === 'busy' && t.times !== undefined && t.times[0] >= t0);
 
 /** Поставить задание на сутки с этого мига. */
@@ -207,7 +211,7 @@ function labRows(db: ContentDb, s: PlantState, t0: number, t1: number): DailyRow
   const insts = Object.values(s.instruments)
     .filter(i => !unfit(db, s, i.id, day))
     .map(i => ({ i, free: instFree(db, s, i, t0) }));
-  // взятые в этот миг — первыми: диспетчер раздал их раньше часа задания
+  // взятые в этот же миг — первыми
   for (const id of Object.keys(s.tasks)) {
     const t = s.tasks[id];
     if (t.kind === 'prep' && t.test && t.state === 'busy' && t.times && t.times[0] >= t0) out.push({ dept: 'qc', kind: 'test', test: t.test, at: t.times[0] });

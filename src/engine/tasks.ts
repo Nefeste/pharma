@@ -24,7 +24,7 @@ import { placesOf } from './places';
 import { dist, type PlantPlan, planOf, type Point, straight, travel } from './plant';
 import { admitted, lacking, needOf, vehicleNeed } from './quals';
 import { goHome, here, LAST_CALL, shiftEnd, shiftEndAt, stopWalk, WALK } from './staff';
-import { findSlot, nextId } from './stock';
+import { findSlot, freeSlots, heldForSampled, nextId } from './stock';
 import type { Instrument, Person, Place, PlantState, Task, TaskKind, Vehicle, WaitCause } from './types';
 
 export { WALK };
@@ -431,6 +431,8 @@ function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | und
     let sorted: Vehicle[] | undefined;
     const order = () => (sorted ??= nearestFirst(x, free, from));
     if (pool.length === 0) return driverWait(db, s, x, t, crew, need, order);
+    // из приёмки в карантин и в холодную камеру — только сверх мест, которые ждут паллеты из пробоотборной (stock.ts)
+    if (t.kind === 'putaway' && (t.toKind === 'quarantine' || t.toKind === 'cold') && freeSlots(s, plan, t.toKind) <= heldForSampled(db, s, plan, t.toKind)) return 'place';
     // место хранения (Б3в): зона принимает режим материала и открыта; не нашлось только из-за закрытой зоны — ждёт её датчик
     const fit = t.toKind ? slotFit(db, s, plan, t, closedOf(db, s, x)) : undefined;
     let place = false;

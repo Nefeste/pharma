@@ -121,8 +121,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   footprints, where people may walk and vehicles may drive, access cells, distance fields cached per plan, route length
   and the route polyline shared with the window, a point along it in whole centimetres), `plant.ts` (slots, docks, rooms,
   the lab, work points, posts of roles and distances along the plan's routes), `stock.ts` (lots, containers, pallets,
-  slots, the lot status table), `supply.ts` (purchase orders; the supply colleague — at 09:00 on a workday, every material
-  below its reorder point: plan use over the longest lead time, incoming control and safety stock, through the first
+  slots, the lot status table; with 0.0.57 the places of quarantine and the cold room held for pallets at sampling —
+  a putaway from receiving takes only those above them, `heldForSampled`), `supply.ts` (purchase orders; the supply
+  colleague — at 09:00 on a workday, every material below its reorder point: plan use over the longest lead time,
+  incoming control and safety stock, through the first
   approved supplier–maker pair, one order per
   supplier, at most half the quarantine zone in pallets; with Б5б the rule without writing — `supplyPlan` — and an order
   quoted without writing — lines up to whole containers, cost, VAT and prepayment, or the refusal with the line's

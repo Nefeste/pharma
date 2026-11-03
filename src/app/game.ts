@@ -454,7 +454,7 @@ export class Game {
       : n.kind === 'pairSuspended' ? T.notices.pairSuspended(named(this.db.suppliers[n.supplier]?.name, n.supplier), named(this.db.makers[n.maker]?.name, n.maker))
       : n.kind === 'setpoints' ? T.notices.setpoints(n.n)
       : n.kind === 'proposal' ? T.notices.proposal(T.journal.names[n.head] ?? n.head)
-      : n.kind === 'policy' ? T.notices.policy(T.journal.names[n.head] ?? n.head, named(this.db.policies[n.policy]?.name, n.policy))
+      : n.kind === 'policy' ? (n.policy === 'pol.plan.method' ? T.notices.policyFc(named(this.db.policies[n.policy]?.name, n.policy)) : T.notices.policy(T.journal.names[n.head] ?? n.head, named(this.db.policies[n.policy]?.name, n.policy)))
       : n.kind === 'visitMoved' ? T.notices.visitMoved(`${workName(n, n.work)} — ${assetClass(n)}, ${T.assets.inv(n.inv)}`, whenText(this.store.get().start, n.at))
       : n.kind === 'noOne' ? T.notices.noOne(T.journal.namesOf[n.head] ?? n.head)
       : n.kind === 'deputy' ? T.notices.deputy(T.journal.namesOf[n.head] ?? n.head, n.role && n.tab !== undefined ? T.card.person(this.roleName(n.role), n.tab) : undefined)

@@ -1,10 +1,11 @@
 // Сценарий в браузере, часть «Прогноз» (Б6в; docs/specs/2026-10-vertical-slice.md, «Б6в», «Проверки Б6в»): чистое окно,
-// как при первом запуске, пост «Производство». «До утра» — до первой планёрки после закрытия месяца, на который завод
-// уже прогнозировал: 1 ноября — блок «Прогноз»: в октябре заказано, прогнозы планирования и отдела продаж со знаком против
-// факта, на ноябрь — у обоих. Рычаг «Прогноз» — четвёртая вкладка окна расписания: позиции по 18 месяцам; сменить способ
-// — сетка по нему; поправить клетку — пометка и ящики; снять правку — снова по способу; «прогноз против факта» позиции —
-// столбики факта и пунктир вперёд, «Таблицей» — те же числа строками. Отклик кнопок — в кадрах (геймдизайн, §21). Снимки —
-// tools/app/out/forecast-*.png, лист — tools/app/out/forecast.png.
+// как при первом запуске, пост «Производство», отделы производства «сам» полосой режимов журнала. «До утра» — до первой
+// планёрки после закрытия месяца, на который завод уже прогнозировал: 1 ноября — блок «Прогноз»: в октябре заказано,
+// прогнозы планирования и отдела продаж со знаком против факта, на ноябрь — у обоих. Рычаг «Прогноз» — четвёртая
+// вкладка окна расписания: позиции по 18 месяцам; сменить способ — сетка по нему; поправить клетку — пометка и ящики;
+// снять правку — снова по способу; «прогноз против факта» позиции — столбики факта и пунктир вперёд, «Таблицей» — те же
+// числа строками. Отклик кнопок — в кадрах (геймдизайн, §21). Снимки — tools/app/out/forecast-*.png, лист —
+// tools/app/out/forecast.png.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -129,6 +130,15 @@ function steps(page, { out, fail, shots, feel }) {
       await frames(1);
       return open;
     },
+    openJournal: async () => {
+      if (await page.evaluate(() => window.__game.store.get().journal.open)) return;
+      await page.evaluate(() => {
+        window.__jv = window.__game.store.get().journal.view;
+      });
+      await page.keyboard.press('KeyJ');
+      await page.waitForFunction(() => !!window.__game.store.get().journal.view && window.__game.store.get().journal.view !== window.__jv, null, { timeout: 20_000 });
+      await frames(1);
+    },
     /** Места — экраном «Кем вы будете»: кнопка «Место», плитки, «Взять». */
     seats: async want => {
       if (!(await page.evaluate(() => !!document.querySelector('#seats')))) await page.click('[data-test=seats-open]');
@@ -152,6 +162,14 @@ async function production(x) {
   const s = steps(page, x);
   try {
     await s.seats(['production']);
+    // отделы производства «сам»: начальник планирования ставит задания, как без мест, — завод не стоит без ответов
+    await s.openJournal();
+    for (const head of ['plan', 'mes', 'maint']) {
+      await page.waitForSelector(`[data-test=journal-modes] [data-head=${head}]`, { timeout: 20_000 });
+      if ((await page.getAttribute(`[data-test=journal-modes] [data-head=${head}]`, 'data-mode')) !== 'auto') await page.click(`[data-test=journal-modes] [data-head=${head}] button[data-mode=auto]`);
+      await page.waitForSelector(`[data-test=journal-modes] [data-head=${head}][data-mode=auto]`, { timeout: 20_000 });
+    }
+    await page.keyboard.press('Escape');
 
     // «До утра» — до первой планёрки после закрытия месяца с прогнозом на него: 1 ноября
     let block = '';
@@ -166,7 +184,7 @@ async function production(x) {
     await page.evaluate(() => document.querySelector('[data-test=morning-forecast]')?.scrollIntoView({ block: 'center' }));
     await s.shot('Планёрка: прогноз закрытого месяца');
     const text = block.trim();
-    if (!/^в октябре 2027 заказано [\d\s ]+ ящик\S* — планирование [\d\s ]+ \([+−]?\d+ %\), отдел продаж [\d\s ]+ \([+−]?\d+ %\); на ноябрь 2027 — [\d\s ]+ и [\d\s ]+/.test(text)) fail(`блок «Прогноз»: «${text}»`);
+    if (!/^в октябре 2027 заказано [\d\s ]+ ящик\S* — планирование [\d\s ]+ \([+−]?\d+\s%\), отдел продаж [\d\s ]+ \([+−]?\d+\s%\); на ноябрь 2027 — [\d\s ]+ и [\d\s ]+/.test(text)) fail(`блок «Прогноз»: «${text}»`);
     else ok(`планёрка — ${await s.clock()}: «${text}»`);
 
     // рычаг — вкладка «Прогноз» окна расписания

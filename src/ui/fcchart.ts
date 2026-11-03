@@ -18,7 +18,7 @@ export const css = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 /** Размеры графика в единицах viewBox. */
 export const FC_W = 720;
 export const FC_H = 220;
-export const FC_PAD = { l: 52, r: 12, t: 10, b: 22 };
+export const FC_PAD = { l: 52, r: 12, t: 22, b: 22 };
 
 /** Круглые деления шкалы от нуля: шаг 1, 2 или 5 × 10ⁿ, не больше пяти делений до верха. */
 export function niceTicks(max: number): number[] {

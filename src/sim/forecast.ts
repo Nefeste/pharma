@@ -16,10 +16,14 @@ export interface FcShare {
   bias: number;
 }
 
-/** Ошибка за 12 месяцев с запаздыванием в месяц: у планирования, отдела продаж и каждого способа; нечем мерить — нет. */
+/**
+ * Ошибка за 12 месяцев с запаздыванием в месяц: у планирования, отдела продаж и каждого способа; нечем мерить — нет.
+ * `months` — сколько из 12 закрытых месяцев завод прогнозировал: на остальные записи с запаздыванием нет.
+ */
 export interface FcErrs {
   plan?: FcShare;
   sales?: FcShare;
+  months: number;
   by: Partial<Record<FcMethod, FcShare>>;
 }
 
@@ -82,7 +86,8 @@ function errsOf(db: ContentDb, s: PlantState, all: readonly Id[], of: readonly I
     const x = shares(backtest(db, f, all, m, f.at, BEST_N, of));
     if (x) by[m] = x;
   }
-  return { ...(plan ? { plan } : {}), ...(sales ? { sales } : {}), by };
+  const months = f.lag.filter(x => x.m >= f.at - BEST_N && x.m < f.at).length;
+  return { ...(plan ? { plan } : {}), ...(sales ? { sales } : {}), months, by };
 }
 
 /** Вкладка «Прогноз»: сетка и «прогноз против факта» ключа `key` — позиции или продукта; нет — первого продукта плана. */

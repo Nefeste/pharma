@@ -69,7 +69,7 @@ export function Forecast({ hud, actions, v }: { hud: Hud; actions: Actions; v: F
         </span>
       </div>
       <div className="muted" data-test="fc-err">
-        {T.fc.err(shareText(v.err.plan), shareText(v.err.sales))}
+        {T.fc.err(shareText(v.err.plan), shareText(v.err.sales), v.err.months)}
       </div>
       <div className="fc-scroll">
         <table className="grid fc-grid" data-test="fc-grid">
@@ -219,7 +219,7 @@ function FcChart({ past, ahead }: { past: readonly FcPoint[]; ahead: readonly Fc
           </text>
         </g>
       ))}
-      <text className="axis" x={4} y={FC_PAD.t + 8}>
+      <text className="axis" x={4} y={11}>
         {T.fc.axis}
       </text>
       {g.split > 0 && g.split < g.n ? <line className="fc-now" x1={FC_PAD.l + g.slot * g.split} x2={FC_PAD.l + g.slot * g.split} y1={FC_PAD.t} y2={FC_H - FC_PAD.b} /> : null}

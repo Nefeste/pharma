@@ -309,6 +309,9 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
           ) : null}
         </span>
         <span className="muted">{g.tab === 'jobs' ? T.jobs.question : g.tab === 'launch' ? T.launch.question : g.tab === 'forecast' ? T.fc.question : T.gantt.question}</span>
+        {g.tab === 'forecast' ? (
+          <span className="grow" />
+        ) : (
         <span className="filters grow">
           {DAYS.map(d => (
             <button type="button" key={d} className={g.days === d ? 'on' : ''} onClick={() => actions.setGanttDays(d)} data-test={`gantt-days-${d}`}>
@@ -325,6 +328,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
             ›
           </button>
         </span>
+        )}
         <button type="button" className="close" onClick={() => actions.toggleGantt()} title={T.card.closeHint}>
           ✕
         </button>

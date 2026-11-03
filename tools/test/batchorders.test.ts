@@ -116,7 +116,8 @@ describe('отмена', () => {
     expect(b.cancelled).toBe(s.t);
     expect(b.kit).toEqual([]);
     for (const [c, left] of held) expect(s.containers[c]?.reserved ?? 0).toBe(left);
-    const r = s.journal.findLast(x => x.d.kind === 'cancel')!;
+    const rs = s.journal.filter(x => x.d.kind === 'cancel');
+    const r = rs[rs.length - 1];
     expect(r.by).toBe('player');
     expect(r.d).toMatchObject({ kind: 'cancel', batch: b.id, notBefore: b.notBefore, ...(b.sku ? { sku: b.sku } : {}) });
     expect(refusal(apply(game, s, { kind: 'cancel', batch: b.id }))).toBe('cancelled');

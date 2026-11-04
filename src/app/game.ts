@@ -416,6 +416,9 @@ export class Game {
       // ускорение и отмена заказа поставщику (Б6д)
       : n.kind === 'poFast' ? T.notices.poFast(whenText(this.store.get().start, n.eta))
       : n.kind === 'poCancelled' ? T.notices.poCancelled
+      // второй источник (Б6ж): заказ не пришёл к обещанному дню; шаг одобрения пары-кандидата
+      : n.kind === 'poLate' ? T.notices.poLate(named(this.db.suppliers[n.supplier]?.name, n.supplier), whenText(this.store.get().start, n.eta))
+      : n.kind === 'pairStep' ? T.notices.pairStep(n.pair.split('|').map((x, i) => named((i === 0 ? this.db.suppliers[x] : this.db.makers[x])?.name, x)).join(' — '), T.pairApp.steps[n.step] ?? n.step)
       // события коммерции (Б6е)
       : n.kind === 'bigOrder' ? T.notices.bigOrder(named(this.db.customers[n.customer]?.name, n.customer), named(this.db.skus[n.sku]?.name, n.sku), n.cases, whenText(this.store.get().start, n.due))
       : n.kind === 'demandCut' ? T.notices.demandCut(named(this.db.customers[n.customer]?.name, n.customer), named(this.db.skus[n.sku]?.name, n.sku), n.cases)
@@ -1152,6 +1155,7 @@ export class Game {
     roster: (person, shift) => this.client.command({ kind: 'roster', person: `E${person}`, shift, by: 'player' }),
     vacancy: (role, shift, via, memo) => this.send({ kind: 'vacancy', role, shift, via }, memo),
     closeVacancy: (id, memo) => this.send({ kind: 'close', vacancy: id }, memo),
+    approvePair: pair => this.send({ kind: 'pairApprove', pair }),
     hire: (candidate, trial, memo) => this.send({ kind: 'hire', candidate, trial }, memo),
     dismiss: (person, why) => this.client.command({ kind: 'dismiss', person: `E${person}`, why, by: 'player' }),
     leaveAdd: (person, from, days, memo) => this.send({ kind: 'leave', person: `E${person}`, op: 'add', from, days }, memo),

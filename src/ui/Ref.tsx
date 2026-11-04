@@ -166,7 +166,7 @@ function Recipe({ r, t, q }: { r: RefRecipe; t: number; q: string }) {
     { name: b.qty, text: l => qtyText(l.qty, unitOf(l.material)), num: l => l.qty },
     // стадия загрузки (Б1д): порядок загрузки сырья — часть технологической инструкции
     { name: b.stage, text: l => T.stages[l.stage] ?? l.stage, num: l => order.get(l.stage) ?? 0 },
-    { name: b.how, text: l => [l.potency ? T.ref.potency : '', l.qs ? T.ref.qs : ''].filter(Boolean).join(', ') },
+    { name: b.how, text: l => [l.potency ? T.ref.potency : '', l.qs ? T.ref.qs : '', l.alt ? T.ref.alt(named(db?.materials[l.alt.material]?.name, l.alt.material), num(l.alt.factor / 10_000, l.alt.factor % 10_000 === 0 ? 0 : 2)) : ''].filter(Boolean).join(', ') },
   ];
   const stages: Col<RefStage>[] = [
     { name: c.n, text: st => num(order.get(st.id) ?? 0), num: st => order.get(st.id) ?? 0 },
@@ -886,6 +886,13 @@ const makerName = (id: string) => named(db?.makers[id]?.name, id);
 
 /** Состояние одобрения пары словами (Б3г): «с 30.11.2026 до 29.11.2027»; приостановлена; идёт оценка. */
 function pairState(x: RefPair, start: { y: number; m: number; d: number }): string {
+  // пара-кандидат (Б6ж): пока не в спецификации — «кандидат» и шаг одобрения с наступившими днями
+  const c = x.cand;
+  if (c && c.spec === undefined) {
+    const days = [c.filed !== undefined ? T.pairApp.filed(dayText(c.filed)) : '', c.asked !== undefined ? T.pairApp.asked(dayText(c.asked)) : '', c.answered !== undefined ? T.pairApp.answered(dayText(c.answered)) : ''].filter(Boolean);
+    const trial = c.step === 'trial' && c.po && c.eta !== undefined ? T.pairApp.trialPo(c.po, whenText(start, c.eta)) : '';
+    return [T.pairApp.cand, c.step ? T.pairApp.steps[c.step] : '', trial, ...days].filter(Boolean).join(' · ');
+  }
   const base = x.until === undefined ? T.ref.pairNone : x.ok ? T.ref.pairOk(dayText(x.since!), dayText(x.until)) : T.ref.pairOff(dayText(x.until));
   const e = x.eval;
   const ev = !e ? '' : e.review ? T.ref.pairReview : e.how === 'audit' && e.to !== undefined ? T.ref.pairAudit(whenText(start, e.to)) : '';
@@ -899,7 +906,7 @@ function ctrLine(l: RefContract['lines'][number]): string {
   return T.ref.ctrLine(matName(l.material), price, qtyText(l.volume, unit), qtyText(l.bought, unit));
 }
 
-function Partners({ v, q, start }: { v: RefView; q: string; start: { y: number; m: number; d: number } }) {
+function Partners({ v, q, start, hud, actions }: { v: RefView; q: string; start: { y: number; m: number; d: number }; hud: Hud; actions: Actions }) {
   const s = T.ref.supCols;
   const c = T.ref.cusCols;
   const p = v.partners;
@@ -916,8 +923,25 @@ function Partners({ v, q, start }: { v: RefView; q: string; start: { y: number; 
     { name: pc.maker, text: x => makerName(x.maker) },
     { name: pc.materials, text: x => x.materials.map(matName).join('; '), show: x => <>{x.materials.map(m => <div key={m}>{matName(m)}</div>)}</>, num: x => x.materials.length },
     { name: pc.how, text: x => T.ref.how[x.how] },
-    { name: pc.until, text: x => pairState(x, start), show: x => <span className={x.ok ? '' : 'bad'} data-test="ref-pair-state">{pairState(x, start)}</span>, num: x => x.until ?? -1 },
+    { name: pc.until, text: x => pairState(x, start), show: x => <span className={x.cand && x.cand.spec === undefined ? 'muted' : x.ok ? '' : 'bad'} data-test="ref-pair-state" data-pair={x.id}>{pairState(x, start)}</span>, num: x => x.until ?? -1 },
     { name: pc.agreement, text: x => (x.agreement ? docText('agreements', x.agreement) : T.ref.noAgreement), show: x => (x.agreement ? <span className="mono nw">{docText('agreements', x.agreement)}</span> : <span className="bad">{T.ref.noAgreement}</span>) },
+    // доля поставок вовремя (Б6ж; SCOR RL.2.6): по записям завода — пришедшие заказы пары за 12 месяцев
+    { name: pc.onTime, text: x => (x.onTime.n > 0 ? T.mrp.onTime(pctText(Math.floor((x.onTime.ok * 10_000) / x.onTime.n)), x.onTime.n) : '—'), num: x => (x.onTime.n > 0 ? x.onTime.ok / x.onTime.n : -1) },
+    // «Одобрить пару» (Б6ж): у кандидата, пока одобрение не идёт, — пост «Качество» или директор
+    {
+      name: '',
+      text: () => '',
+      show: x => {
+        const c = x.cand;
+        if (!c || c.spec !== undefined || (c.step !== undefined && c.step !== 'failed')) return null;
+        const a = actOf(hud, 'quality', { kind: 'pairApprove', pair: x.id });
+        return (
+          <button type="button" className="small" disabled={!a.mine} title={a.mine ? T.pairApp.approveHint : a.title} onClick={() => actions.approvePair(x.id)} data-test="pair-approve" data-pair={x.id}>
+            {T.pairApp.approve}
+          </button>
+        );
+      },
+    },
   ];
   const cc = T.ref.ctrCols;
   const party = (x: RefContract) => (x.kind === 'frame' ? supName(x.party) : named(db?.customers[x.party]?.name, x.party));
@@ -1172,7 +1196,7 @@ export function Ref({ hud, actions }: { hud: Hud; actions: Actions }) {
           {tab === 'places' ? <Places v={v} q={q} actions={actions} /> : null}
           {tab === 'lab' ? <Lab v={v} q={q} /> : null}
           {tab === 'people' ? <People v={v} q={q} hud={hud} actions={actions} /> : null}
-          {tab === 'partners' ? <Partners v={v} q={q} start={hud.start} /> : null}
+          {tab === 'partners' ? <Partners v={v} q={q} start={hud.start} hud={hud} actions={actions} /> : null}
           {tab === 'docs' ? <Docs v={v} q={q} /> : null}
           <div className="muted small">{T.ref.noHidden}</div>
         </div>

@@ -88,7 +88,8 @@ export interface RefRecipe {
   mass: number;
   units: number;
   /** у строки состава — стадия, на которой её загружают (Б1д) */
-  bom: { material: Id; qty: number; potency: boolean; qs: boolean; stage: string }[];
+  /** состав; с Б6ж — аналог строки: материал и коэффициент, доли 1/10 000 */
+  bom: { material: Id; qty: number; potency: boolean; qs: boolean; stage: string; alt?: { material: Id; factor: number } }[];
   stages: RefStage[];
 }
 
@@ -335,7 +336,7 @@ export function refView(db: ContentDb, s: PlantState): RefView {
   const materials: RefMaterial[] = [
     ...Object.values(db.materials).map(m => {
       const unit = unitOf(m.kind, m.unit);
-      const pairs = materialPairs(db, m.id, today);
+      const pairs = materialPairs(db, s, m.id, today);
       return { id: m.id, kind: m.kind, unit, okei: okei[unit], spec: inForce(db, 'specs', m.spec, today), ...(pairs.length ? { pairs } : {}) };
     }),
     ...Object.values(db.spares).map(sp => ({ id: sp.id, kind: 'spare' as const, unit: 'pcs' as const, okei: okei.pcs })),
@@ -349,7 +350,7 @@ export function refView(db: ContentDb, s: PlantState): RefView {
     product: r.product,
     mass: r.batch.mass,
     units: r.batch.units,
-    bom: r.bom.map(l => ({ material: l.material, qty: l.qty, potency: !!l.potency, qs: !!l.qs, stage: l.stage })),
+    bom: r.bom.map(l => ({ material: l.material, qty: l.qty, potency: !!l.potency, qs: !!l.qs, stage: l.stage, ...(l.alt ? { alt: { material: l.alt.material, factor: l.alt.factor } } : {}) })),
     stages: stagesOf(db, s, r.id),
   }));
   const equipment = plan.plant.equipment.map(e => {

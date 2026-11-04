@@ -25,7 +25,7 @@ export interface Act {
 export function actOf(hud: Hud, seat: SeatId, cmd: Command, role?: Id): Act {
   if (holds(hud, seat)) return { mine: true, title: '' };
   const head = db ? cmdHead(db, cmd, role) : undefined;
-  if (!head) return { mine: false, title: cmd.kind === 'release' || cmd.kind === 'assess' || cmd.kind === 'investigate' || cmd.kind === 'conclude' ? T.seats.memoQa : T.seats.notYours(T.seats.names[seat] ?? seat) };
+  if (!head) return { mine: false, title: cmd.kind === 'release' || cmd.kind === 'assess' || cmd.kind === 'investigate' || cmd.kind === 'conclude' || cmd.kind === 'pairApprove' ? T.seats.memoQa : T.seats.notYours(T.seats.names[seat] ?? seat) };
   const at = hud.top?.memo?.[head];
   return { mine: false, memo: head, title: T.seats.memoHint(T.journal.namesTo[head] ?? head, at !== undefined ? whenText(hud.start, at) : undefined) };
 }

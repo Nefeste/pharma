@@ -187,6 +187,9 @@ function headOf(db: ContentDb, d: Decided): Head {
     case 'conclude':
     case 'assess':
     case 'pairEval':
+    // одобрение пары-кандидата (Б6ж)
+    case 'pairApprove':
+    case 'pairStep':
     case 'classify':
     case 'capa':
     case 'capaCheck':
@@ -315,7 +318,9 @@ export function refOf(db: ContentDb, s: PlantState, d: Decided, ask?: Ask): Jour
       return batchRef(s, d.batch);
     case 'po':
     case 'expedite':
-    case 'cancelPo': {
+    case 'cancelPo':
+    // шаг одобрения пары (Б6ж): пробная партия — её заказ
+    case 'pairStep': {
       const po = d.po ? s.pos[d.po] : undefined;
       return po ? { po: { lines: po.lines.map(l => ({ material: l.material, qty: l.qty })), eta: po.eta } } : {};
     }

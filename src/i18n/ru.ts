@@ -2139,7 +2139,8 @@ export const ru = {
       noDemand: (cases: number) => `Запаса — ${casesRu(cases)}; заказов покупателей за окно спроса нет`,
       fc: 'Спрос — по прогнозу планирования на окно вперёд, а не по заказам окна',
       sop: 'Запас позиций продукта — из утверждённого плана S&OP, а не из политики',
-      threshold: (ahead: number, cover?: number) => (cover === undefined ? `порог — ${workRu(ahead)}` : `порог — ${workRu(ahead)}: две недели и запас ${daysRu(cover)} по политике`),
+      threshold: (ahead: number, cover?: number, sop?: boolean) =>
+        cover === undefined ? `порог — ${workRu(ahead)}` : `порог — ${workRu(ahead)}: две недели и запас ${daysRu(cover)} ${sop ? 'по плану S&OP' : 'по политике'}`,
       need: 'ниже порога — и меньше всех в днях спроса',
       campaign: (product: string, soon: number) => `кампания: продукт прошлого задания — ${product} — идёт дальше; другим продуктам запаса хватит больше чем на ${workRu(soon)}`,
       urgent: (product: string, soon: number) => `другому продукту не хватит и на ${workRu(soon)}: кампания продукта ${product} уступает; из позиций ниже порога у этой меньше всех в днях спроса`,
@@ -2147,7 +2148,8 @@ export const ru = {
       others: (list: string) => `Ниже порога и другие: ${list}`,
       alone: 'Других позиций ниже порога нет',
       other: (sku: string, days: number) => `${sku} — на ${workRu(days)}`,
-      limited: (cover: number, policy: number) => `навык руководителя: запас на ${daysRu(cover)} вместо ${daysRu(policy)} по политике`,
+      limited: (cover: number, policy: number, sop?: boolean) =>
+        `навык руководителя: запас на ${daysRu(cover)} вместо ${daysRu(policy)} ${sop ? 'по плану S&OP' : 'по политике'}`,
       due: (when: string) => `Срок — ${when}: тогда кончится запас позиции при этом спросе`,
       held: (sku: string, t: string, until: string) => `${sku}: задание на запас отменено вами ${t}, до ${until} не ставлю`,
     },

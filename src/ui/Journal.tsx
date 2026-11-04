@@ -257,8 +257,8 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
               : J.order.need;
       const below = w.items.filter(x => x.sku !== d.sku && x.ordered > 0 && x.cases * x.work * 1000 < x.ordered * w.ahead);
       const others = below.length > 0 ? J.order.others(below.map(x => J.order.other(sku(x.sku), Math.round(pos(x) * 10) / 10)).join('; ')) : J.order.alone;
-      // навык руководителя сократил горизонт (Б5в): запас — его, политика — какой была бы
-      const limited = w.policy !== undefined && w.cover !== undefined ? J.order.limited(w.cover, w.policy) : '';
+      // навык руководителя сократил горизонт (Б5в): запас — его, полный — политики или цель плана S&OP
+      const limited = w.policy !== undefined && w.cover !== undefined ? J.order.limited(w.cover, w.policy, !!w.sop) : '';
       // срок (Б6а): когда кончится запас позиции; отменённое на запас — до его «не раньше» позицию не ставят
       const due = d.due !== undefined && d.for?.kind !== 'order' ? J.order.due(whenText(start, d.due)) : '';
       const held = w.items.filter(x => x.held).map(x => J.order.held(sku(x.sku), whenText(start, x.held!.t), whenText(start, x.held!.until)));
@@ -266,7 +266,7 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
       const fc = w.fc ? [J.order.fc] : [];
       // запас позиций продукта — из утверждённого плана S&OP (Б6г)
       const sop = w.sop ? [J.order.sop] : [];
-      return [[head, J.order.threshold(Number.isInteger(ahead) ? ahead : Math.round(ahead * 10) / 10, w.cover), rule].filter(Boolean).join('; '), ...fc, ...sop, ...(due ? [due] : []), others, ...held, ...(limited ? [limited] : [])];
+      return [[head, J.order.threshold(Number.isInteger(ahead) ? ahead : Math.round(ahead * 10) / 10, w.cover, !!w.sop), rule].filter(Boolean).join('; '), ...fc, ...sop, ...(due ? [due] : []), others, ...held, ...(limited ? [limited] : [])];
     }
     case 'po': {
       const out = (d.why ?? []).map(w => {

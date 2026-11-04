@@ -2035,7 +2035,8 @@ export const en: Strings = {
       noDemand: (cases: number) => `Stock — ${casesEn(cases)}; no customer orders in the demand window`,
       fc: 'Demand from the planning forecast for the window ahead, not from the window’s orders',
       sop: 'The product’s item stock comes from the approved S&OP plan, not from the policy',
-      threshold: (ahead: number, cover?: number) => (cover === undefined ? `threshold — ${workEn(ahead)}` : `threshold — ${workEn(ahead)}: two weeks and a cover of ${daysEn(cover)} by the policy`),
+      threshold: (ahead: number, cover?: number, sop?: boolean) =>
+        cover === undefined ? `threshold — ${workEn(ahead)}` : `threshold — ${workEn(ahead)}: two weeks and a cover of ${daysEn(cover)} ${sop ? 'by the S&OP plan' : 'by the policy'}`,
       need: 'below the threshold — and the least in days of demand',
       campaign: (product: string, soon: number) => `campaign: the product of the last order — ${product} — goes on; other products have stock for more than ${workEn(soon)}`,
       urgent: (product: string, soon: number) => `another product will not last even ${workEn(soon)}: the ${product} campaign gives way; of the items below the threshold this one has the least in days of demand`,
@@ -2043,7 +2044,8 @@ export const en: Strings = {
       others: (list: string) => `Also below the threshold: ${list}`,
       alone: 'No other item is below the threshold',
       other: (sku: string, days: number) => `${sku} — for ${workEn(days)}`,
-      limited: (cover: number, policy: number) => `the head's skill: a cover of ${daysEn(cover)} instead of ${daysEn(policy)} by the policy`,
+      limited: (cover: number, policy: number, sop?: boolean) =>
+        `the head's skill: a cover of ${daysEn(cover)} instead of ${daysEn(policy)} ${sop ? 'by the S&OP plan' : 'by the policy'}`,
       due: (when: string) => `Due ${when}: the item's stock runs out then at this demand`,
       held: (sku: string, t: string, until: string) => `${sku}: you cancelled its stock order on ${t}; not placing one before ${until}`,
     },

@@ -9,6 +9,7 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { db } from '../../src/content';
+import { HEAD_ROLE } from '../../src/engine/bosses';
 import { DAY, daysFromCivil, HOUR, isWorkday, momentOf } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
 import { firstDay, monthNo } from '../../src/engine/forecast';
@@ -276,6 +277,25 @@ describe('совещание и правило задания', () => {
     for (const w of why) {
       expect(w?.sop).toBe(true);
       expect([42, 7]).toContain(w!.cover!);
+      expect(w?.policy).toBeUndefined();
+    }
+  });
+
+  test('навык начальника ниже 4 сокращает и цель плана: в причине — «вместо» цели плана, а не политики', () => {
+    const s = structuredClone(before);
+    // навык 2 — половина горизонта (§8.5); у начальника и у заместителя, кто бы ни решал
+    const plan = [HEAD_ROLE.plan, sc.heads?.plan?.deputy];
+    for (const p of Object.values(s.people)) if (plan.includes(p.role)) p.skill = 2;
+    apply(db, s, { kind: 'seat', seats: ['production'] });
+    apply(db, s, { kind: 'advance', seconds: HOUR });
+    apply(db, s, { kind: 'sop', cover: { [PARA]: Array(6).fill(42), [LOR]: Array(6).fill(28) }, by: 'player' });
+    expect(refusals(apply(db, s, { kind: 'mode', head: 'plan', mode: 'auto', by: 'player' }))).toEqual([]);
+    apply(db, s, { kind: 'advance', seconds: at(2027, 9, 10, 9) - s.t });
+    const why = s.journal.filter(x => x.d.kind === 'order' && x.by === 'plan' && x.t > at(2027, 9, 3, 11)).map(x => (x.d as Extract<Decided, { kind: 'order' }>).why!);
+    expect(why.length).toBeGreaterThan(0);
+    for (const w of why) {
+      expect(w.sop).toBe(true);
+      expect([[21, 42], [14, 28]]).toContainEqual([w.cover!, w.policy!]);
     }
   });
 

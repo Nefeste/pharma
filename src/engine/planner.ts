@@ -218,8 +218,11 @@ function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], co
   const aheadOf = coverOf ? (it: { recipe: Id }) => aheadMilli(AHEAD + coverOf(productOf(it))) : ahead;
   const why = (rule: OrderWhy['rule'], extra: Partial<OrderWhy> = {}, it?: { recipe: Id }): OrderWhy => {
     const c = it && coverOf ? coverOf(productOf(it)) : cover;
-    const sop = it && ofSop?.(productOf(it)) !== undefined;
-    return { rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work, ...(x.held ? { held: x.held } : {}) })), ahead: aheadMilli(AHEAD + c), cover: c, ...(policy !== undefined ? { policy } : {}), ...(fc ? { fc: true as const } : {}), ...(sop ? { sop: true as const } : {}), ...extra };
+    const goal = it ? ofSop?.(productOf(it)) : undefined;
+    const sop = goal !== undefined;
+    // навык сократил запас (Б5в): «вместо» — цель плана S&OP, без плана — политика
+    const full = sop ? (goal > c ? goal : undefined) : policy;
+    return { rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work, ...(x.held ? { held: x.held } : {}) })), ahead: aheadMilli(AHEAD + c), cover: c, ...(full !== undefined ? { policy: full } : {}), ...(fc ? { fc: true as const } : {}), ...(sop ? { sop: true as const } : {}), ...extra };
   };
   const last = (sku: Id) => Math.max(-1, ...Object.values(s.batches).filter(b => b.sku === sku).map(b => idNum(b.id)));
   const prev = urgent === undefined ? undefined : prevBefore(Object.values(s.batches), at);

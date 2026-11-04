@@ -209,7 +209,7 @@ async function production(x) {
     await s.measure('Цель клетки — пересчёт', () => page.selectOption(`[data-test=sop-cell][data-product="${PARA}"][data-i="0"]`, String(to)), 'drafted', [PARA, 0, to]);
     const drafted = await page.evaluate(() => ({ gap: document.querySelector('[data-test=sop-result]')?.getAttribute('data-gap') ?? '', text: document.querySelector('[data-test=sop-gap]')?.textContent ?? '', value: window.__game.store.get().sop.view.value }));
     await s.shot('S&OP: своя цель клетки');
-    if (drafted.gap === '' || Number(drafted.gap) < 0 || !/^До лучшего плана — [\d\s ]+ ₽$/.test(drafted.text)) fail(`черновик: ${JSON.stringify(drafted)}`);
+    if (drafted.gap === '' || Number(drafted.gap) < 0 || !/^До лучшего плана — [\d\s ]+\s₽$/.test(drafted.text)) fail(`черновик: ${JSON.stringify(drafted)}`);
     else ok(`черновик: запас парацетамола в первом месяце ${was.c} → ${to} суток, цель плана ${was.v} → ${drafted.value} коп.; «${drafted.text}»`);
 
     // «Утвердить» — план завода; запись журнала «вы»
@@ -239,7 +239,8 @@ async function production(x) {
     await page.waitForSelector(`${row} [data-test=journal-why]`, { timeout: 20_000 });
     const why = await page.evaluate(r => document.querySelector(`${r} [data-test=journal-why]`)?.textContent ?? '', row);
     await s.shot('Журнал: задание по плану S&OP');
-    if (!why.includes('Запас позиций продукта — из утверждённого плана S&OP')) fail(`журнал: причина задания — «${why}»`);
+    if (!why.includes('Запас позиций продукта — из утверждённого плана S&OP') || !/запас \d+ сут\S* по плану S&OP/.test(why) || why.includes('по политике'))
+      fail(`журнал: причина задания — «${why}»`);
     else ok(`задание по плану — ${await s.clock()}: «${why.slice(0, 200)}»`);
     await page.keyboard.press('Escape');
   } finally {

@@ -182,7 +182,8 @@ function Capacity({ v }: { v: SopView }) {
               const c = resCell(r, i);
               const cls = resClass(r, i);
               return (
-                <td key={i} className={cls} title={c.title} data-test="sop-load" data-load={r.load[i]} data-cap={r.cap[i]} data-line={r.line[i]}>
+                // слова «сверх мощности» в узком столбце — переносом, а не многоточием
+                <td key={i} className={cls ? `${cls} wrap` : undefined} title={c.title} data-test="sop-load" data-load={r.load[i]} data-cap={r.cap[i]} data-line={r.line[i]}>
                   {c.text}
                   {cls === 'bad' ? ` ${T.sop.over}` : cls === 'warn' ? ` ${T.sop.reserveWord}` : ''}
                 </td>

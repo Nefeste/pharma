@@ -24,7 +24,7 @@ export type KpiHead = 'dir' | Head;
  * Единица значения: копейки; доля — 1/10 000; секунды; сутки — 1/100 суток; на 1000 — 1/100 случая на тысячу; Вт·ч на
  * 1000 годных таблеток.
  */
-export type KpiUnit = 'kop' | 'share' | 'sec' | 'day' | 'per' | 'wh';
+export type KpiUnit = 'kop' | 'share' | 'sec' | 'day' | 'per' | 'wh' | 'n';
 
 /**
  * Определение показателя (ISO 22400-2, табл. 1, — имя, формула, единица, тренд): кто им измеряется, единица, направление
@@ -57,6 +57,8 @@ export const KPIS: readonly KpiDef[] = [
   { id: 'onDay', head: 'plan', unit: 'share', dir: 1, win: 'm', src: [], pair: 'fgDays' },
   { id: 'fgDays', head: 'plan', unit: 'day', dir: -1, win: 'm', src: ['fda-qm-2022'], pair: 'otif' },
   { id: 'switchH', head: 'plan', unit: 'sec', dir: -1, win: 'm', src: [], pair: 'fgDays', acc: true },
+  // правки в замороженном горизонте (Б6е; §9.2): частые правки — нервозность плана; противовес — заказы в срок
+  { id: 'frozenEdits', head: 'plan', unit: 'n', dir: -1, win: 'm', src: ['li-disney-2017'], pair: 'otifOrders', acc: true },
   // производство
   { id: 'oee', head: 'mes', unit: 'share', dir: 1, win: 'm', src: [ISO], pair: 'rft' },
   { id: 'setup', head: 'mes', unit: 'share', dir: -1, win: 'm', src: [ISO] },
@@ -483,6 +485,8 @@ const CALC: Record<string, Calc> = {
     return demand > 0 ? Math.round((c.p.snap.fg * c.len * 100) / (c.p.snap.n * demand * 1000)) : undefined;
   },
   switchH: c => c.days.reduce((n, d) => n + d.cleans.majorSec + d.changes.sec, 0),
+  // записи журнала с ценой правки в горизонте (Б6е) — новые, сдвинутые и снятые задания
+  frozenEdits: c => c.s.journal.filter(r => inside(r.t, c.p.from, c.p.to) && (r.d.kind === 'order' || r.d.kind === 'cancel' || r.d.kind === 'shift') && r.d.frozen !== undefined).length,
   oee: c => {
     const o = oeeOf(c.db, c.s, c.days).filter((x): x is Oee => x !== undefined);
     return o.length > 0 ? Math.round(o.reduce((n, x) => n + x.oee, 0) / o.length) : undefined;

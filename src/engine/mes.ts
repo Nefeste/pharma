@@ -25,7 +25,7 @@ import { measure, within } from './quality';
 import { normal, roll, spread } from './random';
 import { containersByLot, createLot, free, knownAssay, nextId, putUnit, stockChanged } from './stock';
 import { addTask, release } from './tasks';
-import type { Batch, BatchFor, Command, Container, Deviation, Equipment, KitLine, Lot, Notice, OrderWhy, PackJob, Part, Place, PlantEvent, PlantState, Room, StageRecord, StageRun, Task, Unit } from './types';
+import type { Batch, BatchFor, Command, Container, Deviation, EditPrice, Equipment, KitLine, Lot, Notice, OrderWhy, PackJob, Part, Place, PlantEvent, PlantState, Room, StageRecord, StageRun, Task, Unit } from './types';
 import { PRIO, WMS } from './wms';
 
 /** Роли производства. */
@@ -53,7 +53,7 @@ const roomPlace = (plan: PlantPlan, roomId: string): Place => ({ kind: 'point', 
  * Задание на серию: серия ждёт резерва и своей даты. Нет карты — отказ. Карта — редакция, действующая в день «не раньше»
  * (Б3а): задание держит её до конца — ни новая редакция, ни сдвиг срока её не меняют.
  */
-export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'order' }>, notices: Notice[], why?: OrderWhy) {
+export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'order' }>, notices: Notice[], why?: OrderWhy, frozen?: EditPrice) {
   if (!db.recipes[cmd.recipe]) {
     notices.push({ kind: 'refused', cmd: 'order', why: 'noRecipe', detail: cmd.recipe });
     return;
@@ -83,7 +83,7 @@ export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, {
   schedule(s.agenda, b.notBefore, { kind: 'batch', id: b.id });
   reserve(db, s, b);
   // журнал решений (Б5а): игрок или начальник отдела планирования — с причиной коллеги
-  noteCmd(s, cmd, { kind: 'order', batch: b.id, recipe: b.recipe, ...(b.sku ? { sku: b.sku } : {}), notBefore: b.notBefore, ...(due !== undefined ? { due } : {}), ...(goal ? { for: goal } : {}), ...(why ? { why } : {}) });
+  noteCmd(s, cmd, { kind: 'order', batch: b.id, recipe: b.recipe, ...(b.sku ? { sku: b.sku } : {}), notBefore: b.notBefore, ...(due !== undefined ? { due } : {}), ...(goal ? { for: goal } : {}), ...(why ? { why } : {}), ...(frozen ? { frozen } : {}) });
 }
 
 /**
@@ -92,7 +92,7 @@ export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, {
  * что. Отказы: задания нет; уже отменено; начато — досье выдано, серию не отменяют, остановить её можно только
  * отклонением (Б5е).
  */
-export function cancelOrder(s: PlantState, cmd: Extract<Command, { kind: 'cancel' }>, notices: Notice[]) {
+export function cancelOrder(s: PlantState, cmd: Extract<Command, { kind: 'cancel' }>, notices: Notice[], frozen?: EditPrice) {
   const b = s.batches[cmd.batch];
   if (!b) return notices.push({ kind: 'refused', cmd: 'cancel', why: 'noBatch', detail: cmd.batch });
   if (b.status === 'cancelled') return notices.push({ kind: 'refused', cmd: 'cancel', why: 'cancelled', detail: cmd.batch });
@@ -109,7 +109,7 @@ export function cancelOrder(s: PlantState, cmd: Extract<Command, { kind: 'cancel
   b.status = 'cancelled';
   b.cancelled = s.t;
   stockChanged(s);
-  noteCmd(s, cmd, { kind: 'cancel', batch: b.id, ...(b.sku ? { sku: b.sku } : {}), notBefore: b.notBefore, ...(b.due !== undefined ? { due: b.due } : {}), ...(b.for ? { for: b.for } : {}) });
+  noteCmd(s, cmd, { kind: 'cancel', batch: b.id, ...(b.sku ? { sku: b.sku } : {}), notBefore: b.notBefore, ...(b.due !== undefined ? { due: b.due } : {}), ...(b.for ? { for: b.for } : {}), ...(frozen ? { frozen } : {}) });
 }
 
 /**
@@ -271,12 +271,15 @@ export function mesStep(db: ContentDb, s: PlantState) {
  * Команда «сдвинуть» (3д): у задания, которое ещё не начало комплектовку, — новый срок «не раньше», не раньше нынешней
  * минуты. В очереди — событие задания на новом сроке; прежнее событие без вреда — оно будит шаг производства для всех.
  */
-export function shiftCommand(s: PlantState, cmd: Extract<Command, { kind: 'shift' }>, notices: Notice[]) {
+export function shiftCommand(s: PlantState, cmd: Extract<Command, { kind: 'shift' }>, notices: Notice[], frozen?: EditPrice) {
   const b = s.batches[cmd.batch];
   if (!b) return notices.push({ kind: 'refused', cmd: 'shift', why: 'noBatch', detail: cmd.batch });
   if (b.status !== 'waiting' && b.status !== 'reserved') return notices.push({ kind: 'refused', cmd: 'shift', why: 'started', detail: cmd.batch });
+  const from = b.notBefore;
   b.notBefore = Math.max(s.t, Math.floor(cmd.notBefore));
   schedule(s.agenda, b.notBefore, { kind: 'batch', id: b.id });
+  // правка в замороженном горизонте (Б6е) — запись журнала с ценой; сдвиг за горизонтом журнал не пишет, как до Б6е
+  if (frozen) noteCmd(s, cmd, { kind: 'shift', batch: b.id, ...(b.sku ? { sku: b.sku } : {}), from, notBefore: b.notBefore, frozen });
 }
 
 /** Команда «упаковать»: позиция того же продукта; задание заведётся, когда балк разрешат. */

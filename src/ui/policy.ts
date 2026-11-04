@@ -35,6 +35,9 @@ export function policyText(p: Policy | undefined, v: PolicyValue): string {
     // срок завоза (Б6д): число предыдущего месяца, 0 — к дню серии
     case 'mday':
       return T.policies.mday(v as number);
+    // замороженный горизонт (Б6е): рабочих дней
+    case 'workdays':
+      return T.policies.workdays(v as number);
   }
 }
 
@@ -45,16 +48,17 @@ export function rangeText(p: Policy): string {
   if (p.kind === 'days' || p.kind === 'months' || p.kind === 'wear') return `${T.policies.range(at(p.min!), at(p.max!), p.kind === 'wear' ? pctText(p.step!) : p.kind === 'days' ? T.policies.days(p.step!) : T.policies.months(p.step!))}${or}`;
   if (p.kind === 'count') return T.policies.span(String(p.min), String(p.max));
   if (p.kind === 'mday') return T.policies.mdays(Math.max(1, p.min!), p.max!, p.min === 0);
+  if (p.kind === 'workdays') return T.policies.range(at(p.min!), at(p.max!), T.policies.workdays(p.step!));
   if (p.kind === 'level') return T.policies.span(String(p.min), String(p.max));
   return '';
 }
 
 /**
  * Следующее значение на шаг вниз (`-1`) или вверх: ниже нижнего у политики с «без» — «без», выше «без» — нижнее; за
- * пределами — нет. Только у суток, месяцев, износа, числа и числа месяца (Б6д).
+ * пределами — нет. Только у суток, месяцев, износа, числа, числа месяца (Б6д) и рабочих дней (Б6е).
  */
 export function stepValue(p: Policy, v: PolicyValue, dir: -1 | 1): PolicyValue | undefined {
-  if (p.kind !== 'days' && p.kind !== 'months' && p.kind !== 'wear' && p.kind !== 'count' && p.kind !== 'mday') return undefined;
+  if (p.kind !== 'days' && p.kind !== 'months' && p.kind !== 'wear' && p.kind !== 'count' && p.kind !== 'mday' && p.kind !== 'workdays') return undefined;
   if (v === OFF) return dir > 0 ? p.min : undefined;
   if (typeof v !== 'number') return undefined;
   const n = v + dir * p.step!;

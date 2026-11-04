@@ -4,6 +4,7 @@
 // рампе встаёт фура покупателя. Ушла фура — отгрузка: ящики с отрезками кодов — в запись отгрузки, счёт — в кассу.
 import type { ContentDb, Customer, Id, Scenario, Sku } from '../content/types';
 import { batchNo } from './batchno';
+import { cutOrder } from './commerce';
 import { schedule } from './core/agenda';
 import type { Rng } from './core/rng';
 import { addWorkdays, civilFromDays, DAY, daysFromCivil, HOUR, isWorkday, momentOf, workdayOnOrAfter, workdayOnOrBefore } from './core/calendar';
@@ -167,7 +168,8 @@ function placeOrder(db: ContentDb, s: PlantState, c: Customer) {
   const lines: Order['lines'] = [];
   for (const [sku, perDay] of Object.entries(c.demand)) {
     const per = db.skus[sku].case.per;
-    const cases = roll(s, `market/${c.id}/${sku}`, r => poisson(r, (perDay * seasonSec(db, s, sku, st.last, s.t)) / (DAY * per)));
+    // снятый спрос (Б6е): покупатель не возьмёт снятых ящиков позиции — бросок тот же, ящиков меньше
+    const cases = cutOrder(s, c.id, sku, roll(s, `market/${c.id}/${sku}`, r => poisson(r, (perDay * seasonSec(db, s, sku, st.last, s.t)) / (DAY * per))));
     if (cases > 0) lines.push({ sku, cases, reserved: 0, shipped: 0 });
     if (cases > 0) addDemand(s, sku, cases);
   }

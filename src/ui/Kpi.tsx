@@ -28,6 +28,9 @@ export function kpiValue(unit: KpiUnit, v: number, signed = false): string {
       return T.kpi.per(num(v / 100, 1));
     case 'wh':
       return T.kpi.kwh(num(v / 1000, 1));
+    // число — правок за месяц (Б6е)
+    case 'n':
+      return T.kpi.n(num(v));
   }
 }
 

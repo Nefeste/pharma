@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 43;
+export const SCHEMA = 44;
 
 // ---------------------------------------------------------------- склад
 
@@ -1086,6 +1086,32 @@ export interface Order {
   truck?: string;
   checked?: number;
   shipment?: string;
+  /** крупный заказ — событие коммерции (Б6е): срок дальше, чем у заказов покупателя по дням */
+  big?: true;
+}
+
+/**
+ * События коммерции (Б6е; src/engine/commerce.ts): месяц, на который вытянуты дни событий, и сами дни — номер дня от
+ * 1970-01-01; снятый спрос — ящики, которые покупатель ещё не взял в ближайших заказах позиции.
+ */
+export interface CommerceState {
+  month: number;
+  days: number[];
+  cut: Record<Id, Record<Id, number>>;
+}
+
+/**
+ * Цена правки плана в замороженном горизонте (Б6е; src/engine/plan/price.ts): прогон расписания на горизонт цены с правкой
+ * против прогона без неё — сколько генеральных и малых уборок помещений и их работа, с (мойка и уборка), сколько смен
+ * формата у линии по порядку серий, какие задания кончат стадии позже и на сколько, с. Меньше — отрицательные числа.
+ */
+export interface EditPrice {
+  major: number;
+  majorSec: number;
+  minor: number;
+  minorSec: number;
+  formats: number;
+  later: { batch: string; sec: number }[];
 }
 
 /** Отгруженный ящик: тара партии ГП с отрезками кодов — прослеживаемость до покупателя. */
@@ -1643,10 +1669,16 @@ export interface TestWhy {
  * только с командой, — задания, заказа, вакансии, вывоза — нет, пока его не приняли.
  */
 export type Decided =
-  /** задание на серию: позиция, карта и «не раньше» */
-  | { kind: 'order'; batch?: string; recipe: Id; sku?: Id; notBefore: number; due?: number; for?: BatchFor; why?: OrderWhy }
-  /** отмена задания на серию до комплектовки (Б6а): позиция, «не раньше», срок и под что */
-  | { kind: 'cancel'; batch: string; sku?: Id; notBefore: number; due?: number; for?: BatchFor }
+  /** задание на серию: позиция, карта и «не раньше»; в замороженном горизонте (Б6е) — цена правки */
+  | { kind: 'order'; batch?: string; recipe: Id; sku?: Id; notBefore: number; due?: number; for?: BatchFor; why?: OrderWhy; frozen?: EditPrice }
+  /** отмена задания на серию до комплектовки (Б6а): позиция, «не раньше», срок и под что; в горизонте — цена (Б6е) */
+  | { kind: 'cancel'; batch: string; sku?: Id; notBefore: number; due?: number; for?: BatchFor; frozen?: EditPrice }
+  /** новый «не раньше» задания в замороженном горизонте (Б6е): прежний и новый, цена правки */
+  | { kind: 'shift'; batch: string; sku?: Id; from: number; notBefore: number; frozen: EditPrice }
+  /** событие коммерции (Б6е): крупный заказ покупателя */
+  | { kind: 'bigOrder'; order: string; customer: Id; sku: Id; cases: number; due: number }
+  /** событие коммерции (Б6е): снятый спрос */
+  | { kind: 'demandCut'; customer: Id; sku: Id; cases: number }
   /** заказ поставщику: предоплата; по каждой строке — положение материала */
   | { kind: 'po'; po?: string; supplier: Id; prepaid: number; why?: PoWhy[] }
   /** ускорение заказа поставщику (Б6д): прежний и новый приход; доплата с НДС, копейки */
@@ -1971,6 +2003,8 @@ export interface PlantState {
   forecast?: ForecastState;
   /** совещание S&OP (Б6г): утверждённые планы и открытое совещание; нет — плана нет, правило берёт политику */
   sop?: SopState;
+  /** события коммерции (Б6е): нет — у сценария без записи `commerce` или до первого часа событий */
+  commerce?: CommerceState;
   /** вывоз отклонённого (Б1з; src/engine/waste.ts): заказанный вывоз — один, пока подрядчик не уехал; журнал отходов */
   waste: WasteState;
   /** показатели руководителей (Б5ж; src/engine/kpi.ts): срезы суток этого месяца и закрытые месяцы */
@@ -2381,6 +2415,10 @@ export type Notice =
   | { kind: 'poFast'; po: string; eta: number }
   /** заказ поставщику отменён (Б6д) */
   | { kind: 'poCancelled'; po: string }
+  /** событие коммерции (Б6е): крупный заказ покупателя — позиция, ящики, срок */
+  | { kind: 'bigOrder'; order: string; customer: Id; sku: Id; cases: number; due: number }
+  /** событие коммерции (Б6е): покупатель снял спрос — столько ящиков позиции не возьмёт в ближайших заказах */
+  | { kind: 'demandCut'; customer: Id; sku: Id; cases: number }
   /** фура встала к рампе */
   | { kind: 'truck'; po: string; truck: string }
   /** партия разрешена: все испытания в пределах */

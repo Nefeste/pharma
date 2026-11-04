@@ -168,7 +168,13 @@ function headOf(db: ContentDb, d: Decided): Head {
   switch (d.kind) {
     case 'order':
     case 'cancel':
+    // правка в замороженном горизонте (Б6е)
+    case 'shift':
       return 'plan';
+    // события коммерции (Б6е)
+    case 'bigOrder':
+    case 'demandCut':
+      return 'sales';
     case 'po':
     // ускорить и отменить заказ поставщику (Б6д)
     case 'expedite':
@@ -285,6 +291,12 @@ export function refOf(db: ContentDb, s: PlantState, d: Decided, ask?: Ask): Jour
       return { ...(d.batch ? batchRef(s, d.batch) : {}), ...customerOf(s, d.for) };
     case 'cancel':
       return { ...batchRef(s, d.batch), ...customerOf(s, d.for) };
+    // правка в замороженном горизонте и события коммерции (Б6е)
+    case 'shift':
+      return batchRef(s, d.batch);
+    case 'bigOrder':
+    case 'demandCut':
+      return { customer: d.customer };
     case 'batch':
       return batchRef(s, d.batch);
     case 'po':

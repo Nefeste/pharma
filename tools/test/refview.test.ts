@@ -111,7 +111,10 @@ const ALLOWED = new Set(
     // Б5в: найм переездом — роли, которых в городе не найти, и запись рынка: сроки, предупреждение, дорога, возмещение;
     // руководители — отдел, его пост, что навык ограничивает в правиле (горизонт, порог вывода, замена узлов, найм) и
     // сколько было бы при полном навыке — правило завода, не истина
-    'movable move road arrive bosses head seat limit full hire replace byWear threshold'
+    'movable move road arrive bosses head seat limit full hire replace byWear threshold ' +
+    // Б6ж: аналог строки карты с коэффициентом — по карте; пара-кандидат с шагом одобрения и наступившими днями, доля
+    // поставок вовремя пары — записи завода; настоящего прихода и дней решения наперёд нет
+    'alt factor cand onTime step po eta lot filed asked answered decided'
   ).split(' '),
 );
 

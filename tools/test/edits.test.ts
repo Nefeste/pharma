@@ -20,7 +20,7 @@ import { forecast } from '../../src/engine/plan/schedule';
 import { AHEAD_WORK, casesOf, frozenDays, frozenOf } from '../../src/engine/planner';
 import { POL } from '../../src/engine/policies';
 import { fromSave } from '../../src/engine/save';
-import type { Notice, PlantState } from '../../src/engine/types';
+import { type Notice, type PlantState, SCHEMA } from '../../src/engine/types';
 import { calOf } from '../../src/engine/workdays';
 import { ganttView } from '../../src/sim/plan';
 import { morningView } from '../../src/sim/report';
@@ -293,10 +293,10 @@ describe('виды', () => {
 });
 
 describe('сохранение и сборщик базы', () => {
-  test('образец схемы 43 открывается схемой 44: снятого спроса нет, дни событий — с первого часа событий', () => {
+  test('образец схемы 43 открывается нынешней схемой: снятого спроса нет, дни событий — с первого часа событий', () => {
     const raw = readFileSync(join(import.meta.dir, 'fixtures/save-v43.json'), 'utf8');
     const s = fromSave(db, raw);
-    expect(s.schema).toBe(44);
+    expect(s.schema).toBe(SCHEMA);
     expect(s.commerce).toBeUndefined();
     expect(frozenOf(db, s)).toBe(10);
     live(s, 40);

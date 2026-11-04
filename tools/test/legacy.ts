@@ -43,6 +43,8 @@ delete sc.labor;
 // руководители в прежней жизни завода — должности (до Б5в): решают в час правила, без смены, отпуска и навыка; механику
 // руководителей-людей проверяют свои тесты на базе игры
 delete sc.heads;
+// поставщики в прежней жизни завода не опаздывают (до Б6ж): механику опозданий проверяют свои тесты на базе игры
+for (const s of Object.values(legacy.suppliers)) delete s.late;
 sc.orders = [
   { supplier: 'sup.exc', lines: [{ material: 'mat.exc.starch', qty: kg(500) }, { material: 'mat.exc.mcc', qty: kg(200) }] },
   {

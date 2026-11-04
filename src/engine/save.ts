@@ -1,27 +1,33 @@
 // Сохранение — снимок состояния со схемой и цепочкой миграций (ADR студии 0004; docs/02-architecture.md, §13). Забытая
 // миграция стирает игру человека, поэтому каждый шаг закреплён образцом в tools/test/fixtures/.
 import type { ContentDb } from '../content/types';
-import { seedAssets } from './assets';
+import { BOOK_HOUR as VISIT_HOUR, seedAssets } from './assets';
+import { PAID_LATER } from './bosses';
 import { newHeads } from './heads';
 import { batchNo } from './batchno';
 import { type Agenda, schedule } from './core/agenda';
-import { HOUR, momentOf } from './core/calendar';
+import { HOUR, isWorkday, momentOf } from './core/calendar';
 import { newCash } from './cash';
 import { inForce } from './docs';
+import { LABOR_HOUR } from './hire';
 import { newPolicy } from './hours';
+import { DEPT_HEAD } from './journal';
 import { newKpi } from './kpi';
 import { leanStep, newLoss } from './lean';
 import { newLines } from './line';
 import { newParts } from './maint';
 import { newCustomers } from './market';
-import { bulkOut, stageTaskNorm } from './mes';
-import { seedContracts, seedPairs, specPairs } from './partners';
+import { BATCH_HOUR, bulkOut, stageTaskNorm } from './mes';
+import { BOOK_HOUR as EVAL_HOUR, seedContracts, seedPairs, specPairs } from './partners';
 import { planOf } from './plant';
 import { newPolicies } from './policies';
 import { nominal } from './quality';
 import { shiftEndAt } from './staff';
 import { rowsOf } from './quals';
+import { SUPPLY_HOUR } from './supply';
 import { seedTraining } from './train';
+import { WASTE_HOUR } from './waste';
+import { calOf } from './workdays';
 import type { Ymd } from './core/calendar';
 import { type Batch, type Person, type PlantEvent, type PlantState, SCHEMA, type Task } from './types';
 
@@ -471,6 +477,32 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   // 34 → 35 (Б5г): политики руководителей — значений игрока нет, все с записи сценария; истории нет
   34: raw => {
     (raw as unknown as PlantState).policies = newPolicies();
+    return raw;
+  },
+  // 35 → 36 (Б5в): руководители — люди штата. Шесть руководителей сценария, которые с этой версии люди, приходят в день
+  // загрузки — у входа, с табельными номерами по порядку приёма и записями обучения, как на старте партии; заместители —
+  // по сценарию, назначенных игроком нет. Правила руководителей, чей час сегодня уже прошёл, сегодня отработали — отметка
+  // дня, чтобы второй раз не решили. Записи журнала до этой версии — без человека: решала должность.
+  35: (raw, db) => {
+    const sc = db.scenarios[raw.scenario as string];
+    if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
+    const s = raw as unknown as PlantState;
+    const now = momentOf(s.start, s.t);
+    const plan = planOf(db, s.plant);
+    const have = new Set([...Object.values(s.people), ...Object.values(s.hires)].map(p => p.role));
+    for (const row of sc.staff) {
+      if (!PAID_LATER.has(row.role) || have.has(row.role)) continue;
+      for (let i = 0; i < row.n; i++) {
+        const n = (s.next.E = (s.next.E ?? 0) + 1);
+        const p: Person = { id: `E${n}`, role: row.role, shift: row.shift, skill: row.skill, tab: sc.training.tab + n - 1, train: {}, x: plan.entrance.x, z: plan.entrance.z, ot: [], otYear: { y: now.date.y, sec: 0 }, hired: now.day, ...(row.also ? { also: [...row.also] } : {}) };
+        s.people[p.id] = p;
+        seedTraining(db, sc, p, now.day);
+      }
+    }
+    if (isWorkday(calOf(db, s), now.day)) {
+      const rules: [string, number][] = [['plan', BATCH_HOUR], ['supply', SUPPLY_HOUR], ['waste', WASTE_HOUR], ['visit', VISIT_HOUR], ['pairEval', EVAL_HOUR], ...[...new Set(Object.values(DEPT_HEAD))].map(h => [`hire/${h}`, LABOR_HOUR] as [string, number])];
+      for (const [key, hour] of rules) if (now.sec >= hour) (s.ruled ??= {})[key] = now.day;
+    }
     return raw;
   },
 };

@@ -19,6 +19,7 @@ import { DevBody, First, KnobsBlock, RegimesBlock, ReleaseBlock, SpeedBlock } fr
 import { LeaveBlock } from './Leave';
 import { AndonRows, BottleBlock, LoadBlock } from './Layers';
 import { StatusIcon, TaskIcon } from './icons';
+import { BossBlock } from './Bosses';
 import { WhoList } from './Journal';
 import { placeText, supplierText } from './Stock';
 import { type Actions, type Hud, holds } from './store';
@@ -696,6 +697,7 @@ export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v
             <Row k={T.card.skill}>{num(c.skill)}</Row>
             <Row k={T.card.salary}>
               <span data-test="card-salary">{T.card.perMonth(money(c.salary))}</span>
+              {c.later ? <span className="muted" data-test="card-salary-later"> · {T.boss.later}</span> : null}
             </Row>
             {c.hired !== undefined ? <Row k={T.card.hiredOn}>{dayText(c.hired)}</Row> : null}
             {c.trial !== undefined ? (
@@ -716,6 +718,8 @@ export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v
               </span>
             </Row>
           </dl>
+          <BossBlock boss={c.boss} deputyFor={c.deputyFor} hud={hud} actions={actions} />
+          <WhoList rows={c.decided} start={start} actions={actions} title={T.boss.decided} test="card-decided" />
           {c.terms ? <Dismiss c={c} hud={hud} actions={actions} /> : null}
           <WhoList rows={c.who} start={start} actions={actions} />
           <div className="csec">{T.card.training}</div>

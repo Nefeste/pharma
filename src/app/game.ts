@@ -439,6 +439,8 @@ export class Game {
       : n.kind === 'proposal' ? T.notices.proposal(T.journal.names[n.head] ?? n.head)
       : n.kind === 'policy' ? T.notices.policy(T.journal.names[n.head] ?? n.head, named(this.db.policies[n.policy]?.name, n.policy))
       : n.kind === 'visitMoved' ? T.notices.visitMoved(`${workName(n, n.work)} — ${assetClass(n)}, ${T.assets.inv(n.inv)}`, whenText(this.store.get().start, n.at))
+      : n.kind === 'noOne' ? T.notices.noOne(T.journal.namesOf[n.head] ?? n.head)
+      : n.kind === 'deputy' ? T.notices.deputy(T.journal.namesOf[n.head] ?? n.head, n.role && n.tab !== undefined ? T.card.person(this.roleName(n.role), n.tab) : undefined)
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;
@@ -1021,6 +1023,7 @@ export class Game {
     leaveMove: (person, part, from) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'move', part, from, by: 'player' }),
     leaveDrop: (person, part) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'drop', part, by: 'player' }),
     leaveDeputy: (person, part, deputy) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'deputy', part, ...(deputy !== undefined ? { deputy: `E${deputy}` } : {}), by: 'player' }),
+    deputy: (head, person) => this.client.command({ kind: 'deputy', head, person: person === null ? null : `E${person}`, by: 'player' }),
     also: (person, role, on) => this.client.command({ kind: 'also', person: `E${person}`, role, on, by: 'player' }),
     setCashPage: page => {
       this.store.set({ cash: { ...this.store.get().cash, page } });

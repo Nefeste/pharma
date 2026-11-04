@@ -6,6 +6,7 @@
 // следующий рабочий; завод платит в день визита. Работу принимает начальник ОКК (калибровку) или специалист ООК
 // (квалификацию) — запись появляется с днём приёмки. Записи — знание завода, а не истина: их видят окно и двойник.
 import type { ContentDb, RecipeStage, Scenario } from '../content/types';
+import { dueRule, type Who } from './bosses';
 import { part, post } from './cash';
 import { schedule } from './core/agenda';
 import { addMonths, addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf } from './core/calendar';
@@ -151,7 +152,9 @@ export function assetStep(db: ContentDb, s: PlantState) {
 export function assetHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   const now = momentOf(s.start, s.t);
   if (now.sec === 0) expired(db, s, now.day, notices);
-  if (now.sec === BOOK_HOUR && isWorkday(calOf(db, s), now.day)) book(db, s, now.day);
+  // руководитель — человек (Б5в): с 09:00 рабочего дня, в первый час, когда есть кому решить
+  const who = dueRule(db, s, 'visit', 'maint', BOOK_HOUR, notices);
+  if (who) book(db, s, now.day, who);
   assetStep(db, s);
 }
 
@@ -168,7 +171,7 @@ function expired(db: ContentDb, s: PlantState, day: number, notices: Notice[]) {
  * ближайший рабочий день, к началу часов подрядчика; из двух работ — та, что кончится раньше. Срок предупреждения —
  * политика главного механика (Б5г): с чего начинает завод — запись сценария.
  */
-function book(db: ContentDb, s: PlantState, today: number) {
+function book(db: ContentDb, s: PlantState, today: number, who: Who) {
   const sc = db.scenarios[s.scenario];
   const ahead = numOf(db, s, POL.ahead)!;
   const at = (addWorkdays(calOf(db, s), today, 1) - daysFromCivil(s.start)) * DAY + sc.assets.hours[0];
@@ -184,7 +187,7 @@ function book(db: ContentDb, s: PlantState, today: number) {
     if (!due) continue;
     a.visit = { work: due.work, at, booked: s.t, v: 0 };
     // журнал решений (Б5а): главный механик — до какого дня запись и срок предупреждения
-    note(s, 'maint', { kind: 'visit', asset: a.id, work: due.work, at, why: { ...(Number.isFinite(due.until) ? { until: due.until } : {}), ahead } });
+    note(s, 'maint', { kind: 'visit', asset: a.id, work: due.work, at, why: { ...(Number.isFinite(due.until) ? { until: due.until } : {}), ahead } }, undefined, undefined, who);
   }
 }
 

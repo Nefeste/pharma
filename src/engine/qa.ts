@@ -9,6 +9,7 @@ import { batchNo } from './batchno';
 import { part, post } from './cash';
 import { MIN, momentOf } from './core/calendar';
 import { inForce } from './docs';
+import { decider } from './bosses';
 import { modeOf, round } from './heads';
 import { note, noteCmd } from './journal';
 import { defect } from './lean';
@@ -59,7 +60,8 @@ export function qaDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[])
       return true;
     }
     case 'qpDecide':
-      decide(db, s, s.batches[t.batch!], notices);
+      // решает уполномоченное лицо, которое сделало работу (Б5в): другое его замещает в своём праве, без «и. о.»
+      decide(db, s, s.batches[t.batch!], notices, t.people[0]);
       return true;
     case 'devAssess':
       assessed(db, s, s.deviations[t.dev!], notices);
@@ -122,7 +124,7 @@ function takeCodes(c: Container, q: number): number[] {
  * политика — неоценённые отклонения серии, её балка или ГП — «держать», иначе — «выпустить». Выпустить при неоценённом
  * отклонении нельзя никому (Б1г): до подтверждения серии отклонения должны быть утверждены.
  */
-function decide(db: ContentDb, s: PlantState, b: Batch, notices: Notice[]) {
+function decide(db: ContentDb, s: PlantState, b: Batch, notices: Notice[], by?: string) {
   const lot = s.lots[b.pack!.fg!];
   const open = openDevs(s, b);
   let decision = b.decision ?? (open.length > 0 ? 'hold' : 'release');
@@ -133,7 +135,7 @@ function decide(db: ContentDb, s: PlantState, b: Batch, notices: Notice[]) {
   const rejected = b.decision === 'reject' ? devsOf(s, b).find(d => d.assess?.verdict === 'reject' && d.assess.done !== undefined) : undefined;
   const rule = rejected ? 'assess' : b.decision !== undefined && !(b.decision === 'release' && open.length > 0) ? 'player' : open.length > 0 ? 'open' : 'clear';
   const devs = rejected ? [rejected.id] : open.map(d => d.id);
-  note(s, 'qp', { kind: 'batch', batch: b.id, decision, why: { rule, ...(devs.length > 0 ? { devs } : {}) } });
+  note(s, 'qp', { kind: 'batch', batch: b.id, decision, why: { rule, ...(devs.length > 0 ? { devs } : {}) } }, undefined, undefined, by ? { p: by } : undefined);
   delete b.decision;
   if (decision === 'hold') {
     b.held = true;
@@ -376,20 +378,27 @@ export const devKey = (dev: string) => `dev/${dev}`;
 export function devHour(db: ContentDb, s: PlantState, notices: Notice[]): boolean {
   const mode = modeOf(s, 'qa');
   if (mode === 'manual') return false;
-  const r = mode === 'advise' ? round(s, ['dev/']) : undefined;
-  let acted = false;
+  const ready: { d: PlantState['deviations'][string]; tests: ReturnType<typeof linkedTests> }[] = [];
   for (const d of Object.values(s.deviations)) {
     if (d.status !== 'open' || assessBlock(s, d)) continue;
     const tests = linkedTests(db, s, d);
-    if (tests.some(x => !x.done)) continue;
+    if (!tests.some(x => !x.done)) ready.push({ d, tests });
+  }
+  // руководитель — человек (Б5в): оценку назначает начальник ООК, а без него — заместитель, в свою смену; пока решать
+  // некому, отклонения ждут, а открытые предложения остаются
+  const who = ready.length > 0 || mode === 'advise' ? decider(db, s, 'qa', notices) : undefined;
+  if (!who) return false;
+  const r = mode === 'advise' ? round(s, ['dev/']) : undefined;
+  let acted = false;
+  for (const { d, tests } of ready) {
     const verdict = tests.some(x => x.out > 0) ? 'reject' : 'none';
     // журнал решений (Б5а): начальник ООК — по связанным испытаниям серии
     const why = { tests: tests.map(x => ({ test: x.test, kind: x.kind, n: x.n, out: x.out, ...(x.result !== undefined ? { result: x.result } : {}) })) };
     if (r) {
-      r.propose('qa', devKey(d.id), { kind: 'assess', deviation: d.id, verdict }, { kind: 'assess', dev: d.id, verdict, why }, notices);
+      r.propose('qa', devKey(d.id), { kind: 'assess', deviation: d.id, verdict }, { kind: 'assess', dev: d.id, verdict, why }, notices, who);
       continue;
     }
-    note(s, 'qa', { kind: 'assess', dev: d.id, verdict, why });
+    note(s, 'qa', { kind: 'assess', dev: d.id, verdict, why }, undefined, undefined, who);
     startAssess(db, s, d, verdict, 'head:quality');
     acted = true;
   }

@@ -1,13 +1,13 @@
 // Состояние завода и обмен с движком (docs/02-architecture.md, §1, §3, §7; docs/specs/2026-10-engine.md). Состояние —
 // обычный сериализуемый объект: сохранение — его снимок со схемой и миграциями (ADR студии 0004). Сущности — словари с
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
-import type { Attr, Dept, Id, IncidentRoot, OvertimeMode, SeatId, TaskKind, ZoneKind } from '../content/types';
+import type { Attr, Dept, HeadId, Id, IncidentRoot, OvertimeMode, SeatId, TaskKind, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 35;
+export const SCHEMA = 36;
 
 // ---------------------------------------------------------------- склад
 
@@ -784,12 +784,21 @@ export interface Quit {
   vacancy?: string;
 }
 
-/** Вакансия (Б4в): роль и график; канал; день открытия; открыл коллега — вместо кого; когда агентство пришлёт кандидата. */
+/**
+ * Канал найма: объявление в городе, кадровое агентство (Б4в) или переезд кандидата из другого города (Б5в) — тех, кого
+ * по объявлению в городе не найти.
+ */
+export type Via = 'ad' | 'agency' | 'move';
+
+/**
+ * Вакансия (Б4в): роль и график; канал; день открытия; открыл коллега — вместо кого; когда агентство или переезд
+ * (Б5в) пришлёт кандидата.
+ */
 export interface Vacancy {
   id: string;
   role: Id;
   shift: Id;
-  via: 'ad' | 'agency';
+  via: Via;
   from: number;
   by?: 'colleague';
   instead?: string;
@@ -803,7 +812,7 @@ export interface Vacancy {
 export interface Candidate {
   id: string;
   vacancy: string;
-  via: 'ad' | 'agency';
+  via: Via;
   role: Id;
   skill: number;
   salary: number;
@@ -823,6 +832,8 @@ export interface Hire extends Omit<Candidate, 'from' | 'until'> {
   at: number;
   /** день, когда открыли вакансию (Б5ж): переходит к человеку в его первый день; у принятых до схемы 33 нет */
   vac?: number;
+  /** переезд (Б5в): день приезда — после предупреждения на прежней работе и дороги; медосмотр — с него */
+  arrive?: number;
 }
 
 /** Запись графика человека (Б4б): график и номер дня от 1970-01-01, с которого он в нём. */
@@ -1362,6 +1373,8 @@ export interface OrderWhy {
   ahead: number;
   /** запас позиций по политике (Б5г), суток: порог — две недели и они */
   cover?: number;
+  /** политика, когда навык руководителя ниже 4 сократил горизонт (Б5в): `cover` — его, это — политики */
+  policy?: number;
   seen?: number;
   soon?: number;
   prev?: Id;
@@ -1425,7 +1438,7 @@ export type Decided =
   /** шаг расследования */
   | { kind: 'step'; inv: string; step: string; why?: StepWhy }
   /** вывод расследования: версия, её вероятность и порог, доли 1/10 000; ошибка лаборатории доказана */
-  | { kind: 'conclude'; inv: string; cause: string; fate: 'reject' | 'release'; why?: { p: number; threshold: number; proven: boolean } }
+  | { kind: 'conclude'; inv: string; cause: string; fate: 'reject' | 'release'; why?: { p: number; threshold: number; model?: number; proven: boolean } }
   /** оценка влияния отклонения: связанные испытания серии */
   | { kind: 'assess'; dev: string; verdict: 'none' | 'reject'; why?: { tests: TestWhy[] } }
   /** оценка пары «поставщик — изготовитель»: до какого дня одобрение и срок предупреждения, суток */
@@ -1445,7 +1458,7 @@ export type Decided =
    * вакансия: вместо кого — человек, табельный номер и день заявления; канал — объявление, сразу агентство (по
    * объявлению такую роль в городе не найти) или агентство после стольких суток без подходящего
    */
-  | { kind: 'vacancy'; vacancy?: string; role: Id; via: 'ad' | 'agency'; why?: { instead: string; tab: number; day: number; rule: 'ad' | 'city' | 'late'; days?: number } }
+  | { kind: 'vacancy'; vacancy?: string; role: Id; via: Via; why?: { instead: string; tab: number; day: number; rule: 'ad' | 'city' | 'late'; days?: number } }
   /** приём: навык против наименьшего, ожидание против цены рынка за навык с надбавкой `over`, доли 1/10 000 */
   | { kind: 'hire'; cand: string; vacancy: string; role: Id; why?: { skill: number; min: number; salary: number; price: number; over: number } }
   /** черновик графика отпусков года: у скольких людей из скольких не всем частям нашлось место */
@@ -1474,7 +1487,9 @@ export type Decided =
   /** режим отдела руководителя (Б5б): игрок сменил его на посту отдела */
   | { kind: 'mode'; head: Head; mode: DeptMode }
   /** политика руководителя (Б5г): игрок задал её — у вещи политики «у каждого» — с прежним значением */
-  | { kind: 'policy'; policy: Id; of?: string; from: PolicyValue; to: PolicyValue };
+  | { kind: 'policy'; policy: Id; of?: string; from: PolicyValue; to: PolicyValue }
+  /** заместитель руководителя (Б5в): кого назначили — нет, значит сняли; кто был */
+  | { kind: 'deputy'; head: HeadId; person?: string; was?: string };
 
 /**
  * Значение политики руководителя (Б5г; src/engine/policies.ts): сутки, месяцы или порог износа — доли 1/10 000 ресурса;
@@ -1530,6 +1545,9 @@ export interface Decision {
   seat?: SeatId;
   d: Decided;
   ask?: Ask;
+  /** кто решил за руководителя (Б5в): человек штата; «и. о.» — заместитель, пока руководителя нет; нет — должность */
+  p?: string;
+  io?: true;
 }
 
 /**
@@ -1630,6 +1648,15 @@ export interface PlantState {
   journal: Decision[];
   /** режимы отделов (Б5б; src/engine/heads.ts): выбор игрока, указатели открытых и отклонённых сегодня предложений */
   heads: HeadsState;
+  /**
+   * заместители руководителей (Б5в, src/engine/bosses.ts): назначенный игроком человек; '' — заместителя сняли; нет
+   * записи — первый по табельному номеру человек роли заместителя из записи сценария
+   */
+  deputies?: Partial<Record<HeadId, string>>;
+  /** у кого из руководителей уже сказано «Некому решить» (Б5в): до часа, когда снова есть кому */
+  noOne?: Partial<Record<Head, true>>;
+  /** правила руководителей в свой час (Б5в): день, когда правило отработало, — оно ждёт смены того, кто решает */
+  ruled?: Record<string, number>;
   /** вывоз отклонённого (Б1з; src/engine/waste.ts): заказанный вывоз — один, пока подрядчик не уехал; журнал отходов */
   waste: WasteState;
   /** показатели руководителей (Б5ж; src/engine/kpi.ts): срезы суток этого месяца и закрытые месяцы */
@@ -1782,7 +1809,7 @@ export type Command =
    * вакансия (Б4в): роль, график и канал — объявление или кадровое агентство; вместо кого — на заявление по собственному
    * желанию (Б5б): такую вакансию ведёт руководитель отдела роли
    */
-  | { kind: 'vacancy'; role: Id; shift: Id; via: 'ad' | 'agency'; instead?: string; by?: string }
+  | { kind: 'vacancy'; role: Id; shift: Id; via: Via; instead?: string; by?: string }
   /** вакансию руководителя по объявлению — кадровому агентству (Б5б) */
   | { kind: 'agency'; vacancy: string; by?: string }
   /** закрыть вакансию (Б4в): её кандидаты уходят */
@@ -1819,6 +1846,11 @@ export type Command =
   | { kind: 'decline'; n: number }
   /** политика руководителя (Б5г): у политики «у каждого» — вещь, узел или запчасть; значение — в единицах движка */
   | { kind: 'policy'; policy: Id; of?: string; value: PolicyValue; by?: string }
+  /**
+   * заместитель руководителя (Б5в): человек штата одной из ролей записи сценария, не сам руководитель; `null` — снять
+   * заместителя. Пост отдела руководителя или директор
+   */
+  | { kind: 'deputy'; head: HeadId; person: string | null; by?: string }
   /** перенести визит подрядчика к активу (Б5г): на день — сутки завода от начала его календаря */
   | { kind: 'visit'; asset: string; day: number; by?: string };
 
@@ -1874,6 +1906,12 @@ export type Refusal =
    * не на испытании; до конца испытания меньше срока предупреждения; уже уходит; «отпустить раньше» без заявления
    */
   | 'noLabor'
+  /** переезд (Б5в) — только для роли, которую по объявлению в городе не найти, и при записи переезда в сценарии */
+  | 'noMove'
+  /** заместитель (Б5в): у руководителя нет строки сценария; роль человека не из тех, что его замещают; и так такой */
+  | 'noHead'
+  | 'notDeputy'
+  | 'deputySame'
   | 'noVacancy'
   | 'noCandidate'
   | 'trialLong'
@@ -1931,7 +1969,7 @@ export type Notice =
    * найм (Б4в): вакансия открыта; новые кандидаты по ней; принят — первый день; вышел на работу; заявление об уходе —
    * последний день и отдел, чей пост встаёт; уволен — последний день прошёл; роль и номер — для слов
    */
-  | { kind: 'vacancy'; id: string; role: Id; shift: Id; via: 'ad' | 'agency'; by?: 'colleague' }
+  | { kind: 'vacancy'; id: string; role: Id; shift: Id; via: Via; by?: 'colleague' }
   | { kind: 'candidates'; vacancy: string; role: Id; n: number }
   | { kind: 'accepted'; candidate: string; role: Id; day: number }
   | { kind: 'hired'; person: string; role: Id; tab: number }
@@ -2015,4 +2053,8 @@ export type Notice =
   | { kind: 'proposal'; n: number; head: Head; seat: SeatId; t: number }
   /** политика руководителя задана (Б5г); визит подрядчика перенесён — на какое мгновение */
   | { kind: 'policy'; policy: Id; of?: string; head: Head }
-  | { kind: 'visitMoved'; asset: string; family: AssetFamily; type: Id; inv: number; work: 'qual' | 'cal'; at: number };
+  | { kind: 'visitMoved'; asset: string; family: AssetFamily; type: Id; inv: number; work: 'qual' | 'cal'; at: number }
+  /** некому решить за руководителя (Б5в): его нет, а заместителя нет или и он отсутствует; пост отдела — автопауза */
+  | { kind: 'noOne'; head: Head; seat: SeatId }
+  /** заместитель руководителя назначен или снят (Б5в) */
+  | { kind: 'deputy'; head: HeadId; person?: string; role?: Id; tab?: number };

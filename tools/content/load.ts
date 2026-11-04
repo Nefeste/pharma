@@ -31,6 +31,8 @@ import {
   type DocHead,
   type EquipmentType,
   type FindingRead,
+  type HeadId,
+  type Id,
   type IncidentDef,
   type Labor,
   type LeaveRule,
@@ -66,6 +68,7 @@ import {
   type VehicleType,
 } from '../../src/content/types';
 import { ACCEPT } from '../../src/engine/assets';
+import { HEAD_ROLE } from '../../src/engine/bosses';
 import { civilFromDays, daysFromCivil, weekday } from '../../src/engine/core/calendar';
 import { fnv1a, stableJson } from '../../src/engine/core/hash';
 import { DOC_KINDS, type DocKind, headOf, inForce, revisions } from '../../src/engine/docs';
@@ -820,6 +823,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       probation: x.probation,
       trial: share(x.trial * 100),
       colleague: { skill: x.colleague.skill, over: share(x.colleague.over), ad: x.colleague.ad },
+      ...(x.move ? { move: { days: x.move.days, skill: x.move.skill, notice: x.move.notice, road: x.move.road, pay: kop(x.move.pay) } } : {}),
       roles: Object.fromEntries(
         Object.entries(x.roles).map(([role, r]) => [
           role,
@@ -827,6 +831,19 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         ]),
       ),
     };
+  };
+  // руководители — люди (Б5в): роли заместителя и «из кого назначить» — роли базы; заместитель по умолчанию — среди
+  // `can`, и у его роли есть человек в штате; заместитель — не роль самого руководителя
+  const headsOf = (x: NonNullable<RawScenario['heads']>, sc: RawScenario, where: string): NonNullable<Scenario['heads']> => {
+    const out: NonNullable<Scenario['heads']> = {};
+    for (const [h, r] of Object.entries(x) as [HeadId, { deputy: Id; can: Id[] }][]) {
+      for (const role of [r.deputy, ...r.can]) need(raw.roles[role], `${where}: заместитель руководителя ${h} — нет роли ${role}`);
+      need(r.can.includes(r.deputy), `${where}: заместитель руководителя ${h} — роль ${r.deputy} не среди «из кого назначить»`);
+      need(sc.staff.some(row => row.role === r.deputy), `${where}: заместитель руководителя ${h} — в штате нет роли ${r.deputy}`);
+      need(r.deputy !== HEAD_ROLE[h], `${where}: заместитель руководителя ${h} — его же роль`);
+      out[h] = { deputy: r.deputy, can: [...r.can] };
+    }
+    return out;
   };
   // отпуска (Б4г): части складываются в дни года профиля, одна не короче части профиля; сроки частей — настоящие числа
   // года, «с» не позже «по»; утверждение — не позже чем за срок профиля до года, черновик — не позже утверждения
@@ -1007,6 +1024,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       },
       ...(s.incident ? { incident: incidentOf(s.incident, s.batches.length, where) } : {}),
       ...(s.labor ? { labor: laborOf(s.labor, s, where) } : {}),
+      ...(s.heads ? { heads: headsOf(s.heads, s, where) } : {}),
       ...(s.leave ? { leave: leaveRuleOf(s.leave, s, where) } : {}),
       ...(s.waste ? { waste: { hours: [s.waste.hours[0] * 3600, s.waste.hours[1] * 3600] as [number, number], sign: sec(s.waste.sign), trip: kop(s.waste.trip), pallet: kop(s.waste.pallet), full: s.waste.full, keep: s.waste.keep } } : {}),
     };
@@ -1196,6 +1214,14 @@ function leaveErrors(db: ContentDb): string[] {
     const days = db.profiles[sc.profile].leave.days;
     const people: DraftPerson[] = [];
     for (const row of sc.staff) for (let i = 0; i < row.n; i++) people.push({ id: `E${people.length + 1}`, role: row.role, shift: row.shift, tab: sc.training.tab + people.length, ...(row.also ? { also: row.also } : {}), right: 0, days });
+    // руководитель и его заместитель по сценарию (Б5в) — не в отпуск в одни дни
+    for (const [h, r] of Object.entries(sc.heads ?? {}) as [HeadId, { deputy: Id }][]) {
+      const head = people.find(p => p.role === HEAD_ROLE[h]);
+      const dep = people.find(p => p.role === r.deputy && p !== head);
+      if (!head || !dep) continue;
+      head.apart = [...(head.apart ?? []), dep.id];
+      dep.apart = [...(dep.apart ?? []), head.id];
+    }
     const y = sc.start.date.y + 1;
     const d = placeDraft(db, { start: sc.start.date, scenario: sc.id }, y, people, people, []);
     for (const id of d.miss) {

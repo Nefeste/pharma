@@ -6,6 +6,7 @@
 // Отказ — неоднородный пуассоновский поток по наработке: при установке узел получает запас до отказа — показательную
 // величину со средним «один отказ», а работа расходует его по ступеням таблицы. Кончился — отказ.
 import type { ContentDb, Id, PartType } from '../content/types';
+import { decider, replacesBy, skillOf, type Who, whoDecides } from './bosses';
 import { dueIn, owe, part, post } from './cash';
 import { schedule } from './core/agenda';
 import { P_ONE } from './core/rng';
@@ -128,13 +129,17 @@ export const replaceKey = (part: string) => `replace/${part}`;
  * Порог у каждого узла — политика главного механика (Б5г): с чего начинает завод — запись сценария.
  */
 export function maintStep(db: ContentDb, s: PlantState, notices: Notice[]) {
+  // руководитель — человек (Б5в): замену по наработке решает главный механик, а без него — заместитель, в свою смену;
+  // ремонт после отказа и пополнение ЗИП — процедура техслужбы, их не ждут: в журнал — тот, кто сейчас в смене за него
+  let planner: Who | undefined | null = null;
+  const plannerNow = () => (planner === null ? (planner = decider(db, s, 'maint', notices)) : planner);
   for (const pt of Object.values(s.parts)) {
     if (pt.task) continue;
     const t = partType(db, pt);
     if (pt.state === 'failed') {
       if (free(s, t.spare) > 0) {
         // журнал решений (Б5а): главный механик — ремонт после отказа, запчасть из мастерской
-        note(s, 'maint', { kind: 'repair', part: pt.id, why: { failed: pt.failed ?? s.t, spare: t.spare, free: free(s, t.spare) } });
+        note(s, 'maint', { kind: 'repair', part: pt.id, why: { failed: pt.failed ?? s.t, spare: t.spare, free: free(s, t.spare) } }, undefined, undefined, whoDecides(db, s, 'maint'));
         repairTask(db, s, pt, false);
       } else {
         // ремонт ждёт запчасть (Б5ж; EN 15341 O26 — запчасти по требованию): в запись журнала, когда его сделают
@@ -146,12 +151,15 @@ export function maintStep(db: ContentDb, s: PlantState, notices: Notice[]) {
     const at = numOf(db, s, POL.replace, pt.id);
     if (at !== undefined) {
       const need = !pt.plan && wearAt(t, pt.done) >= at;
-      const mode = need && idle(s, pt) ? modeOf(s, 'maint') : undefined;
+      let mode = need && idle(s, pt) ? modeOf(s, 'maint') : undefined;
+      // со слабым навыком главный механик меняет узлы только после отказа (геймдизайн, §8.5)
+      const w = mode === 'auto' || mode === 'advise' ? plannerNow() : undefined;
+      if ((mode === 'auto' || mode === 'advise') && (!w || !replacesBy(skillOf(s, w)))) mode = undefined;
       const why = { wear: wearAt(t, pt.done), at };
       if (mode === 'auto') {
         pt.plan = 'policy';
-        note(s, 'maint', { kind: 'replace', part: pt.id, why });
-      } else if (mode === 'advise') propose(s, 'maint', replaceKey(pt.id), { kind: 'maintain', machine: pt.machine, part: pt.type }, { kind: 'replace', part: pt.id, why }, notices);
+        note(s, 'maint', { kind: 'replace', part: pt.id, why }, undefined, undefined, w);
+      } else if (mode === 'advise') propose(s, 'maint', replaceKey(pt.id), { kind: 'maintain', machine: pt.machine, part: pt.type }, { kind: 'replace', part: pt.id, why }, notices, undefined, w);
       else if (!need && s.heads.open[replaceKey(pt.id)] !== undefined) moot(s, replaceKey(pt.id));
     }
     if (!pt.plan || !idle(s, pt)) continue;
@@ -187,7 +195,7 @@ function replenish(db: ContentDb, s: PlantState, spare: Id) {
   for (const o of Object.values(s.spareOrders)) if (o.spare === spare && o.status === 'ordered') level += o.qty;
   if (level > min) return;
   const id = orderSpare(db, s, spare, max - level);
-  note(s, 'maint', { kind: 'spare', order: id, spare, qty: max - level, why: { level, min, max } });
+  note(s, 'maint', { kind: 'spare', order: id, spare, qty: max - level, why: { level, min, max } }, undefined, undefined, whoDecides(db, s, 'maint'));
 }
 
 /** Заказ запчасти — как заказ поставщику (1д): предоплата сейчас, остаток с НДС — через `payDays` после поставки. */

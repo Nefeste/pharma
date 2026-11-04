@@ -1,0 +1,4 @@
+id: role.warehouse-head
+name: { ru: Заведующий складом, en: Warehouse manager }
+dept: wms
+salary: 120000

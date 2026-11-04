@@ -1,0 +1,4 @@
+id: role.plan-head
+name: { ru: Начальник отдела планирования, en: Head of planning }
+dept: mes
+salary: 120000

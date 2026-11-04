@@ -256,8 +256,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   person leaves after the last shift, the vacation parts after the last day dropped and the parts they deputized for
   given to the next deputy; the colleague of a post the player does not hold opens a vacancy for each
   application and hires the first fit candidate — an agency at once for a role no ad finds, the price within the
-  market's for the skill), `leave.ts` (vacations, with Б4г: the law's numbers in the profile, the scenario's rule of the
-  draft; a year's vacation schedule — the draft by HR on the first workday of December at 09:00 by the rule
+  market's for the skill; with Б5в, relocation for a role no ad finds — a candidate after its days, the arrival after
+  the notice at the old job and the road, the move paid on hiring), `leave.ts` (vacations, with Б4г: the law's numbers
+  in the profile, the scenario's rule of the draft; a year's vacation schedule — the draft by HR on the first workday
+  of December at 09:00 by the rule
   (`placeDraft`, shared with the content build): parts from a Monday, the first in summer, people of one role apart, a
   person and their deputy apart, at most so many of a department at once, a part on the week of its window where it
   hinders nobody and the fewest days of others' parts fall; edits by the department's post or the director, the
@@ -275,7 +277,13 @@ first, or copy the working code of Bolnitsa on the same versions.
   «устарело», a rule no longer firing — «не нужно», a declined command not again until midnight; «Принять» — the command
   from the player's place, checked anew, its decision in the proposal's record; «Отклонить» — no command; a post
   released or a mode changed — open proposals stale; the QC head's, the qualified person's, repairs and dated
-  decisions — by rule in any mode; the `mode`, `accept` and `decline` commands), `kpi.ts` (with Б5ж, the heads'
+  decisions — by rule in any mode; the `mode`, `accept` and `decline` commands), `bosses.ts` (with Б5в, the heads as
+  people: the head of a department is the first working person of its role by personnel number; decides in their own
+  shift, away or vacant — the deputy «и. о.» in their shift with their skill, the qualified person only by another;
+  nobody — the rules wait and «Некому решить» once; a rule of a head's hour runs once a workday from that hour when
+  someone may decide (`dueRule`); skill 4–5 the whole rule, lower — the limits of §8.5 (`coverBy`, `thresholdBy`,
+  `replacesBy`, `hireMinBy`); the six new heads paid with the overheads (`PAID_LATER`); a scenario without `heads` keeps
+  heads as positions; the `deputy` command), `kpi.ts` (with Б5ж, the heads'
   indicators: 47 definitions — the head, unit, direction, month or rolling 12 months, source keys, the counterweight —,
   each a pure function of plant
   records over a period and never of truth; the midnight snapshot of what records do not keep — stock at lot price, FG
@@ -381,7 +389,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   their links, and the meeting's «Итоги месяца» on the first meeting after a close, with Б5г a head's policy changes at
   the bars of their months and of the window's month (`kpi.ts`); with Б5г, the policies — tabs of the heads, held posts
   first, a policy's value, range and step, who set it and when, how many journal decisions of 30 days read it, the
-  departments' overtime (`policies.ts`); with Б1и, the floor —
+  departments' overtime (`policies.ts`); with Б5в, the heads — who decides today, the deputy and whom to appoint, what
+  the skill limits, for «Люди», a person's card and the meeting's «Руководители» (`bosses.ts`); with Б1и, the floor —
   rooms and line machines over today, yesterday or
   seven days, the key machine and OEE by the meeting's `lineSum`, the plan-vs-actual board of the shift by hours, the
   batch a held room leads to — records of the plant, and with Б1к the hours batches waited at each place over the
@@ -454,7 +463,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   (`Po.tsx`), the indicators window — K, tabs, tiles with 12 bars, the formula and source on hover, «Почему?», the
   month arrows, with Б5г the dashed day of a policy change (`Kpi.tsx`), the «Политики» window — P, tabs of the heads,
   rows with «−» and «+» or options, the draft, «Прогнать» on 13 weeks and 5 seeds with the progress by seeds and
-  «Стоп», «Применить», «Сбросить» (`Policies.tsx`) and its pure rules — a value in words, the next one by a step, the
+  «Стоп», «Применить», «Сбросить» (`Policies.tsx`), with Б5в the head's block of the card — the skill limit in words,
+  who decides today, the deputy with «Назначить» and «Снять», the department's indicators — and the meeting's
+  «Руководители» (`Bosses.tsx`) and its pure rules — a value in words, the next one by a step, the
   draft's commands (`policy.ts`), the layers menu on the left with the window and the legend, the column tooltip and the
   card's «Загрузка» block (`Layers.tsx`), quality attribute and
   process parameter

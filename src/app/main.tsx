@@ -82,6 +82,7 @@ const actions: Actions = {
   leaveMove: later('leaveMove'),
   leaveDrop: later('leaveDrop'),
   leaveDeputy: later('leaveDeputy'),
+  deputy: later('deputy'),
   also: later('also'),
   toggleGantt: later('toggleGantt'),
   setGanttDays: later('setGanttDays'),

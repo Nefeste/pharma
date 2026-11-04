@@ -6,11 +6,12 @@
 // разборе.
 import type { Attr, ContentDb, FindingRead, Id, IncidentRoot, InvFinding, InvModel, InvStep, RecipeStage } from '../content/types';
 import { batchNo } from './batchno';
+import { decider, skillOf, thresholdBy } from './bosses';
 import { MIN } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { modeOf, moot, propose, seenAt } from './heads';
 import { expectedGain, posterior, quantize } from './infer';
-import { note, noteCmd } from './journal';
+import { asWho, note, noteCmd } from './journal';
 import { labPlace, LAB_PRIO, QC, settleLot } from './lab';
 import { defect } from './lean';
 import { planOf } from './plant';
@@ -478,6 +479,11 @@ export const invKey = (inv: string) => `inv/${inv}`;
 export function invStep(db: ContentDb, s: PlantState, notices: Notice[]): boolean {
   const mode = modeOf(s, 'qa');
   if (mode === 'manual') return false;
+  // руководитель — человек (Б5в): шаг и вывод — начальника ООК, а без него — заместителя, в свою смену; пока некому —
+  // расследование ждёт
+  const due = Object.values(s.investigations).some(inv => inv.status === 'open' && !inv.runs.some(r => r.to === undefined));
+  const who = due ? decider(db, s, 'qa', notices) : undefined;
+  if (due && !who) return false;
   let acted = false;
   for (const inv of Object.values(s.investigations)) {
     const key = invKey(inv.id);
@@ -496,9 +502,11 @@ export function invStep(db: ContentDb, s: PlantState, notices: Notice[]): boolea
     const observed = new Set(inv.obs.map(o => o.f));
     if (mode === 'auto') acted = true;
     const step = (st: InvStep, why: StepWhy) => {
-      if (mode === 'auto') startStep(db, s, inv, st, 'head:quality', undefined, why);
-      else propose(s, 'qa', key, { kind: 'investigate', inv: inv.id, step: st.id }, { kind: 'step', inv: inv.id, step: st.id, why }, notices, seen);
+      if (mode === 'auto') asWho('qa', who, () => startStep(db, s, inv, st, 'head:quality', undefined, why));
+      else propose(s, 'qa', key, { kind: 'investigate', inv: inv.id, step: st.id }, { kind: 'step', inv: inv.id, step: st.id, why }, notices, seen, who);
     };
+    // порог вывода — модели, а навык руководителя ниже 4 его снижает (геймдизайн, §8.5)
+    const threshold = thresholdBy(skillOf(s, who), m.threshold);
     // шаги лаборатории, которых ещё не было: записи и прибор — всегда, повтор — если лучшая — ошибка лаборатории
     const marks = (x: InvStep) => x.checks.some(c => 'mark' in (m.findings.find(f => f.id === c.f)?.read ?? {}));
     const lab = m.steps.find(x => !done.has(x.id) && (marks(x) || (!!x.retest && isLab(m, top.id))));
@@ -508,7 +516,7 @@ export function invStep(db: ContentDb, s: PlantState, notices: Notice[]): boolea
       step(lab, { rule: marks(lab) ? 'lab' : 'retest', top: top.id, p });
       continue;
     }
-    if (top.p * P_ONE < m.threshold) {
+    if (top.p * P_ONE < threshold) {
       let best: InvStep | undefined;
       let score = -1;
       let gain = 0;
@@ -529,12 +537,12 @@ export function invStep(db: ContentDb, s: PlantState, notices: Notice[]): boolea
       }
     }
     const fate = isLab(m, top.id) && labProven(db, inv) ? 'release' : 'reject';
-    const why = { p, threshold: m.threshold, proven: labProven(db, inv) };
+    const why = { p, threshold, ...(threshold < m.threshold ? { model: m.threshold } : {}), proven: labProven(db, inv) };
     if (mode === 'advise') {
-      propose(s, 'qa', key, { kind: 'conclude', inv: inv.id, cause: top.id, fate }, { kind: 'conclude', inv: inv.id, cause: top.id, fate, why }, notices, seen);
+      propose(s, 'qa', key, { kind: 'conclude', inv: inv.id, cause: top.id, fate }, { kind: 'conclude', inv: inv.id, cause: top.id, fate, why }, notices, seen, who);
       continue;
     }
-    note(s, 'qa', { kind: 'conclude', inv: inv.id, cause: top.id, fate, why });
+    note(s, 'qa', { kind: 'conclude', inv: inv.id, cause: top.id, fate, why }, undefined, undefined, who);
     close(db, s, inv, top.id, fate, 'head:quality', notices);
   }
   return acted;

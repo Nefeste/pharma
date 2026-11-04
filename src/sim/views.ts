@@ -5,8 +5,9 @@
 // партии, задачу и чего она ждёт, журнал оборудования, инвентарный номер и записи квалификации и калибровки (Б3в). Что окно
 // уже получило, помнит `ViewDesk` — как «стол врача»
 // «Больницы» (её src/sim/doctor.ts, `DoctorDesk`): вид уходит, только когда изменился.
-import type { ContentDb, Id, MaterialKind } from '../content/types';
+import type { ContentDb, HeadId, Id, MaterialKind } from '../content/types';
 import { batchNo } from '../engine/batchno';
+import { paidLater } from '../engine/bosses';
 import { salaryOf } from '../engine/cash';
 import { dismissTerms, laborOf } from '../engine/hire';
 import { momentOf } from '../engine/core/calendar';
@@ -27,7 +28,8 @@ import { type DossierQuery, type DossierView, dossierView, type Inside, insideOf
 import { type FloorQuery, type FloorView, floorView } from './floor';
 import { type SaView, type SheetView, saOf, sheetOf } from './hours';
 import { type InvQuery, type InvView, invView } from './inv';
-import { type JournalQuery, type JournalView, journalView, whoAsset, whoBatch, whoLot, whoMachine, whoPerson, type WhoRow } from './journal';
+import { type BossLimit, type BossRow, bossOfPerson } from './bosses';
+import { type JournalQuery, type JournalView, journalView, whoAsset, whoBatch, whoDecided, whoLot, whoMachine, whoPerson, type WhoRow } from './journal';
 import { type PoliciesQuery, type PoliciesView, policiesView } from './policies';
 import { type PoQuery, type PoView, poView } from './po';
 import { type ChartQuery, type ChartView, chartView, type LabQuery, type LabView, labView } from './lab';
@@ -237,6 +239,14 @@ export type CardData =
       terms?: { agree?: { last: number; pay: number }; trial?: { last: number; ok: boolean }; early?: { last: number } };
       /** кто решил (Б5а): вакансия и приём */
       who?: WhoRow[];
+      /**
+       * руководитель — человек (Б5в): чей он руководитель — строка отдела; чей заместитель и решает ли сейчас «и. о.»; его
+       * последние решения за руководителя; оклад придёт в кассу вместе с общими расходами завода
+       */
+      boss?: BossRow;
+      deputyFor?: { head: HeadId; acting: boolean; limit: BossLimit }[];
+      decided?: WhoRow[];
+      later?: true;
     }
   | { kind: 'vehicle'; vehicle: number; type: Id; task?: TaskKind }
   /** фура подрядчика по вывозу отклонённого (Б1з) — `waste`: когда и кто заказал вывоз */
@@ -280,6 +290,9 @@ export interface PartInfo {
 
 /** «Кто решил» (Б5а): записей журнала о вещи нет — поля нет. */
 const whoOf = (rows: WhoRow[]): { who?: WhoRow[] } => (rows.length > 0 ? { who: rows } : {});
+
+/** Решения человека за руководителя (Б5в): нет — поля нет. */
+const decidedOf = (rows: WhoRow[]): { decided?: WhoRow[] } => (rows.length > 0 ? { decided: rows } : {});
 
 /** Решения об оборудовании и машине линии (Б5а): визиты подрядчика к активу, ремонты и замены узлов, ЗИП. */
 const thingWho = (db: ContentDb, s: PlantState, id: string): WhoRow[] => [...whoAsset(s, id), ...whoMachine(db, s, id)].sort((a, b) => a.n - b.n);
@@ -709,6 +722,9 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(personLeaveOf(db, s, p, gone)),
         ...(gone || !laborOf(db, s) ? {} : p.quit ? (p.quit.why === 'own' && p.quit.last > momentOf(s.start, s.t).day ? { terms: { early: { last: momentOf(s.start, s.t).day } } } : {}) : { terms: dismissTerms(db, s, p) }),
         ...whoOf(whoPerson(s, p)),
+        ...(gone ? {} : bossOfPerson(db, s, p)),
+        ...decidedOf(whoDecided(s, p)),
+        ...(paidLater(p) ? { later: true as const } : {}),
       };
     }
     case 'vehicle': {

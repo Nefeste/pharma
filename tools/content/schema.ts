@@ -2,7 +2,7 @@
 // ошибка сборки, а не молча пропущенное поле. Числа в записях — в единицах автора (килограммы, рубли, метры, проценты);
 // в единицы движка их переводит load.ts.
 import { z } from 'zod';
-import { SEATS, TASK_KINDS } from '../../src/content/types';
+import { HEAD_IDS, SEATS, TASK_KINDS } from '../../src/content/types';
 
 const text = z.strictObject({ ru: z.string().min(1), en: z.string().min(1).optional() });
 const review = z.enum(['draft', 'checked']);
@@ -260,6 +260,16 @@ export const scenario = z.strictObject({
       probation: z.number().int().min(0).max(12),
       trial: z.number().min(1).max(20),
       colleague: z.strictObject({ skill: z.number().int().min(1).max(5), over: percent, ad: z.number().int().min(1).max(90) }),
+      /** переезд (Б5в): кандидат через столько-то суток, навык от и до, предупреждение и дорога — сутки, возмещение — ₽ */
+      move: z
+        .strictObject({
+          days: z.tuple([z.number().int().min(1).max(120), z.number().int().min(1).max(120)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }),
+          skill: z.tuple([z.number().int().min(1).max(5), z.number().int().min(1).max(5)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }),
+          notice: z.number().int().min(0).max(60),
+          road: z.number().int().min(0).max(30),
+          pay: z.number().min(0),
+        })
+        .optional(),
       roles: z.record(
         id,
         z.strictObject({
@@ -270,6 +280,11 @@ export const scenario = z.strictObject({
       ),
     })
     .optional(),
+  /**
+   * руководители — люди (Б5в): у руководителя отдела — роль заместителя по умолчанию и роли, из которых игрок может
+   * назначить заместителя (load.ts: роли базы, заместитель — среди `can`, у роли заместителя есть человек в штате)
+   */
+  heads: z.partialRecord(z.enum(HEAD_IDS), z.strictObject({ deputy: id, can: z.array(id).min(1) })).optional(),
   /**
    * отпуска (Б4г): черновик графика на следующий год — в первый рабочий день не раньше этого месяца и числа, в 09:00;
    * утверждение — в последний рабочий день не позже этого; части у каждого — дней по порядку, первая летом (`summer`,

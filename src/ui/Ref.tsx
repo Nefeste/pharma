@@ -10,7 +10,9 @@ import { daysFromCivil, weekday } from '../engine/core/calendar';
 import type { DocKind } from '../engine/docs';
 import { DEPT_SEAT } from '../engine/seats';
 import { dayText, durText, hText, lang, money, named, num, pctText, priceText, qtyText, T, whenText } from '../i18n';
+import type { BossRow } from '../sim/bosses';
 import type { FormerRow, HireRow, HiringView, StaffRow, VacancyRow } from '../sim/hire';
+import type { Via } from '../engine/types';
 import type { RefContract, RefMaker, RefPair } from '../sim/partners';
 import type { DocNow } from '../sim/people';
 import type { AssetInfo, PlaceArea, PlaceCenter } from '../sim/places';
@@ -18,6 +20,7 @@ import type { RefCustomer, RefDoc, RefEquipment, RefInstrument, RefLine, RefMach
 import { assetClass, stateKey, untilText, unfitText, workName } from './assets';
 import { admText } from './Card';
 import { db, docText, headOf } from './db';
+import { Deputy, limitWords } from './Bosses';
 import { LeavePlan } from './Leave';
 import { type Actions, type Hud, holds, REF_TABS } from './store';
 import { attrNum, attrText, paramNum, paramText } from './units';
@@ -525,7 +528,7 @@ function Vacancy({ v, h, q, hud, actions }: { v: VacancyRow; h: HiringView; q: s
     { name: hc.candCols.skill, text: x => num(x.skill), num: x => x.skill },
     { name: hc.candCols.salary, text: x => money(x.salary), num: x => x.salary },
     { name: hc.candCols.until, text: x => dayText(x.until), num: x => x.until },
-    { name: hc.candCols.fee, text: x => (x.fee !== undefined ? money(x.fee) : '—'), num: x => x.fee ?? 0 },
+    { name: hc.candCols.fee, text: x => (x.fee !== undefined ? money(x.fee) : x.move !== undefined ? money(x.move) : '—'), num: x => x.fee ?? x.move ?? 0 },
     {
       name: hc.candCols.hire,
       text: () => '',
@@ -549,7 +552,7 @@ function Vacancy({ v, h, q, hud, actions }: { v: VacancyRow; h: HiringView; q: s
       {v.candidates.length > 0 ? (
         <Table test="ref-candidates" cols={cols} items={v.candidates} keyOf={x => x.id} q={q} />
       ) : (
-        <div className="muted small">{v.via === 'ad' ? hc.waitAd : hc.waitAgency(v.next !== undefined ? dayText(v.next) : '—')}</div>
+        <div className="muted small">{v.via === 'ad' ? hc.waitAd : (v.via === 'move' ? hc.waitMove : hc.waitAgency)(v.next !== undefined ? dayText(v.next) : '—')}</div>
       )}
       {pick && v.candidates.some(c => c.id === pick) ? (
         <div className="hireask" data-test="hire-ask">
@@ -563,7 +566,11 @@ function Vacancy({ v, h, q, hud, actions }: { v: VacancyRow; h: HiringView; q: s
               ))}
             </select>
           </label>{' '}
-          <span className="muted">{hc.hireAsk(dayText(v.exam), v.first !== undefined ? dayText(v.first) : '—', money(h.costs.medical))}</span>{' '}
+          <span className="muted">
+            {v.arrive !== undefined && h.move
+              ? hc.hireAskMove(dayText(v.arrive), dayText(v.exam), v.first !== undefined ? dayText(v.first) : '—', money(h.costs.medical), money(h.move.pay))
+              : hc.hireAsk(dayText(v.exam), v.first !== undefined ? dayText(v.first) : '—', money(h.costs.medical))}
+          </span>{' '}
           <button
             type="button"
             disabled={!mine}
@@ -592,8 +599,10 @@ function OpenVacancy({ h, hud, actions }: { h: HiringView; hud: Hud; actions: Ac
   const [role, setRole] = useState(roles[0] ?? '');
   const firstShift = (r: Id) => h.staff.find(x => x.role === r)?.shift ?? Object.keys(db?.shifts ?? {})[0] ?? '';
   const [shift, setShift] = useState(firstShift(roles[0] ?? ''));
-  const [via, setVia] = useState<'ad' | 'agency'>('ad');
+  const [via, setVia] = useState<Via>('ad');
   const { mine, title } = roleSeat(hud, role);
+  // переезд (Б5в) — только для тех, кого в городе по объявлению не найти
+  const canMove = h.movable.includes(role);
   if (!open) {
     return (
       <div>
@@ -613,6 +622,7 @@ function OpenVacancy({ h, hud, actions }: { h: HiringView; hud: Hud; actions: Ac
           onChange={e => {
             setRole(e.target.value);
             setShift(firstShift(e.target.value));
+            if (via === 'move' && !h.movable.includes(e.target.value)) setVia('ad');
           }}
           data-test="vacancy-role"
         >
@@ -635,9 +645,10 @@ function OpenVacancy({ h, hud, actions }: { h: HiringView; hud: Hud; actions: Ac
       </label>{' '}
       <label>
         {hc.channel}{' '}
-        <select value={via} onChange={e => setVia(e.target.value as 'ad' | 'agency')} data-test="vacancy-via">
+        <select value={via} onChange={e => setVia(e.target.value as Via)} data-test="vacancy-via">
           <option value="ad">{hc.via.ad}</option>
           <option value="agency">{hc.via.agency}</option>
+          {canMove ? <option value="move">{hc.via.move}</option> : null}
         </select>
       </label>{' '}
       <button
@@ -676,6 +687,7 @@ function Hiring({ h, q, hud, actions }: { h: HiringView; q: string; hud: Hud; ac
     { name: hc.hireCols.shift, text: x => shiftName(x.shift) },
     { name: hc.hireCols.skill, text: x => num(x.skill), num: x => x.skill },
     { name: hc.hireCols.salary, text: x => money(x.salary), num: x => x.salary },
+    { name: hc.hireCols.arrive, text: x => (x.arrive !== undefined ? dayText(x.arrive) : '—'), num: x => x.arrive ?? 0 },
     { name: hc.hireCols.exam, text: x => dayText(x.exam), num: x => x.exam },
     { name: hc.hireCols.day, text: x => dayText(x.day), num: x => x.day },
     { name: hc.hireCols.trial, text: x => hc.months(x.trial), num: x => x.trial },
@@ -711,6 +723,7 @@ function Hiring({ h, q, hud, actions }: { h: HiringView; q: string; hud: Hud; ac
         ))}
         <OpenVacancy h={h} hud={hud} actions={actions} />
         <div className="muted small">{hc.costs(money(h.costs.ad), h.costs.days[0], h.costs.days[1], pctText(h.costs.agency), money(h.costs.medical))}</div>
+        {h.move ? <div className="muted small">{hc.costsMove(h.move.days[0], h.move.days[1], h.move.notice, h.move.road, money(h.move.pay))}</div> : null}
         <div className="muted small">{hc.note}</div>
       </section>
       {h.hires.length > 0 ? (
@@ -772,6 +785,39 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
     { name: pc.trial, text: x => (x.trial !== undefined ? dayText(x.trial) : '—'), num: x => x.trial ?? 0 },
     { name: pc.quit, text: x => (x.quit ? T.card.quitLine(T.hire.why[x.quit.why] ?? x.quit.why, dayText(x.quit.last)) : '—'), show: x => (x.quit ? <span className="warn">{T.card.quitLine(T.hire.why[x.quit.why] ?? x.quit.why, dayText(x.quit.last))}</span> : '—'), num: x => x.quit?.last ?? 0 },
   ];
+  // руководители — люди (Б5в): кто, навык и что он ограничивает, заместитель, кто решает сегодня
+  const bc = T.boss.cols;
+  const who = (x: { role: Id; tab: number }) => T.card.person(named(db?.roles[x.role]?.name, x.role), x.tab);
+  const card = (x: { n: number; role: Id; tab: number }, head: string) => (
+    <button type="button" className="link" onClick={() => actions.show({ kind: 'person', n: x.n })} data-test="boss-card" data-head={head}>
+      {who(x)}
+    </button>
+  );
+  const bosses: Col<BossRow>[] = [
+    {
+      name: bc.head,
+      text: x => T.journal.names[x.head] ?? x.head,
+      show: x => (
+        <span data-test="boss-head" data-head={x.head} data-now={x.now}>
+          {T.journal.names[x.head] ?? x.head}
+        </span>
+      ),
+    },
+    { name: bc.person, text: x => (x.person ? who(x.person) : T.boss.vacant), show: x => (x.person ? card(x.person, x.head) : <span className="warn">{T.boss.vacant}</span>) },
+    { name: bc.skill, text: x => (x.person ? num(x.person.skill) : '—'), num: x => x.person?.skill ?? 0 },
+    { name: bc.limit, text: x => limitWords(x.person?.limit).join(' · ') || T.boss.nothing },
+    { name: bc.deputy, text: x => (x.deputy ? `${who(x.deputy)} · ${T.boss.skill(x.deputy.skill)}` : x.none ? T.boss.removed : T.boss.noDeputy), show: x => <Deputy b={x} hud={hud} actions={actions} bare /> },
+    {
+      name: bc.now,
+      text: x => (x.person?.away !== undefined ? T.boss.away(dayText(x.person.away)) : '') + (x.now === 'head' ? '' : ` ${T.boss.now[x.now]}`),
+      show: x => (
+        <span className={x.now === 'noOne' ? 'bad' : x.now === 'io' ? 'warn' : ''}>
+          {x.person?.away !== undefined ? `${T.boss.away(dayText(x.person.away))} · ` : ''}
+          {T.boss.now[x.now]}
+        </span>
+      ),
+    },
+  ];
   type Doc = { i: number; d: DocNow };
   const mc = T.ref.matrixCols;
   const cell = (x: Doc, j: number) => v.matrix.cells[x.i][j];
@@ -800,6 +846,12 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
   ];
   return (
     <>
+      {v.bosses.length > 0 ? (
+        <section className="rsec">
+          <b>{T.boss.table}</b>
+          <Table test="ref-bosses" cols={bosses} items={v.bosses} keyOf={x => x.head} q={q} />
+        </section>
+      ) : null}
       <section className="rsec">
         <Table test="ref-roles" cols={roles} items={v.roles.filter(x => x.shifts.length > 0)} keyOf={x => x.id} q={q} />
       </section>

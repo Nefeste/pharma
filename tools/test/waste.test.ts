@@ -114,8 +114,9 @@ describe('коллега склада', () => {
     until(s, at(start + 1, WASTE_HOUR) + MIN);
     const o = s.waste.order!;
     expect(o).toEqual({ id: o.id, booked: at(start + 1, WASTE_HOUR), by: 'head:wms', at: at(addWorkdays(cal, start + 1, 1), w.hours[0]) });
-    // журнал решений (Б5а): начальник склада — сколько мест занято из скольких
-    expect(s.journal.filter(r => r.d.kind === 'waste')).toEqual([{ n: expect.any(Number), t: o.booked, by: 'wms', d: { kind: 'waste', order: o.id, at: o.at, why: { used: need, places: rej.length, months: KEEP, full: [...FULL] } } }]);
+    // журнал решений (Б5а): начальник склада — сколько мест занято из скольких; с Б5в — человек, заведующий складом
+    const head = Object.values(s.people).find(p => p.role === 'role.warehouse-head')!;
+    expect(s.journal.filter(r => r.d.kind === 'waste')).toEqual([{ n: expect.any(Number), t: o.booked, by: 'wms', d: { kind: 'waste', order: o.id, at: o.at, why: { used: need, places: rej.length, months: KEEP, full: [...FULL] } }, p: head.id }]);
     // зона полна, а подрядчик ещё едет: в 09:00 следующего дня второго вывоза нет — он тот же, что встал к рампе
     reject(s, rej.length - need, need);
     until(s, o.at + MIN);

@@ -21,6 +21,9 @@ customers: [cus.national, cus.regional]
 # (`also`, Б4г) — кому замещать единственных в роли на время отпуска: кладовщик и водитель погрузчика, пробоотборщик и
 # химик-аналитик, начальник ОКК и специалист ООК — друг у друга; у наладчика — оператор линии, у слесаря-ремонтника первой
 # смены — наладчик. Гипотезы
+# Руководители — люди (Б5в): шесть строк в конце — начальник производства и начальник отдела планирования в первой
+# смене, с 07:00, — задание на серию ставят к планёрке; остальные — в дневной (геймдизайн, §8.3). Навык 4 — правило
+# целиком (§8.5). Гипотезы
 staff:
   - { role: role.storekeeper, shift: shift.day, skill: 3, n: 1, also: [role.driver] }
   - { role: role.driver, shift: shift.day, skill: 3, n: 1, also: [role.storekeeper] }
@@ -44,6 +47,12 @@ staff:
   - { role: role.operator, shift: shift.a, skill: 3, n: 1 }
   - { role: role.packer, shift: shift.a, skill: 3, n: 1 }
   - { role: role.qp, shift: shift.day, skill: 4, n: 1 }
+  - { role: role.production-head, shift: shift.a, skill: 4, n: 1 }
+  - { role: role.plan-head, shift: shift.a, skill: 4, n: 1 }
+  - { role: role.chief-mechanic, shift: shift.day, skill: 4, n: 1 }
+  - { role: role.qa-head, shift: shift.day, skill: 4, n: 1 }
+  - { role: role.supply-head, shift: shift.day, skill: 4, n: 1 }
+  - { role: role.warehouse-head, shift: shift.day, skill: 4, n: 1 }
 vehicles:
   - { type: veh.jack, n: 2 }
   - { type: veh.reach, n: 1 }
@@ -138,6 +147,7 @@ labor:
   probation: 3
   trial: 3
   colleague: { skill: 3, over: 10, ad: 14 }
+  move: { days: [21, 42], skill: [3, 5], notice: 14, road: 3, pay: 150000 }
   roles:
     role.storekeeper: { ad: [30, 40, 25, 5], skill: [10, 30, 40, 15, 5], quit: 8 }
     role.driver: { ad: [30, 40, 25, 5], skill: [10, 30, 40, 15, 5], quit: 8 }
@@ -153,6 +163,26 @@ labor:
     role.mechanic: { ad: [60, 30, 10, 0], skill: [5, 25, 40, 25, 5], quit: 6 }
     role.setter: { ad: [70, 25, 5, 0], skill: [5, 25, 40, 25, 5], quit: 6 }
     role.cleaner: { ad: [25, 40, 25, 10], skill: [20, 35, 30, 10, 5], quit: 10 }
+    role.production-head: { ad: [100, 0, 0, 0], skill: [0, 5, 30, 45, 20], quit: 4 }
+    role.plan-head: { ad: [100, 0, 0, 0], skill: [0, 5, 30, 45, 20], quit: 4 }
+    role.chief-mechanic: { ad: [100, 0, 0, 0], skill: [0, 5, 30, 45, 20], quit: 4 }
+    role.qa-head: { ad: [100, 0, 0, 0], skill: [0, 5, 30, 45, 20], quit: 4 }
+    role.supply-head: { ad: [100, 0, 0, 0], skill: [0, 5, 30, 45, 20], quit: 4 }
+    role.warehouse-head: { ad: [100, 0, 0, 0], skill: [0, 5, 30, 45, 20], quit: 4 }
+# руководители — люди (Б5в): заместитель руководителя — первый по табельному номеру человек роли `deputy`; он решает,
+# пока руководитель в отпуске или его должность свободна (GMP ЕАЭС, ч. I, п. 2.3; ст. 60.2 ТК РФ); `can` — роли, из
+# которых игрок может назначить заместителя. Уполномоченное лицо замещает только другое (п. 2.6) — строки нет. Кого
+# нет в городе — агентство или переезд (`move`): кандидат через столько-то суток, навык от и до, на работу — после
+# двух недель предупреждения на прежней (ст. 80) и `road` суток дороги; переезд и обустройство завод возмещает
+# (ст. 169) — ₽, по соглашению сторон. Гипотезы
+heads:
+  plan: { deputy: role.production-head, can: [role.production-head, role.master] }
+  mes: { deputy: role.master, can: [role.master, role.plan-head] }
+  maint: { deputy: role.mechanic, can: [role.mechanic, role.setter] }
+  qa: { deputy: role.qc-head, can: [role.qc-head, role.qa] }
+  qc: { deputy: role.qa, can: [role.qa, role.qa-head] }
+  supply: { deputy: role.warehouse-head, can: [role.warehouse-head, role.storekeeper] }
+  wms: { deputy: role.supply-head, can: [role.supply-head, role.storekeeper] }
 # обучение (Б3б): задача обучения — за `ahead` суток до введения новой редакции документа или до конца срока записи;
 # проверка знаний — `check` минут специалиста ООК или начальника ОКК; на старте все допущены, дни обучения — до `spread`
 # суток назад, у каждой записи свой; табельные номера — по порядку приёма с `tab`. Гипотезы

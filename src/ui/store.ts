@@ -4,9 +4,9 @@
 import { useSyncExternalStore } from 'react';
 import type { Layer } from '../app/floor';
 import type { Go, Pause } from '../app/pauses';
-import type { Dept, Id, OvertimeMode, SeatId } from '../content/types';
+import type { Dept, HeadId, Id, OvertimeMode, SeatId } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
-import type { DeptMode, Head, PolicyValue } from '../engine/types';
+import type { DeptMode, Head, PolicyValue, Via } from '../engine/types';
 import type { RunSum } from '../engine/plan/run';
 import type { Change } from '../engine/plan/schedule';
 import type { Lang } from '../i18n';
@@ -318,7 +318,7 @@ export interface Actions {
    * найм и увольнение (Б4в): открыть вакансию — роль, график, канал; закрыть её; принять кандидата с испытанием
    * на столько месяцев; уволить — по соглашению, не выдержал испытание или отпустить раньше
    */
-  vacancy(role: Id, shift: Id, via: 'ad' | 'agency'): void;
+  vacancy(role: Id, shift: Id, via: Via): void;
   closeVacancy(id: string): void;
   hire(candidate: string, trial: number): void;
   dismiss(person: number, why: 'agree' | 'trial' | 'early'): void;
@@ -331,6 +331,8 @@ export interface Actions {
   leaveDrop(person: number, part: string): void;
   leaveDeputy(person: number, part: string, deputy?: number): void;
   also(person: number, role: Id, on: boolean): void;
+  /** заместитель руководителя (Б5в): назначить — номер человека, снять — `null`; команда `deputy` */
+  deputy(head: HeadId, person: number | null): void;
   /**
    * расписание: открыть или закрыть; окно — сутки, трое, неделя; на сутки назад, вперёд, к сегодня (0); тянуть задание —
    * призрак с новым сроком; отпустить — строка черновика; отменить; утвердить черновик — команды `shift`; сбросить его

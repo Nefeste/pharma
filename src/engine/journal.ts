@@ -7,6 +7,7 @@
 import type { Dept, SeatId } from '../content/types';
 import { DAY } from './core/calendar';
 import { held, ownerOf } from './seats';
+import type { Who } from './bosses';
 import type { Ask, Command, Decided, Decision, Head, PlantState } from './types';
 
 /** Сколько суток журнал хранит решения (геймдизайн, §8.5, гипотеза); дольше их помнит хроника (§26.1). */
@@ -33,12 +34,30 @@ export const DEPT_HEAD: Record<Dept, Head> = { mes: 'mes', line: 'mes', maint: '
 /** Руководитель по полю `by` команды коллеги; команда сценария — никто. */
 const BY: Record<string, Head> = { 'head:plan': 'plan', 'head:supply': 'supply', 'head:quality': 'qa', 'head:maint': 'maint', 'head:wms': 'wms' };
 
-/** Записать решение: номер по порядку — свой счётчик журнала, мгновение, автор; у игрока — место; у предложения — команда. */
-export function note(s: PlantState, by: Head | 'player', d: Decided, seat?: SeatId, ask?: Ask): Decision {
+/**
+ * Записать решение: номер по порядку — свой счётчик журнала, мгновение, автор; у игрока — место; у предложения — команда;
+ * у руководителя — кто решил за него (Б5в): человек штата, «и. о.» — заместитель; нет — должность.
+ */
+export function note(s: PlantState, by: Head | 'player', d: Decided, seat?: SeatId, ask?: Ask, who?: Who): Decision {
   const n = (s.next.journal = (s.next.journal ?? 0) + 1);
-  const r: Decision = { n, t: s.t, by, ...(seat ? { seat } : {}), d, ...(ask ? { ask } : {}) };
+  const w = who ?? (by !== 'player' && acting?.head === by ? acting.who : undefined);
+  const r: Decision = { n, t: s.t, by, ...(seat ? { seat } : {}), d, ...(ask ? { ask } : {}), ...(w?.p ? { p: w.p } : {}), ...(w?.io ? { io: true as const } : {}) };
   s.journal.push(r);
   return r;
+}
+
+/** Кто решает за руководителя на время команды коллеги (Б5в): запись журнала по команде — с этим человеком. */
+let acting: { head: Head; who: Who } | undefined;
+
+/** Отдать команду коллеги `run` от имени того, кто решает за руководителя `head` (Б5в). */
+export function asWho<T>(head: Head, who: Who | undefined, run: () => T): T {
+  const prev = acting;
+  acting = who ? { head, who } : undefined;
+  try {
+    return run();
+  } finally {
+    acting = prev;
+  }
 }
 
 /** Запись журнала по номеру: записи — по порядку номеров. */

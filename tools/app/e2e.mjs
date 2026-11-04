@@ -1289,9 +1289,9 @@ async function mainPart() {
   if (bottleShot) sheet.push(bottleShot);
   await writeSheet(sheet);
 
-  // автопаузы (Б2а): у производства и качества четырнадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
+  // автопаузы (Б2а): у производства и качества пятнадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
   // вышел», с Б3г — «пара приостановлена», с Б4а — «сверхурочные года на исходе», с Б4в — «заявление об увольнении»,
-  // с Б4г — «черновик графика отпусков», с Б5б — «предложение руководителя»),
+  // с Б4г — «черновик графика отпусков», с Б5б — «предложение руководителя», с Б5в — «некому решить»),
   // «фура» и «заказ» — не их; планёрку отключили — окно помнит; «До события» — мир
   // встал не в 08:00, а на первом событии автопаузы мест игрока: извещение со знаком паузы, часы стоят, отставания нет.
   // Планёрку включили обратно
@@ -1308,7 +1308,7 @@ async function mainPart() {
     await page.screenshot({ path: join(out, 'e2e-pauses.png') });
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('Escape');
-    if (menu.all !== 14 || menu.on !== 14 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
+    if (menu.all !== 15 || menu.on !== 15 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
       fail(`автопаузы: в меню ${menu.all}, включено ${menu.on}, не ваши ${menu.notYours.join(', ')}, в окне «${kept}»`);
     else ok(`автопаузы: в меню ${menu.all}, не ваши — ${menu.notYours.join(', ')}; планёрку отключили — в окне ${kept}; Esc закрыл меню`);
     const t0 = await gameT();
@@ -2595,7 +2595,7 @@ async function mainPart() {
     };
     const leaveView = () => page.evaluate(() => window.__game.store.get().ref.view?.leave);
     const offBefore = await page.evaluate(() => [...window.__game.store.get().pauses.off]);
-    const others = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'proposal', 'morning'];
+    const others = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'noOne', 'proposal', 'morning'];
     await page.evaluate(ids => ids.forEach(p => window.__game.actions.setPause(p, false)), others);
     const draftNote = () => page.evaluate(() => window.__game.notices.find(n => /^Кадры составили черновик графика отпусков на 2028/.test(n.text)) ?? null);
     // прошлый шаг мог уйти за 1 декабря, тогда черновик уже пришёл: он — в полосе извещений со знаком паузы
@@ -2653,11 +2653,13 @@ async function mainPart() {
     if (!/Начальник ОКК/.test(also) || got.deputy?.n !== analyst.person || part.deputy?.n === analyst.person)
       fail(`заместитель: смежные профессии «${also}»; у части начальника ОКК был ${JSON.stringify(part.deputy)}, стал ${JSON.stringify(got.deputy)}`);
     else ok(`заместитель: аналитик таб. № ${analyst.tab} — «${also.trim()}»; у части начальника ОКК ${part.from} заместитель — он вместо таб. № ${part.deputy?.tab}`);
-    // утверждение 17 декабря; часть наладчика — на январь, по соглашению
+    // утверждение 17 декабря; первую часть наладчика с февраля — на январь, по соглашению (с Б5в в черновике она — летом:
+    // руководители в штате)
     for (let i = 0; i < 20 && (await epoch()) < ymd(2027, 12, 18); i++) await untilMorning();
     v = await leaveView();
     const setter = v.people.find(p => p.role === 'role.setter');
-    const later = setter.parts.find(x => x.y === 2028 && x.from >= ymd(2028, 2, 1) && x.from < ymd(2028, 6, 1));
+    const later = setter.parts.find(x => x.y === 2028 && x.from >= ymd(2028, 2, 1));
+    if (!later) throw new Error(`у наладчика нет части 2028 года с февраля: ${JSON.stringify(setter.parts)}`);
     await openLeave();
     await page.click(`[data-test=leave-row][data-tab="${setter.tab}"]`);
     await page.click(`[data-test=leave-person] [data-test=leave-part][data-part=${later.id}] [data-test=leave-move]`);
@@ -2859,7 +2861,7 @@ async function mainPart() {
     else ok(`«Кем вы будете»: режимы отделов отмеченных мест — ${seen}`);
     // у директора дело — все автопаузы: на время шага мир встаёт только на планёрке и предложениях руководителей
     const offBefore = await page.evaluate(() => [...window.__game.store.get().pauses.off]);
-    const others = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'leaveDraft'];
+    const others = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'leaveDraft', 'noOne'];
     await page.evaluate(ids => ids.forEach(p => window.__game.actions.setPause(p, false)), others);
     const sm = await setMode('supply', 'advise');
     let stop;
@@ -3173,6 +3175,94 @@ async function mainPart() {
     await seatsTo(['director', 'production', 'quality']);
     if (!foreign.label || foreign.live > 0 || foreign.rows === 0) fail(`чужой пост в «Политиках»: ${JSON.stringify(foreign)}`);
     else ok(`чужой пост в «Политиках»: у снабжения — «${foreign.label.slice(0, 90)}», ${foreign.rows} строк без кнопок`);
+    await writeSheet(sheet);
+  }
+
+  // руководители — люди (Б5в), директором с постами производства и качества. F1 → «Люди»: «Руководители» — семь отделов, у
+  // каждого человек и заместитель; щелчок по начальнику отдела планирования — карточка: «смотрит на N суток вперёд», где N —
+  // запас позиций политики. В «Открыть вакансию…» переезд — у начальника отдела планирования, а у упаковщика его нет.
+  // Начальника отдела планирования — по соглашению: после смены должность свободна, утром решает заместитель — на
+  // планёрке «Руководители» с «и. о.», в журнале задание на серию — «и. о.». Заместителя сняли в таблице — «До события»
+  // встаёт на «Некому решить» у поста производства. Снимки — в контактный лист
+  {
+    const openBosses = async () => {
+      await page.keyboard.press('F1');
+      await page.waitForSelector('#ref', { timeout: 20_000 });
+      await page.click('[data-test=ref-tab][data-tab=people]');
+      await page.waitForSelector('[data-test=ref-bosses] [data-test=boss-head]', { timeout: 20_000 });
+      await frames(1);
+    };
+    const bossNow = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-test=ref-bosses] [data-test=boss-head]')].map(x => [x.getAttribute('data-head'), x.getAttribute('data-now')])));
+    await openBosses();
+    const heads = await bossNow();
+    const deputies = await page.evaluate(() => document.querySelectorAll('[data-test=ref-bosses] [data-test=card-boss-deputy] [data-test=card-boss-deputy-who]').length);
+    await page.screenshot({ path: join(out, 'e2e-bosses.png') });
+    sheet.push({ file: join(out, 'e2e-bosses.png'), label: 'Б5в · «Люди» · руководители' });
+    // переезд — только тем, кого в городе по объявлению не найти
+    await page.click('[data-test=vacancy-open]');
+    await page.selectOption('[data-test=vacancy-role]', 'role.plan-head');
+    const moveHead = await page.evaluate(() => [...document.querySelectorAll('[data-test=vacancy-via] option')].some(o => o.getAttribute('value') === 'move'));
+    await page.selectOption('[data-test=vacancy-role]', 'role.packer');
+    const movePacker = await page.evaluate(() => [...document.querySelectorAll('[data-test=vacancy-via] option')].some(o => o.getAttribute('value') === 'move'));
+    // карточка начальника отдела планирования: горизонт — запас позиций политики
+    await page.click('[data-test=ref-bosses] [data-test=boss-card][data-head=plan]');
+    await page.waitForSelector('[data-test=card-boss-limit]', { timeout: 20_000 });
+    const cover = await page.evaluate(() => window.__game.store.get().ref.view?.bosses.find(b => b.head === 'plan')?.person?.limit?.cover?.full);
+    const card = await page.evaluate(() => ({
+      title: document.querySelector('[data-test=card] .csec')?.textContent ?? '',
+      limit: document.querySelector('[data-test=card-boss-limit]')?.textContent ?? '',
+      later: document.querySelector('[data-test=card-salary-later]')?.textContent ?? '',
+      kpi: !!document.querySelector('[data-test=card-boss-kpi]'),
+      decided: document.querySelectorAll('[data-test=card-decided] [data-test=who-row]').length,
+    }));
+    await page.screenshot({ path: join(out, 'e2e-boss-card.png') });
+    sheet.push({ file: join(out, 'e2e-boss-card.png'), label: 'Б5в · карточка руководителя' });
+    const seven = ['plan', 'mes', 'maint', 'qa', 'qc', 'supply', 'wms'];
+    if (Object.keys(heads).join() !== seven.join() || deputies !== 7 || !moveHead || movePacker || !cover || !new RegExp(`смотрит на ${cover}[ \u00a0](сутки|суток) вперёд`).test(card.limit) || !card.later || !card.kpi)
+      fail(`«Руководители»: ${JSON.stringify(heads)}, заместителей ${deputies}, переезд у начальника ${moveHead} и у упаковщика ${movePacker}; карточка ${JSON.stringify(card)}, запас политики ${cover}`);
+    else ok(`«Руководители»: семь отделов, у каждого заместитель; переезд — у начальника отдела планирования, не у упаковщика; карточка — «${card.limit}», оклад «${card.later}», его решений ${card.decided}`);
+    // по соглашению: последний день сегодня, после смены должность свободна — утром решает заместитель «и. о.»
+    await page.waitForSelector('[data-test=dismiss-agree]', { timeout: 20_000 });
+    await page.click('[data-test=dismiss-agree]');
+    await page.waitForSelector('[data-test=dismiss-ask]', { timeout: 20_000 });
+    await page.click('[data-test=dismiss-do]');
+    await page.waitForFunction(() => !!document.querySelector('[data-test=card-quit]'), null, { timeout: 20_000 });
+    await page.keyboard.press('Escape');
+    const tGone = await gameT();
+    let io;
+    let meet;
+    for (let i = 0; i < 8 && !io; i++) {
+      await untilMorning(true);
+      meet = await page.evaluate(() => document.querySelector('[data-test=morning-boss][data-head=plan]')?.textContent ?? '');
+      await page.keyboard.press('Escape');
+      await openJournal();
+      io = await page.evaluate(t => {
+        const r = window.__game.store.get().journal.view?.rows.find(x => x.by === 'plan' && x.t > t && x.as?.io);
+        return r ? { n: r.n, text: document.querySelector(`#journal [data-test=journal-row][data-n="${r.n}"]`)?.innerText.replace(/\s*\n\s*/g, ' · ') ?? '' } : undefined;
+      }, tGone);
+      await page.keyboard.press('Escape');
+    }
+    if (!io || !/и\. о\. начальника отдела планирования/.test(io.text) || !/и\. о\./.test(meet ?? '')) fail(`должность свободна: запись «и. о.» ${JSON.stringify(io)}, планёрка «${meet}»`);
+    else ok(`должность свободна: на планёрке — «${meet.slice(0, 120)}»; в журнале — «${io.text.slice(0, 120)}»`);
+    // заместителя сняли — «До события» встаёт на «Некому решить» у поста производства
+    await openBosses();
+    await page.click('[data-test=ref-bosses] [data-test=card-boss-deputy][data-head=plan] [data-test=card-deputy-remove]');
+    await page.waitForFunction(() => document.querySelector('[data-test=ref-bosses] [data-test=boss-head][data-head=plan]')?.getAttribute('data-now') === 'noOne', null, { timeout: 20_000 }).catch(() => {});
+    const removed = (await bossNow()).plan;
+    await page.keyboard.press('Escape');
+    let stop;
+    for (let i = 0; i < 6 && !stop; i++) {
+      await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
+      await page.keyboard.press('Digit6');
+      await page.waitForFunction(() => !window.__game.ff, null, { timeout: 120_000 });
+      await frames(2);
+      stop = await page.evaluate(() => {
+        const n = window.__game.store.get().notices.find(x => x.stop && /^Некому решить за начальника отдела планирования/.test(x.text));
+        return n ? { text: n.text, speed: window.__game.speed, go: n.go } : undefined;
+      });
+    }
+    if (removed !== 'noOne' || !stop || stop.speed !== 0 || stop.go?.panel !== 'ref') fail(`заместителя сняли: в таблице ${removed}, стоп ${JSON.stringify(stop)}`);
+    else ok(`заместителя сняли: «${stop.text.slice(0, 120)}» — мир стоит, щелчок ведёт во вкладку «Люди»`);
     await writeSheet(sheet);
   }
 

@@ -10,7 +10,7 @@ import { momentOf, type Ymd } from '../engine/core/calendar';
 import { KEEP } from '../engine/journal';
 import type { Decided, DeptMode, Head } from '../engine/types';
 import { dayText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
-import type { AskInfo, JournalRef, JournalRow, ModeInfo, WhoRow } from '../sim/journal';
+import type { AskInfo, JournalAs, JournalRef, JournalRow, ModeInfo, WhoRow } from '../sim/journal';
 import { assetClass, workName } from './assets';
 import { db } from './db';
 import { policyName, policyText } from './policy';
@@ -40,9 +40,15 @@ const model = (r: JournalRef) => (r.model ? db?.investigations[r.model] : undefi
 const cause = (r: JournalRef, id: string) => named(model(r)?.candidates.find(c => c.id === id)?.name, id);
 const p10k = (p: number) => pctText(p);
 
-/** Кто решил: руководитель или «вы» с местом. */
-export function whoText(by: Head | 'player', seat?: SeatId): string {
-  return by === 'player' ? T.journal.player(seat ? (T.seats.names[seat] ?? seat) : '') : (T.journal.names[by] ?? by);
+/**
+ * Кто решил: руководитель или «вы» с местом; с Б5в — человек штата за руководителя: сам руководитель — его роль и
+ * табельный номер, заместитель — «и. о.» с его ролью и номером.
+ */
+export function whoText(by: Head | 'player', seat?: SeatId, as?: JournalAs): string {
+  if (by === 'player') return T.journal.player(seat ? (T.seats.names[seat] ?? seat) : '');
+  if (!as) return T.journal.names[by] ?? by;
+  const person = T.card.person(role(as.role), as.tab);
+  return as.io ? T.journal.acting(T.journal.namesOf[by] ?? by, person) : person;
 }
 
 /** Уставка словами: режим стадии карты с единицей или скорость блистерной позиции — блистеров в минуту. */
@@ -90,7 +96,7 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
     case 'spare':
       return J.spare(named(db?.spares[d.spare]?.name, d.spare), d.qty);
     case 'vacancy':
-      return J.vacancy(role(d.role), d.via === 'agency');
+      return J.vacancy(role(d.role), d.via);
     case 'hire':
       return `${J.hire(role(d.role))}${r.person ? `, ${T.card.person(role(r.person.role), r.person.tab)}` : ''}`;
     case 'leaveDraft':
@@ -115,6 +121,8 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
       const p = db?.policies[d.policy];
       return J.policy(policyName(p, d.policy, { of: d.of, machine: r.machine, part: r.part }), policyText(p, d.to), policyText(p, d.from));
     }
+    case 'deputy':
+      return J.deputy(T.journal.namesOf[d.head] ?? d.head, r.person ? T.card.person(role(r.person.role), r.person.tab) : undefined);
   }
 }
 
@@ -141,7 +149,9 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
               : J.order.need;
       const below = w.items.filter(x => x.sku !== d.sku && x.ordered > 0 && x.cases * x.work * 1000 < x.ordered * w.ahead);
       const others = below.length > 0 ? J.order.others(below.map(x => J.order.other(sku(x.sku), Math.round(pos(x) * 10) / 10)).join('; ')) : J.order.alone;
-      return [[head, J.order.threshold(Number.isInteger(ahead) ? ahead : Math.round(ahead * 10) / 10, w.cover), rule].filter(Boolean).join('; '), others];
+      // навык руководителя сократил горизонт (Б5в): запас — его, политика — какой была бы
+      const limited = w.policy !== undefined && w.cover !== undefined ? J.order.limited(w.cover, w.policy) : '';
+      return [[head, J.order.threshold(Number.isInteger(ahead) ? ahead : Math.round(ahead * 10) / 10, w.cover), rule].filter(Boolean).join('; '), others, ...(limited ? [limited] : [])];
     }
     case 'po': {
       const out = (d.why ?? []).map(w => {
@@ -170,7 +180,7 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
       const w = d.why;
       if (!w) return [];
       const c = cause(r, d.cause);
-      return [(w.p >= w.threshold ? J.conclude.top : J.conclude.none)(c, p10k(w.p), p10k(w.threshold)), d.fate === 'release' ? J.conclude.release : J.conclude.reject];
+      return [(w.p >= w.threshold ? J.conclude.top : J.conclude.none)(c, p10k(w.p), p10k(w.threshold)), d.fate === 'release' ? J.conclude.release : J.conclude.reject, ...(w.model !== undefined ? [J.conclude.limited(p10k(w.threshold), p10k(w.model))] : [])];
     }
     case 'assess': {
       const w = d.why;
@@ -284,7 +294,7 @@ function Row({ row, start, open, toggle, actions }: { row: JournalRow; start: Ym
   return (
     <li className={`jrow${open ? ' on' : ''}${row.ask && !row.ask.end ? ' asking' : ''}`} data-test="journal-row" data-n={row.n} data-kind={row.d.kind} data-by={row.by} {...(row.ask ? { 'data-ask': row.ask.end?.how ?? 'open' } : {})}>
       <div className="jline">
-        <span className="muted">{whenText(start, row.t)}</span> <b>{whoText(row.by, row.seat)}</b>
+        <span className="muted">{whenText(start, row.t)}</span> <b>{whoText(row.by, row.seat, row.as)}</b>
         {row.ask ? <span className="muted"> · {T.journal.ask.proposes}</span> : null}
       </div>
       <div className="jline">
@@ -422,16 +432,16 @@ export function Journal({ hud, actions }: { hud: Hud; actions: Actions }) {
 }
 
 /** «Кто решил» в карточке вещи: строка на решение — что, кто, когда — и «Почему?», которое открывает журнал на нём. */
-export function WhoList({ rows, start, actions }: { rows: readonly WhoRow[] | undefined; start: Ymd; actions: Actions }) {
+export function WhoList({ rows, start, actions, title, test }: { rows: readonly WhoRow[] | undefined; start: Ymd; actions: Actions; title?: string; test?: string }) {
   if (!rows || rows.length === 0) return null;
   return (
-    <div className="who" data-test="who">
-      <div className="msec">{T.journal.who}</div>
+    <div className="who" data-test={test ?? 'who'}>
+      <div className="msec">{title ?? T.journal.who}</div>
       <ul className="whol">
         {rows.map(r => (
           <li key={r.n} data-test="who-row" data-kind={r.kind} data-n={r.n} {...(r.ask ? { 'data-ask': r.ask.end?.how ?? 'open' } : {})}>
             <span>
-              {T.journal.kinds[r.kind] ?? r.kind}: <b>{whoText(r.by, r.seat)}</b>
+              {T.journal.kinds[r.kind] ?? r.kind}: <b>{whoText(r.by, r.seat, r.as)}</b>
               {r.ask ? <span className="muted"> · {T.journal.ask.proposes}</span> : null}
               {r.v ? ` — ${verdictWord(r)}` : ''} <span className="muted">· {whenText(start, r.t)}</span>
             </span>{' '}

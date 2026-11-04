@@ -8,6 +8,7 @@
 // (ГК РФ, ст. 429.1) — на год: цена и обещанный объём по паре; сверх обещанного — по прайсу; недобор обещанной доли —
 // счёт за разницу. У покупателя — договор поставки (ст. 506). Одобрения и договоры — знание завода, а не истина.
 import type { ContentDb, Id, MaterialKind, Scenario } from '../content/types';
+import { dueRule, type Who } from './bosses';
 import { part, post, vatRate } from './cash';
 import { schedule } from './core/agenda';
 import { addMonths, addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf } from './core/calendar';
@@ -222,7 +223,9 @@ export function partnersHour(db: ContentDb, s: PlantState, notices: Notice[]) {
     suspended(s, now.day, notices);
     contractsDay(db, s, now.day);
   }
-  if (now.sec === BOOK_HOUR && isWorkday(calOf(db, s), now.day)) book(db, s, now.day);
+  // руководитель — человек (Б5в): с 09:00 рабочего дня, в первый час, когда есть кому решить
+  const who = dueRule(db, s, 'pairEval', 'qa', BOOK_HOUR, notices);
+  if (who) book(db, s, now.day, who);
 }
 
 /** Полночь: у пары с этого дня нет действующего одобрения — извещение (автопауза в окне): по ней не заказывают. */
@@ -235,7 +238,7 @@ function suspended(s: PlantState, day: number, notices: Notice[]) {
  * предупреждения (или уже кончилось), а оценка не назначена, — оценка. Аудит: аудитор у изготовителя с 09:00 ближайшего
  * рабочего дня на `days` рабочих дней, отчёт — в 17:00 последнего; по документам — сразу задача специалисту ООК.
  */
-function book(db: ContentDb, s: PlantState, today: number) {
+function book(db: ContentDb, s: PlantState, today: number, who: Who) {
   const sc = db.scenarios[s.scenario];
   const live = new Set<string>();
   for (const m of Object.values(db.materials)) if (STARTING.has(m.kind)) for (const x of specPairs(db, m.id, today)) live.add(pairKey(x.supplier, x.maker));
@@ -245,7 +248,7 @@ function book(db: ContentDb, s: PlantState, today: number) {
     if (p.eval || !last || !live.has(p.id) || last.until - today > sc.partners.ahead) continue;
     const how = howOf(db, p.supplier, p.maker);
     // журнал решений (Б5а): начальник ООК — до какого дня одобрение и срок предупреждения
-    note(s, 'qa', { kind: 'pairEval', pair: p.id, how, why: { until: last.until, ahead: sc.partners.ahead } });
+    note(s, 'qa', { kind: 'pairEval', pair: p.id, how, why: { until: last.until, ahead: sc.partners.ahead } }, undefined, undefined, who);
     if (how === 'audit') {
       const cal = calOf(db, s);
       const from = base(addWorkdays(cal, today, 1)) + AUDIT_FROM;

@@ -14,6 +14,7 @@ import { planOf } from '../engine/plant';
 import { devsOf, openDevs } from '../engine/qa';
 import { unitsOfLot } from '../engine/stock';
 import type { AssetFamily, Batch, CashItem, DayLoss, DeptMode, Deviation, Head, LineDay, MachineTimes, PlantState, TaskKind, WageParts, WaitCause } from '../engine/types';
+import { type BossRow, bossMeeting } from './bosses';
 import { type PeopleMeeting, peopleMeeting } from './hire';
 import { type LeaveMeeting, leaveMeeting } from './leave';
 import { type HoursMeeting, hoursMeeting } from './hours';
@@ -237,6 +238,8 @@ export interface MorningView {
   rejects?: RejectSum;
   /** итоги месяца (Б5ж): на первой планёрке месяца — что сдвинулось сильнее всего против месяца до него */
   month?: MonthClose;
+  /** руководители (Б5в): где сегодня решает не руководитель — «и. о.» с его навыком, или некому; все на месте — пусто */
+  bosses: BossRow[];
 }
 
 /**
@@ -469,6 +472,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     ...(q.since !== undefined && at - q.since >= DAY ? { session: sessionSum(s, q.since, at) } : {}),
     ...(rejects ? { rejects } : {}),
     ...(month ? { month } : {}),
+    bosses: bossMeeting(db, s),
   };
 }
 
@@ -696,8 +700,8 @@ export type CashWhy =
   /** аудит изготовителя (Б3г): пара; расчёт по договору — номер и поставщик */
   | { k: 'audit'; supplier: Id; maker: Id }
   | { k: 'contract'; contract: string; supplier: Id }
-  /** найм (Б4в): объявление, медосмотр или кадровое агентство; расчёт при увольнении — роль и табельный номер */
-  | { k: 'hiring'; what: 'ad' | 'med' | 'agency' }
+  /** найм (Б4в): объявление, медосмотр, кадровое агентство или переезд (Б5в); расчёт при увольнении — роль и номер */
+  | { k: 'hiring'; what: 'ad' | 'med' | 'agency' | 'move' }
   | { k: 'leave'; role: Id; tab: number }
   /** отпускные (Б4г): роль и табельный номер, дни части с и по */
   | { k: 'vacation'; role: Id; tab: number; from: number; to: number };
@@ -743,9 +747,9 @@ function whyOf(s: PlantState, item: CashItem, ref: string | undefined): CashWhy 
   if (item === 'calqual' && s.assets[ref]) return { k: 'asset', family: s.assets[ref].family, type: s.assets[ref].type, inv: s.assets[ref].inv };
   if (item === 'audit' && s.pairs[ref]) return { k: 'audit', supplier: s.pairs[ref].supplier, maker: s.pairs[ref].maker };
   if (item === 'contract' && s.contracts[ref]) return { k: 'contract', contract: ref, supplier: s.contracts[ref].party };
-  // найм и увольнение (Б4в): объявление, медосмотр, агентство; расчёт при увольнении — роль и табельный номер
-  const h = /^(ad|med|agency)-/.exec(ref);
-  if (item === 'hiring' && h) return { k: 'hiring', what: h[1] as 'ad' | 'med' | 'agency' };
+  // найм и увольнение (Б4в): объявление, медосмотр, агентство, переезд (Б5в); расчёт при увольнении — роль и номер
+  const h = /^(ad|med|agency|move)-/.exec(ref);
+  if (item === 'hiring' && h) return { k: 'hiring', what: h[1] as 'ad' | 'med' | 'agency' | 'move' };
   const gone = /^leave-(E\d+)$/.exec(ref);
   const who = gone ? (s.former[gone[1]] ?? s.people[gone[1]]) : undefined;
   if (item === 'settle' && who) return { k: 'leave', role: who.role, tab: who.tab };

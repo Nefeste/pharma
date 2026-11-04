@@ -17,6 +17,7 @@ import { planOf } from '../engine/plant';
 import { pendingOf, scheduleOn } from '../engine/shifts';
 import { shiftEnd } from '../engine/staff';
 import type { MachineState, PlantState, Quit } from '../engine/types';
+import { type BossRow, bossRows } from './bosses';
 import { type CalMonth, calendarOf, type HoursRow, hoursRow, type ShiftMonth, shiftMonths } from './hours';
 import { type HiringView, hiringView } from './hire';
 import { type LeaveView, leaveView } from './leave';
@@ -257,6 +258,8 @@ export interface RefView {
   hiring?: HiringView;
   /** график отпусков (Б4г); у сценария без отпусков — нет */
   leave?: LeaveView;
+  /** руководители — люди (Б5в): отделы с человеком, заместителем и что навык ограничивает; руководители-должности — пусто */
+  bosses: BossRow[];
   suppliers: RefSupplier[];
   customers: RefCustomer[];
   /** места и оборудование (Б3в): площадка, участки, рабочие места, активы с инвентарными номерами и сроками */
@@ -457,7 +460,7 @@ export function refView(db: ContentDb, s: PlantState): RefView {
   }));
   const customers = Object.values(db.customers).map(c => ({ id: c.id, payDays: c.payDays, days: [...c.order.days], hour: c.order.hour, lead: [...c.order.lead] as [number, number], minShelf: c.minShelf }));
   const ot = db.profiles[db.scenarios[s.scenario].profile].payroll.overtime;
-  return { view: 'ref', products, materials, docs, recipes, equipment, lines, methods, instruments, roles, shifts, people: staff, matrix: matrix(db, s), calendar: calendarOf(db, s), shiftCal: shiftMonths(db, s), policy: { ...s.policy }, overtime: { shift: ot.shift, year: ot.year }, ...hiringOf(db, s), ...leaveRef(db, s), suppliers, customers, places: placesView(db, s), partners: partnersView(db, s) };
+  return { view: 'ref', products, materials, docs, recipes, equipment, lines, methods, instruments, roles, shifts, people: staff, matrix: matrix(db, s), calendar: calendarOf(db, s), shiftCal: shiftMonths(db, s), policy: { ...s.policy }, overtime: { shift: ot.shift, year: ot.year }, ...hiringOf(db, s), ...leaveRef(db, s), bosses: bossRows(db, s), suppliers, customers, places: placesView(db, s), partners: partnersView(db, s) };
 }
 
 /** Найм для справочника (Б4в): у сценария без рынка труда — ничего. */

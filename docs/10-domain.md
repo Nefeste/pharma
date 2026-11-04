@@ -364,6 +364,28 @@ GQ — годное, SQ — брак, CM — израсходованный ма
 | Пыльца в средней полосе России — три периода: весенний (апрель — май) — деревья: берёза, ольха, орешник, дуб; ранний летний (июнь — середина июля) — злаковые травы; поздний летний и осенний (середина июля — сентябрь) — сорные: полынь, амброзия, лебеда | `kr-ar-2024` | 03.11.2026, копия — сверить |
 | Средства от аллергии в США, 2023 год: апрель — 11,3 % годовых продаж, март — 10,4 %, май — 10,3 %, сентябрь — 8,6 %; покупатели называют пики весной и осенью | `numerator-2024` | 03.11.2026 |
 
+### S&OP и мощности
+
+| Факт | Источник | Сверено |
+|---|---|---|
+| S&OP по словарю APICS: процесс тактических планов, который сводит планы продаж, маркетинга, разработки, производства, закупок и финансов в один набор и позволяет руководству направлять бизнес | `apics-sop-handout` | 03.11.2026 |
+| S&OP — регулярные встречи руководства, где решают противоречия спроса и предложения; на них проверяют, хватает ли ресурсов под план производства, и управляют запасом ГП и портфелем заказов ради сервиса | `apics-sop-handout` | 03.11.2026 |
+| Executive S&OP ведёт руководство вплоть до первого лица; цикл — месячный, с пересмотром в середине при крупных переменах; это инструмент объёмов — ассортимент он смотрит редко, а утверждённые объёмы направляют планы по ассортименту; операционные планы переводят в деньги | `stahl-wallace-2012` (принципы 1–6) | 03.11.2026 |
+| Шаги S&OP по порядку: сбор данных, план спроса, план предложения, предварительная встреча и встреча руководства | `kalla-2025` (по Wallace, Stahl, 2008) | 03.11.2026 |
+| Месячный цикл IBP — пять шагов: продукты и портфель, спрос (выручка и объёмы), предложение (материалы и мощности), сверка с планом бизнеса, управленческий обзор; финансы — во всех шагах: выручка и маржа, затраты планов, денежный поток | `ow-ibp-eame` | 03.11.2026 |
+| План продаж — ожидаемые заказы по крупным семействам продуктов; план производства обычно задают месячным темпом по семейству. При сезонном спросе ровный выпуск копит запас, выпуск под спрос стоит смены ритма — сверхурочных, найма, смен; запас стоит денег, склада и риска обесценения | `eth-opess` (§ 5.2.2) | 03.11.2026 |
+| Стратегии сезона: под спрос (chase) — запас ровный, мощность гибкая; ровная (level) — выпуск ровный, колебания берёт запас; смешанная — сверхурочными, субподрядом, запасом | `eth-opess` (§ 5.2.3c); `abbas-goosheh-2024` (§ 14.3) | 03.11.2026 |
+| Грубое планирование мощности (RCCP) переводит главный график в потребную мощность ключевых ресурсов по периодам и сравнивает с располагаемой; на уровне плана производства — по семействам, через нормы ресурсов на изделие (bill of resources) или профили нагрузки | `eth-opess` (§ 5.2.2b, § 5.2.3c, § 14.4.1; по словарю ASCM 2022) | 03.11.2026 |
+| Когда разбивка семейства на продукты неопределённа на 20 %, точности в 10 % средней мощности, вероятно, хватает: грубая проверка не требует детального расчёта | `eth-opess` (§ 5.2.3c) | 03.11.2026 |
+| Нельзя сразу держать высокую загрузку и короткие сроки: чем выше загрузка, тем длиннее очередь, при высокой — ожидание много дольше самой операции; меры — избыточная мощность, а перегрузку гасят сверхурочными, сменами, субподрядом | `eth-opess` (§ 13.2.3) | 03.11.2026 |
+| Время цикла резко растёт, когда загрузка подходит к 100 %, и надолго на 100 % не планируют; буферов против изменчивости три — запас, время и мощность | `fp-intel-2008`; `spearman-fp` | 03.11.2026 |
+| В статических моделях мощности держат избыток 10–30 % по всем группам оборудования, чтобы выполнять цели по времени цикла; пример — завод пластин, не фарма | `grewal-wsc-1998` | 03.11.2026 |
+| Запас в днях — запас, выраженный в днях продаж: средний запас по себестоимости к годовой себестоимости продаж / 365; в SCOR — мера «дни запаса» (AM.2.2) у атрибута «управление активами», с долей избыточного запаса и затратами на устаревание | `apqc-ids`; `scor-ds-2020` | 03.11.2026 |
+| Снижение запаса освобождает оборотный капитал, а чрезмерное ведёт к дефициту, срочным поставкам и падению сервиса; цикл «деньги — деньги» смотрят вместе с днями дебиторской и кредиторской задолженности и запаса | `apqc-wc` | 03.11.2026 |
+| Маржинальный доход — на сколько цена продукта больше его переменных затрат на единицу; переменные меняются с объёмом, например прямые материалы; в краткосрочном периоде менять можно только переменные затраты | `openstax-ma` (§ 2.2, § 3.1) | 03.11.2026 |
+| В учёте по выпуску выпуск — цена минус прямые материалы: остальное в основном постоянное — работников не нанимают и не увольняют по дням, им платят и в простое. Когда ресурса не хватает, ассортимент выбирают по выпуску на час узкого места, а не на единицу; час, потерянный на узком месте, потерян для всего завода | `acca-ta-1`; `acca-ta-2` | 03.11.2026 |
+| В GSK тактическое планирование АФИ — ежемесячно на площадке: спрос, мощности, сценарии, горизонт 2 года; производственный график строят по нынешнему плану S&OP, чтобы выполнить заказы и держать запас | `ispe-pe-2014` (с. 36–37, 48) | 03.11.2026 |
+
 ## 8. Что ещё нужно найти
 
 До спецификации каждой системы — источники на её механики. Список растёт. Сейчас нужны:
@@ -494,11 +516,11 @@ GQ — годное, SQ — брак, CM — израсходованный ма
   ([#10](https://github.com/Nefeste/pharma/issues/10)); через сколько проверяют эффективность CAPA — в нормах числа нет;
   официальный русский текст PI 040-1 — не нашли.
 - **прогноз, S&OP и потребность в материалах** ([`specs/2026-10-vertical-slice.md`](specs/2026-10-vertical-slice.md),
-  Б6в–Б6е): способы прогноза и меры его точности — найдено (§7, «Прогноз и сезон спроса»); шаги и роли S&OP — словарь
-  ASCM (APICS) или руководство Oliver Wight; расчёт чистой потребности, срок поставки и страховой запас — учебник по MRP
-  (Orlicky's MRP, Vollmann и др.); замороженный горизонт и «твёрдое» плановое задание — словарь ASCM. Сменно-суточное
-  задание и диспетчирование — по ГОСТ Р МЭК 62264-3-2012 (§7, копия открылась 03.11.2026); его издание — по IEC
-  62264-3:2007, у МЭК с 2016 года — второе, его текст не открыт.
+  Б6в–Б6е): способы прогноза и меры его точности — найдено (§7, «Прогноз и сезон спроса»); шаги и роли S&OP, грубая
+  проверка мощности, резерв и маржа на час узкого места — найдено (§7, «S&OP и мощности»); расчёт чистой потребности,
+  срок поставки и страховой запас — учебник по MRP (Orlicky's MRP, Vollmann и др.); замороженный горизонт и «твёрдое»
+  плановое задание — словарь ASCM. Сменно-суточное задание и диспетчирование — по ГОСТ Р МЭК 62264-3-2012 (§7, копия
+  открылась 03.11.2026); его издание — по IEC 62264-3:2007, у МЭК с 2016 года — второе, его текст не открыт.
 
 ## 9. Источники
 
@@ -799,6 +821,22 @@ GQ — годное, SQ — брак, CM — израсходованный ма
 | `dsm-2024h1` | «Рейтинг аптечных сетей по итогам 1 полугодия 2024 года» | DSM Group, 2024 | https://dsm.ru/news/2250 |
 | `kr-ar-2024` | Клинические рекомендации «Аллергический ринит», одобрены Минздравом России | Минздрав России, 2024 | https://www.consultant.ru/document/cons_doc_LAW_480767/ · копия текста: https://diseases.medelement.com/disease/аллергический-ринит-кр-рф-2024/18088 |
 | `numerator-2024` | Lucas K. «Sneezing the Opportunity: Seasonal Consumer Trends in OTC Allergy Medications» | Numerator, 2024 | https://www.numerator.com/resources/blog/seasonal-consumer-trends-in-otc-allergy-medications |
+| `apics-sop-handout` | APICS Introduction to Sales and Operations Planning (S&OP), раздаточный материал; определение — по APICS Dictionary, 14th ed. | APICS (ASCM), без даты | https://wc.ascm.org/images/downloads/PDM_s/apics_introduction_to_s_op_handout.pdf |
+| `stahl-wallace-2012` | Stahl R. A., Wallace T. F. — десять принципов Executive S&OP; пересказ с разрешения авторов статьи «S&OP Principles: The Foundation for Success» (Foresight, № 27, 2012) | John Galt Solutions, без даты | https://johngalt.com/learn/blog/principles-of-successful-s-op |
+| `kalla-2025` | Kalla C., Hellingrath B., Scavarda L. F., Caiado R. G. G. Adapting sales and operations planning to dynamic and complex supply chains // Review of Managerial Science | Springer, 2025 | https://link.springer.com/article/10.1007/s11846-025-00894-x |
+| `ow-ibp-eame` | Transitioning from Sales and Operations Planning to Integrated Business Planning | Oliver Wight EAME, без даты | https://oliverwight-eame.com/transitioning-from-sales-and-operations-planning-to-integrated-business-planning |
+| `eth-opess` | Schönsleben P. Integral Logistics Management — онлайн-курс по книге (Springer), § 5.2.2, 5.2.2b, 5.2.3c, 13.2.3, 14.4.1; определения — по словарю ASCM 2022 | ETH Zürich, без даты | https://opess.ethz.ch/course/section-5-2/5-2-2-sales-and-operations-planning-and-resource-requirements-planning/ · https://opess.ethz.ch/course/section-5-2/5-2-3c-rough-cut-capacity-planning-rccp · https://opess.ethz.ch/course/section-13-2/13-2-3-conclusions-for-job-shop-production · https://opess.ethz.ch/course/section-14-4/14-4-1-rough-cut-network-plans-and-load-profiles |
+| `abbas-goosheh-2024` | Abbas A., Goosheh S. Operations Management, § 14.3 «Aggregate Planning Strategies» | eCampusOntario Pressbooks, 2024 | https://ecampusontario.pressbooks.pub/opsmgmt/?p=1615 |
+| `fp-intel-2008` | Tafoya, Skowronski (Intel). A Fast Cycle Time Story — Factory Physics application at Intel, слайды | IIE Conference, 2008 | https://factoryphysics.com/wp-content/uploads/2023/02/factory_physics_application_at_intel.pdf |
+| `spearman-fp` | Spearman M. L. Factory Physics, слайды доклада | Project Production Institute, 2021 | https://projectproduction.org/wp-content/uploads/2021/03/6-Spearman-Factory-Physics.pdf |
+| `grewal-wsc-1998` | Grewal N. S., Bruska A. C., Wulf T. M., Robinson J. K. Integrating targeted cycle-time reduction into the capital planning process // Proceedings of the 1998 Winter Simulation Conference | INFORMS, 1998 | https://www.informs-sim.org/wsc98papers/136.PDF |
+| `apqc-ids` | Total inventory days of supply, мера 100789, Open Standards Benchmarking | APQC, без даты | https://www.apqc.org/resources/benchmarking/open-standards-benchmarking/measures/inventory-days-supply |
+| `scor-ds-2020` | SCOR Digital Standard — Introduction, табл. 1–2 | ASCM, 2020 | https://www.ascm.org/globalassets/ascm_website_assets/docs/intro-and-front-matter-scor-digital-standard.pdf |
+| `apqc-wc` | How Can Cash Forecasting And Working-Capital Performance Be Improved? | APQC, без даты | https://www.apqc.org/How-Can-Cash-Forecasting-And-Working-Capital-Performance-Be-Improved |
+| `openstax-ma` | Principles of Accounting, Volume 2: Managerial Accounting, § 2.2 и § 3.1 | OpenStax (Rice University), без даты | https://openstax.org/books/principles-managerial-accounting/pages/3-1-explain-contribution-margin-and-calculate-contribution-margin-per-unit-contribution-margin-ratio-and-total-contribution-margin · https://openstax.org/books/principles-managerial-accounting/pages/2-2-identify-and-apply-basic-cost-behavior-patterns |
+| `acca-ta-1` | Throughput accounting and the theory of constraints, part 1 | ACCA, без даты | https://www.accaglobal.com/gb/en/student/exam-support-resources/fundamentals-exams-study-resources/f5/technical-articles/throughput-constraints1.html |
+| `acca-ta-2` | Throughput accounting and the theory of constraints, part 2 | ACCA, без даты | https://www.accaglobal.com/us/en/student/exam-support-resources/fundamentals-exams-study-resources/f5/technical-articles/throughput-constraints2.html |
+| `ispe-pe-2014` | Pharmaceutical Engineering, май — июнь 2014: управление цепочкой поставок — риски поставки АФИ в GSK, с. 36–37; Mierau D. J. Defining Holistic Asset Criticality to Manage Risk, с. 48 | ISPE, 2014 | https://ispewebassets.org/files/attachments/public/14MJ_PharmEngineering_low-res_web_0.pdf |
 
 Названия поставщиков оборудования и инструмента здесь — только источники фактов о скоростях, износе и уходе. В игре их
 нет: производители оборудования вымышленные (ADR [0004](adr/0004-regulatory-profile.md)).

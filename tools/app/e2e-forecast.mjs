@@ -121,7 +121,8 @@ function steps(page, { out, fail, shots, feel }) {
     },
     /** «До утра» (5): до 08:00 или до автопаузы по дороге; планёрку не закрывать — она и нужна. Открыта ли планёрка. */
     untilMorning: async () => {
-      if (await page.evaluate(() => window.__game.store.get().morning.open)) await page.keyboard.press('Escape');
+      // планёрку закрыть; окно S&OP — тоже: совещание открывает его само (Б6г), и поверх планёрки оно перехватит щелчки
+      for (let k = 0; k < 4 && (await page.evaluate(() => { const h = window.__game.store.get(); return h.morning.open || h.sop.open; })); k++) await page.keyboard.press('Escape');
       await page.keyboard.press('Digit5');
       await page.waitForFunction(() => !window.__game.ff, null, { timeout: 180_000 });
       await frames(1);

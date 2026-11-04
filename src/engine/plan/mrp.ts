@@ -2,17 +2,23 @@
 // образцу MRP (`eth-opess` § 12.3.2): валовая потребность, доступное, чистая и плановые заказы. План производства — серии
 // прогона плана S&OP (src/engine/plan/sop.ts) на 12 месяцев и задания, которые уже стоят; доступное — свободное в
 // партиях и заказанное в пути, через входной контроль: в производство идёт только разрешённое ОКК (`eu-gmp-5` п. 5.34).
-// Его читают правило снабжения «по потребности» (src/engine/supply.ts) и вкладка «Материалы» (src/sim/mrp.ts).
+// Его читают правило снабжения «по потребности» (src/engine/supply.ts) и вкладка «Материалы» (src/sim/mrp.ts). С Б6ж:
+// приход заказа в пути — обещанный (настоящего завод не знает), заказ, что не пришёл к обещанному, — сообщение «не пришёл»
+// и доступен не раньше сегодня с входным контролем; плановый заказ — поставщику по политике «кому заказывать»
+// (src/engine/partners.ts, `choosePair`);
+// запас аналога строки карты — доступное основного по коэффициенту: сначала основной, недостающее — аналогом
+// (`d365-subst`, `oracle-opm`); плановый заказ — на основной.
 import type { ContentDb, Id } from '../../content/types';
 import { civilFromDays, daysFromCivil, isWorkday, momentOf, workdayOnOrAfter } from '../core/calendar';
 import { inForce } from '../docs';
 import { firstDay, monthOfDay } from '../forecast';
 import { packNeeds } from '../mes';
-import { pairsFor, STARTING } from '../partners';
+import { choosePair, pairsFor, STARTING } from '../partners';
+import { trialLot, trialPo, windowEnd } from '../supply';
 import { numOf, POL } from '../policies';
 import { sopCover } from '../sop';
 import { containersByLot } from '../stock';
-import type { PackJob, PlantState } from '../types';
+import type { PackJob, PlantState, PoPick } from '../types';
 import { calOf } from '../workdays';
 import { sopCtx, sopRun, type SopTrace } from './sop';
 
@@ -63,13 +69,20 @@ export interface MrpOrder {
   month: number;
   deficit: number;
   late: number;
+  /** почему не основной поставщик (Б6ж): у основного опоздает — этот быстрее; или баллы предложений */
+  pick?: PoPick;
 }
 
 /**
  * Сообщения о действиях (§ 12.5.1, § 12.5.2): у планового заказа — «заказать до …» (через столько суток) и
- * «опаздывает» (придёт на столько суток позже нужного); у заказа в пути — «опоздает» на столько суток и «лишний».
+ * «опаздывает» (придёт на столько суток позже нужного); у заказа в пути — «опоздает» на столько суток и «лишний»; с Б6ж —
+ * «не пришёл»: обещанный день прошёл, фуры нет, — на столько суток позже обещанного.
  */
-export type MrpMsg = { kind: 'soon' | 'overdue'; material: Id; order: number; days: number } | { kind: 'late'; material: Id; po: string; days: number } | { kind: 'extra'; material: Id; po: string };
+export type MrpMsg =
+  | { kind: 'soon' | 'overdue'; material: Id; order: number; days: number }
+  | { kind: 'late'; material: Id; po: string; days: number }
+  | { kind: 'extra'; material: Id; po: string }
+  | { kind: 'behind'; material: Id; po: string; days: number };
 
 export interface MrpResult {
   from: number;
@@ -157,7 +170,8 @@ export function mrpPlan(db: ContentDb, s: PlantState): MrpResult {
   const free = new Map<Id, number>();
   const quarantine = new Map<Id, number>();
   for (const l of Object.values(s.lots)) {
-    if (!STARTING.has(db.materials[l.material]?.kind) || l.status === 'rejected' || l.status === 'blocked') continue;
+    // пробная партия одобрения (Б6ж) — не запас под план, пока её не разрешили по решению о досье
+    if (!STARTING.has(db.materials[l.material]?.kind) || l.status === 'rejected' || l.status === 'blocked' || trialLot(s, l)) continue;
     let n = 0;
     for (const c of byLot.get(l.id) ?? []) n += c.qty - (c.reserved ?? 0);
     if (n <= 0) continue;
@@ -166,22 +180,38 @@ export function mrpPlan(db: ContentDb, s: PlantState): MrpResult {
     add(l.material, { z: ok ? today : Math.max(today, momentOf(s.start, l.received).day + qc), qty: n });
   }
   const transit = new Map<Id, MrpRow['transit']>();
+  // заказ, что не пришёл к обещанному (Б6ж): на сколько суток позже обещанного — сообщение «не пришёл»
+  const behind: { material: Id; po: string; days: number }[] = [];
   for (const po of Object.values(s.pos)) {
     if (po.status !== 'ordered') continue;
-    const z = Math.max(today, momentOf(s.start, po.eta).day + qc);
+    // не пришёл к обещанному (Б6ж) — придёт не раньше сегодня и пройдёт входной контроль
+    const past = s.t >= windowEnd(s, po.eta);
+    const z = Math.max(past ? today + qc : today, momentOf(s.start, po.eta).day + qc);
     for (const l of po.lines) {
+      if (past) behind.push({ material: l.material, po: po.id, days: Math.max(1, today - momentOf(s.start, po.eta).day) });
+      // заказ пробной партии одобрения (Б6ж) — не приход под план
+      if (trialPo(po)) continue;
       add(l.material, { z, qty: l.qty, po: po.id });
       const xs = transit.get(l.material) ?? [];
       xs.push({ po: po.id, qty: l.qty, day: z });
       transit.set(l.material, xs);
     }
   }
+  // аналог строки карты (Б6ж): его доступное — доступное основного по коэффициенту; у аналога, что подходит нескольким
+  // основным, — первому по коду
+  const altOf = new Map<Id, { main: Id; factor: number }>();
+  for (const it of sc.plan.items) {
+    const r = db.recipes[inForce(db, 'recipes', it.recipe, today)];
+    for (const l of r.bom) if (l.alt && !altOf.has(l.alt.material)) altOf.set(l.alt.material, { main: l.material, factor: l.alt.factor });
+  }
+  for (const [alt, x] of altOf) for (const e of avail.get(alt) ?? []) add(x.main, { z: e.z, qty: Math.floor((e.qty * 10_000) / x.factor) });
   const every = numOf(db, s, POL.every)!;
   const safetyDays = numOf(db, s, POL.safety)!;
   const horizon = Math.max(1, firstDay(from + MRP_MONTHS) - today);
   // материалы — по виду и коду: АФС, вспомогательные, упаковка
   const KIND = ['api', 'excipient', 'packaging'];
   const materials = [...new Set([...gross.keys(), ...avail.keys()])].filter(m => STARTING.has(db.materials[m]?.kind)).sort((a, b) => KIND.indexOf(db.materials[a].kind) - KIND.indexOf(db.materials[b].kind) || db.materials[a].code.localeCompare(db.materials[b].code));
+  for (const b of behind) out.msgs.push({ kind: 'behind', material: b.material, po: b.po, days: b.days });
   for (const material of materials) {
     const gs = gross.get(material) ?? [];
     const as = avail.get(material) ?? [];
@@ -211,7 +241,8 @@ export function mrpPlan(db: ContentDb, s: PlantState): MrpResult {
       }
       row.months.push({ m, gross: g, net });
     }
-    if (!sup || !pair) continue;
+    // у аналога своей потребности нет: его запас — доступное основного; плановый заказ — на основной (`d365-subst`)
+    if (!sup || !pair || altOf.has(material)) continue;
     // события по дням: доступное плюс, потребность минус
     const ev = new Map<number, number>();
     const pos = new Map<number, string[]>();
@@ -239,13 +270,21 @@ export function mrpPlan(db: ContentDb, s: PlantState): MrpResult {
     const place = (z: number, deficit: number, overdue: number) => {
       let more = 0;
       for (const g of gs) if (g.nb > z && g.nb <= z + every) more += g.qty;
-      const want = Math.max(moq, deficit + more);
+      // кому заказывать при двух поставщиках (Б6ж): на сколько суток опоздает заказ сегодня у поставщика — его верх срока
+      // против начала дефицита
+      const start = overdue > 0 ? fence - overdue : undefined;
+      const ch = choosePair(db, s, material, today, sp => (start === undefined ? 0 : Math.max(0, workdayOnOrAfter(cal, today + db.suppliers[sp].lead[1]) + qc - start)), deficit + more) ?? { pair };
+      const chosen = db.suppliers[ch.pair.supplier];
+      const moqC = chosen.items[material]?.moq ?? moq;
+      const want = Math.max(moqC, deficit + more);
       const qty = Math.ceil(want / k.capacity) * k.capacity;
       have += qty;
       const month = gs.filter(g => g.nb >= z).reduce((n, g) => Math.min(n, g.m), Number.POSITIVE_INFINITY);
-      let by = overdue > 0 ? today : z - qc - lead;
-      while (by > today && (!isWorkday(cal, by) || arriveBy(by) > z)) by--;
-      out.planned.push({ material, supplier: pair.supplier, maker: pair.maker, want, qty, need: z, orderBy: Math.max(today, by), month: Number.isFinite(month) ? month : monthOfDay(z), deficit, late: overdue });
+      const leadC = chosen.lead[1];
+      const late = ch.pair.supplier === pair.supplier || start === undefined ? overdue : Math.max(0, workdayOnOrAfter(cal, today + leadC) + qc - start);
+      let by = late > 0 ? today : z - qc - leadC;
+      while (by > today && (!isWorkday(cal, by) || workdayOnOrAfter(cal, by + leadC) + qc > z)) by--;
+      out.planned.push({ material, supplier: ch.pair.supplier, maker: ch.pair.maker, want, qty, need: z, orderBy: Math.max(today, by), month: Number.isFinite(month) ? month : monthOfDay(z), deficit, late, ...(ch.pick ? { pick: ch.pick } : {}) });
     };
     for (const z of days) {
       // в самый день горизонта событий нет: заказ на горизонте — по остатку к нему

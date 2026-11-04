@@ -5,6 +5,9 @@ name: { ru: "Парацетамол, субстанция", en: "Paracetamol, ac
 doc: { code: SP-0001, rev: 1, from: 2026-02-02, approved: role.qc-head }
 # одобренные пары «поставщик — изготовитель» (Б3г; GMP ЕАЭС, ч. I, п. 4.14)
 pairs: [{ supplier: sup.api, maker: mkr.api-par }]
+# пара-кандидат (Б6ж): второй изготовитель — в досье его нет; «Одобрить пару» — документы, пробная партия, аудит и
+# изменение досье типа II (reg-eaeu, прил. 19, Б.I.а.1 б) или ж)); с положительным решением пара — в спецификации
+candidates: [{ supplier: sup.api-par2, maker: mkr.api-par2 }]
 tests:
   - { test: test.ir }
   - { test: test.hplc-assay, min: 98.5, max: 101.5 }

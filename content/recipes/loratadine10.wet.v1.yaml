@@ -14,7 +14,10 @@ batch: { kg: 60, units: 300000 }
 bom:
   - { material: mat.api.loratadine, kg: 3, potency: true, stage: granulate }
   - { material: mat.exc.lactose, kg: 41.4, stage: granulate }
-  - { material: mat.exc.starch, kg: 4.2, stage: granulate }
+  # аналог (Б6ж): крахмал кукурузный вместо картофельного — в том же количестве, коэффициент 1 (reg-eaeu, прил. 19,
+  # Б.II.а.3 б)6); основного на строку не хватает — строку отвешивают аналогом целиком (sap-alt). Выбор геймдизайна,
+  # сверить с владельцем
+  - { material: mat.exc.starch, kg: 4.2, stage: granulate, alt: { material: mat.exc.starch-maize, factor: 1 } }
   - { material: mat.exc.mcc, kg: 10.8, qs: true, stage: granulate }
   - { material: mat.exc.mgst, kg: 0.6, stage: blend }
 stages:

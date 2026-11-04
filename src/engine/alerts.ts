@@ -7,6 +7,7 @@ import type { ContentDb } from '../content/types';
 import { batchNo } from './batchno';
 import { HOUR } from './core/calendar';
 import { orderRisks } from './market';
+import { windowEnd } from './supply';
 import type { Notice, PlantState } from './types';
 
 /** Фура поставщика ждёт разгрузки дольше этого — тревога (геймдизайн, §2). */
@@ -18,11 +19,13 @@ const crossed = (s: PlantState, at: number) => at > s.t - HOUR && at <= s.t;
 /**
  * Каждый час, после всего, что час сделал: фуры поставщиков, с которых через 2 часа после прихода сняли не всё; задания на
  * серию, которые к своему «не раньше» так и ждут материала, и задания на упаковку, которым его не хватило сразу; заказы
- * покупателей этого часа, которым по правилу планёрки (`orderRisks`) не хватит ящиков.
+ * покупателей этого часа, которым по правилу планёрки (`orderRisks`) не хватит ящиков; с Б6ж — заказы поставщикам, чья фура
+ * не пришла к концу окна прихода обещанного дня.
  */
 export function alertsHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   for (const tr of Object.values(s.trucks))
     if (tr.po && tr.units.length > 0 && crossed(s, tr.arrived + TRUCK_WAIT)) notices.push({ kind: 'truckWait', truck: tr.id, po: tr.po, supplier: s.pos[tr.po].supplier });
+  for (const po of Object.values(s.pos)) if (po.status === 'ordered' && crossed(s, windowEnd(s, po.eta))) notices.push({ kind: 'poLate', po: po.id, supplier: po.supplier, eta: po.eta });
   for (const b of Object.values(s.batches)) {
     if (b.status === 'waiting' && crossed(s, b.notBefore)) notices.push({ kind: 'materialLate', batch: b.id, code: batchNo(b.code), short: b.short ?? [] });
     else if (b.pack?.state === 'waiting' && crossed(s, b.pack.created)) notices.push({ kind: 'materialLate', batch: b.id, code: batchNo(b.code), pack: true, short: b.pack.short ?? [] });

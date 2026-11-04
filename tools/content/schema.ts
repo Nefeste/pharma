@@ -189,6 +189,10 @@ export const scenario = z.strictObject({
       arrive: z.number().int().min(0).max(28).optional(),
       /** как заказывают (Б6д): по потребности или по точке заказа */
       how: z.enum(['need', 'point']).optional(),
+      /** кому заказывать при двух поставщиках (Б6ж): основному, быстрее, когда основной опоздает, или по оценке предложений */
+      who: z.enum(['main', 'fast', 'rfq']).optional(),
+      /** веса оценки предложений (Б6ж): цена, срок, надёжность, предоплата — в сумме 100 */
+      rfq: z.strictObject({ price: z.number().int().min(0).max(100), lead: z.number().int().min(0).max(100), rel: z.number().int().min(0).max(100), terms: z.number().int().min(0).max(100) }).optional(),
     })
     .optional(),
   stock: z.array(z.strictObject({ material: id, qty })).default([]),
@@ -238,6 +242,19 @@ export const scenario = z.strictObject({
     share: percent,
     months: z.number().int().min(1).max(36),
     ctr: z.number().int().min(1).max(9999),
+    /**
+     * изменение досье типа II (Б6ж): рабочих дней — проверка полноты, экспертиза, решение; доля изменений с запросом
+     * эксперта, % и срок ответа, рабочих дней, — от и до
+     */
+    variation: z
+      .strictObject({
+        check: z.number().int().min(0).max(60),
+        expert: z.number().int().min(1).max(250),
+        decide: z.number().int().min(1).max(60),
+        ask: percent,
+        answer: z.tuple([z.number().int().min(1), z.number().int().min(1)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }),
+      })
+      .optional(),
   }),
   /**
    * политики отделов на старте (Б4а): сверхурочные — «по потребности» (задачу ставят и тогда, когда она кончится после
@@ -450,6 +467,10 @@ export const supplier = z.strictObject({
   payDays: z.number().int().min(0).max(365),
   /** доля партий с браком, % */
   defects: percent,
+  /** опоздания (Б6ж): доля заказов, %, и на сколько суток позже обещанного — от и до */
+  late: z
+    .strictObject({ share: percent, days: z.tuple([z.number().int().min(1), z.number().int().min(1)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }) })
+    .optional(),
   items: z.record(id, z.strictObject({ price: z.number().positive(), moq: qty, maker: id.optional() })),
 });
 
@@ -652,6 +673,8 @@ export const spec = z
     tests: z.array(z.strictObject({ test: id, min: z.number().optional(), max: z.number().optional() })).min(1),
     /** одобренные пары «поставщик — изготовитель» (Б3г; GMP ЕАЭС, ч. I, п. 4.14) — у исходного и упаковочного материала */
     pairs: z.array(z.strictObject({ supplier: id, maker: id })).min(1).optional(),
+    /** пары-кандидаты (Б6ж): изготовителя нет в досье — одобряют изменением досье (reg-eaeu, прил. 19, Б.I.а.1) */
+    candidates: z.array(z.strictObject({ supplier: id, maker: id })).min(1).optional(),
     source: sources.optional(),
     review: review.optional(),
   })
@@ -887,7 +910,17 @@ export const recipe = z
      * (Б1д): порядок загрузки сырья — часть технологической инструкции (GMP ЕАЭС, ч. I, п. 4.18 d)
      */
     bom: z
-      .array(z.strictObject({ material: id, kg: z.number().positive(), potency: z.boolean().optional(), qs: z.boolean().optional(), stage: z.string() }))
+      .array(
+        z.strictObject({
+          material: id,
+          kg: z.number().positive(),
+          potency: z.boolean().optional(),
+          qs: z.boolean().optional(),
+          stage: z.string(),
+          /** аналог (Б6ж): материал и коэффициент — сколько аналога на единицу основного */
+          alt: z.strictObject({ material: id, factor: z.number().positive() }).optional(),
+        }),
+      )
       .min(1),
     stages: z
       .array(

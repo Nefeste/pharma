@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 44;
+export const SCHEMA = 45;
 
 // ---------------------------------------------------------------- склад
 
@@ -698,8 +698,17 @@ export interface Po {
   supplier: Id;
   lines: PoLine[];
   ordered: number;
-  /** когда фура встанет к рампе */
+  /** когда фура встанет к рампе — с Б6ж обещанный приход: его знает завод */
   eta: number;
+  /**
+   * настоящий приход опаздывающего заказа (Б6ж): знает только движок, в окно не уходит (docs/02-architecture.md, §9);
+   * нет — фура придёт к обещанному
+   */
+  truth?: number;
+  /** когда фура в самом деле пришла (Б6ж): по нему — вовремя ли к обещанному */
+  came?: number;
+  /** пробная партия одобрения пары (Б6ж): ключ пары «поставщик — изготовитель» */
+  trial?: string;
   /** заказан, пришёл; с Б6д — отменён до прихода */
   status: 'ordered' | 'arrived' | 'cancelled';
   /** кто заказал: игрок или руководитель */
@@ -1260,13 +1269,44 @@ export interface PairEval {
   v: number;
 }
 
-/** Пара «поставщик — изготовитель» (Б3г): записи одобрения по порядку, назначенная оценка. */
+/**
+ * Шаг одобрения пары-кандидата (Б6ж): оценка документов, пробная партия, аудит изготовителя, изменение досье типа II;
+ * пара в спецификации; пробную партию отклонили — одобрение кончилось.
+ */
+export type PairStep = 'docs' | 'trial' | 'audit' | 'dossier' | 'done' | 'failed';
+
+/**
+ * Одобрение пары-кандидата (Б6ж; docs/specs/2026-10-vertical-slice.md, «Б6ж»): когда начали; шаг; задача оценки
+ * документов; заказ и партия пробной партии; изменение досье — день подачи, запроса эксперта и ответа на него, день
+ * решения — номера дней от 1970-01-01, их знает завод, когда они наступили. `truth` — дни запроса, ответа и решения
+ * наперёд: знает только движок.
+ */
+export interface PairApp {
+  t: number;
+  material: Id;
+  step: PairStep;
+  task?: string;
+  po?: string;
+  lot?: string;
+  filed?: number;
+  asked?: number;
+  answered?: number;
+  decided?: number;
+  truth?: { ask?: number; answer?: number; decide: number };
+}
+
+/**
+ * Пара «поставщик — изготовитель» (Б3г): записи одобрения по порядку, назначенная оценка; с Б6ж — день, с которого
+ * пара-кандидат в спецификации (положительное решение по изменению досье), и её одобрение по шагам.
+ */
 export interface Pair {
   id: string;
   supplier: Id;
   maker: Id;
   recs: PairRec[];
   eval?: PairEval;
+  spec?: number;
+  app?: PairApp;
 }
 
 /**
@@ -1636,7 +1676,13 @@ export interface PoWhyNeed {
 }
 
 /** Почему заказ поставщику: по точке заказа (Б2в) или по потребности (Б6д). */
-export type PoWhy = PoWhyPoint | PoWhyNeed;
+export type PoWhy = (PoWhyPoint | PoWhyNeed) & { pick?: PoPick };
+
+/**
+ * Почему этот поставщик при двух одобренных (Б6ж): у основного заказ опоздает на столько суток — быстрее у этого; или
+ * баллы предложений по весам политики.
+ */
+export type PoPick = { by: 'fast'; main: Id; late: number } | { by: 'rfq'; offers: { supplier: Id; score: number }[] };
 
 /**
  * Почему начальник ООК попросил шаг расследования (часть 4): сначала лаборатория — шаг проверяет отметку; повтор пробы —
@@ -1679,8 +1725,16 @@ export type Decided =
   | { kind: 'bigOrder'; order: string; customer: Id; sku: Id; cases: number; due: number }
   /** событие коммерции (Б6е): снятый спрос */
   | { kind: 'demandCut'; customer: Id; sku: Id; cases: number }
-  /** заказ поставщику: предоплата; по каждой строке — положение материала */
-  | { kind: 'po'; po?: string; supplier: Id; prepaid: number; why?: PoWhy[] }
+  /** заказ поставщику: предоплата; по каждой строке — положение материала; с Б6ж — пробная партия одобрения пары */
+  | { kind: 'po'; po?: string; supplier: Id; prepaid: number; why?: PoWhy[]; trial?: string }
+  /** одобрить пару-кандидата (Б6ж): игрок — пост «Качество» или директор */
+  | { kind: 'pairApprove'; pair: string; material: Id }
+  /**
+   * шаг одобрения пары (Б6ж) — запись начальника ООК: документы рассмотрены — пробная партия заказана; пробная партия
+   * разрешена ОКК — аудит назначен; отчёт аудитора рассмотрен — изменение досье подано; запрос эксперта; ответ; решение —
+   * пара в спецификации; пробную партию отклонили — одобрение кончилось
+   */
+  | { kind: 'pairStep'; pair: string; step: PairStep | 'ask' | 'answer'; po?: string; lot?: string; day?: number }
   /** ускорение заказа поставщику (Б6д): прежний и новый приход; доплата с НДС, копейки */
   | { kind: 'expedite'; po: string; supplier: Id; was: number; eta: number; fee: number }
   /** отмена заказа поставщику (Б6д): неустойка; возврат предоплаты — плюс, доплата сверх неё — минус, копейки */
@@ -2228,7 +2282,12 @@ export type Command =
   /** назначить CAPA по отклонению (Б5е): действие каталога — пост «Качество» */
   | { kind: 'capa'; deviation: string; action: Id; by?: string }
   /** выполнить CAPA (Б5е): пост отдела её исполнителя */
-  | { kind: 'capaRun'; capa: string; by?: string };
+  | { kind: 'capaRun'; capa: string; by?: string }
+  /**
+   * одобрить пару-кандидата (Б6ж): ключ пары «поставщик — изготовитель» из кандидатов спецификации в силе — пост
+   * «Качество» или директор
+   */
+  | { kind: 'pairApprove'; pair: string; by?: string };
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
@@ -2243,6 +2302,15 @@ export type Refusal =
   | 'poDone'
   | 'notFaster'
   | 'fastAgain'
+  /** отменить заказ пробной партии одобрения пары нельзя (Б6ж): без неё одобрение не кончится */
+  | 'poTrial'
+  /**
+   * одобрение пары (Б6ж): пары нет среди кандидатов спецификации в силе; одобрение уже идёт или пара уже в спецификации;
+   * нет соглашения по качеству в силе
+   */
+  | 'notCandidate'
+  | 'pairBusy'
+  | 'noAgreement'
   | 'empty'
   | 'noRecipe'
   | 'noBatch'
@@ -2415,6 +2483,10 @@ export type Notice =
   | { kind: 'poFast'; po: string; eta: number }
   /** заказ поставщику отменён (Б6д) */
   | { kind: 'poCancelled'; po: string }
+  /** заказ поставщику не пришёл к обещанному дню (Б6ж): к концу окна прихода фур */
+  | { kind: 'poLate'; po: string; supplier: Id; eta: number }
+  /** шаг одобрения пары-кандидата (Б6ж): пара, шаг, материал */
+  | { kind: 'pairStep'; pair: string; step: PairStep | 'ask' | 'answer'; material: Id }
   /** событие коммерции (Б6е): крупный заказ покупателя — позиция, ящики, срок */
   | { kind: 'bigOrder'; order: string; customer: Id; sku: Id; cases: number; due: number }
   /** событие коммерции (Б6е): покупатель снял спрос — столько ящиков позиции не возьмёт в ближайших заказах */

@@ -551,6 +551,19 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   // у записей журнала и заказов — необязательные поля цены правки и крупного заказа; политику «замороженный горизонт»
   // игрок не задавал — правило берёт запись сценария, 10 рабочих дней, как раньше
   43: raw => raw,
+  // 44 → 45 (Б6ж): у пар-кандидатов спецификаций — записи пар без одобрения; заказы в пути — как были: обещанный приход
+  // и есть настоящий, они не опоздают; у пришедших дня прихода нет — в долю вовремя они не идут; политику «кому заказывать»
+  // игрок не задавал — правило берёт запись сценария
+  44: (raw, db) => {
+    const pairs = (raw.pairs ?? {}) as Record<string, Raw>;
+    for (const sp of Object.values(db.specs))
+      for (const x of sp.candidates ?? []) {
+        const key = `${x.supplier}|${x.maker}`;
+        pairs[key] ??= { id: key, supplier: x.supplier, maker: x.maker, recs: [] };
+      }
+    raw.pairs = pairs;
+    return raw;
+  },
 };
 
 export function toSave(s: PlantState): string {

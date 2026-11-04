@@ -440,6 +440,11 @@ export interface ScenarioPartners {
   share: number;
   months: number;
   ctr: number;
+  /**
+   * изменение досье типа II (Б6ж): рабочих дней — проверка полноты, экспертиза, решение; доля изменений с запросом
+   * эксперта, доли 1/10 000, и срок ответа, рабочих дней, — от и до
+   */
+  variation?: { check: number; expert: number; decide: number; ask: number; answer: [number, number] };
 }
 
 /**
@@ -452,7 +457,14 @@ export interface ScenarioSupply {
   qc: number;
   arrive?: number;
   how?: 'need' | 'point';
+  /** кому заказывать при двух поставщиках (Б6ж): основному, быстрее, когда основной опоздает, по оценке предложений */
+  who?: SupplierChoice;
+  /** веса оценки предложений (Б6ж): цена, срок, надёжность, предоплата — в сумме 100 */
+  rfq?: { price: number; lead: number; rel: number; terms: number };
 }
+
+/** Кому заказывать при двух поставщиках (Б6ж): основному, быстрее, когда основной опоздает, по оценке предложений. */
+export type SupplierChoice = 'main' | 'fast' | 'rfq';
 
 /** Корень происшествия: ошибка лаборатории, пересмазывание, сила прессования, сито калибратора. */
 export type IncidentRoot = 'lab' | 'lube' | 'force' | 'screen';
@@ -614,6 +626,8 @@ export interface Supplier {
   payDays: number;
   /** доля партий с браком, доли 1/10 000 */
   defects: number;
+  /** опоздания (Б6ж): доля заказов, доли 1/10 000, и на сколько суток позже обещанного — от и до */
+  late?: { share: number; days: [number, number] };
   items: Record<Id, SupplierItem>;
 }
 
@@ -856,6 +870,8 @@ export interface Spec {
   doc: DocHead;
   tests: SpecLine[];
   pairs?: SpecPair[];
+  /** пары-кандидаты (Б6ж): изготовителя нет в досье — пара входит в спецификацию с положительным решением по изменению */
+  candidates?: SpecPair[];
   source?: string[];
   review?: Review;
 }
@@ -1013,9 +1029,9 @@ export interface Recipe {
   batch: { mass: number; units: number };
   /**
    * состав на серию, мг: `potency` — с пересчётом на содержание партии; `qs` — добирает массу серии; `stage` — стадия, на
-   * которой компонент загружают (Б1д)
+   * которой компонент загружают (Б1д); с Б6ж — аналог строки: материал и коэффициент, доли 1/10 000 количества основного
    */
-  bom: { material: Id; qty: number; potency?: boolean; qs?: boolean; stage: string }[];
+  bom: { material: Id; qty: number; potency?: boolean; qs?: boolean; stage: string; alt?: { material: Id; factor: number } }[];
   stages: RecipeStage[];
   bulk: Id;
   /** показатели балка: номинал и разброс серии в единицах движка */

@@ -3,14 +3,17 @@
 // до отказа, результат испытания до проверки вторым лицом, незаписанные заминки, следующую микроостановку. Ветви зерна —
 // заново из номера зерна. Меняет только копию: его зовут на `structuredClone` состояния, а не на сам завод.
 import { type Attr, type ContentDb, QUALITATIVE } from '../../content/types';
+import { momentOf } from '../core/calendar';
 import { P_ONE, Rng } from '../core/rng';
 import { posterior } from '../infer';
 import { isScreenCause } from '../investigation';
 import { lineRedraw } from '../line';
 import { ONE_FAILURE } from '../maint';
 import { clampAttr, stageRedraw } from '../mes';
+import { dossierDays } from '../partners';
 import { attrsOf, lotProps } from '../quality';
 import { expo, normal, roll, spread } from '../random';
+import { redrawLate } from '../supply';
 import { type Batch, INSTRUMENT_FAULTS, type Investigation, type Lot, type Notice, type Part, type PlantState } from '../types';
 
 type Props = Partial<Record<Attr, number>>;
@@ -174,6 +177,15 @@ export function blind(db: ContentDb, s: PlantState, k: number) {
     const m = db.tests[q.method];
     const lot = s.lots[s.samples[q.sample].lot];
     q.result = roll(s, `twin/${q.id}`, r => (lot.truth[m.attr] ?? 0) + spread(m.sd, normal(r)));
+  }
+  // заказы в пути (Б6ж): настоящий приход — заново по записи поставщика; изменение досье пары — дни запроса, ответа и
+  // решения, которых завод ещё не знает
+  for (const po of Object.values(s.pos)) if (po.status === 'ordered') redrawLate(db, s, po);
+  const today = momentOf(s.start, s.t).day;
+  for (const p of Object.values(s.pairs)) {
+    const app = p.app;
+    if (app?.step !== 'dossier' || app.filed === undefined) continue;
+    app.truth = dossierDays(db, s, p.id, app.filed, { ...(app.asked !== undefined ? { asked: app.asked } : {}), ...(app.answered !== undefined ? { answered: app.answered } : {}), today });
   }
   // происшествие сценария и корни открытых расследований (часть 4)
   forgetIncident(db, s);

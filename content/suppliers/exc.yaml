@@ -7,8 +7,12 @@ prepay: 0
 payDays: 30
 # доля партий с браком, %: их ловит входной контроль (гипотеза)
 defects: 3
+# опаздывает (Б6ж; геймдизайн, §11): десятая часть заказов — на 2–7 суток позже обещанного (гипотеза)
+late: { share: 10, days: [2, 7] }
 items:
   mat.exc.starch: { price: 110, moq: 250 }
+  # аналог картофельного крахмала в картах (Б6ж): цена — гипотеза
+  mat.exc.starch-maize: { price: 120, moq: 250 }
   mat.exc.povidone: { price: 900, moq: 50 }
   mat.exc.mcc: { price: 320, moq: 100 }
   mat.exc.mgst: { price: 600, moq: 20 }

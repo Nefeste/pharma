@@ -18,6 +18,7 @@ import { db, docText } from './db';
 import { DevBody, First, KnobsBlock, RegimesBlock, ReleaseBlock, SpeedBlock } from './Decide';
 import { LeaveBlock } from './Leave';
 import { AndonRows, BottleBlock, LoadBlock } from './Layers';
+import { LossBlock } from './Losses';
 import { StatusIcon, TaskIcon } from './icons';
 import { BossBlock } from './Bosses';
 import { DailyCard } from './Daily';
@@ -640,6 +641,7 @@ export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v
           {c.daily ? <DailyCard rows={c.daily} plant={plant} start={start} /> : null}
           {hud.selected ? <LoadBlock key={JSON.stringify(hud.selected)} hud={hud} thing={hud.selected} plant={plant} actions={actions} /> : null}
           {hud.selected ? <BottleBlock hud={hud} thing={hud.selected} actions={actions} /> : null}
+          {hud.selected ? <LossBlock hud={hud} thing={hud.selected} plant={plant} actions={actions} /> : null}
         </>
       );
       break;
@@ -675,6 +677,7 @@ export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v
           {c.kind === 'machine' && c.materials ? <LineMaterials list={c.materials} /> : null}
           {c.kind === 'machine' && c.speed ? <SpeedBlock v={c.speed} hud={hud} actions={actions} /> : null}
           {c.kind === 'machine' && hud.selected ? <LoadBlock key={JSON.stringify(hud.selected)} hud={hud} thing={hud.selected} plant={plant} actions={actions} /> : null}
+          {c.kind === 'machine' && hud.selected ? <LossBlock hud={hud} thing={hud.selected} plant={plant} actions={actions} /> : null}
           {c.kind === 'equipment' && c.regimes ? <RegimesBlock g={c.regimes} start={start} actions={actions} /> : null}
           {c.kind === 'equipment' && c.knobs ? <KnobsBlock list={c.knobs} hud={hud} actions={actions} /> : null}
           <DossierButton n={c.bn} actions={actions} />

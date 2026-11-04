@@ -72,7 +72,7 @@ function dockNext(db: ContentDb, s: PlantState, dock: string) {
   const next = trucks[0];
   if (!next) return;
   next.docked = true;
-  dockWait(s, s.t - next.arrived);
+  dockWait(s, s.t - next.arrived, dock, next.po ? `po:${next.po}` : undefined);
   // время «от рампы до места» (Б5ж): с этого мгновения у каждой партии фуры
   for (const u of next.units) for (const c of s.units[u].items) s.lots[s.containers[c].lot].docked ??= s.t;
   const cold = next.units.some(u => coldOf(db, s.plan, s.lots[s.containers[s.units[u].items[0]].lot].material));

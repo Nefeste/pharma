@@ -10,7 +10,7 @@ import { machineSpeed } from './modes';
 import { roomAt } from './places';
 import { planOf } from './plant';
 import type { PlantPlan } from './plant';
-import type { Batch, BatchPhase, DayLoss, Line, LineDay, MachineTimes, PackJob, PlantState, Room, RoomPhase, RoomTimes, ShiftTask, Task, TaskKind, WaitCause } from './types';
+import type { Batch, BatchPhase, DayLoss, Line, LineDay, LossKind, MachineTimes, PackJob, PlantState, Room, RoomPhase, RoomTimes, ShiftTask, SpotLoss, Task, TaskKind, WaitCause } from './types';
 import { scheduleOn, spanOn } from './shifts';
 
 /** Участок задачи — отдел, чья это работа; отгрузку делает склад. */
@@ -60,7 +60,7 @@ export const AREA: Record<TaskKind, Dept> = {
 };
 
 /** Ожидание обучения в задержки не идёт: его ставят заранее, за срок предупреждения, и оно ждёт свободного часа. */
-const PLANNED: ReadonlySet<TaskKind> = new Set(['train', 'trainCheck']);
+export const PLANNED: ReadonlySet<TaskKind> = new Set(['train', 'trainCheck']);
 
 export function newLoss(day: number): DayLoss {
   return {
@@ -75,6 +75,7 @@ export function newLoss(day: number): DayLoss {
     lines: {},
     rooms: {},
     waits: {},
+    spots: {},
   };
 }
 
@@ -104,25 +105,148 @@ function dayOf(s: PlantState, day: number): DayLoss {
 const today = (s: PlantState) => dayOf(s, momentOf(s.start, s.t).day);
 
 /** Задача не досталась никому: причина та же — ждёт дальше; другая — прошлый отрезок записан на прошлую причину. */
-export function waitNote(s: PlantState, t: Task, why: WaitCause) {
+export function waitNote(db: ContentDb, s: PlantState, t: Task, why: WaitCause) {
   if (t.why === why) return;
-  waitEnd(s, t);
+  waitEnd(db, s, t);
   t.why = why;
   t.since = s.t;
 }
 
-/** Ожидание задачи кончилось — назначена или снята: отрезок — на её участок и причину, в нынешние сутки. */
-export function waitEnd(s: PlantState, t: Task) {
+/**
+ * Ожидание задачи кончилось — назначена или снята: отрезок — на её участок и причину, в нынешние сутки; с Б1л — и у её
+ * места, с её вещью.
+ */
+export function waitEnd(db: ContentDb, s: PlantState, t: Task) {
   if (!t.why) return;
-  addWait(today(s), t.kind, t.why, s.t - t.since!);
+  addWait(db, s, today(s), t, t.why, s.t - t.since!);
   delete t.why;
   delete t.since;
 }
 
-function addWait(d: DayLoss, kind: TaskKind, why: WaitCause, sec: number) {
-  if (sec <= 0 || PLANNED.has(kind)) return;
-  const w = (d.wait[AREA[kind]] ??= {});
+function addWait(db: ContentDb, s: PlantState, d: DayLoss, t: Task, why: WaitCause, sec: number) {
+  if (sec <= 0 || PLANNED.has(t.kind)) return;
+  const w = (d.wait[AREA[t.kind]] ??= {});
   w[why] = (w[why] ?? 0) + sec;
+  const x = spotOf(d, taskSpot(db, s, t));
+  const c = ((x.wait ??= {})[AREA[t.kind]] ??= {});
+  c[why] = (c[why] ?? 0) + sec;
+  thingAdd(x, why === 'shift' ? 'shift' : 'wait', taskThing(s, t), sec);
+}
+
+// ---------------------------------------------------------------- потери у мест (Б1л)
+
+/** Двор: место того, что не в помещении. */
+export const YARD = 'yard';
+
+/** Сколько суток у мест хранятся вещи; у прошлых суток — сколько вещей у вида (Б1л). */
+export const THINGS_DAYS = 8;
+export const THINGS_TOP = 5;
+
+/** Потери места в сутках `d`: запись — с первой потери. */
+function spotOf(d: DayLoss, spot: string): SpotLoss {
+  return (d.spots[spot] ??= {});
+}
+
+function thingAdd(x: SpotLoss, kind: LossKind, thing: string | undefined, sec: number) {
+  if (!thing || sec <= 0) return;
+  const m = ((x.things ??= {})[kind] ??= {});
+  m[thing] = (m[thing] ?? 0) + sec;
+}
+
+/** Секунды вида `kind` у места `spot` в нынешних сутках — и у вещи `thing`, если она есть (Б1л). */
+export function lossAt(s: PlantState, spot: string, kind: Exclude<LossKind, 'wait' | 'shift'>, sec: number, thing?: string) {
+  if (sec <= 0) return;
+  const x = spotOf(today(s), spot);
+  x[kind] = (x[kind] ?? 0) + sec;
+  thingAdd(x, kind, thing, sec);
+}
+
+/**
+ * Место задачи (Б1л): линия задачи; помещение задачи; зона или стеллаж места паллеты; рампа фуры; помещение точки, где
+ * работа; иначе — двор.
+ */
+export function taskSpot(db: ContentDb, s: PlantState, t: Task): string {
+  if (t.line) return `line:${t.line}`;
+  if (t.room) return t.room;
+  const plan = planOf(db, s.plan);
+  const f = t.from;
+  if (f.kind === 'slot') {
+    const sl = plan.slot[f.id];
+    return sl ? `zone:${sl.group}` : YARD;
+  }
+  if (f.kind === 'truck') {
+    const tr = s.trucks[f.id];
+    return tr ? `dock:${tr.dock}` : YARD;
+  }
+  return roomAt(plan.plant, f.x, f.z) ?? YARD;
+}
+
+/** Партия паллеты: у паллеты с тарой одной партии — она. */
+function lotOfUnit(s: PlantState, unit: string): string | undefined {
+  const u = s.units[unit];
+  if (!u || u.items.length === 0) return undefined;
+  const lot = s.containers[u.items[0]]?.lot;
+  return lot && u.items.every(c => s.containers[c]?.lot === lot) ? lot : undefined;
+}
+
+/**
+ * Вещь задачи (Б1л): серия; заказ покупателя; партия; партия паллеты или паллета; заказ поставщику фуры, вывоз
+ * подрядчика; помещение; кого учат; машина узла.
+ */
+export function taskThing(s: PlantState, t: Task): string | undefined {
+  if (t.batch) return `b:${t.batch}`;
+  if (t.order) return `o:${t.order}`;
+  if (t.lot) return `l:${t.lot}`;
+  if (t.unit) {
+    const lot = lotOfUnit(s, t.unit);
+    return lot ? `l:${lot}` : `u:${t.unit}`;
+  }
+  const tr = t.truck ? s.trucks[t.truck] : t.from.kind === 'truck' ? s.trucks[t.from.id] : undefined;
+  if (tr?.po) return `po:${tr.po}`;
+  if (tr?.waste) return `w:${tr.waste}`;
+  if (t.room) return `r:${t.room}`;
+  if (t.trainee) return `p:${t.trainee}`;
+  if (t.part) return `m:${s.parts[t.part]?.machine ?? t.part}`;
+  return undefined;
+}
+
+/** Вещь перевозки (Б1л): партия паллеты, паллета, иначе — вещь задачи. */
+export function moveThing(s: PlantState, t: Task): string | undefined {
+  if (t.unit) {
+    const lot = lotOfUnit(s, t.unit);
+    return lot ? `l:${lot}` : `u:${t.unit}`;
+  }
+  return taskThing(s, t);
+}
+
+/**
+ * Серию отклонили (Б1л): её работа ушла в брак — часы стадий по записям у их помещений, упаковка — у линии, в сутки
+ * решения; вещь — серия.
+ */
+export function batchLost(s: PlantState, b: Batch) {
+  for (const r of b.records) lossAt(s, r.room, 'defect', r.end - r.start, `b:${b.id}`);
+  const job = b.pack;
+  if (job?.start !== undefined && job.end !== undefined) lossAt(s, `line:${job.line}`, 'defect', job.end - job.start, `b:${b.id}`);
+}
+
+/**
+ * В полночь (Б1л): у ушедших суток у каждого вида места — до пяти вещей с наибольшими секундами, при равных — по имени;
+ * у суток старше восьми вещей нет.
+ */
+function trimThings(s: PlantState, gone: DayLoss, day: number) {
+  for (const x of Object.values(gone.spots)) {
+    if (!x.things) continue;
+    for (const k of Object.keys(x.things) as LossKind[]) {
+      const top = Object.entries(x.things[k]!)
+        .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+        .slice(0, THINGS_TOP);
+      x.things[k] = Object.fromEntries(top);
+    }
+  }
+  for (const d of s.losses) {
+    if (d.day > day - THINGS_DAYS) break;
+    for (const x of Object.values(d.spots ?? {})) delete x.things;
+  }
 }
 
 /**
@@ -152,11 +276,19 @@ export function walked(s: PlantState, dept: Dept, cm: number, sec: number) {
   w.sec += sec;
 }
 
-/** Фура ждала рампы во дворе (3а): от прихода до того, как встала к рампе, — ожидание склада с причиной «рампа занята». */
-export function dockWait(s: PlantState, sec: number) {
+/**
+ * Фура ждала рампы во дворе (3а): от прихода до того, как встала к рампе, — ожидание склада с причиной «рампа занята»;
+ * с Б1л — и у рампы, которую она ждала: вещь — заказ поставщику, вывоз или заказ покупателя.
+ */
+export function dockWait(s: PlantState, sec: number, dock: string, thing?: string) {
   if (sec <= 0) return;
-  const w = (today(s).wait.wms ??= {});
+  const d = today(s);
+  const w = (d.wait.wms ??= {});
   w.dock = (w.dock ?? 0) + sec;
+  const x = spotOf(d, `dock:${dock}`);
+  const c = ((x.wait ??= {}).wms ??= {});
+  c.dock = (c.dock ?? 0) + sec;
+  thingAdd(x, 'wait', thing, sec);
 }
 
 /** Дефекты за сутки: брак камер, отклонения, отклонённые партии и серии. */
@@ -220,9 +352,10 @@ export function leanHour(db: ContentDb, s: PlantState) {
     for (const id of s.open) {
       const t = s.tasks[id];
       if (!t.why) continue;
-      addWait(gone, t.kind, t.why, s.t - t.since!);
+      addWait(db, s, gone, t, t.why, s.t - t.since!);
       t.since = s.t;
     }
+    trimThings(s, gone, now.day);
     dayOf(s, now.day);
   }
   for (const id of roomsOf(planOf(db, s.plan)).rooms) roomSpan(s, s.rooms[id]);

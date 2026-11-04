@@ -57,6 +57,14 @@ export interface JournalRef {
   part?: Id;
   person?: { role: Id; tab: number; n?: number };
   mode?: { recipe?: Id; stage?: string; param?: string; sku?: Id };
+  /**
+   * вещи потерь у места (Б1л): заказ покупателя, вывоз отклонённого, покупатель, помещение — номер или запись базы;
+   * покупатель — и у задания под заказ покупателя (Б6а)
+   */
+  order?: number;
+  waste?: number;
+  customer?: Id;
+  room?: string;
   thing?: Thing;
   /** записка (Б5д): ссылки каждой её команды — по порядку команд */
   cmds?: JournalRef[];
@@ -66,8 +74,6 @@ export interface JournalRef {
   role?: Id;
   /** CAPA (Б5е): номер */
   capa?: number;
-  /** задание под заказ покупателя (Б6а): покупатель */
-  customer?: Id;
   /** правка в замороженном горизонте (Б6е): номера серий заданий, которые кончат позже, — у тех, кому номер выдан */
   codes?: Record<string, string>;
 }
@@ -242,7 +248,7 @@ const unitOf = (s: PlantState, lot: string): number | undefined => {
   return u ? num(u.id) : undefined;
 };
 
-function batchRef(s: PlantState, id: string): JournalRef {
+export function batchRef(s: PlantState, id: string): JournalRef {
   const b: Batch | undefined = s.batches[id];
   const c = b ? batchNo(b.code) : '';
   return { bn: num(id), ...(c ? { code: c } : {}), ...(b?.sku ? { sku: b.sku } : {}) };
@@ -264,14 +270,14 @@ function customerOf(s: PlantState, f: BatchFor | undefined): JournalRef {
   return o ? { customer: o.customer } : {};
 }
 
-function lotRef(s: PlantState, id: string): JournalRef {
+export function lotRef(s: PlantState, id: string): JournalRef {
   const l: Lot | undefined = s.lots[id];
   if (!l) return {};
   const u = unitOf(s, id);
   return { lot: code(l.code), material: l.material, ...(u !== undefined ? { unit: u } : {}), ...(l.batch ? batchRef(s, l.batch) : {}) };
 }
 
-function personRef(s: PlantState, p: Person | undefined): JournalRef {
+export function personRef(s: PlantState, p: Person | undefined): JournalRef {
   if (!p) return {};
   const here = !!s.people[p.id];
   return { person: { role: p.role, tab: p.tab, ...(here ? { n: num(p.id) } : {}) }, ...(here ? { thing: { kind: 'person' as const, n: num(p.id) } } : {}) };

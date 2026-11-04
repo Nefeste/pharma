@@ -592,6 +592,7 @@ export const en: Strings = {
     first: 'The plant has no yesterday: the game began today at 07:00.',
     main: {
       wait: (dept: string, cause: string, t: string) => `${dept}: tasks waited — ${cause} — ${t}`,
+      at: (text: string, place: string) => `${text}; most of all — ${place}`,
       move: (km: string, t: string, empty: string) => `Transport: ${km}, ${t} on the move, empty — ${empty}`,
       walk: (km: string, t: string) => `Walking: ${km}, ${t}`,
     },
@@ -2406,7 +2407,7 @@ export const en: Strings = {
   floor: {
     layers: 'Layers',
     hint: 'L — next layer',
-    layer: { plain: 'Normal view', load: 'Load and OEE', bottle: 'Bottlenecks', andon: 'Problems', people: 'Flows — people' },
+    layer: { plain: 'Normal view', load: 'Load and OEE', bottle: 'Bottlenecks', andon: 'Problems', losses: 'Losses', people: 'Flows — people' },
     win: { today: 'Today', yesterday: 'Yesterday', week: '7 days' },
     winOf: { today: 'today', yesterday: 'yesterday', week: 'over 7 days' },
     part: {
@@ -2482,6 +2483,37 @@ export const en: Strings = {
     po: (po: string, supplier: string) => `purchase order ${po}, ${supplier}`,
     order: (order: string, customer: string, due: string, missing: string) => `order ${order}, ${customer}, due ${due}: ${missing} cases short`,
     clean: (code: string) => `batch ${code} waits for cleaning, operators on shift`,
+  },
+  /**
+   * the “Losses” layer (Б1л): the kind of loss, families of waiting causes, places of the accounting, the column tooltip, the
+   * card’s “Losses” block, the things of losses
+   */
+  losses: {
+    title: 'Losses',
+    pickTitle: 'Kind',
+    pick: { all: 'all', wait: 'waiting', shift: 'no shift', move: 'transport', walk: 'walking', setup: 'cleanings and changeovers', again: 'repeat cleanings', defect: 'defects' },
+    kind: { wait: 'waiting', shift: 'no shift', move: 'transport', walk: 'walking', setup: 'cleanings and changeovers', again: 'repeat cleanings', defect: 'defects' },
+    family: { people: 'people', gear: 'instruments and vehicles', place: 'places' },
+    familyOf: { people: 'busy, on leave, no hours or no admission', gear: 'busy, calibration or qualification', place: 'no free place, dock busy' },
+    legend: 'Hours of losses at places in the window; the largest place is full height',
+    shiftApart: '“No shift” — work waits for the role’s shift to start: this is how shifts are set up, it is not part of “all”',
+    zone: (name: string) => `Zone “${name}”`,
+    rack: (id: string) => `Rack ${id}`,
+    dock: { in: 'Receiving dock', out: 'Dispatch dock' },
+    yard: 'Yard',
+    row: (what: string, t: string) => `${what} — ${t}`,
+    total: (t: string) => `Total — ${t}`,
+    shiftRow: (t: string) => `no shift — ${t}, not part of “all”`,
+    none: 'No losses here in this window',
+    places: 'Places',
+    thing: {
+      batch: (code: string) => `batch ${code}`,
+      lot: (lot: string) => `lot ${lot}`,
+      unit: (n: number) => `pallet ${n}`,
+      order: (n: number) => `customer order ${n}`,
+      po: (what: string) => `delivery: ${what}`,
+      waste: (n: number) => `rejected removal ${n}`,
+    },
   },
   /** the “Indicators” window (Б5ж; game design, §8.6): how the departments work — the heads’ indicators and the records behind each number */
   kpi: {

@@ -27,7 +27,7 @@ export interface BenchOpts {
 }
 
 /** Слои данных, с которыми бенч меряет сцену. */
-export const BENCH_LAYERS = ['load', 'bottle', 'andon'] as const;
+export const BENCH_LAYERS = ['load', 'bottle', 'andon', 'losses'] as const;
 
 /**
  * Сцена спецификации прототипа (критерии приёмки, «3D»): сутки и час завода (сутки — как в верхней полосе, с первых);
@@ -129,7 +129,7 @@ export async function runBench(g: Game, opts: BenchOpts) {
     g.stage.reserve(g.layout.plan.slots.length + SCENE.extra + 256);
     g.extra = stressPallets(g, SCENE.extra);
     g.refreshPallets();
-    // слой данных (Б1и, Б1к): включён до замеров — столбики, таблички или значки на полу из видов «Пол» и «Андон»
+    // слой данных (Б1и, Б1к, Б1л): включён до замеров — столбики, таблички или значки на полу из видов «Пол» и «Андон»
     if (opts.layer) {
       g.actions.setLayer(opts.layer);
       const got = () => (opts.layer === 'andon' ? !!store.get().andon.view : !!store.get().floor.view);

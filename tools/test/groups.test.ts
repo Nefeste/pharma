@@ -42,11 +42,11 @@ describe('поля состояния — группами', () => {
     expect(fields).toContain('planning');
   });
 
-  test('сохранение схемы 46: поля — на местах групп, остальное — как было', () => {
-    const raw = JSON.parse(fixture(46)) as Box;
-    const s = fromSave(db, fixture(46));
+  test('сохранение схемы 47: поля — на местах групп, остальное — как было', () => {
+    const raw = JSON.parse(fixture(47)) as Box;
+    const s = fromSave(db, fixture(47));
     expect(s.schema).toBe(SCHEMA);
-    expect(SCHEMA).toBe(47);
+    expect(SCHEMA).toBe(48);
     for (const [k, to] of MOVED) {
       expect(k in s).toBe(false);
       if (raw[k] === undefined) expect(k in box(s, to)).toBe(false);
@@ -63,7 +63,7 @@ describe('поля состояния — группами', () => {
     expect(Object.keys(s).length).toBe(Object.keys(raw).length - 5 + 1);
   });
 
-  test('образцы всех схем: полей групп верхнего уровня нет, полей — не больше 63; шаги до 47 пишут на новые места', () => {
+  test('образцы всех схем: полей групп верхнего уровня нет, полей — не больше 63; шаги до 48 пишут на новые места', () => {
     expect(versions.at(-1)).toBe(SCHEMA);
     for (const v of versions) {
       const s = fromSave(db, fixture(v));

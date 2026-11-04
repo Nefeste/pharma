@@ -1,12 +1,12 @@
 // Часть 2г: палитры и цветовая слепота (docs/specs/2026-10-view.md, 2г; требования — геймдизайн, §23). Статусы партий,
-// статусы чистоты помещений, лампы машин, части столбиков загрузки (Б1и), вес значков андона (Б1к) и ряды «прогноза
-// против факта» (Б6в) различимы при обычном зрении и в имитации протанопии, дейтеранопии и тританопии (Machado и др.,
-// 2009); оттенки зон — при обычном
-// зрении, а в любом виде зону называет слово на полу. Значок на лампе и пиктограмма андона контрастны с фоном не меньше
-// 3:1 (WCAG 2.1, п. 1.4.11). Модель — src/render/color.ts; здесь же её простые свойства: белый, чёрный и серый,
-// сходство красного и зелёного при дейтеранопии.
+// статусы чистоты помещений, лампы машин, части столбиков загрузки (Б1и) и потерь (Б1л), вес значков андона (Б1к) и
+// ряды «прогноза против факта» (Б6в) различимы при обычном зрении и в имитации протанопии, дейтеранопии и тританопии
+// (Machado и др., 2009); оттенки зон — при обычном зрении, а в любом виде зону называет слово на полу. Значок на лампе
+// и пиктограмма андона контрастны с фоном не меньше 3:1 (WCAG 2.1, п. 1.4.11). Модель — src/render/color.ts; здесь же
+// её простые свойства: белый, чёрный и серый, сходство красного и зелёного при дейтеранопии.
 import { describe, expect, test } from 'bun:test';
 import { PART_COLOR } from '../../src/app/floor';
+import { FAMILY_COLOR, LOSS_COLOR } from '../../src/app/losses';
 import { FC_BG, FC_COLOR } from '../../src/ui/fcchart';
 import { ANDON_COLOR } from '../../src/render/andonicons';
 import { contrast, deltaE, inkOf, labOf, simulate, toLinear, VISIONS } from '../../src/render/color';
@@ -81,6 +81,15 @@ describe('палитры', () => {
     for (const v of VISIONS) {
       const w = worst(PART_COLOR, v);
       expect([v, w.pair, w.min >= STATE_DE]).toEqual([v, w.pair, true]);
+    }
+  });
+
+  test(`части столбиков слоя «Потери» (Б1л): виды и семьи причин ожидания — каждая пара не ближе ${STATE_DE} ΔE во всех видах`, () => {
+    for (const v of VISIONS) {
+      const kinds = worst(LOSS_COLOR, v);
+      expect([v, kinds.pair, kinds.min >= STATE_DE]).toEqual([v, kinds.pair, true]);
+      const fams = worst(FAMILY_COLOR, v);
+      expect([v, fams.pair, fams.min >= STATE_DE]).toEqual([v, fams.pair, true]);
     }
   });
 

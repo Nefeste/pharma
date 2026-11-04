@@ -19,7 +19,7 @@ import type { Batch, Notice, PlantState } from '../../src/engine/types';
 
 const SC = 'scn.proto';
 const RCP = 'rcp.paracetamol500.wet.v1';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const recipe = db.recipes[RCP];
 
 /** Завод без заданий сценария: серии в тесте заказываются вручную. */

@@ -21,7 +21,7 @@ import { blind } from '../../src/engine/plan/twin';
 import { POL } from '../../src/engine/policies';
 import { fromSave } from '../../src/engine/save';
 import { arriveAt, cancelQuote, lateOf, quotePo, supplyPosition, trialLot, windowEnd } from '../../src/engine/supply';
-import type { Notice, PlantState } from '../../src/engine/types';
+import { type Notice, type PlantState, SCHEMA } from '../../src/engine/types';
 import { calOf } from '../../src/engine/workdays';
 import { mrpMeeting, mrpView } from '../../src/sim/mrp';
 import { sopView } from '../../src/sim/sop';
@@ -382,10 +382,10 @@ describe('показатель и виды', () => {
 });
 
 describe('сохранение и сборщик базы', () => {
-  test('образец схемы 44 открывается схемой 45: пары-кандидаты без одобрения, заказы в пути — как были', () => {
+  test('образец схемы 44 открывается нынешней схемой: пары-кандидаты без одобрения, заказы в пути — как были', () => {
     const raw = readFileSync(join(import.meta.dir, 'fixtures/save-v44.json'), 'utf8');
     const s = fromSave(db, raw);
-    expect(s.schema).toBe(45);
+    expect(s.schema).toBe(SCHEMA);
     expect(s.pairs[PAR2]).toEqual({ id: PAR2, supplier: 'sup.api-par2', maker: 'mkr.api-par2', recs: [] });
     expect(Object.values(s.pos).every(p => p.truth === undefined)).toBe(true);
     live(s, 30);

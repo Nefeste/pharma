@@ -40,7 +40,7 @@ import { buildDb } from '../content/load';
 const SC = 'scn.proto';
 const sc = db.scenarios[SC];
 const start = daysFromCivil(sc.start.date);
-const plan = planOf(db, sc.plant);
+const plan = planOf(db, db.plants[sc.plant]);
 const P = placesOf(plan.plant);
 const ahead = sc.assets.ahead;
 // начало партии — в среду: четверг и пятница рабочие, суббота — нет

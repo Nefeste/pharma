@@ -33,7 +33,7 @@ import { scenario } from '../content/schema';
 const SC = 'scn.proto';
 const sc = db.scenarios[SC];
 const w = sc.waste!;
-const plan = planOf(db, sc.plant);
+const plan = planOf(db, db.plants[sc.plant]);
 const rej = plan.byKind.rejected.map(x => x.id);
 const start = daysFromCivil(sc.start.date);
 const cal = calOf(db, { start: sc.start.date, scenario: SC });

@@ -104,7 +104,7 @@ describe('прогон', () => {
     // за час до второй серии: отвешивание убрано после первой больше 72 часов назад
     const st = fresh();
     live(st, at(8, 6));
-    const room = planOf(db, st.plant).roomOf.dispensing;
+    const room = planOf(db, st.plan).roomOf.dispensing;
     expect(readyFor(st.rooms[room], recipe.product, st.t)).toBe(false);
     const f = forecast(db, st);
     expect(f.why.B2).toContainEqual(expect.objectContaining({ why: 'clean', bar: 'dispense', room, cause: 'expired' }));
@@ -206,7 +206,7 @@ describe('призрак', () => {
     const b1 = f.bars.find(b => b.batch === 'B1' && b.stage === 'dispense')!;
     // вторую серию тянут так, чтобы её комплект был готов посреди отвешивания первой
     const g = ghostView(db, s, { view: 'ghost', batch: 'B2', notBefore: b1.from + 15 * MIN });
-    const room = planOf(db, s.plant).roomOf.dispensing;
+    const room = planOf(db, s.plan).roomOf.dispensing;
     expect(g.why).toContainEqual(expect.objectContaining({ why: 'room', bar: 'dispense', room, batch: 'B1', until: b1.to }));
     expect(g.why).toContainEqual(expect.objectContaining({ why: 'clean', bar: 'dispense', room, cause: 'after', batch: 'B1' }));
     const d2 = g.bars.find(b => b.stage === 'dispense')!;
@@ -247,7 +247,7 @@ describe('вид расписания', () => {
     const from = at(7, 0);
     const to = at(15, 0);
     const v = ganttView(db, s, { view: 'gantt', from, to });
-    const plan = planOf(db, s.plant);
+    const plan = planOf(db, s.plan);
     expect(v.rows.map(r => r.id)).toEqual(['kit', 'dispensing', 'granulation', 'blending', 'compression', ...plan.plant.lines.map(l => l.id)]);
     expect(v.bars.every(b => b.to > from && b.from < to)).toBe(true);
     expect(v.bars.some(b => b.when === 'past')).toBe(true);

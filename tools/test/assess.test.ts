@@ -167,7 +167,7 @@ describe('склад ГП на старте', () => {
   test('на две недели спроса, в обороте, на стеллажах; номера серий — с 001 года, счёт завода продолжается; заказы первой недели отгружаются', () => {
     const s = newPlant(game, { scenario: SC });
     const sc = game.scenarios[SC];
-    const plan = planOf(game, sc.plant);
+    const plan = planOf(game, game.plants[sc.plant]);
     const byLot = containersByLot(s);
     for (const k of Object.keys(game.customers[sc.customers[0]].demand)) {
       const sku = game.skus[k];

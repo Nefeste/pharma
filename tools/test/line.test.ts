@@ -19,7 +19,7 @@ const SC = 'scn.proto';
 const RCP = 'rcp.paracetamol500.wet.v1';
 const N10 = 'sku.paracetamol500.n10';
 const N20 = 'sku.paracetamol500.n20';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 
 /** Завод без заданий сценария: серии в тесте заказываются вручную. */
 const bare: ContentDb = { ...db, scenarios: { ...db.scenarios, [SC]: { ...db.scenarios[SC], batches: [] } } };

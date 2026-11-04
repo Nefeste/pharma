@@ -18,7 +18,7 @@ import { fromSave, toSave } from '../../src/engine/save';
 import type { Lot, Notice, PlantState } from '../../src/engine/types';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const API = 'mat.api.paracetamol';
 /** Тот же завод без заданий на серию: путь партии через лабораторию — без балка в очереди и без расхода в серии. */
 const labOnly: ContentDb = { ...db, scenarios: { ...db.scenarios, [SC]: { ...db.scenarios[SC], batches: [] } } };

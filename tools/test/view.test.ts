@@ -14,7 +14,7 @@ import { Packer, unpack } from '../../src/sim/pack';
 import { planErrors } from '../content/plan';
 
 const PLANT = 'plant.proto';
-const plan = planOf(db, PLANT);
+const plan = planOf(db, db.plants[PLANT]);
 const nav = plan.nav;
 
 /** Точки плана: места паллет, рабочие точки помещений, рампы, вход, стоянка. */

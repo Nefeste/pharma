@@ -187,7 +187,7 @@ describe('задания на сутки в окне', () => {
   });
 
   test('карточка помещения и машины линии — строки сегодняшнего задания', () => {
-    const plan = planOf(db, s.plant).plant;
+    const plan = planOf(db, s.plan).plant;
     const cur = s.daily!.at(-1)!;
     const stage = cur.rows.find(r => r.kind === 'stage');
     if (stage) {

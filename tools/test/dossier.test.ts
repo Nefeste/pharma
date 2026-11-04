@@ -28,7 +28,7 @@ import { cardView } from '../../src/sim/views';
 const SC = 'scn.proto';
 const RCP = 'rcp.paracetamol500.wet.v1';
 const r = db.recipes[RCP];
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const at = (stage: string) => r.stages.findIndex(st => st.id === stage);
 const num = (id: string) => Number(id.slice(1));
 const MGST = 'mat.exc.mgst';

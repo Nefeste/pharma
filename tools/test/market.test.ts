@@ -21,7 +21,7 @@ const SC = 'scn.proto';
 const N20 = 'sku.paracetamol500.n20';
 const FG20 = 'mat.fg.paracetamol500-n20';
 const NAT = 'cus.national';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 
 /** Завод без серий и заказов поставщикам; покупатели сами не заказывают: заказы и запас ГП — в тесте. */
 const quiet: ContentDb = {

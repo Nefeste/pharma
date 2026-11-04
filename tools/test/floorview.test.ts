@@ -14,7 +14,7 @@ import { floorView, holdsOf, hourPlan, sumLineDays, WAIT_WHAT, type WaitWhat, wi
 import { lineSum, morningView } from '../../src/sim/report';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const PHASES: RoomPhase[] = ['work', 'clean', 'held', 'dirty', 'free'];
 
 /**

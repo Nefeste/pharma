@@ -8,7 +8,7 @@ import { planOf } from '../../src/engine/plant';
 import { layoutOf, levelY } from '../../src/render/layout';
 import type { PalletView } from '../../src/render/loads';
 
-const plan = planOf(db, 'plant.proto');
+const plan = planOf(db, db.plants['plant.proto']);
 const layout = layoutOf(plan);
 const down = (x: number, z: number): Ray => ({ o: [x, 30, z], d: [0, -1, 0] });
 

@@ -1,0 +1,12 @@
+# Политика начальника ООК (Б5е): CAPA по повтору — с какого такого же отклонения за 12 месяцев. С чего начинает завод —
+# запись сценария `deviations.capa`; пределы — гипотезы: одно отклонение, оценённое «без влияния», — ещё не тренд, а
+# тренды мониторинга — повод для CAPA (ich-q10, п. 3.2.2)
+id: pol.qa.capa
+name: { ru: CAPA по повтору — таких отклонений за 12 месяцев, en: CAPA on a repeat — such deviations within 12 months }
+head: qa
+kind: count
+min: 2
+max: 5
+step: 1
+source: [ich-q10]
+review: draft

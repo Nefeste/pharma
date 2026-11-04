@@ -24,6 +24,7 @@ import {
   ATTRS,
   type AssetWork,
   type Attr,
+  type CapaAction,
   type Cause,
   type ContainerType,
   type ContentDb,
@@ -1001,9 +1002,13 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     const every = Math.min(s.partners.every.api, s.partners.every.excipient, s.partners.every.packaging);
     need(s.partners.ahead + 3 < every * 28, `${where}: partners.ahead — срок предупреждения не короче самого короткого интервала оценки, ${every} мес.`);
     need(s.partners.audit.days + 2 < s.partners.ahead, `${where}: partners — аудит в ${s.partners.audit.days} рабочих дней не уложится в срок предупреждения`);
+    // отклонения (Б5е): у класса строже — срок не длиннее; порог признака — доли 1/10 000 ресурса, как у порога замены
+    const term = s.deviations.term;
+    need(term.critical <= term.major && term.major <= term.minor, `${where}: deviations.term — у критического срок не длиннее, чем у существенного, у существенного — чем у незначительного`);
     const [y, m, d] = s.start.date.split('-').map(Number);
     scenarios[s.id] = {
       ...s,
+      deviations: { ...s.deviations, wear: share(s.deviations.wear) },
       start: { date: { y, m, d }, hour: s.start.hour },
       cash: kop(s.cash),
       credit: { limit: kop(s.credit.limit), spread: share(s.credit.spread) },
@@ -1061,6 +1066,19 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   // политики руководителей (Б5г): порог износа узла — доли 1/10 000 ресурса, как у порога сценария; остальное — как в записи
   const policies: Record<string, Policy> = {};
   for (const p of Object.values(raw.policies)) policies[p.id] = p.kind === 'wear' ? { ...p, min: share(p.min!), max: share(p.max!), step: share(p.step!) } : { ...p };
+  // каталог CAPA (Б5е): одно действие на каждое, что движок умеет делать; порядок правила начальника ООК — без повторов
+  // среди действий, подходящих к одному роду причины, — иначе правило не знает, что следующее
+  const capa: Record<string, CapaAction> = {};
+  const does = new Map<string, string>();
+  for (const c of Object.values(raw.capa)) {
+    need(!does.has(c.does), `CAPA ${c.id}: действие ${c.does} уже есть у ${does.get(c.does)}`);
+    does.set(c.does, c.id);
+    capa[c.id] = { ...c };
+  }
+  for (const cls of ['wear', 'param', 'lots', 'lab', 'none'] as const) {
+    const ranks = Object.values(capa).filter(c => c.rule !== undefined && (c.causes?.includes(cls) ?? false)).map(c => c.rule!);
+    need(new Set(ranks).size === ranks.length, `CAPA: у причины рода ${cls} два действия правила с одним порядком`);
+  }
   // покупатели: дни недели — с нуля (0 — понедельник), спрос — только по позициям из базы
   const customers: Record<string, Customer> = {};
   for (const c of Object.values(raw.customers)) {
@@ -1172,6 +1190,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     makers,
     agreements,
     policies,
+    capa,
   };
 }
 

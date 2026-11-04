@@ -3,14 +3,16 @@
 // это значит для серии, связанные испытания по знаниям завода, оценка и чего не хватает для решения, срок расследования
 // по процедуре завода. Решение по серии на выпуске — условия выпуска (§6.5) и чего не хватает, чтобы выпустить. Режимы
 // в карточке помещения и оборудования — во время стадии цель и диапазон по карте, после — факт из досье.
-import type { ContentDb, Id, ParamUnit } from '../content/types';
+import type { ContentDb, DevClass, Id, ParamUnit } from '../content/types';
 import { batchNo } from '../engine/batchno';
+import { type CapaOption, capaOptions } from '../engine/capa';
+import { dueOf, signsOf } from '../engine/devclass';
 import { DAY, momentOf } from '../engine/core/calendar';
 import { inForce } from '../engine/docs';
 import { setpointOf } from '../engine/modes';
 import { assessBlock, devsOf, type LinkedTest, linkedTests, openDevs } from '../engine/qa';
 import { unitsOfLot } from '../engine/stock';
-import type { Batch, BatchStatus, Deviation, LotStatus, PlantState, Refusal } from '../engine/types';
+import type { AssetFamily, Batch, BatchStatus, Capa, Deviation, Head, LotStatus, PlantState, Refusal } from '../engine/types';
 import { whoDev, type WhoRow } from './journal';
 
 const num = (id: string) => Number(id.slice(1));
@@ -65,6 +67,90 @@ export interface DevCard {
   due: number;
   /** кто решил (Б5а): оценка влияния, решение по партии, вывод расследования */
   who?: WhoRow[];
+  /**
+   * класс (Б5е): по правилу или задан игроком; срок прошёл, а отклонение открыто; вероятная причина, когда записана;
+   * причины с признаком в записях завода — из них выбирает игрок при оценке; CAPA отклонения; действия каталога,
+   * которыми можно ответить, с исполнителем и ценой
+   */
+  cls: DevClass;
+  clsBy?: true;
+  late?: true;
+  cause?: string;
+  signs: string[];
+  capas: CapaRow[];
+  options: CapaChoice[];
+}
+
+/** Узел CAPA для слов окна (Б5е): вид машины и узел в её записи. */
+export interface CapaUnit {
+  machine: Id;
+  part: string;
+}
+
+/** Прибор CAPA для слов окна (Б5е): семейство и класс актива, инвентарный номер. */
+export interface CapaMeter {
+  family: AssetFamily;
+  type: Id;
+  inv: number;
+}
+
+/** Действие каталога у отклонения для окна (Б5е): как у движка, и узел и прибор — для слов. */
+export type CapaChoice = CapaOption & { unit?: CapaUnit; meter?: CapaMeter };
+
+/** Узел и прибор вещи CAPA — для слов окна; ключи движка остаются как есть. */
+function names(s: PlantState, x: { part?: string; asset?: string }): { unit?: CapaUnit; meter?: CapaMeter } {
+  const pt = x.part ? s.parts[x.part] : undefined;
+  const a = x.asset ? s.assets[x.asset] : undefined;
+  return { ...(pt ? { unit: { machine: pt.of, part: pt.type } } : {}), ...(a ? { meter: { family: a.family, type: a.type, inv: a.inv } } : {}) };
+}
+
+/**
+ * CAPA для окна (Б5е): номер, действие, вещь, исполнитель, кто назначил и когда, срок; выполнена — когда и кем; ждёт —
+ * почему; проверка эффективности — когда и с каким итогом, повтор — номер отклонения.
+ */
+export interface CapaRow {
+  n: number;
+  dev: number;
+  action: Id;
+  head: Head;
+  part?: string;
+  docs?: string[];
+  asset?: string;
+  pair?: string;
+  t: number;
+  by: 'player' | 'qa';
+  due: number;
+  done?: number;
+  doneBy?: Head | 'player';
+  why?: Refusal;
+  check?: { t: number; ok: boolean; dev?: number };
+  /** когда проверят эффективность: выполнено + срок процедуры */
+  checkAt?: number;
+  unit?: CapaUnit;
+  meter?: CapaMeter;
+}
+
+/** CAPA в строку окна. */
+export function capaRow(db: ContentDb, s: PlantState, c: Capa): CapaRow {
+  const span = db.scenarios[s.scenario].deviations.check * DAY;
+  return {
+    n: num(c.id),
+    dev: num(c.dev),
+    action: c.action,
+    head: c.head,
+    ...(c.part ? { part: c.part } : {}),
+    ...(c.docs ? { docs: c.docs } : {}),
+    ...(c.asset ? { asset: c.asset } : {}),
+    ...(c.pair ? { pair: c.pair } : {}),
+    t: c.t,
+    by: c.by,
+    due: c.due,
+    ...(c.done !== undefined ? { done: c.done, checkAt: c.done + span } : {}),
+    ...(c.doneBy ? { doneBy: c.doneBy } : {}),
+    ...(c.why ? { why: c.why } : {}),
+    ...(c.check ? { check: { t: c.check.t, ok: c.check.ok, ...(c.check.dev ? { dev: num(c.check.dev) } : {}) } } : {}),
+    ...names(s, c),
+  };
 }
 
 /** Первая паллета ГП серии — к ней ведёт решение по серии. */
@@ -91,7 +177,16 @@ export function devCard(db: ContentDb, s: PlantState, n: number): DevCard | unde
     equipment: (rec?.equipment ?? []).map(id => s.equipment[id]?.type ?? id),
     people: (rec?.people ?? []).flatMap(id => (s.people[id] ? [{ role: s.people[id].role, tab: s.people[id].tab }] : [])),
     linked: linkedTests(db, s, d),
-    due: d.opened + db.scenarios[s.scenario].deviations.term * DAY,
+    due: dueOf(db, s, d),
+    cls: d.cls,
+    ...(d.clsBy ? { clsBy: true as const } : {}),
+    ...(d.late ? { late: true as const } : {}),
+    ...(d.cause !== undefined ? { cause: d.cause } : {}),
+    signs: signsOf(db, s, d),
+    capas: Object.values(s.capas)
+      .filter(c => c.dev === d.id)
+      .map(c => capaRow(db, s, c)),
+    options: capaOptions(db, s, d).map(o => ({ ...o, ...names(s, o) })),
   };
   if (b) {
     const unit = fgUnit(s, b);

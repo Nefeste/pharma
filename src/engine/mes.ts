@@ -11,6 +11,7 @@ import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
 import { HOUR, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
+import { openClass, reclass } from './devclass';
 import { inForce } from './docs';
 import { incidentParams, incidentScreen } from './investigation';
 import { noteCmd } from './journal';
@@ -724,11 +725,13 @@ function cleanDone(s: PlantState, room: Room) {
   delete room.washed;
 }
 
-export function deviate(s: PlantState, notices: Notice[], d: Omit<Deviation, 'id' | 'opened' | 'status'>) {
-  const dev: Deviation = { id: nextId(s, 'D'), opened: s.t, status: 'open', ...d };
+export function deviate(s: PlantState, notices: Notice[], d: Omit<Deviation, 'id' | 'opened' | 'status' | 'cls'>) {
+  const dev: Deviation = { id: nextId(s, 'D'), opened: s.t, status: 'open', cls: openClass(d.kind), ...d };
   s.deviations[dev.id] = dev;
+  // класс (Б5е): по виду, а повтор за 12 месяцев поднимает незначительное до существенного
+  reclass(s, dev);
   defect(s, 'deviations');
-  notices.push({ kind: 'deviation', id: dev.id, what: dev.kind, code: dev.batch ? batchNo(s.batches[dev.batch].code) : '' });
+  notices.push({ kind: 'deviation', id: dev.id, what: dev.kind, code: dev.batch ? batchNo(s.batches[dev.batch].code) : '', cls: dev.cls });
 }
 
 /** Что сделала задача производства, когда кончилась. Не задача производства — `false`. */

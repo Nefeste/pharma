@@ -7,6 +7,7 @@
 import type { ContentDb } from '../content/types';
 import { schedule } from './core/agenda';
 import { MIN, momentOf } from './core/calendar';
+import { openClass } from './devclass';
 import { inForce } from './docs';
 import { incidentMeasured, invTestDone, modelFor, openInvestigation } from './investigation';
 import { note } from './journal';
@@ -248,8 +249,12 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
         return true;
       } else {
         setLotStatus(s, lot, 'rejected');
-        // партию отклонили — отклонение решено с ней, у балка — и открытые отклонения серии (Б1г): оценивать нечего
-        const d: Deviation = { id: nextId(s, 'D'), opened: s.t, kind: 'oos', lot: lot.id, tests: out, status: 'closed' };
+        // партию отклонили — отклонение решено с ней, у балка — и открытые отклонения серии (Б1г): оценивать нечего. Класс
+        // (Б5е); у купленной партии — материал для подписи повтора и причина «партия поставщика», у своей — «не
+        // установлена»; начальник ООК посмотрит, нужна ли CAPA
+        const own = lot.batch !== undefined;
+        const method = s.tests[out[0]]?.method;
+        const d: Deviation = { id: nextId(s, 'D'), opened: s.t, kind: 'oos', lot: lot.id, ...(own ? {} : { material: lot.material }), tests: out, ...(method ? { test: method } : {}), status: 'closed', cls: openClass('oos'), cause: own ? 'none' : 'lot', capaDue: 'rule' };
         if (lot.batch) for (const x of openDevs(s, s.batches[lot.batch])) x.status = 'closed';
         s.deviations[d.id] = d;
         defect(s, 'deviations');

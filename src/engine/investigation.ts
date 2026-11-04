@@ -8,6 +8,7 @@ import type { Attr, ContentDb, FindingRead, Id, IncidentRoot, InvFinding, InvMod
 import { batchNo } from './batchno';
 import { decider, skillOf, thresholdBy } from './bosses';
 import { MIN } from './core/calendar';
+import { openClass, reclass } from './devclass';
 import { P_ONE } from './core/rng';
 import { modeOf, moot, propose, seenAt } from './heads';
 import { expectedGain, posterior, quantize } from './infer';
@@ -192,7 +193,7 @@ function truthOf(db: ContentDb, s: PlantState, m: InvModel, b: Batch, lot: Lot):
 export function openInvestigation(db: ContentDb, s: PlantState, m: InvModel, lot: Lot, out: string[], notices: Notice[]) {
   const b = s.batches[lot.batch!];
   const id = nextId(s, 'I');
-  const d = { id: nextId(s, 'D'), opened: s.t, kind: 'oos' as const, lot: lot.id, batch: b.id, tests: out, status: 'open' as const, inv: id };
+  const d = { id: nextId(s, 'D'), opened: s.t, kind: 'oos' as const, lot: lot.id, batch: b.id, tests: out, test: s.tests[out[0]]?.method ?? m.test, status: 'open' as const, inv: id, cls: openClass('oos') };
   s.deviations[d.id] = d;
   defect(s, 'deviations');
   const inc = s.incident;
@@ -416,7 +417,12 @@ function close(db: ContentDb, s: PlantState, inv: Investigation, cause: string, 
   const m = modelOf(db, inv);
   inv.status = 'closed';
   inv.conclusion = { cause, fate, by, t: s.t };
-  s.deviations[inv.deviation].status = 'closed';
+  // вероятная причина (Б5е) — вывод: причина базы версии, у ошибки лаборатории — `lab`; начальник ООК назначит CAPA
+  const dev = s.deviations[inv.deviation];
+  dev.status = 'closed';
+  dev.cause = m.candidates.find(c => c.id === cause)?.cause ?? 'lab';
+  dev.capaDue = 'rule';
+  reclass(s, dev);
   // прибор проверили и наладили: его отметка о сбое закрыта вместе с расследованием
   const inst = s.tests[inv.test].inst;
   if (inst) delete s.instruments[inst].check;

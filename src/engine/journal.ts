@@ -88,7 +88,9 @@ export function recordOf(s: PlantState, n: number): Decision | undefined {
 export function seatOf(s: PlantState, cmd: Command, dept?: Dept): SeatId | undefined {
   const h = held(s);
   if (!h) return undefined;
-  const own = ownerOf(cmd, dept);
+  // исполнение CAPA (Б5е) — пост отдела её исполнителя
+  const c = cmd.kind === 'capaRun' ? s.capas?.[cmd.capa] : undefined;
+  const own = c ? HEAD_SEAT[c.head] : ownerOf(cmd, dept);
   return own && h.includes(own) ? own : 'director';
 }
 

@@ -398,7 +398,14 @@ export interface Actions {
    * пояснение при первом событии — «Понятно»
    */
   release(batch: string, decision: 'release' | 'reject' | 'hold'): void;
-  assess(dev: string, verdict: 'none' | 'reject'): void;
+  assess(dev: string, verdict: 'none' | 'reject', cause?: string): void;
+  /**
+   * отклонения и CAPA (Б5е): класс отклонения — команда `classify`; CAPA из каталога — `capa`; выполнить CAPA отдела, чей
+   * пост у игрока, — `capaRun`
+   */
+  classify(dev: string, cls: 'critical' | 'major' | 'minor'): void;
+  capa(dev: string, action: string): void;
+  capaRun(capa: string): void;
   /** уставка режима стадии карты или скорости блистерной позиции (Б1ж) — команда `setpoint` */
   setpoint(x: { recipe: Id; stage: string; param: string; value: number } | { sku: Id; value: number }): void;
   urgent(recipe: Id, sku: Id): void;

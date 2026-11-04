@@ -6,11 +6,8 @@ import type { Dept, Id, OvertimeMode, Scenario, SeatId } from '../content/types'
 import { DEPT_SEAT } from '../engine/seats';
 import type { HeldRow, MainLoss, PendingDev, RiskRow } from '../sim/report';
 
-/**
- * Что будет: стройка (Б7), политики продаж и классификация отклонений с CAPA (Б5), план под спрос — S&OP (Б6); часть
- * и слова — в src/i18n/.
- */
-export const LATERS = ['build', 'sales', 'sop', 'capa'] as const;
+/** Что будет: стройка (Б7), политики продаж (Б5), план под спрос — S&OP (Б6); часть и слова — в src/i18n/. */
+export const LATERS = ['build', 'sales', 'sop'] as const;
 export type Later = (typeof LATERS)[number];
 
 /**
@@ -95,9 +92,9 @@ export function riskLevers(r: RiskRow, sc: Pick<Scenario, 'plan'>, held: readonl
   return [...out, ...later('sales', 'sop')];
 }
 
-/** Отклонение: оценить в его карточке, а решает расследование — его доска; будут классификация и CAPA. */
+/** Отклонение: оценить в его карточке — там же класс, причина и CAPA (Б5е), — а решает расследование — его доска. */
 export function devLevers(d: Pick<PendingDev, 'dev' | 'inv'>): Lever[] {
-  return [d.inv ? { k: 'inv', id: d.inv, seat: 'quality' } : { k: 'dev', n: d.dev, seat: 'quality' }, ...later('capa')];
+  return [d.inv ? { k: 'inv', id: d.inv, seat: 'quality' } : { k: 'dev', n: d.dev, seat: 'quality' }];
 }
 
 /**

@@ -8,6 +8,7 @@ import type { Ymd } from '../engine/core/calendar';
 import type { KpiHead, KpiUnit } from '../engine/kpi';
 import { dayText, hText, money, named, num, pctText, T, whenText } from '../i18n';
 import { HIST, type KpiCell, type KpiMark, type KpiMonthRef, type KpiView, type KpiWhyRow } from '../sim/kpi';
+import { capaName } from './capa';
 import { db } from './db';
 import { policyName, policyText } from './policy';
 import type { Actions, Hud } from './store';
@@ -239,6 +240,12 @@ function whyOf(r: KpiWhyRow, start: Ymd, actions: Actions): { text: string; go?:
     }
     case 'cpk':
       return { text: R.cpk(named(db?.recipes[r.recipe]?.name, r.recipe), named(db?.tests[r.test]?.name, r.test), num(r.cpk / 10000, 2), r.n) };
+    case 'capa':
+      // проверка эффективности CAPA (Б5е): к карточке отклонения
+      return {
+        text: [R.capa(T.dev.no(r.dev), r.ok, r.rep !== undefined ? T.dev.no(r.rep) : ''), capaName(r.action), whenText(start, r.t)].join(' · '),
+        go: () => actions.select({ kind: 'dev', n: r.dev }),
+      };
   }
 }
 

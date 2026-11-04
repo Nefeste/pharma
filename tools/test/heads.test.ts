@@ -107,9 +107,10 @@ describe('«советует»', () => {
     const b = fresh();
     apply(db, b, { kind: 'seat', seats: ['production'] });
     const n = liveAccepting(b, end);
-    // задания на серию, замена узла по наработке, вакансия и приём — все предложены и приняты
+    // задания на серию, замена узла по наработке, вакансия и приём, с Б5е — CAPA начальника производства по выводу
+    // расследования: все предложены и приняты
     const kinds = new Set(asks(b).map(r => r.d.kind));
-    expect([...kinds].sort()).toEqual(['hire', 'order', 'replace', 'vacancy']);
+    expect([...kinds].sort()).toEqual(['capaRun', 'hire', 'order', 'replace', 'vacancy']);
     expect(asks(b).every(r => r.ask!.end?.how === 'ok' && r.ask!.end.seat === 'production')).toBe(true);
     expect(asks(b).length).toBe(n);
     // записи журнала — те же мгновения, руководители и причины; номера вещей — те же

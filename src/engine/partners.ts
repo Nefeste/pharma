@@ -16,6 +16,7 @@ import { fnv1a } from './core/hash';
 import { type DocKind, inForce, revisions } from './docs';
 import { note } from './journal';
 import { planOf } from './plant';
+import { numOf, POL } from './policies';
 import { QA } from './qa';
 import { planUse } from './supply';
 import { addTask } from './tasks';
@@ -235,30 +236,40 @@ function suspended(s: PlantState, day: number, notices: Notice[]) {
 
 /**
  * Коллега качества (Б3г): у пары из действующей спецификации, у которой есть одобрение и оно кончится в срок
- * предупреждения (или уже кончилось), а оценка не назначена, — оценка. Аудит: аудитор у изготовителя с 09:00 ближайшего
- * рабочего дня на `days` рабочих дней, отчёт — в 17:00 последнего; по документам — сразу задача специалисту ООК.
+ * предупреждения (или уже кончилось), а оценка не назначена, — оценка. Срок предупреждения — политика начальника ООК
+ * (Б5е); с чего начинает завод — запись сценария.
  */
 function book(db: ContentDb, s: PlantState, today: number, who: Who) {
-  const sc = db.scenarios[s.scenario];
+  const ahead = numOf(db, s, POL.pairAhead)!;
   const live = new Set<string>();
   for (const m of Object.values(db.materials)) if (STARTING.has(m.kind)) for (const x of specPairs(db, m.id, today)) live.add(pairKey(x.supplier, x.maker));
-  const base = (day: number) => (day - daysFromCivil(s.start)) * DAY;
   for (const p of Object.values(s.pairs)) {
     const last = p.recs[p.recs.length - 1];
-    if (p.eval || !last || !live.has(p.id) || last.until - today > sc.partners.ahead) continue;
-    const how = howOf(db, p.supplier, p.maker);
-    // журнал решений (Б5а): начальник ООК — до какого дня одобрение и срок предупреждения
-    note(s, 'qa', { kind: 'pairEval', pair: p.id, how, why: { until: last.until, ahead: sc.partners.ahead } }, undefined, undefined, who);
-    if (how === 'audit') {
-      const cal = calOf(db, s);
-      const from = base(addWorkdays(cal, today, 1)) + AUDIT_FROM;
-      const to = base(addWorkdays(cal, today, sc.partners.audit.days)) + AUDIT_TO;
-      p.eval = { how, booked: s.t, from, to, v: 1 };
-      schedule(s.agenda, to, { kind: 'audit', pair: p.id, v: 1 });
-    } else {
-      p.eval = { how, booked: s.t, v: 0 };
-      p.eval.task = review(db, s, p.id, sc.partners.docs.review);
-    }
+    if (p.eval || !last || !live.has(p.id) || last.until - today > ahead) continue;
+    // журнал решений (Б5а): начальник ООК — до какого дня одобрение и срок предупреждения по его политике (Б5е)
+    note(s, 'qa', { kind: 'pairEval', pair: p.id, how: howOf(db, p.supplier, p.maker), why: { until: last.until, ahead } }, undefined, undefined, who);
+    bookEval(db, s, p, today);
+  }
+}
+
+/**
+ * Назначить оценку пары (Б3г; с Б5е — и по CAPA): аудит — аудитор у изготовителя с 09:00 ближайшего рабочего дня на
+ * `days` рабочих дней, отчёт — в 17:00 последнего; по документам — сразу задача специалисту ООК. Как оценивают — по роду
+ * материалов пары.
+ */
+export function bookEval(db: ContentDb, s: PlantState, p: Pair, today: number) {
+  const sc = db.scenarios[s.scenario];
+  const how = howOf(db, p.supplier, p.maker);
+  const base = (day: number) => (day - daysFromCivil(s.start)) * DAY;
+  if (how === 'audit') {
+    const cal = calOf(db, s);
+    const from = base(addWorkdays(cal, today, 1)) + AUDIT_FROM;
+    const to = base(addWorkdays(cal, today, sc.partners.audit.days)) + AUDIT_TO;
+    p.eval = { how, booked: s.t, from, to, v: 1 };
+    schedule(s.agenda, to, { kind: 'audit', pair: p.id, v: 1 });
+  } else {
+    p.eval = { how, booked: s.t, v: 0 };
+    p.eval.task = review(db, s, p.id, sc.partners.docs.review);
   }
 }
 

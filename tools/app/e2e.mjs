@@ -59,11 +59,12 @@
 // «Вывоз отходов». Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png. Первая неделя
 // (docs/specs/2026-10-vertical-slice.md): путь новичка от «Кем вы будете» до «За эту игру» на планёрке 8 сентября в
 // чистом окне — tools/app/e2e-week.mjs.
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findChromium } from './e2e-lib.mjs';
+import { capaPart } from './e2e-capa.mjs';
 import { memoPart } from './e2e-memo.mjs';
 import { weekPart } from './e2e-week.mjs';
 import { serve } from './serve.mjs';
@@ -269,7 +270,8 @@ const answerAsks = async (no = () => false) => {
 };
 
 // части: основная — всё, что выше в шапке; «Первая неделя» — путь новичка в чистом окне (tools/app/e2e-week.mjs);
-// «Записки и вопросы» (Б5д) — два чистых окна (tools/app/e2e-memo.mjs). `--only main`, `week` или `memo` — одна из них
+// «Записки и вопросы» (Б5д) — два чистых окна (tools/app/e2e-memo.mjs); «CAPA» (Б5е) — чистое окно поста «Качество»
+// (tools/app/e2e-capa.mjs). `--only main`, `week`, `memo` или `capa` — одна из них
 const only = arg('only', '');
 try {
   // основная часть кончилась — её страницу закрыть: она рисует кадры и отняла бы у других частей процессор
@@ -279,6 +281,7 @@ try {
   } else await page.close();
   if (only === '' || only === 'week') await weekPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'memo') await memoPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'capa') await capaPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

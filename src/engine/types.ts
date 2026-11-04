@@ -1,13 +1,13 @@
 // Состояние завода и обмен с движком (docs/02-architecture.md, §1, §3, §7; docs/specs/2026-10-engine.md). Состояние —
 // обычный сериализуемый объект: сохранение — его снимок со схемой и миграциями (ADR студии 0004). Сущности — словари с
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
-import type { Attr, Dept, HeadId, Id, IncidentRoot, OvertimeMode, SeatId, TaskKind, ZoneKind } from '../content/types';
+import type { Attr, Dept, DevClass, HeadId, Id, IncidentRoot, OvertimeMode, SeatId, TaskKind, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 37;
+export const SCHEMA = 38;
 
 // ---------------------------------------------------------------- склад
 
@@ -201,7 +201,7 @@ export interface Deviation {
   batch?: string;
   /** стадия серии */
   stage?: string;
-  /** испытания вне пределов; методика МОК; режим; материал сверки */
+  /** испытания вне пределов; методика МОК, с Б5е — и методика результата вне спецификации; режим; материал сверки и купленной партии */
   tests?: string[];
   test?: Id;
   param?: string;
@@ -216,6 +216,48 @@ export interface Deviation {
   inv?: string;
   /** оценка влияния (Б1г), пока идёт или когда сделана */
   assess?: DevAssess;
+  /**
+   * класс (Б5е; src/engine/capa.ts): по правилу ООК при открытии и пересмотре; `clsBy` — задан командой `classify`, и
+   * правило его больше не пересматривает
+   */
+  cls: DevClass;
+  clsBy?: true;
+  /**
+   * вероятная причина (Б5е): при оценке — причина базы, чей признак есть в записях завода, или `none` — «не установлена»;
+   * у расследования — его вывод: причина базы или `lab` — ошибка лаборатории; у партии поставщика вне спецификации —
+   * `lot`. Ещё не оценено — нет
+   */
+  cause?: string;
+  /** срок отклонения прошёл, а оно открыто, — извещение уже было (Б5е) */
+  late?: true;
+  /** начальнику ООК — посмотреть, нужна ли CAPA (Б5е): после вывода и оценки — `rule`, после неэффективной CAPA — `next` */
+  capaDue?: 'rule' | 'next';
+}
+
+/**
+ * CAPA (Б5е; геймдизайн, §6.4): действие каталога по отклонению — что именно (узел, документы, прибор, пара), кто
+ * исполняет — руководитель отдела действия; кто назначил и когда, срок;
+ * выполнено — когда и кто, с какого места игрока; не прошло у руководителя — причина движка, CAPA ждёт; проверка
+ * эффективности — когда, эффективна ли и, если нет, первое повторное отклонение.
+ */
+export interface Capa {
+  id: string;
+  dev: string;
+  action: Id;
+  /** вещь действия: узел (`<машина>/<узел>`), коды документов и кого учить, актив прибора, пара «поставщик — изготовитель» */
+  part?: string;
+  docs?: string[];
+  people?: string[];
+  asset?: string;
+  pair?: string;
+  head: Head;
+  t: number;
+  by: 'player' | 'qa';
+  due: number;
+  done?: number;
+  doneBy?: Head | 'player';
+  why?: Refusal;
+  check?: { t: number; ok: boolean; dev?: string };
 }
 
 /**
@@ -228,6 +270,8 @@ export interface DevAssess {
   t: number;
   task?: string;
   done?: number;
+  /** вероятная причина, которую назвал тот, кто оценивал (Б5е): ляжет в отклонение, когда оценка сделана */
+  cause?: string;
 }
 
 /**
@@ -1445,8 +1489,19 @@ export type Decided =
   | { kind: 'step'; inv: string; step: string; why?: StepWhy }
   /** вывод расследования: версия, её вероятность и порог, доли 1/10 000; ошибка лаборатории доказана */
   | { kind: 'conclude'; inv: string; cause: string; fate: 'reject' | 'release'; why?: { p: number; threshold: number; model?: number; proven: boolean } }
-  /** оценка влияния отклонения: связанные испытания серии */
-  | { kind: 'assess'; dev: string; verdict: 'none' | 'reject'; why?: { tests: TestWhy[] } }
+  /** оценка влияния отклонения: связанные испытания серии; вероятная причина и причины с признаком в записях (Б5е) */
+  | { kind: 'assess'; dev: string; verdict: 'none' | 'reject'; cause?: string; why?: { tests: TestWhy[]; signs?: string[] } }
+  /** класс отклонения (Б5е): прежний и новый */
+  | { kind: 'classify'; dev: string; from: DevClass; to: DevClass }
+  /**
+   * CAPA назначена (Б5е): действие и отклонение; у начальника ООК — правило: вывод расследования, повтор — сколько таких
+   * за 12 месяцев и порог политики, следующее после неэффективной CAPA
+   */
+  | { kind: 'capa'; capa?: string; dev: string; action: Id; why?: { rule: 'inv' | 'repeat' | 'next'; n?: number; of?: number; prev?: string } }
+  /** CAPA выполнена (Б5е): исполнитель — руководитель отдела действия; у «заменять раньше» порог политики был и стал, доли 1/10 000 */
+  | { kind: 'capaRun'; capa: string; action: Id; head: Head; from?: PolicyValue; to?: PolicyValue }
+  /** проверка эффективности CAPA (Б5е): эффективна или повтор — первое такое же отклонение после выполнения */
+  | { kind: 'capaCheck'; capa: string; ok: boolean; days: number; dev?: string }
   /** оценка пары «поставщик — изготовитель»: до какого дня одобрение и срок предупреждения, суток */
   | { kind: 'pairEval'; pair: string; how: 'audit' | 'docs'; why: { until: number; ahead: number } }
   /**
@@ -1527,12 +1582,13 @@ export type ForkOpt = 'wait' | 'move' | 'after' | 'now' | 'lead' | 'self';
  */
 export type PolicyValue = number | string | [number, number];
 
-/** Смена политики (Б5г): какая, у какой вещи, когда и с какого места игрока, прежнее и новое значение. */
+/** Смена политики (Б5г): какая, у какой вещи, когда и с какого места игрока или по какой CAPA (Б5е), прежнее и новое значение. */
 export interface PolicySet {
   policy: Id;
   of?: string;
   t: number;
   seat?: SeatId;
+  capa?: string;
   from: PolicyValue;
   to: PolicyValue;
 }
@@ -1665,6 +1721,8 @@ export interface PlantState {
   samples: Record<string, Sample>;
   tests: Record<string, LabTest>;
   deviations: Record<string, Deviation>;
+  /** CAPA по отклонениям (Б5е; src/engine/capa.ts): по номерам `C…`, все — их немного */
+  capas: Record<string, Capa>;
   /** расследования результатов вне спецификации (часть 4); происшествие сценария — скрытое */
   investigations: Record<string, Investigation>;
   /** счёт номеров серий по коду продукта: год последнего досье и последний номер по порядку (src/engine/batchno.ts) */
@@ -1845,7 +1903,7 @@ export type Command =
    * оценка влияния отклонения (Б1г): пост качества решает, специалист ООК делает работу; «без влияния» — только когда
    * связанные испытания серии готовы и в спецификации
    */
-  | { kind: 'assess'; deviation: string; verdict: 'none' | 'reject'; by?: string }
+  | { kind: 'assess'; deviation: string; verdict: 'none' | 'reject'; cause?: string; by?: string }
   /** упаковать балк серии в товарную позицию — когда балк разрешат */
   | { kind: 'pack'; batch: string; sku: Id }
   /**
@@ -1928,7 +1986,13 @@ export type Command =
   /** отозвать записку без ответа (Б5д): номер записи журнала */
   | { kind: 'withdraw'; n: number }
   /** ответ на вопрос «Просят решить» (Б5д): номер записи развилки и вариант; у переноса визита — день, как у `visit` */
-  | { kind: 'answer'; n: number; opt: ForkOpt; day?: number };
+  | { kind: 'answer'; n: number; opt: ForkOpt; day?: number }
+  /** класс отклонения (Б5е): пост «Качество»; заданный класс правило больше не пересматривает */
+  | { kind: 'classify'; deviation: string; cls: DevClass; by?: string }
+  /** назначить CAPA по отклонению (Б5е): действие каталога — пост «Качество» */
+  | { kind: 'capa'; deviation: string; action: Id; by?: string }
+  /** выполнить CAPA (Б5е): пост отдела её исполнителя */
+  | { kind: 'capaRun'; capa: string; by?: string };
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
@@ -2051,7 +2115,18 @@ export type Refusal =
   /** вопрос (Б5д): такой развилки нет; на неё ответили или она решилась сама; такого варианта у развилки нет */
   | 'noQ'
   | 'qDone'
-  | 'qOpt';
+  | 'qOpt'
+  /**
+   * CAPA (Б5е): такого класса или действия нет; действие не подходит к отклонению или его нечем выполнить; у цепочки уже
+   * есть CAPA, которую ещё не проверили; такой CAPA нет; она уже выполнена; причины без признака в записях
+   */
+  | 'noCls'
+  | 'noAction'
+  | 'capaFit'
+  | 'capaOpen'
+  | 'noCapa'
+  | 'capaDone'
+  | 'noSign';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
@@ -2089,8 +2164,17 @@ export type Notice =
   | { kind: 'lotRejected'; lot: string; deviation: string }
   /** серия сделана: балк в карантине */
   | { kind: 'batchBulk'; batch: string; lot: string }
-  /** открыто отклонение производства: МОК, режим, выход, сверка; номер серии — для слов извещения */
-  | { kind: 'deviation'; id: string; what: Deviation['kind']; code: string }
+  /** открыто отклонение производства: МОК, режим, выход, сверка; номер серии — для слов извещения; класс (Б5е) — автопауза */
+  | { kind: 'deviation'; id: string; what: Deviation['kind']; code: string; cls: DevClass }
+  /** срок отклонения прошёл, а оно открыто (Б5е): посту «Качество» */
+  | { kind: 'devLate'; id: string; cls: DevClass; code: string }
+  /**
+   * CAPA (Б5е): назначена — по какому отклонению, действие и кто исполняет; выполнена; проверка эффективности —
+   * эффективна или нет, повтор — первое такое же отклонение после выполнения
+   */
+  | { kind: 'capa'; id: string; dev: string; action: Id; head: Head }
+  | { kind: 'capaDone'; id: string; dev: string; action: Id; head: Head }
+  | { kind: 'capaCheck'; id: string; dev: string; ok: boolean; rep?: string }
   /** серия упакована: ГП в карантине */
   | { kind: 'batchPacked'; batch: string; lot: string }
   /** решение уполномоченного лица: выпущена, отклонена, держать */

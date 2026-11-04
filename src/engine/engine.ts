@@ -12,6 +12,7 @@ import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
 import { deputyCommand } from './bosses';
+import { capaCommand, capaHour, capaRunCommand, classifyCommand } from './capa';
 import { answerFork, askDue, forksStep } from './forks';
 import { answerCommand, headsDay, modeCommand, newHeads } from './heads';
 import { hireCommand, hireHour } from './hire';
@@ -85,6 +86,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     samples: {},
     tests: {},
     deviations: {},
+    capas: {},
     investigations: {},
     batchNos: {},
     rooms: {},
@@ -369,6 +371,25 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       answerFork(s, cmd, notices, c => command(db, s, c));
       return notices;
     }
+    case 'classify': {
+      // класс отклонения (Б5е): срок по новому классу — раздавать нечего
+      const notices: Notice[] = [];
+      classifyCommand(s, cmd, notices);
+      return notices;
+    }
+    case 'capa': {
+      // CAPA назначена (Б5е): исполнитель выполнит её в свой час — раздавать нечего
+      const notices: Notice[] = [];
+      capaCommand(db, s, cmd, notices);
+      return notices;
+    }
+    case 'capaRun': {
+      // CAPA выполнена (Б5е): замена, обучение, визит или оценка — их задачи в раздачу
+      const notices: Notice[] = [];
+      capaRunCommand(db, s, cmd, notices);
+      steps(db, s, notices);
+      return notices;
+    }
   }
 }
 
@@ -470,6 +491,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       // (Б5в), — в первый час, когда есть кому решить
       devHour(db, s, notices);
       invStep(db, s, notices);
+      // отклонения и CAPA (Б5е): срок отклонения, CAPA по правилу начальника ООК, исполнители в свой час, проверки
+      capaHour(db, s, notices, c => command(db, s, c));
       lineStep(db, s, notices);
       qaStep(db, s);
       marketStep(db, s, notices);

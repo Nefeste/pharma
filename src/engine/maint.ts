@@ -18,7 +18,7 @@ import { expo, roll } from './random';
 import { nextId } from './stock';
 import { etaOf } from './supply';
 import { addTask } from './tasks';
-import type { Command, Notice, Part, PlantState, Task } from './types';
+import type { Command, Notice, Part, PlantState, Refusal, Task } from './types';
 
 /** Запас до отказа считается в 10⁻¹² отказа: средний запас — один отказ. */
 export const ONE_FAILURE = 1_000_000_000_000;
@@ -254,8 +254,18 @@ export function maintDone(db: ContentDb, s: PlantState, t: Task, notices: Notice
 export function maintainCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'maintain' }>, notices: Notice[]) {
   const pt = s.parts[`${cmd.machine}/${cmd.part}`];
   if (!pt) return notices.push({ kind: 'refused', cmd: 'maintain', why: 'noPart', detail: `${cmd.machine}/${cmd.part}` });
-  if (pt.state !== 'ok' || pt.task || pt.plan) return notices.push({ kind: 'refused', cmd: 'maintain', why: 'busy', detail: pt.id });
-  if (free(s, partType(db, pt).spare) <= 0) return notices.push({ kind: 'refused', cmd: 'maintain', why: 'noSpare', detail: pt.id });
-  pt.plan = 'player';
+  const why = planReplace(db, s, pt, 'player');
+  if (why) return notices.push({ kind: 'refused', cmd: 'maintain', why, detail: pt.id });
   noteCmd(s, cmd, { kind: 'replace', part: pt.id });
+}
+
+/**
+ * Решить замену узла вне отказа — как только машина свободна (Б1е; с Б5е — и по CAPA «заменить узел»): узел цел, его не
+ * чинят и замена ещё не решена, в мастерской есть свободная запчасть. Нельзя — причина.
+ */
+export function planReplace(db: ContentDb, s: PlantState, pt: Part, by: NonNullable<Part['plan']>): Refusal | undefined {
+  if (pt.state !== 'ok' || pt.task || pt.plan) return 'busy';
+  if (free(s, partType(db, pt).spare) <= 0) return 'noSpare';
+  pt.plan = by;
+  return undefined;
 }

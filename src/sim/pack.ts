@@ -15,7 +15,7 @@ import { partsOf } from '../engine/maint';
 import { planOf } from '../engine/plant';
 import { shiftEnd } from '../engine/staff';
 import { destOf, pointOf } from '../engine/tasks';
-import type { Line, MachineState, PlantState, Tag, Task, TaskKind, Unit } from '../engine/types';
+import { type Line, type MachineState, type PlantState, planRev, type Tag, type Task, type TaskKind, type Unit } from '../engine/types';
 
 export const FORMAT = 8;
 
@@ -340,7 +340,7 @@ export class Packer {
     const size = [tasks, people, vehicles, lines, equipment].reduce((n, rows) => n + rows.reduce((k, r) => k + r.length, 0), 0);
     const buf = new Int32Array(H.size + rooms.length * R.size + trucks.length * K.size + changed.length * U.size + gone.length + size);
     buf[H.format] = FORMAT;
-    buf[H.rev] = s.planRev;
+    buf[H.rev] = planRev(s.plan);
     buf[H.t] = s.t;
     buf[H.day] = s.day;
     buf[H.lag] = Math.min(lag, 0x7fffffff);

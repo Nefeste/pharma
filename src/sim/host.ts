@@ -8,7 +8,7 @@
 import type { ContentDb } from '../content/types';
 import { apply, catchUp, type More, newPlant } from '../engine/engine';
 import { fromSave, toSave } from '../engine/save';
-import type { Command, Notice, PlantState } from '../engine/types';
+import { type Command, type Notice, type PlantState, planRev } from '../engine/types';
 import { Packer } from './pack';
 import type { FromSim, ToSim } from './protocol';
 import { stopKey } from './protocol';
@@ -37,7 +37,7 @@ export function createSim(db: ContentDb): SimHost {
   const slice = (notices: Notice[], tick = false, stopped = false): FromSim => {
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const views = desk.out(s!, performance.now());
-    const world = s!.plan !== sent ? { plan: s!.plan, rev: s!.planRev } : undefined;
+    const world = s!.plan !== sent ? { plan: s!.plan, rev: planRev(s!.plan) } : undefined;
     sent = s!.plan;
     return {
       kind: 'slice',

@@ -1,8 +1,9 @@
 // Часть Б7а: план здания — часть игры (docs/specs/2026-10-vertical-slice.md, «Б7а»). План — в состоянии: копия записи
 // базы с первым этажом и номером правки 0; после старта запись базы не читает никто — ни движок, ни прогон плана, ни
-// загрузка; копия состояния и сохранение — тот же план, образец прежней схемы — с планом сценария. Проверки планировки —
-// функции движка (`src/engine/site/checks.ts`), сборщик базы говорит их словами; этаж не первый — ошибка и там, и там.
-// Поток расчёта шлёт план на старте и после загрузки, срез несёт номер правки.
+// загрузка; копия состояния и сохранение — тот же план, образец прежней схемы — с планом сценария. Проверки
+// планировки — функции движка (`src/engine/site/checks.ts`), сборщик базы говорит их словами; этаж не первый — ошибка
+// и там, и там. Поток расчёта шлёт план на старте и после загрузки, срез несёт номер правки; сцена из его плана — та
+// же, что из базы.
 import { afterAll, describe, expect, test } from 'bun:test';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -13,9 +14,11 @@ import { DAY, HOUR } from '../../src/engine/core/calendar';
 import { fingerprint } from '../../src/engine/core/hash';
 import { apply, newPlant } from '../../src/engine/engine';
 import { runSeed } from '../../src/engine/plan/run';
+import { planOf } from '../../src/engine/plant';
 import { fromSave, toSave } from '../../src/engine/save';
 import { FLOOR, type SiteError, siteErrors } from '../../src/engine/site/checks';
-import { SCHEMA } from '../../src/engine/types';
+import { planRev, SCHEMA } from '../../src/engine/types';
+import { type Layout, layoutOf } from '../../src/render/layout';
 import { createSim } from '../../src/sim/host';
 import { H, Packer, unpack } from '../../src/sim/pack';
 import { buildDb } from '../content/load';
@@ -37,11 +40,14 @@ describe('план — в состоянии', () => {
   test('на старте — запись базы: первый этаж у помещений, рамп и точек плана, номер правки 0; проверки движка — без ошибок', () => {
     const s = newPlant(db, { scenario: SC });
     expect(s.plan).toEqual(db.plants[PLANT]);
-    expect(s.planRev).toBe(0);
+    expect(planRev(s.plan)).toBe(0);
     expect(s.plan.rooms.every(r => r.floor === FLOOR)).toBe(true);
     expect(s.plan.docks.every(d => d.floor === FLOOR)).toBe(true);
     expect(s.plan.points.floor).toBe(FLOOR);
     expect(siteErrors(db, s.plan)).toEqual([]);
+    // номера записи плана отдельным полем нет — он у плана; полей верхнего уровня не больше 63 (docs/02-architecture.md, §4)
+    expect('plant' in s).toBe(false);
+    expect(Object.keys(s).length).toBeLessThanOrEqual(63);
   });
 
   test('после старта запись базы не читает никто: с базой без планов — та же жизнь, то же сохранение и та же загрузка', () => {
@@ -54,7 +60,7 @@ describe('план — в состоянии', () => {
     expect(fingerprint(b)).toBe(fingerprint(a));
     const back = fromSave(blind, toSave(b));
     expect(back.plan).toEqual(a.plan);
-    expect(back.planRev).toBe(0);
+    expect(planRev(back.plan)).toBe(0);
     apply(blind, back, { kind: 'advance', seconds: DAY });
     apply(db, a, { kind: 'advance', seconds: DAY });
     expect(fingerprint(back)).toBe(fingerprint(a));
@@ -66,7 +72,7 @@ describe('план — в состоянии', () => {
     expect(structuredClone(s).plan).toEqual(s.plan);
     const back = fromSave(db, toSave(s));
     expect(back.plan).toEqual(s.plan);
-    expect(back.planRev).toBe(s.planRev);
+    expect(planRev(back.plan)).toBe(planRev(s.plan));
     const c = runSeed(db, s, [], { days: 2, seeds: 1 }, 0);
     expect(c.plan).toBe(s.plan);
     expect(fingerprint(runSeed(blind, s, [], { days: 2, seeds: 1 }, 0))).toBe(fingerprint(c));
@@ -77,7 +83,7 @@ describe('план — в состоянии', () => {
       const s = fromSave(db, readFileSync(join(import.meta.dir, `fixtures/save-v${v}.json`), 'utf8'));
       expect(s.schema).toBe(SCHEMA);
       expect(s.plan).toEqual(db.plants[PLANT]);
-      expect(s.planRev).toBe(0);
+      expect(planRev(s.plan)).toBe(0);
       apply(db, s, { kind: 'advance', seconds: HOUR });
     }
   });
@@ -85,7 +91,7 @@ describe('план — в состоянии', () => {
   test('образец схемы 46 несёт план сам: открывается и живёт с базой без планов', () => {
     const s = fromSave(blind, readFileSync(join(import.meta.dir, 'fixtures/save-v46.json'), 'utf8'));
     expect(s.plan).toEqual(db.plants[PLANT]);
-    expect(s.planRev).toBe(0);
+    expect(planRev(s.plan)).toBe(0);
     apply(blind, s, { kind: 'advance', seconds: HOUR });
   });
 });
@@ -188,9 +194,34 @@ describe('окно — план от потока расчёта', () => {
     expect(loaded.world?.rev).toBe(0);
   });
 
+  test('сцена из плана потока — та же, что из записи базы: и через границу потоков, и после загрузки', () => {
+    const sim = createSim(db);
+    const first = sim.handle({ kind: 'start', scenario: SC });
+    if (first.kind !== 'slice' || !first.world) throw new Error('slice: no plan');
+    // что сцена берёт из плана: раскладку, сетку и точки — без кэшей полей расстояний и клеток доступа, они растут от
+    // запросов
+    const scene = (l: Layout) => ({
+      w: l.w,
+      h: l.h,
+      rooms: l.rooms,
+      doors: l.doors,
+      nav: { cells: l.nav.cells, room: l.nav.room, door: l.nav.door, blocked: l.nav.blocked, walk: l.nav.walk, drive: l.nav.drive },
+      plan: { plant: l.plan.plant, slots: l.plan.slots, dock: l.plan.dock, room: l.plan.room, lab: l.plan.lab, park: l.plan.park, entrance: l.plan.entrance, posts: l.plan.posts },
+    });
+    const base = scene(layoutOf(planOf(db, db.plants[PLANT])));
+    // сообщение потока копируется структурно — у окна свой объект плана и свой разбор
+    expect(scene(layoutOf(planOf(db, structuredClone(first.world.plan))))).toEqual(base);
+    const saved = sim.handle({ kind: 'save' });
+    if (saved.kind !== 'saved') throw new Error(saved.kind);
+    const loaded = sim.handle({ kind: 'load', json: saved.json });
+    if (loaded.kind !== 'slice' || !loaded.world) throw new Error('slice: no plan');
+    expect(scene(layoutOf(planOf(db, structuredClone(loaded.world.plan))))).toEqual(base);
+  });
+
   test('номер правки в заголовке среза — из состояния', () => {
     const s = newPlant(db, { scenario: SC });
-    s.planRev = 3;
+    // правка стройки (Б7б) даст новый объект плана с номером на один больше; здесь — третья правка того же плана
+    s.plan = { ...s.plan, rev: 3 };
     const buf = new Packer(db).pack(s, 0);
     expect(buf[H.rev]).toBe(3);
     expect(unpack(buf).rev).toBe(3);

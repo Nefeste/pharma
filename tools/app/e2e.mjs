@@ -59,7 +59,7 @@
 // «Вывоз отходов». Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png. Первая неделя
 // (docs/specs/2026-10-vertical-slice.md): путь новичка от «Кем вы будете» до «За эту игру» на планёрке 8 сентября в
 // чистом окне — tools/app/e2e-week.mjs.
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits|sources] [--long 1]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -69,6 +69,7 @@ import { forecastPart } from './e2e-forecast.mjs';
 import { sopPart } from './e2e-sop.mjs';
 import { mrpPart } from './e2e-mrp.mjs';
 import { editsPart } from './e2e-edits.mjs';
+import { sourcesPart } from './e2e-sources.mjs';
 import { jobsPart } from './e2e-jobs.mjs';
 import { launchPart } from './e2e-launch.mjs';
 import { memoPart } from './e2e-memo.mjs';
@@ -278,11 +279,13 @@ const answerAsks = async (no = () => false) => {
 // части: основная — всё, что выше в шапке; «Первая неделя» — путь новичка в чистом окне (tools/app/e2e-week.mjs);
 // «Записки и вопросы» (Б5д) — два чистых окна (tools/app/e2e-memo.mjs); «CAPA» (Б5е) — чистое окно поста «Качество»
 // (tools/app/e2e-capa.mjs); «Задания» (Б6а) — чистое окно поста «Производство» (tools/app/e2e-jobs.mjs); «План запуска»
-// (Б6б) — тоже, с заданиями на сутки на планёрке (tools/app/e2e-launch.mjs); «Прогноз» (Б6в) — тоже, до планёрки
-// 1 ноября (tools/app/e2e-forecast.mjs); «S&OP» (Б6г) — тоже, до совещания 3 сентября (tools/app/e2e-sop.mjs); «Материалы»
-// (Б6д) — чистое окно места «Директор» 2 сентября (tools/app/e2e-mrp.mjs); «Правки» (Б6е) — чистое окно поста
-// «Производство», до планёрки с событием коммерции (tools/app/e2e-edits.mjs). `--only main`, `week`, `memo`, `capa`,
-// `jobs`, `launch`, `forecast`, `sop`, `mrp` или `edits` — одна из них
+// (Б6б) — тоже, с заданиями на сутки на планёрке (tools/app/e2e-launch.mjs); «Прогноз» (Б6в) — тоже, до планёрки 1
+// ноября (tools/app/e2e-forecast.mjs); «S&OP» (Б6г) — тоже, до совещания 3 сентября (tools/app/e2e-sop.mjs);
+// «Материалы» (Б6д) — чистое окно места «Директор» 2 сентября (tools/app/e2e-mrp.mjs); «Правки» (Б6е) — чистое окно
+// поста «Производство», до планёрки с событием коммерции (tools/app/e2e-edits.mjs); «Источники» (Б6ж) — чистое окно
+// места «Директор», до пробной партии, с `--long 1` — до подачи изменения досье (tools/app/e2e-sources.mjs).
+// `--only main`, `week`, `memo`, `capa`, `jobs`, `launch`, `forecast`, `sop`, `mrp`, `edits` или `sources` — одна из
+// них
 const only = arg('only', '');
 try {
   // основная часть кончилась — её страницу закрыть: она рисует кадры и отняла бы у других частей процессор
@@ -299,6 +302,7 @@ try {
   if (only === '' || only === 'sop') await sopPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'mrp') await mrpPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'edits') await editsPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'sources') await sourcesPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
@@ -2039,7 +2043,7 @@ async function mainPart() {
       };
     });
     await page.screenshot({ path: join(out, 'e2e-partners.png') });
-    if (partners.makers !== partners.want.makers || partners.pairs.length !== partners.want.pairs || !partners.pairs.every(x => /^с \d\d\.\d\d\.\d{4} до /.test(x)) || partners.uncovered.length > 0 || partners.agreements > 0 || partners.contracts[0] !== 'CTR-0001')
+    if (partners.makers !== partners.want.makers || partners.pairs.length !== partners.want.pairs || !partners.pairs.every(x => /^с \d\d\.\d\d\.\d{4} до /.test(x) || x === 'кандидат: в досье изготовителя нет') || partners.pairs.filter(x => x.startsWith('кандидат')).length !== 2 || partners.uncovered.length > 0 || partners.agreements > 0 || partners.contracts[0] !== 'CTR-0001')
       fail(`контрагенты: изготовителей ${partners.makers} из ${partners.want.makers}, пар ${partners.pairs.length} из ${partners.want.pairs} (${partners.pairs.join(' | ')}), без пары или договора — ${partners.uncovered.join(', ')}, без соглашения — ${partners.agreements}, договоры ${partners.contracts.join(', ')}`);
     else ok(`контрагенты: ${partners.makers} изготовителя, ${partners.pairs.length} пары в сроке («${partners.pairs[0]}»), у каждого материала — пара и договор; договоры ${partners.contracts.join(', ')}`);
     for (const tab of ['equipment', 'lab', 'people', 'partners']) {

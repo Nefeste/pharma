@@ -9,6 +9,7 @@ import { planOf } from '../engine/plant';
 import { DEPT_SEAT } from '../engine/seats';
 import { clock, dateText, daysText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { FcMeeting } from '../sim/forecast';
+import type { EditsMeeting } from '../sim/edits';
 import type { MrpMeeting } from '../sim/mrp';
 import type { SopMeeting } from '../sim/sop';
 import type { HeadDay } from '../sim/journal';
@@ -27,6 +28,7 @@ import { headName, kpiName, kpiText, kpiValue, monthText } from './Kpi';
 import { db } from './db';
 import { AskRows } from './Journal';
 import { Levers } from './Levers';
+import { priceParts } from './price';
 import type { Actions, Hud } from './store';
 import { paramText } from './units';
 
@@ -284,6 +286,46 @@ function FcBlock({ x, hud, actions, close }: { x: FcMeeting; hud: Hud; actions: 
 }
 
 /**
+ * Правки плана (Б6е): события коммерции за сутки до планёрки — крупные заказы и снятый спрос — и правки в замороженном
+ * горизонте с ценой. Рычаг — расписание.
+ */
+function EditsBlock({ x, hud, actions, close }: { x: EditsMeeting; hud: Hud; actions: Actions; close: () => void }) {
+  const start = hud.start;
+  const skuName = (id?: Id) => (id ? named(db?.skus[id]?.name, id) : '');
+  const cus = (id: Id) => named(db?.customers[id]?.name, id);
+  const label = (id: string) => T.jobs.order(Number(id.slice(1)));
+  return (
+    <div className="mblock" data-test="morning-edits">
+      {x.events.length > 0 ? (
+        <>
+          <div>{T.edits.events}</div>
+          <ul className="mlist">
+            {x.events.map(e => (
+              <li key={`${e.t}/${e.kind}/${e.customer}/${e.sku}`} data-test="morning-event" data-kind={e.kind}>
+                {e.kind === 'big' ? T.journal.what.bigOrder(cus(e.customer), skuName(e.sku), e.cases, whenText(start, e.due ?? e.t)) : T.journal.what.demandCut(cus(e.customer), skuName(e.sku), e.cases)}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {x.edits.length > 0 ? (
+        <>
+          <div>{T.edits.title}</div>
+          <ul className="mlist">
+            {x.edits.map(e => (
+              <li key={`${e.t}/${e.kind}/${e.batch ?? ''}`} data-test="morning-edit" data-kind={e.kind}>
+                {T.edits.line(T.edits.kind[e.kind] ?? e.kind, skuName(e.sku) || (e.batch ? label(e.batch) : ''), priceParts(e.price, label).join('; '))}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      <Levers list={[{ k: 'gantt', seat: 'production' }]} hud={hud} actions={actions} close={close} />
+    </div>
+  );
+}
+
+/**
  * Материалы (Б6д): плановые заказы с датой сегодня и раньше — у поставщика, сколько, к какому дню, на сколько опоздают, —
  * и заказы в пути, которые опоздают. Рычаг — вкладка «Материалы» расписания.
  */
@@ -529,6 +571,11 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
           {v.materials ? (
             <Section title={T.mrp.meeting}>
               <MrpBlock x={v.materials} hud={hud} actions={actions} close={close} />
+            </Section>
+          ) : null}
+          {v.edits ? (
+            <Section title={T.edits.meeting}>
+              <EditsBlock x={v.edits} hud={hud} actions={actions} close={close} />
             </Section>
           ) : null}
           {v.modes.length > 0 ? (

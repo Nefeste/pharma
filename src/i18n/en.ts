@@ -84,6 +84,9 @@ export const en: Strings = {
     /** expediting and cancelling a purchase order (Б6д) */
     poFast: (when: string) => `Purchase order expedited: arrives ${when}`,
     poCancelled: 'Purchase order cancelled: the fee comes out of the prepayment, the rest is refunded',
+    /** commercial events (Б6е) */
+    bigOrder: (customer: string, sku: string, cases: number, due: string) => `Large order: ${customer} — ${sku}, ${groupEn(cases)} ${pl(cases, 'case', 'cases')} by ${due}`,
+    demandCut: (customer: string, sku: string, cases: number) => `${customer} cut demand: ${sku} — ${groupEn(cases)} ${pl(cases, 'case', 'cases')} fewer in the next orders`,
     truck: 'A truck is at the receiving dock',
     lotReleased: 'Lot released: all tests within specification',
     lotRejected: 'Lot rejected: out-of-specification result',
@@ -2658,6 +2661,14 @@ export const en: Strings = {
     } as Record<string, string>,
   },
   /** material requirements (Б6д): the schedule's “Materials” tab and the meeting block */
+  /** the meeting's «Правки плана» block (Б6е) */
+  edits: {
+    meeting: 'Plan edits',
+    events: 'Commercial events',
+    title: 'Edits inside the frozen horizon',
+    kind: { order: 'New batch order', shift: 'Batch order moved', cancel: 'Batch order cancelled' } as Record<string, string>,
+    line: (kind: string, what: string, price: string) => `${kind}: ${what} — ${price}`,
+  },
   /** the price of a plan edit inside the frozen horizon (Б6е): cleanings, changeovers, later batch orders */
   price: {
     line: (parts: string) => `Edit inside the frozen horizon: ${parts}`,

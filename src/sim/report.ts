@@ -28,6 +28,7 @@ import { jobsOf } from './jobs';
 import { type HeadDay, headDays, type JournalRow, memoDays, openAsks } from './journal';
 import { type MonthClose, monthClose } from './kpi';
 import { type FcMeeting, fcMeeting } from './forecast';
+import { type EditsMeeting, editsMeeting } from './edits';
 import { type MrpMeeting, mrpMeeting } from './mrp';
 import { type SopMeeting, sopMeeting } from './sop';
 import { type PartnerSum, partnerSum } from './partners';
@@ -284,6 +285,8 @@ export interface MorningView {
   sop?: SopMeeting;
   /** материалы (Б6д): плановые заказы с датой сегодня и раньше, заказы в пути, которые опоздают; нечего — нет */
   materials?: MrpMeeting;
+  /** правки плана (Б6е): события коммерции и правки в замороженном горизонте с ценой за 24 часа; ничего — нет */
+  edits?: EditsMeeting;
   /** руководители (Б5в): где сегодня решает не руководитель — «и. о.» с его навыком, или некому; все на месте — пусто */
   bosses: BossRow[];
 }
@@ -489,6 +492,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
   const fc = fcMeeting(db, s, at);
   const sop = sopMeeting(db, s, at);
   const materials = mrpMeeting(db, s);
+  const edits = editsMeeting(db, s, from, at);
   const unc = jobsOf(db, s, forecast(db, s)).uncovered;
   return {
     view: 'morning',
@@ -530,6 +534,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     ...(fc ? { forecast: fc } : {}),
     ...(sop ? { sop } : {}),
     ...(materials ? { materials } : {}),
+    ...(edits ? { edits } : {}),
     bosses: bossMeeting(db, s),
   };
 }

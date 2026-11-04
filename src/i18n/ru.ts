@@ -91,6 +91,9 @@ export const ru = {
     /** ускорение и отмена заказа поставщику (Б6д) */
     poFast: (when: string) => `Заказ поставщику ускорен: придёт ${when}`,
     poCancelled: 'Заказ поставщику отменён: неустойка — из предоплаты, остаток вернут',
+    /** события коммерции (Б6е) */
+    bigOrder: (customer: string, sku: string, cases: number, due: string) => `Крупный заказ: ${customer} — ${sku}, ${casesRu(cases)} к ${due}`,
+    demandCut: (customer: string, sku: string, cases: number) => `${customer} снял спрос: ${sku} — на ${casesRu(cases)} меньше в ближайших заказах`,
     truck: 'Фура у рампы приёмки',
     lotReleased: 'Партия разрешена: все испытания в пределах',
     lotRejected: 'Партия отклонена: результат вне спецификации',
@@ -2784,6 +2787,14 @@ export const ru = {
     } as Record<string, string>,
   },
   /** потребность в материалах (Б6д): вкладка «Материалы» расписания и блок планёрки */
+  /** блок планёрки «Правки плана» (Б6е) */
+  edits: {
+    meeting: 'Правки плана',
+    events: 'События коммерции',
+    title: 'Правки в замороженном горизонте',
+    kind: { order: 'Новое задание', shift: 'Сдвиг задания', cancel: 'Снятое задание' } as Record<string, string>,
+    line: (kind: string, what: string, price: string) => `${kind}: ${what} — ${price}`,
+  },
   /** цена правки плана в замороженном горизонте (Б6е): уборки, переналадки, задания позже */
   price: {
     line: (parts: string) => `Правка в замороженном горизонте: ${parts}`,

@@ -193,6 +193,9 @@ export function goOf(plant: Plant, n: Notice): Go | undefined {
     case 'truckWait':
       return { thing: { kind: 'truck', n: Number(n.truck.slice(1)), customer: false } };
     case 'materialLate':
+    // события коммерции (Б6е): крупный заказ и снятый спрос — к расписанию, где задания и их правки
+    case 'bigOrder':
+    case 'demandCut':
       return { panel: 'gantt' };
     case 'sop':
       return { panel: 'sop' };

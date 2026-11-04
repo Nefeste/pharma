@@ -214,6 +214,13 @@
     .gtick span { position: absolute; left: 3px; top: 3px; font-size: 10px; color: var(--muted); white-space: nowrap; }
     .gday { position: absolute; top: 0; bottom: 0; border-left: 1px solid rgba(255,255,255,.18); }
     .goff { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,.24); }
+    /* замороженный горизонт (Б6е): от сейчас до края — штриховка; на оси — край с подписью; цена правки в черновике */
+    .gfrozen { position: absolute; top: 0; bottom: 0; pointer-events: none; border-right: 2px dashed rgba(120,190,255,.55); background: repeating-linear-gradient(135deg, rgba(120,190,255,.07) 0 6px, transparent 6px 12px); }
+    .gfrozen-tick { position: absolute; top: 0; bottom: 0; border-left: 2px dashed rgba(120,190,255,.8); }
+    .gfrozen-tick span { position: absolute; left: 4px; bottom: 2px; font-size: 10px; color: rgb(150,205,255); white-space: nowrap; }
+    .gprice { color: var(--yellow); }
+    .launch-grid .frozen { background-image: repeating-linear-gradient(135deg, rgba(120,190,255,.08) 0 6px, transparent 6px 12px); }
+    .launch-grid th.edge, .launch-grid td.edge { border-left: 2px dashed rgba(120,190,255,.8); }
     .gnow { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--yellow); pointer-events: none; }
     .gbar { --c: #2fb5c9; position: absolute; top: 4px; bottom: 4px; box-sizing: border-box; border-radius: 3px; padding: 0 4px; font-size: 11px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #0b1a1e; background: var(--c); border: 1px solid var(--c); cursor: pointer; user-select: none; }
     .gbar.k-kit { --c: #d9b45a; }

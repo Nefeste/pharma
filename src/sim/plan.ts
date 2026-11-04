@@ -2,15 +2,18 @@
 // (src/engine/plan/schedule.ts) и записей. Прошлое — как было: стадии серий из их записей, задания упаковки от взятия до
 // конца, последняя уборка помещения — по его учёту. С части 5 — черновик (docs/specs/2026-10-plan-run.md): план — каким он
 // станет, если черновик утвердить, а прежние полосы сдвинутых серий — рядом; с 0.0.39 — и полосы его новых заданий.
-// Без истины: прогон и записи — сроки, учёт и задачи; истинных свойств и причин тут нет.
+// Без истины: прогон и записи — сроки, учёт и задачи; истинных свойств и причин тут нет. С Б6е — край замороженного
+// горизонта и цена черновика, если он правит план в горизонте: те же два прогона, что у полос.
 import type { ContentDb } from '../content/types';
 import { batchNo } from '../engine/batchno';
-import { HOUR } from '../engine/core/calendar';
+import { DAY, daysFromCivil, HOUR } from '../engine/core/calendar';
+import { editInFrozen, frozenEdge, priceOf } from '../engine/plan/price';
+import { frozenOf } from '../engine/planner';
 import { MES, roomWork, washWork } from '../engine/mes';
 import { type Bar, type Change, type Fresh, forecast, freshBatches, type Why } from '../engine/plan/schedule';
 import { planOf } from '../engine/plant';
 import { shiftEndAt } from '../engine/staff';
-import type { Batch, BatchStatus, PlantState } from '../engine/types';
+import type { Batch, BatchStatus, EditPrice, PlantState } from '../engine/types';
 import { type DailyMark, dailyMarks } from './daily';
 import { type ForecastView, forecastView } from './forecast';
 import { type Jobs, jobsOf } from './jobs';
@@ -93,6 +96,12 @@ export interface GanttView {
   forecast?: ForecastView;
   /** отметки полос (Б6б): строки заданий на сутки — комплектовки, стадии, упаковка — с итогом */
   daily: DailyMark[];
+  /**
+   * замороженный горизонт (Б6е): край — мгновение 00:00 первого дня за горизонтом и рабочих дней политики; у черновика,
+   * который правит план в горизонте, — цена: прогон с ним против прогона без него
+   */
+  frozen: { edge: number; days: number };
+  price?: EditPrice;
 }
 
 export interface GhostView {
@@ -244,6 +253,8 @@ export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttVie
     ...(launch ? { launch } : {}),
     ...(fc ? { forecast: fc } : {}),
     daily: dailyMarks(db, s, q.from, q.to),
+    frozen: { edge: (frozenEdge(db, s) - daysFromCivil(s.start)) * DAY, days: frozenOf(db, s) },
+    ...(changed && editInFrozen(db, s, { changes: draft, fresh, drop }) ? { price: priceOf(db, s, base, f, { changes: draft, fresh, drop }) } : {}),
   };
 }
 

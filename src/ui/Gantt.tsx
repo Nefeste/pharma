@@ -23,6 +23,8 @@ import { Forecast } from './Forecast';
 import { Materials } from './Materials';
 import { draftKey } from './draft';
 import { actLabel, actOf, actOn } from './memo';
+import { policyText } from './policy';
+import { priceLine } from './price';
 import { type Actions, type GanttDays, type Hud, PLAN_RUN, type PlanRun } from './store';
 
 /** Шаг срока, куда тянут: 15 минут; стрелка с Shift — час. */
@@ -375,6 +377,12 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
             <button type="button" onClick={() => actions.resetDraft()} title={T.plan.resetHint} data-test="draft-reset">
               {T.plan.reset}
             </button>
+            {/* правка в замороженном горизонте (Б6е): цена — до «Утвердить» */}
+            {v.price ? (
+              <span className="gprice" data-test="draft-price">
+                {priceLine(v.price, id => who(labels, id) || T.jobs.order(Number(id.slice(1))))}
+              </span>
+            ) : null}
           </>
         ) : mine ? (
           <span className="muted">{T.plan.noDraft}</span>
@@ -400,7 +408,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         <Jobs hud={hud} actions={actions} jobs={v.jobs} mine={mine} items={items} />
       ) : g.tab === 'launch' ? (
         v.launch ? (
-          <Launch hud={hud} actions={actions} v={v.launch} labels={labels} assets={v.assets} mine={mine} title={act.title} />
+          <Launch hud={hud} actions={actions} v={v.launch} labels={labels} assets={v.assets} mine={mine} title={act.title} edge={momentOf(start, v.frozen.edge).day} />
         ) : (
           <div className="muted">{T.app.loading}</div>
         )
@@ -421,6 +429,12 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
       <div className="grow-row gaxis">
         <div className="glabel" />
         <div className="gtrack">
+          {/* край замороженного горизонта (Б6е): правки до него — с ценой */}
+          {v.frozen.edge > v.from && v.frozen.edge < v.to ? (
+            <div className="gfrozen-tick" style={{ left: `${pct(v.frozen.edge)}%` }} title={T.price.edgeHint(policyText(db?.policies['pol.plan.frozen'], v.frozen.days))} data-test="frozen-edge" data-edge={v.frozen.edge}>
+              <span>{T.price.edge(dayText(momentOf(start, v.frozen.edge).day))}</span>
+            </div>
+          ) : null}
           {ticks.map(t => {
             const m = momentOf(start, t);
             const midnight = m.sec === 0;
@@ -442,6 +456,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
             {v.off.map(([a, b]) => (
               <div key={a} className="goff" style={{ left: `${pct(a)}%`, width: `${pct(b) - pct(a)}%` }} />
             ))}
+            {v.frozen.edge > v.from ? <div className="gfrozen" style={{ left: `${pct(Math.max(v.now, v.from))}%`, width: `${pct(v.frozen.edge) - pct(Math.max(v.now, v.from))}%` }} /> : null}
             {ticks.filter(t => momentOf(start, t).sec === 0).map(t => (
               <div key={t} className="gday" style={{ left: `${pct(t)}%` }} />
             ))}

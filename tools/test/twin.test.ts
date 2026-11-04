@@ -118,7 +118,9 @@ describe('прогон', () => {
     const run = runSeed(db, s, [], { days: 14, seeds: 1, twin: false }, 0);
     const life: PlantState = structuredClone(s);
     apply(db, life, { kind: 'advance', seconds: 14 * DAY });
-    expect(fingerprint(run)).toBe(fingerprint(life));
+    // сменно-суточные задания (Б6б) копия прогона не ставит: правила их не читают, жизнь завода та же
+    const { daily: _, ...rest } = life;
+    expect(fingerprint(run)).toBe(fingerprint(rest));
   });
 
   test('тот же вызов — тот же итог; разные зёрна — разные исходы', () => {
@@ -174,9 +176,10 @@ describe('прогон', () => {
   });
 
   test('генеральные уборки и переналадки — кончившиеся в горизонте; задание к своему продукту — уборок меньше (Б2г)', () => {
-    // завод с двумя продуктами: на 50-е сутки в замороженных двух неделях задания обоих, и задание одного продукта
-    // стоит между двумя заданиями другого (со складом ГП на старте, Б1г, — с 49-х суток)
-    const g = plantAt(at(50, 9), game);
+    // завод с двумя продуктами: на 48-е сутки в замороженных двух неделях задания обоих, и задание одного продукта
+    // стоит между двумя заданиями другого (со складом ГП на старте, Б1г, — с 49-х суток, с сезоном спроса, Б6в, — с 45-х,
+    // с событиями коммерции, Б6е, — с 48-х)
+    const g = plantAt(at(48, 9), game);
     const day = momentOf(g.start, g.t).day;
     const o = { days: 14, seeds: 2 };
     const outs = runPlan(game, g, [], o);
@@ -219,9 +222,11 @@ describe('поток прогона', () => {
         const msg: ToPlan = { kind: 'run', id: 7, json: toSave(s), variants, days: 14, seeds: 3 };
         w.postMessage(msg);
       });
-      expect(got.map(m => m.kind)).toEqual(['variant', 'variant', 'done']);
+      // ход по зёрнам (Б5г): три зерна, потом итог варианта
+      expect(got.map(m => m.kind)).toEqual(['seed', 'seed', 'seed', 'variant', 'seed', 'seed', 'seed', 'variant', 'done']);
+      expect(got.filter(m => m.kind === 'seed').map(m => [m.index, m.k])).toEqual([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]]);
       variants.forEach((v, i) => {
-        const m = got[i] as Extract<FromPlan, { kind: 'variant' }>;
+        const m = got.filter(m => m.kind === 'variant')[i] as Extract<FromPlan, { kind: 'variant' }>;
         expect(m.id).toBe(7);
         expect(m.index).toBe(i);
         expect(JSON.stringify(m.sum)).toBe(JSON.stringify(summarize(runPlan(game, s, v, { days: 14, seeds: 3 }), 14)));

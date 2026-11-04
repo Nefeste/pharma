@@ -184,6 +184,35 @@ export interface ScenarioWaste {
   sign: number;
   trip: number;
   pallet: number;
+  /** порог коллеги склада на старте (Б5г): доля занятых мест зоны — числитель и знаменатель; срок ожидания, месяцев */
+  full: [number, number];
+  keep: number;
+}
+
+/** Руководитель политики (Б5г): по должности, как у журнала решений (src/engine/types.ts, `Head`); с Б5е — и начальник ООК. */
+export type PolicyHead = 'plan' | 'supply' | 'maint' | 'mes' | 'wms' | 'tech' | 'qa';
+
+/**
+ * Политика руководителя (Б5г; геймдизайн, §8.5): что задают и в каких пределах — гипотезы. Сутки и месяцы — от `min` до
+ * `max` с шагом `step`; износ узла — доли 1/10 000 ресурса так же, `off` — «после отказа»; уровень ЗИП — два целых от
+ * `min` до `max`, первое меньше; выбор — из `options`; доля мест — из `shares`. `each` — своя у каждого узла или запчасти;
+ * `off` у суток — «без» (кампаний нет); число (Б5е) — от `min` до `max` с шагом `step`, как сутки. С чего начинает
+ * завод — запись сценария (src/engine/policies.ts).
+ */
+export interface Policy {
+  id: Id;
+  name: Text;
+  head: PolicyHead;
+  kind: 'days' | 'months' | 'wear' | 'level' | 'choice' | 'share' | 'count' | 'mday' | 'workdays';
+  each?: 'part' | 'spare';
+  min?: number;
+  max?: number;
+  step?: number;
+  off?: true;
+  options?: string[];
+  shares?: [number, number][];
+  source?: string[];
+  review: Review;
 }
 
 /**
@@ -275,7 +304,11 @@ export interface Scenario {
   /** контрагенты и договоры (Б3г): src/engine/partners.ts */
   partners: ScenarioPartners;
   /** политики отделов на старте (Б4а): сверхурочные — src/engine/hours.ts */
-  policies: { overtime: OvertimeMode };
+  /**
+   * политики отделов на старте: сверхурочные (Б4а) — src/engine/hours.ts; уборка после серии и уставки при уходе игрока с
+   * поста «Качество и технология» (Б5г) — src/engine/policies.ts
+   */
+  policies: { overtime: OvertimeMode; clean: 'minor' | 'major'; setpoints: 'target' | 'keep' };
   /** учётный период суммированного учёта сменных графиков по циклу, месяцев (Б4б): src/engine/shifts.ts */
   account: number;
   /**
@@ -284,10 +317,27 @@ export interface Scenario {
    * src/engine/market.ts, `seedFg`
    */
   fg?: { days: number; age: [number, number] };
-  /** отклонения (Б1г; геймдизайн, §6.4): срок расследования по процедуре завода, сутки */
-  deviations: { term: number };
+  /**
+   * отклонения (Б1г, Б5е; геймдизайн, §6.4) — процедура завода: срок расследования по классу, сутки; порог износа узла
+   * стадии, с которого он — признак вероятной причины, доли 1/10 000 ресурса; через сколько суток после выполнения CAPA —
+   * проверка эффективности; с какого такого же отклонения за 12 месяцев начальник ООК назначает CAPA — с этого начинает
+   * политика ООК (src/engine/capa.ts)
+   */
+  deviations: { term: Record<DevClass, number>; wear: number; check: number; capa: number };
   /** рынок труда города (Б4в; src/engine/hire.ts); нет — ни кандидатов, ни заявлений */
   labor?: Labor;
+  /**
+   * прогноз продаж и сезон спроса (Б6в; src/engine/forecast.ts): оптимизм отдела продаж — доля 1/10 000 сверх его
+   * прогноза. Нет — спрос покупателей ровный, прогноза нет
+   */
+  forecast?: { optimism: number };
+  /** события коммерции (Б6е): нет — спрос только по заказам покупателей */
+  commerce?: ScenarioCommerce;
+  /**
+   * руководители — люди (Б5в; src/engine/bosses.ts): у руководителя отдела — роль заместителя по умолчанию (первый по
+   * табельному номеру человек этой роли) и роли, из которых игрок может его назначить; нет строки — заместителя нет
+   */
+  heads?: Partial<Record<HeadId, { deputy: Id; can: Id[] }>>;
   /** отпуска (Б4г; src/engine/leave.ts): правило черновика графика и доплата заместителю; нет — отпусков нет */
   leave?: LeaveRule;
   /** вывоз отклонённого (Б1з; src/engine/waste.ts): подрядчик, подпись передачи и цены; нет — вывоза нет */
@@ -316,6 +366,11 @@ export interface Labor {
   probation: number;
   trial: number;
   colleague: { skill: number; over: number; ad: number };
+  /**
+   * переезд (Б5в): кандидат из другого города — через столько-то суток, навык от и до; на работу — после `notice` суток
+   * предупреждения на прежней (ст. 80) и `road` суток дороги; возмещение переезда — копейки, на приёме (ст. 169)
+   */
+  move?: { days: [number, number]; skill: [number, number]; notice: number; road: number; pay: number };
   roles: Record<Id, { ad: [number, number, number, number]; skill: [number, number, number, number, number]; quit: number }>;
 }
 
@@ -348,6 +403,26 @@ export interface ScenarioPlan {
    * запаса больше, чем на две замороженные недели и ещё столько суток; нет — каждый раз позиция, которой хватит меньше всего
    */
   urgent?: number;
+  /** способ прогноза планирования (Б6в): «лучший» — с наименьшей ошибкой за 12 месяцев, или один из способов */
+  method: 'best' | FcMethod;
+  /** откуда спрос правила задания (Б6в): по заказам за окно или по прогнозу планирования */
+  demand: 'orders' | 'forecast';
+  /** резерв мощности (Б6г): доля, которую план S&OP оставляет свободной, — числитель и знаменатель */
+  reserve?: [number, number];
+  /** замороженный горизонт (Б6е): рабочих дней — с чего начинает политика; горизонт цены правки — суток */
+  frozen?: number;
+  price?: number;
+}
+
+/**
+ * События коммерции (Б6е; геймдизайн, §9.2): в месяц — от и до; событие — серия позиции ± `size` %; крупный заказ — со
+ * сроком через `due` суток, от и до, его доля событий — `big` %; остальные — снятый спрос.
+ */
+export interface ScenarioCommerce {
+  perMonth: [number, number];
+  size: number;
+  due: [number, number];
+  big: number;
 }
 
 /**
@@ -365,14 +440,31 @@ export interface ScenarioPartners {
   share: number;
   months: number;
   ctr: number;
+  /**
+   * изменение досье типа II (Б6ж): рабочих дней — проверка полноты, экспертиза, решение; доля изменений с запросом
+   * эксперта, доли 1/10 000, и срок ответа, рабочих дней, — от и до
+   */
+  variation?: { check: number; expert: number; decide: number; ask: number; answer: [number, number] };
 }
 
-/** Снабжение сценария (Б2в): страховой запас и заказ — в сутках расхода, входной контроль — сутки. */
+/**
+ * Снабжение сценария (Б2в): страховой запас и заказ — в сутках расхода, входной контроль — сутки; с Б6д — срок завоза:
+ * число предыдущего месяца, 0 — к дню серии, и как заказывают: по потребности или по точке заказа.
+ */
 export interface ScenarioSupply {
   safety: number;
   every: number;
   qc: number;
+  arrive?: number;
+  how?: 'need' | 'point';
+  /** кому заказывать при двух поставщиках (Б6ж): основному, быстрее, когда основной опоздает, по оценке предложений */
+  who?: SupplierChoice;
+  /** веса оценки предложений (Б6ж): цена, срок, надёжность, предоплата — в сумме 100 */
+  rfq?: { price: number; lead: number; rel: number; terms: number };
 }
+
+/** Кому заказывать при двух поставщиках (Б6ж): основному, быстрее, когда основной опоздает, по оценке предложений. */
+export type SupplierChoice = 'main' | 'fast' | 'rfq';
 
 /** Корень происшествия: ошибка лаборатории, пересмазывание, сила прессования, сито калибратора. */
 export type IncidentRoot = 'lab' | 'lube' | 'force' | 'screen';
@@ -534,6 +626,8 @@ export interface Supplier {
   payDays: number;
   /** доля партий с браком, доли 1/10 000 */
   defects: number;
+  /** опоздания (Б6ж): доля заказов, доли 1/10 000, и на сколько суток позже обещанного — от и до */
+  late?: { share: number; days: [number, number] };
   items: Record<Id, SupplierItem>;
 }
 
@@ -567,6 +661,9 @@ export interface Agreement {
 
 /** Отделы завода; у каждого — своя политика (Б4а). */
 export const DEPTS = ['wms', 'qc', 'qa', 'mes', 'line', 'maint'] as const;
+/** Руководители-люди (Б5в): отделы, у руководителя которых есть заместитель; уполномоченное лицо замещает другое. */
+export const HEAD_IDS = ['plan', 'mes', 'maint', 'qa', 'qc', 'supply', 'wms'] as const;
+export type HeadId = (typeof HEAD_IDS)[number];
 export type Dept = (typeof DEPTS)[number];
 
 export interface Role {
@@ -672,14 +769,17 @@ export interface Plant {
   site: { code: string; name: Text };
   areas: Area[];
   building: [number, number, number, number];
-  /** рампа — точка на клетке ворот рампы в стене здания */
-  docks: { id: string; kind: 'in' | 'out'; x: number; z: number }[];
+  /**
+   * рампа — точка на клетке ворот рампы в стене здания; этаж (Б7а, решение по #82) — в 1.0 один, первый: у помещения и
+   * точек плана — рамп, стоянки, входа и постов; дверь, зона, стеллаж и вещи помещения — на этаже своего помещения
+   */
+  docks: { id: string; kind: 'in' | 'out'; x: number; z: number; floor: number }[];
   /** зона на полу: прямоугольник [x, z, ширина, глубина] и места сеткой [столбцов, рядов] */
   zones: { id: string; kind: ZoneKind; rect: [number, number, number, number]; grid: [number, number] }[];
   /** ряды стеллажей: начало ряда, секций, ярусов; проход — с севера (`n`, меньше z) или с юга (`s`) */
   racks: { id: string; x: number; z: number; bays: number; levels: number; face: 'n' | 's' }[];
   /** помещение: прямоугольник со стенами, класс, можно ли туда технике, рабочая точка (нет — середина) */
-  rooms: { id: string; type: string; rect: [number, number, number, number]; grade: 'D' | 'cnc'; vehicles: boolean; at?: [number, number] }[];
+  rooms: { id: string; type: string; rect: [number, number, number, number]; grade: 'D' | 'cnc'; vehicles: boolean; at?: [number, number]; floor: number }[];
   /**
    * двери — клетки на стене: первая клетка (номера клеток), сколько клеток, вдоль какой оси идёт стена, вид; дверь только
    * для материалов (внутренняя дверь шлюза для материалов) — люди через неё не ходят
@@ -697,8 +797,8 @@ export interface Plant {
    * `buffer` её штук (у последней — нет)
    */
   lines: { id: string; room: string; out: string; machines: { id: string; type: Id; buffer?: number; at: [number, number]; turn: number; place: string }[] }[];
-  /** точки: стоянка техники, вход персонала */
-  points: { park: [number, number]; entrance: [number, number] };
+  /** точки: стоянка техники, вход персонала; этаж стоянки, входа и постов (Б7а) */
+  points: { park: [number, number]; entrance: [number, number]; floor: number };
   /** посты ожидания по ролям: где человек ждёт задачи — после прихода на смену и после каждой задачи */
   posts: Record<Id, [number, number]>;
   /** вентиляция — Вт на м² помещения по классу, круглые сутки; постоянная база — Вт */
@@ -773,6 +873,8 @@ export interface Spec {
   doc: DocHead;
   tests: SpecLine[];
   pairs?: SpecPair[];
+  /** пары-кандидаты (Б6ж): изготовителя нет в досье — пара входит в спецификацию с положительным решением по изменению */
+  candidates?: SpecPair[];
   source?: string[];
   review?: Review;
 }
@@ -789,9 +891,26 @@ export interface Product {
   strength: number;
   /** в перечне ЖНВЛП: цена позиции — не выше зарегистрированной */
   jnvlp: boolean;
+  /** сезон спроса (Б6в): группа товаров — запись `content/seasons/` */
+  season: Id;
   source?: string[];
   review?: Review;
 }
+
+/**
+ * Сезон спроса группы товаров (Б6в; геймдизайн, §10.1): индекс каждого месяца с января по декабрь, % среднего месяца,
+ * вместе 1200. Спрос покупателя за сутки — из его записи × индекс месяца этих суток / 100, если у сценария есть прогноз.
+ */
+export interface Season {
+  id: Id;
+  name: Text;
+  months: number[];
+  source: string[];
+  review: Review;
+}
+
+/** Способ прогноза продаж (Б6в; геймдизайн, §9.1): как прошлый год, скользящее среднее, сглаживание, с трендом, с сезоном группы. */
+export type FcMethod = 'last-year' | 'ma' | 'ses' | 'holt' | 'group';
 
 /**
  * Узел машины (геймдизайн, §7.1; docs/specs/2026-10-engine.md, 1е). Наработка — единицы работы машины: таблетки у
@@ -913,9 +1032,9 @@ export interface Recipe {
   batch: { mass: number; units: number };
   /**
    * состав на серию, мг: `potency` — с пересчётом на содержание партии; `qs` — добирает массу серии; `stage` — стадия, на
-   * которой компонент загружают (Б1д)
+   * которой компонент загружают (Б1д); с Б6ж — аналог строки: материал и коэффициент, доли 1/10 000 количества основного
    */
-  bom: { material: Id; qty: number; potency?: boolean; qs?: boolean; stage: string }[];
+  bom: { material: Id; qty: number; potency?: boolean; qs?: boolean; stage: string; alt?: { material: Id; factor: number } }[];
   stages: RecipeStage[];
   bulk: Id;
   /** показатели балка: номинал и разброс серии в единицах движка */
@@ -1104,6 +1223,39 @@ export interface Spare {
   review?: Review;
 }
 
+/** Класс отклонения (Б5е; геймдизайн, §6.4; `pics-pi040`): критическое, существенное, незначительное. */
+export type DevClass = 'critical' | 'major' | 'minor';
+
+/**
+ * Род вероятной причины отклонения (Б5е; src/engine/capa.ts): износ узла, режим вне диапазона карты, партия поставщика,
+ * ошибка лаборатории, «не установлена».
+ */
+export type CauseClass = 'wear' | 'param' | 'lots' | 'lab' | 'none';
+
+/** Что делает действие CAPA (Б5е): заменить узел, заменять раньше, обучить, калибровка прибора МОК, оценка пары. */
+export type CapaDoes = 'replace' | 'earlier' | 'train' | 'calib' | 'pair';
+
+/** Кто исполняет CAPA (Б5е): руководитель отдела действия — главный механик, начальник ООК, производства, ОКК. */
+export type CapaHead = 'maint' | 'qa' | 'mes' | 'qc';
+
+/**
+ * Действие CAPA каталога (Б5е; `content/capa/`; геймдизайн, §6.4): что делает движок; кто исполняет — руководитель
+ * отдела, у обучения — отдела тех, кого учат; к каким отклонениям подходит — по роду вероятной причины или по виду
+ * отклонения; порядок у правила начальника ООК — нет его, действие назначает только игрок. Часы и цена — из записей,
+ * которые действие трогает: узла и запчасти, документа и обучения, класса прибора, пары и аудита.
+ */
+export interface CapaAction {
+  id: Id;
+  name: Text;
+  does: CapaDoes;
+  head?: CapaHead;
+  causes?: CauseClass[];
+  kinds?: ('oos' | 'ipc' | 'param' | 'yield' | 'recon')[];
+  rule?: number;
+  source: string[];
+  review: Review;
+}
+
 export interface ContentDb {
   /** отпечаток базы: сохранение помнит, с какой базой оно сделано */
   hash: string;
@@ -1131,6 +1283,12 @@ export interface ContentDb {
   spares: Record<Id, Spare>;
   sops: Record<Id, Sop>;
   regimes: Record<Id, Regime>;
+  /** сезоны спроса групп товаров (Б6в) */
+  seasons: Record<Id, Season>;
   makers: Record<Id, Maker>;
   agreements: Record<Id, Agreement>;
+  /** политики руководителей (Б5г): `content/policies/` */
+  policies: Record<Id, Policy>;
+  /** каталог действий CAPA (Б5е): `content/capa/` */
+  capa: Record<Id, CapaAction>;
 }

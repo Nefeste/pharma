@@ -9,7 +9,7 @@ import { setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import { App } from '../ui/App';
 import { type Actions, Store } from '../ui/store';
-import { Game, PLANT, SCENARIO } from './game';
+import { Game, SCENARIO } from './game';
 import { kept, medianFrame, PRESET, pickPreset, keep as remember, windowKeep } from './preset';
 
 declare const __VERSION__: string;
@@ -44,8 +44,22 @@ const actions: Actions = {
   show: later('show'),
   release: later('release'),
   assess: later('assess'),
+  classify: later('classify'),
+  capa: later('capa'),
+  capaRun: later('capaRun'),
   setpoint: later('setpoint'),
   urgent: later('urgent'),
+  ganttTab: later('ganttTab'),
+  ganttBars: later('ganttBars'),
+  jobsFilter: later('jobsFilter'),
+  dropJob: later('dropJob'),
+  cancelJob: later('cancelJob'),
+  mrpOrder: later('mrpOrder'),
+  expedite: later('expedite'),
+  cancelPo: later('cancelPo'),
+  fcKey: later('fcKey'),
+  fcEdit: later('fcEdit'),
+  fcPolicy: later('fcPolicy'),
   toggleFlows: later('toggleFlows'),
   setLayer: later('setLayer'),
   nextLayer: later('nextLayer'),
@@ -72,6 +86,9 @@ const actions: Actions = {
   answer: later('answer'),
   setMode: later('setMode'),
   maintain: later('maintain'),
+  memo: later('memo'),
+  withdraw: later('withdraw'),
+  answerFork: later('answerFork'),
   togglePo: later('togglePo'),
   pickMode: later('pickMode'),
   setPo: later('setPo'),
@@ -80,12 +97,14 @@ const actions: Actions = {
   roster: later('roster'),
   vacancy: later('vacancy'),
   closeVacancy: later('closeVacancy'),
+  approvePair: later('approvePair'),
   hire: later('hire'),
   dismiss: later('dismiss'),
   leaveAdd: later('leaveAdd'),
   leaveMove: later('leaveMove'),
   leaveDrop: later('leaveDrop'),
   leaveDeputy: later('leaveDeputy'),
+  deputy: later('deputy'),
   also: later('also'),
   toggleGantt: later('toggleGantt'),
   setGanttDays: later('setGanttDays'),
@@ -101,6 +120,18 @@ const actions: Actions = {
   toggleRef: later('toggleRef'),
   setRefTab: later('setRefTab'),
   toggleKpi: later('toggleKpi'),
+  togglePolicies: later('togglePolicies'),
+  toggleSop: later('toggleSop'),
+  setSopCell: later('setSopCell'),
+  resetSop: later('resetSop'),
+  approveSop: later('approveSop'),
+  setPolicyTab: later('setPolicyTab'),
+  draftPolicy: later('draftPolicy'),
+  runPolicies: later('runPolicies'),
+  stopPolicies: later('stopPolicies'),
+  applyPolicies: later('applyPolicies'),
+  resetPolicies: later('resetPolicies'),
+  moveVisit: later('moveVisit'),
   setKpiTab: later('setKpiTab'),
   kpiWhy: later('kpiWhy'),
   setKpiMonth: later('setKpiMonth'),
@@ -115,7 +146,7 @@ const actions: Actions = {
   takeSeats: later('takeSeats'),
   closeSeats: later('closeSeats'),
 };
-createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} plant={PLANT} scenario={SCENARIO} />);
+createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} scenario={SCENARIO} />);
 
 const asked = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q'));
 // пресет: из адреса (проверки) — как есть; иначе запомненный; первый запуск — средний, замер решит (preset.ts)

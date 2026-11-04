@@ -2,24 +2,35 @@
 // за время на нём (3е), вчера в цифрах, одна главная потеря, одна подсказка; что было с прошлой планёрки; что ждёт сейчас. Большое окно поверх карты с
 // вопросом в заголовке. Вид собирает поток расчёта (src/sim/report.ts) без слов и без истины; слова — отсюда.
 import type { ReactNode } from 'react';
-import { devLevers, heldLevers, mainLevers, resignLevers, riskLevers, wasteLevers } from '../app/levers';
+import { devLevers, heldLevers, mainLevers, resignLevers, riskLevers, uncoveredLevers, wasteLevers } from '../app/levers';
 import { spotName } from '../app/losses';
-import type { PartType, Scenario } from '../content/types';
+import type { Id, PartType, Plant, Scenario } from '../content/types';
 import { civilFromDays, DAY, HOUR, momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
 import { DEPT_SEAT } from '../engine/seats';
-import { dateText, daysText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
+import { clock, dateText, daysText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import { layoutOf } from '../render/layout';
+import type { FcMeeting } from '../sim/forecast';
+import type { EditsMeeting } from '../sim/edits';
+import type { MrpMeeting } from '../sim/mrp';
+import type { SopMeeting } from '../sim/sop';
 import type { HeadDay } from '../sim/journal';
 import type { MonthClose } from '../sim/kpi';
-import type { LineSum, MainLoss, ModeRow, MorningView, SeatSum, SessionSum } from '../sim/report';
+import type { CapaRow } from '../sim/devs';
+import type { CapaMeeting, LineSum, MainLoss, ModeRow, MorningView, SeatSum, SessionSum } from '../sim/report';
 import type { RejectSum } from '../sim/waste';
 import type { Thing } from '../sim/views';
 import { assetName, workName } from './assets';
+import { BossMeeting } from './Bosses';
+import { capaName, headText } from './capa';
+import { overFact } from './fcchart';
+import { signed } from './Forecast';
+import { DailyMeet } from './Daily';
 import { headName, kpiName, kpiText, kpiValue, monthText } from './Kpi';
 import { db } from './db';
 import { AskRows } from './Journal';
 import { Levers } from './Levers';
+import { priceParts } from './price';
 import type { Actions, Hud } from './store';
 import { paramText } from './units';
 
@@ -46,12 +57,12 @@ const partName = (parts: readonly PartType[], id: string) => named(parts.find(p 
 const pairName = (supplier: string, maker: string) => T.ref.pair(named(db?.suppliers[supplier]?.name, supplier), named(db?.makers[maker]?.name, maker));
 
 /** Вид машины линии по плану. */
-function lineMachine(plant: string, line: number, k: number): { thing: Thing; name: string } {
+function lineMachine(plant: Plant, line: number, k: number): { thing: Thing; name: string } {
   const type = db ? (planOf(db, plant).plant.lines[line]?.machines[k]?.type ?? '') : '';
   return { thing: { kind: 'machine', line, k }, name: named(db?.machines[type]?.name, type) };
 }
 
-function lineLossText(plant: string, l: LineSum): string {
+function lineLossText(plant: Plant, l: LineSum): string {
   if (!l.loss || l.key === undefined) return '';
   const key = lineMachine(plant, l.line, l.key).name;
   const text = T.morning.lineLoss[l.loss.what](key, durText(l.loss.sec));
@@ -60,7 +71,7 @@ function lineLossText(plant: string, l: LineSum): string {
   return `${text} — ${T.morning.neighbour[l.neighbour.what](nb, durText(l.neighbour.sec))}`;
 }
 
-function mainText(plant: string, m: MainLoss): string {
+function mainText(plant: Plant, m: MainLoss): string {
   switch (m.k) {
     case 'wait': {
       // у ожидания — место, где его было больше всего (Б1л)
@@ -243,6 +254,147 @@ function SeatBlock({ x, start }: { x: SeatSum; start: Ymd }) {
 }
 
 /**
+ * Совещание S&OP (Б6г): в день совещания — его час; утверждён план за сутки — до какого месяца, запас позиций продуктов
+ * в первом месяце, кто утвердил и «до лучшего плана». Рычаг — окно S&OP.
+ */
+function SopBlock({ x, hud, actions, close }: { x: SopMeeting; hud: Hud; actions: Actions; close: () => void }) {
+  const p = x.plan;
+  return (
+    <div className="mblock" data-test="morning-sop">
+      {x.today !== undefined ? <div data-test="morning-sop-today">{T.sop.today(clock(x.today % 86400))}</div> : null}
+      {p ? (
+        <div data-test="morning-sop-plan" data-gap={p.gap}>
+          {T.sop.meetingText(T.sop.month(p.to), p.cover.map(c => T.sop.coverOf(named(db?.products[c.product]?.name, c.product), T.sop.days(c.days))).join(', '), p.by === 'player' ? T.journal.player('') : T.sop.colleague, money(p.gap))}
+        </div>
+      ) : null}
+      <Levers list={[{ k: 'sop' }]} hud={hud} actions={actions} close={close} />
+    </div>
+  );
+}
+
+/**
+ * Прогноз (Б6в) — в первые сутки после закрытия месяца: сколько в нём заказано и что ему прогнозировали месяц назад
+ * планирование и отдел продаж — со знаком против факта, — и прогноз нынешнего месяца у обоих. Рычаг — вкладка «Прогноз».
+ */
+function FcBlock({ x, hud, actions, close }: { x: FcMeeting; hud: Hud; actions: Actions; close: () => void }) {
+  const ym = (n: number) => ({ y: Math.floor(n / 12), m: (n % 12) + 1 });
+  const was = ym(x.m);
+  const now = ym(x.next.m);
+  return (
+    <div className="mblock" data-test="morning-forecast">
+      <div>
+        {T.fc.meetingText(T.fc.monthIn(was.y, was.m), T.fc.cases(x.fact), num(x.plan), signed(overFact(x.plan, x.fact), 0), num(x.sales), signed(overFact(x.sales, x.fact), 0), T.fc.month(now.y, now.m), num(x.next.plan), num(x.next.sales))}
+      </div>
+      <Levers list={[{ k: 'forecast' }]} hud={hud} actions={actions} close={close} />
+    </div>
+  );
+}
+
+/**
+ * Правки плана (Б6е): события коммерции за сутки до планёрки — крупные заказы и снятый спрос — и правки в замороженном
+ * горизонте с ценой. Рычаг — расписание.
+ */
+function EditsBlock({ x, hud, actions, close }: { x: EditsMeeting; hud: Hud; actions: Actions; close: () => void }) {
+  const start = hud.start;
+  const skuName = (id?: Id) => (id ? named(db?.skus[id]?.name, id) : '');
+  const cus = (id: Id) => named(db?.customers[id]?.name, id);
+  const label = (id: string) => T.jobs.order(Number(id.slice(1)));
+  return (
+    <div className="mblock" data-test="morning-edits">
+      {x.events.length > 0 ? (
+        <>
+          <div>{T.edits.events}</div>
+          <ul className="mlist">
+            {x.events.map(e => (
+              <li key={`${e.t}/${e.kind}/${e.customer}/${e.sku}`} data-test="morning-event" data-kind={e.kind}>
+                {e.kind === 'big' ? T.journal.what.bigOrder(cus(e.customer), skuName(e.sku), e.cases, whenText(start, e.due ?? e.t)) : T.journal.what.demandCut(cus(e.customer), skuName(e.sku), e.cases)}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {x.edits.length > 0 ? (
+        <>
+          <div>{T.edits.title}</div>
+          <ul className="mlist">
+            {x.edits.map(e => (
+              <li key={`${e.t}/${e.kind}/${e.batch ?? ''}`} data-test="morning-edit" data-kind={e.kind}>
+                {T.edits.line(T.edits.kind[e.kind] ?? e.kind, skuName(e.sku) || (e.batch ? label(e.batch) : ''), priceParts(e.price, id => (e.codes?.[id] ? T.gantt.batch(e.codes[id]) : label(id))).join('; '))}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      <Levers list={[{ k: 'gantt', seat: 'production' }]} hud={hud} actions={actions} close={close} />
+    </div>
+  );
+}
+
+/**
+ * Материалы (Б6д): плановые заказы с датой сегодня и раньше — у поставщика, сколько, к какому дню, на сколько опоздают, —
+ * и заказы в пути, которые опоздают; с Б6ж — заказы, что не пришли к обещанному дню, и одобрения пар в работе. Рычаг —
+ * вкладка «Материалы» расписания.
+ */
+function MrpBlock({ x, hud, actions, close }: { x: MrpMeeting; hud: Hud; actions: Actions; close: () => void }) {
+  const unitOf = (m: Id) => db?.materials[m]?.unit ?? 'mass';
+  const mat = (m: Id) => named(db?.materials[m]?.name, m);
+  const sup = (id: Id) => named(db?.suppliers[id]?.name, id);
+  return (
+    <div className="mblock" data-test="morning-materials">
+      {x.due.length > 0 ? (
+        <>
+          <div>{T.mrp.due(x.due.length)}</div>
+          <ul className="mlist">
+            {x.due.map(o => (
+              <li key={`${o.supplier}/${o.material}/${o.need}`} className={o.late > 0 ? 'bad' : undefined} data-test="morning-materials-due" data-material={o.material}>
+                {T.mrp.dueLine(mat(o.material), sup(o.supplier), qtyText(o.qty, unitOf(o.material), 0), dayText(o.need).slice(0, 5), o.late)}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {x.late.length > 0 ? (
+        <>
+          <div>{T.mrp.lateTitle}</div>
+          <ul className="mlist">
+            {x.late.map(l => (
+              <li key={`${l.po}/${l.material}`} data-test="morning-materials-late" data-po={l.po}>
+                {T.mrp.lateLine(l.po, mat(l.material), l.days)}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {x.behind.length > 0 ? (
+        <>
+          <div>{T.mrp.behindTitle}</div>
+          <ul className="mlist">
+            {x.behind.map(l => (
+              <li key={`${l.po}/${l.material}`} className="warn" data-test="morning-materials-behind" data-po={l.po}>
+                {T.mrp.behindLine(l.po, sup(l.supplier), mat(l.material), l.days)}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {x.apps.length > 0 ? (
+        <>
+          <div>{T.mrp.appsTitle}</div>
+          <ul className="mlist">
+            {x.apps.map(a => (
+              <li key={a.pair} data-test="morning-materials-app" data-pair={a.pair} data-step={a.step}>
+                {T.mrp.appLine(`${pairName(a.supplier, a.maker)}, ${mat(a.material)}`, [T.pairApp.steps[a.step] ?? a.step, ...(a.filed !== undefined ? [T.pairApp.filed(dayText(a.filed))] : []), ...(a.asked !== undefined ? [T.pairApp.asked(dayText(a.asked))] : []), ...(a.answered !== undefined ? [T.pairApp.answered(dayText(a.answered))] : [])].join(' · '))}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      <Levers list={[{ k: 'materials' }]} hud={hud} actions={actions} close={close} />
+    </div>
+  );
+}
+
+/**
  * Итоги месяца (Б5ж) — на первой планёрке месяца: у руководителя — показатели, сдвинувшиеся сильнее всего против месяца до
  * него, с противовесом; первый закрытый месяц — сравнивать не с чем. Рычаг — окно «Показатели». Это отчёт, а не событие:
  * без автопаузы и без извещения.
@@ -338,11 +490,44 @@ function Rejects({ r, start, hud, actions, close }: { r: RejectSum; start: Ymd; 
   );
 }
 
+/**
+ * CAPA (Б5е): назначенные и ждущие исполнения — с исполнителем и сроком; назначенные и выполненные за сутки; проверки
+ * эффективности за сутки с итогом и те, что придутся на неделю после планёрки. Строка ведёт к карточке отклонения.
+ */
+function CapaMeet({ c, start, go }: { c: CapaMeeting; start: Ymd; go: (t: Thing | undefined) => (() => void) | undefined }) {
+  const day = (t: number) => dayText(momentOf(start, t).day);
+  const line = (x: CapaRow) => T.morning.capaLine(x.n, capaName(x.action), T.dev.no(x.dev), headText(x.head));
+  const rows = (title: string, list: CapaRow[], tail: (x: CapaRow) => string, cls: (x: CapaRow) => string, test: string) =>
+    list.length === 0 ? null : (
+      <>
+        <div className="muted">{title}</div>
+        <ul className="mlist">
+          {list.map(x => (
+            <li key={`${test}${x.n}`} className={`go ${cls(x)}`} onClick={go({ kind: 'dev', n: x.dev })} data-test={test} data-capa={x.n}>
+              {line(x)}
+              {tail(x) ? <span className="muted"> · {tail(x)}</span> : null}
+            </li>
+          ))}
+        </ul>
+      </>
+    );
+  if (c.open.length + c.day.length + c.checks.length + c.soon.length === 0) return null;
+  return (
+    <div className="mblock" data-test="morning-capa">
+      <div className="mhead">{T.morning.capaTitle}</div>
+      {rows(T.morning.capaOpen, c.open, x => (x.why ? T.dev.capaWait(T.notices.why[x.why] ?? x.why) : T.dev.capaDue(day(x.due))), x => (x.why ? 'warn' : ''), 'morning-capa-open')}
+      {rows(T.morning.capaDay, c.day, x => (x.done !== undefined ? T.dev.capaDone(whenText(start, x.done), headText(x.head)) : ''), () => '', 'morning-capa-day')}
+      {rows(T.morning.capaChecks, c.checks, x => (x.check ? (x.check.ok ? T.journal.check.ok : T.dev.capaNo(day(x.check.t), x.check.dev !== undefined ? T.dev.no(x.check.dev) : '')) : ''), x => (x.check && !x.check.ok ? 'bad' : ''), 'morning-capa-check')}
+      {rows(T.morning.capaSoon, c.soon, x => (x.checkAt !== undefined ? T.dev.capaCheckAt(day(x.checkAt)) : ''), () => '', 'morning-capa-soon')}
+    </div>
+  );
+}
+
 /** Часть OEE ключевой машины: без времени работы нет производительности, без выпуска — качества — прочерк, как в окне
  * «Показатели»; выше 100 % — 100 %. */
 const part = (x?: number) => (x === undefined ? T.floor.none : pctText(Math.min(x, 10000)));
 
-export function Morning({ v, day, start, plant, pause, actions, hud, scenario }: { v?: MorningView; day: number; start: Ymd; plant: string; pause: boolean; actions: Actions; hud: Hud; scenario?: Scenario }) {
+export function Morning({ v, day, start, plant, pause, actions, hud, scenario }: { v?: MorningView; day: number; start: Ymd; plant: Plant; pause: boolean; actions: Actions; hud: Hud; scenario?: Scenario }) {
   const d = civilFromDays(day);
   const at = momentOf(d, 0);
   const yest = civilFromDays(day - 1);
@@ -393,9 +578,36 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
               </div>
             </Section>
           ) : null}
+          {v.memos.length > 0 ? (
+            <Section title={T.morning.memos}>
+              <div className="mblock" data-test="morning-memos">
+                <AskRows rows={v.memos} start={start} actions={actions} />
+              </div>
+            </Section>
+          ) : null}
           {v.month ? (
             <Section title={T.kpi.close.title(`${monthText(v.month)}${v.month.part ? ` · ${T.kpi.part}` : ''}`)}>
               <MonthBlock x={v.month} hud={hud} actions={actions} close={close} />
+            </Section>
+          ) : null}
+          {v.forecast ? (
+            <Section title={T.fc.meeting}>
+              <FcBlock x={v.forecast} hud={hud} actions={actions} close={close} />
+            </Section>
+          ) : null}
+          {v.sop ? (
+            <Section title={T.sop.title}>
+              <SopBlock x={v.sop} hud={hud} actions={actions} close={close} />
+            </Section>
+          ) : null}
+          {v.materials ? (
+            <Section title={T.mrp.meeting}>
+              <MrpBlock x={v.materials} hud={hud} actions={actions} close={close} />
+            </Section>
+          ) : null}
+          {v.edits ? (
+            <Section title={T.edits.meeting}>
+              <EditsBlock x={v.edits} hud={hud} actions={actions} close={close} />
             </Section>
           ) : null}
           {v.modes.length > 0 ? (
@@ -496,6 +708,10 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
               rows={v.deviations.map((x, i) => (
                 <li key={i} className="go" onClick={x.inv ? undefined : go({ kind: 'dev', n: x.dev })} data-test="morning-dev">
                   <span className="mono muted">{when(x.t)}</span> {T.morning.devKinds[x.kind]} <span className="mono">{T.dev.no(x.dev)}</span>
+                  <span className={x.cls === 'minor' ? 'muted' : 'warn'} data-test="morning-dev-cls">
+                    {' · '}
+                    {T.dev.clsLow[x.cls] ?? x.cls}
+                  </span>
                   {x.lot ? ` · ${named(db?.materials[x.material ?? '']?.name, x.material)} ${T.lotCode(...x.lot)}` : ''}
                   {x.batch ? ` · ${T.card.batch} ${x.batch}` : ''}
                   {x.inv ? (
@@ -545,6 +761,9 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
               ]}
             />
           </Section>
+          <Section title={T.daily.title}>
+            <DailyMeet d={v.daily} plant={plant} start={start} hud={hud} actions={actions} close={close} />
+          </Section>
           <Section title={T.morning.now}>
             <div className="mblock" data-test="morning-now">
               <div className="mhead">{T.morning.labTitle}</div>
@@ -589,12 +808,31 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
               ))}
             />
             <Rows
+              title={T.jobs.uncovered}
+              rows={
+                // заказы без покрытия (Б6а): число — построчно они во вкладке «Задания» расписания
+                v.uncovered
+                  ? [
+                      <li key="u" className="bad" data-test="morning-uncovered">
+                        {T.jobs.morning(v.uncovered.orders, v.uncovered.cases)}
+                        <Levers list={uncoveredLevers()} hud={hud} actions={actions} close={close} />
+                      </li>,
+                    ]
+                  : []
+              }
+            />
+            <Rows
               title={T.morning.pendingTitle}
               rows={[
                 // что ждёт решения (Б1г): неоценённые отклонения — старшие первыми; удержанные серии
                 ...v.pending.map(x => (
                   <li key={`d${x.dev}`} className={hud.t > x.due ? 'bad' : ''} data-test="morning-pending">
                     {T.morning.pendingDev(T.morning.devKinds[x.kind], T.dev.no(x.dev), x.batch ?? '', dayText(momentOf(start, x.due).day))}
+                    <span className={x.cls === 'minor' ? 'muted' : 'warn'}>
+                      {' · '}
+                      {T.dev.clsLow[x.cls] ?? x.cls}
+                    </span>
+                    {x.late ? <span className="bad" data-test="morning-late"> · {T.morning.late}</span> : null}
                     {x.assessing ? <span className="muted"> · {T.morning.assessing}</span> : null}
                     {x.assessing ? null : <Levers list={devLevers(x)} hud={hud} actions={actions} close={close} />}
                     {x.bn !== undefined ? (
@@ -615,6 +853,7 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                 )),
               ]}
             />
+            {v.capa ? <CapaMeet c={v.capa} start={start} go={go} /> : null}
             {v.rejects ? <Rejects r={v.rejects} start={start} hud={hud} actions={actions} close={close} /> : null}
             <Rows
               title={T.morning.trainTitle}
@@ -659,6 +898,7 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                 </div>
               ))}
             </div>
+            <BossMeeting rows={v.bosses} go={go} />
             <PeopleBlock v={v} hud={hud} actions={actions} close={close} go={go} />
             <Rows
               title={T.assets.morningTitle}

@@ -82,8 +82,10 @@ describe('причина — числа правила', () => {
     expect(r.d.why?.seen).toBe(7);
   });
 
-  test('заказ поставщику: по строке — есть и в пути, расход, точка заказа, сколько хотели; в заказе — до целой тары', () => {
+  test('заказ поставщику по точке заказа: по строке — есть и в пути, расход, точка, сколько хотели; в заказе — до тары', () => {
     const s = newPlant(db, { scenario: SC });
+    // по точке заказа, как до Б6д: заказы по потребности — tools/test/mrp.test.ts
+    apply(db, s, { kind: 'policy', policy: 'pol.supply.how', value: 'point' });
     before(s, workday(s, 1), SUPPLY_HOUR);
     const per = planUse(db, s, 1000);
     const have = new Map([...per.keys()].map(m => [m, supplyPosition(db, s, m)]));
@@ -99,6 +101,7 @@ describe('причина — числа правила', () => {
       expect(r.d.prepaid).toBe(po.prepaid!);
       expect(r.d.why!.map(w => w.material)).toEqual(po.lines.map(l => l.material));
       for (const w of r.d.why!) {
+        if (w.rule === 'need') throw new Error('not by the reorder point');
         const sup = db.suppliers[po.supplier];
         const use = (d: number) => Math.ceil((per.get(w.material)! * d) / 1000);
         expect(w.have).toBe(have.get(w.material)!);
@@ -179,8 +182,8 @@ describe('причина — числа правила', () => {
     for (const r of visits) {
       expect(r.by).toBe('maint');
       const day = momentOf(s90.start, r.t).day;
-      expect(r.d.why.ahead).toBe(sc.assets.ahead);
-      if (r.d.why.until !== undefined) expect(r.d.why.until - day).toBeLessThanOrEqual(sc.assets.ahead);
+      expect(r.d.why!.ahead).toBe(sc.assets.ahead);
+      if (r.d.why!.until !== undefined) expect(r.d.why!.until - day).toBeLessThanOrEqual(sc.assets.ahead);
       // визит ещё впереди или идёт — или его запись уже принята, не раньше дня решения
       const a = s90.assets[r.d.asset];
       expect(a.visit?.work === r.d.work || a.recs.some(x => x.work === r.d.work && x.day >= day)).toBe(true);
@@ -345,6 +348,6 @@ describe('срок и устройство журнала', () => {
       { n: s.journal.at(-2)!.n, t: s.t, by: 'hr', d: { kind: 'leaveDraft', y: 2028, why: { people: 3, miss: 0 } } },
       { n: s.journal.at(-2)!.n + 1, t: s.t, by: 'player', seat: 'quality', d: { kind: 'setpoint', key: 'k', value: 1, target: 1 } },
     ]);
-    expect(planOf(db, s.plant)).toBeDefined();
+    expect(planOf(db, s.plan)).toBeDefined();
   });
 });

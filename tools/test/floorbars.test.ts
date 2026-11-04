@@ -18,7 +18,7 @@ import type { AndonItem } from '../../src/sim/andon';
 import { type FloorView, floorView, MACHINE_PARTS, ROOM_PARTS } from '../../src/sim/floor';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const l = layoutOf(plan);
 const spots = spotsOf(db, l, roomsOf(plan).rooms);
 

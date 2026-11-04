@@ -24,7 +24,7 @@ const UNDECIDED: ReadonlySet<LotStatus> = new Set(['quarantine', 'sampled', 'tes
 
 export function check(db: ContentDb, s: PlantState): string[] {
   const bad: string[] = [];
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   // баланс масс: принято = остаток в таре + израсходовано + в пробах + списано
   const left: Record<string, number> = {};
   for (const c of Object.values(s.containers)) {
@@ -182,7 +182,7 @@ export function check(db: ContentDb, s: PlantState): string[] {
   const short = new Map<string, string>();
   for (const b of Object.values(s.batches)) {
     const c = b.code;
-    if (b.status !== 'waiting' && b.status !== 'reserved' && c.n === 0) bad.push(`серия ${b.id}: досье выдано без номера`);
+    if (b.status !== 'waiting' && b.status !== 'reserved' && b.status !== 'cancelled' && c.n === 0) bad.push(`серия ${b.id}: досье выдано без номера`);
     if (c.n === 0) continue;
     if (c.pp !== db.products[b.product].code) bad.push(`серия ${b.id}: код ${c.pp} — не код продукта`);
     const mix = db.recipes[b.recipe].stages.findIndex(st => st.mix);
@@ -306,7 +306,7 @@ function partners(db: ContentDb, s: PlantState, bad: string[]) {
  * с её задачей; приёмка — только у актива с законченной работой.
  */
 function assets(db: ContentDb, s: PlantState, bad: string[]) {
-  const P = placesOf(planOf(db, s.plant).plant);
+  const P = placesOf(planOf(db, s.plan).plant);
   for (const t of P.things) if (!s.assets[t.id]) bad.push(`вещь ${t.id}: нет актива`);
   for (const v of Object.values(s.vehicles)) if (!s.assets[v.id]) bad.push(`техника ${v.id}: нет актива`);
   const invs = new Set<number>();
@@ -339,8 +339,11 @@ function assets(db: ContentDb, s: PlantState, bad: string[]) {
  */
 function lean(s: PlantState, bad: string[]) {
   for (const b of Object.values(s.batches)) {
-    if (b.status === 'released' || b.status === 'rejected') {
+    if (b.status === 'released' || b.status === 'rejected' || b.status === 'cancelled') {
       if (b.phase) bad.push(`серия ${b.id}: ${b.status}, а время ещё идёт (${b.phase})`);
+      // отменённое задание (Б6а): время разложено до отмены
+      const spent = Object.values(b.spent).reduce((n, x) => n + x, 0);
+      if (b.status === 'cancelled' && spent !== (b.cancelled ?? s.t) - b.ordered) bad.push(`задание ${b.id}: по состояниям ${spent} с, а до отмены ${(b.cancelled ?? s.t) - b.ordered}`);
       continue;
     }
     const sum = Object.values(b.spent).reduce((n, x) => n + x, 0) + (b.phase ? s.t - b.phaseAt : 0);
@@ -476,7 +479,7 @@ function production(db: ContentDb, s: PlantState, bad: string[]) {
   for (const lot of Object.values(s.lots)) if (lot.used !== (used[lot.id] ?? 0)) bad.push(`партия ${lot.id}: израсходовано ${lot.used}, а отвешено в серии ${used[lot.id] ?? 0}`);
   // помещение занято серией — только «занято»; оборудование занято — только серией, которая в этом помещении; помещение
   // линии — серией, которую линия упаковывает (Б1е)
-  const lineRooms = new Map(planOf(db, s.plant).plant.lines.map(l => [l.id, l.room]));
+  const lineRooms = new Map(planOf(db, s.plan).plant.lines.map(l => [l.id, l.room]));
   for (const room of Object.values(s.rooms)) {
     if ((room.status === 'busy') !== (room.batch !== undefined)) bad.push(`помещение ${room.id}: ${room.status}, серия ${room.batch ?? '—'}`);
     const b = room.batch ? s.batches[room.batch] : undefined;

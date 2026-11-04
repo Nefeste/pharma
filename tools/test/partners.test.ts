@@ -54,11 +54,12 @@ function due(s: PlantState, key: string, until: number) {
 
 describe('контрагенты в базе', () => {
   test('изготовители вымышленные, со страной и площадкой; у материала — пара спецификации, поставщик продаёт его от этого изготовителя', () => {
-    expect(Object.keys(db.makers).sort()).toEqual(['mkr.api-lor', 'mkr.api-par', 'mkr.exc', 'mkr.pack']);
+    // с Б6ж — вторые изготовители АФС: пары-кандидаты спецификаций
+    expect(Object.keys(db.makers).sort()).toEqual(['mkr.api-lor', 'mkr.api-lor2', 'mkr.api-par', 'mkr.api-par2', 'mkr.exc', 'mkr.pack']);
     for (const m of Object.values(db.makers)) expect([m.country.ru.length > 0, m.site.ru.length > 0]).toEqual([true, true]);
     expect(db.suppliers['sup.api'].maker).toBeUndefined();
     expect(db.suppliers['sup.api'].items['mat.api.paracetamol'].maker).toBe('mkr.api-par');
-    for (const id of ['sup.api-lor', 'sup.exc', 'sup.pack']) for (const it of Object.values(db.suppliers[id].items)) expect(it.maker).toBe(db.suppliers[id].maker!);
+    for (const id of ['sup.api-lor', 'sup.api-par2', 'sup.api-lor2', 'sup.exc', 'sup.pack']) for (const it of Object.values(db.suppliers[id].items)) expect(it.maker).toBe(db.suppliers[id].maker!);
     for (const m of Object.values(db.materials)) {
       const pairs = specPairs(db, m.id, start);
       if (!STARTING.has(m.kind)) {
@@ -133,8 +134,11 @@ describe('сборщик базы (Б3г)', () => {
 describe('движок (Б3г)', () => {
   test('на старте: пары одобрены и в сроке, записи не раньше спецификации; договоры с первого дня на срок; у запаса — изготовитель пары', () => {
     const s = newPlant(db, { scenario: SC });
-    expect(Object.keys(s.pairs).sort()).toEqual(['sup.api-lor|mkr.api-lor', API, EXC, PACK]);
-    for (const p of Object.values(s.pairs)) {
+    // с Б6ж пары-кандидаты — без записей одобрения: их одобряют изменением досье
+    const CANDS = ['sup.api-lor2|mkr.api-lor2', 'sup.api-par2|mkr.api-par2'];
+    expect(Object.keys(s.pairs).sort()).toEqual(['sup.api-lor2|mkr.api-lor2', 'sup.api-lor|mkr.api-lor', 'sup.api-par2|mkr.api-par2', API, EXC, PACK]);
+    for (const k of CANDS) expect(s.pairs[k].recs).toEqual([]);
+    for (const p of Object.values(s.pairs).filter(x => !CANDS.includes(x.id))) {
       const r = p.recs[0];
       expect(p.recs.length).toBe(1);
       expect(r.day <= start && r.until - start > sc.partners.ahead).toBe(true);
@@ -315,7 +319,9 @@ describe('движок (Б3г)', () => {
     const s = fromSave(db, json);
     const day = dayOf(s);
     for (const l of Object.values(s.lots)) if (db.suppliers[l.supplier] && STARTING.has(db.materials[l.material].kind)) expect(l.maker).toBe(db.suppliers[l.supplier].items[l.material].maker);
-    for (const p of Object.values(s.pairs)) expect(pairValid(p, day)).toBe(true);
+    // с Б6ж пары-кандидаты — без записей одобрения
+    for (const p of Object.values(s.pairs)) expect(pairValid(p, day)).toBe(p.recs.length > 0);
+    expect(Object.values(s.pairs).filter(p => p.recs.length === 0).map(p => p.id).sort()).toEqual(['sup.api-lor2|mkr.api-lor2', 'sup.api-par2|mkr.api-par2']);
     for (const c of Object.values(s.contracts)) expect([c.from, c.lines.every(l => l.bought === 0)]).toEqual([day, true]);
     expect(check(db, s)).toEqual([]);
   });

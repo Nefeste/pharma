@@ -4,6 +4,7 @@
 import type { Lever } from '../app/levers';
 import { named, T } from '../i18n';
 import { db } from './db';
+import { actLabel, actOf } from './memo';
 import { type Actions, holds, type Hud } from './store';
 
 /** Кнопка и что она изменит. */
@@ -35,6 +36,20 @@ function words(l: Exclude<Lever, { k: 'later' }>): [string, string] {
       return [T.levers.person(T.card.person(named(db?.roles[l.role]?.name, l.role), l.tab)), T.levers.personWhat];
     case 'journal':
       return [T.levers.journal, T.levers.journalWhat];
+    case 'jobs':
+      return [T.levers.jobs, T.levers.jobsWhat];
+    case 'launch':
+      return [T.levers.launch, T.levers.launchWhat];
+    case 'forecast':
+      return [T.levers.forecast, T.levers.forecastWhat];
+    case 'sop':
+      return [T.levers.sop, T.levers.sopWhat];
+    case 'materials':
+      return [T.levers.materials, T.levers.materialsWhat];
+    case 'stock':
+      return [T.levers.stock, T.levers.stockWhat];
+    case 'thing':
+      return [T.levers.thing, T.levers.thingWhat];
     case 'kpi':
       return [T.levers.kpi, T.levers.kpiWhat];
     case 'waste':
@@ -84,16 +99,54 @@ function run(l: Lever, hud: Hud, actions: Actions) {
     case 'journal':
       actions.openJournal(l.n);
       return;
+    case 'jobs':
+      // вкладка «Задания» (Б6а): сначала вкладка, потом окно — оно откроется на ней
+      actions.ganttTab('jobs');
+      if (!hud.gantt.open) actions.toggleGantt();
+      return;
+    case 'launch':
+      // вкладка «План запуска» (Б6б): сначала вкладка, потом окно — оно откроется на ней
+      actions.ganttTab('launch');
+      if (!hud.gantt.open) actions.toggleGantt();
+      return;
+    case 'forecast':
+      // вкладка «Прогноз» (Б6в): так же
+      actions.ganttTab('forecast');
+      if (!hud.gantt.open) actions.toggleGantt();
+      return;
+    case 'materials':
+      // вкладка «Материалы» (Б6д): так же
+      actions.ganttTab('mrp');
+      if (!hud.gantt.open) actions.toggleGantt();
+      return;
+    case 'sop':
+      // окно совещания S&OP (Б6г): цели запаса — его план
+      if (!hud.sop.open) actions.toggleSop();
+      return;
+    case 'stock':
+      if (!hud.stock.open) actions.toggleStock();
+      return;
+    case 'thing':
+      actions.show(l.thing);
+      return;
     case 'kpi':
       actions.openKpi(l.month);
       return;
     case 'waste':
-      actions.waste();
+      // чужой пост (Б5д) — записка заведующему складом
+      if (holds(hud, l.seat)) actions.waste();
+      else actions.memo([{ kind: 'waste' }]);
       return;
     case 'later':
       return;
   }
 }
+
+/**
+ * Рычаги, которые с чужого поста ведут к записке (Б5д): окна, где у кнопок команд — «Записка», и сама команда вывоза;
+ * решения ООК и уполномоченного лица, политика сверхурочных — нет.
+ */
+const MEMO_LEVERS: ReadonlySet<Lever['k']> = new Set(['gantt', 'lab', 'urgent', 'staff', 'leave', 'person', 'waste']);
 
 /** Рычаги строки; `close` — закрыть панель, из которой щёлкнули, раньше, чем откроется другая. */
 export function Levers({ list, hud, actions, close }: { list: readonly Lever[]; hud: Hud; actions: Actions; close?: () => void }) {
@@ -110,23 +163,27 @@ export function Levers({ list, hud, actions, close }: { list: readonly Lever[]; 
         }
         const seat = 'seat' in l ? l.seat : undefined;
         const mine = !seat || holds(hud, seat);
+        // чужой пост (Б5д): окно с «Записками» у кнопок или записка заведующему складом
+        const memo = !mine && hud.top?.seats !== undefined && MEMO_LEVERS.has(l.k);
+        const act = l.k === 'waste' && seat ? actOf(hud, seat, { kind: 'waste' }) : undefined;
         // политика уже такая — нажимать нечего
         const done = l.k === 'overtime' && l.on;
         const [label, what] = words(l);
         return (
-          <div key={i} className="lever" data-test={`lever-${l.k}`}>
+          <div key={i} className="lever" data-test={`lever-${l.k}`} {...(memo ? { 'data-memo': '1' } : {})}>
             <button
               type="button"
-              disabled={!mine || done}
+              disabled={(!mine && !memo) || done}
               onClick={() => {
                 close?.();
                 run(l, hud, actions);
               }}
+              title={act && !act.mine ? act.title : undefined}
             >
-              {label}
+              {act ? actLabel(act, label) : label}
             </button>
             <span className="muted"> — {what}</span>
-            {!mine && seat ? <span className="warn"> · {T.levers.seat(T.seats.names[seat] ?? seat)}</span> : null}
+            {!mine && seat ? <span className="warn"> · {memo ? (act?.title ?? T.levers.memo) : T.levers.seat(T.seats.names[seat] ?? seat)}</span> : null}
           </div>
         );
       })}

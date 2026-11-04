@@ -24,6 +24,7 @@ import {
   ATTRS,
   type AssetWork,
   type Attr,
+  type CapaAction,
   type Cause,
   type ContainerType,
   type ContentDb,
@@ -31,6 +32,8 @@ import {
   type DocHead,
   type EquipmentType,
   type FindingRead,
+  type HeadId,
+  type Id,
   type IncidentDef,
   type Labor,
   type LeaveRule,
@@ -44,6 +47,7 @@ import {
   type ParamUnit,
   type PartType,
   type Plant,
+  type Policy,
   type Product,
   type Profile,
   QUALITATIVE,
@@ -65,6 +69,7 @@ import {
   type VehicleType,
 } from '../../src/content/types';
 import { ACCEPT } from '../../src/engine/assets';
+import { HEAD_ROLE } from '../../src/engine/bosses';
 import { civilFromDays, daysFromCivil, weekday } from '../../src/engine/core/calendar';
 import { fnv1a, stableJson } from '../../src/engine/core/hash';
 import { DOC_KINDS, type DocKind, headOf, inForce, revisions } from '../../src/engine/docs';
@@ -75,6 +80,7 @@ import { MES, stageNorm } from '../../src/engine/mes';
 import { agreementFor, REVIEWERS, STARTING } from '../../src/engine/partners';
 import { accepts, areaCode, CENTER_OF, centerCode, classOf, coldOf, placesOf, rackStore, roomAt } from '../../src/engine/places';
 import { type DraftPerson, placeDraft } from '../../src/engine/leave';
+import { policyErrors } from '../../src/engine/policies';
 import { QA } from '../../src/engine/qa';
 import { cycleErrors, shiftLengths } from '../../src/engine/shifts';
 import { CHECKERS } from '../../src/engine/train';
@@ -225,6 +231,7 @@ export function buildDb(content = CONTENT): Built {
     }
     errors.push(...stageErrors({ hash: '', ...db }));
     errors.push(...leaveErrors({ hash: '', ...db }));
+    errors.push(...policyErrors({ hash: '', ...db }));
   }
   const hash = fnv1a(stableJson(db)).toString(16).padStart(8, '0');
   return { db: { hash, ...db }, errors, files: count };
@@ -346,7 +353,9 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       if (mk) need(makers[mk]?.makes.includes(mid), `${where}: ${mk} не выпускает ${mid}`);
       items[mid] = { price: kop(it.price), moq: amount(mid, it.moq, where), maker: mk };
     }
-    suppliers[s.id] = { ...s, prepay: share(s.prepay), defects: share(s.defects), items };
+    // опоздания (Б6ж): доля — в доли 1/10 000; дни «от — до» проверила схема
+    const { late, ...rest } = s;
+    suppliers[s.id] = { ...rest, prepay: share(s.prepay), defects: share(s.defects), ...(late ? { late: { share: share(late.share), days: [late.days[0], late.days[1]] as [number, number] } } : {}), items };
   }
   const roles: Record<string, Role> = {};
   for (const r of Object.values(raw.roles)) roles[r.id] = { ...r, salary: kop(r.salary) };
@@ -377,6 +386,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     shifts[sh.id] = { id: sh.id, name: sh.name, days: [...new Set(sh.days)].sort().map(d => d - 1), from: sh.from, to: sh.to, break: Math.round((sh.break ?? 0) * 3600) };
   }
   const products: Record<string, Product> = Object.fromEntries(Object.values(raw.products).map(pr => [pr.id, { ...pr, strength: pr.strength.mg }]));
+  // сезон спроса (Б6в): у продукта — группа базы
+  for (const pr of Object.values(raw.products)) need(raw.seasons[pr.season], `продукт ${pr.id}: нет сезона спроса ${pr.season}`);
   for (const pr of Object.values(raw.products)) if (pr.jnvlp) need(pr.source, `продукт ${pr.id}: «в перечне ЖНВЛП» — факт, нужен источник`);
   // код продукта в номере серии — у каждого свой: иначе номера двух продуктов совпадут
   const codes = new Map<string, string>();
@@ -456,6 +467,17 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       const m = raw.materials[l.material];
       need(m && (m.kind === 'api' || m.kind === 'excipient'), `${where}: в составе ${l.material} — не АФС и не вспомогательное вещество`);
       if (l.potency) need(m?.kind === 'api', `${where}: пересчёт на содержание — только у АФС`);
+      // аналог (Б6ж): вспомогательное вещество той же единицы учёта, не сам основной; у АФС, «до массы» и пересчёта аналогов
+      // нет — их количество зависит от партии
+      if (l.alt) {
+        const a = raw.materials[l.alt.material];
+        need(a, `${where}: аналога ${l.alt.material} нет в базе`);
+        need(l.alt.material !== l.material, `${where}: аналог ${l.material} — сам основной материал`);
+        need(a?.kind === 'excipient' && m?.kind === 'excipient', `${where}: аналог — только у вспомогательного вещества и сам вспомогательное вещество`);
+        need(a?.unit === m?.unit, `${where}: у аналога ${l.alt.material} другая единица учёта, чем у ${l.material}`);
+        need(!l.potency && !l.qs, `${where}: у строки ${l.material} с пересчётом или «до массы» аналога нет`);
+        need(!r.bom.some(x => x.material === l.alt!.material), `${where}: аналог ${l.alt.material} — уже строка состава`);
+      }
     }
     need(r.bom.filter(l => l.qs).length <= 1, `${where}: «до массы» — не больше одной строки`);
     need(Math.abs(r.bom.reduce((n, l) => n + l.kg, 0) - r.batch.kg) < 0.0005, `${where}: состав не сходится с массой серии`);
@@ -540,7 +562,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       doc: headDoc(r.doc, where),
       product: r.product,
       batch: { mass: mg(r.batch.kg), units: r.batch.units },
-      bom: r.bom.map(l => ({ material: l.material, qty: mg(l.kg), ...(l.potency ? { potency: true } : {}), ...(l.qs ? { qs: true } : {}), stage: l.stage })),
+      bom: r.bom.map(l => ({ material: l.material, qty: mg(l.kg), ...(l.potency ? { potency: true } : {}), ...(l.qs ? { qs: true } : {}), stage: l.stage, ...(l.alt ? { alt: { material: l.alt.material, factor: Math.round(l.alt.factor * 10_000) } } : {}) })),
       stages,
       bulk: r.bulk,
       quality,
@@ -669,14 +691,14 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       docks: p.docks.map(d => ({ ...d, x: cm(d.x), z: cm(d.z) })),
       zones: p.zones.map(zn => ({ ...zn, rect: r4(zn.rect) })),
       racks: p.racks.map(r => ({ ...r, x: cm(r.x), z: cm(r.z) })),
-      rooms: p.rooms.map(r => ({ id: r.id, type: r.type, rect: r4(r.rect), grade: r.grade, vehicles: r.vehicles, ...(r.at ? { at: at2(r.at) } : {}) })),
+      rooms: p.rooms.map(r => ({ id: r.id, type: r.type, rect: r4(r.rect), grade: r.grade, vehicles: r.vehicles, ...(r.at ? { at: at2(r.at) } : {}), floor: r.floor })),
       doors: p.doors.map(d => ({ cell: d.at, len: d.len, along: d.along, kind: d.kind, ...(d.materials ? { materials: true } : {}) })),
       instruments: p.instruments,
       ipc: p.ipc,
       sensors: p.sensors,
       equipment: p.equipment.map(e => ({ ...e, at: at2(e.at) })),
       lines: p.lines.map(ln => ({ ...ln, machines: ln.machines.map(m => ({ ...m, at: at2(m.at) })) })),
-      points: { park: [cm(p.points.park[0]), cm(p.points.park[1])], entrance: [cm(p.points.entrance[0]), cm(p.points.entrance[1])] },
+      points: { park: [cm(p.points.park[0]), cm(p.points.park[1])], entrance: [cm(p.points.entrance[0]), cm(p.points.entrance[1])], floor: p.points.floor },
       posts: Object.fromEntries(Object.entries(p.posts).map(([role, at]) => [role, at2(at)])),
       energy: { hvac: p.energy.hvac, base: watt(p.energy.base) },
       cleaning: p.cleaning,
@@ -817,6 +839,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       probation: x.probation,
       trial: share(x.trial * 100),
       colleague: { skill: x.colleague.skill, over: share(x.colleague.over), ad: x.colleague.ad },
+      ...(x.move ? { move: { days: x.move.days, skill: x.move.skill, notice: x.move.notice, road: x.move.road, pay: kop(x.move.pay) } } : {}),
       roles: Object.fromEntries(
         Object.entries(x.roles).map(([role, r]) => [
           role,
@@ -824,6 +847,19 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         ]),
       ),
     };
+  };
+  // руководители — люди (Б5в): роли заместителя и «из кого назначить» — роли базы; заместитель по умолчанию — среди
+  // `can`, и у его роли есть человек в штате; заместитель — не роль самого руководителя
+  const headsOf = (x: NonNullable<RawScenario['heads']>, sc: RawScenario, where: string): NonNullable<Scenario['heads']> => {
+    const out: NonNullable<Scenario['heads']> = {};
+    for (const [h, r] of Object.entries(x) as [HeadId, { deputy: Id; can: Id[] }][]) {
+      for (const role of [r.deputy, ...r.can]) need(raw.roles[role], `${where}: заместитель руководителя ${h} — нет роли ${role}`);
+      need(r.can.includes(r.deputy), `${where}: заместитель руководителя ${h} — роль ${r.deputy} не среди «из кого назначить»`);
+      need(sc.staff.some(row => row.role === r.deputy), `${where}: заместитель руководителя ${h} — в штате нет роли ${r.deputy}`);
+      need(r.deputy !== HEAD_ROLE[h], `${where}: заместитель руководителя ${h} — его же роль`);
+      out[h] = { deputy: r.deputy, can: [...r.can] };
+    }
+    return out;
   };
   // отпуска (Б4г): части складываются в дни года профиля, одна не короче части профиля; сроки частей — настоящие числа
   // года, «с» не позже «по»; утверждение — не позже чем за срок профиля до года, черновик — не позже утверждения
@@ -949,7 +985,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         if (!regimes[m.storage]) continue;
         // путь материала по зонам хранения: балк — промежуточный склад; холод — камера; остальное — карантин или ГП, стеллажи;
         // отклонённое — зона отклонённого. Зона вне зон хранения режима не держит — её не спрашивают
-        const cold = coldOf(part, s.plant, m.id);
+        const cold = coldOf(part, part.plants[s.plant], m.id);
         const path = m.kind === 'bulk' ? [] : cold ? ['cold', 'rejected'] : [m.kind === 'fg' ? 'fgQuarantine' : 'quarantine', 'storage', 'rejected'];
         const stores = m.kind === 'bulk' ? [bulkRoom ? P.storeOf[bulkRoom] : undefined] : path.map(k => storeOfKind(plant, k));
         const ok = (m.kind === 'bulk' || !cold || coldStore(plant) !== undefined) && stores.every((st, i) => (st === undefined ? m.kind !== 'bulk' && path[i] !== 'storage' : accepts(part, P.center[st], m.id)));
@@ -966,6 +1002,9 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         }
       }
       need(s.assets.ahead + 3 < shortest * 28, `${where}: assets.ahead — срок предупреждения не короче самого короткого интервала, ${shortest} мес.`);
+      // и наибольший срок, который игрок может задать политикой главного механика (Б5г)
+      const ahead = raw.policies['pol.maint.ahead']?.max;
+      need(ahead === undefined || ahead + 3 < shortest * 28, `${where}: pol.maint.ahead — наибольший срок предупреждения не короче самого короткого интервала, ${shortest} мес.`);
     }
     // склад ГП на старте (Б1г): у каждой позиции, которую заказывают покупатели, — карта в плане выпуска: по ней
     // считают ящики серии
@@ -978,9 +1017,18 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     const every = Math.min(s.partners.every.api, s.partners.every.excipient, s.partners.every.packaging);
     need(s.partners.ahead + 3 < every * 28, `${where}: partners.ahead — срок предупреждения не короче самого короткого интервала оценки, ${every} мес.`);
     need(s.partners.audit.days + 2 < s.partners.ahead, `${where}: partners — аудит в ${s.partners.audit.days} рабочих дней не уложится в срок предупреждения`);
+    // веса оценки предложений (Б6ж) — в сумме 100: балл предложения — от 0 до 100
+    if (s.supply?.rfq) {
+      const w = s.supply.rfq;
+      need(w.price + w.lead + w.rel + w.terms === 100, `${where}: supply.rfq — веса в сумме не 100`);
+    }
+    // отклонения (Б5е): у класса строже — срок не длиннее; порог признака — доли 1/10 000 ресурса, как у порога замены
+    const term = s.deviations.term;
+    need(term.critical <= term.major && term.major <= term.minor, `${where}: deviations.term — у критического срок не длиннее, чем у существенного, у существенного — чем у незначительного`);
     const [y, m, d] = s.start.date.split('-').map(Number);
     scenarios[s.id] = {
       ...s,
+      deviations: { ...s.deviations, wear: share(s.deviations.wear) },
       start: { date: { y, m, d }, hour: s.start.hour },
       cash: kop(s.cash),
       credit: { limit: kop(s.credit.limit), spread: share(s.credit.spread) },
@@ -998,11 +1046,14 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         docs: { review: sec(s.partners.docs.review * 60) },
         markup: share(s.partners.markup),
         share: share(s.partners.share),
+        ...(s.partners.variation ? { variation: { ...s.partners.variation, ask: share(s.partners.variation.ask), answer: [s.partners.variation.answer[0], s.partners.variation.answer[1]] as [number, number] } } : {}),
       },
       ...(s.incident ? { incident: incidentOf(s.incident, s.batches.length, where) } : {}),
       ...(s.labor ? { labor: laborOf(s.labor, s, where) } : {}),
+      ...(s.heads ? { heads: headsOf(s.heads, s, where) } : {}),
       ...(s.leave ? { leave: leaveRuleOf(s.leave, s, where) } : {}),
-      ...(s.waste ? { waste: { hours: [s.waste.hours[0] * 3600, s.waste.hours[1] * 3600] as [number, number], sign: sec(s.waste.sign), trip: kop(s.waste.trip), pallet: kop(s.waste.pallet) } } : {}),
+      ...(s.waste ? { waste: { hours: [s.waste.hours[0] * 3600, s.waste.hours[1] * 3600] as [number, number], sign: sec(s.waste.sign), trip: kop(s.waste.trip), pallet: kop(s.waste.pallet), full: s.waste.full, keep: s.waste.keep } } : {}),
+      ...(s.forecast ? { forecast: { optimism: share(s.forecast.optimism) } } : {}),
     };
   }
   const profiles: Record<string, Profile> = {};
@@ -1033,6 +1084,22 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   for (const sp of Object.values(raw.spares)) {
     need(suppliers[sp.supplier], `запчасть ${sp.id}: нет поставщика ${sp.supplier}`);
     spares[sp.id] = { ...sp, price: kop(sp.price) };
+  }
+  // политики руководителей (Б5г): порог износа узла — доли 1/10 000 ресурса, как у порога сценария; остальное — как в записи
+  const policies: Record<string, Policy> = {};
+  for (const p of Object.values(raw.policies)) policies[p.id] = p.kind === 'wear' ? { ...p, min: share(p.min!), max: share(p.max!), step: share(p.step!) } : { ...p };
+  // каталог CAPA (Б5е): одно действие на каждое, что движок умеет делать; порядок правила начальника ООК — без повторов
+  // среди действий, подходящих к одному роду причины, — иначе правило не знает, что следующее
+  const capa: Record<string, CapaAction> = {};
+  const does = new Map<string, string>();
+  for (const c of Object.values(raw.capa)) {
+    need(!does.has(c.does), `CAPA ${c.id}: действие ${c.does} уже есть у ${does.get(c.does)}`);
+    does.set(c.does, c.id);
+    capa[c.id] = { ...c };
+  }
+  for (const cls of ['wear', 'param', 'lots', 'lab', 'none'] as const) {
+    const ranks = Object.values(capa).filter(c => c.rule !== undefined && (c.causes?.includes(cls) ?? false)).map(c => c.rule!);
+    need(new Set(ranks).size === ranks.length, `CAPA: у причины рода ${cls} два действия правила с одним порядком`);
   }
   // покупатели: дни недели — с нуля (0 — понедельник), спрос — только по позициям из базы
   const customers: Record<string, Customer> = {};
@@ -1115,6 +1182,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     for (const m of Object.values(materials)) {
       const sp = specs[m.spec] && specs[inForce(docDb, 'specs', m.spec, day)];
       for (const pr of sp?.pairs ?? []) need(agreementFor(docDb, pr.supplier, pr.maker, m.id, day), `${where}: у пары ${pr.supplier} — ${pr.maker} для ${m.id} на ${date} нет действующего соглашения по качеству`);
+      // пара-кандидат (Б6ж): одобрить её можно с первого дня — соглашение по качеству подписано заранее
+      for (const pr of sp?.candidates ?? []) need(agreementFor(docDb, pr.supplier, pr.maker, m.id, day), `${where}: у пары-кандидата ${pr.supplier} — ${pr.maker} для ${m.id} на ${date} нет действующего соглашения по качеству`);
     }
   }
   return {
@@ -1144,6 +1213,9 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     regimes,
     makers,
     agreements,
+    policies,
+    capa,
+    seasons: raw.seasons,
   };
 }
 
@@ -1186,6 +1258,14 @@ function leaveErrors(db: ContentDb): string[] {
     const days = db.profiles[sc.profile].leave.days;
     const people: DraftPerson[] = [];
     for (const row of sc.staff) for (let i = 0; i < row.n; i++) people.push({ id: `E${people.length + 1}`, role: row.role, shift: row.shift, tab: sc.training.tab + people.length, ...(row.also ? { also: row.also } : {}), right: 0, days });
+    // руководитель и его заместитель по сценарию (Б5в) — не в отпуск в одни дни
+    for (const [h, r] of Object.entries(sc.heads ?? {}) as [HeadId, { deputy: Id }][]) {
+      const head = people.find(p => p.role === HEAD_ROLE[h]);
+      const dep = people.find(p => p.role === r.deputy && p !== head);
+      if (!head || !dep) continue;
+      head.apart = [...(head.apart ?? []), dep.id];
+      dep.apart = [...(dep.apart ?? []), head.id];
+    }
     const y = sc.start.date.y + 1;
     const d = placeDraft(db, { start: sc.start.date, scenario: sc.id }, y, people, people, []);
     for (const id of d.miss) {
@@ -1248,6 +1328,15 @@ function pairErrors(materials: Record<string, Material>, specs: Record<string, S
         const it = suppliers[pr.supplier]?.items[m.id];
         need(suppliers[pr.supplier], `${where}: нет поставщика ${pr.supplier}`);
         if (suppliers[pr.supplier]) need(it?.maker === pr.maker, `${where}: у ${pr.supplier} нет ${m.id} от ${pr.maker}`);
+      }
+      // пары-кандидаты (Б6ж): только у АФС — изменение досье под нового изготовителя АФС (reg-eaeu, прил. 19, Б.I.а.1);
+      // поставщик продаёт материал от этого изготовителя; кандидат — не одобренная пара той же редакции
+      const cands = specs[id].candidates ?? [];
+      if (cands.length > 0) need(m.kind === 'api', `${where}: пары-кандидаты — только у АФС`);
+      for (const pr of cands) {
+        need(makers[pr.maker], `${where}: нет изготовителя ${pr.maker}`);
+        need(suppliers[pr.supplier]?.items[m.id]?.maker === pr.maker, `${where}: у кандидата ${pr.supplier} нет ${m.id} от ${pr.maker}`);
+        need(!pairs.some(x => x.supplier === pr.supplier && x.maker === pr.maker), `${where}: кандидат ${pr.supplier} — ${pr.maker} уже одобренная пара`);
       }
     }
   }

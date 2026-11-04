@@ -6,16 +6,19 @@
 // разборе.
 import type { Attr, ContentDb, FindingRead, Id, IncidentRoot, InvFinding, InvModel, InvStep, RecipeStage } from '../content/types';
 import { batchNo } from './batchno';
+import { decider, skillOf, thresholdBy } from './bosses';
 import { MIN } from './core/calendar';
+import { openClass, reclass } from './devclass';
 import { P_ONE } from './core/rng';
 import { modeOf, moot, propose, seenAt } from './heads';
 import { expectedGain, posterior, quantize } from './infer';
-import { note, noteCmd } from './journal';
+import { asWho, note, noteCmd } from './journal';
 import { labPlace, LAB_PRIO, QC, settleLot } from './lab';
 import { batchLost, defect } from './lean';
 import { planOf } from './plant';
 import { within } from './quality';
 import { roll } from './random';
+import { playerLeads } from './seats';
 import { nextId, setLotStatus, stockChanged, unitsOfLot } from './stock';
 import { addTask } from './tasks';
 import { type Batch, type Command, INSTRUMENT_FAULTS, type InstrumentFault, type Investigation, type LabTest, type Lot, type Notice, type Place, type PlantState, type StageRecord, type StepWhy, type Task } from './types';
@@ -190,7 +193,7 @@ function truthOf(db: ContentDb, s: PlantState, m: InvModel, b: Batch, lot: Lot):
 export function openInvestigation(db: ContentDb, s: PlantState, m: InvModel, lot: Lot, out: string[], notices: Notice[]) {
   const b = s.batches[lot.batch!];
   const id = nextId(s, 'I');
-  const d = { id: nextId(s, 'D'), opened: s.t, kind: 'oos' as const, lot: lot.id, batch: b.id, tests: out, status: 'open' as const, inv: id };
+  const d = { id: nextId(s, 'D'), opened: s.t, kind: 'oos' as const, lot: lot.id, batch: b.id, tests: out, test: s.tests[out[0]]?.method ?? m.test, status: 'open' as const, inv: id, cls: openClass('oos') };
   s.deviations[d.id] = d;
   defect(s, 'deviations');
   const inc = s.incident;
@@ -205,7 +208,7 @@ export function openInvestigation(db: ContentDb, s: PlantState, m: InvModel, lot
 
 /** Где работа шага: у оборудования — его помещение; лабораторный — лаборатория; иначе — пост роли. */
 function placeOf(db: ContentDb, s: PlantState, st: InvStep): Place {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   if (st.at) {
     const e = Object.values(s.equipment).find(x => x.type === st.at);
     if (e) return { kind: 'point', x: plan.room[e.room].x, z: plan.room[e.room].z };
@@ -237,7 +240,7 @@ function startStep(db: ContentDb, s: PlantState, inv: Investigation, st: InvStep
       ...(st.retest && first.spec ? { spec: first.spec } : {}),
     };
     s.tests[q.id] = q;
-    const plan = planOf(db, s.plant);
+    const plan = planOf(db, s.plan);
     addTask(s, {
       kind: 'prep',
       roles: [...QC.analysts],
@@ -414,7 +417,12 @@ function close(db: ContentDb, s: PlantState, inv: Investigation, cause: string, 
   const m = modelOf(db, inv);
   inv.status = 'closed';
   inv.conclusion = { cause, fate, by, t: s.t };
-  s.deviations[inv.deviation].status = 'closed';
+  // вероятная причина (Б5е) — вывод: причина базы версии, у ошибки лаборатории — `lab`; начальник ООК назначит CAPA
+  const dev = s.deviations[inv.deviation];
+  dev.status = 'closed';
+  dev.cause = m.candidates.find(c => c.id === cause)?.cause ?? 'lab';
+  dev.capaDue = 'rule';
+  reclass(s, dev);
   // прибор проверили и наладили: его отметка о сбое закрыта вместе с расследованием
   const inst = s.tests[inv.test].inst;
   if (inst) delete s.instruments[inst].check;
@@ -435,7 +443,7 @@ function close(db: ContentDb, s: PlantState, inv: Investigation, cause: string, 
   if (isScreenCause(db, m, cause) && s.incident?.screen) {
     const mill = millOf(db, s, s.batches[inv.batch]);
     const e = mill ? s.equipment[mill] : undefined;
-    const plan = planOf(db, s.plant);
+    const plan = planOf(db, s.plan);
     if (e) addTask(s, { kind: 'invFix', roles: ['role.mechanic'], from: { kind: 'point', x: plan.room[e.room].x, z: plan.room[e.room].z }, work: FIX_WORK, prio: INV_PRIO, inv: inv.id, part: e.id });
   }
   notices.push({ kind: 'concluded', id: inv.id, cause, fate });
@@ -479,6 +487,11 @@ export const invKey = (inv: string) => `inv/${inv}`;
 export function invStep(db: ContentDb, s: PlantState, notices: Notice[]): boolean {
   const mode = modeOf(s, 'qa');
   if (mode === 'manual') return false;
+  // руководитель — человек (Б5в): шаг и вывод — начальника ООК, а без него — заместителя, в свою смену; пока некому —
+  // расследование ждёт. Расследование, которое ведёт игрок (Б5д, «Веду сам»), — не его
+  const due = Object.values(s.investigations).some(inv => inv.status === 'open' && !inv.runs.some(r => r.to === undefined) && !playerLeads(s, inv));
+  const who = due ? decider(db, s, 'qa', notices) : undefined;
+  if (due && !who) return false;
   let acted = false;
   for (const inv of Object.values(s.investigations)) {
     const key = invKey(inv.id);
@@ -486,7 +499,7 @@ export function invStep(db: ContentDb, s: PlantState, notices: Notice[]): boolea
       if (mode === 'advise' && s.heads.open[key] !== undefined) moot(s, key);
       continue;
     }
-    if (inv.runs.some(r => r.to === undefined)) continue;
+    if (inv.runs.some(r => r.to === undefined) || playerLeads(s, inv)) continue;
     // что видел руководитель: шаги и улики только прибавляются — то же число, то же предложение
     const seen = inv.runs.length + inv.obs.length;
     if (mode === 'advise' && seenAt(s, key) === seen) continue;
@@ -497,9 +510,11 @@ export function invStep(db: ContentDb, s: PlantState, notices: Notice[]): boolea
     const observed = new Set(inv.obs.map(o => o.f));
     if (mode === 'auto') acted = true;
     const step = (st: InvStep, why: StepWhy) => {
-      if (mode === 'auto') startStep(db, s, inv, st, 'head:quality', undefined, why);
-      else propose(s, 'qa', key, { kind: 'investigate', inv: inv.id, step: st.id }, { kind: 'step', inv: inv.id, step: st.id, why }, notices, seen);
+      if (mode === 'auto') asWho('qa', who, () => startStep(db, s, inv, st, 'head:quality', undefined, why));
+      else propose(s, 'qa', key, { kind: 'investigate', inv: inv.id, step: st.id }, { kind: 'step', inv: inv.id, step: st.id, why }, notices, seen, who);
     };
+    // порог вывода — модели, а навык руководителя ниже 4 его снижает (геймдизайн, §8.5)
+    const threshold = thresholdBy(skillOf(s, who), m.threshold);
     // шаги лаборатории, которых ещё не было: записи и прибор — всегда, повтор — если лучшая — ошибка лаборатории
     const marks = (x: InvStep) => x.checks.some(c => 'mark' in (m.findings.find(f => f.id === c.f)?.read ?? {}));
     const lab = m.steps.find(x => !done.has(x.id) && (marks(x) || (!!x.retest && isLab(m, top.id))));
@@ -509,7 +524,7 @@ export function invStep(db: ContentDb, s: PlantState, notices: Notice[]): boolea
       step(lab, { rule: marks(lab) ? 'lab' : 'retest', top: top.id, p });
       continue;
     }
-    if (top.p * P_ONE < m.threshold) {
+    if (top.p * P_ONE < threshold) {
       let best: InvStep | undefined;
       let score = -1;
       let gain = 0;
@@ -530,12 +545,12 @@ export function invStep(db: ContentDb, s: PlantState, notices: Notice[]): boolea
       }
     }
     const fate = isLab(m, top.id) && labProven(db, inv) ? 'release' : 'reject';
-    const why = { p, threshold: m.threshold, proven: labProven(db, inv) };
+    const why = { p, threshold, ...(threshold < m.threshold ? { model: m.threshold } : {}), proven: labProven(db, inv) };
     if (mode === 'advise') {
-      propose(s, 'qa', key, { kind: 'conclude', inv: inv.id, cause: top.id, fate }, { kind: 'conclude', inv: inv.id, cause: top.id, fate, why }, notices, seen);
+      propose(s, 'qa', key, { kind: 'conclude', inv: inv.id, cause: top.id, fate }, { kind: 'conclude', inv: inv.id, cause: top.id, fate, why }, notices, seen, who);
       continue;
     }
-    note(s, 'qa', { kind: 'conclude', inv: inv.id, cause: top.id, fate, why });
+    note(s, 'qa', { kind: 'conclude', inv: inv.id, cause: top.id, fate, why }, undefined, undefined, who);
     close(db, s, inv, top.id, fate, 'head:quality', notices);
   }
   return acted;

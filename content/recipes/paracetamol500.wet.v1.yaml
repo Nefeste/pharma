@@ -14,7 +14,10 @@ batch: { kg: 120, units: 200000 }
 # в гранулятор, вода очищенная — режимом стадии (гипотеза карты)
 bom:
   - { material: mat.api.paracetamol, kg: 100, potency: true, stage: granulate }
-  - { material: mat.exc.starch, kg: 12, stage: granulate }
+  # аналог (Б6ж): крахмал кукурузный вместо картофельного — в том же количестве, коэффициент 1 (reg-eaeu, прил. 19,
+  # Б.II.а.3 б)6); основного на строку не хватает — строку отвешивают аналогом целиком (sap-alt). Выбор геймдизайна,
+  # сверить с владельцем
+  - { material: mat.exc.starch, kg: 12, stage: granulate, alt: { material: mat.exc.starch-maize, factor: 1 } }
   - { material: mat.exc.povidone, kg: 3, stage: granulate }
   - { material: mat.exc.mcc, kg: 4.2, qs: true, stage: granulate }
   - { material: mat.exc.mgst, kg: 0.8, stage: blend }

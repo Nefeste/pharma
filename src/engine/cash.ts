@@ -4,6 +4,7 @@
 // производственному календарю профиля, зарплата — по табелю (Б4а). Правила — из профиля (ADR 0004), цены и предел
 // кредита — из сценария. С Б4г — доплата заместителю, отпускные по среднему заработку и компенсация за отпуск.
 import type { ContentDb, Profile } from '../content/types';
+import { paidLater } from './bosses';
 import { civilFromDays, DAY, daysFromCivil, HOUR, isWorkday, lastOfMonth, momentOf, normOf, workdayOnOrAfter, workdayOnOrBefore } from './core/calendar';
 import { pruneSheet, type SheetDay, sheetDays } from './hours';
 import { awayOn, compDays, deputyOn, lawOf, ruleOf } from './leave';
@@ -67,7 +68,7 @@ const WAREHOUSE = new Set(['warehouse', 'cold', 'rejected']);
 
 /** Мощность, которая работает круглые сутки: вентиляция по площади помещений и их классу и постоянная база, Вт. */
 export function baseLoad(db: ContentDb, s: PlantState): number {
-  const plant = planOf(db, s.plant).plant;
+  const plant = planOf(db, s.plan).plant;
   let w = plant.energy.base;
   // вентиляция — помещения производства, лаборатории и вспомогательные, площадь без стен (см² → м²); склад с холодом и
   // отклонённым — в постоянной базе (docs/specs/2026-10-view.md, 2а)
@@ -346,6 +347,8 @@ function vacationPay(db: ContentDb, s: PlantState, z: number) {
   const law = lawOf(db, s);
   const cal = calOf(db, s);
   for (const p of Object.values(s.people)) {
+    // руководители-люди (Б5в): отпускные — с общими расходами (решение владельца, #123)
+    if (paidLater(p)) continue;
     for (const a of p.away ?? []) {
       if (a.paid !== undefined || a.to < z || workdayOnOrBefore(cal, a.from - law.pay) > z) continue;
       payPart(db, s, p, a);
@@ -371,6 +374,8 @@ function wages(db: ContentDb, s: PlantState, y: number, m: number, from: number,
   const parts: WageParts = { salary: 0, night: 0, over: 0, off: 0 };
   const upTo = daysFromCivil({ y, m, d: to });
   for (const p of Object.values(s.people)) {
+    // руководители-люди (Б5в): оклад — с общими расходами (решение владельца, #123), не из кассы среза
+    if (paidLater(p)) continue;
     const w = halfOf(db, s, p, y, m, from, to);
     addParts(parts, w);
     s.cash.gross[p.id] = (s.cash.gross[p.id] ?? 0) + grossOf(w);
@@ -397,6 +402,8 @@ export function hiringPay(s: PlantState, sum: number, ref: string) {
  * трёх окладов (ст. 422 НК РФ; средний заработок — оклад, гипотеза).
  */
 export function settle(db: ContentDb, s: PlantState, p: Person) {
+  // руководители-люди (Б5в): расчёт — с общими расходами (решение владельца, #123)
+  if (paidLater(p)) return;
   const q = p.quit!;
   const { y, m, d } = civilFromDays(q.last);
   const first = daysFromCivil({ y, m, d: 1 });

@@ -4,9 +4,10 @@
 // без истины: два завода, у которых различаются только истинные поля, дают одни и те же виды.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
-import { DAY } from '../../src/engine/core/calendar';
+import { DAY, HOUR } from '../../src/engine/core/calendar';
 import { apply, MORNING, newPlant } from '../../src/engine/engine';
 import { HEAD_SEAT } from '../../src/engine/journal';
+import { memoAt } from '../../src/engine/memos';
 import { planOf } from '../../src/engine/plant';
 import type { PlantState } from '../../src/engine/types';
 import { headDays, JOURNAL_PAGE, type JournalQuery, journalView, postOf, whoBatch, whoLot, whoMachine, whoPerson } from '../../src/sim/journal';
@@ -16,7 +17,7 @@ import { dossierView } from '../../src/sim/dossier';
 import { momentOf } from '../../src/engine/core/calendar';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const q = (o: Partial<JournalQuery> = {}): JournalQuery => ({ view: 'journal', page: 0, ...o });
 
 /** Завод после 90 суток: задания, заказы, партии, выпуски, визиты, замена узла, найм и расследование уже были. */
@@ -148,6 +149,65 @@ describe('решения за сутки', () => {
       if (own.some(r => r.d.kind === 'po')) expect(h.prepaid).toBe(pre);
     }
     expect(morningView(db, s, { view: 'morning', day }).heads).toEqual(rows);
+  });
+});
+
+describe('записки и вопросы (Б5д)', () => {
+  /** «Качество»: записка главному механику о замене пуансонов. */
+  const m: PlantState = newPlant(db, { scenario: SC });
+  apply(db, m, { kind: 'seat', seats: ['quality'] });
+  apply(db, m, { kind: 'memo', cmds: [{ kind: 'maintain', machine: 'press-1', part: 'punches' }] });
+  /** «Производство» и директор, отделы производства «сам»: вопрос начальника ООК об OOS открыт. */
+  const p: PlantState = newPlant(db, { scenario: SC });
+  apply(db, p, { kind: 'seat', seats: ['production', 'director'] });
+  for (const head of ['plan', 'mes', 'maint'] as const) apply(db, p, { kind: 'mode', head, mode: 'auto' });
+  apply(db, p, { kind: 'advance', seconds: 6 * DAY + 2 * HOUR });
+
+  test('«Записки»: до ответа — час ответа и «Отозвать»; после — ответ, кто ответил, запись руководителя «по записке»', () => {
+    const open = journalView(db, m, q({ who: 'memos' }));
+    expect(open.memos).toHaveLength(1);
+    const row = open.memos[0];
+    expect(row.memo).toEqual({ at: memoAt(db, m, 'maint')!, can: true });
+    expect(open.rows.map(r => r.n)).toEqual([row.n]);
+    // карточка пресса — «Кто решил»: записка ждёт ответа
+    expect(whoMachine(db, m, 'press-1').find(r => r.n === row.n)!.memo).toEqual({ at: memoAt(db, m, 'maint')!, can: true, to: 'maint' });
+    const t: PlantState = structuredClone(m);
+    apply(db, t, { kind: 'advance', seconds: DAY });
+    const v = journalView(db, t, q());
+    expect(v.memos).toEqual([]);
+    const done = v.rows.find(r => r.n === row.n)!;
+    expect(done.memo!.end!.res).toHaveLength(1);
+    expect(done.memo!.end!.as!.role).toBe('role.chief-mechanic');
+    const n = (done.memo!.end!.res![0] as { n: number }).n;
+    expect(v.rows.find(r => r.n === n)!.via).toEqual({ n: row.n, seat: 'quality' });
+    // в карточке — ответ и запись главного механика «по записке»
+    const card = whoMachine(db, t, 'press-1');
+    expect(card.find(r => r.n === row.n)!.memo!.end!.res).toHaveLength(1);
+    expect(card.find(r => r.n === n)!.via).toEqual({ n: row.n, seat: 'quality' });
+    // планёрка следующего утра — ответ на записку в «Записках и вопросах»
+    const day = momentOf(t.start, t.t).day;
+    expect(morningView(db, t, { view: 'morning', day }).memos.map(r => r.n)).toEqual([row.n]);
+  });
+
+  test('вопрос — в «Ждут вашего решения»: кого спросили, срок, можно ли ответить; ответили сами — у директора нет', () => {
+    const v = journalView(db, p, q());
+    const ask = v.asks.find(r => r.d.kind === 'fork')!;
+    expect(ask.d).toMatchObject({ kind: 'fork', fork: 'oos' });
+    const r = p.journal.find(x => x.n === ask.n)!;
+    expect(ask.q).toEqual({ to: 'director', due: r.q!.due!, can: true });
+    const t: PlantState = structuredClone(p);
+    apply(db, t, { kind: 'seat', seats: ['production'] });
+    expect(journalView(db, t, q()).asks.find(x => x.n === ask.n)!.q).toEqual({ to: 'director', due: r.q!.due! });
+  });
+
+  test('без истины: записка и вопрос — те же у заводов с разными истинными свойствами и запасом узлов', () => {
+    for (const x of [m, p]) {
+      const b: PlantState = structuredClone(x);
+      for (const lot of Object.values(b.lots)) for (const k of Object.keys(lot.truth) as (keyof typeof lot.truth)[]) lot.truth[k] = (lot.truth[k] ?? 0) + 777;
+      for (const bt of Object.values(b.batches)) for (const k of Object.keys(bt.truth) as (keyof typeof bt.truth)[]) bt.truth[k] = (bt.truth[k] ?? 0) + 777;
+      for (const pt of Object.values(b.parts)) pt.budget += 12345;
+      expect(journalView(db, b, q())).toEqual(journalView(db, x, q()));
+    }
   });
 });
 

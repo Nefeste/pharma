@@ -19,6 +19,8 @@ import { Dossier } from './Dossier';
 import { Inv } from './Inv';
 import { Journal } from './Journal';
 import { Kpi } from './Kpi';
+import { Policies } from './Policies';
+import { Sop } from './Sop';
 import { FloorTip, Layers } from './Layers';
 import { Lab } from './Lab';
 import { Morning } from './Morning';
@@ -33,8 +35,10 @@ import { type Actions, type Hud, LIVE, type Speed, type Store, useHud } from './
 const SPEEDS: Speed[] = [1, 2, 3, 4];
 const WALLS: WallMode[] = ['full', 'cut', 'down'];
 
-export function App({ store, actions, plant, scenario }: { store: Store; actions: Actions; plant: string; scenario: string }) {
+export function App({ store, actions, scenario }: { store: Store; actions: Actions; scenario: string }) {
   const s = useHud(store);
+  // план здания — от потока расчёта (Б7а); до первого среза панелей плана нет
+  const plant = s.world;
   // низ верхней полосы — для панелей под ней: на узком окне полоса переносится во вторую строку
   const top = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -119,6 +123,12 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
             <button type="button" className={s.kpi.open ? 'on' : ''} onClick={() => actions.toggleKpi()} title={T.kpi.hint} data-test="kpi-open">
               {T.kpi.button}
             </button>
+            <button type="button" className={s.policies.open ? 'on' : ''} onClick={() => actions.togglePolicies()} title={T.policies.hint} data-test="policies-open">
+              {T.policies.button}
+            </button>
+            <button type="button" className={s.sop.open ? 'on' : ''} onClick={() => actions.toggleSop()} title={T.sop.hint} data-test="sop-open">
+              {T.sop.button}
+            </button>
             <button type="button" className={s.gantt.open ? 'on' : ''} onClick={() => actions.toggleGantt()} title={T.gantt.hint} data-test="gantt-open">
               {T.gantt.button}
             </button>
@@ -154,14 +164,14 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
           экрана «Кем вы будете» они выглядывали обрезком (второй проход по снимкам) */}
       <Guard name={T.floor.layers}>
         {s.seats.open ? null : <Layers hud={s} actions={actions} />}
-        <FloorTip hud={s} plant={plant} />
+        {plant ? <FloorTip hud={s} plant={plant} /> : null}
       </Guard>
       {/* ограда — и вокруг закрытой панели: ошибку уборки при снятии панели React отдаёт той, что осталась на экране */}
       <Guard name={T.pauses.button} close={s.pauses.open ? actions.togglePauses : undefined}>
         {s.pauses.open && <Pauses hud={s} actions={actions} />}
       </Guard>
       <Guard name={T.stock.button} close={s.stock.open ? actions.toggleStock : undefined}>
-        {s.stock.open && <Stock hud={s} actions={actions} plant={plant} />}
+        {s.stock.open && plant && <Stock hud={s} actions={actions} plant={plant} />}
       </Guard>
       <Guard name={T.cash.button} close={s.cash.open ? actions.toggleCash : undefined}>
         {s.cash.open && <Cash hud={s} actions={actions} />}
@@ -177,10 +187,10 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
         {s.journal.open && <Journal key={s.journal.focus ?? 'all'} hud={s} actions={actions} />}
       </Guard>
       <Guard name={T.morning.button} close={s.morning.open ? () => actions.closeMorning(false) : undefined}>
-        {s.morning.open && s.morning.day !== undefined && <Morning v={s.morning.view} day={s.morning.day} start={s.start} plant={plant} pause={!s.pauses.off.includes('morning')} actions={actions} hud={s} scenario={db?.scenarios[scenario]} />}
+        {s.morning.open && s.morning.day !== undefined && plant && <Morning v={s.morning.view} day={s.morning.day} start={s.start} plant={plant} pause={!s.pauses.off.includes('morning')} actions={actions} hud={s} scenario={db?.scenarios[scenario]} />}
       </Guard>
       <Guard name={T.gantt.button} close={s.gantt.open ? actions.toggleGantt : undefined}>
-        {s.gantt.open && <Gantt hud={s} actions={actions} plant={plant} />}
+        {s.gantt.open && plant && <Gantt hud={s} actions={actions} plant={plant} />}
       </Guard>
       <Guard name={T.inv.button} close={s.inv.open ? actions.toggleInv : undefined}>
         {s.inv.open && <Inv hud={s} actions={actions} />}
@@ -191,6 +201,12 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
       <Guard name={T.kpi.button} close={s.kpi.open ? actions.toggleKpi : undefined}>
         {s.kpi.open && <Kpi hud={s} actions={actions} />}
       </Guard>
+      <Guard name={T.policies.button} close={s.policies.open ? actions.togglePolicies : undefined}>
+        {s.policies.open && <Policies hud={s} actions={actions} />}
+      </Guard>
+      <Guard name={T.sop.button} close={s.sop.open ? actions.toggleSop : undefined}>
+        {s.sop.open && <Sop hud={s} actions={actions} />}
+      </Guard>
       <Guard name={T.po.button} close={s.po.open ? actions.togglePo : undefined}>
         {s.po.open && <Po hud={s} actions={actions} />}
       </Guard>
@@ -198,7 +214,7 @@ export function App({ store, actions, plant, scenario }: { store: Store; actions
         {s.seats.open && <Seats hud={s} actions={actions} scenario={scenario} />}
       </Guard>
       <Guard name={T.card.title} close={s.selected ? () => actions.select(undefined) : undefined}>
-        {s.selected && s.card && (
+        {s.selected && s.card && plant && (
           <Card v={s.card} start={s.start} plant={plant} actions={actions} hud={s} beside={s.stock.open || s.cash.open || s.lab.open || s.now.open || s.journal.open} over={s.kpi.open || s.ref.open || s.inv.open} watch={watchFor(s.selected, s.card.card, s.now.view?.rows)} />
         )}
       </Guard>

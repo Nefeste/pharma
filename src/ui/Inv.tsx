@@ -4,11 +4,12 @@
 // кнопки погашены, с причиной словами (3е). Вид собирает поток расчёта (src/sim/inv.ts); здесь — слова и рисунок.
 import { useEffect, useRef, useState } from 'react';
 import type { InvFinding, InvModel, InvStep } from '../content/types';
-import type { Ymd } from '../engine/core/calendar';
+import { momentOf, type Ymd } from '../engine/core/calendar';
 import type { InvObs } from '../engine/types';
 import { dayText, durText, named, num, pctText, T, whenText } from '../i18n';
 import type { InvBoard } from '../sim/inv';
 import type { TaskNow } from '../sim/lab';
+import { capaName, headText } from './capa';
 import { causeText } from './Lab';
 import { db } from './db';
 import { whyLines } from './Journal';
@@ -317,6 +318,34 @@ function Debrief({ b, m, start, actions }: { b: InvBoard; m: InvModel; start: Ym
   );
 }
 
+/**
+ * CAPA после вывода (Б5е): что назначено по отклонению расследования — действие, исполнитель, выполнена ли и итог
+ * проверки эффективности; к карточке отклонения — там действия каталога с ценой.
+ */
+function InvCapa({ b, start, actions }: { b: InvBoard; start: Ymd; actions: Actions }) {
+  const day = (t: number) => dayText(momentOf(start, t).day);
+  return (
+    <div className="isec" data-test="inv-capa">
+      <div className="msec">{T.dev.capa}</div>
+      {b.capas.length === 0 ? <div className="muted">{T.dev.capaNone}</div> : null}
+      <ul className="why">
+        {b.capas.map(x => (
+          <li key={x.n} data-test="inv-capa-row" data-action={x.action}>
+            {T.morning.capaLine(x.n, capaName(x.action), T.dev.no(x.dev), headText(x.head))}
+            <span className="muted">
+              {' · '}
+              {x.check ? (x.check.ok ? T.journal.check.ok : T.dev.capaNo(day(x.check.t), x.check.dev !== undefined ? T.dev.no(x.check.dev) : '')) : x.done !== undefined ? T.dev.capaDone(whenText(start, x.done), headText(x.head)) : T.dev.capaDue(day(x.due))}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <button type="button" onClick={() => (actions.toggleInv(), actions.select({ kind: 'dev', n: b.dev }))} data-test="inv-dev">
+        {T.inv.devCard(T.dev.no(b.dev))}
+      </button>
+    </div>
+  );
+}
+
 export function Inv({ hud, actions }: { hud: Hud; actions: Actions }) {
   const v = hud.inv.view;
   const start = hud.start;
@@ -351,6 +380,7 @@ export function Inv({ hud, actions }: { hud: Hud; actions: Actions }) {
             <Versions b={b} m={m} />
           </div>
           {b.status === 'open' ? <Decide b={b} m={m} actions={actions} mine={mine} /> : b.debrief && b.conclusion ? <Debrief b={b} m={m} start={start} actions={actions} /> : null}
+          {b.status === 'closed' ? <InvCapa b={b} start={start} actions={actions} /> : null}
         </>
       ) : null}
     </div>

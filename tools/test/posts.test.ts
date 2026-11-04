@@ -22,7 +22,7 @@ import { planErrors } from '../content/plan';
 
 const SC = 'scn.proto';
 const PLANT = db.scenarios[SC].plant;
-const plan = planOf(db, PLANT);
+const plan = planOf(db, db.plants[PLANT]);
 const nav = plan.nav;
 
 const withPlant = (change: (p: Plant) => void): ContentDb => {
@@ -114,7 +114,7 @@ describe('жизнь постов', () => {
   test('на шестые сутки в 12:00 у входа — не больше двух человек', () => {
     const t = newPlant(db, { scenario: SC });
     apply(db, t, { kind: 'advance', seconds: 5 * DAY + 12 * HOUR - t.t });
-    const plan2 = planOf(db, t.plant);
+    const plan2 = planOf(db, t.plan);
     const near = Object.values(t.people).filter(p => shiftEnd(db, t, p) !== undefined && !p.task && dist(plan2, here(plan2, p, t.t), plan.entrance) < 300);
     expect(near.length).toBeLessThanOrEqual(2);
   });

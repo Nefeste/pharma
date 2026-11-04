@@ -14,7 +14,7 @@
 // границы. Расписание (3д): G открывает окно, на нём полосы; задание тянут мышью — виден призрак с причинами. Прогон плана
 // (часть 5): отпустили — задание в черновике, срок прежний; «Прогнать план» — итог «как сейчас» и черновика на пяти зёрнах,
 // часы завода в это время идут; «Утвердить» — срок задания сменился; Esc закрывает. «Кем вы будете» (3е): экран открыт с начала, мир стоит; взяли «Производство» —
-// часы пошли; на планёрке — «Ваше место»; «Поднять» без поста качества погашено, кнопкой «Место» добавили его — мир на
+// часы пошли; на планёрке — «Ваше место»; «Поднять» без поста качества — записка начальнику ОКК, кнопкой «Место» добавили его — мир на
 // паузе, после «Взять» поднять можно. Автопаузы (Б2а): меню — тринадцать автопауз, две — не места игрока; планёрку
 // отключили — окно это помнит, и «До события» (клавиша 6) встаёт не в 08:00, а на первом событии автопаузы, с извещением со
 // знаком паузы, и часы стоят. Расследование (часть 4б): «До события», пока растворение второй серии не выйдет за
@@ -54,16 +54,25 @@
 // часами; окно «вчера» — полные сутки; доска «План — факт» по часам смены; слой — не больше четырёх вызовов отрисовки;
 // снимок — в контактном листе; 9 октября за вчера у ключевой машины — OEE с множителями, как на планёрке. Отклонённое
 // (Б1з): после решения по серии на посту качества следующую серию ГП отклонили — её паллеты в зоне; на планёрке — места,
-// «Заказать вывоз» погашено без поста «Снабжение и склад»; директором — «Заказать вывоз»; фура подрядчика у рампы —
+// «Заказать вывоз» без поста «Снабжение и склад» — записка заведующему складом; директором — «Заказать вывоз»; фура подрядчика у рампы —
 // погрузка и подпись начальника ОКК в «Сейчас»; запись журнала отходов и свободные места в карточке помещения, в кассе —
 // «Вывоз отходов». Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png. Первая неделя
 // (docs/specs/2026-10-vertical-slice.md): путь новичка от «Кем вы будете» до «За эту игру» на планёрке 8 сентября в
 // чистом окне — tools/app/e2e-week.mjs.
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits|sources] [--long 1]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findChromium } from './e2e-lib.mjs';
+import { capaPart } from './e2e-capa.mjs';
+import { forecastPart } from './e2e-forecast.mjs';
+import { sopPart } from './e2e-sop.mjs';
+import { mrpPart } from './e2e-mrp.mjs';
+import { editsPart } from './e2e-edits.mjs';
+import { sourcesPart } from './e2e-sources.mjs';
+import { jobsPart } from './e2e-jobs.mjs';
+import { launchPart } from './e2e-launch.mjs';
+import { memoPart } from './e2e-memo.mjs';
 import { weekPart } from './e2e-week.mjs';
 import { serve } from './serve.mjs';
 
@@ -173,6 +182,8 @@ const knobsCard = async () => {
       speed: document.querySelector(`[data-test=card-knobs][data-recipe="${p}"] [data-test=knob-speed]`)?.textContent?.replace(/\s*[−+]\s*[−+]?\s*$/, '').trim() ?? '',
       buttons: buttons.length,
       on: buttons.filter(b => !b.disabled).length,
+      // с Б5д кнопка чужого поста — записка руководителю его отдела
+      memo: buttons.filter(b => b.getAttribute('data-memo') === 'tech').length,
       warn: [...document.querySelectorAll('[data-test=card] .warn')].map(x => x.textContent ?? '').join(' '),
     };
   }, PARA);
@@ -265,16 +276,33 @@ const answerAsks = async (no = () => false) => {
   return out;
 };
 
-// части: основная — всё, что выше в шапке; «Первая неделя» — путь новичка в чистом окне (tools/app/e2e-week.mjs).
-// `--only main` или `--only week` — одна из них
+// части: основная — всё, что выше в шапке; «Первая неделя» — путь новичка в чистом окне (tools/app/e2e-week.mjs);
+// «Записки и вопросы» (Б5д) — два чистых окна (tools/app/e2e-memo.mjs); «CAPA» (Б5е) — чистое окно поста «Качество»
+// (tools/app/e2e-capa.mjs); «Задания» (Б6а) — чистое окно поста «Производство» (tools/app/e2e-jobs.mjs); «План запуска»
+// (Б6б) — тоже, с заданиями на сутки на планёрке (tools/app/e2e-launch.mjs); «Прогноз» (Б6в) — тоже, до планёрки 1
+// ноября (tools/app/e2e-forecast.mjs); «S&OP» (Б6г) — тоже, до совещания 3 сентября (tools/app/e2e-sop.mjs);
+// «Материалы» (Б6д) — чистое окно места «Директор» 2 сентября (tools/app/e2e-mrp.mjs); «Правки» (Б6е) — чистое окно
+// поста «Производство», до планёрки с событием коммерции (tools/app/e2e-edits.mjs); «Источники» (Б6ж) — чистое окно
+// места «Директор», до пробной партии, с `--long 1` — до подачи изменения досье (tools/app/e2e-sources.mjs).
+// `--only main`, `week`, `memo`, `capa`, `jobs`, `launch`, `forecast`, `sop`, `mrp`, `edits` или `sources` — одна из
+// них
 const only = arg('only', '');
 try {
-  // основная часть кончилась — её страницу закрыть: она рисует кадры и отняла бы у первой недели процессор
-  if (only !== 'week') {
+  // основная часть кончилась — её страницу закрыть: она рисует кадры и отняла бы у других частей процессор
+  if (only === '' || only === 'main') {
     await mainPart();
     await page.close();
-  }
-  if (only !== 'main') await weekPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  } else await page.close();
+  if (only === '' || only === 'week') await weekPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'memo') await memoPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'capa') await capaPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'jobs') await jobsPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'launch') await launchPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'forecast') await forecastPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'sop') await sopPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'mrp') await mrpPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'edits') await editsPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'sources') await sourcesPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
@@ -320,13 +348,14 @@ async function mainPart() {
   }
 
   // режимы (Б1ж): в карточке помещения таблетирования — уставки на следующую стадию у обеих карт, скорость ротора по цели;
-  // на одном посту производства «−» и «+» погашены — уставки задаёт пост «Качество и технология». Мир на паузе
+  // на одном посту производства «−» и «+» — записки главному технологу (Б5д): уставки задаёт пост «Качество и
+  // технология». Мир на паузе
   {
     await page.evaluate(() => window.__game.actions.setSpeed(0));
     const k = await knobsCard();
-    if ([...k.recipes].sort().join() !== [LORA, PARA].join() || k.speed !== 'Скорость ротора: 50\u00a0об/мин · по цели' || k.on !== 0 || !/Качество и технология/.test(k.warn))
-      fail(`уставки без поста технолога: карты ${k.recipes.join(', ')}, скорость «${k.speed}», нажимается ${k.on} из ${k.buttons}, «${k.warn}»`);
-    else ok(`уставки без поста технолога: у ${k.recipes.length} карт, «${k.speed}», все ${k.buttons} кнопок погашены — «${k.warn}»`);
+    if ([...k.recipes].sort().join() !== [LORA, PARA].join() || k.speed !== 'Скорость ротора: 50\u00a0об/мин · по цели' || k.memo !== k.buttons || k.on !== k.buttons || !/записка главному технологу: ответит/.test(k.warn))
+      fail(`уставки без поста технолога: карты ${k.recipes.join(', ')}, скорость «${k.speed}», записок ${k.memo} и нажимается ${k.on} из ${k.buttons}, «${k.warn}»`);
+    else ok(`уставки без поста технолога: у ${k.recipes.length} карт, «${k.speed}», все ${k.buttons} кнопок — записки: «${k.warn}»`);
     await page.keyboard.press('Escape');
     // блистерная машина: паспорт и скорость по уставке инструкции у каждой позиции — по цели; кнопки погашены
     await page.evaluate(() => window.__game.actions.select({ kind: 'machine', line: 0, k: 0 }));
@@ -334,11 +363,12 @@ async function mainPart() {
     await frames(2);
     const b = await page.evaluate(() => ({
       rows: [...document.querySelectorAll('[data-test=speed-sku]')].map(x => (x.textContent ?? '').replace(/\s*[−+]\s*[−+]?\s*$/, '').trim()),
-      on: [...document.querySelectorAll('[data-test=card-speed] button')].filter(x => !x.disabled).length,
+      all: document.querySelectorAll('[data-test=card-speed] button').length,
+      memo: [...document.querySelectorAll('[data-test=card-speed] button')].filter(x => !x.disabled && x.getAttribute('data-memo') === 'tech').length,
     }));
-    if (b.rows.length < 2 || !b.rows.every(r => /: 120 блистеров\/мин · по цели, диапазон 100–135 блистеров\/мин$/.test(r)) || b.on !== 0)
+    if (b.rows.length < 2 || !b.rows.every(r => /: 120 блистеров\/мин · по цели, диапазон 100–135 блистеров\/мин$/.test(r)) || b.all === 0 || b.memo !== b.all)
       fail(`скорость блистерной без поста технолога: ${JSON.stringify(b)}`);
-    else ok(`скорость блистерной без поста технолога: позиций ${b.rows.length}, «${b.rows[0]}», кнопки погашены`);
+    else ok(`скорость блистерной без поста технолога: позиций ${b.rows.length}, «${b.rows[0]}», все ${b.all} кнопок — записки главному технологу`);
     await page.keyboard.press('Escape');
     await page.evaluate(() => window.__game.actions.setSpeed(1));
   }
@@ -915,12 +945,12 @@ async function mainPart() {
     await frames(2);
     if ((await page.$$eval('[data-test=lab-row]', r => r.length)) === 0) continue;
     const lot = await page.getAttribute('[data-test=lab-row]', 'data-lot');
-    // своё и чужое (3е): с одним производством «Поднять» погашено; кнопкой «Место» добавили качество — мир на паузе,
-    // после «Взять» поднять можно
+    // своё и чужое (3е): с одним производством «Поднять» — записка начальнику ОКК (Б5д); кнопкой «Место» добавили
+    // качество — мир на паузе, после «Взять» поднять можно самому
     {
-      const off = await page.$eval('[data-test=lab-rush]', b => ({ disabled: b.disabled, title: b.title }));
-      if (!off.disabled || !/Качество и технология/.test(off.title)) fail(`«Поднять» без поста качества: ${off.disabled ? 'погашено' : 'нажимается'}, подсказка «${off.title}»`);
-      else ok(`«Поднять» без поста качества погашено: «${off.title}»`);
+      const off = await page.$eval('[data-test=lab-rush]', b => ({ disabled: b.disabled, title: b.title, memo: b.getAttribute('data-memo'), text: b.textContent ?? '' }));
+      if (off.disabled || off.memo !== 'qc' || !/^Записка: /.test(off.text) || !/записка начальнику ОКК: ответит/.test(off.title)) fail(`«Поднять» без поста качества: ${off.disabled ? 'погашено' : 'нажимается'}, «${off.text}», подсказка «${off.title}»`);
+      else ok(`«Поднять» без поста качества — записка: «${off.text}», «${off.title}»`);
       await page.click('[data-test=seats-open]');
       await page.waitForSelector('#seats', { timeout: 20_000 });
       const paused = await page.evaluate(() => window.__game.speed === 0);
@@ -928,7 +958,7 @@ async function mainPart() {
       await page.click('[data-test=seats-take]');
       await page.waitForFunction(() => window.__game.store.get().top?.seats?.join() === 'production,quality', null, { timeout: 20_000 });
       await frames(2);
-      const on = await page.$eval('[data-test=lab-rush]', b => !b.disabled);
+      const on = await page.$eval('[data-test=lab-rush]', b => !b.disabled && !b.getAttribute('data-memo'));
       if (!paused || !on) fail(`«Место»: мир ${paused ? 'на паузе' : 'шёл'}, «Поднять» после «Взять» ${on ? 'нажимается' : 'погашено'}`);
       else ok('«Место»: мир на паузе; взяли ещё «Качество и технологию» — «Поднять» нажимается');
     }
@@ -1422,9 +1452,10 @@ async function mainPart() {
   if (lossShot) sheet.push(lossShot);
   await writeSheet(sheet);
 
-  // автопаузы (Б2а): у производства и качества четырнадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
+  // автопаузы (Б2а): у производства и качества восемнадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
   // вышел», с Б3г — «пара приостановлена», с Б4а — «сверхурочные года на исходе», с Б4в — «заявление об увольнении»,
-  // с Б4г — «черновик графика отпусков», с Б5б — «предложение руководителя»),
+  // с Б4г — «черновик графика отпусков», с Б5б — «предложение руководителя», с Б5в — «некому решить», с Б5д — «просят
+  // решить» и «ответ на служебную записку», с Б6г — «совещание S&OP»),
   // «фура» и «заказ» — не их; планёрку отключили — окно помнит; «До события» — мир
   // встал не в 08:00, а на первом событии автопаузы мест игрока: извещение со знаком паузы, часы стоят, отставания нет.
   // Планёрку включили обратно
@@ -1441,7 +1472,7 @@ async function mainPart() {
     await page.screenshot({ path: join(out, 'e2e-pauses.png') });
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('Escape');
-    if (menu.all !== 14 || menu.on !== 14 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
+    if (menu.all !== 18 || menu.on !== 18 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
       fail(`автопаузы: в меню ${menu.all}, включено ${menu.on}, не ваши ${menu.notYours.join(', ')}, в окне «${kept}»`);
     else ok(`автопаузы: в меню ${menu.all}, не ваши — ${menu.notYours.join(', ')}; планёрку отключили — в окне ${kept}; Esc закрыл меню`);
     const t0 = await gameT();
@@ -1866,7 +1897,7 @@ async function mainPart() {
       await page.keyboard.press('Escape');
       const moved = await go('zone', 3, { mine });
       const fresh = await ofMine(mine);
-      // на планёрку — без места директора: «Заказать вывоз» погашено, его пост ведёт коллега
+      // на планёрку — без места директора: «Заказать вывоз» — записка заведующему складом (Б5д), его пост ведёт коллега
       await seatsTo(['production', 'quality']);
       await page.evaluate(() => window.__game.actions.openMorning());
       await page.waitForFunction(() => !!window.__game.store.get().morning.view, null, { timeout: 20_000 });
@@ -1875,6 +1906,8 @@ async function mainPart() {
         zone: document.querySelector('[data-test=morning-rejects-zone]')?.textContent ?? '',
         order: document.querySelector('[data-test=morning-rejects-order]')?.textContent ?? '',
         off: document.querySelector('[data-test=morning-rejects] [data-test=lever-waste] button')?.disabled,
+        memo: document.querySelector('[data-test=morning-rejects] [data-test=lever-waste]')?.getAttribute('data-memo'),
+        label: document.querySelector('[data-test=morning-rejects] [data-test=lever-waste] button')?.textContent ?? '',
         hint: document.querySelector('[data-test=morning-rejects] [data-test=lever-waste] .warn')?.textContent ?? '',
         used: window.__game.store.get().morning.view.rejects?.used,
       }));
@@ -1882,9 +1915,9 @@ async function mainPart() {
       await frames(2);
       await page.screenshot({ path: join(out, 'e2e-rejects.png') });
       await page.keyboard.press('Escape');
-      if (!moved || fresh.length === 0 || m.off !== true || !/Снабжение и склад/.test(m.hint) || !/занято/.test(m.zone) || !/не заказан/.test(m.order))
-        fail(`отклонённое: паллеты серии в зоне ${moved} (${fresh.length}); на планёрке «${m.zone}», «${m.order}», «Заказать вывоз» погашено ${m.off}, «${m.hint}»`);
-      else ok(`отклонённое: ${fresh.length} ${fresh.length === 1 ? 'паллета' : 'паллеты'} ГП — в зоне; на планёрке «${m.zone}», «${m.order}»; «Заказать вывоз» погашено — «${m.hint.replace(/^\s*·\s*/, '')}»; снимок ${join(out, 'e2e-rejects.png')}`);
+      if (!moved || fresh.length === 0 || m.off !== false || m.memo !== '1' || !/^Записка: /.test(m.label) || !/записка заведующему складом/.test(m.hint) || !/занято/.test(m.zone) || !/не заказан/.test(m.order))
+        fail(`отклонённое: паллеты серии в зоне ${moved} (${fresh.length}); на планёрке «${m.zone}», «${m.order}», «${m.label}» погашено ${m.off}, «${m.hint}»`);
+      else ok(`отклонённое: ${fresh.length} ${fresh.length === 1 ? 'паллета' : 'паллеты'} ГП — в зоне; на планёрке «${m.zone}», «${m.order}»; «${m.label}» — «${m.hint.replace(/^\s*·\s*/, '')}»; снимок ${join(out, 'e2e-rejects.png')}`);
       // директором — «Заказать вывоз» у строки планёрки
       await seatsTo(['director', 'production', 'quality']);
       await page.evaluate(() => window.__game.actions.openMorning());
@@ -2089,12 +2122,28 @@ async function mainPart() {
         const rows = [...document.querySelectorAll('[data-test=ref-people] tbody tr')].map(r => [...r.children].map(c => c.innerText.trim()));
         return { month, year, bad: rows.filter(r => !/ из /.test(r[month] ?? '') || !/ из 120\u00a0ч$/.test(r[year] ?? '')).length, first: rows[0] ? [rows[0][month], rows[0][year]] : [] };
       });
-      await page.click('[data-test=policy-set][data-dept=mes]');
-      await page.waitForFunction(() => window.__game.store.get().ref.view?.policy.mes === 'finish', null, { timeout: 20_000 });
-      const finish = await page.evaluate(() => [...document.querySelectorAll('[data-test=ref-policy] [data-test=policy-mode]')].map(x => x.textContent)[3]);
-      const wmsOff = await page.evaluate(() => document.querySelector('[data-test=policy-set][data-dept=wms]')?.disabled ?? false);
-      await page.click('[data-test=policy-set][data-dept=mes]');
-      await page.waitForFunction(() => window.__game.store.get().ref.view?.policy.mes === 'need', null, { timeout: 20_000 });
+      // сверхурочные меняют в окне «Политики» (Б5г): ссылка из «Людей»; у производства — «только закончить начатое» и
+      // «Применить», потом обратно; у склада — не ваше место: варианты погашены; окно закрыть — справочник снова
+      const overtime = async mode => {
+        await page.click('[data-test=policy-tab][data-head=mes]');
+        await page.click(`[data-test=policy-row][data-policy=overtime][data-of=mes] [data-test=policy-option][data-v='"${mode}"']`);
+        await page.click('[data-test=policy-apply]');
+        await page.waitForFunction(m => window.__game.store.get().policies.view?.tabs.find(x => x.head === 'mes')?.overtime.find(o => o.dept === 'mes')?.mode === m, mode, { timeout: 20_000 });
+      };
+      await page.click('[data-test=ref-policy] [data-test=policy-open]');
+      await page.waitForSelector('#policies [data-test=policy-row]', { timeout: 20_000 });
+      await overtime('finish');
+      await frames(2);
+      const finish = await page.evaluate(() => document.querySelector('[data-test=policy-row][data-policy=overtime][data-of=mes] [data-test=policy-option].on')?.textContent ?? '');
+      await page.click('[data-test=policy-tab][data-head=wms]');
+      const wmsOff = await page.evaluate(() => {
+        const b = [...document.querySelectorAll('[data-test=policy-row][data-policy=overtime][data-of=wms] [data-test=policy-option]')];
+        return b.length > 0 && b.every(x => x.disabled);
+      });
+      await overtime('need');
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('F1');
+      await page.waitForSelector('[data-test=ref-calendar]', { timeout: 20_000 });
       for (let i = 0; i < 12; i++) {
         const month = await page.evaluate(() => document.querySelector('[data-test=ref-calendar]')?.getAttribute('data-month'));
         if (month === '2027-11') break;
@@ -2148,7 +2197,7 @@ async function mainPart() {
       };
     });
     await page.screenshot({ path: join(out, 'e2e-partners.png') });
-    if (partners.makers !== partners.want.makers || partners.pairs.length !== partners.want.pairs || !partners.pairs.every(x => /^с \d\d\.\d\d\.\d{4} до /.test(x)) || partners.uncovered.length > 0 || partners.agreements > 0 || partners.contracts[0] !== 'CTR-0001')
+    if (partners.makers !== partners.want.makers || partners.pairs.length !== partners.want.pairs || !partners.pairs.every(x => /^с \d\d\.\d\d\.\d{4} до /.test(x) || x === 'кандидат: в досье изготовителя нет') || partners.pairs.filter(x => x.startsWith('кандидат')).length !== 2 || partners.uncovered.length > 0 || partners.agreements > 0 || partners.contracts[0] !== 'CTR-0001')
       fail(`контрагенты: изготовителей ${partners.makers} из ${partners.want.makers}, пар ${partners.pairs.length} из ${partners.want.pairs} (${partners.pairs.join(' | ')}), без пары или договора — ${partners.uncovered.join(', ')}, без соглашения — ${partners.agreements}, договоры ${partners.contracts.join(', ')}`);
     else ok(`контрагенты: ${partners.makers} изготовителя, ${partners.pairs.length} пары в сроке («${partners.pairs[0]}»), у каждого материала — пара и договор; договоры ${partners.contracts.join(', ')}`);
     for (const tab of ['equipment', 'lab', 'people', 'partners']) {
@@ -2647,12 +2696,43 @@ async function mainPart() {
     }
     if (!visit) fail('первый визит: за 60 утр к оборудованию и машинам визитов не было');
     else {
+      // «Перенести визит» (Б5г): визит этого утра — на следующий рабочий день из карточки вещи, в журнале — «вы» с прежним
+      // днём; дальше — тот же визит в новый день: лампа, работа, приёмка
+      await page.evaluate(x => window.__game.actions.select(x), visit.thing);
+      const opts = await page
+        .waitForSelector('[data-test=card-visit-move] [data-test=card-visit-day]', { timeout: 20_000 })
+        .then(
+          () =>
+            page.evaluate(() => {
+              const a = window.__game.store.get().card?.card?.asset;
+              return { id: a?.id, at: a?.visit?.at, days: [...document.querySelectorAll('[data-test=card-visit-day] option')].map(o => Number(o.value)) };
+            }),
+          () => undefined,
+        );
+      let moved;
+      if (opts?.days.length) {
+        await page.selectOption('[data-test=card-visit-day]', String(opts.days[0]));
+        await page.click('[data-test=card-visit-go]');
+        await page.waitForFunction(at => window.__game.store.get().card?.card?.asset?.visit?.at !== at, opts.at, { timeout: 20_000 }).catch(() => {});
+        await frames(2);
+        moved = await page.evaluate(() => ({ at: window.__game.store.get().card?.card?.asset?.visit?.at, text: document.querySelector('[data-test=card-visit]')?.textContent ?? '' }));
+        await page.screenshot({ path: join(out, 'e2e-visit-move.png') });
+        await page.keyboard.press('Escape');
+        await openJournal();
+        moved.rec = await page.evaluate(id => {
+          const r = window.__game.store.get().journal.view?.rows.find(x => x.by === 'player' && x.d.kind === 'visit' && x.d.asset === id);
+          return r ? { at: r.d.at, from: r.d.from } : undefined;
+        }, opts.id);
+      }
+      await page.keyboard.press('Escape');
+      if (!opts?.days.length || !moved || moved.at === opts.at || !moved.rec || moved.rec.from !== opts.at || moved.rec.at !== moved.at) fail(`«Перенести визит»: ${JSON.stringify({ opts, moved })}`);
+      else ok(`«Перенести визит»: ${opts.id} — визит с ${Math.floor(opts.at / 86400)}-х на ${Math.floor(moved.at / 86400)}-е сутки завода; в карточке «${moved.text}»; в журнале — «вы» с прежним днём`);
       const ix = await page.evaluate(t => {
         const plant = window.__game.db.plants[window.__game.db.scenarios['scn.proto'].plant];
         return t.kind === 'equipment' ? t.i : plant.equipment.length + plant.lines.slice(0, t.line).reduce((n, l) => n + l.machines.length, 0) + t.k;
       }, visit.thing);
       // мир может встать на другой автопаузе — дальше
-      for (let i = 0; i < 6 && (await page.evaluate(k => window.__game.stage.machines.lamps[k] !== 'check', ix)); i++) {
+      for (let i = 0; i < 12 && (await page.evaluate(k => window.__game.stage.machines.lamps[k] !== 'check', ix)); i++) {
         await page.keyboard.press('Digit4');
         await page.waitForFunction(k => window.__game.stage.machines.lamps[k] === 'check' || window.__game.speed === 0, ix, { timeout: 120_000 });
       }
@@ -2702,7 +2782,7 @@ async function mainPart() {
     };
     const leaveView = () => page.evaluate(() => window.__game.store.get().ref.view?.leave);
     const offBefore = await page.evaluate(() => [...window.__game.store.get().pauses.off]);
-    const others = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'proposal', 'morning'];
+    const others = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'noOne', 'proposal', 'morning'];
     await page.evaluate(ids => ids.forEach(p => window.__game.actions.setPause(p, false)), others);
     const draftNote = () => page.evaluate(() => window.__game.notices.find(n => /^Кадры составили черновик графика отпусков на 2028/.test(n.text)) ?? null);
     // прошлый шаг мог уйти за 1 декабря, тогда черновик уже пришёл: он — в полосе извещений со знаком паузы
@@ -2760,11 +2840,13 @@ async function mainPart() {
     if (!/Начальник ОКК/.test(also) || got.deputy?.n !== analyst.person || part.deputy?.n === analyst.person)
       fail(`заместитель: смежные профессии «${also}»; у части начальника ОКК был ${JSON.stringify(part.deputy)}, стал ${JSON.stringify(got.deputy)}`);
     else ok(`заместитель: аналитик таб. № ${analyst.tab} — «${also.trim()}»; у части начальника ОКК ${part.from} заместитель — он вместо таб. № ${part.deputy?.tab}`);
-    // утверждение 17 декабря; часть наладчика — на январь, по соглашению
+    // утверждение 17 декабря; первую часть наладчика с февраля — на январь, по соглашению (с Б5в в черновике она — летом:
+    // руководители в штате)
     for (let i = 0; i < 20 && (await epoch()) < ymd(2027, 12, 18); i++) await untilMorning();
     v = await leaveView();
     const setter = v.people.find(p => p.role === 'role.setter');
-    const later = setter.parts.find(x => x.y === 2028 && x.from >= ymd(2028, 2, 1) && x.from < ymd(2028, 6, 1));
+    const later = setter.parts.find(x => x.y === 2028 && x.from >= ymd(2028, 2, 1));
+    if (!later) throw new Error(`у наладчика нет части 2028 года с февраля: ${JSON.stringify(setter.parts)}`);
     await openLeave();
     await page.click(`[data-test=leave-row][data-tab="${setter.tab}"]`);
     await page.click(`[data-test=leave-person] [data-test=leave-part][data-part=${later.id}] [data-test=leave-move]`);
@@ -2966,7 +3048,7 @@ async function mainPart() {
     else ok(`«Кем вы будете»: режимы отделов отмеченных мест — ${seen}`);
     // у директора дело — все автопаузы: на время шага мир встаёт только на планёрке и предложениях руководителей
     const offBefore = await page.evaluate(() => [...window.__game.store.get().pauses.off]);
-    const others = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'leaveDraft'];
+    const others = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'leaveDraft', 'noOne'];
     await page.evaluate(ids => ids.forEach(p => window.__game.actions.setPause(p, false)), others);
     const sm = await setMode('supply', 'advise');
     let stop;
@@ -3109,6 +3191,269 @@ async function mainPart() {
     }
     await page.keyboard.press('Escape');
     await page.evaluate(ids => ids.forEach(p => window.__game.actions.setPause(p, true)), others.filter(p => !offBefore.includes(p)));
+    await writeSheet(sheet);
+  }
+
+  // политики (Б5г), директором с постами производства и качества. P — окно «Политики» на вкладке руководителя взятого
+  // поста, отклик — в кадрах; запас позиций на шаг больше — черновик; «Прогнать» — ход по зёрнам и итог двух вариантов на 13
+  // неделях; «Применить» — отклик в кадрах и запись журнала «вы»; следующее задание на серию — с порогом новой политики.
+  // Снабжение «сам», страховой запас на неделю больше — заказ поставщику с ним же. «Стоп» второго прогона; чужой пост —
+  // без кнопок. «Перенести визит» — в шаге первого визита (Б3в): там визит к оборудованию точно назначен
+  {
+    // счёт кадров: отклик меряется от ввода до кадра, в котором ответ на экране (геймдизайн, §21: ввод — 6, команда — 15)
+    const pf = () =>
+      page.evaluate(() => {
+        if (!window.__pfOn) {
+          window.__pfOn = true;
+          window.__pf = 1;
+          const tick = () => {
+            window.__pf++;
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        }
+        return window.__pf;
+      });
+    const tabTo = async head => {
+      await page.click(`[data-test=policy-tab][data-head=${head}]`);
+      await page.waitForSelector(`#policies [data-test=policy-head][data-head=${head}]`, { timeout: 20_000 });
+    };
+    const valueOf = (policy, of) =>
+      page.evaluate(
+        ([p, o]) => {
+          const row = document.querySelector(`[data-test=policy-row][data-policy="${p}"]${o ? `[data-of="${o}"]` : ''}`);
+          return row ? JSON.parse(row.getAttribute('data-value')) : undefined;
+        },
+        [policy, of],
+      );
+    const more = async (policy, n) => {
+      for (let i = 0; i < n; i++) await page.click(`[data-test=policy-row][data-policy="${policy}"] [data-test=policy-more]`);
+    };
+    const apply = async (policy, want) => {
+      const f = await pf();
+      await page.click('[data-test=policy-apply]');
+      const r = await page
+        .waitForFunction(([p, w]) => (JSON.parse(document.querySelector(`[data-test=policy-row][data-policy="${p}"]`)?.getAttribute('data-value') ?? 'null') === w ? { f: window.__pf } : false), [policy, want], { timeout: 20_000, polling: 'raf' })
+        .then(h => h.jsonValue(), () => ({ f: -1 }));
+      return r.f < 0 ? -1 : r.f - f;
+    };
+    const f0 = await pf();
+    await page.keyboard.press('KeyP');
+    const open = await page
+      .waitForFunction(() => (!!window.__game.store.get().policies.view && !!document.querySelector('#policies [data-test=policy-row]') ? { f: window.__pf } : false), null, { timeout: 20_000, polling: 'raf' })
+      .then(h => h.jsonValue().then(v => v.f - f0), () => -1);
+    // окно — на вкладке взятого поста: запомненной (сверхурочные производства, Б4а) или первой; вкладки — сначала взятые
+    const first = await page.evaluate(() => ({
+      tab: document.querySelector('#policies [data-test=policy-tab]')?.getAttribute('data-head') ?? '',
+      shown: document.querySelector('#policies [data-test=policy-head]')?.getAttribute('data-head') ?? '',
+      held: window.__game.store.get().top?.seats ?? [],
+    }));
+    const PROD = ['plan', 'mes', 'maint'];
+    await tabTo('plan');
+    const cover0 = await valueOf('pol.plan.cover');
+    const step = await page.evaluate(() => window.__game.db.policies['pol.plan.cover'].step);
+    const cover1 = cover0 + step;
+    await more('pol.plan.cover', 1);
+    await page.waitForFunction(c => window.__game.store.get().policies.draft['pol.plan.cover'] === c, cover1, { timeout: 5_000 });
+    // «Прогнать»: ход по зёрнам, итог «как сейчас» и с черновиком
+    await page.click('[data-test=policy-run-go]');
+    const progress = await page.waitForSelector('[data-test=policy-progress]', { timeout: 120_000 }).then(() => true, () => false);
+    await page.waitForFunction(() => {
+      const r = window.__game.store.get().policies.run;
+      return !r.running && (r.sums.filter(Boolean).length === 2 || !!r.error);
+    }, null, { timeout: 1_800_000 });
+    await frames(2);
+    const run = await page.evaluate(() => {
+      const r = window.__game.store.get().policies.run;
+      const cells = [...document.querySelectorAll('[data-test=policy-metric]')].map(m => `${m.querySelector('td')?.textContent}: ${[...m.querySelectorAll('[data-test=policy-cell]')].map(c => c.textContent).join(' / ')}`);
+      return { error: r.error ?? '', n: r.sums.filter(Boolean).length, cells, ms: r.ms ?? 0 };
+    });
+    await page.screenshot({ path: join(out, 'e2e-policies.png') });
+    sheet.push({ file: join(out, 'e2e-policies.png'), label: 'Б5г · «Политики» · итог прогона' });
+    if (open < 0 || open > 6 || first.tab !== 'plan' || !PROD.includes(first.shown) || !progress || run.n !== 2 || run.error || run.cells.length < 8) fail(`«Политики»: отклик P ${open} кадров, вкладки ${JSON.stringify(first)}, ход ${progress}, итог ${JSON.stringify(run)}`);
+    else ok(`«Политики» (P): отклик ${open} кадров, первая вкладка — ${first.tab}, открыта ${first.shown} (места ${first.held.join(', ')}); запас позиций ${cover0} → ${cover1} суток — черновик; «Прогнать» — ход по зёрнам, итог за ${Math.round(run.ms / 1000)} с: ${run.cells.slice(0, 3).join('; ')}`);
+    // «Стоп»: второй прогон того же черновика остановлен — итога нет, «Прогнать» снова доступно
+    await page.click('[data-test=policy-run-go]');
+    const second = await page.waitForSelector('[data-test=policy-stop]', { timeout: 20_000 }).then(() => true, () => false);
+    if (second) await page.click('[data-test=policy-stop]');
+    const stopped = await page
+      .waitForFunction(() => {
+        const r = window.__game.store.get().policies.run;
+        return !r.running && r.sums.length === 0 && !!document.querySelector('[data-test=policy-run-go]:not([disabled])');
+      }, null, { timeout: 20_000 })
+      .then(() => true, () => false);
+    if (!second || !stopped) fail(`«Стоп» в «Политиках»: прогон начался — ${second}, остановлен — ${stopped}`);
+    else ok('«Стоп» в «Политиках»: второй прогон остановлен, итога нет, «Прогнать» снова доступно');
+    // «Применить»: отклик в кадрах; запись журнала «вы» с прежним значением
+    const tApply = await gameT();
+    const fApply = await apply('pol.plan.cover', cover1);
+    await page.keyboard.press('Escape');
+    await openJournal();
+    await page.waitForFunction(c => window.__game.store.get().journal.view?.rows.some(r => r.by === 'player' && r.d.kind === 'policy' && r.d.to === c), cover1, { timeout: 20_000 }).catch(() => {});
+    const rec = await page.evaluate(c => {
+      const r = window.__game.store.get().journal.view?.rows.find(x => x.by === 'player' && x.d.kind === 'policy' && x.d.to === c);
+      return r ? { n: r.n, from: r.d.from, text: document.querySelector(`#journal [data-test=journal-row][data-n="${r.n}"]`)?.innerText.replace(/\s*\n\s*/g, ' · ') ?? '' } : undefined;
+    }, cover1);
+    await page.keyboard.press('Escape');
+    if (fApply < 0 || fApply > 15 || !rec || rec.from !== cover0 || !/вместо/.test(rec.text)) fail(`«Применить»: отклик ${fApply} кадров, запись журнала ${JSON.stringify(rec)}`);
+    else ok(`«Применить»: отклик ${fApply} кадров; в журнале — «${rec.text.slice(0, 110)}»`);
+    // показатели (K): у начальника отдела планирования — смена политики этого месяца
+    await page.keyboard.press('KeyK');
+    await page.waitForSelector('#kpi [data-test=kpi-tab]', { timeout: 20_000 });
+    await page.click('[data-test=kpi-tab][data-tab=production]');
+    const marks = await page
+      .waitForFunction(() => document.querySelector('#kpi [data-test=kpi-head][data-head=plan] [data-test=kpi-marks]')?.textContent ?? false, null, { timeout: 20_000 })
+      .then(h => h.jsonValue(), () => '');
+    await page.keyboard.press('Escape');
+    if (!/Политики этого месяца/.test(marks) || !new RegExp(`${cover1}`).test(marks) || !/вместо/.test(marks)) fail(`показатели (K): смена политики у начальника отдела планирования — «${marks}»`);
+    else ok(`показатели (K): у начальника отдела планирования — «${marks.slice(0, 110)}»`);
+    // следующее задание на серию — с порогом новой политики: утро за утром, пока начальник отдела планирования не решит
+    let order;
+    for (let i = 0; i < 10 && !order; i++) {
+      await untilMorning();
+      await openJournal();
+      order = await page.evaluate(t => {
+        const r = window.__game.store.get().journal.view?.rows.find(x => x.by === 'plan' && x.d.kind === 'order' && x.t > t && x.d.why?.cover !== undefined);
+        return r ? { n: r.n, t: r.t, cover: r.d.why.cover } : undefined;
+      }, tApply);
+      await page.keyboard.press('Escape');
+    }
+    if (order) {
+      await page.evaluate(n => window.__game.actions.openJournal(n), order.n);
+      await page.waitForFunction(n => !!document.querySelector(`#journal [data-test=journal-row][data-n="${n}"] [data-test=journal-why]`), order.n, { timeout: 20_000 }).catch(() => {});
+      order.why = await page.evaluate(n => document.querySelector(`#journal [data-test=journal-row][data-n="${n}"] [data-test=journal-why]`)?.textContent ?? '', order.n);
+      await page.keyboard.press('Escape');
+    }
+    if (!order || order.cover !== cover1 || !new RegExp(`запас ${cover1}\u00a0суток по политике|запас ${cover1} суток по политике`).test(order.why ?? '')) fail(`задание на серию после «Применить»: ${JSON.stringify(order)}`);
+    else ok(`задание на серию в ${Math.floor((order.t % 86400) / 3600)}:00 — с запасом политики: «${order.why.slice(0, 120)}»`);
+    // снабжение «сам», страховой запас на неделю больше — заказ поставщику в 09:00 с ним же
+    const sm = await setMode('supply', 'auto');
+    await page.keyboard.press('KeyP');
+    await page.waitForSelector('#policies [data-test=policy-row]', { timeout: 20_000 });
+    await tabTo('supply');
+    const safety0 = await valueOf('pol.supply.safety');
+    await more('pol.supply.safety', 7);
+    const tSafety = await gameT();
+    const fSafety = await apply('pol.supply.safety', safety0 + 7);
+    await page.keyboard.press('Escape');
+    let po;
+    for (let i = 0; i < 12 && !po; i++) {
+      await untilMorning();
+      await openJournal();
+      po = await page.evaluate(t => {
+        const r = window.__game.store.get().journal.view?.rows.find(x => x.by === 'supply' && x.d.kind === 'po' && x.t > t && (x.d.why?.length ?? 0) > 0);
+        return r ? { t: r.t, safety: [...new Set(r.d.why.map(w => w.safety))] } : undefined;
+      }, tSafety);
+      await page.keyboard.press('Escape');
+    }
+    if (sm !== 'auto' || fSafety < 0 || !po || po.safety.join() !== String(safety0 + 7) || po.t % 86400 !== 9 * 3600) fail(`страховой запас ${safety0} → ${safety0 + 7}: снабжение ${sm}, заказ ${JSON.stringify(po)}`);
+    else ok(`снабжение «сам», страховой запас ${safety0} → ${safety0 + 7} суток: заказ поставщику в 09:00 — со страховым запасом политики`);
+    // чужой пост — без кнопок, с подписью, чей он: посты производства и качества без директора, вкладка снабжения
+    await seatsTo(['production', 'quality']);
+    await page.keyboard.press('KeyP');
+    await page.waitForSelector('#policies [data-test=policy-row]', { timeout: 20_000 });
+    await tabTo('supply');
+    const foreign = await page.evaluate(() => ({
+      label: document.querySelector('#policies [data-test=policy-foreign]')?.textContent ?? '',
+      live: [...document.querySelectorAll('#policies [data-test=policy-row] button')].filter(b => !b.disabled).length,
+      rows: document.querySelectorAll('#policies [data-test=policy-row]').length,
+    }));
+    await page.keyboard.press('Escape');
+    await seatsTo(['director', 'production', 'quality']);
+    if (!foreign.label || foreign.live > 0 || foreign.rows === 0) fail(`чужой пост в «Политиках»: ${JSON.stringify(foreign)}`);
+    else ok(`чужой пост в «Политиках»: у снабжения — «${foreign.label.slice(0, 90)}», ${foreign.rows} строк без кнопок`);
+    await writeSheet(sheet);
+  }
+
+  // руководители — люди (Б5в), директором с постами производства и качества. F1 → «Люди»: «Руководители» — семь отделов, у
+  // каждого человек и заместитель; щелчок по начальнику отдела планирования — карточка: «смотрит на N суток вперёд», где N —
+  // запас позиций политики. В «Открыть вакансию…» переезд — у начальника отдела планирования, а у упаковщика его нет.
+  // Начальника отдела планирования — по соглашению: после смены должность свободна, утром решает заместитель — на
+  // планёрке «Руководители» с «и. о.», в журнале задание на серию — «и. о.». Заместителя сняли в таблице — «До события»
+  // встаёт на «Некому решить» у поста производства. Снимки — в контактный лист
+  {
+    const openBosses = async () => {
+      await page.keyboard.press('F1');
+      await page.waitForSelector('#ref', { timeout: 20_000 });
+      await page.click('[data-test=ref-tab][data-tab=people]');
+      await page.waitForSelector('[data-test=ref-bosses] [data-test=boss-head]', { timeout: 20_000 });
+      await frames(1);
+    };
+    const bossNow = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-test=ref-bosses] [data-test=boss-head]')].map(x => [x.getAttribute('data-head'), x.getAttribute('data-now')])));
+    await openBosses();
+    const heads = await bossNow();
+    const deputies = await page.evaluate(() => document.querySelectorAll('[data-test=ref-bosses] [data-test=card-boss-deputy] [data-test=card-boss-deputy-who]').length);
+    await page.screenshot({ path: join(out, 'e2e-bosses.png') });
+    sheet.push({ file: join(out, 'e2e-bosses.png'), label: 'Б5в · «Люди» · руководители' });
+    // переезд — только тем, кого в городе по объявлению не найти
+    await page.click('[data-test=vacancy-open]');
+    await page.selectOption('[data-test=vacancy-role]', 'role.plan-head');
+    const moveHead = await page.evaluate(() => [...document.querySelectorAll('[data-test=vacancy-via] option')].some(o => o.getAttribute('value') === 'move'));
+    await page.selectOption('[data-test=vacancy-role]', 'role.packer');
+    const movePacker = await page.evaluate(() => [...document.querySelectorAll('[data-test=vacancy-via] option')].some(o => o.getAttribute('value') === 'move'));
+    // карточка начальника отдела планирования: горизонт — запас позиций политики
+    await page.click('[data-test=ref-bosses] [data-test=boss-card][data-head=plan]');
+    await page.waitForSelector('[data-test=card-boss-limit]', { timeout: 20_000 });
+    const cover = await page.evaluate(() => window.__game.store.get().ref.view?.bosses.find(b => b.head === 'plan')?.person?.limit?.cover?.full);
+    const card = await page.evaluate(() => ({
+      title: document.querySelector('[data-test=card] .csec')?.textContent ?? '',
+      limit: document.querySelector('[data-test=card-boss-limit]')?.textContent ?? '',
+      later: document.querySelector('[data-test=card-salary-later]')?.textContent ?? '',
+      kpi: !!document.querySelector('[data-test=card-boss-kpi]'),
+      decided: document.querySelectorAll('[data-test=card-decided] [data-test=who-row]').length,
+    }));
+    await page.screenshot({ path: join(out, 'e2e-boss-card.png') });
+    sheet.push({ file: join(out, 'e2e-boss-card.png'), label: 'Б5в · карточка руководителя' });
+    const seven = ['plan', 'mes', 'maint', 'qa', 'qc', 'supply', 'wms'];
+    if (Object.keys(heads).join() !== seven.join() || deputies !== 7 || !moveHead || movePacker || !cover || !new RegExp(`смотрит на ${cover}[ \u00a0](сутки|суток) вперёд`).test(card.limit) || !card.later || !card.kpi)
+      fail(`«Руководители»: ${JSON.stringify(heads)}, заместителей ${deputies}, переезд у начальника ${moveHead} и у упаковщика ${movePacker}; карточка ${JSON.stringify(card)}, запас политики ${cover}`);
+    else ok(`«Руководители»: семь отделов, у каждого заместитель; переезд — у начальника отдела планирования, не у упаковщика; карточка — «${card.limit}», оклад «${card.later}», его решений ${card.decided}`);
+    // по соглашению: последний день сегодня, после смены должность свободна — утром решает заместитель «и. о.»
+    await page.waitForSelector('[data-test=dismiss-agree]', { timeout: 20_000 });
+    await page.click('[data-test=dismiss-agree]');
+    await page.waitForSelector('[data-test=dismiss-ask]', { timeout: 20_000 });
+    await page.click('[data-test=dismiss-do]');
+    await page.waitForFunction(() => !!document.querySelector('[data-test=card-quit]'), null, { timeout: 20_000 });
+    await page.keyboard.press('Escape');
+    const tGone = await gameT();
+    let io;
+    let meet;
+    // заместитель бывает в отпуске сразу после ухода начальника: тогда на планёрке «Некому решить», а «и. о.» — когда
+    // он вернётся и отделу будет что решать; его часть отпуска — две недели
+    for (let i = 0; i < 20 && !io; i++) {
+      await untilMorning(true);
+      meet = await page.evaluate(() => document.querySelector('[data-test=morning-boss][data-head=plan]')?.textContent ?? '');
+      await page.keyboard.press('Escape');
+      await openJournal();
+      io = await page.evaluate(t => {
+        const r = window.__game.store.get().journal.view?.rows.find(x => x.by === 'plan' && x.t > t && x.as?.io);
+        return r ? { n: r.n, text: document.querySelector(`#journal [data-test=journal-row][data-n="${r.n}"]`)?.innerText.replace(/\s*\n\s*/g, ' · ') ?? '' } : undefined;
+      }, tGone);
+      await page.keyboard.press('Escape');
+    }
+    if (!io || !/и\. о\. начальника отдела планирования/.test(io.text) || !/и\. о\./.test(meet ?? '')) fail(`должность свободна: запись «и. о.» ${JSON.stringify(io)}, планёрка «${meet}»`);
+    else ok(`должность свободна: на планёрке — «${meet.slice(0, 120)}»; в журнале — «${io.text.slice(0, 120)}»`);
+    // заместителя сняли — «До события» встаёт на «Некому решить» у поста производства
+    await openBosses();
+    await page.click('[data-test=ref-bosses] [data-test=card-boss-deputy][data-head=plan] [data-test=card-deputy-remove]');
+    await page.waitForFunction(() => document.querySelector('[data-test=ref-bosses] [data-test=boss-head][data-head=plan]')?.getAttribute('data-now') === 'noOne', null, { timeout: 20_000 }).catch(() => {});
+    const removed = (await bossNow()).plan;
+    await page.keyboard.press('Escape');
+    // извещение — новое, после снятия: «Некому решить» за время отпуска заместителя могло остаться в ленте
+    const tRemoved = await gameT();
+    let stop;
+    for (let i = 0; i < 6 && !stop; i++) {
+      await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
+      await page.keyboard.press('Digit6');
+      await page.waitForFunction(() => !window.__game.ff, null, { timeout: 120_000 });
+      await frames(2);
+      stop = await page.evaluate(tr => {
+        const n = window.__game.store.get().notices.find(x => x.t >= tr && x.stop && /^Некому решить за начальника отдела планирования/.test(x.text));
+        return n ? { text: n.text, speed: window.__game.speed, go: n.go } : undefined;
+      }, tRemoved);
+    }
+    if (removed !== 'noOne' || !stop || stop.speed !== 0 || stop.go?.panel !== 'ref') fail(`заместителя сняли: в таблице ${removed}, стоп ${JSON.stringify(stop)}`);
+    else ok(`заместителя сняли: «${stop.text.slice(0, 120)}» — мир стоит, щелчок ведёт во вкладку «Люди»`);
     await writeSheet(sheet);
   }
 

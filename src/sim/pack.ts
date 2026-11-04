@@ -7,7 +7,7 @@
 // состояние машины, её скорость, сколько штук прошло и сколько в накопителе, у подрядчика ли она или вышел ли её срок
 // (Б3в), — то, что завод видит глазами. Позиция
 // следующей микроостановки и запас узла до отказа в срез не идут.
-import type { ContentDb } from '../content/types';
+import type { ContentDb, Plant } from '../content/types';
 import { unfit } from '../engine/assets';
 import { packNo } from '../engine/batchno';
 import { flowAt, geo, SIXTY } from '../engine/line';
@@ -15,12 +15,15 @@ import { partsOf } from '../engine/maint';
 import { planOf } from '../engine/plant';
 import { shiftEnd } from '../engine/staff';
 import { destOf, pointOf } from '../engine/tasks';
-import type { Line, MachineState, PlantState, Tag, Task, TaskKind, Unit } from '../engine/types';
+import { type Line, type MachineState, type PlantState, planRev, type Tag, type Task, type TaskKind, type Unit } from '../engine/types';
 
-export const FORMAT = 7;
+export const FORMAT = 8;
 
-/** Поля заголовка: формат, часы, сутки, отставание; сколько записей в каждом разделе. */
-export const H = { format: 0, t: 1, day: 2, lag: 3, rooms: 4, trucks: 5, units: 6, gone: 7, tasks: 8, people: 9, vehicles: 10, lines: 11, equipment: 12, size: 13 } as const;
+/**
+ * Поля заголовка: формат, часы, сутки, отставание; сколько записей в каждом разделе; номер правки плана, по которому
+ * собран срез (Б7а, формат 8): номера вещей — номера в массивах этого плана.
+ */
+export const H = { format: 0, t: 1, day: 2, lag: 3, rooms: 4, trucks: 5, units: 6, gone: 7, tasks: 8, people: 9, vehicles: 10, lines: 11, equipment: 12, rev: 13, size: 14 } as const;
 /** Помещение: номер в плане, статус, номер серии (`packNo`; −1 — нет), карта и стадия серии (номера в базе; −1 — нет). */
 export const R = { room: 0, status: 1, batch: 2, recipe: 3, stage: 4, size: 5 } as const;
 /** Фура: номер (`K12` → 12), рампа (номер в плане), встала ли, покупатель ли, открыт ли кузов (3а). */
@@ -188,14 +191,15 @@ interface Index {
   sku: Map<string, number>;
 }
 
-const indexes = new WeakMap<ContentDb, Map<string, Index>>();
+const indexes = new WeakMap<ContentDb, WeakMap<Plant, Index>>();
 
-function indexOf(db: ContentDb, plantId: string): Index {
+/** Номера вещей плана в срезе — по объекту плана (Б7а): у нового плана — свои. */
+function indexOf(db: ContentDb, plant: Plant): Index {
   let byPlant = indexes.get(db);
-  if (!byPlant) indexes.set(db, (byPlant = new Map()));
-  const hit = byPlant.get(plantId);
+  if (!byPlant) indexes.set(db, (byPlant = new WeakMap()));
+  const hit = byPlant.get(plant);
   if (hit) return hit;
-  const plan = planOf(db, plantId);
+  const plan = planOf(db, plant);
   const ix: Index = {
     slot: new Map(plan.slots.map((s, i) => [s.id, i])),
     room: new Map(plan.plant.rooms.map((r, i) => [r.id, i])),
@@ -205,7 +209,7 @@ function indexOf(db: ContentDb, plantId: string): Index {
     vehicle: new Map(Object.keys(db.vehicles).map((id, i) => [id, i])),
     sku: new Map(Object.keys(db.skus).map((id, i) => [id, i])),
   };
-  byPlant.set(plantId, ix);
+  byPlant.set(plant, ix);
   return ix;
 }
 
@@ -221,7 +225,7 @@ function unitRow(db: ContentDb, s: PlantState, ix: Index, u: Unit): number[] {
 
 /** Строка задачи в работе: откуда и куда — те же точки, что считает раздатчик (`tasks.ts`). */
 function taskRow(db: ContentDb, s: PlantState, ix: Index, t: Task): number[] {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const from = pointOf(plan, s, t.from);
   const dest = t.to ? plan.slot[t.to] : destOf(plan, s, t);
   // техника без места назначения везёт груз туда же, откуда взяла (как в раздатчике)
@@ -298,8 +302,8 @@ export class Packer {
 
   pack(s: PlantState, lag: number): Int32Array {
     const db = this.db;
-    const ix = indexOf(db, s.plant);
-    const plan = planOf(db, s.plant);
+    const ix = indexOf(db, s.plan);
+    const plan = planOf(db, s.plan);
     const rooms: number[][] = plan.plant.rooms.map((r, i) => {
       const room = s.rooms[r.id];
       const b = room?.batch ? s.batches[room.batch] : undefined;
@@ -336,6 +340,7 @@ export class Packer {
     const size = [tasks, people, vehicles, lines, equipment].reduce((n, rows) => n + rows.reduce((k, r) => k + r.length, 0), 0);
     const buf = new Int32Array(H.size + rooms.length * R.size + trucks.length * K.size + changed.length * U.size + gone.length + size);
     buf[H.format] = FORMAT;
+    buf[H.rev] = planRev(s.plan);
     buf[H.t] = s.t;
     buf[H.day] = s.day;
     buf[H.lag] = Math.min(lag, 0x7fffffff);
@@ -369,6 +374,8 @@ export class Packer {
 
 /** Разобранный срез. */
 export interface Unpacked {
+  /** номер правки плана среза (Б7а) */
+  rev: number;
   t: number;
   day: number;
   lag: number;
@@ -457,5 +464,5 @@ export function unpack(buf: Int32Array): Unpacked {
   }
   const equipment: EquipmentRow[] = [];
   for (let i = 0; i < buf[H.equipment]; i++, o += E.size) equipment.push({ eq: buf[o + E.eq], state: EQ_STATES[buf[o + E.state]] });
-  return { t: buf[H.t], day: buf[H.day], lag: buf[H.lag], rooms, trucks, units, gone, tasks, people, vehicles, lines, equipment };
+  return { rev: buf[H.rev], t: buf[H.t], day: buf[H.day], lag: buf[H.lag], rooms, trucks, units, gone, tasks, people, vehicles, lines, equipment };
 }

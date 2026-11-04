@@ -16,7 +16,7 @@ import { fromSave } from '../../src/engine/save';
 import type { Batch, BatchPhase, PlantState } from '../../src/engine/types';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const qp = plan.plant.posts['role.qp'];
 const QA = roomAt(plan.plant, qp[0], qp[1])!;
 

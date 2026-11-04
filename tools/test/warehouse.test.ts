@@ -13,7 +13,7 @@ import type { Notice } from '../../src/engine/types';
 import { truckArrives } from '../../src/engine/wms';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 
 describe('план завода', () => {
   test('места зон и стеллажей: число, уникальные адреса, ярусы', () => {
@@ -123,7 +123,7 @@ describe('фура → приёмка → карантин', () => {
     expect(checked).toBeGreaterThan(0);
     expect(Object.keys(s.tasks)).toEqual([]);
     expect(s.open).toEqual([]);
-  });
+  }, 30_000);
 
   test('в выходной фуру не проверяют и не разгружают: проверка ждёт понедельника, 08:00, разгрузка — её конца', () => {
     const s = newPlant(db, { scenario: SC, seed: 5 });

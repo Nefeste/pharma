@@ -16,10 +16,13 @@ import { blocked } from '../maint';
 import { DIRTY_HOLD, kitPlan, MES, newBatch, nominal, readyFor, roomWork, stageMass, stageNorm, stageTaskNorm, TRANSFER_WORK, washRoles, washWork } from '../mes';
 import { stageSetpoints } from '../modes';
 import { classOf, placesOf } from '../places';
+import { stockDue } from '../planner';
 import { planOf } from '../plant';
+import { numOf, POL } from '../policies';
 import { admitted, needFor } from '../quals';
 import { LAST_CALL, shiftEndAt } from '../staff';
 import type { Batch, KitLine, Person, PlantState, Room, Task } from '../types';
+import { trialLot, trialPo } from '../supply';
 import { WMS } from '../wms';
 import { calOf } from '../workdays';
 
@@ -90,10 +93,16 @@ export interface Change {
   notBefore: number;
 }
 
-/** Новое задание черновика (0.0.39): срочное задание на серию — карта и позиция; «не раньше» — сейчас. */
+/**
+ * Новое задание черновика (0.0.39): срочное задание на серию — карта и позиция; «не раньше» — сейчас. С Б6а — под заказ
+ * покупателя `for`: срок заказа; без него — на запас позиции со сроком по расчёту правила.
+ */
 export interface Fresh {
   recipe: Id;
   sku?: Id;
+  for?: string;
+  /** «не раньше» (Б6б): «Поставить сейчас» плана запуска — на день пунктирной клетки; нет — сейчас */
+  notBefore?: number;
 }
 
 /**
@@ -106,7 +115,18 @@ export function freshBatches(db: ContentDb, s: PlantState, fresh: readonly Fresh
   let taken = new Map<string, number>();
   for (const f of fresh) {
     if (!db.recipes[f.recipe]) continue;
-    const b = newBatch(db, s, `B${(s.next.B ?? 0) + out.length + 1}`, f.recipe, s.t, 'player', f.sku);
+    const b = newBatch(db, s, `B${(s.next.B ?? 0) + out.length + 1}`, f.recipe, f.notBefore ?? s.t, 'player', f.sku);
+    // под что и срок (Б6а) — как поставит команда `order`
+    const o = f.for !== undefined ? s.orders[f.for] : undefined;
+    const window = numOf(db, s, POL.window);
+    if (o) {
+      b.for = { kind: 'order', order: o.id };
+      b.due = o.due;
+    } else if (f.sku !== undefined) {
+      b.for = { kind: 'stock' };
+      const due = window !== undefined && db.skus[f.sku] ? stockDue(db, s, f.sku, window) : undefined;
+      if (due !== undefined) b.due = due;
+    }
     const k = kitPlan(db, s, b.recipe, taken);
     if (k.short.length > 0) b.short = k.short;
     else {
@@ -212,11 +232,14 @@ interface Proj {
  * кладовщиков: по паллетам комплекта, кладовщики перекладывают параллельно (гипотеза: перевозки к шлюзу быстрее
  * перекладки). Стадия — когда кончилась прошлая, помещение свободно, убрано и готово (`readyFor`) и в смене есть люди
  * её роли. Ушла серия из помещения — уборка, как только аппаратчик в смене; генеральная — если грязно дольше суток.
- * `fresh` — новые задания черновика (0.0.39): прогон ставит их после существующих, как поставят команды.
+ * `fresh` — новые задания черновика (0.0.39): прогон ставит их после существующих, как поставят команды. `drop` — задания,
+ * которые черновик отменяет (Б6а): прогон считает без них. `until` — горизонт (Б6б): комплектовки и стадии не раньше него
+ * прогон не ставит — их стадии и всё, что дальше по очереди, начнётся позже, а помещение такой стадии держит её серия;
+ * у сменно-суточного задания он — конец суток. Полосы до горизонта — те же, что у прогона без него.
  */
-export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[] = [], fresh: readonly Fresh[] = []): Forecast {
+export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[] = [], fresh: readonly Fresh[] = [], drop: readonly string[] = [], until?: number): Forecast {
   const asked = new Map(changes.map(c => [c.batch, c.notBefore]));
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const now = s.t;
   const crews = new Map<string, Crew>();
   const out: Forecast = { bars: [], why: {}, stuck: [] };
@@ -273,7 +296,8 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
   // актив занят идущей стадией — подрядчик после её конца
   const held = new Map<string, number>();
   const taskOf = (f: (t: Task) => boolean) => Object.values(s.tasks).find(f);
-  const order = [...Object.values(s.batches), ...freshBatches(db, s, fresh)];
+  const dropped = new Set(drop);
+  const order = [...Object.values(s.batches).filter(b => !dropped.has(b.id) || (b.status !== 'waiting' && b.status !== 'reserved')), ...freshBatches(db, s, fresh)];
 
   // последняя серия в помещении по записям — для причины «убрать после серии» у грязного сейчас помещения
   const lastIn = new Map<string, { batch: string; end: number }>();
@@ -301,7 +325,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     } else {
       const w = washWork(db, s, r.id, major);
       if (w > 0) {
-        const c = take(washRoles(db, s.plant, r.id), 1, at, cleanNeed, { kind: 'clean', nom: w, max: w });
+        const c = take(washRoles(db, s.plan, r.id), 1, at, cleanNeed, { kind: 'clean', nom: w, max: w });
         if (!c) return undefined;
         if (!major && c.t - dirtySince > DIRTY_HOLD) major = true;
         const sec = washWork(db, s, r.id, major);
@@ -384,6 +408,15 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
       const st = r.stages[k];
       const roomId = plan.roomOf[st.room];
       const p = rooms.get(roomId)!;
+      // горизонт (Б6б): стадия не раньше него — дальше не нужно; помещение держит серия, как держала бы в полном прогоне:
+      // кто встанет в него за ней, встанет тоже позже горизонта
+      if (until !== undefined && t >= until) {
+        if (p.room.batch === undefined) {
+          p.room.status = 'busy';
+          p.room.batch = b.id;
+        }
+        return;
+      }
       if (p.room.batch !== b.id) {
         // в помещении серия, которая в прогоне из него не уходит, — дальше не предсказать
         if (p.room.batch || p.free === Number.POSITIVE_INFINITY) return;
@@ -437,6 +470,8 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
         if (!c) return;
       }
       if (c.t > t && !(out.why[b.id] ?? []).some(w => w.why === 'visit' && w.bar === st.id)) note(b.id, { why: c.hours ? 'hours' : 'shift', bar: st.id, role: st.staff.role, at: c.t });
+      // горизонт (Б6б): стадия начнётся не раньше него — помещение уже за серией
+      if (until !== undefined && c.t >= until) return;
       out.bars.push({ row: roomId, kind: 'stage', batch: b.id, stage: st.id, from: c.t, to: c.t + work, when: 'plan', ...flags, ...(repair ? { repair: true as const } : {}) });
       // визит, чей час ещё не настал: подрядчик — после этой стадии
       for (const id of mine) {
@@ -527,15 +562,19 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
   const materialAt = (b: Batch): number | undefined => {
     let at: number | undefined = now;
     for (const sh of b.short ?? []) {
+      // пробная партия одобрения (Б6ж) — не запас под план: ни у рампы, ни в лаборатории, ни в пути
       const lab =
-        Object.values(s.lots).some(l => l.material === sh.material && (l.status === 'quarantine' || l.status === 'sampled' || l.status === 'testing')) ||
-        Object.values(s.trucks).some(tr => tr.po && s.pos[tr.po]?.lines.some(l => l.material === sh.material));
+        Object.values(s.lots).some(l => l.material === sh.material && (l.status === 'quarantine' || l.status === 'sampled' || l.status === 'testing') && !trialLot(s, l)) ||
+        Object.values(s.trucks).some(tr => {
+          const po = tr.po ? s.pos[tr.po] : undefined;
+          return !!po && !trialPo(po) && po.lines.some(l => l.material === sh.material);
+        });
       if (lab) {
         note(b.id, { why: 'material', bar: 'kit', material: sh.material, qty: sh.qty, lab: true });
         continue;
       }
       const po = Object.values(s.pos)
-        .filter(p => p.status === 'ordered' && p.lines.some(l => l.material === sh.material))
+        .filter(p => p.status === 'ordered' && !trialPo(p) && p.lines.some(l => l.material === sh.material))
         .sort((x, y) => x.eta - y.eta || idNum(x.id) - idNum(y.id))[0];
       note(b.id, { why: 'material', bar: 'kit', material: sh.material, qty: sh.qty, ...(po ? { po: po.id, eta: po.eta } : {}) });
       at = po && at !== undefined ? Math.max(at, po.eta) : undefined;
@@ -570,6 +609,8 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     }
     const c = queue.splice(i, 1)[0];
     const from = Math.max(slot, c.at);
+    // горизонт (Б6б): комплектовка не раньше него — и её стадии, и все дальше по очереди начнутся позже
+    if (until !== undefined && from >= until) break;
     if (holder && slot > c.at && !c.pack) note(c.b.id, { why: 'kitting', bar: 'kit', batch: holder.batch, pack: holder.pack, until: slot });
     const end = kitWork(c.pack ? undefined : c.b.id, c.pallets, from);
     if (end === undefined) {

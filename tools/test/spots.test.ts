@@ -3,7 +3,7 @@
 // перевозки — у места, откуда везли; переходы — у места задачи, к посту и выходу — у помещения, куда шли; уборки и
 // переналадки, повторные уборки и брак — их часы. Место проверяет срез каждую минуту своим кодом; по всем местам в
 // сумме — учёт отделов (1ж); вещи — до пяти у прошлых суток, у суток старше восьми их нет; образец схемы 34 читается и
-// живёт дальше — учёт с мгновения загрузки, образец схемы 35 — как есть.
+// живёт дальше — учёт с мгновения загрузки, образец схемы 47 — как есть (с 0.0.72 Б1л — поверх 0.0.71, схема 47).
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { DAY, MIN, momentOf } from '../../src/engine/core/calendar';
@@ -17,7 +17,7 @@ import { fromSave } from '../../src/engine/save';
 import type { DayLoss, PlantState, Task } from '../../src/engine/types';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const PLANNED = new Set(['train', 'trainCheck']);
 
 /** Место задачи своим кодом. */
@@ -215,8 +215,8 @@ describe('сохранения', () => {
     expect(s.losses.some(d => d.day >= day0 && Object.keys(d.spots).length > 0)).toBe(true);
   });
 
-  test('образец схемы 35 читается как есть: у грязного помещения — серия, учёт нынешних суток копится дальше', async () => {
-    const json = await Bun.file(new URL('./fixtures/save-v35.json', import.meta.url)).text();
+  test('образец схемы 47 читается как есть: у грязного помещения — серия, учёт нынешних суток копится дальше', async () => {
+    const json = await Bun.file(new URL('./fixtures/save-v47.json', import.meta.url)).text();
     const s = fromSave(db, json);
     const raw = JSON.parse(json) as PlantState;
     expect(s.losses.map(d => d.spots)).toEqual(raw.losses.map(d => d.spots));

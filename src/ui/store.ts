@@ -4,21 +4,24 @@
 import { useSyncExternalStore } from 'react';
 import type { Layer } from '../app/floor';
 import type { Go, Pause } from '../app/pauses';
-import type { Dept, Id, OvertimeMode, SeatId } from '../content/types';
+import type { Dept, HeadId, Id, OvertimeMode, Plant, SeatId } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
-import type { DeptMode, Head } from '../engine/types';
+import type { Command, DeptMode, ForkOpt, Head, PolicyValue, Via } from '../engine/types';
 import type { RunSum } from '../engine/plan/run';
 import type { Change } from '../engine/plan/schedule';
 import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import type { DossierView } from '../sim/dossier';
+import type { MrpView } from '../sim/mrp';
+import type { SopView } from '../sim/sop';
 import type { AndonView } from '../sim/andon';
 import type { LossPick } from '../app/losses';
 import type { FloorView, FloorWin } from '../sim/floor';
 import type { InvView } from '../sim/inv';
 import type { JournalView } from '../sim/journal';
 import type { PoView } from '../sim/po';
+import type { PoliciesView } from '../sim/policies';
 import type { KpiView } from '../sim/kpi';
 import type { ChartView, LabView } from '../sim/lab';
 import type { BatchLabel, GanttView, GhostView } from '../sim/plan';
@@ -27,6 +30,9 @@ import type { RefView } from '../sim/ref';
 import type { CashView, MorningView, TopView } from '../sim/report';
 import type { CardView, StockQuery, StockView, Thing } from '../sim/views';
 import type { Urgent } from './draft';
+
+/** Отбор списка заданий (Б6а): в плане — до комплектовки; в работе; выпущены и отменены за 7 суток. */
+export type JobsFilter = 'plan' | 'work' | 'done' | 'cancelled';
 
 /** Скорости геймдизайна (§2): 0 — пауза; 1–4 — минута, 5 минут, 20 минут, 2 часа за секунду; 5 — «живое время» 1:1. */
 export type Speed = 0 | 1 | 2 | 3 | 4 | 5;
@@ -37,6 +43,8 @@ export interface Hud {
   error?: string;
   lang: Lang;
   version: string;
+  /** план здания (Б7а): его присылает поток расчёта со срезом — после старта и загрузки */
+  world?: Plant;
   /** дата начала и часы завода из последнего среза */
   start: Ymd;
   t: number;
@@ -85,7 +93,7 @@ export interface Hud {
    * журнал решений (Б5а): открыт ли; отбор по посту и автору; страница; запись, на которой открыли («Почему?»), — она
    * раскрыта; вид
    */
-  journal: { open: boolean; seat?: SeatId; who?: 'heads' | 'player'; page: number; focus?: number; view?: JournalView };
+  journal: { open: boolean; seat?: SeatId; who?: 'heads' | 'player' | 'memos'; page: number; focus?: number; view?: JournalView };
   /** окно «Заказ поставщику» (Б5б): открыто ли; поставщик и строки черновика — мг или шт.; вид */
   po: { open: boolean; supplier?: Id; lines: readonly { material: Id; qty: number }[]; view?: PoView };
   /** «Смотреть»: какую работу — строка «Сейчас» в мгновение, когда начали смотреть */
@@ -105,6 +113,17 @@ export interface Hud {
     draft: readonly Change[];
     /** срочные задания черновика (Б1г): командами `order` станут при «Утвердить» */
     urgent: readonly Urgent[];
+    /** отмены черновика (Б6а): командами `cancel` станут при «Утвердить» */
+    drop: readonly string[];
+    /** вкладка (Б6а): полосы расписания, список заданий или, с Б6б, план запуска, с Б6в — прогноз, с Б6д — материалы; отбор списка */
+    tab?: 'jobs' | 'launch' | 'forecast' | 'mrp';
+    /** вид вкладки «Материалы» (Б6д): потребность в материалах — свой вид, дорогой, не чаще раза в секунду */
+    mrp?: MrpView;
+    /** «прогноз против факта» (Б6в): позиция или продукт; нет — первый продукт плана */
+    fcKey?: string;
+    jobs?: JobsFilter;
+    /** чьи полосы подсвечены (Б6а): «Полосы» у строки вкладки «Задания» */
+    focus?: string;
   };
   /** прогон плана (часть 5) */
   plan: PlanRun;
@@ -119,6 +138,15 @@ export interface Hud {
   ref: { open: boolean; tab: RefTab; view?: RefView };
   /** окно «Показатели» (Б5ж): открыто ли, вкладка — место, у какого показателя открыт «Почему?», вид */
   kpi: { open: boolean; tab: SeatId; why?: string; month?: number; view?: KpiView };
+  /**
+   * окно «Политики» (Б5г): открыто ли, вкладка — руководитель, вид; черновик — новые значения по ключу политики и вещи;
+   * прогон черновика на 13 неделях
+   */
+  policies: { open: boolean; tab?: Head; view?: PoliciesView; draft: Readonly<Record<string, PolicyValue>>; run: PolicyRun };
+  /**
+   * окно совещания S&OP (Б6г): открыто ли; черновик игрока — цели по продуктам на 6 месяцев, пока не утверждён; вид
+   */
+  sop: { open: boolean; draft?: Readonly<Record<Id, readonly number[]>>; view?: SopView };
   /**
    * слой слева (Б1и; геймдизайн, §3.6, §18): обычный вид; «Загрузка и OEE» — столбики, числа, доски «План — факт»;
    * «Узкие места» и «Проблемы» (Б1к) — таблички над местами, где серии ждут, и значки андона; «Потери» (Б1л) — столбики
@@ -167,6 +195,25 @@ export interface PlanRun {
 
 export const NO_RUN: PlanRun = { running: false, variants: 0, sums: [], batches: {} };
 
+/**
+ * Прогон политик (Б5г): идёт ли; ход — вариант и сколько зёрен готово; черновик, с которым прогнали, строкой; мгновение
+ * снимка; итоги «как сейчас» и с черновиком; ошибка.
+ */
+export interface PolicyRun {
+  running: boolean;
+  progress?: { index: number; k: number };
+  key?: string;
+  at?: number;
+  sums: (RunSum | undefined)[];
+  ms?: number;
+  error?: string;
+}
+
+export const NO_POLICY_RUN: PolicyRun = { running: false, sums: [] };
+
+/** Прогон политик (Б5г): 13 недель × 5 зёрен — на 13 неделях политика видна (замер спецификации, «Б5г»). */
+export const POLICY_RUN = { days: 91, seeds: 5 };
+
 /** Прогон плана в прототипе: 14 суток × 5 зёрен (спецификация прототипа, часть 5; геймдизайн, §9.5). */
 export const PLAN_RUN = { days: 14, seeds: 5 };
 
@@ -204,13 +251,15 @@ export const initial: Hud = {
   now: { open: false },
   journal: { open: false, page: 0 },
   po: { open: false, lines: [] },
-  gantt: { open: false, days: 3, draft: [], urgent: [] },
+  gantt: { open: false, days: 3, draft: [], urgent: [], drop: [] },
   plan: NO_RUN,
   inv: { open: false },
   dossier: { open: false },
   seats: { open: false, pick: [] },
   ref: { open: false, tab: 'recipes' },
   kpi: { open: false, tab: 'director' },
+  policies: { open: false, draft: {}, run: NO_POLICY_RUN },
+  sop: { open: false },
   layer: 'plain',
   floor: { win: 'today', pick: 'all' },
   andon: {},
@@ -261,7 +310,14 @@ export interface Actions {
    */
   toggleJournal(): void;
   openJournal(focus?: number): void;
-  setJournal(patch: { seat?: SeatId | null; who?: 'heads' | 'player' | null; page?: number }): void;
+  setJournal(patch: { seat?: SeatId | null; who?: 'heads' | 'player' | 'memos' | null; page?: number }): void;
+  /**
+   * служебная записка (Б5д): команды чужого отдела — его руководителю, ответ в его час; отозвать записку без ответа;
+   * ответ на «Просят решить» — вариант и, у переноса визита, день
+   */
+  memo(cmds: Command[]): void;
+  withdraw(n: number): void;
+  answerFork(n: number, opt: ForkOpt, day?: number): void;
   /** «Смотреть» работу по ключу строки «Сейчас»: камера к месту, ×1, пока работа не кончится; затем — прежняя скорость */
   watch(key: string): void;
   unwatch(): void;
@@ -293,19 +349,24 @@ export interface Actions {
    * найм и увольнение (Б4в): открыть вакансию — роль, график, канал; закрыть её; принять кандидата с испытанием
    * на столько месяцев; уволить — по соглашению, не выдержал испытание или отпустить раньше
    */
-  vacancy(role: Id, shift: Id, via: 'ad' | 'agency'): void;
-  closeVacancy(id: string): void;
-  hire(candidate: string, trial: number): void;
+  vacancy(role: Id, shift: Id, via: Via, memo?: boolean): void;
+  closeVacancy(id: string, memo?: boolean): void;
+  /** «Одобрить пару» (Б6ж): пара-кандидат — документы, пробная партия, аудит, изменение досье */
+  approvePair(pair: string): void;
+  hire(candidate: string, trial: number, memo?: boolean): void;
   dismiss(person: number, why: 'agree' | 'trial' | 'early'): void;
   /**
    * отпуска (Б4г): часть — добавить с дня на столько дней, перенести на другой день, убрать, сменить или снять
-   * заместителя (номер человека); смежная профессия — обучить или снять
+   * заместителя (номер человека); смежная профессия — обучить или снять. `memo` — пост отдела роли не у игрока: команда
+   * уходит служебной запиской его руководителю (Б5д)
    */
-  leaveAdd(person: number, from: number, days: number): void;
-  leaveMove(person: number, part: string, from: number): void;
-  leaveDrop(person: number, part: string): void;
-  leaveDeputy(person: number, part: string, deputy?: number): void;
-  also(person: number, role: Id, on: boolean): void;
+  leaveAdd(person: number, from: number, days: number, memo?: boolean): void;
+  leaveMove(person: number, part: string, from: number, memo?: boolean): void;
+  leaveDrop(person: number, part: string, memo?: boolean): void;
+  leaveDeputy(person: number, part: string, deputy?: number, memo?: boolean): void;
+  also(person: number, role: Id, on: boolean, memo?: boolean): void;
+  /** заместитель руководителя (Б5в): назначить — номер человека, снять — `null`; команда `deputy` */
+  deputy(head: HeadId, person: number | null): void;
   /**
    * расписание: открыть или закрыть; окно — сутки, трое, неделя; на сутки назад, вперёд, к сегодня (0); тянуть задание —
    * призрак с новым сроком; отпустить — строка черновика; отменить; утвердить черновик — команды `shift`; сбросить его
@@ -338,6 +399,27 @@ export interface Actions {
    * закрытый по мгновению начала, нет — нынешний; открыть на месяце — рычаг «Итогов месяца»
    */
   toggleKpi(): void;
+  /**
+   * окно «Политики» (Б5г): открыть или закрыть (P), вкладка руководителя; новое значение — в черновик (то же, что сейчас, —
+   * из черновика); прогнать черновик и «как сейчас» на 13 неделях, прервать; применить — команды `policy`; сбросить
+   */
+  togglePolicies(): void;
+  setPolicyTab(head: Head): void;
+  draftPolicy(policy: Id, of: string | undefined, value: PolicyValue): void;
+  runPolicies(): void;
+  stopPolicies(): void;
+  applyPolicies(): void;
+  resetPolicies(): void;
+  /**
+   * окно совещания S&OP (Б6г): открыть или закрыть (O); цель клетки — продукт, месяц по порядку и сутки — в черновик;
+   * сбросить черновик; «Утвердить» — команда `sop` с показанным планом
+   */
+  toggleSop(): void;
+  setSopCell(product: Id, i: number, days: number): void;
+  resetSop(): void;
+  approveSop(): void;
+  /** перенести визит подрядчика к активу на день (Б5г) — команда `visit` */
+  moveVisit(asset: string, day: number): void;
   setKpiTab(tab: SeatId): void;
   kpiWhy(id: string): void;
   setKpiMonth(month?: number): void;
@@ -350,10 +432,37 @@ export interface Actions {
    * пояснение при первом событии — «Понятно»
    */
   release(batch: string, decision: 'release' | 'reject' | 'hold'): void;
-  assess(dev: string, verdict: 'none' | 'reject'): void;
+  assess(dev: string, verdict: 'none' | 'reject', cause?: string): void;
+  /**
+   * отклонения и CAPA (Б5е): класс отклонения — команда `classify`; CAPA из каталога — `capa`; выполнить CAPA отдела, чей
+   * пост у игрока, — `capaRun`
+   */
+  classify(dev: string, cls: 'critical' | 'major' | 'minor'): void;
+  capa(dev: string, action: string): void;
+  capaRun(capa: string): void;
   /** уставка режима стадии карты или скорости блистерной позиции (Б1ж) — команда `setpoint` */
   setpoint(x: { recipe: Id; stage: string; param: string; value: number } | { sku: Id; value: number }): void;
-  urgent(recipe: Id, sku: Id): void;
+  /** срочное задание черновика (Б1г); под заказ покупателя (Б6а) */
+  urgent(recipe: Id, sku: Id, order?: string, at?: number): void;
+  /** задания на серию (Б6а): вкладка окна расписания, отбор списка, «Отменить» в черновике, отмена из карточки */
+  ganttTab(tab?: 'jobs' | 'launch' | 'forecast' | 'mrp'): void;
+  /**
+   * прогноз продаж (Б6в): позиция или продукт «прогноза против факта»; правка прогноза планирования — команда `forecast`
+   * (без ящиков — снять), с чужого поста — записка начальнику отдела планирования; политика способа или спроса — `policy`
+   */
+  fcKey(key: string): void;
+  fcEdit(sku: Id, m: number, cases?: number, memo?: boolean): void;
+  fcPolicy(policy: Id, value: string): void;
+  /** полосы задания в расписании (Б6а): вкладка полос, окно — с их начала, сами — подсвечены */
+  ganttBars(batch: string, at: number): void;
+  jobsFilter(f: JobsFilter): void;
+  dropJob(batch: string): void;
+  cancelJob(batch: string): void;
+  /** «Заказать» вкладки «Материалы» (Б6д): окно «Заказ поставщику» со строками плановых заказов поставщика */
+  mrpOrder(supplier: Id, lines: readonly { material: Id; qty: number }[]): void;
+  /** «Ускорить» и «Отменить» заказ поставщику в пути (Б6д): команда поста «Снабжение и склад» или записка */
+  expedite(po: string, memo?: boolean): void;
+  cancelPo(po: string, memo?: boolean): void;
   toggleFlows(): void;
   /** слой слева (Б1и): выбрать; следующий по кругу — клавиша L; окно слоя данных */
   setLayer(l: Layer): void;

@@ -53,9 +53,10 @@ export const statureOf = (s: Pick<LookSpec, 'sex' | 'age'>) => STATURE[s.sex][s.
 
 /**
  * Одежда по роли (`docs/13-art.md`, §6; отраслевая практика, подтверждает владелец): склад — сигнальный жилет; производство
- * в классе D и лаборатория — белое; упаковка — своя форма; техслужба — рабочая куртка; начальники ОКК и производства и
- * уполномоченное лицо — офисная одежда; уборщик (Б4в) — одежда класса D светло-зелёного цвета, чтобы его было видно на
- * карте (гипотеза). Переодевания в шлюзе пока нет — одежда своей зоны весь день. Линейный RGB, как в материалах Three.js.
+ * в классе D и лаборатория — белое; упаковка — своя форма; техслужба — рабочая куртка; руководители отделов (с Б5в — все
+ * люди штата) и уполномоченное лицо — офисная одежда; уборщик (Б4в) — одежда класса D светло-зелёного цвета, чтобы его
+ * было видно на карте (гипотеза). Переодевания в шлюзе пока нет — одежда своей зоны весь день. Линейный RGB, как в
+ * материалах Three.js.
  */
 export const ROLE_DRESS: Record<Id, { use: Use; color: number }> = {
   'role.storekeeper': { use: 'work', color: 0xe0782c },
@@ -74,6 +75,10 @@ export const ROLE_DRESS: Record<Id, { use: Use; color: number }> = {
   'role.production-head': { use: 'office', color: 0xffffff },
   'role.qa-head': { use: 'office', color: 0xffffff },
   'role.qp': { use: 'office', color: 0xffffff },
+  'role.plan-head': { use: 'office', color: 0xffffff },
+  'role.chief-mechanic': { use: 'office', color: 0xffffff },
+  'role.supply-head': { use: 'office', color: 0xffffff },
+  'role.warehouse-head': { use: 'office', color: 0xffffff },
 };
 /** Кого нет в таблице — белый халат. */
 const DEFAULT_DRESS = { use: 'coat' as Use, color: 0xf2f4f4 };

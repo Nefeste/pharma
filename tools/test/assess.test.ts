@@ -44,7 +44,7 @@ function order(s: PlantState): Batch {
 
 /** Опудривание вне диапазона у серии — отклонение режима, как его открывает стадия. */
 function lube(s: PlantState, b: Batch, id = 'D900'): Deviation {
-  const d: Deviation = { id, opened: s.t, kind: 'param', batch: b.id, stage: 'blend', param: 'lubeTime', status: 'open' };
+  const d: Deviation = { id, opened: s.t, kind: 'param', batch: b.id, stage: 'blend', param: 'lubeTime', status: 'open', cls: 'major' };
   s.deviations[id] = d;
   return d;
 }
@@ -125,7 +125,7 @@ describe('оценка', () => {
     apply(bare, s, { kind: 'seat', seats: ['production', 'quality'] });
     const b = order(s);
     live(s, 12, () => b.bulk !== undefined && s.lots[b.bulk].status === 'released');
-    s.deviations.D901 = { id: 'D901', opened: s.t, kind: 'oos', lot: b.bulk, batch: b.id, tests: [], status: 'open' };
+    s.deviations.D901 = { id: 'D901', opened: s.t, kind: 'oos', lot: b.bulk, batch: b.id, tests: [], status: 'open', cls: 'major' };
     expect(apply(bare, s, { kind: 'assess', deviation: 'D901', verdict: 'none' })).toEqual(refused('devInv', 'D901'));
   });
 
@@ -167,7 +167,7 @@ describe('склад ГП на старте', () => {
   test('на две недели спроса, в обороте, на стеллажах; номера серий — с 001 года, счёт завода продолжается; заказы первой недели отгружаются', () => {
     const s = newPlant(game, { scenario: SC });
     const sc = game.scenarios[SC];
-    const plan = planOf(game, sc.plant);
+    const plan = planOf(game, game.plants[sc.plant]);
     const byLot = containersByLot(s);
     for (const k of Object.keys(game.customers[sc.customers[0]].demand)) {
       const sku = game.skus[k];
@@ -198,14 +198,17 @@ describe('склад ГП на старте', () => {
 describe('год', () => {
   test('ни одно отклонение и ни одна серия не ждут решения дольше срока из записи сценария', () => {
     const s = newPlant(game, { scenario: SC });
-    const term = game.scenarios[SC].deviations.term * DAY;
+    // срок — по классу отклонения (Б5е); серию держат не дольше самого долгого срока
+    const terms = game.scenarios[SC].deviations.term;
+    const term = Math.max(...Object.values(terms)) * DAY;
     const end = s.t + 365 * DAY;
     const held: Record<string, number> = {};
     let longest = 0;
+    let late = 0;
     let decided = 0;
     while (s.t < end) {
       apply(game, s, { kind: 'advance', seconds: HOUR });
-      for (const d of Object.values(s.deviations)) if (d.status === 'open') longest = Math.max(longest, s.t - d.opened);
+      for (const d of Object.values(s.deviations)) if (d.status === 'open') late = Math.max(late, s.t - d.opened - terms[d.cls] * DAY);
       for (const b of Object.values(s.batches)) {
         if (b.held) held[b.id] ??= s.t;
         else if (held[b.id] !== undefined) {
@@ -217,6 +220,7 @@ describe('год', () => {
     for (const t of Object.values(held)) longest = Math.max(longest, s.t - t);
     for (const d of Object.values(s.deviations)) if (d.status !== 'open') decided++;
     expect(decided).toBeGreaterThan(0);
+    expect(late).toBeLessThanOrEqual(0);
     expect(longest).toBeLessThanOrEqual(term);
     expect(check(game, s)).toEqual([]);
   }, 120_000);

@@ -8,7 +8,9 @@ import type { Attr, ContentDb, Id } from '../content/types';
 import { batchNo } from './batchno';
 import { part, post } from './cash';
 import { MIN, momentOf } from './core/calendar';
+import { probable, reclass, signsOf } from './devclass';
 import { inForce } from './docs';
+import { decider } from './bosses';
 import { modeOf, round } from './heads';
 import { note, noteCmd } from './journal';
 import { batchLost, defect } from './lean';
@@ -36,7 +38,7 @@ const busy = (s: PlantState, uid: string) => Object.values(s.tasks).some(t => t.
 
 /** Упакованные серии, все паллеты которых стоят в карантине ГП, — на проверку ООК. Зовётся после каждого события. */
 export function qaStep(db: ContentDb, s: PlantState) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   for (const b of Object.values(s.batches)) {
     if (b.status !== 'fg' || b.checked !== undefined) continue;
     if (Object.values(s.tasks).some(t => t.batch === b.id && (t.kind === 'fgCheck' || t.kind === 'qpDecide'))) continue;
@@ -59,7 +61,8 @@ export function qaDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[])
       return true;
     }
     case 'qpDecide':
-      decide(db, s, s.batches[t.batch!], notices);
+      // решает уполномоченное лицо, которое сделало работу (Б5в): другое его замещает в своём праве, без «и. о.»
+      decide(db, s, s.batches[t.batch!], notices, t.people[0]);
       return true;
     case 'devAssess':
       assessed(db, s, s.deviations[t.dev!], notices);
@@ -70,7 +73,7 @@ export function qaDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[])
 }
 
 function decideTask(db: ContentDb, s: PlantState, b: Batch) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   addTask(s, { kind: 'qpDecide', roles: [...QA.qps], from: { kind: 'point', x: plan.lab.x, z: plan.lab.z }, work: QP_WORK, prio: QA_PRIO.qpDecide, batch: b.id, lot: b.pack!.fg });
 }
 
@@ -122,7 +125,7 @@ function takeCodes(c: Container, q: number): number[] {
  * политика — неоценённые отклонения серии, её балка или ГП — «держать», иначе — «выпустить». Выпустить при неоценённом
  * отклонении нельзя никому (Б1г): до подтверждения серии отклонения должны быть утверждены.
  */
-function decide(db: ContentDb, s: PlantState, b: Batch, notices: Notice[]) {
+function decide(db: ContentDb, s: PlantState, b: Batch, notices: Notice[], by?: string) {
   const lot = s.lots[b.pack!.fg!];
   const open = openDevs(s, b);
   let decision = b.decision ?? (open.length > 0 ? 'hold' : 'release');
@@ -133,7 +136,7 @@ function decide(db: ContentDb, s: PlantState, b: Batch, notices: Notice[]) {
   const rejected = b.decision === 'reject' ? devsOf(s, b).find(d => d.assess?.verdict === 'reject' && d.assess.done !== undefined) : undefined;
   const rule = rejected ? 'assess' : b.decision !== undefined && !(b.decision === 'release' && open.length > 0) ? 'player' : open.length > 0 ? 'open' : 'clear';
   const devs = rejected ? [rejected.id] : open.map(d => d.id);
-  note(s, 'qp', { kind: 'batch', batch: b.id, decision, why: { rule, ...(devs.length > 0 ? { devs } : {}) } });
+  note(s, 'qp', { kind: 'batch', batch: b.id, decision, why: { rule, ...(devs.length > 0 ? { devs } : {}) } }, undefined, undefined, by ? { p: by } : undefined);
   delete b.decision;
   if (decision === 'hold') {
     b.held = true;
@@ -187,7 +190,7 @@ function codesFee(db: ContentDb, s: PlantState, b: Batch) {
  */
 export function settle(db: ContentDb, s: PlantState, lot: Lot, u: Unit) {
   if (u.where.kind !== 'slot' || busy(s, u.id)) return;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const at = plan.slot[u.where.id];
   const from = { kind: 'slot' as const, id: at.id };
   if ((lot.status === 'released' || lot.status === 'blocked') && at.kind !== 'storage') {
@@ -324,14 +327,18 @@ export function assessCommand(db: ContentDb, s: PlantState, cmd: Extract<Command
     const bad = tests.find(x => x.out > 0);
     if (bad) return notices.push({ kind: 'refused', cmd: 'assess', why: 'outOfSpec', detail: bad.test });
   }
-  noteCmd(s, cmd, { kind: 'assess', dev: d.id, verdict: cmd.verdict });
-  startAssess(db, s, d, cmd.verdict, cmd.by ?? 'player');
+  // вероятная причина (Б5е): из причин с признаком в записях завода или «не установлена»; не названа — по правилу
+  const signs = signsOf(db, s, d);
+  if (cmd.cause !== undefined && cmd.cause !== 'none' && !signs.includes(cmd.cause)) return notices.push({ kind: 'refused', cmd: 'assess', why: 'noSign', detail: cmd.cause });
+  const cause = cmd.cause ?? signs[0] ?? 'none';
+  noteCmd(s, cmd, { kind: 'assess', dev: d.id, verdict: cmd.verdict, cause });
+  startAssess(db, s, d, cmd.verdict, cmd.by ?? 'player', cause);
 }
 
-function startAssess(db: ContentDb, s: PlantState, d: Deviation, verdict: 'none' | 'reject', by: string) {
-  const plan = planOf(db, s.plant);
+function startAssess(db: ContentDb, s: PlantState, d: Deviation, verdict: 'none' | 'reject', by: string, cause: string) {
+  const plan = planOf(db, s.plan);
   const t = addTask(s, { kind: 'devAssess', roles: [...QA.specialists], from: { kind: 'point', x: plan.lab.x, z: plan.lab.z }, work: DEV_WORK, prio: QA_PRIO.devAssess, dev: d.id, batch: d.batch });
-  d.assess = { verdict, by, t: s.t, task: t.id };
+  d.assess = { verdict, by, t: s.t, task: t.id, cause };
 }
 
 /**
@@ -343,15 +350,24 @@ function assessed(db: ContentDb, s: PlantState, d: Deviation, notices: Notice[])
   const a = d.assess!;
   delete a.task;
   a.done = s.t;
-  if (d.status !== 'open') return;
+  // вероятная причина — в отклонение (Б5е); начальник ООК посмотрит, нужна ли CAPA
+  d.cause = a.cause ?? probable(db, s, d);
+  d.capaDue = 'rule';
+  if (d.status !== 'open') {
+    reclass(s, d);
+    return;
+  }
   const b = s.batches[d.batch!];
   notices.push({ kind: 'assessed', id: d.id, verdict: a.verdict, code: batchNo(b.code) });
   if (a.verdict === 'none') {
     d.status = 'assessed';
+    // класс (Б5е): без влияния — незначительное, а повтор по причине — существенное
+    reclass(s, d);
     redecide(db, s, b);
     return;
   }
   d.status = 'closed';
+  reclass(s, d);
   b.decision = 'reject';
   if (b.status === 'bulk') {
     // балк разрешён, а упаковки у серии нет: отклонить партию балка — серия отклонится шагом производства
@@ -377,21 +393,31 @@ export const devKey = (dev: string) => `dev/${dev}`;
 export function devHour(db: ContentDb, s: PlantState, notices: Notice[]): boolean {
   const mode = modeOf(s, 'qa');
   if (mode === 'manual') return false;
-  const r = mode === 'advise' ? round(s, ['dev/']) : undefined;
-  let acted = false;
+  const ready: { d: PlantState['deviations'][string]; tests: ReturnType<typeof linkedTests> }[] = [];
   for (const d of Object.values(s.deviations)) {
     if (d.status !== 'open' || assessBlock(s, d)) continue;
     const tests = linkedTests(db, s, d);
-    if (tests.some(x => !x.done)) continue;
+    if (!tests.some(x => !x.done)) ready.push({ d, tests });
+  }
+  // руководитель — человек (Б5в): оценку назначает начальник ООК, а без него — заместитель, в свою смену; пока решать
+  // некому, отклонения ждут, а открытые предложения остаются
+  const who = ready.length > 0 || mode === 'advise' ? decider(db, s, 'qa', notices) : undefined;
+  if (!who) return false;
+  const r = mode === 'advise' ? round(s, ['dev/']) : undefined;
+  let acted = false;
+  for (const { d, tests } of ready) {
     const verdict = tests.some(x => x.out > 0) ? 'reject' : 'none';
-    // журнал решений (Б5а): начальник ООК — по связанным испытаниям серии
-    const why = { tests: tests.map(x => ({ test: x.test, kind: x.kind, n: x.n, out: x.out, ...(x.result !== undefined ? { result: x.result } : {}) })) };
+    // вероятная причина (Б5е): первая с признаком в записях завода, нет — «не установлена»
+    const signs = signsOf(db, s, d);
+    const cause = signs[0] ?? 'none';
+    // журнал решений (Б5а): начальник ООК — по связанным испытаниям серии и признакам причин в записях
+    const why = { tests: tests.map(x => ({ test: x.test, kind: x.kind, n: x.n, out: x.out, ...(x.result !== undefined ? { result: x.result } : {}) })), ...(signs.length ? { signs } : {}) };
     if (r) {
-      r.propose('qa', devKey(d.id), { kind: 'assess', deviation: d.id, verdict }, { kind: 'assess', dev: d.id, verdict, why }, notices);
+      r.propose('qa', devKey(d.id), { kind: 'assess', deviation: d.id, verdict, cause }, { kind: 'assess', dev: d.id, verdict, cause, why }, notices, who);
       continue;
     }
-    note(s, 'qa', { kind: 'assess', dev: d.id, verdict, why });
-    startAssess(db, s, d, verdict, 'head:quality');
+    note(s, 'qa', { kind: 'assess', dev: d.id, verdict, cause, why }, undefined, undefined, who);
+    startAssess(db, s, d, verdict, 'head:quality', cause);
     acted = true;
   }
   r?.done();

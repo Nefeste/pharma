@@ -107,7 +107,14 @@ const ALLOWED = new Set(
     // Б1д: стадия загрузки строки состава и что загружают на стадии — по карте
     'stage load ' +
     // Б1ж: уставки режимов стадий и скорости блистерной, длительность стадии с ними — задал завод
-    'atSet set speed'
+    'atSet set speed ' +
+    // Б5в: найм переездом — роли, которых в городе не найти, и запись рынка: сроки, предупреждение, дорога, возмещение;
+    // руководители — отдел, его пост, что навык ограничивает в правиле (горизонт, порог вывода, замена узлов, найм) и
+    // сколько было бы при полном навыке — правило завода, не истина
+    'movable move road arrive bosses head seat limit full hire replace byWear threshold ' +
+    // Б6ж: аналог строки карты с коэффициентом — по карте; пара-кандидат с шагом одобрения и наступившими днями, доля
+    // поставок вовремя пары — записи завода; настоящего прихода и дней решения наперёд нет
+    'alt factor cand onTime step po eta lot filed asked answered decided'
   ).split(' '),
 );
 
@@ -235,8 +242,8 @@ describe('справочник: номенклатура и документы (
   test('карточки: серия в помещении и на оборудовании — с редакцией карты; своя продукция — с картой и инструкцией по упаковке', async () => {
     // образец схемы 17 — посреди работы: стадии идут, балк и ГП уже есть
     const w = fromSave(db, await Bun.file(new URL('./fixtures/save-v17.json', import.meta.url)).text());
-    const rooms = db.plants[w.plant].rooms.map((_, i) => cardView(db, w, { kind: 'room', i }).card).filter(c => c.kind === 'room' && c.batch);
-    const eqs = db.plants[w.plant].equipment.map((_, i) => cardView(db, w, { kind: 'equipment', i }).card).filter(c => c.kind === 'equipment' && c.batch);
+    const rooms = w.plan.rooms.map((_, i) => cardView(db, w, { kind: 'room', i }).card).filter(c => c.kind === 'room' && c.batch);
+    const eqs = w.plan.equipment.map((_, i) => cardView(db, w, { kind: 'equipment', i }).card).filter(c => c.kind === 'equipment' && c.batch);
     expect(rooms.length + eqs.length).toBeGreaterThan(0);
     for (const c of [...rooms, ...eqs]) if (c.kind === 'room' || c.kind === 'equipment') expect(db.recipes[c.recipe!]?.doc.code).toMatch(/^MF-/);
     let own = 0;

@@ -8,6 +8,9 @@ import type { ContentDb } from '../content/types';
 import { addMonths, civilFromDays, DAY, daysFromCivil, HOUR, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { baseLoad } from './cash';
+import { before, REPEAT, sameDev } from './devclass';
+import { lagError, monthAt, shares } from './forecast';
+import { packMargin } from './plan/sop';
 import { yearOver } from './hours';
 import { oee, type Oee, rhythm, roomsOf } from './lean';
 import { planOf } from './plant';
@@ -21,7 +24,7 @@ export type KpiHead = 'dir' | Head;
  * Единица значения: копейки; доля — 1/10 000; секунды; сутки — 1/100 суток; на 1000 — 1/100 случая на тысячу; Вт·ч на
  * 1000 годных таблеток.
  */
-export type KpiUnit = 'kop' | 'share' | 'sec' | 'day' | 'per' | 'wh';
+export type KpiUnit = 'kop' | 'share' | 'sec' | 'day' | 'per' | 'wh' | 'n';
 
 /**
  * Определение показателя (ISO 22400-2, табл. 1, — имя, формула, единица, тренд): кто им измеряется, единица, направление
@@ -54,6 +57,8 @@ export const KPIS: readonly KpiDef[] = [
   { id: 'onDay', head: 'plan', unit: 'share', dir: 1, win: 'm', src: [], pair: 'fgDays' },
   { id: 'fgDays', head: 'plan', unit: 'day', dir: -1, win: 'm', src: ['fda-qm-2022'], pair: 'otif' },
   { id: 'switchH', head: 'plan', unit: 'sec', dir: -1, win: 'm', src: [], pair: 'fgDays', acc: true },
+  // правки в замороженном горизонте (Б6е; §9.2): частые правки — нервозность плана; противовес — заказы в срок
+  { id: 'frozenEdits', head: 'plan', unit: 'n', dir: -1, win: 'm', src: ['li-disney-2017'], pair: 'otifOrders', acc: true },
   // производство
   { id: 'oee', head: 'mes', unit: 'share', dir: 1, win: 'm', src: [ISO], pair: 'rft' },
   { id: 'setup', head: 'mes', unit: 'share', dir: -1, win: 'm', src: [ISO] },
@@ -79,6 +84,7 @@ export const KPIS: readonly KpiDef[] = [
   // начальник ООК
   { id: 'devs', head: 'qa', unit: 'per', dir: -1, win: 'y', src: ['ispe-qm-w2'] },
   { id: 'repeat', head: 'qa', unit: 'share', dir: -1, win: 'y', src: ['ispe-qm-w1', 'fda-qm-2022'] },
+  { id: 'capaEff', head: 'qa', unit: 'share', dir: 1, win: 'y', src: ['gmp-eaeu', 'ich-q10'], pair: 'repeat' },
   { id: 'assess', head: 'qa', unit: 'sec', dir: -1, win: 'm', src: ['ispe-qm-w2'], pair: 'repeat' },
   { id: 'supRej', head: 'qa', unit: 'share', dir: -1, win: 'y', src: ['fda-qm-2022'] },
   // уполномоченное лицо
@@ -91,6 +97,9 @@ export const KPIS: readonly KpiDef[] = [
   { id: 'matWait', head: 'supply', unit: 'sec', dir: -1, win: 'm', src: [], pair: 'matDays', acc: true },
   { id: 'matDays', head: 'supply', unit: 'day', dir: -1, win: 'm', src: ['gks-fhd-2002'], pair: 'matWait' },
   { id: 'framework', head: 'supply', unit: 'share', dir: 1, win: 'm', src: ['ghsc-fy2019'] },
+  // поставки вовремя (Б6ж; §8.6): заказы поставщикам, пришедшие за месяц не позже обещанного дня; противовес — часы
+  // ожидания материала
+  { id: 'onTime', head: 'supply', unit: 'share', dir: 1, win: 'm', src: ['scor-ds-web'], pair: 'matWait' },
   // склад
   { id: 'dockToStock', head: 'wms', unit: 'sec', dir: -1, win: 'm', src: [] },
   { id: 'dockWait', head: 'wms', unit: 'sec', dir: -1, win: 'm', src: [], pair: 'occupancy', acc: true },
@@ -100,6 +109,10 @@ export const KPIS: readonly KpiDef[] = [
   { id: 'otif', head: 'sales', unit: 'share', dir: 1, win: 'm', src: ['ghsc-fy2019'], pair: 'fgDays' },
   { id: 'revenue', head: 'sales', unit: 'kop', dir: 1, win: 'm', src: ['fsbu-4-2023'], pair: 'dso', acc: true },
   { id: 'dso', head: 'sales', unit: 'day', dir: -1, win: 'm', src: ['gks-fhd-2002'], pair: 'revenue' },
+  // точность прогноза (Б6в; §8.6): WAPE прогноза отдела продаж с запаздыванием в месяц
+  { id: 'fcErr', head: 'sales', unit: 'share', dir: -1, win: 'm', src: ['ghsc-fy2019', 'fpp3'], pair: 'otif' },
+  // маржинальный доход отгрузок (Б6г; §8.6, §12.2): цель плана S&OP; противовес — дебиторская задолженность
+  { id: 'margin', head: 'sales', unit: 'kop', dir: 1, win: 'm', src: ['openstax-ma', 'acca-ta-2'], pair: 'dso', acc: true },
   // кадры
   { id: 'turnover', head: 'hr', unit: 'share', dir: -1, win: 'y', src: ['ispe-qm-w2'], pair: 'otLimit', also: ['dir'] },
   { id: 'vacancy', head: 'hr', unit: 'day', dir: -1, win: 'y', src: ['iso-30414'] },
@@ -258,7 +271,7 @@ export function lineOee(days: readonly LineDay[]): Oee | undefined {
 
 /** Сутки каждой линии плана за период, по порядку плана. */
 const lineDays = (db: ContentDb, s: PlantState, days: readonly DayLoss[]): LineDay[][] =>
-  planOf(db, s.plant).plant.lines.map(l => days.flatMap(d => (d.lines[l.id] ? [d.lines[l.id]] : [])));
+  planOf(db, s.plan).plant.lines.map(l => days.flatMap(d => (d.lines[l.id] ? [d.lines[l.id]] : [])));
 
 /** OEE каждой линии плана за сутки периода, по порядку плана. */
 export function oeeOf(db: ContentDb, s: PlantState, days: readonly DayLoss[]): (Oee | undefined)[] {
@@ -312,8 +325,6 @@ export function valueOf(db: ContentDb, material: string, qty: number, price: num
 /** Сколько партии на руках, мг или шт. */
 const left = (l: Lot) => l.qty - l.used - l.sampled - l.written - (l.shipped ?? 0);
 
-/** Отпечаток отклонения для повтора: вид, стадия и то, что вне пределов (ISPE — та же причина; причину запишет Б5е). */
-export const devSig = (d: PlantState['deviations'][string]) => `${d.kind}/${d.stage ?? ''}/${d.param ?? d.test ?? d.material ?? ''}`;
 
 // ---------------------------------------------------------------- срез суток
 
@@ -371,7 +382,7 @@ export function kpiSnapshot(db: ContentDb, s: PlantState): Omit<KpiSnap, 'n' | '
  * Сверхурочные людей и ушедших, с: отрезки табеля, кончившиеся в [from, to), — целиком. Отрезок пишется, когда работа
  * кончилась, поэтому за сутки — то, что кончилось в них, а работа через полночь — в сутки своего конца.
  */
-function otIn(s: PlantState, from: number, to: number): number {
+export function otIn(s: PlantState, from: number, to: number): number {
   let sec = 0;
   for (const p of [...Object.values(s.people), ...Object.values(s.former)]) for (const [a, b] of p.ot) if (b >= from && b < to) sec += b - a;
   return sec;
@@ -477,12 +488,14 @@ const CALC: Record<string, Calc> = {
     return demand > 0 ? Math.round((c.p.snap.fg * c.len * 100) / (c.p.snap.n * demand * 1000)) : undefined;
   },
   switchH: c => c.days.reduce((n, d) => n + d.cleans.majorSec + d.changes.sec, 0),
+  // записи журнала с ценой правки в горизонте (Б6е) — новые, сдвинутые и снятые задания
+  frozenEdits: c => c.s.journal.filter(r => inside(r.t, c.p.from, c.p.to) && (r.d.kind === 'order' || r.d.kind === 'cancel' || r.d.kind === 'shift') && r.d.frozen !== undefined).length,
   oee: c => {
     const o = oeeOf(c.db, c.s, c.days).filter((x): x is Oee => x !== undefined);
     return o.length > 0 ? Math.round(o.reduce((n, x) => n + x.oee, 0) / o.length) : undefined;
   },
   setup: c => {
-    const rooms = roomsOf(planOf(c.db, c.s.plant)).rooms;
+    const rooms = roomsOf(planOf(c.db, c.s.plan)).rooms;
     let clean = 0;
     let work = 0;
     for (const d of c.days)
@@ -572,6 +585,10 @@ const CALC: Record<string, Calc> = {
     const r = repeats(c);
     return share(r.filter(x => x.prev).length, r.length);
   },
+  capaEff: c => {
+    const r = capaChecks(c);
+    return share(r.filter(x => x.ok).length, r.length);
+  },
   assess: c => median(assessTimes(c).map(x => x.sec)),
   supRej: c => {
     const lots = Object.values(c.s.lots).filter(l => bought(c.db, l) && inside(lotDecided(l), c.p.yFrom, c.p.to));
@@ -600,7 +617,8 @@ const CALC: Record<string, Calc> = {
     let all = 0;
     let deal = 0;
     for (const po of Object.values(c.s.pos)) {
-      if (!inside(po.ordered, c.p.from, c.p.to)) continue;
+      // отменённый до прихода (Б6д) не куплен
+      if (po.status === 'cancelled' || !inside(po.ordered, c.p.from, c.p.to)) continue;
       for (const ln of po.lines) {
         const v = valueOf(c.db, ln.material, ln.qty, lotPrice(c.db, { supplier: po.supplier, material: ln.material }));
         all += v;
@@ -608,6 +626,16 @@ const CALC: Record<string, Calc> = {
       }
     }
     return share(deal, all);
+  },
+  onTime: c => {
+    let n = 0;
+    let ok = 0;
+    for (const po of Object.values(c.s.pos)) {
+      if (!inside(po.came, c.p.from, c.p.to)) continue;
+      n++;
+      if (momentOf(c.s.start, po.came).day <= momentOf(c.s.start, po.eta).day) ok++;
+    }
+    return share(ok, n);
   },
   dockToStock: c => median(dockTimes(c).map(x => x.sec)),
   dockWait: c => c.days.reduce((n, d) => n + Object.values(d.wait).reduce((x, w) => x + (w?.dock ?? 0), 0), 0),
@@ -622,6 +650,26 @@ const CALC: Record<string, Calc> = {
     return share(closed.filter(o => o.status === 'shipped').length, closed.length);
   },
   revenue: c => Object.values(c.s.shipments).reduce((n, x) => n + (inside(x.t, c.p.from, c.p.to) ? x.sum : 0), 0),
+  // пачки отгрузок месяца × маржинальный доход пачки позиции — по ценам пар в силе (Б6г)
+  margin: c => {
+    const plan = c.db.scenarios[c.s.scenario].plan;
+    if (!plan) return undefined;
+    const skuOf = new Map(plan.items.map(i => [c.db.skus[i.sku].fg, i.sku]));
+    const per = new Map<string, number>();
+    let n = 0;
+    for (const x of Object.values(c.s.shipments)) {
+      if (!inside(x.t, c.p.from, c.p.to)) continue;
+      for (const k of x.cases) {
+        const sku = skuOf.get(c.s.lots[k.lot]?.material);
+        if (!sku) continue;
+        if (!per.has(sku)) per.set(sku, packMargin(c.db, c.s, sku).margin);
+        n += k.qty * per.get(sku)!;
+      }
+    }
+    return n;
+  },
+  // месяцы периода, закрытые к этому мигу; записи с запаздыванием нет — нет и значения
+  fcErr: c => shares(lagError(c.s, 'sales', monthAt(c.s, c.p.from), monthAt(c.s, c.p.to - 1) + 1))?.wape,
   dso: c => {
     if (c.p.snap.n === 0) return undefined;
     const rev = CALC.revenue(c) ?? 0;
@@ -684,15 +732,23 @@ export function vacancyDays(c: Ctx): { person: string; days: number }[] {
   );
 }
 
-/** Отклонения окна 12 месяцев и было ли за 12 месяцев до каждого такое же — по виду, стадии и тому, что вне пределов. */
+/**
+ * Отклонения окна 12 месяцев и было ли за 12 месяцев до каждого такое же — правилом повтора Б5е (src/engine/devclass.ts):
+ * та же подпись, а когда причина записана у обоих — та же причина; первое такое по порядку открытия.
+ */
 export function repeats(c: Ctx): { dev: string; prev?: string }[] {
-  const all = Object.values(c.s.deviations).sort((a, b) => a.opened - b.opened || (a.id < b.id ? -1 : 1));
+  const all = Object.values(c.s.deviations).sort((a, b) => (before(a, b) ? -1 : 1));
   return all
     .filter(d => inside(d.opened, c.p.yFrom, c.p.to))
     .map(d => {
-      const prev = all.find(x => x !== d && x.opened <= d.opened && d.opened - x.opened <= 365 * DAY && devSig(x) === devSig(d) && (x.opened < d.opened || x.id < d.id));
+      const prev = all.find(x => x !== d && before(x, d) && d.opened - x.opened <= REPEAT && sameDev(x, d));
       return { dev: d.id, ...(prev ? { prev: prev.id } : {}) };
     });
+}
+
+/** Проверки эффективности CAPA в окне 12 месяцев (Б5е): CAPA, эффективна ли и повтор. */
+export function capaChecks(c: Ctx): { capa: string; ok: boolean; dev?: string }[] {
+  return Object.values(c.s.capas).flatMap(x => (x.check && inside(x.check.t, c.p.yFrom, c.p.to) ? [{ capa: x.id, ok: x.check.ok, ...(x.check.dev ? { dev: x.check.dev } : {}) }] : []));
 }
 
 /** Строки заказов, закрытых в периоде: полностью и в срок — `ok` (заказ не опоздал, строка отгружена вся). */

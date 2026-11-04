@@ -4,13 +4,14 @@
 // line.ts). Стадия с узлами под износом (1е) останавливается на отказе узла и продолжается после ремонта (maint.ts). Стадия
 // начинается только на пригодном оборудовании и с пригодными приборами своих МОК (Б3в, assets.ts).
 // Задачи раздаёт раздатчик (tasks.ts); здесь — когда их заводить и что они делают, когда кончаются.
-import { ATTRS, type Attr, type CauseDriver, type ContentDb, type Id, type PartType, type RecipeStage } from '../content/types';
+import { ATTRS, type Attr, type CauseDriver, type ContentDb, type Id, type PartType, type Plant, type RecipeStage } from '../content/types';
 import { stageUnfit } from './assets';
 import { batchNo, issueNo } from './batchno';
 import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
 import { HOUR, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
+import { openClass, reclass } from './devclass';
 import { inForce } from './docs';
 import { incidentParams, incidentScreen } from './investigation';
 import { noteCmd } from './journal';
@@ -18,11 +19,13 @@ import { cleaned, defect, lossAt, recleaned } from './lean';
 import { blocked, consume, failPart, partsOf, partType, untilFail, wearAt } from './maint';
 import { stageSetpoints, unitsPerHour } from './modes';
 import { type PlantPlan, planOf } from './plant';
+import { stockDue } from './planner';
+import { numOf, POL, policyOf } from './policies';
 import { measure, within } from './quality';
 import { normal, roll, spread } from './random';
 import { containersByLot, createLot, free, knownAssay, nextId, putUnit, stockChanged } from './stock';
 import { addTask, release } from './tasks';
-import type { Batch, Command, Container, Deviation, Equipment, KitLine, Lot, Notice, OrderWhy, PackJob, Part, Place, PlantEvent, PlantState, Room, StageRecord, StageRun, Task, Unit } from './types';
+import type { Batch, BatchFor, Command, Container, Deviation, EditPrice, Equipment, KitLine, Lot, Notice, OrderWhy, PackJob, Part, Place, PlantEvent, PlantState, Room, StageRecord, StageRun, Task, Unit } from './types';
 import { PRIO, WMS } from './wms';
 
 /** Роли производства. */
@@ -50,18 +53,63 @@ const roomPlace = (plan: PlantPlan, roomId: string): Place => ({ kind: 'point', 
  * Задание на серию: серия ждёт резерва и своей даты. Нет карты — отказ. Карта — редакция, действующая в день «не раньше»
  * (Б3а): задание держит её до конца — ни новая редакция, ни сдвиг срока её не меняют.
  */
-export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'order' }>, notices: Notice[], why?: OrderWhy) {
+export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'order' }>, notices: Notice[], why?: OrderWhy, frozen?: EditPrice) {
   if (!db.recipes[cmd.recipe]) {
     notices.push({ kind: 'refused', cmd: 'order', why: 'noRecipe', detail: cmd.recipe });
     return;
   }
+  // под что и срок (Б6а): под заказ покупателя — его срок отгрузки; на запас позиции — когда запас кончится по спросу,
+  // считают до нового задания
+  let goal: BatchFor | undefined;
+  let due: number | undefined;
+  if (cmd.for !== undefined) {
+    const o = s.orders[cmd.for];
+    if (!o || o.status !== 'open' || (cmd.sku !== undefined && !o.lines.some(l => l.sku === cmd.sku))) {
+      notices.push({ kind: 'refused', cmd: 'order', why: 'noOrder', detail: cmd.for });
+      return;
+    }
+    goal = { kind: 'order', order: o.id };
+    due = o.due;
+  } else if (cmd.sku !== undefined) {
+    goal = { kind: 'stock' };
+    const window = numOf(db, s, POL.window);
+    if (window !== undefined && db.skus[cmd.sku]) due = stockDue(db, s, cmd.sku, window);
+  }
   const notBefore = Math.max(s.t, cmd.notBefore ?? s.t);
   const b = newBatch(db, s, nextId(s, 'B'), cmd.recipe, notBefore, cmd.by ?? 'player', cmd.sku);
+  if (goal) b.for = goal;
+  if (due !== undefined) b.due = due;
   s.batches[b.id] = b;
   schedule(s.agenda, b.notBefore, { kind: 'batch', id: b.id });
   reserve(db, s, b);
   // журнал решений (Б5а): игрок или начальник отдела планирования — с причиной коллеги
-  noteCmd(s, cmd, { kind: 'order', batch: b.id, recipe: b.recipe, ...(b.sku ? { sku: b.sku } : {}), notBefore: b.notBefore, ...(why ? { why } : {}) });
+  noteCmd(s, cmd, { kind: 'order', batch: b.id, recipe: b.recipe, ...(b.sku ? { sku: b.sku } : {}), notBefore: b.notBefore, ...(due !== undefined ? { due } : {}), ...(goal ? { for: goal } : {}), ...(why ? { why } : {}), ...(frozen ? { frozen } : {}) });
+}
+
+/**
+ * Команда `cancel` (Б6а): отменить задание на серию до комплектовки — пока оно ждёт своего дня или материала. Резерв —
+ * обратно в свободный запас, ждущие задания пробуют резерв снова; запись журнала — с позицией, «не раньше», сроком и под
+ * что. Отказы: задания нет; уже отменено; начато — досье выдано, серию не отменяют, остановить её можно только
+ * отклонением (Б5е).
+ */
+export function cancelOrder(s: PlantState, cmd: Extract<Command, { kind: 'cancel' }>, notices: Notice[], frozen?: EditPrice) {
+  const b = s.batches[cmd.batch];
+  if (!b) return notices.push({ kind: 'refused', cmd: 'cancel', why: 'noBatch', detail: cmd.batch });
+  if (b.status === 'cancelled') return notices.push({ kind: 'refused', cmd: 'cancel', why: 'cancelled', detail: cmd.batch });
+  if (b.status !== 'waiting' && b.status !== 'reserved') return notices.push({ kind: 'refused', cmd: 'cancel', why: 'started', detail: cmd.batch });
+  for (const k of b.kit) {
+    const c = s.containers[k.container];
+    if (!c) continue;
+    c.reserved = (c.reserved ?? 0) - k.qty;
+    if (c.reserved <= 0) delete c.reserved;
+  }
+  b.kit = [];
+  delete b.short;
+  delete b.tried;
+  b.status = 'cancelled';
+  b.cancelled = s.t;
+  stockChanged(s);
+  noteCmd(s, cmd, { kind: 'cancel', batch: b.id, ...(b.sku ? { sku: b.sku } : {}), notBefore: b.notBefore, ...(b.due !== undefined ? { due: b.due } : {}), ...(b.for ? { for: b.for } : {}), ...(frozen ? { frozen } : {}) });
 }
 
 /**
@@ -119,7 +167,9 @@ export interface KitPlan {
 
 /**
  * Примерка резерва по FEFO, ничего не записывая: резерв задания и прогон расписания с новыми заданиями черновика (0.0.39)
- * берут тару одним правилом. `before` — сколько из тары уже взяли задания той же примерки.
+ * берут тару одним правилом. `before` — сколько из тары уже взяли задания той же примерки. С Б6ж у строки с аналогом:
+ * основного не хватает на строку — строку берут аналогом целиком, по коэффициенту (`sap-alt`, «проверка на 100 %»);
+ * не хватает и аналога — строка ждёт основного.
  */
 export function kitPlan(db: ContentDb, s: PlantState, recipe: Id, before?: ReadonlyMap<string, number>): KitPlan {
   const r = db.recipes[recipe];
@@ -131,27 +181,55 @@ export function kitPlan(db: ContentDb, s: PlantState, recipe: Id, before?: Reado
   const byLot = containersByLot(s);
   // сколько навеска с пересчётом тяжелее нормы — на столько меньше строки «до массы»
   let extra = 0;
-  for (const line of lines) {
-    let left = line.qs ? Math.max(0, line.qty - extra) : line.qty;
+  // взять строку материалом `material` в количестве `need`: в `into` и `got` — тара, сколько осталось не взятым
+  const takeLine = (material: Id, need: number, potency: boolean, into: KitLine[], got: Map<string, number>) => {
+    let left = need;
     let gross = 0;
-    for (const { lot, cs } of fefo(s, line.material, today, byLot)) {
+    for (const { lot, cs } of fefo(s, material, today, byLot)) {
       if (left <= 0) break;
-      const assay = line.potency ? knownAssay(db, s, lot) : P_ONE;
+      const assay = potency ? knownAssay(db, s, lot) : P_ONE;
       for (const c of cs) {
         if (left <= 0) break;
-        const avail = free(c) - (taken.get(c.id) ?? 0);
+        const avail = free(c) - (got.get(c.id) ?? 0);
         if (avail <= 0) continue;
         // у АФС `left` — действующее вещество, мг: тары нужно больше, если содержание меньше 100 %
-        const want = line.potency ? Math.ceil((left * P_ONE) / assay) : left;
+        const want = potency ? Math.ceil((left * P_ONE) / assay) : left;
         const q = Math.min(avail, want);
-        left = q === want ? 0 : left - (line.potency ? Math.floor((q * assay) / P_ONE) : q);
+        left = q === want ? 0 : left - (potency ? Math.floor((q * assay) / P_ONE) : q);
         gross += q;
-        taken.set(c.id, (taken.get(c.id) ?? 0) + q);
-        kit.push({ container: c.id, lot: lot.id, material: line.material, qty: q, ...(line.potency ? { assay } : {}) });
+        got.set(c.id, (got.get(c.id) ?? 0) + q);
+        into.push({ container: c.id, lot: lot.id, material, qty: q, ...(potency ? { assay } : {}) });
       }
     }
-    if (left > 0) short.push({ material: line.material, qty: left });
-    if (line.potency) extra += gross - line.qty;
+    return { left, gross };
+  };
+  for (const line of lines) {
+    const need = line.qs ? Math.max(0, line.qty - extra) : line.qty;
+    if (!line.alt) {
+      const res = takeLine(line.material, need, !!line.potency, kit, taken);
+      if (res.left > 0) short.push({ material: line.material, qty: res.left });
+      if (line.potency) extra += res.gross - line.qty;
+      continue;
+    }
+    // аналог (Б6ж; у строки с пересчётом и «до массы» его нет — сборщик базы): основного не хватило на строку — строка
+    // аналогом целиком; не хватает и его — строка ждёт основного, как без аналога
+    const mine: KitLine[] = [];
+    let got = new Map(taken);
+    let res = takeLine(line.material, need, false, mine, got);
+    if (res.left > 0) {
+      const alt: KitLine[] = [];
+      const gotAlt = new Map(taken);
+      const r2 = takeLine(line.alt.material, Math.ceil((need * line.alt.factor) / 10_000), false, alt, gotAlt);
+      if (r2.left === 0) {
+        mine.length = 0;
+        mine.push(...alt);
+        got = gotAlt;
+        res = r2;
+      }
+    }
+    for (const [k, v] of got) taken.set(k, v);
+    kit.push(...mine);
+    if (res.left > 0) short.push({ material: line.material, qty: res.left });
   }
   return { kit, short, taken };
 }
@@ -223,12 +301,15 @@ export function mesStep(db: ContentDb, s: PlantState) {
  * Команда «сдвинуть» (3д): у задания, которое ещё не начало комплектовку, — новый срок «не раньше», не раньше нынешней
  * минуты. В очереди — событие задания на новом сроке; прежнее событие без вреда — оно будит шаг производства для всех.
  */
-export function shiftCommand(s: PlantState, cmd: Extract<Command, { kind: 'shift' }>, notices: Notice[]) {
+export function shiftCommand(s: PlantState, cmd: Extract<Command, { kind: 'shift' }>, notices: Notice[], frozen?: EditPrice) {
   const b = s.batches[cmd.batch];
   if (!b) return notices.push({ kind: 'refused', cmd: 'shift', why: 'noBatch', detail: cmd.batch });
   if (b.status !== 'waiting' && b.status !== 'reserved') return notices.push({ kind: 'refused', cmd: 'shift', why: 'started', detail: cmd.batch });
+  const from = b.notBefore;
   b.notBefore = Math.max(s.t, Math.floor(cmd.notBefore));
   schedule(s.agenda, b.notBefore, { kind: 'batch', id: b.id });
+  // правка в замороженном горизонте (Б6е) — запись журнала с ценой; сдвиг за горизонтом журнал не пишет, как до Б6е
+  if (frozen) noteCmd(s, cmd, { kind: 'shift', batch: b.id, ...(b.sku ? { sku: b.sku } : {}), from, notBefore: b.notBefore, frozen });
 }
 
 /** Команда «упаковать»: позиция того же продукта; задание заведётся, когда балк разрешат. */
@@ -247,7 +328,7 @@ export function packOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, { 
  * запасом на брак (docs/specs/2026-10-engine.md, 1г).
  */
 function startPacking(db: ContentDb, s: PlantState, b: Batch) {
-  const line = planOf(db, s.plant).plant.lines[0];
+  const line = planOf(db, s.plan).plant.lines[0];
   if (!line) return;
   const tablets = (containersByLot(s).get(b.bulk!) ?? []).reduce((n, c) => n + c.qty, 0);
   const job: PackJob = { sku: b.sku!, line: line.id, state: 'waiting', created: s.t, kit: [], used: [], tablets, checked: 0, rejected: [], retained: [], people: [] };
@@ -313,11 +394,12 @@ function reservePack(db: ContentDb, s: PlantState, b: Batch) {
 /** Комплект упаковочных материалов — к шлюзу и на пластиковую паллету в помещении линии. */
 function startPackKitting(db: ContentDb, s: PlantState, b: Batch) {
   const job = b.pack!;
-  const room = planOf(db, s.plant).plant.lines.find(l => l.id === job.line)!.room;
+  const room = planOf(db, s.plan).plant.lines.find(l => l.id === job.line)!.room;
   const u: Unit = { id: nextId(s, 'U'), type: 'unit.pallet.plastic', where: { kind: 'room', id: room }, items: [], tag: 'released' };
   s.units[u.id] = u;
   job.kitUnit = u.id;
   job.state = 'kitting';
+  job.kitted = s.t;
   kitStep(db, s, b);
 }
 
@@ -349,7 +431,7 @@ export function mesHour(db: ContentDb, s: PlantState) {
  */
 function startKitting(db: ContentDb, s: PlantState, b: Batch): boolean {
   if (!issueNo(db, s, b)) return false;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const room = plan.roomOf[db.recipes[b.recipe].stages[0].room];
   const u: Unit = { id: nextId(s, 'U'), type: 'unit.pallet.plastic', where: { kind: 'room', id: room }, items: [], tag: 'released' };
   s.units[u.id] = u;
@@ -366,7 +448,7 @@ function startKitting(db: ContentDb, s: PlantState, b: Batch): boolean {
  * задания, которое ждёт линию, а линию взяло другое, — без этого они ждали бы друг друга до конца года.
  */
 function kitStep(db: ContentDb, s: PlantState, b: Batch) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const h = holderOf(b);
   const at = b.status === 'packing' ? s.units[h.kitUnit!]?.where : undefined;
   let pending = false;
@@ -431,7 +513,7 @@ function tryStart(db: ContentDb, s: PlantState, b: Batch) {
   const r = db.recipes[b.recipe];
   if (b.status !== 'process' || b.stage >= r.stages.length) return;
   if (Object.values(s.tasks).some(t => t.kind === 'stage' && t.batch === b.id)) return;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const st = r.stages[b.stage];
   const roomId = plan.roomOf[st.room];
   const room = s.rooms[roomId];
@@ -510,10 +592,25 @@ export function stageBegin(db: ContentDb, s: PlantState, id: string, v: number) 
  * без нагрузки — 10 000.
  */
 function stressOf(db: ContentDb, b: Batch, ty: PartType): number {
+  return stressAt(db, b.recipe, b.stage, b.sp, ty);
+}
+
+/** Нагрузка узла на стадии `stage` карты `recipe` при уставках `sp` — та же, что у идущей стадии (Б1ж). */
+function stressAt(db: ContentDb, recipe: Id, stage: number, sp: Record<string, number> | undefined, ty: PartType): number {
   const k = ty.stress;
-  const v = k ? b.sp?.[k.param] : undefined;
-  const p = k && v !== undefined ? db.recipes[b.recipe].stages[b.stage].params.find(x => x.id === k.param) : undefined;
+  const v = k ? sp?.[k.param] : undefined;
+  const p = k && v !== undefined ? db.recipes[recipe].stages[stage].params.find(x => x.id === k.param) : undefined;
   return k && p && v! > p.target ? P_ONE + k.coef * (v! - p.target) : P_ONE;
+}
+
+/**
+ * Наработка узла вида `ty` за нынешнюю стадию серии по норме (Б5д): таблеток по массе на входе стадии, с нагрузкой
+ * уставок, которые стадия возьмёт, когда начнётся, — знание завода для цены развилки «замена перед работой».
+ */
+export function stageWear(db: ContentDb, s: PlantState, b: Batch, ty: PartType): number {
+  const st = db.recipes[b.recipe].stages[b.stage];
+  const sp = b.sp ?? (st.params.length > 0 ? stageSetpoints(db, s, b.recipe, st) : undefined);
+  return wornBy(unitsOf(db, b), stressAt(db, b.recipe, b.stage, sp, ty));
 }
 
 /** Единиц наработки за `n` таблеток с нагрузкой `k`; таблеток, за которые узел наработает `u`. */
@@ -605,7 +702,8 @@ export function pressFail(db: ContentDb, s: PlantState, ev: Extract<PlantEvent, 
  */
 export function stageMass(db: ContentDb, b: Pick<Batch, 'recipe' | 'mass' | 'dispensed'>, k: number): number {
   const r = db.recipes[b.recipe];
-  const later = new Set(r.bom.filter(l => r.stages.findIndex(st => st.id === l.stage) > k).map(l => l.material));
+  // аналог строки (Б6ж) грузят на стадии её основного
+  const later = new Set(r.bom.filter(l => r.stages.findIndex(st => st.id === l.stage) > k).flatMap(l => (l.alt ? [l.material, l.alt.material] : [l.material])));
   if (b.dispensed.length === 0) return r.bom.reduce((n, l) => (later.has(l.material) ? n : n + l.qty), 0);
   return b.dispensed.reduce((n, x) => (later.has(x.material) ? n - x.qty : n), b.mass);
 }
@@ -650,9 +748,9 @@ function duration(db: ContentDb, s: PlantState, b: Batch, st: RecipeStage, roomI
 function ensureCleaning(db: ContentDb, s: PlantState, room: Room) {
   if (room.status !== 'dirty' || Object.values(s.tasks).some(t => (t.kind === 'clean' || t.kind === 'roomClean') && t.room === room.id)) return;
   if (!room.washed && s.t - room.since > DIRTY_HOLD) room.major = true;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const wash = !room.washed && washTime(db, s, room) > 0;
-  if (wash) addTask(s, { kind: 'clean', roles: [...washRoles(db, s.plant, room.id)], from: roomPlace(plan, room.id), work: washTime(db, s, room), prio: MES_PRIO.clean, room: room.id });
+  if (wash) addTask(s, { kind: 'clean', roles: [...washRoles(db, s.plan, room.id)], from: roomPlace(plan, room.id), work: washTime(db, s, room), prio: MES_PRIO.clean, room: room.id });
   else if (roomTime(db, s, room) > 0) addTask(s, { kind: 'roomClean', roles: [...MES.cleaners], from: roomPlace(plan, room.id), work: roomTime(db, s, room), prio: MES_PRIO.roomClean, room: room.id });
   else cleanDone(s, room);
 }
@@ -667,13 +765,13 @@ const roomTime = (db: ContentDb, s: PlantState, room: Room) => roomWork(db, s, r
 export function washWork(db: ContentDb, s: PlantState, roomId: string, major: boolean): number {
   let sec = 0;
   for (const e of Object.values(s.equipment)) if (e.room === roomId) sec += db.equipment[e.type].cleaning[major ? 'major' : 'minor'];
-  for (const m of lineMachinesIn(db, s.plant, roomId)) sec += db.machines[m.type].cleaning?.[major ? 'major' : 'minor'] ?? 0;
+  for (const m of lineMachinesIn(db, s.plan, roomId)) sec += db.machines[m.type].cleaning?.[major ? 'major' : 'minor'] ?? 0;
   return sec;
 }
 
 /** Машины линий помещения по плану. */
-function lineMachinesIn(db: ContentDb, plantId: string, roomId: string) {
-  return planOf(db, plantId).plant.lines.flatMap(l => (l.room === roomId ? l.machines : []));
+function lineMachinesIn(db: ContentDb, plant: Plant, roomId: string) {
+  return planOf(db, plant).plant.lines.flatMap(l => (l.room === roomId ? l.machines : []));
 }
 
 /**
@@ -681,14 +779,14 @@ function lineMachinesIn(db: ContentDb, plantId: string, roomId: string) {
  * линии, которые касаются таблеток, — их смена у линии (Б1е). Одна функция для движка, прогона расписания и сборщика
  * базы.
  */
-export function washRoles(db: ContentDb, plantId: string, roomId: string): readonly Id[] {
-  const crew = [...new Set(lineMachinesIn(db, plantId, roomId).flatMap(m => (db.machines[m.type].cleaning ? [db.machines[m.type].crew.role] : [])))];
+export function washRoles(db: ContentDb, plant: Plant, roomId: string): readonly Id[] {
+  const crew = [...new Set(lineMachinesIn(db, plant, roomId).flatMap(m => (db.machines[m.type].cleaning ? [db.machines[m.type].crew.role] : [])))];
   return crew.length > 0 ? crew : MES.operators;
 }
 
 /** Уборка помещения уборщиком (Б4в): площадь пола помещения × секунды на м² его класса чистоты (запись плана), с. */
 export function roomWork(db: ContentDb, s: PlantState, roomId: string, major: boolean): number {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const r = plan.plant.rooms.find(x => x.id === roomId);
   const rate = r && plan.plant.cleaning[r.grade];
   if (!r || !rate) return 0;
@@ -723,16 +821,18 @@ function cleanAt(s: PlantState, room: Room, sec: number) {
   else lossAt(s, room.id, 'setup', sec, room.after ? `b:${room.after}` : `r:${room.id}`);
 }
 
-export function deviate(s: PlantState, notices: Notice[], d: Omit<Deviation, 'id' | 'opened' | 'status'>) {
-  const dev: Deviation = { id: nextId(s, 'D'), opened: s.t, status: 'open', ...d };
+export function deviate(s: PlantState, notices: Notice[], d: Omit<Deviation, 'id' | 'opened' | 'status' | 'cls'>) {
+  const dev: Deviation = { id: nextId(s, 'D'), opened: s.t, status: 'open', cls: openClass(d.kind), ...d };
   s.deviations[dev.id] = dev;
+  // класс (Б5е): по виду, а повтор за 12 месяцев поднимает незначительное до существенного
+  reclass(s, dev);
   defect(s, 'deviations');
-  notices.push({ kind: 'deviation', id: dev.id, what: dev.kind, code: dev.batch ? batchNo(s.batches[dev.batch].code) : '' });
+  notices.push({ kind: 'deviation', id: dev.id, what: dev.kind, code: dev.batch ? batchNo(s.batches[dev.batch].code) : '', cls: dev.cls });
 }
 
 /** Что сделала задача производства, когда кончилась. Не задача производства — `false`. */
 export function mesDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]): boolean {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   switch (t.kind) {
     case 'pick': {
       const u = s.units[t.unit!];
@@ -822,7 +922,7 @@ export function mesDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
 /** Деревянная паллета после перекладки: пустая — из учёта, иначе — на стеллаж ближе к шлюзу. */
 function afterUnload(db: ContentDb, s: PlantState, u: Unit) {
   if (u.where.kind !== 'slot') return;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   if (u.items.length === 0) {
     delete s.slots[u.where.id].unit;
     delete s.units[u.id];
@@ -837,7 +937,7 @@ function afterUnload(db: ContentDb, s: PlantState, u: Unit) {
  * на деревянную паллету; оттуда его везут в зону отклонённого. Паллета балка, у которой уже есть задача, — не вторая.
  */
 export function bulkOut(db: ContentDb, s: PlantState, lot: Lot) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const seen = new Set<string>();
   for (const c of Object.values(s.containers)) {
     if (c.lot !== lot.id || seen.has(c.unit)) continue;
@@ -849,7 +949,7 @@ export function bulkOut(db: ContentDb, s: PlantState, lot: Lot) {
 }
 
 export function returnTask(db: ContentDb, s: PlantState, kit: Unit, batch: string) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const room = (kit.where as { id: string }).id;
   addTask(s, { kind: 'return', roles: [...WMS.keepers], unit: kit.id, from: roomPlace(plan, room), toKind: 'staging', work: TRANSFER_WORK, prio: MES_PRIO.return, batch });
 }
@@ -918,7 +1018,7 @@ function stageDone(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, notic
   // оборудование свободно; помещение — грязное, если серия из него уходит
   for (const e of eqs) delete e.batch;
   const next = r.stages[b.stage + 1];
-  if (!next || plan.roomOf[next.room] !== roomId) leaveRoom(db, s, roomId, b.product);
+  if (!next || plan.roomOf[next.room] !== roomId) leaveRoom(db, s, roomId, b.product, b.id);
   b.stage++;
   if (last) finish(db, s, plan, b, rec, notices);
   else tryStart(db, s, b);
@@ -946,17 +1046,38 @@ function dispense(s: PlantState, b: Batch, rec: StageRecord) {
 }
 
 /**
- * Серия уходит из помещения — после стадии или упаковки (Б1е): грязное, с продуктом серии; уборка — сразу (политика
- * мастера по умолчанию).
+ * Серия `cur` уходит из помещения — после стадии или упаковки (Б1е): грязное, с продуктом серии; уборка — сразу. Какая —
+ * политика начальника производства (Б5г): «малая сразу, генеральная — перед другим продуктом» или «генеральная сразу,
+ * если следующая серия в помещении — другого продукта».
  */
-export function leaveRoom(db: ContentDb, s: PlantState, roomId: string, product: Id) {
+export function leaveRoom(db: ContentDb, s: PlantState, roomId: string, product: Id, cur: string) {
   const room = s.rooms[roomId];
   room.status = 'dirty';
   if (room.batch) room.after = room.batch;
   delete room.batch;
   room.since = s.t;
   room.product = product;
+  if (policyOf(db, s, POL.clean) === 'major') {
+    const next = nextIn(db, s, roomId, cur);
+    if (next && next.product !== product) room.major = true;
+  }
   ensureCleaning(db, s, room);
+}
+
+/**
+ * Следующая серия, которой нужно помещение (Б5г): из серий, кроме `cur`, ещё не ГП, — с самым ранним «не раньше»; помещению
+ * линии — серия, чья упаковка ещё не идёт, производству — у которой впереди стадия в нём.
+ */
+function nextIn(db: ContentDb, s: PlantState, roomId: string, cur: string): Batch | undefined {
+  const plan = planOf(db, s.plan);
+  const lineRoom = plan.plant.lines.some(l => l.room === roomId);
+  let best: Batch | undefined;
+  for (const x of Object.values(s.batches)) {
+    if (x.id === cur || x.status === 'fg' || x.status === 'released' || x.status === 'rejected') continue;
+    const needs = lineRoom ? !(x.status === 'packing' && x.pack?.state !== 'waiting') : x.status !== 'bulk' && x.status !== 'packing' && db.recipes[x.recipe].stages.some((st, i) => i >= x.stage && plan.roomOf[st.room] === roomId);
+    if (needs && (!best || x.notBefore < best.notBefore)) best = x;
+  }
+  return best;
 }
 
 /** Свойства серии со своей ветвью разброса (часть 4, Б2б): появились позже прочих. */

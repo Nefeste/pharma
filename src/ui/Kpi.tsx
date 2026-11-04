@@ -1,13 +1,16 @@
 // Окно «Показатели» (Б5ж; docs/specs/2026-10-vertical-slice.md, «Б5ж»; геймдизайн, §8.6): как работают службы. Большое
 // окно поверх карты, как справочник: вкладки — директор и четыре поста, взятые места первыми; строка — руководитель и его
 // показатели плитками: число месяца, прошлый месяц со стрелкой «лучше» или «хуже», 12 закрытых месяцев столбиками,
-// противовес; наведение — формула, направление и источник; «Почему?» — записи числа со ссылкой на карточку. Вид собирает
+// противовес; наведение — формула, направление и источник; «Почему?» — записи числа со ссылкой на карточку; с Б5г —
+// пунктир дня смены политики руководителя на столбиках и смены месяца окна у руководителя. Вид собирает
 // поток расчёта (src/sim/kpi.ts) без слов и без истины; слова — отсюда.
 import type { Ymd } from '../engine/core/calendar';
 import type { KpiHead, KpiUnit } from '../engine/kpi';
 import { dayText, hText, money, named, num, pctText, T, whenText } from '../i18n';
-import type { KpiCell, KpiMonthRef, KpiView, KpiWhyRow } from '../sim/kpi';
+import { HIST, type KpiCell, type KpiMark, type KpiMonthRef, type KpiView, type KpiWhyRow } from '../sim/kpi';
+import { capaName } from './capa';
 import { db } from './db';
+import { policyName, policyText } from './policy';
 import type { Actions, Hud } from './store';
 
 /** Число показателя в его единице; денежный поток — со знаком. */
@@ -25,6 +28,9 @@ export function kpiValue(unit: KpiUnit, v: number, signed = false): string {
       return T.kpi.per(num(v / 100, 1));
     case 'wh':
       return T.kpi.kwh(num(v / 1000, 1));
+    // число — правок за месяц (Б6е)
+    case 'n':
+      return T.kpi.n(num(v));
   }
 }
 
@@ -38,6 +44,16 @@ export const headName = (head: KpiHead) => (head === 'dir' ? T.kpi.dir : (T.jour
 
 /** Месяц словами: «октябрь 2027». */
 export const monthText = (m: KpiMonthRef) => T.kpi.month(T.cash.months[m.m - 1] ?? String(m.m), m.y);
+
+/** Смена политики (Б5г) словами: день и «политика: что — новое вместо прежнего», как в журнале. */
+function markText(m: KpiMark, start: Ymd): string {
+  const p = db?.policies[m.policy];
+  const what = T.journal.what.policy(policyName(p, m.policy, { of: m.of, machine: m.machine, part: m.part }), policyText(p, m.to), policyText(p, m.from));
+  return T.kpi.mark(whenText(start, m.t), what);
+}
+
+/** Строк смен политик за месяц окна у руководителя — не больше; остальные — числом. */
+const MARKS_MAX = 3;
 
 /** Лучше, хуже, так же — ключ слов. */
 const trendKey = (t: 1 | -1 | 0) => (t === 1 ? 'up' : t === -1 ? 'down' : 'same');
@@ -87,8 +103,9 @@ const H = 24;
 /**
  * 12 закрытых месяцев столбиками от общей нулевой линии — отрицательные вниз; последний — цветом акцента: с ним сравнивают
  * число нынешнего месяца, у закрытого месяца это он сам. Наведение на столбик — месяц и число, щелчок — окно на этом месяце.
+ * Смена политики руководителя (Б5г) — пунктир поперёк столбика в её день месяца, наведение — что сменили.
  */
-function Spark({ c, months, actions }: { c: KpiCell; months: readonly (KpiMonthRef & { from: number })[]; actions: Actions }) {
+function Spark({ c, months, marks, start, actions }: { c: KpiCell; months: readonly (KpiMonthRef & { from: number })[]; marks: readonly KpiMark[]; start: Ymd; actions: Actions }) {
   const vals = c.hist;
   const nums = vals.filter((x): x is number => x !== null);
   const W = vals.length * (BAR + GAP) - GAP;
@@ -110,11 +127,25 @@ function Spark({ c, months, actions }: { c: KpiCell; months: readonly (KpiMonthR
           </rect>
         );
       })}
+      {marks
+        .filter(m => m.bar < HIST)
+        .map((m, i) => {
+          const x = m.bar * (BAR + GAP) + Math.round((m.at * BAR) / 1000) + 0.5;
+          return (
+            // видимый пунктир в 1 px и прозрачная полоса шире — по ней наведение
+            <g key={`m${i}`} className="kmark" data-test="kpi-mark" data-bar={m.bar}>
+              <line x1={x} x2={x} y1={0} y2={H} />
+              <line className="khit" x1={x} x2={x} y1={0} y2={H}>
+                <title>{markText(m, start)}</title>
+              </line>
+            </g>
+          );
+        })}
     </svg>
   );
 }
 
-function Cell({ c, months, open, actions }: { c: KpiCell; months: readonly (KpiMonthRef & { from: number })[]; open: boolean; actions: Actions }) {
+function Cell({ c, months, marks, start, open, actions }: { c: KpiCell; months: readonly (KpiMonthRef & { from: number })[]; marks: readonly KpiMark[]; start: Ymd; open: boolean; actions: Actions }) {
   const t = c.trend !== undefined ? trendKey(c.trend) : undefined;
   // стрелка — куда сдвинулось число (у сумм месяца — в сутки), цвет и слово — лучше это или хуже
   const arrow = c.trend === undefined ? '' : c.trend * c.dir > 0 ? '▲' : c.trend * c.dir < 0 ? '▼' : '=';
@@ -134,7 +165,7 @@ function Cell({ c, months, open, actions }: { c: KpiCell; months: readonly (KpiM
           {T.kpi.none}
         </div>
       )}
-      <Spark c={c} months={months} actions={actions} />
+      <Spark c={c} months={months} marks={marks} start={start} actions={actions} />
       <div className="ksub muted">
         {c.prev !== undefined ? `${T.kpi.prev}: ${kpiText(c.id, c.unit, c.prev)}` : null}
         {t ? (
@@ -212,6 +243,12 @@ function whyOf(r: KpiWhyRow, start: Ymd, actions: Actions): { text: string; go?:
     }
     case 'cpk':
       return { text: R.cpk(named(db?.recipes[r.recipe]?.name, r.recipe), named(db?.tests[r.test]?.name, r.test), num(r.cpk / 10000, 2), r.n) };
+    case 'capa':
+      // проверка эффективности CAPA (Б5е): к карточке отклонения
+      return {
+        text: [R.capa(T.dev.no(r.dev), r.ok, r.rep !== undefined ? T.dev.no(r.rep) : ''), capaName(r.action), whenText(start, r.t)].join(' · '),
+        go: () => actions.select({ kind: 'dev', n: r.dev }),
+      };
   }
 }
 
@@ -291,17 +328,35 @@ export function Kpi({ hud, actions }: { hud: Hud; actions: Actions }) {
       </div>
       {!v || v.tab !== tab ? <div className="muted">{T.app.loading}</div> : null}
       {v && v.tab === tab
-        ? v.rows.map(row => (
-            <div className="khead" key={row.head} data-test="kpi-head" data-head={row.head}>
-              <div className="khname">{headName(row.head)}</div>
-              <div className="kcells">
-                {row.cells.map(c => (
-                  <Cell key={c.id} c={c} months={v.months} open={v.why?.id === c.id} actions={actions} />
-                ))}
+        ? v.rows.map(row => {
+            const marks = row.marks ?? [];
+            // смены политик в месяце окна: у нынешнего — после 12 столбиков, у закрытого — на его, последнем, столбике
+            const here = marks.filter(m => m.bar === (v.month.closed ? HIST - 1 : HIST));
+            return (
+              <div className="khead" key={row.head} data-test="kpi-head" data-head={row.head}>
+                <div className="khname">
+                  {headName(row.head)}
+                  {here.length ? (
+                    <div className="kmarks muted" title={T.kpi.marksHint} data-test="kpi-marks">
+                      <div>{T.kpi.marksNow}</div>
+                      {here.slice(0, MARKS_MAX).map((m, i) => (
+                        <div key={i} className="ksub">
+                          {markText(m, hud.start)}
+                        </div>
+                      ))}
+                      {here.length > MARKS_MAX ? <div className="ksub">+{here.length - MARKS_MAX}</div> : null}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="kcells">
+                  {row.cells.map(c => (
+                    <Cell key={c.id} c={c} months={v.months} marks={marks} start={hud.start} open={v.why?.id === c.id} actions={actions} />
+                  ))}
+                </div>
+                {v.why && row.cells.some(c => c.id === v.why!.id) ? <WhyList why={v.why} start={hud.start} actions={actions} /> : null}
               </div>
-              {v.why && row.cells.some(c => c.id === v.why!.id) ? <WhyList why={v.why} start={hud.start} actions={actions} /> : null}
-            </div>
-          ))
+            );
+          })
         : null}
     </div>
   );

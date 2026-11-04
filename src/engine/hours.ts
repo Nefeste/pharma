@@ -10,8 +10,11 @@ import { saAfter, scheduleOn, spanOn } from './shifts';
 import type { Command, Notice, Person, PlantState } from './types';
 import { calOf, type Clock, worksOn } from './workdays';
 
-/** Задачи, которые ставят только в смену (гипотеза): учёба и проверка знаний (Б3б). */
-const IN_SHIFT: ReadonlySet<TaskKind> = new Set<TaskKind>(['train', 'trainCheck']);
+/**
+ * Работы только в смену: учёба и проверка знаний (Б4а); с Б5в — решения руководителей-людей по процедуре — начальника ОКК
+ * по партии и уполномоченного лица по серии: решение, которому не хватает смены, ждёт следующей.
+ */
+const IN_SHIFT: ReadonlySet<TaskKind> = new Set<TaskKind>(['train', 'trainCheck', 'decide', 'qpDecide']);
 
 const overtimeOf = (db: ContentDb, s: Clock) => db.profiles[db.scenarios[s.scenario].profile].payroll.overtime;
 
@@ -35,8 +38,8 @@ export function overLeft(db: ContentDb, s: Clock, p: Person, t: number): number 
 /**
  * Помещается ли задача (Б4а): до её конца по норме — `nom`, по наибольшей длительности — `max`, с; до конца смены —
  * `room`, сверхурочных ещё можно — `left`. «По потребности» — наибольшая длительность в остаток смены и сверхурочные;
- * «только закончить начатое» — ещё и по норме в остаток смены; учёба и проверка знаний — только в смену. Одно правило
- * для раздатчика и прогона расписания (3д).
+ * «только закончить начатое» — ещё и по норме в остаток смены; учёба, проверка знаний и решения по процедуре (Б5в) —
+ * только в смену. Одно правило для раздатчика и прогона расписания (3д).
  */
 export function fitsIn(kind: TaskKind, mode: OvertimeMode, room: number, nom: number, max: number, left: number): boolean {
   if (IN_SHIFT.has(kind)) return max <= room;

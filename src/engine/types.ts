@@ -1,13 +1,13 @@
 // Состояние завода и обмен с движком (docs/02-architecture.md, §1, §3, §7; docs/specs/2026-10-engine.md). Состояние —
 // обычный сериализуемый объект: сохранение — его снимок со схемой и миграциями (ADR студии 0004). Сущности — словари с
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
-import type { Attr, Dept, Id, IncidentRoot, OvertimeMode, SeatId, TaskKind, ZoneKind } from '../content/types';
+import type { Attr, Dept, DevClass, FcMethod, HeadId, Id, IncidentRoot, OvertimeMode, Plant, SeatId, TaskKind, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 35;
+export const SCHEMA = 47;
 
 // ---------------------------------------------------------------- склад
 
@@ -151,6 +151,8 @@ export interface LabTest {
   /** прибор, аналитик и тот, кто проверил */
   inst?: string;
   by?: string;
+  /** когда аналитик начал подготовку пробы (Б6б): запись для задания на сутки, правила её не читают */
+  started?: number;
   checker?: string;
   /** измерено, доли 1/10 000; окно видит его, когда испытание `done` */
   result?: number;
@@ -201,7 +203,7 @@ export interface Deviation {
   batch?: string;
   /** стадия серии */
   stage?: string;
-  /** испытания вне пределов; методика МОК; режим; материал сверки */
+  /** испытания вне пределов; методика МОК, с Б5е — и методика результата вне спецификации; режим; материал сверки и купленной партии */
   tests?: string[];
   test?: Id;
   param?: string;
@@ -216,6 +218,48 @@ export interface Deviation {
   inv?: string;
   /** оценка влияния (Б1г), пока идёт или когда сделана */
   assess?: DevAssess;
+  /**
+   * класс (Б5е; src/engine/capa.ts): по правилу ООК при открытии и пересмотре; `clsBy` — задан командой `classify`, и
+   * правило его больше не пересматривает
+   */
+  cls: DevClass;
+  clsBy?: true;
+  /**
+   * вероятная причина (Б5е): при оценке — причина базы, чей признак есть в записях завода, или `none` — «не установлена»;
+   * у расследования — его вывод: причина базы или `lab` — ошибка лаборатории; у партии поставщика вне спецификации —
+   * `lot`. Ещё не оценено — нет
+   */
+  cause?: string;
+  /** срок отклонения прошёл, а оно открыто, — извещение уже было (Б5е) */
+  late?: true;
+  /** начальнику ООК — посмотреть, нужна ли CAPA (Б5е): после вывода и оценки — `rule`, после неэффективной CAPA — `next` */
+  capaDue?: 'rule' | 'next';
+}
+
+/**
+ * CAPA (Б5е; геймдизайн, §6.4): действие каталога по отклонению — что именно (узел, документы, прибор, пара), кто
+ * исполняет — руководитель отдела действия; кто назначил и когда, срок;
+ * выполнено — когда и кто, с какого места игрока; не прошло у руководителя — причина движка, CAPA ждёт; проверка
+ * эффективности — когда, эффективна ли и, если нет, первое повторное отклонение.
+ */
+export interface Capa {
+  id: string;
+  dev: string;
+  action: Id;
+  /** вещь действия: узел (`<машина>/<узел>`), коды документов и кого учить, актив прибора, пара «поставщик — изготовитель» */
+  part?: string;
+  docs?: string[];
+  people?: string[];
+  asset?: string;
+  pair?: string;
+  head: Head;
+  t: number;
+  by: 'player' | 'qa';
+  due: number;
+  done?: number;
+  doneBy?: Head | 'player';
+  why?: Refusal;
+  check?: { t: number; ok: boolean; dev?: string };
 }
 
 /**
@@ -228,6 +272,8 @@ export interface DevAssess {
   t: number;
   task?: string;
   done?: number;
+  /** вероятная причина, которую назвал тот, кто оценивал (Б5е): ляжет в отклонение, когда оценка сделана */
+  cause?: string;
 }
 
 /**
@@ -281,6 +327,8 @@ export interface Investigation {
   status: 'open' | 'closed';
   conclusion?: { cause: string; fate: 'reject' | 'release'; by: string; t: number };
   truth: { root: string; fired: Record<string, string>; present?: Record<string, boolean> };
+  /** ведёт игрок (Б5д): директор ответил «Веду сам» на вопрос начальника ООК — шагов ООК нет, пока место у игрока */
+  lead?: 'player';
 }
 
 // ---------------------------------------------------------------- производство
@@ -394,7 +442,10 @@ export interface CauseHit {
  * `packing` — задание на упаковку; `fg` — упакована, ГП в карантине до решения уполномоченного лица; `released` —
  * выпущена; `rejected` — отклонена (балк или ГП).
  */
-export type BatchStatus = 'waiting' | 'reserved' | 'kitting' | 'process' | 'bulk' | 'packing' | 'fg' | 'released' | 'rejected';
+export type BatchStatus = 'waiting' | 'reserved' | 'kitting' | 'process' | 'bulk' | 'packing' | 'fg' | 'released' | 'rejected' | 'cancelled';
+
+/** Под что задание на серию (Б6а): запас позиции или заказ покупателя. */
+export type BatchFor = { kind: 'stock' } | { kind: 'order'; order: string };
 
 /**
  * Чем занято время серии (геймдизайн, §5.4): ждёт своей даты; нет материалов; комплектация; стадия ждёт людей;
@@ -510,6 +561,8 @@ export interface PackJob {
   fg?: string;
   /** скорость блистерной машины, блистеров в минуту (Б1ж): уставка инструкции, когда линия взяла задание */
   speed?: number;
+  /** когда комплект упаковки поехал к линии (Б6б): запись для задания на сутки, правила её не читают */
+  kitted?: number;
   /** когда линия взяла задание, пошла первая таблетка, упаковка кончилась */
   taken?: number;
   start?: number;
@@ -573,6 +626,15 @@ export interface Batch {
   ordered: number;
   by: string;
   status: BatchStatus;
+  /**
+   * срок (Б6а): к какому мгновению серия нужна — у заказа покупателя его срок отгрузки, у запаса позиции — отгрузка того
+   * рабочего дня, когда запас кончится по спросу; нет — стартовые задания, задания до схемы 39 и пока спроса не видно
+   */
+  due?: number;
+  /** под что (Б6а); нет — как `due` */
+  for?: BatchFor;
+  /** когда отменено (Б6а) */
+  cancelled?: number;
   /** чего не хватает, мг или шт., и при каком состоянии склада это посчитано (`next.stock`) */
   short?: { material: Id; qty: number }[];
   tried?: number;
@@ -640,15 +702,29 @@ export interface Po {
   supplier: Id;
   lines: PoLine[];
   ordered: number;
-  /** когда фура встанет к рампе */
+  /** когда фура встанет к рампе — с Б6ж обещанный приход: его знает завод */
   eta: number;
-  status: 'ordered' | 'arrived';
+  /**
+   * настоящий приход опаздывающего заказа (Б6ж): знает только движок, в окно не уходит (docs/02-architecture.md, §9);
+   * нет — фура придёт к обещанному
+   */
+  truth?: number;
+  /** когда фура в самом деле пришла (Б6ж): по нему — вовремя ли к обещанному */
+  came?: number;
+  /** пробная партия одобрения пары (Б6ж): ключ пары «поставщик — изготовитель» */
+  trial?: string;
+  /** заказан, пришёл; с Б6д — отменён до прихода */
+  status: 'ordered' | 'arrived' | 'cancelled';
   /** кто заказал: игрок или руководитель */
   by: string;
-  /** сумма с НДС и НДС в ней; предоплата, копейки */
+  /** сумма с НДС и НДС в ней; предоплата, копейки — с Б6д в ней и доплата за ускорение */
   sum?: number;
   vat?: number;
   prepaid?: number;
+  /** ускорен (Б6д): когда, прежний приход, доплата без НДС и НДС в ней, копейки — уплачена сразу */
+  fast?: { t: number; was: number; net: number; vat: number };
+  /** отменён (Б6д): когда, неустойка, копейки; возврат предоплаты — плюс, доплата сверх неё — минус */
+  cancelled?: { t: number; fee: number; back: number };
 }
 
 export interface Truck {
@@ -788,12 +864,21 @@ export interface Quit {
   vacancy?: string;
 }
 
-/** Вакансия (Б4в): роль и график; канал; день открытия; открыл коллега — вместо кого; когда агентство пришлёт кандидата. */
+/**
+ * Канал найма: объявление в городе, кадровое агентство (Б4в) или переезд кандидата из другого города (Б5в) — тех, кого
+ * по объявлению в городе не найти.
+ */
+export type Via = 'ad' | 'agency' | 'move';
+
+/**
+ * Вакансия (Б4в): роль и график; канал; день открытия; открыл коллега — вместо кого; когда агентство или переезд
+ * (Б5в) пришлёт кандидата.
+ */
 export interface Vacancy {
   id: string;
   role: Id;
   shift: Id;
-  via: 'ad' | 'agency';
+  via: Via;
   from: number;
   by?: 'colleague';
   instead?: string;
@@ -807,7 +892,7 @@ export interface Vacancy {
 export interface Candidate {
   id: string;
   vacancy: string;
-  via: 'ad' | 'agency';
+  via: Via;
   role: Id;
   skill: number;
   salary: number;
@@ -827,6 +912,8 @@ export interface Hire extends Omit<Candidate, 'from' | 'until'> {
   at: number;
   /** день, когда открыли вакансию (Б5ж): переходит к человеку в его первый день; у принятых до схемы 33 нет */
   vac?: number;
+  /** переезд (Б5в): день приезда — после предупреждения на прежней работе и дороги; медосмотр — с него */
+  arrive?: number;
 }
 
 /** Запись графика человека (Б4б): график и номер дня от 1970-01-01, с которого он в нём. */
@@ -979,7 +1066,11 @@ export type PlantEvent =
   /** подрядчик кончил работу у актива (Б3в) */
   | { kind: 'visit'; asset: string; v: number }
   /** аудитор кончил аудит у изготовителя и прислал отчёт (Б3г) */
-  | { kind: 'audit'; pair: string; v: number };
+  | { kind: 'audit'; pair: string; v: number }
+  /** час ответа на служебную записку `n` (Б5д): руководитель отвечает, если он в своём рабочем времени */
+  | { kind: 'memo'; n: number; v: number }
+  /** срок ответа на вопрос «Просят решить» `n` (Б5д): не ответили — руководитель решает сам, как сейчас */
+  | { kind: 'ask'; n: number; v: number };
 
 // ---------------------------------------------------------------- рынок и касса
 
@@ -1008,6 +1099,32 @@ export interface Order {
   truck?: string;
   checked?: number;
   shipment?: string;
+  /** крупный заказ — событие коммерции (Б6е): срок дальше, чем у заказов покупателя по дням */
+  big?: true;
+}
+
+/**
+ * События коммерции (Б6е; src/engine/commerce.ts): месяц, на который вытянуты дни событий, и сами дни — номер дня от
+ * 1970-01-01; снятый спрос — ящики, которые покупатель ещё не взял в ближайших заказах позиции.
+ */
+export interface CommerceState {
+  month: number;
+  days: number[];
+  cut: Record<Id, Record<Id, number>>;
+}
+
+/**
+ * Цена правки плана в замороженном горизонте (Б6е; src/engine/plan/price.ts): прогон расписания на горизонт цены с правкой
+ * против прогона без неё — сколько генеральных и малых уборок помещений и их работа, с (мойка и уборка), сколько смен
+ * формата у линии по порядку серий, какие задания кончат стадии позже и на сколько, с. Меньше — отрицательные числа.
+ */
+export interface EditPrice {
+  major: number;
+  majorSec: number;
+  minor: number;
+  minorSec: number;
+  formats: number;
+  later: { batch: string; sec: number }[];
 }
 
 /** Отгруженный ящик: тара партии ГП с отрезками кодов — прослеживаемость до покупателя. */
@@ -1032,7 +1149,7 @@ export interface Shipment {
   vat: number;
 }
 
-export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle' | 'vacation' | 'waste';
+export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle' | 'vacation' | 'waste' | 'poFast' | 'poCancel';
 
 // ---------------------------------------------------------------- техслужба
 
@@ -1156,13 +1273,44 @@ export interface PairEval {
   v: number;
 }
 
-/** Пара «поставщик — изготовитель» (Б3г): записи одобрения по порядку, назначенная оценка. */
+/**
+ * Шаг одобрения пары-кандидата (Б6ж): оценка документов, пробная партия, аудит изготовителя, изменение досье типа II;
+ * пара в спецификации; пробную партию отклонили — одобрение кончилось.
+ */
+export type PairStep = 'docs' | 'trial' | 'audit' | 'dossier' | 'done' | 'failed';
+
+/**
+ * Одобрение пары-кандидата (Б6ж; docs/specs/2026-10-vertical-slice.md, «Б6ж»): когда начали; шаг; задача оценки
+ * документов; заказ и партия пробной партии; изменение досье — день подачи, запроса эксперта и ответа на него, день
+ * решения — номера дней от 1970-01-01, их знает завод, когда они наступили. `truth` — дни запроса, ответа и решения
+ * наперёд: знает только движок.
+ */
+export interface PairApp {
+  t: number;
+  material: Id;
+  step: PairStep;
+  task?: string;
+  po?: string;
+  lot?: string;
+  filed?: number;
+  asked?: number;
+  answered?: number;
+  decided?: number;
+  truth?: { ask?: number; answer?: number; decide: number };
+}
+
+/**
+ * Пара «поставщик — изготовитель» (Б3г): записи одобрения по порядку, назначенная оценка; с Б6ж — день, с которого
+ * пара-кандидат в спецификации (положительное решение по изменению досье), и её одобрение по шагам.
+ */
 export interface Pair {
   id: string;
   supplier: Id;
   maker: Id;
   recs: PairRec[];
   eval?: PairEval;
+  spec?: number;
+  app?: PairApp;
 }
 
 /**
@@ -1221,7 +1369,7 @@ export interface DayLoss {
   waits: Record<string, Partial<Record<BatchPhase, number>>>;
   /**
    * у мест (Б1л): потери по видам — у помещения, зоны склада или стеллажа (`zone:<id>`), линии (`line:<id>`), рампы
-   * (`dock:<id>`) или двора (`yard`); у сохранений до схемы 35 — с мгновения загрузки
+   * (`dock:<id>`) или двора (`yard`); у сохранений до схемы 47 — с мгновения загрузки
    */
   spots: Record<string, SpotLoss>;
 }
@@ -1363,6 +1511,108 @@ export interface Setpoint {
   from: number;
 }
 
+// ---------------------------------------------------------------- сменно-суточное задание (Б6б)
+
+/**
+ * Вид строки сменно-суточного задания (Б6б; ГОСТ Р МЭК 62264-3, п. 6.7.4): комплектовка серии или комплекта упаковки,
+ * стадия, упаковка на линии, отгрузка заказа, фура поставщика, испытание, ремонт или замена узла, визит подрядчика,
+ * решение уполномоченного лица по серии, проверка ГП и оценка отклонения.
+ */
+export type DailyKind = 'kit' | 'stage' | 'pack' | 'ship' | 'truck' | 'test' | 'repair' | 'visit' | 'release' | 'assess';
+
+/** Итог строки в следующие 08:00: в срок — не позже часа от плана (у испытания — к концу суток); позже, но в сутки; не сделано за сутки. */
+export type DailyRes = 'ok' | 'late' | 'no';
+
+/** Чего ждала неначатая строка: состояние серии (§5.4 геймдизайна), причина ожидания задачи (Б1г) или нехватка ГП у отгрузки. */
+export type DailyWhy = BatchPhase | WaitCause | 'short';
+
+/** Строка сменно-суточного задания: отдел, вид, вещь, где и во сколько по плану; итог — по записям завода. */
+export interface DailyRow {
+  dept: Dept;
+  kind: DailyKind;
+  batch?: string;
+  stage?: Id;
+  /** комплект упаковки, а не серии */
+  pack?: true;
+  order?: string;
+  po?: string;
+  test?: string;
+  part?: string;
+  asset?: string;
+  dev?: string;
+  /** помещение стадии по плану */
+  room?: string;
+  /** линия задания на упаковку */
+  line?: string;
+  /** начало по плану; у решения по серии — начало суток задания: его срок — конец суток; у оценки отклонения — его срок по классу */
+  at: number;
+  /** когда начато, у отгрузки — фура ушла, у фуры — встала к рампе, у испытания — аналитик взял пробу в работу */
+  done?: number;
+  why?: DailyWhy;
+  res?: DailyRes;
+}
+
+/** Сменно-суточное задание (Б6б): строки отделов на сутки с 08:00; в следующие 08:00 — закрыто. */
+export interface DailyTask {
+  from: number;
+  rows: DailyRow[];
+  closed?: true;
+}
+
+// ---------------------------------------------------------------- прогноз продаж (Б6в)
+
+/** Прогноз позиций на месяц: позиция → ящики. */
+export type FcCases = Record<Id, number>;
+
+/**
+ * Прогноз месяца с запаздыванием в месяц (Б6в): сделанный 1-го числа прошлого месяца — у планирования (с правками) и
+ * отдела продаж; месяц — год × 12 + месяц − 1. Ошибку способов движок считает заново по ряду спроса.
+ */
+export interface FcLag {
+  m: number;
+  plan: FcCases;
+  sales: FcCases;
+}
+
+/**
+ * Прогноз продаж завода (Б6в; src/engine/forecast.ts). Спрос — ящики, заказанные покупателями, по месяцу заказа: с
+ * `from` — история до старта, потом факт. Нынешний прогноз — с месяца `at` на 18 месяцев: каждым способом, планирования —
+ * способом `method` с правками руками, отдела продаж — сглаживанием с оптимизмом. С запаздыванием в месяц — за 24 месяца.
+ */
+/**
+ * План S&OP, утверждённый на совещании (Б6г): когда, с какого месяца, цели запаса по продуктам на 6 месяцев (сутки
+ * спроса), кто утвердил — «player» или «head:plan»; цель плана у него и у лучшего — копейки.
+ */
+export interface SopRecord {
+  at: number;
+  from: number;
+  cover: Record<Id, number[]>;
+  by: string;
+  value: number;
+  best: number;
+}
+
+/** Совещание S&OP (Б6г): утверждённые планы — новые последними, не больше 12; открытое совещание ждёт игрока. */
+export interface SopState {
+  plans: SopRecord[];
+  /** месяц последнего совещания */
+  held?: number;
+  open?: { at: number; from: number; best: Record<Id, number[]>; value: number };
+}
+
+export interface ForecastState {
+  from: number;
+  demand: Record<Id, number[]>;
+  at: number;
+  method: FcMethod;
+  by: Record<FcMethod, Record<Id, number[]>>;
+  plan: Record<Id, number[]>;
+  sales: Record<Id, number[]>;
+  /** правки руками: позиция → месяц → ящики */
+  edits: Record<Id, Record<number, number>>;
+  lag: FcLag[];
+}
+
 // ---------------------------------------------------------------- журнал решений (Б5а)
 
 /**
@@ -1381,6 +1631,8 @@ export interface SkuWhy {
   cases: number;
   ordered: number;
   work: number;
+  /** задание на запас позиции отменили (Б6а): когда — и до какого «не раньше» отменённого его не ставят снова */
+  held?: { t: number; until: number };
 }
 
 /**
@@ -1393,9 +1645,17 @@ export interface OrderWhy {
   rule: 'turn' | 'need' | 'campaign' | 'urgent';
   items: SkuWhy[];
   ahead: number;
+  /** запас позиций по политике (Б5г) или по плану S&OP (Б6г), суток: порог — две недели и они */
+  cover?: number;
+  /** полный запас, когда навык руководителя ниже 4 сократил горизонт (Б5в): `cover` — его, это — политики или цель плана S&OP */
+  policy?: number;
   seen?: number;
   soon?: number;
   prev?: Id;
+  /** спрос позиций — по прогнозу планирования, а не по заказам окна (Б6в, политика «спрос») */
+  fc?: true;
+  /** запас позиций выбранного продукта — из утверждённого плана S&OP, а не из политики (Б6г) */
+  sop?: true;
 }
 
 /**
@@ -1403,7 +1663,8 @@ export interface OrderWhy {
  * суток; точка заказа — расход на наибольший срок поставки, входной контроль и страховой запас, суток; хотели — до точки
  * и ещё `every` суток расхода, не меньше наименьшей партии; урезано до половины зоны карантина — `cut`. Мг или шт.
  */
-export interface PoWhy {
+export interface PoWhyPoint {
+  rule?: undefined;
   material: Id;
   maker: Id;
   have: number;
@@ -1417,6 +1678,44 @@ export interface PoWhy {
   want: number;
   cut?: true;
 }
+
+/**
+ * Заказ по потребности (Б6д): месяц первой серии заказа (год × 12 + месяц − 1) и валовая потребность этого месяца, есть
+ * и в пути сегодня; день, к которому материал нужен разрешённым (от 1970-01-01), дефицит к нему до страхового запаса и на
+ * сколько суток заказ опоздает; верх срока поставки и входной контроль, сутки, срок завоза — число предыдущего месяца,
+ * 0 — к дню серии; страховой запас — сутки политики, как у точки заказа, и количество; на сколько суток заказ по
+ * политике, наименьшая партия и сколько хотели — дефицит и расход этих суток, не меньше наименьшей партии; урезан ли
+ * заказ зоной карантина. Количества — мг или штуки.
+ */
+export interface PoWhyNeed {
+  rule: 'need';
+  material: Id;
+  maker: Id;
+  month: number;
+  gross: number;
+  have: number;
+  need: number;
+  deficit: number;
+  late: number;
+  lead: number;
+  qc: number;
+  arrive: number;
+  safety: number;
+  safeQty: number;
+  every: number;
+  moq: number;
+  want: number;
+  cut?: true;
+}
+
+/** Почему заказ поставщику: по точке заказа (Б2в) или по потребности (Б6д). */
+export type PoWhy = (PoWhyPoint | PoWhyNeed) & { pick?: PoPick };
+
+/**
+ * Почему этот поставщик при двух одобренных (Б6ж): у основного заказ опоздает на столько суток — быстрее у этого; или
+ * баллы предложений по весам политики.
+ */
+export type PoPick = { by: 'fast'; main: Id; late: number } | { by: 'rfq'; offers: { supplier: Id; score: number }[] };
 
 /**
  * Почему начальник ООК попросил шаг расследования (часть 4): сначала лаборатория — шаг проверяет отметку; повтор пробы —
@@ -1449,20 +1748,54 @@ export interface TestWhy {
  * только с командой, — задания, заказа, вакансии, вывоза — нет, пока его не приняли.
  */
 export type Decided =
-  /** задание на серию: позиция, карта и «не раньше» */
-  | { kind: 'order'; batch?: string; recipe: Id; sku?: Id; notBefore: number; why?: OrderWhy }
-  /** заказ поставщику: предоплата; по каждой строке — положение материала */
-  | { kind: 'po'; po?: string; supplier: Id; prepaid: number; why?: PoWhy[] }
+  /** задание на серию: позиция, карта и «не раньше»; в замороженном горизонте (Б6е) — цена правки */
+  | { kind: 'order'; batch?: string; recipe: Id; sku?: Id; notBefore: number; due?: number; for?: BatchFor; why?: OrderWhy; frozen?: EditPrice }
+  /** отмена задания на серию до комплектовки (Б6а): позиция, «не раньше», срок и под что; в горизонте — цена (Б6е) */
+  | { kind: 'cancel'; batch: string; sku?: Id; notBefore: number; due?: number; for?: BatchFor; frozen?: EditPrice }
+  /** новый «не раньше» задания в замороженном горизонте (Б6е): прежний и новый, цена правки */
+  | { kind: 'shift'; batch: string; sku?: Id; from: number; notBefore: number; frozen: EditPrice }
+  /** событие коммерции (Б6е): крупный заказ покупателя */
+  | { kind: 'bigOrder'; order: string; customer: Id; sku: Id; cases: number; due: number }
+  /** событие коммерции (Б6е): снятый спрос */
+  | { kind: 'demandCut'; customer: Id; sku: Id; cases: number }
+  /** заказ поставщику: предоплата; по каждой строке — положение материала; с Б6ж — пробная партия одобрения пары */
+  | { kind: 'po'; po?: string; supplier: Id; prepaid: number; why?: PoWhy[]; trial?: string }
+  /** одобрить пару-кандидата (Б6ж): игрок — пост «Качество» или директор */
+  | { kind: 'pairApprove'; pair: string; material: Id }
+  /**
+   * шаг одобрения пары (Б6ж) — запись начальника ООК: документы рассмотрены — пробная партия заказана; пробная партия
+   * разрешена ОКК — аудит назначен; отчёт аудитора рассмотрен — изменение досье подано; запрос эксперта; ответ; решение —
+   * пара в спецификации; пробную партию отклонили — одобрение кончилось
+   */
+  | { kind: 'pairStep'; pair: string; step: PairStep | 'ask' | 'answer'; po?: string; lot?: string; day?: number }
+  /** ускорение заказа поставщику (Б6д): прежний и новый приход; доплата с НДС, копейки */
+  | { kind: 'expedite'; po: string; supplier: Id; was: number; eta: number; fee: number }
+  /** отмена заказа поставщику (Б6д): неустойка; возврат предоплаты — плюс, доплата сверх неё — минус, копейки */
+  | { kind: 'cancelPo'; po: string; supplier: Id; fee: number; back: number }
   /** шаг расследования */
   | { kind: 'step'; inv: string; step: string; why?: StepWhy }
   /** вывод расследования: версия, её вероятность и порог, доли 1/10 000; ошибка лаборатории доказана */
-  | { kind: 'conclude'; inv: string; cause: string; fate: 'reject' | 'release'; why?: { p: number; threshold: number; proven: boolean } }
-  /** оценка влияния отклонения: связанные испытания серии */
-  | { kind: 'assess'; dev: string; verdict: 'none' | 'reject'; why?: { tests: TestWhy[] } }
+  | { kind: 'conclude'; inv: string; cause: string; fate: 'reject' | 'release'; why?: { p: number; threshold: number; model?: number; proven: boolean } }
+  /** оценка влияния отклонения: связанные испытания серии; вероятная причина и причины с признаком в записях (Б5е) */
+  | { kind: 'assess'; dev: string; verdict: 'none' | 'reject'; cause?: string; why?: { tests: TestWhy[]; signs?: string[] } }
+  /** класс отклонения (Б5е): прежний и новый */
+  | { kind: 'classify'; dev: string; from: DevClass; to: DevClass }
+  /**
+   * CAPA назначена (Б5е): действие и отклонение; у начальника ООК — правило: вывод расследования, повтор — сколько таких
+   * за 12 месяцев и порог политики, следующее после неэффективной CAPA
+   */
+  | { kind: 'capa'; capa?: string; dev: string; action: Id; why?: { rule: 'inv' | 'repeat' | 'next'; n?: number; of?: number; prev?: string } }
+  /** CAPA выполнена (Б5е): исполнитель — руководитель отдела действия; у «заменять раньше» порог политики был и стал, доли 1/10 000 */
+  | { kind: 'capaRun'; capa: string; action: Id; head: Head; from?: PolicyValue; to?: PolicyValue }
+  /** проверка эффективности CAPA (Б5е): эффективна или повтор — первое такое же отклонение после выполнения */
+  | { kind: 'capaCheck'; capa: string; ok: boolean; days: number; dev?: string }
   /** оценка пары «поставщик — изготовитель»: до какого дня одобрение и срок предупреждения, суток */
   | { kind: 'pairEval'; pair: string; how: 'audit' | 'docs'; why: { until: number; ahead: number } }
-  /** визит подрядчика: работа и её мгновение; до какого дня запись (нет — `until` нет) и срок предупреждения, суток */
-  | { kind: 'visit'; asset: string; work: 'qual' | 'cal'; at: number; why: { until?: number; ahead: number } }
+  /**
+   * визит подрядчика: работа и её мгновение; до какого дня запись (нет — `until` нет) и срок предупреждения, суток; у
+   * переноса игроком (Б5г) — прежнее мгновение
+   */
+  | { kind: 'visit'; asset: string; work: 'qual' | 'cal'; at: number; from?: number; why?: { until?: number; ahead: number } }
   /** ремонт после отказа: когда отказал узел, запчасть и сколько её свободно в мастерской */
   | { kind: 'repair'; part: string; why: { failed: number; spare: Id; free: number } }
   /** замена узла: по наработке — износ и порог сценария, доли 1/10 000 */
@@ -1473,7 +1806,7 @@ export type Decided =
    * вакансия: вместо кого — человек, табельный номер и день заявления; канал — объявление, сразу агентство (по
    * объявлению такую роль в городе не найти) или агентство после стольких суток без подходящего
    */
-  | { kind: 'vacancy'; vacancy?: string; role: Id; via: 'ad' | 'agency'; why?: { instead: string; tab: number; day: number; rule: 'ad' | 'city' | 'late'; days?: number } }
+  | { kind: 'vacancy'; vacancy?: string; role: Id; via: Via; why?: { instead: string; tab: number; day: number; rule: 'ad' | 'city' | 'late'; days?: number } }
   /** приём: навык против наименьшего, ожидание против цены рынка за навык с надбавкой `over`, доли 1/10 000 */
   | { kind: 'hire'; cand: string; vacancy: string; role: Id; why?: { skill: number; min: number; salary: number; price: number; over: number } }
   /** черновик графика отпусков года: у скольких людей из скольких не всем частям нашлось место */
@@ -1494,12 +1827,76 @@ export type Decided =
   /** продлён договор поставки покупателя: прежний последний день и новый */
   | { kind: 'extend'; contract: string; party: Id; to: number; why: { end: number } }
   /**
-   * вывоз отклонённого (Б1з): заказ и мгновение приезда подрядчика; у коллеги склада — сколько мест зоны занято из
-   * скольких и, если паллета ждёт вывоза дольше срока, — с какого мгновения она отклонена и срок, месяцев
+   * прогноз отдела продаж (Б6в) в 00:00 1-го числа: на какой месяц, ящиков всех позиций, каким способом и с каким
+   * оптимизмом, доля 1/10 000
    */
-  | { kind: 'waste'; order?: string; at?: number; why?: { used: number; places: number; since?: number; months: number } }
+  | { kind: 'forecast'; m: number; cases: number; method: FcMethod; optimism: number }
+  /**
+   * план S&OP утверждён (Б6г): с какого месяца, цели запаса по продуктам на 6 месяцев, цель плана — маржа за вычетом
+   * цены денег в запасе — у него и у лучшего плана, недопоставка по прогнозу в марже, копейки
+   */
+  | { kind: 'sop'; from: number; cover: Record<Id, number[]>; value: number; best: number; lost: number }
+  /** правка прогноза планирования руками (Б6в): позиция, месяц, ящики — нет, значит сняли; что было по способу */
+  | { kind: 'fcEdit'; sku: Id; m: number; cases?: number; was: number }
+  /**
+   * вывоз отклонённого (Б1з): заказ и мгновение приезда подрядчика; у коллеги склада — сколько мест зоны занято из
+   * скольких и, если паллета ждёт вывоза дольше срока, — с какого мгновения она отклонена и срок, месяцев; с Б5г — и порог
+   * доли мест по политике: числитель и знаменатель
+   */
+  | { kind: 'waste'; order?: string; at?: number; why?: { used: number; places: number; since?: number; months: number; full?: [number, number] } }
   /** режим отдела руководителя (Б5б): игрок сменил его на посту отдела */
-  | { kind: 'mode'; head: Head; mode: DeptMode };
+  | { kind: 'mode'; head: Head; mode: DeptMode }
+  /** политика руководителя (Б5г): игрок задал её — у вещи политики «у каждого» — с прежним значением */
+  | { kind: 'policy'; policy: Id; of?: string; from: PolicyValue; to: PolicyValue }
+  /** заместитель руководителя (Б5в): кого назначили — нет, значит сняли; кто был */
+  | { kind: 'deputy'; head: HeadId; person?: string; was?: string }
+  /** служебная записка игрока (Б5д): кому — руководитель отдела команд — и команды, о которых она; ответ — `memo` записи */
+  | { kind: 'memo'; to: Head; cmds: Command[] }
+  /**
+   * развилка «Просят решить» (Б5д) — числа обеих цен из того, что знает завод. Визит держит серию: актив, работа, серии,
+   * которые его ждут, когда подрядчик начнёт и кончит по своим часам и часам работы класса, последний день записи в силе
+   */
+  | { kind: 'fork'; fork: 'visit'; asset: string; work: 'qual' | 'cal'; batches: string[]; start: number; end: number; last: number }
+  /**
+   * замена перед работой: узел, серия, чья работа на машине следующая, износ сейчас и после неё по норме и порог
+   * политики, доли 1/10 000; ожидаемое число отказов за работу по таблице узла — в 10⁻¹² отказа (maint.ts,
+   * `ONE_FAILURE`); ремонт после отказа — от и до, замена — с
+   */
+  | { kind: 'fork'; fork: 'replace'; part: string; batch: string; wear: number; after: number; at: number; hz: number; repair: [number, number]; replace: number }
+  /** кто ведёт расследование OOS: расследование и порог вывода начальника ООК по его навыку, доли 1/10 000 */
+  | { kind: 'fork'; fork: 'oos'; inv: string; threshold: number };
+
+/** Развилка «Просят решить» (Б5д): визит держит серию, замена узла перед работой машины, кто ведёт расследование OOS. */
+export type Fork = Extract<Decided, { kind: 'fork' }>['fork'];
+
+/**
+ * Ответ на развилку (Б5д): первый — «как сейчас» (ждать подрядчика, заменить после работы, ведёт ООК), второй — другой
+ * (перенести визит, заменить сейчас, веду сам).
+ */
+export type ForkOpt = 'wait' | 'move' | 'after' | 'now' | 'lead' | 'self';
+
+/**
+ * Значение политики руководителя (Б5г; src/engine/policies.ts): сутки, месяцы или порог износа — доли 1/10 000 ресурса;
+ * «без» — `off`; вариант выбора; уровень ЗИП «осталось — до» или доля мест — пара целых.
+ */
+export type PolicyValue = number | string | [number, number];
+
+/** Смена политики (Б5г): какая, у какой вещи, когда и с какого места игрока или по какой CAPA (Б5е), прежнее и новое значение. */
+export interface PolicySet {
+  policy: Id;
+  of?: string;
+  t: number;
+  seat?: SeatId;
+  capa?: string;
+  from: PolicyValue;
+  to: PolicyValue;
+}
+
+/** Политики завода (Б5г): заданные игроком значения по ключу политики (и вещи) — нет ключа — с записи сценария; смены по порядку. */
+export interface PoliciesState {
+  v: Record<string, PolicyValue>;
+  log: PolicySet[];
+}
 
 /**
  * Режим отдела (Б5б; геймдизайн, §8.5): «сам» — руководитель решает по правилу; «советует» — в свой час предлагает то же
@@ -1521,6 +1918,33 @@ export interface Ask {
 }
 
 /**
+ * Служебная записка (Б5д): когда руководитель ответит — мгновение события `memo`; нет — ждёт его рабочего времени, а
+ * часовое событие назначит ответ. Ответ: по каждой команде — запись руководителя, отданная по записке, без записи
+ * (команда записей не пишет) или отказ движка; кто ответил за руководителя (Б5в). Отозвана игроком — `off`.
+ */
+export interface Memo {
+  due?: number;
+  v: number;
+  end?: { t: number; off?: true; res?: MemoRes[]; p?: string; io?: true };
+}
+
+/** Ответ на команду записки: выполнена — номер записи руководителя, если команда её пишет; не прошла — причина движка. */
+export type MemoRes = { n?: number } | { why: Refusal; detail?: string };
+
+/**
+ * Вопрос «Просят решить» (Б5д): вещь — у неё один открытый вопрос; кого спросили — пост развилки или директор, никого
+ * — руководитель решил сам сразу; срок ответа — событие `ask`. Ответ: игрок — вариант, с какого места и, у переноса
+ * визита, день; руководитель сам — как сейчас, ответа нет или спросить некого; развилка решилась без ответа — `moot`.
+ */
+export interface ForkAsk {
+  key: string;
+  to?: SeatId;
+  due?: number;
+  v: number;
+  end?: { how: 'player' | 'self' | 'moot'; opt?: ForkOpt; t: number; seat?: SeatId; day?: number };
+}
+
+/**
  * Запись журнала решений (Б5а): номер по порядку, мгновение, кто решил — руководитель или игрок, у игрока — место, с
  * которого отдана команда (мест не выбрано — нет), что решено и почему. У предложения руководителя (Б5б) — команда и
  * ответ: принятое игроком остаётся записью руководителя, с номерами вещей команды. Решения «сам» от журнала не
@@ -1533,6 +1957,14 @@ export interface Decision {
   seat?: SeatId;
   d: Decided;
   ask?: Ask;
+  /** кто решил за руководителя (Б5в): человек штата; «и. о.» — заместитель, пока руководителя нет; нет — должность */
+  p?: string;
+  io?: true;
+  /** служебная записка (Б5д): у записки игрока — её ответ; у решения руководителя по записке — её номер */
+  memo?: Memo;
+  via?: number;
+  /** вопрос «Просят решить» (Б5д): у развилки руководителя — кого спросили и ответ */
+  q?: ForkAsk;
 }
 
 /**
@@ -1544,14 +1976,34 @@ export interface HeadsState {
   mode: Partial<Record<Head, DeptMode>>;
   open: Record<string, number>;
   no: Record<string, number>;
+  /** служебные записки без ответа (Б5д) — номера записей журнала */
+  memos?: number[];
+  /** открытые вопросы «Просят решить» по вещи (Б5д) и о чём уже спрашивали — вещь и её случай, чтобы не спросить дважды */
+  qs?: Record<string, number>;
+  asked?: Record<string, string>;
 }
+
+/**
+ * План здания в состоянии (Б7а): запись плана и номер его правки `rev` — у записи базы номера нет, это правка 0; правка
+ * стройки (Б7б) даёт новый объект с номером на один больше. Номер — у плана, а не полем состояния: у объекта с 65 и
+ * больше полями JavaScriptCore и V8 читают их в 4–5 раз медленнее, а у состояния их и так до 67
+ * (docs/02-architecture.md, §1).
+ */
+export type SitePlan = Plant & { rev?: number };
+
+/** Номер правки плана здания (Б7а): у записи базы его нет — 0. */
+export const planRev = (plan: SitePlan): number => plan.rev ?? 0;
 
 export interface PlantState {
   schema: number;
   /** отпечаток базы, с которой начата партия */
   content: string;
   scenario: Id;
-  plant: Id;
+  /**
+   * план здания (Б7а): на старте — запись плана сценария, она же образец; движок, прогон плана, виды и сохранение берут
+   * план отсюда, его номер записи — `plan.id`. Его не правят на месте: правка стройки (Б7б) даёт новый объект
+   */
+  plan: SitePlan;
   seed: number;
   /** ветви зерна по именам (src/engine/random.ts): своя ветвь у подсистемы и у вещи */
   rng: Record<string, RngState>;
@@ -1583,6 +2035,8 @@ export interface PlantState {
   samples: Record<string, Sample>;
   tests: Record<string, LabTest>;
   deviations: Record<string, Deviation>;
+  /** CAPA по отклонениям (Б5е; src/engine/capa.ts): по номерам `C…`, все — их немного */
+  capas: Record<string, Capa>;
   /** расследования результатов вне спецификации (часть 4); происшествие сценария — скрытое */
   investigations: Record<string, Investigation>;
   /** счёт номеров серий по коду продукта: год последнего досье и последний номер по порядку (src/engine/batchno.ts) */
@@ -1605,6 +2059,8 @@ export interface PlantState {
   contracts: Record<string, Contract>;
   /** политики отделов (Б4а): сверхурочные — «по потребности» или «только закончить начатое» (src/engine/hours.ts) */
   policy: Record<Dept, OvertimeMode>;
+  /** политики руководителей (Б5г): числа и правила, по которым они решают (src/engine/policies.ts) */
+  policies: PoliciesState;
   /**
    * уставки режимов (Б1ж; src/engine/modes.ts): `<код карты>/<стадия>/<режим>` и `<код инструкции по упаковке>/speed`;
    * ключа нет — цель документа
@@ -1631,6 +2087,26 @@ export interface PlantState {
   journal: Decision[];
   /** режимы отделов (Б5б; src/engine/heads.ts): выбор игрока, указатели открытых и отклонённых сегодня предложений */
   heads: HeadsState;
+  /**
+   * заместители руководителей (Б5в, src/engine/bosses.ts): назначенный игроком человек; '' — заместителя сняли; нет
+   * записи — первый по табельному номеру человек роли заместителя из записи сценария
+   */
+  deputies?: Partial<Record<HeadId, string>>;
+  /** у кого из руководителей уже сказано «Некому решить» (Б5в): до часа, когда снова есть кому */
+  noOne?: Partial<Record<Head, true>>;
+  /** правила руководителей в свой час (Б5в): день, когда правило отработало, — оно ждёт смены того, кто решает */
+  ruled?: Record<string, number>;
+  /**
+   * сменно-суточные задания (Б6б; src/engine/daily.ts) за срок геймдизайна (§9.4), последнее — сутки, которые идут;
+   * правила их не читают. Нет — заданий не ставят: так у копии прогона плана; сохранения до схемы 40 начинают их пустыми
+   */
+  daily?: DailyTask[];
+  /** прогноз продаж (Б6в; src/engine/forecast.ts): у сценария без прогноза — нет */
+  forecast?: ForecastState;
+  /** совещание S&OP (Б6г): утверждённые планы и открытое совещание; нет — плана нет, правило берёт политику */
+  sop?: SopState;
+  /** события коммерции (Б6е): нет — у сценария без записи `commerce` или до первого часа событий */
+  commerce?: CommerceState;
   /** вывоз отклонённого (Б1з; src/engine/waste.ts): заказанный вывоз — один, пока подрядчик не уехал; журнал отходов */
   waste: WasteState;
   /** показатели руководителей (Б5ж; src/engine/kpi.ts): срезы суток этого месяца и закрытые месяцы */
@@ -1746,13 +2222,26 @@ export type Command =
   | { kind: 'advance'; seconds: number }
   /** заказ поставщику: количество — мг или шт., округляется вверх до целой тары */
   | { kind: 'po'; supplier: Id; lines: PoLine[]; by?: string }
+  /** ускорить заказ поставщику в пути (Б6д): приход через срок ускорения, раньше нынешнего; доплата — доля суммы */
+  | { kind: 'expedite'; po: string; by?: string }
+  /** отменить заказ поставщику до прихода (Б6д): неустойка — доля суммы, из предоплаты; остаток предоплаты вернут */
+  | { kind: 'cancelPo'; po: string; by?: string }
   /** задание на серию по карте: не раньше — игровые секунды; нет — сейчас */
-  | { kind: 'order'; recipe: Id; notBefore?: number; by?: string; sku?: Id }
+  | { kind: 'order'; recipe: Id; notBefore?: number; by?: string; sku?: Id; for?: string }
+  /** отменить задание на серию до комплектовки (Б6а) */
+  | { kind: 'cancel'; batch: string; by?: string }
+  /**
+   * правка прогноза планирования (Б6в): позиция плана выпуска, номер месяца — год × 12 + месяц − 1 — из 18 нынешнего
+   * прогноза, ящики; без ящиков — правку снять
+   */
+  | { kind: 'forecast'; sku: Id; m: number; cases?: number; by?: string }
+  /** утвердить план S&OP совещания (Б6г): цели запаса по продуктам на 6 месяцев, сутки — из вариантов политики */
+  | { kind: 'sop'; cover: Record<Id, number[]>; by?: string }
   /**
    * оценка влияния отклонения (Б1г): пост качества решает, специалист ООК делает работу; «без влияния» — только когда
    * связанные испытания серии готовы и в спецификации
    */
-  | { kind: 'assess'; deviation: string; verdict: 'none' | 'reject'; by?: string }
+  | { kind: 'assess'; deviation: string; verdict: 'none' | 'reject'; cause?: string; by?: string }
   /** упаковать балк серии в товарную позицию — когда балк разрешат */
   | { kind: 'pack'; batch: string; sku: Id }
   /**
@@ -1783,7 +2272,7 @@ export type Command =
    * вакансия (Б4в): роль, график и канал — объявление или кадровое агентство; вместо кого — на заявление по собственному
    * желанию (Б5б): такую вакансию ведёт руководитель отдела роли
    */
-  | { kind: 'vacancy'; role: Id; shift: Id; via: 'ad' | 'agency'; instead?: string; by?: string }
+  | { kind: 'vacancy'; role: Id; shift: Id; via: Via; instead?: string; by?: string }
   /** вакансию руководителя по объявлению — кадровому агентству (Б5б) */
   | { kind: 'agency'; vacancy: string; by?: string }
   /** закрыть вакансию (Б4в): её кандидаты уходят */
@@ -1817,18 +2306,71 @@ export type Command =
   | { kind: 'mode'; head: Head; mode: DeptMode; by?: string }
   /** ответ на предложение руководителя (Б5б): номер записи журнала; «Принять» отдаёт его команду от имени игрока */
   | { kind: 'accept'; n: number }
-  | { kind: 'decline'; n: number };
+  | { kind: 'decline'; n: number }
+  /** политика руководителя (Б5г): у политики «у каждого» — вещь, узел или запчасть; значение — в единицах движка */
+  | { kind: 'policy'; policy: Id; of?: string; value: PolicyValue; by?: string }
+  /**
+   * заместитель руководителя (Б5в): человек штата одной из ролей записи сценария, не сам руководитель; `null` — снять
+   * заместителя. Пост отдела руководителя или директор
+   */
+  | { kind: 'deputy'; head: HeadId; person: string | null; by?: string }
+  /** перенести визит подрядчика к активу (Б5г): на день — сутки завода от начала его календаря */
+  | { kind: 'visit'; asset: string; day: number; by?: string }
+  /**
+   * служебная записка (Б5д): команды чужого отдела, одна или несколько, — его руководителю; ответит он в свой час.
+   * Команды одного адресата
+   */
+  | { kind: 'memo'; cmds: Command[] }
+  /** отозвать записку без ответа (Б5д): номер записи журнала */
+  | { kind: 'withdraw'; n: number }
+  /** ответ на вопрос «Просят решить» (Б5д): номер записи развилки и вариант; у переноса визита — день, как у `visit` */
+  | { kind: 'answer'; n: number; opt: ForkOpt; day?: number }
+  /** класс отклонения (Б5е): пост «Качество»; заданный класс правило больше не пересматривает */
+  | { kind: 'classify'; deviation: string; cls: DevClass; by?: string }
+  /** назначить CAPA по отклонению (Б5е): действие каталога — пост «Качество» */
+  | { kind: 'capa'; deviation: string; action: Id; by?: string }
+  /** выполнить CAPA (Б5е): пост отдела её исполнителя */
+  | { kind: 'capaRun'; capa: string; by?: string }
+  /**
+   * одобрить пару-кандидата (Б6ж): ключ пары «поставщик — изготовитель» из кандидатов спецификации в силе — пост
+   * «Качество» или директор
+   */
+  | { kind: 'pairApprove'; pair: string; by?: string };
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
   | 'noSupplier'
   | 'notSold'
   | 'belowMoq'
+  /**
+   * заказ поставщику (Б6д): такого заказа нет; он уже пришёл или отменён; ускоренный не придёт раньше нынешнего; уже
+   * ускорен
+   */
+  | 'noPo'
+  | 'poDone'
+  | 'notFaster'
+  | 'fastAgain'
+  /** отменить заказ пробной партии одобрения пары нельзя (Б6ж): без неё одобрение не кончится */
+  | 'poTrial'
+  /**
+   * одобрение пары (Б6ж): пары нет среди кандидатов спецификации в силе; одобрение уже идёт или пара уже в спецификации;
+   * нет соглашения по качеству в силе
+   */
+  | 'notCandidate'
+  | 'pairBusy'
+  | 'noAgreement'
   | 'empty'
   | 'noRecipe'
   | 'noBatch'
   | 'notBulk'
   | 'noSku'
+  /** прогноз продаж (Б6в): у сценария его нет; месяц не из нынешнего прогноза; ящики — не целое число не меньше нуля */
+  | 'noForecast'
+  | 'fcMonth'
+  | 'fcCases'
+  /** совещание S&OP (Б6г): открытого совещания нет; план — не по всем продуктам, не на 6 месяцев или цель не из вариантов */
+  | 'noMeeting'
+  | 'badPlan'
   | 'notReady'
   | 'noPart'
   | 'busy'
@@ -1837,6 +2379,8 @@ export type Refusal =
   | 'notLab'
   | 'already'
   | 'started'
+  | 'cancelled'
+  | 'noOrder'
   | 'notYours'
   | 'noSeat'
   /** заказ не по одобренной паре «поставщик — изготовитель» действующей спецификации (Б3г) */
@@ -1871,6 +2415,12 @@ export type Refusal =
    * не на испытании; до конца испытания меньше срока предупреждения; уже уходит; «отпустить раньше» без заявления
    */
   | 'noLabor'
+  /** переезд (Б5в) — только для роли, которую по объявлению в городе не найти, и при записи переезда в сценарии */
+  | 'noMove'
+  /** заместитель (Б5в): у руководителя нет строки сценария; роль человека не из тех, что его замещают; и так такой */
+  | 'noHead'
+  | 'notDeputy'
+  | 'deputySame'
   | 'noVacancy'
   | 'noCandidate'
   | 'trialLong'
@@ -1906,15 +2456,56 @@ export type Refusal =
   | 'noWaste'
   /** предложение (Б5б): такой записи с предложением нет; на него уже ответили, оно устарело или не нужно */
   | 'noAsk'
-  | 'askDone';
+  | 'askDone'
+  /**
+   * политика (Б5г): такой политики или её вещи нет, сценарий её не задаёт; значение вне пределов, не на шаге или не из
+   * вариантов; то же, что сейчас
+   */
+  | 'noPolicy'
+  | 'policyRange'
+  | 'policySame'
+  /**
+   * перенос визита (Б5г): визита нет или он уже идёт; день не рабочий, не позже завтра или позже последнего дня записи в
+   * силе; тот же день
+   */
+  | 'noVisit'
+  | 'visitDay'
+  | 'visitSame'
+  /**
+   * записка (Б5д): команда своего поста; решение ООК или уполномоченного лица по процедуре; о политиках, режимах и
+   * прочем записку не пишут; команды разным руководителям; записки нет — или на неё уже ответили, её отозвали
+   */
+  | 'memoOwn'
+  | 'memoQa'
+  | 'memoNo'
+  | 'memoMix'
+  | 'noMemo'
+  | 'memoDone'
+  /** вопрос (Б5д): такой развилки нет; на неё ответили или она решилась сама; такого варианта у развилки нет */
+  | 'noQ'
+  | 'qDone'
+  | 'qOpt'
+  /**
+   * CAPA (Б5е): такого класса или действия нет; действие не подходит к отклонению или его нечем выполнить; у цепочки уже
+   * есть CAPA, которую ещё не проверили; такой CAPA нет; она уже выполнена; причины без признака в записях
+   */
+  | 'noCls'
+  | 'noAction'
+  | 'capaFit'
+  | 'capaOpen'
+  | 'noCapa'
+  | 'capaDone'
+  | 'noSign';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
+  /** совещание S&OP (Б6г): план начальника отдела планирования ждёт утверждения — или утверждён коллегой */
+  | { kind: 'sop'; m: number; open: boolean }
   /**
    * найм (Б4в): вакансия открыта; новые кандидаты по ней; принят — первый день; вышел на работу; заявление об уходе —
    * последний день и отдел, чей пост встаёт; уволен — последний день прошёл; роль и номер — для слов
    */
-  | { kind: 'vacancy'; id: string; role: Id; shift: Id; via: 'ad' | 'agency'; by?: 'colleague' }
+  | { kind: 'vacancy'; id: string; role: Id; shift: Id; via: Via; by?: 'colleague' }
   | { kind: 'candidates'; vacancy: string; role: Id; n: number }
   | { kind: 'accepted'; candidate: string; role: Id; day: number }
   | { kind: 'hired'; person: string; role: Id; tab: number }
@@ -1936,6 +2527,18 @@ export type Notice =
   | { kind: 'morning'; day: number }
   /** заказ поставщику принят */
   | { kind: 'ordered'; po: string; eta: number }
+  /** заказ поставщику ускорен (Б6д): новый приход */
+  | { kind: 'poFast'; po: string; eta: number }
+  /** заказ поставщику отменён (Б6д) */
+  | { kind: 'poCancelled'; po: string }
+  /** заказ поставщику не пришёл к обещанному дню (Б6ж): к концу окна прихода фур */
+  | { kind: 'poLate'; po: string; supplier: Id; eta: number }
+  /** шаг одобрения пары-кандидата (Б6ж): пара, шаг, материал */
+  | { kind: 'pairStep'; pair: string; step: PairStep | 'ask' | 'answer'; material: Id }
+  /** событие коммерции (Б6е): крупный заказ покупателя — позиция, ящики, срок */
+  | { kind: 'bigOrder'; order: string; customer: Id; sku: Id; cases: number; due: number }
+  /** событие коммерции (Б6е): покупатель снял спрос — столько ящиков позиции не возьмёт в ближайших заказах */
+  | { kind: 'demandCut'; customer: Id; sku: Id; cases: number }
   /** фура встала к рампе */
   | { kind: 'truck'; po: string; truck: string }
   /** партия разрешена: все испытания в пределах */
@@ -1944,8 +2547,17 @@ export type Notice =
   | { kind: 'lotRejected'; lot: string; deviation: string }
   /** серия сделана: балк в карантине */
   | { kind: 'batchBulk'; batch: string; lot: string }
-  /** открыто отклонение производства: МОК, режим, выход, сверка; номер серии — для слов извещения */
-  | { kind: 'deviation'; id: string; what: Deviation['kind']; code: string }
+  /** открыто отклонение производства: МОК, режим, выход, сверка; номер серии — для слов извещения; класс (Б5е) — автопауза */
+  | { kind: 'deviation'; id: string; what: Deviation['kind']; code: string; cls: DevClass }
+  /** срок отклонения прошёл, а оно открыто (Б5е): посту «Качество» */
+  | { kind: 'devLate'; id: string; cls: DevClass; code: string }
+  /**
+   * CAPA (Б5е): назначена — по какому отклонению, действие и кто исполняет; выполнена; проверка эффективности —
+   * эффективна или нет, повтор — первое такое же отклонение после выполнения
+   */
+  | { kind: 'capa'; id: string; dev: string; action: Id; head: Head }
+  | { kind: 'capaDone'; id: string; dev: string; action: Id; head: Head }
+  | { kind: 'capaCheck'; id: string; dev: string; ok: boolean; rep?: string }
   /** серия упакована: ГП в карантине */
   | { kind: 'batchPacked'; batch: string; lot: string }
   /** решение уполномоченного лица: выпущена, отклонена, держать */
@@ -1995,4 +2607,19 @@ export type Notice =
    * предложение руководителя (Б5б): запись журнала, руководитель и пост отдела; мгновение — до планёрки предложение
    * ждёт её (автопауза, src/app/pauses.ts)
    */
-  | { kind: 'proposal'; n: number; head: Head; seat: SeatId; t: number };
+  | { kind: 'proposal'; n: number; head: Head; seat: SeatId; t: number }
+  /** политика руководителя задана (Б5г); визит подрядчика перенесён — на какое мгновение */
+  | { kind: 'policy'; policy: Id; of?: string; head: Head }
+  | { kind: 'visitMoved'; asset: string; family: AssetFamily; type: Id; inv: number; work: 'qual' | 'cal'; at: number }
+  /** некому решить за руководителя (Б5в): его нет, а заместителя нет или и он отсутствует; пост отдела — автопауза */
+  | { kind: 'noOne'; head: Head; seat: SeatId }
+  /** заместитель руководителя назначен или снят (Б5в) */
+  | { kind: 'deputy'; head: HeadId; person?: string; role?: Id; tab?: number }
+  /**
+   * служебная записка (Б5д): отправлена — кому и когда он ответит; ответ — сколько команд выполнено из скольких и пост,
+   * с которого записка, — автопауза
+   */
+  | { kind: 'memo'; n: number; head: Head; at?: number }
+  | { kind: 'memoDone'; n: number; head: Head; seat?: SeatId; ok: number; of: number }
+  /** «Просят решить» (Б5д): развилка, руководитель и кого он спросил — пост развилки или директор; автопауза */
+  | { kind: 'ask'; n: number; fork: Fork; head: Head; seat: SeatId };

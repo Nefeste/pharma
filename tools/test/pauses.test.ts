@@ -46,11 +46,13 @@ describe('автопаузы', () => {
     const ot = (...d: string[]) => d.map(x => `overtimeLow/${x}`);
     // заявление об увольнении (Б4в) — тоже пост отдела человека; черновик графика отпусков (Б4г) — каждого поста
     const rs = (...d: string[]) => d.map(x => `resign/${x}`);
-    // предложение руководителя (Б5б) — у поста его отдела; до планёрки — ждёт её, пока автопауза планёрки включена
-    expect(sorted(stopKinds([], ['production']))).toEqual(sorted(['failure', 'investigation', 'lotRejected', 'materialLate', 'morning', 'leaveDraft', 'proposal/production', ...eq, ...ot('mes', 'line', 'maint'), ...rs('mes', 'line', 'maint')]));
-    expect(sorted(stopKinds([], ['quality']))).toEqual(sorted(['deviation', 'investigation', 'lotRejected', 'qualLost', 'morning', 'leaveDraft', 'assetExpired/lab', 'pairSuspended', 'proposal/quality', ...ot('qc', 'qa'), ...rs('qc', 'qa')]));
-    expect(stopKinds([], ['commerce'])).toEqual(['orderRisk', 'leaveDraft', 'morning']);
-    expect(sorted(stopKinds([], ['supply']))).toEqual(sorted(['materialLate', 'morning', 'leaveDraft', 'truckWait', 'assetExpired/sensor', 'pairSuspended', 'proposal/supply', ...ot('wms'), ...rs('wms')]));
+    // предложение руководителя (Б5б) — у поста его отдела; до планёрки — ждёт её, пока автопауза планёрки включена;
+    // «Некому решить» (Б5в) — у поста отдела руководителя; «Просят решить» (Б5д) — у поста развилки производства или
+    // директора; ответ на записку (Б5д) — у поста, с которого она; совещание S&OP (Б6г) — у «Производства» и директора
+    expect(sorted(stopKinds([], ['production']))).toEqual(sorted(['failure', 'investigation', 'lotRejected', 'materialLate', 'morning', 'leaveDraft', 'noOne/production', 'proposal/production', 'ask/production', 'memoDone/production', 'sop', ...eq, ...ot('mes', 'line', 'maint'), ...rs('mes', 'line', 'maint')]));
+    expect(sorted(stopKinds([], ['quality']))).toEqual(sorted(['deviation', 'investigation', 'lotRejected', 'qualLost', 'morning', 'leaveDraft', 'assetExpired/lab', 'pairSuspended', 'noOne/quality', 'proposal/quality', 'memoDone/quality', ...ot('qc', 'qa'), ...rs('qc', 'qa')]));
+    expect(stopKinds([], ['commerce'])).toEqual(['orderRisk', 'leaveDraft', 'memoDone/commerce', 'morning']);
+    expect(sorted(stopKinds([], ['supply']))).toEqual(sorted(['materialLate', 'morning', 'leaveDraft', 'truckWait', 'assetExpired/sensor', 'pairSuspended', 'noOne/supply', 'proposal/supply', 'memoDone/supply', ...ot('wms'), ...rs('wms')]));
     // директор и «место не выбрано» — всё, кроме предложений до планёрки
     const all = PAUSES.flatMap(p => PAUSE_NOTICES[p]).filter(k => !k.endsWith('/early'));
     expect(stopKinds([], ['director'])).toEqual(all);
@@ -61,7 +63,7 @@ describe('автопаузы', () => {
 
   test('отключённая автопауза не ставит мир на паузу', () => {
     // автопауза планёрки выключена — предложение до планёрки ставит мир на паузу в свой час (Б5б)
-    expect(stopKinds(['morning', 'oos'], ['quality'])).toEqual(['deviation', 'qualLost', 'overtimeLow/qc', 'overtimeLow/qa', 'resign/qc', 'resign/qa', 'assetExpired/lab', 'pairSuspended', 'leaveDraft', 'proposal/quality', 'proposal/quality/early']);
+    expect(stopKinds(['morning', 'oos'], ['quality'])).toEqual(['deviation', 'qualLost', 'overtimeLow/qc', 'overtimeLow/qa', 'resign/qc', 'resign/qa', 'assetExpired/lab', 'pairSuspended', 'leaveDraft', 'noOne/quality', 'proposal/quality', 'proposal/quality/early', 'memoDone/quality']);
     expect(stopKinds(['proposal'], ['quality'])).not.toContain('proposal/quality');
     expect(stopKinds([...PAUSES], ['director'])).toEqual([]);
   });
@@ -73,6 +75,49 @@ describe('автопаузы', () => {
     expect(stopKey(n(86400 + 9 * 3600))).toBe('proposal/production');
     expect(pauseOf('proposal/quality/early')).toBe('proposal');
     expect(goOf(plant, n(0))).toEqual({ journal: 7 });
+  });
+
+  test('«Некому решить» (Б5в): ключ — пост отдела руководителя; щелчок — вкладка «Люди»; заместитель — к нему', () => {
+    const n: Notice = { kind: 'noOne', head: 'qa', seat: 'quality' };
+    expect(stopKey(n)).toBe('noOne/quality');
+    expect(pauseOf('noOne/quality')).toBe('noOne');
+    expect(stopKinds([], ['production'])).not.toContain('noOne/quality');
+    expect(stopKinds(['noOne'], ['quality'])).not.toContain('noOne/quality');
+    expect(goOf(plant, n)).toEqual({ panel: 'ref', tab: 'people' });
+    expect(goOf(plant, { kind: 'deputy', head: 'qa', person: 'E7', role: 'role.qa', tab: 1007 })).toEqual({ thing: { kind: 'person', n: 7 } });
+    expect(goOf(plant, { kind: 'deputy', head: 'qa' })).toEqual({ panel: 'ref', tab: 'people' });
+  });
+
+  test('совещание S&OP (Б6г): открытое ставит мир на паузу у «Производства», утверждённое коллегой — нет; щелчок — окно', () => {
+    const open: Notice = { kind: 'sop', m: 24332, open: true };
+    const done: Notice = { kind: 'sop', m: 24332, open: false };
+    expect(stopKey(open)).toBe('sop');
+    expect(stopKey(done)).toBe('sop/approved');
+    expect(pauseOf('sop')).toBe('sop');
+    expect(pauseOf('sop/approved')).toBeUndefined();
+    expect(stopKinds([], ['production'])).toContain('sop');
+    expect(stopKinds([], ['quality'])).not.toContain('sop');
+    expect(stopKinds(['sop'], ['production'])).not.toContain('sop');
+    expect(goOf(plant, open)).toEqual({ panel: 'sop' });
+    expect(goOf(plant, done)).toEqual({ panel: 'sop' });
+  });
+
+  test('«Просят решить» и ответ на записку (Б5д): ключ — пост, кого спросили или с которого записка; щелчок — журнал', () => {
+    const ask: Notice = { kind: 'ask', n: 12, fork: 'visit', head: 'maint', seat: 'production' };
+    expect(stopKey(ask)).toBe('ask/production');
+    expect(stopKey({ ...ask, seat: 'director' })).toBe('ask/director');
+    expect(pauseOf('ask/production')).toBe('ask');
+    expect(stopKinds([], ['production', 'director'])).toContain('ask/director');
+    expect(stopKinds([], ['production'])).not.toContain('ask/director');
+    expect(stopKinds(['ask'], ['production'])).not.toContain('ask/production');
+    expect(goOf(plant, ask)).toEqual({ journal: 12 });
+    const done: Notice = { kind: 'memoDone', n: 9, head: 'maint', seat: 'quality', ok: 1, of: 1 };
+    expect(stopKey(done)).toBe('memoDone/quality');
+    expect(pauseOf('memoDone/quality')).toBe('memoDone');
+    expect(stopKinds([], ['production'])).not.toContain('memoDone/quality');
+    expect(stopKinds(['memoDone'], ['quality'])).not.toContain('memoDone/quality');
+    expect(goOf(plant, done)).toEqual({ journal: 9 });
+    expect(goOf(plant, { kind: 'memo', n: 9, head: 'maint' })).toEqual({ journal: 9 });
   });
 
   test('отключённые помнит хранилище окна; чужое, битое и закрытое — ничего не отключено', () => {

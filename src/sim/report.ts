@@ -2,23 +2,35 @@
 // (views.ts). Планёрка говорит о вчерашних календарных сутках — потери, смены и OEE движок ведёт по ним, — о событиях за
 // 24 часа до неё и о том, что ждёт сейчас. Данные — без слов и без истины: время машин, счётчики линии, ожидания задач,
 // записи отклонений, журнал оборудования, решения, заказы и проводки — то, что завод мог узнать.
-import type { ContentDb, Dept, Id, OvertimeMode, ParamUnit, SeatId } from '../content/types';
+import type { ContentDb, Dept, DevClass, Id, OvertimeMode, ParamUnit, SeatId } from '../content/types';
 import { batchNo } from '../engine/batchno';
 import { DAY, momentOf } from '../engine/core/calendar';
+import { dueOf } from '../engine/devclass';
 import { inForce } from '../engine/docs';
 import { MORNING } from '../engine/engine';
+import { HEAD_SEAT } from '../engine/journal';
+import { memoAt } from '../engine/memos';
 import { cleanBatch, closedAt, closedShifts, kpiCtx, type KpiPeriod, kpiPick, oeeOf, rejectedAt, sincePeriod } from '../engine/kpi';
 import { AREA, type Oee, oee, rhythm, shiftsOfDay, type Switches, switchesOf } from '../engine/lean';
 import { orderRisks, type OrderRisk } from '../engine/market';
+import { forecast } from '../engine/plan/schedule';
 import { planOf } from '../engine/plant';
 import { devsOf, openDevs } from '../engine/qa';
 import { unitsOfLot } from '../engine/stock';
 import type { AssetFamily, Batch, CashItem, DayLoss, DeptMode, Deviation, Head, LineDay, MachineTimes, PlantState, TaskKind, WageParts, WaitCause } from '../engine/types';
+import { type BossRow, bossMeeting } from './bosses';
+import { type CapaRow, capaRow } from './devs';
 import { type PeopleMeeting, peopleMeeting } from './hire';
 import { type LeaveMeeting, leaveMeeting } from './leave';
 import { type HoursMeeting, hoursMeeting } from './hours';
-import { type HeadDay, headDays, type JournalRow, openAsks } from './journal';
+import { type DailyMeeting, dailyMeeting } from './daily';
+import { jobsOf } from './jobs';
+import { type HeadDay, headDays, type JournalRow, memoDays, openAsks } from './journal';
 import { type MonthClose, monthClose } from './kpi';
+import { type FcMeeting, fcMeeting } from './forecast';
+import { type EditsMeeting, editsMeeting } from './edits';
+import { type MrpMeeting, mrpMeeting } from './mrp';
+import { type SopMeeting, sopMeeting } from './sop';
 import { type PartnerSum, partnerSum } from './partners';
 import { type TrainSum, trainSum } from './people';
 import { type AssetSum, assetSum } from './places';
@@ -104,6 +116,8 @@ export interface DevRow {
   material?: Id;
   /** расследование отклонения (часть 4): к его доске ведёт строка */
   inv?: string;
+  /** класс сейчас (Б5е) */
+  cls: DevClass;
 }
 
 export interface DecisionRow {
@@ -171,6 +185,20 @@ export interface PendingDev {
   due: number;
   assessing?: true;
   inv?: string;
+  /** класс (Б5е) и срок прошёл */
+  cls: DevClass;
+  late?: true;
+}
+
+/**
+ * CAPA на планёрке (Б5е): назначенные и ещё не выполненные; выполненные и назначенные за сутки до планёрки; проверки
+ * эффективности — сделанные за сутки и те, что придутся на семь суток после неё.
+ */
+export interface CapaMeeting {
+  open: CapaRow[];
+  day: CapaRow[];
+  checks: CapaRow[];
+  soon: CapaRow[];
 }
 
 /**
@@ -208,6 +236,16 @@ export interface MorningView {
   short: ShortRow[];
   broken: BrokenRow[];
   risk: RiskRow[];
+  /**
+   * заказы без покрытия (Б6а): сколько открытых заказов покупателей к сроку не покроет ГП — свободная и та, что по
+   * прогону расписания выйдет в оборот, — и сколько ящиков не хватит (src/sim/jobs.ts); все покрыты — нет
+   */
+  uncovered?: { orders: number; cases: number };
+  /**
+   * сменно-суточные задания (Б6б): вчерашнее, закрытое в 08:00 дня планёрки, — по отделам с итогом и тем, кого ждали, —
+   * и поставленное тогда же (src/sim/daily.ts)
+   */
+  daily: DailyMeeting;
   /** что ждёт решения (Б1г): неоценённые отклонения и удержанные серии */
   pending: PendingDev[];
   held: HeldRow[];
@@ -232,14 +270,28 @@ export interface MorningView {
   modes: ModeRow[];
   /** решения за сутки (Б5а): строка на руководителя — сколько, какие, у заказов поставщикам — предоплата */
   heads: HeadDay[];
-  /** предложения (Б5б): открытые, новые сверху — с причиной, «Принять» и «Отклонить» у поста отдела */
+  /** предложения (Б5б) и вопросы «Просят решить» (Б5д): открытые, новые сверху — с причиной и вариантами у поста */
   asks: JournalRow[];
+  /** записки и вопросы за сутки (Б5д): ответы на записки и вопросы, решённые без игрока */
+  memos: JournalRow[];
+  /** CAPA (Б5е): назначенные, за сутки и проверки эффективности; нет ни одной CAPA — нет */
+  capa?: CapaMeeting;
   /** итог игры (обёртка): что завод сделал с мгновения `since` запроса; меньше суток игры — нет */
   session?: SessionSum;
   /** отклонённое (Б1з): места зоны, ждущие места, вывоз, вывозы с прошлой планёрки; у сценария без подрядчика — нет */
   rejects?: RejectSum;
   /** итоги месяца (Б5ж): на первой планёрке месяца — что сдвинулось сильнее всего против месяца до него */
   month?: MonthClose;
+  /** прогноз продаж (Б6в): в первые сутки после закрытия месяца — заказано и прогнозы на него, прогноз нынешнего */
+  forecast?: FcMeeting;
+  /** совещание S&OP (Б6г): в день совещания — его час; план, утверждённый за сутки, — итог; ни того ни другого — нет */
+  sop?: SopMeeting;
+  /** материалы (Б6д): плановые заказы с датой сегодня и раньше, заказы в пути, которые опоздают; нечего — нет */
+  materials?: MrpMeeting;
+  /** правки плана (Б6е): события коммерции и правки в замороженном горизонте с ценой за 24 часа; ничего — нет */
+  edits?: EditsMeeting;
+  /** руководители (Б5в): где сегодня решает не руководитель — «и. о.» с его навыком, или некому; все на месте — пусто */
+  bosses: BossRow[];
 }
 
 /**
@@ -282,7 +334,7 @@ const ORDER: LineLoss[] = ['fail', 'setup', 'micro', 'wait', 'speed', 'quality']
 
 /** Машина по имени в плане — вещь для карточки: машина линии или оборудование участка. */
 function thingOf(db: ContentDb, s: PlantState, id: string): { thing?: Thing; type: Id } {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   for (const [line, l] of plan.plant.lines.entries()) {
     const k = l.machines.findIndex(m => m.id === id);
     if (k >= 0) return { thing: { kind: 'machine', line, k }, type: l.machines[k].type };
@@ -371,7 +423,7 @@ function dayChange(s: PlantState, t: number): number {
 
 /** Планёрка суток `day`: вчера — календарные сутки; события — за 24 часа до 08:00; сейчас — эта минута. */
 export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): MorningView {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const day0 = momentOf(s.start, 0).day;
   const at = (q.day - day0) * DAY + MORNING;
   const from = at - DAY;
@@ -391,6 +443,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
       ...(d.lot && s.lots[d.lot] ? { lot: code(s.lots[d.lot].code), material: s.lots[d.lot].material } : {}),
       ...(d.batch && s.batches[d.batch] ? { batch: batchNo(s.batches[d.batch].code) } : {}),
       ...(d.inv ? { inv: d.inv } : {}),
+      cls: d.cls,
     }));
   const decisions: DecisionRow[] = Object.values(s.lots)
     .filter(l => l.supplier !== 'start' && (l.status === 'released' || l.status === 'rejected') && l.since !== undefined && inW(l.since))
@@ -456,6 +509,11 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
   const next = s.cash.dues.filter(d => d.sum < 0).sort((a, b) => a.due - b.due)[0];
   const rejects = rejectSum(db, s, from, at);
   const month = monthClose(s, at);
+  const fc = fcMeeting(db, s, at);
+  const sop = sopMeeting(db, s, at);
+  const materials = mrpMeeting(db, s);
+  const edits = editsMeeting(db, s, from, at);
+  const unc = jobsOf(db, s, forecast(db, s)).uncovered;
   return {
     view: 'morning',
     day: q.day,
@@ -473,6 +531,8 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     short,
     broken,
     risk: orderRisks(db, s),
+    ...(unc.length > 0 ? { uncovered: { orders: new Set(unc.map(u => u.order)).size, cases: unc.reduce((a, u) => a + u.short, 0) } } : {}),
+    daily: dailyMeeting(db, s, at),
     ...pendingOf(db, s),
     policy: { ...s.policy },
     training: trainSum(db, s),
@@ -486,9 +546,16 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     modes: modeRows(db, s),
     heads: headDays(s, from, at),
     asks: openAsks(db, s),
+    memos: memoDays(db, s, from, at),
+    ...capaOf(db, s, from, at),
     ...(q.since !== undefined && at - q.since >= DAY ? { session: sessionSum(s, q.since, at) } : {}),
     ...(rejects ? { rejects } : {}),
     ...(month ? { month } : {}),
+    ...(fc ? { forecast: fc } : {}),
+    ...(sop ? { sop } : {}),
+    ...(materials ? { materials } : {}),
+    ...(edits ? { edits } : {}),
+    bosses: bossMeeting(db, s),
   };
 }
 
@@ -546,6 +613,22 @@ export function sessionSum(s: PlantState, from: number, to: number): SessionSum 
   };
 }
 
+/** CAPA на планёрке (Б5е): по номеру; CAPA ещё нет — блока нет. */
+function capaOf(db: ContentDb, s: PlantState, from: number, at: number): { capa?: CapaMeeting } {
+  const all = Object.values(s.capas);
+  if (all.length === 0) return {};
+  const rows = all.map(c => ({ c, r: capaRow(db, s, c) }));
+  const inW = (t: number | undefined) => t !== undefined && t >= from && t < at;
+  return {
+    capa: {
+      open: rows.filter(x => x.c.done === undefined).map(x => x.r),
+      day: rows.filter(x => inW(x.c.t) || inW(x.c.done)).map(x => x.r),
+      checks: rows.filter(x => inW(x.c.check?.t)).map(x => x.r),
+      soon: rows.filter(x => !x.c.check && x.r.checkAt !== undefined && x.r.checkAt >= at && x.r.checkAt < at + 7 * DAY).map(x => x.r),
+    },
+  };
+}
+
 /** Что ждёт решения (Б1г): неоценённые отклонения — старшие первыми; удержанные серии — по номеру задания. */
 function leaveOf(db: ContentDb, s: PlantState): { leave?: LeaveMeeting } {
   const l = leaveMeeting(db, s);
@@ -553,7 +636,6 @@ function leaveOf(db: ContentDb, s: PlantState): { leave?: LeaveMeeting } {
 }
 
 function pendingOf(db: ContentDb, s: PlantState): { pending: PendingDev[]; held: HeldRow[] } {
-  const term = db.scenarios[s.scenario].deviations.term * DAY;
   const pending: PendingDev[] = Object.values(s.deviations)
     .filter(d => d.status === 'open')
     .sort((a, b) => a.opened - b.opened || num(a.id) - num(b.id))
@@ -565,9 +647,11 @@ function pendingOf(db: ContentDb, s: PlantState): { pending: PendingDev[]; held:
         kind: d.kind,
         ...(b ? { batch: batchNo(b.code), bn: num(b.id) } : {}),
         opened: d.opened,
-        due: d.opened + term,
+        due: dueOf(db, s, d),
         ...(d.assess?.task !== undefined ? { assessing: true as const } : {}),
         ...(inv ? { inv } : {}),
+        cls: d.cls,
+        ...(d.late ? { late: true as const } : {}),
       };
     });
   const held: HeldRow[] = Object.values(s.batches)
@@ -716,8 +800,8 @@ export type CashWhy =
   /** аудит изготовителя (Б3г): пара; расчёт по договору — номер и поставщик */
   | { k: 'audit'; supplier: Id; maker: Id }
   | { k: 'contract'; contract: string; supplier: Id }
-  /** найм (Б4в): объявление, медосмотр или кадровое агентство; расчёт при увольнении — роль и табельный номер */
-  | { k: 'hiring'; what: 'ad' | 'med' | 'agency' }
+  /** найм (Б4в): объявление, медосмотр, кадровое агентство или переезд (Б5в); расчёт при увольнении — роль и номер */
+  | { k: 'hiring'; what: 'ad' | 'med' | 'agency' | 'move' }
   | { k: 'leave'; role: Id; tab: number }
   /** отпускные (Б4г): роль и табельный номер, дни части с и по */
   | { k: 'vacation'; role: Id; tab: number; from: number; to: number };
@@ -763,9 +847,9 @@ function whyOf(s: PlantState, item: CashItem, ref: string | undefined): CashWhy 
   if (item === 'calqual' && s.assets[ref]) return { k: 'asset', family: s.assets[ref].family, type: s.assets[ref].type, inv: s.assets[ref].inv };
   if (item === 'audit' && s.pairs[ref]) return { k: 'audit', supplier: s.pairs[ref].supplier, maker: s.pairs[ref].maker };
   if (item === 'contract' && s.contracts[ref]) return { k: 'contract', contract: ref, supplier: s.contracts[ref].party };
-  // найм и увольнение (Б4в): объявление, медосмотр, агентство; расчёт при увольнении — роль и табельный номер
-  const h = /^(ad|med|agency)-/.exec(ref);
-  if (item === 'hiring' && h) return { k: 'hiring', what: h[1] as 'ad' | 'med' | 'agency' };
+  // найм и увольнение (Б4в): объявление, медосмотр, агентство, переезд (Б5в); расчёт при увольнении — роль и номер
+  const h = /^(ad|med|agency|move)-/.exec(ref);
+  if (item === 'hiring' && h) return { k: 'hiring', what: h[1] as 'ad' | 'med' | 'agency' | 'move' };
   const gone = /^leave-(E\d+)$/.exec(ref);
   const who = gone ? (s.former[gone[1]] ?? s.people[gone[1]]) : undefined;
   if (item === 'settle' && who) return { k: 'leave', role: who.role, tab: who.tab };
@@ -837,10 +921,25 @@ export interface TopView {
   inv: number;
   /** режимы отделов (Б5б): выбор игрока, который завод помнит, — экран «Кем вы будете» показывает его у мест */
   modes: Partial<Record<Head, DeptMode>>;
+  /**
+   * служебные записки (Б5д): когда ответит руководитель отдела, чей пост не у игрока, на записку, отправленную сейчас;
+   * не ответит за срок окна — нет; директор и места не выбраны — пусто
+   */
+  memo: Partial<Record<Head, number>>;
 }
+
+/** Руководители, которым пишут записки (Б5д). */
+const MEMO_HEADS: readonly Head[] = ['plan', 'mes', 'maint', 'qa', 'qc', 'tech', 'supply', 'wms'];
 
 export function topView(db: ContentDb, s: PlantState): TopView {
   const held = s.seats?.filter(x => x.to === undefined).map(x => x.seat);
   const inv = Object.values(s.investigations).filter(i => i.status === 'open').length;
-  return { view: 'top', balance: s.cash.balance, day: dayChange(s, s.t), ...(held ? { seats: held } : {}), offered: db.scenarios[s.scenario].seats, inv, modes: { ...s.heads.mode } };
+  const memo: Partial<Record<Head, number>> = {};
+  if (held && !held.includes('director'))
+    for (const h of MEMO_HEADS) {
+      if (held.includes(HEAD_SEAT[h])) continue;
+      const at = memoAt(db, s, h);
+      if (at !== undefined) memo[h] = at;
+    }
+  return { view: 'top', balance: s.cash.balance, day: dayChange(s, s.t), ...(held ? { seats: held } : {}), offered: db.scenarios[s.scenario].seats, inv, modes: { ...s.heads.mode }, memo };
 }

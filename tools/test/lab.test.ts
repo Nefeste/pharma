@@ -18,7 +18,7 @@ import { fromSave, toSave } from '../../src/engine/save';
 import type { Lot, Notice, PlantState } from '../../src/engine/types';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const API = 'mat.api.paracetamol';
 /** Тот же завод без заданий на серию: путь партии через лабораторию — без балка в очереди и без расхода в серии. */
 const labOnly: ContentDb = { ...db, scenarios: { ...db.scenarios, [SC]: { ...db.scenarios[SC], batches: [] } } };
@@ -261,7 +261,8 @@ describe('ни одна партия не уходит дальше карант
     expect(decided).toBe(30 * db.scenarios[SC].orders.reduce((k, o) => k + o.lines.length, 0));
     expect(bad).toBeGreaterThan(0);
     // 30 прогонов с производством и упаковкой — около четырёх секунд; запас на медленную машину CI
-  }, 40_000);
+    // с Б6б в 08:00 каждых суток — ещё и задание на сутки по прогону расписания: прогоны дольше на 5 %
+  }, 60_000);
 });
 
 describe('сохранение посреди испытания', () => {

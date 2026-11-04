@@ -28,20 +28,25 @@ function nextWork(s: PlantState, sec: number): number {
 }
 const until = (s: PlantState, t: number) => apply(db, s, { kind: 'advance', seconds: t - s.t });
 
-/** Жить до `end`, принимая каждое предложение в ту же минуту, когда оно появилось. */
+/**
+ * Жить до `end`, принимая каждое предложение в ту же минуту, когда оно появилось; на совещании S&OP (Б6г) — утверждая
+ * лучший план начальника.
+ */
 function liveAccepting(s: PlantState, end: number) {
-  const stop: More = list => !list.some(n => n.kind === 'proposal');
+  const stop: More = list => !list.some(n => n.kind === 'proposal' || (n.kind === 'sop' && n.open));
   let accepted = 0;
   while (s.t < end || s.until !== undefined) {
     const out = s.until !== undefined ? catchUp(db, s, stop) : apply(db, s, { kind: 'advance', seconds: end - s.t }, stop);
     const got = out.filter((n): n is Extract<Notice, { kind: 'proposal' }> => n.kind === 'proposal');
-    if (got.length === 0) continue;
+    const meet = out.some(n => n.kind === 'sop' && n.open);
+    if (got.length === 0 && !meet) continue;
     const rest = s.until;
     delete s.until;
     for (const a of got) {
       expect(refusals(apply(db, s, { kind: 'accept', n: a.n }))).toEqual([]);
       accepted++;
     }
+    if (meet) expect(refusals(apply(db, s, { kind: 'sop', cover: s.sop!.open!.best, by: 'player' }))).toEqual([]);
     if (rest !== undefined) s.until = rest;
   }
   return accepted;
@@ -56,7 +61,11 @@ const life = (s: PlantState) => ({
   people: Object.values(s.people).map(p => [p.id, p.role, p.shift]),
   vacancies: Object.values(s.vacancies).map(v => [v.id, v.role, v.via, v.by, v.instead]),
   maint: s.maintLog.map(e => [e.t, e.machine, e.part, e.what]),
-  journal: s.journal.map(({ n, t, by, d }) => ({ n, t, by, d })),
+  // с Б5д у взятого поста — ещё развилки «Просят решить»: записи руководителя, которые завод не меняют; без них журнал тот же —
+  // мгновения, руководители и причины, по порядку (номера записей сдвинуты развилками); план S&OP (Б6г) утверждает пост —
+  // запись «вы», а не начальника, — а планы те же
+  journal: s.journal.filter(r => r.d.kind !== 'fork' && r.d.kind !== 'sop').map(({ t, by, d }) => ({ t, by, d })),
+  sop: (s.sop?.plans ?? []).map(p => [p.at, p.from, p.cover, p.value, p.best]),
 });
 
 describe('режим по умолчанию', () => {
@@ -105,12 +114,13 @@ describe('«советует»', () => {
     const b = fresh();
     apply(db, b, { kind: 'seat', seats: ['production'] });
     const n = liveAccepting(b, end);
-    // задания на серию, замена узла по наработке, вакансия и приём — все предложены и приняты
+    // задания на серию, замена узла по наработке, вакансия и приём, с Б5е — CAPA начальника производства по выводу
+    // расследования: все предложены и приняты
     const kinds = new Set(asks(b).map(r => r.d.kind));
-    expect([...kinds].sort()).toEqual(['hire', 'order', 'replace', 'vacancy']);
+    expect([...kinds].sort()).toEqual(['capaRun', 'hire', 'order', 'replace', 'vacancy']);
     expect(asks(b).every(r => r.ask!.end?.how === 'ok' && r.ask!.end.seat === 'production')).toBe(true);
     expect(asks(b).length).toBe(n);
-    // записи журнала — те же номера, мгновения, руководители и причины; номера вещей — те же
+    // записи журнала — те же мгновения, руководители и причины; номера вещей — те же
     expect(life(b)).toEqual(life(a));
     expect(check(db, b)).toEqual([]);
   }, 120_000);

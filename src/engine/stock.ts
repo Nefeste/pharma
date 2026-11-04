@@ -202,7 +202,7 @@ export function heldForSampled(db: ContentDb, s: PlantState, plan: PlantPlan, ki
     const uid = s.slots[sl.id]?.unit;
     const c = uid ? s.containers[s.units[uid].items[0]] : undefined;
     const lot = c ? s.lots[c.lot] : undefined;
-    if (lot && (coldOf(db, s.plant, lot.material) ? 'cold' : 'quarantine') === kind) n++;
+    if (lot && (coldOf(db, s.plan, lot.material) ? 'cold' : 'quarantine') === kind) n++;
   }
   return n;
 }

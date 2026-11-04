@@ -2,15 +2,22 @@
 // (src/engine/plan/schedule.ts) и записей. Прошлое — как было: стадии серий из их записей, задания упаковки от взятия до
 // конца, последняя уборка помещения — по его учёту. С части 5 — черновик (docs/specs/2026-10-plan-run.md): план — каким он
 // станет, если черновик утвердить, а прежние полосы сдвинутых серий — рядом; с 0.0.39 — и полосы его новых заданий.
-// Без истины: прогон и записи — сроки, учёт и задачи; истинных свойств и причин тут нет.
+// Без истины: прогон и записи — сроки, учёт и задачи; истинных свойств и причин тут нет. С Б6е — край замороженного
+// горизонта и цена черновика, если он правит план в горизонте: те же два прогона, что у полос.
 import type { ContentDb } from '../content/types';
 import { batchNo } from '../engine/batchno';
-import { HOUR } from '../engine/core/calendar';
+import { DAY, daysFromCivil, HOUR } from '../engine/core/calendar';
+import { editInFrozen, frozenEdge, priceOf } from '../engine/plan/price';
+import { frozenOf } from '../engine/planner';
 import { MES, roomWork, washWork } from '../engine/mes';
 import { type Bar, type Change, type Fresh, forecast, freshBatches, type Why } from '../engine/plan/schedule';
 import { planOf } from '../engine/plant';
 import { shiftEndAt } from '../engine/staff';
-import type { Batch, BatchStatus, PlantState } from '../engine/types';
+import type { Batch, BatchStatus, EditPrice, PlantState } from '../engine/types';
+import { type DailyMark, dailyMarks } from './daily';
+import { type ForecastView, forecastView } from './forecast';
+import { type Jobs, jobsOf } from './jobs';
+import { type LaunchView, launchView } from './launch';
 import { type AssetInfo, assetInfo } from './places';
 
 export interface GanttQuery {
@@ -22,6 +29,12 @@ export interface GanttQuery {
   draft?: Change[];
   /** новые задания черновика (0.0.39): срочные задания — ещё не команды */
   fresh?: Fresh[];
+  /** задания, которые черновик отменяет (Б6а) — ещё не команды */
+  drop?: string[];
+  /** вкладка «План запуска» открыта (Б6б): собрать и его */
+  launch?: true;
+  /** вкладка «Прогноз» открыта (Б6в): собрать и его; ключ «прогноза против факта» — позиция или продукт */
+  forecast?: { key?: string };
 }
 
 export interface GhostQuery {
@@ -32,6 +45,7 @@ export interface GhostQuery {
   /** черновик — призрак считает его вместе с тем, что тянут */
   draft?: Change[];
   fresh?: Fresh[];
+  drop?: string[];
 }
 
 /** Строка Ганта: комплектовка у шлюза, помещение производства (тип — для названия), упаковочная линия. */
@@ -74,6 +88,20 @@ export interface GanttView {
   gone: string[];
   /** активы полос визитов и причин (Б3в): название класса, номер, работа — для слов */
   assets: Record<string, AssetInfo>;
+  /** задания на серию и заказы без покрытия (Б6а) — по прогону с черновиком */
+  jobs: Jobs;
+  /** план запуска (Б6б) — с черновиком; только когда открыта его вкладка */
+  launch?: LaunchView;
+  /** прогноз продаж (Б6в) — только когда открыта его вкладка и у сценария есть прогноз */
+  forecast?: ForecastView;
+  /** отметки полос (Б6б): строки заданий на сутки — комплектовки, стадии, упаковка — с итогом */
+  daily: DailyMark[];
+  /**
+   * замороженный горизонт (Б6е): край — мгновение 00:00 первого дня за горизонтом и рабочих дней политики; у черновика,
+   * который правит план в горизонте, — цена: прогон с ним против прогона без него
+   */
+  frozen: { edge: number; days: number };
+  price?: EditPrice;
 }
 
 export interface GhostView {
@@ -92,7 +120,7 @@ export interface GhostView {
 
 /** Строки: комплектовка; помещения плана, где идут стадии карт, — по порядку плана; линии плана. */
 export function rowsOf(db: ContentDb, s: PlantState): GanttRow[] {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const used = new Set(Object.values(db.recipes).flatMap(r => r.stages.map(st => st.room)));
   return [
     { id: 'kit', kind: 'kit' },
@@ -116,7 +144,7 @@ export function pastBars(db: ContentDb, s: PlantState): Bar[] {
     if (job.start !== undefined) bars.push({ row: job.line, kind: 'pack', batch: b.id, from: job.start, to: job.end ?? s.t, when: job.end !== undefined ? 'past' : 'now' });
   }
   // уборка помещения линии — на строке линии (Б1е)
-  const lines = planOf(db, s.plant).plant.lines;
+  const lines = planOf(db, s.plan).plant.lines;
   const rowOf = (roomId: string) => lines.find(l => l.room === roomId)?.id ?? roomId;
   for (const r of Object.values(s.rooms)) {
     if ((r.status !== 'clean' && r.status !== 'busy') || r.product === undefined) continue;
@@ -174,8 +202,9 @@ export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttVie
   const base = forecast(db, s);
   const draft = q.draft ?? [];
   const fresh = q.fresh ?? [];
-  const changed = draft.length + fresh.length > 0;
-  const f = changed ? forecast(db, s, draft, fresh) : base;
+  const drop = q.drop ?? [];
+  const changed = draft.length + fresh.length + drop.length > 0;
+  const f = changed ? forecast(db, s, draft, fresh, drop) : base;
   const inWindow = (b: Bar) => b.to > q.from && b.from < q.to && b.to > b.from;
   const bars = [...pastBars(db, s), ...f.bars].filter(inWindow);
   // новые задания черновика — среди сдвинутых: у них полосы по плану есть только с черновиком
@@ -190,6 +219,12 @@ export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttVie
     }
   };
   for (const b of bars) seen(b.asset);
+  const launch = q.launch ? launchView(db, s, draft, fresh, drop) : undefined;
+  const fc = q.forecast ? forecastView(db, s, q.forecast.key) : undefined;
+  if (launch) {
+    for (const v of launch.visits) seen(v.asset);
+    for (const j of launch.jobs) ids.add(j.batch);
+  }
   for (const [id, list] of Object.entries(f.why)) {
     ids.add(id);
     for (const w of list) {
@@ -212,8 +247,14 @@ export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttVie
     off: offOf(db, s, q.from, Math.min(q.to, q.from + 31 * 24 * HOUR)),
     moved,
     was,
-    gone: draft.filter(c => !movable(s, c.batch)).map(c => c.batch),
+    gone: [...draft.filter(c => !movable(s, c.batch)).map(c => c.batch), ...drop.filter(id => !movable(s, id))],
     assets,
+    jobs: jobsOf(db, s, f),
+    ...(launch ? { launch } : {}),
+    ...(fc ? { forecast: fc } : {}),
+    daily: dailyMarks(db, s, q.from, q.to),
+    frozen: { edge: (frozenEdge(db, s) - daysFromCivil(s.start)) * DAY, days: frozenOf(db, s) },
+    ...(changed && editInFrozen(db, s, { changes: draft, fresh, drop }) ? { price: priceOf(db, s, base, f, { changes: draft, fresh, drop }) } : {}),
   };
 }
 
@@ -228,8 +269,9 @@ export function ghostView(db: ContentDb, s: PlantState, q: GhostQuery): GhostVie
   if (!movable(s, q.batch)) return { ...empty, refused: 'started' };
   const rest = (q.draft ?? []).filter(c => c.batch !== q.batch);
   const fresh = q.fresh ?? [];
-  const base = forecast(db, s, rest, fresh);
-  const f = forecast(db, s, [...rest, { batch: q.batch, notBefore: q.notBefore }], fresh);
+  const drop = q.drop ?? [];
+  const base = forecast(db, s, rest, fresh, drop);
+  const f = forecast(db, s, [...rest, { batch: q.batch, notBefore: q.notBefore }], fresh, drop);
   const moved = movedOf(base.bars, f.bars, q.batch);
   const why = f.why[q.batch] ?? [];
   const ids = new Set<string>([q.batch, ...moved, ...why.flatMap(w => (whyBatch(w) ? [whyBatch(w)!] : []))]);

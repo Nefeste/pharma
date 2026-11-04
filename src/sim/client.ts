@@ -7,7 +7,7 @@
 // Сторона потока отрисовки: Web Worker с движком, ход часов кадрами, последний срез. В пути — не больше одного `tick`:
 // пока ответ не пришёл, игровые секунды копятся, и поток не захлёбывается кадрами, если не успевает.
 import type { Command, Notice } from '../engine/types';
-import type { FromSim, ToSim } from './protocol';
+import type { FromSim, ToSim, World } from './protocol';
 import type { ViewOut, ViewQuery } from './views';
 
 export interface Slice {
@@ -18,6 +18,8 @@ export interface Slice {
   views?: ViewOut[];
   /** поток встал на извещении автопаузы (Б2а): часы завода — на его событии */
   stopped?: true;
+  /** план здания (Б7а) — когда сменился: после старта и загрузки */
+  world?: World;
 }
 
 export class SimClient {
@@ -59,7 +61,7 @@ export class SimClient {
       this.roundTripsTaken++;
       if (this.roundTrips.length > 2000) this.roundTrips.splice(0, 1000);
     }
-    this.onSlice({ buf: msg.buf, notices: msg.notices, lag: msg.lag, ...(msg.views ? { views: msg.views } : {}), ...(msg.stopped ? { stopped: true as const } : {}) });
+    this.onSlice({ buf: msg.buf, notices: msg.notices, lag: msg.lag, ...(msg.views ? { views: msg.views } : {}), ...(msg.stopped ? { stopped: true as const } : {}), ...(msg.world ? { world: msg.world } : {}) });
   }
 
   start(msg: Extract<ToSim, { kind: 'start' }>) {

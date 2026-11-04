@@ -28,7 +28,7 @@ import { cardView } from '../../src/sim/views';
 const SC = 'scn.proto';
 const RCP = 'rcp.paracetamol500.wet.v1';
 const r = db.recipes[RCP];
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const at = (stage: string) => r.stages.findIndex(st => st.id === stage);
 const num = (id: string) => Number(id.slice(1));
 const MGST = 'mat.exc.mgst';
@@ -68,15 +68,15 @@ describe('сборщик базы — порядок загрузки на ис�
   const has = (errors: string[], part: string) => expect([part, errors.some(e => e.includes(part))]).toEqual([part, true]);
 
   test('строка без стадии, со стадией не из карты и на отвешивании — ошибки', () => {
-    has(broken([['{ material: mat.exc.starch, kg: 12, stage: granulate }', '{ material: mat.exc.starch, kg: 12 }']]), 'stage');
-    has(broken([['{ material: mat.exc.starch, kg: 12, stage: granulate }', '{ material: mat.exc.starch, kg: 12, stage: coat }']]), 'загружают на стадии coat, а её в карте нет');
-    has(broken([['{ material: mat.exc.starch, kg: 12, stage: granulate }', '{ material: mat.exc.starch, kg: 12, stage: dispense }']]), 'загружают на отвешивании');
+    has(broken([['{ material: mat.exc.starch, kg: 12, stage: granulate, alt: { material: mat.exc.starch-maize, factor: 1 } }', '{ material: mat.exc.starch, kg: 12, alt: { material: mat.exc.starch-maize, factor: 1 } }']]), 'stage');
+    has(broken([['{ material: mat.exc.starch, kg: 12, stage: granulate, alt: { material: mat.exc.starch-maize, factor: 1 } }', '{ material: mat.exc.starch, kg: 12, stage: coat, alt: { material: mat.exc.starch-maize, factor: 1 } }']]), 'загружают на стадии coat, а её в карте нет');
+    has(broken([['{ material: mat.exc.starch, kg: 12, stage: granulate, alt: { material: mat.exc.starch-maize, factor: 1 } }', '{ material: mat.exc.starch, kg: 12, stage: dispense, alt: { material: mat.exc.starch-maize, factor: 1 } }']]), 'загружают на отвешивании');
   });
 
   test('АФС — только на стадии первого смешивания и не одна', () => {
     has(broken([['potency: true, stage: granulate', 'potency: true, stage: blend']]), 'АФС загружают не на стадии первого смешивания');
     const alone = broken([
-      ['{ material: mat.exc.starch, kg: 12, stage: granulate }', '{ material: mat.exc.starch, kg: 12, stage: dry }'],
+      ['{ material: mat.exc.starch, kg: 12, stage: granulate, alt: { material: mat.exc.starch-maize, factor: 1 } }', '{ material: mat.exc.starch, kg: 12, stage: dry, alt: { material: mat.exc.starch-maize, factor: 1 } }'],
       ['{ material: mat.exc.povidone, kg: 3, stage: granulate }', '{ material: mat.exc.povidone, kg: 3, stage: dry }'],
       ['{ material: mat.exc.mcc, kg: 4.2, qs: true, stage: granulate }', '{ material: mat.exc.mcc, kg: 4.2, qs: true, stage: dry }'],
     ]);
@@ -279,8 +279,10 @@ describe('масса по стадиям и запись упаковки — п
         'materials machine k spoiled used returned recon reconLimit fg kind bulk since checked decision held released clearNone ' +
         // Б1ж: уставка режима стадии — её задал завод
         'sp ' +
-        // Б5а: «Кто решил» — записи журнала решений
-        'who t v seat').split(' '),
+        // Б5а: «Кто решил» — записи журнала решений; Б5в: кто из людей решал — роль, табельный номер, «и. о.»
+        'who t v seat as io ' +
+        // Б6а: задание — под что (заказ покупателя и его покупатель) и срок, отменить ли ещё можно
+        'goal order customer due open').split(' '),
     );
     expect([...keys].filter(k => !ALLOWED.has(k))).toEqual([]);
     for (const k of ['truth', 'noise', 'causes', 'screen', 'budget', 'lost', 'jammed', 'wear']) expect(keys.has(k)).toBe(false);

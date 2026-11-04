@@ -2,7 +2,7 @@
 // ошибка сборки, а не молча пропущенное поле. Числа в записях — в единицах автора (килограммы, рубли, метры, проценты);
 // в единицы движка их переводит load.ts.
 import { z } from 'zod';
-import { SEATS, TASK_KINDS } from '../../src/content/types';
+import { HEAD_IDS, SEATS, TASK_KINDS } from '../../src/content/types';
 
 const text = z.strictObject({ ru: z.string().min(1), en: z.string().min(1).optional() });
 const review = z.enum(['draft', 'checked']);
@@ -148,6 +148,35 @@ export const scenario = z.strictObject({
       cover: z.number().int().min(1).max(365),
       window: z.number().int().min(7).max(365),
       urgent: z.number().int().min(0).max(365).optional(),
+      /** способ прогноза планирования и откуда спрос правила задания (Б6в) — с чего начинают политики */
+      method: z.enum(['best', 'last-year', 'ma', 'ses', 'holt', 'group']).default('best'),
+      demand: z.enum(['orders', 'forecast']).default('orders'),
+      /** резерв мощности (Б6г): доля, которую план S&OP оставляет свободной, — числитель и знаменатель */
+      reserve: z.tuple([z.number().int().min(0), z.number().int().positive()]).refine(([a, b]) => a <= b, { message: 'доля больше целого' }).optional(),
+      /** замороженный горизонт (Б6е): рабочих дней; горизонт цены правки — суток */
+      frozen: z.number().int().min(1).max(20).optional(),
+      price: z.number().int().min(1).max(90).optional(),
+    })
+    .optional(),
+  /**
+   * прогноз продаж и сезон спроса (Б6в): история спроса до старта, месяцев; оптимизм отдела продаж, %. Нет — спрос
+   * покупателей ровный, прогноза нет
+   */
+  forecast: z.strictObject({ optimism: percent }).optional(),
+  /**
+   * события коммерции (Б6е): в месяц — от и до; событие — серия позиции ± `size` %; крупный заказ — срок через столько
+   * суток, от и до, его доля событий — `big` %; остальные — снятый спрос
+   */
+  commerce: z
+    .strictObject({
+      perMonth: z.tuple([z.number().int().min(0).max(20), z.number().int().min(1).max(20)]),
+      size: percent.int(),
+      due: z.tuple([z.number().int().min(1).max(365), z.number().int().min(1).max(365)]),
+      big: percent.int(),
+    })
+    .superRefine((c, ctx) => {
+      if (c.perMonth[0] > c.perMonth[1]) ctx.addIssue({ code: 'custom', message: 'событий в месяц: «от» больше «до»' });
+      if (c.due[0] > c.due[1]) ctx.addIssue({ code: 'custom', message: 'срок крупного заказа: «от» больше «до»' });
     })
     .optional(),
   /** снабжение (Б2в): страховой запас и заказ — в сутках расхода, входной контроль — в сутках */
@@ -156,6 +185,14 @@ export const scenario = z.strictObject({
       safety: z.number().int().min(0).max(365),
       every: z.number().int().min(1).max(365),
       qc: z.number().int().min(0).max(60),
+      /** срок завоза (Б6д): число предыдущего месяца, 0 — к дню серии */
+      arrive: z.number().int().min(0).max(28).optional(),
+      /** как заказывают (Б6д): по потребности или по точке заказа */
+      how: z.enum(['need', 'point']).optional(),
+      /** кому заказывать при двух поставщиках (Б6ж): основному, быстрее, когда основной опоздает, или по оценке предложений */
+      who: z.enum(['main', 'fast', 'rfq']).optional(),
+      /** веса оценки предложений (Б6ж): цена, срок, надёжность, предоплата — в сумме 100 */
+      rfq: z.strictObject({ price: z.number().int().min(0).max(100), lead: z.number().int().min(0).max(100), rel: z.number().int().min(0).max(100), terms: z.number().int().min(0).max(100) }).optional(),
     })
     .optional(),
   stock: z.array(z.strictObject({ material: id, qty })).default([]),
@@ -205,12 +242,31 @@ export const scenario = z.strictObject({
     share: percent,
     months: z.number().int().min(1).max(36),
     ctr: z.number().int().min(1).max(9999),
+    /**
+     * изменение досье типа II (Б6ж): рабочих дней — проверка полноты, экспертиза, решение; доля изменений с запросом
+     * эксперта, % и срок ответа, рабочих дней, — от и до
+     */
+    variation: z
+      .strictObject({
+        check: z.number().int().min(0).max(60),
+        expert: z.number().int().min(1).max(250),
+        decide: z.number().int().min(1).max(60),
+        ask: percent,
+        answer: z.tuple([z.number().int().min(1), z.number().int().min(1)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }),
+      })
+      .optional(),
   }),
   /**
    * политики отделов на старте (Б4а): сверхурочные — «по потребности» (задачу ставят и тогда, когда она кончится после
    * смены, в пределах закона) или «только закончить начатое»
    */
-  policies: z.strictObject({ overtime: z.enum(['need', 'finish']) }),
+  policies: z.strictObject({
+    overtime: z.enum(['need', 'finish']),
+    /** уборка после серии (Б5г): малая сразу, генеральная — перед другим продуктом, или генеральная сразу, если следующая серия — другой продукт */
+    clean: z.enum(['minor', 'major']),
+    /** уставки, когда игрок уходит с поста «Качество и технология» (Б5г): к цели карты или оставить */
+    setpoints: z.enum(['target', 'keep']),
+  }),
   /**
    * учётный период суммированного учёта сменных графиков по циклу (Б4б; ст. 104 ТК РФ), месяцев: делитель года, не
    * длиннее года — load.ts
@@ -226,8 +282,18 @@ export const scenario = z.strictObject({
       age: z.tuple([z.number().int().min(1).max(365), z.number().int().min(1).max(365)]).refine(([a, b]) => a <= b, { message: 'age: младшая серия старше самой старой' }),
     })
     .optional(),
-  /** отклонения (Б1г): срок расследования по процедуре завода, сутки */
-  deviations: z.strictObject({ term: z.number().int().min(1).max(365) }),
+  /**
+   * отклонения (Б1г, Б5е) — процедура завода: срок расследования по классу, сутки — у критического не длиннее, чем у
+   * существенного, у существенного — чем у незначительного (load.ts); порог износа узла стадии — признак вероятной
+   * причины, % ресурса; проверка эффективности CAPA — через столько суток после выполнения; с какого такого же
+   * отклонения за 12 месяцев начальник ООК назначает CAPA — с этого начинает политика ООК
+   */
+  deviations: z.strictObject({
+    term: z.strictObject({ critical: z.number().int().min(1).max(365), major: z.number().int().min(1).max(365), minor: z.number().int().min(1).max(365) }),
+    wear: z.number().int().min(1).max(100),
+    check: z.number().int().min(1).max(365),
+    capa: z.number().int().min(2).max(12),
+  }),
   /**
    * рынок труда города (Б4в): объявление — ₽ в неделю; кадровое агентство — % годового оклада принятого, опытный
    * кандидат с навыком от и до через столько-то суток от и до; медосмотр при приёме — рабочих дней и ₽; кандидат ищет
@@ -254,6 +320,16 @@ export const scenario = z.strictObject({
       probation: z.number().int().min(0).max(12),
       trial: z.number().min(1).max(20),
       colleague: z.strictObject({ skill: z.number().int().min(1).max(5), over: percent, ad: z.number().int().min(1).max(90) }),
+      /** переезд (Б5в): кандидат через столько-то суток, навык от и до, предупреждение и дорога — сутки, возмещение — ₽ */
+      move: z
+        .strictObject({
+          days: z.tuple([z.number().int().min(1).max(120), z.number().int().min(1).max(120)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }),
+          skill: z.tuple([z.number().int().min(1).max(5), z.number().int().min(1).max(5)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }),
+          notice: z.number().int().min(0).max(60),
+          road: z.number().int().min(0).max(30),
+          pay: z.number().min(0),
+        })
+        .optional(),
       roles: z.record(
         id,
         z.strictObject({
@@ -264,6 +340,11 @@ export const scenario = z.strictObject({
       ),
     })
     .optional(),
+  /**
+   * руководители — люди (Б5в): у руководителя отдела — роль заместителя по умолчанию и роли, из которых игрок может
+   * назначить заместителя (load.ts: роли базы, заместитель — среди `can`, у роли заместителя есть человек в штате)
+   */
+  heads: z.partialRecord(z.enum(HEAD_IDS), z.strictObject({ deputy: id, can: z.array(id).min(1) })).optional(),
   /**
    * отпуска (Б4г): черновик графика на следующий год — в первый рабочий день не раньше этого месяца и числа, в 09:00;
    * утверждение — в последний рабочий день не позже этого; части у каждого — дней по порядку, первая летом (`summer`,
@@ -291,6 +372,9 @@ export const scenario = z.strictObject({
       sign: z.number().int().min(1).max(240),
       trip: z.number().positive(),
       pallet: z.number().positive(),
+      /** порог коллеги склада (Б5г): заняты столько мест зоны — числитель и знаменатель доли — или паллета ждёт `keep` месяцев */
+      full: z.tuple([z.number().int().positive(), z.number().int().positive()]).refine(([a, b]) => a <= b, { message: 'доля больше целого' }),
+      keep: z.number().int().min(1).max(10),
     })
     .optional(),
   /**
@@ -383,6 +467,10 @@ export const supplier = z.strictObject({
   payDays: z.number().int().min(0).max(365),
   /** доля партий с браком, % */
   defects: percent,
+  /** опоздания (Б6ж): доля заказов, %, и на сколько суток позже обещанного — от и до */
+  late: z
+    .strictObject({ share: percent, days: z.tuple([z.number().int().min(1), z.number().int().min(1)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }) })
+    .optional(),
   items: z.record(id, z.strictObject({ price: z.number().positive(), moq: qty, maker: id.optional() })),
 });
 
@@ -509,6 +597,21 @@ export const regime = z.strictObject({
   review,
 });
 
+/**
+ * Сезон спроса группы товаров (Б6в; геймдизайн, §10.1): индекс каждого месяца с января по декабрь, % среднего месяца —
+ * целые больше нуля, вместе 1200. Когда пик — по источникам, сколько — гипотеза.
+ */
+export const season = z.strictObject({
+  id: z.string(),
+  name: text,
+  months: z
+    .array(z.number().int().min(1).max(400))
+    .length(12)
+    .refine(m => m.reduce((a, b) => a + b, 0) === 1200, { message: 'индексы месяцев — вместе 1200: в среднем 100' }),
+  source: sources,
+  review,
+});
+
 /** Методика испытания (геймдизайн, §6.2). */
 export const test = z
   .strictObject({
@@ -570,6 +673,8 @@ export const spec = z
     tests: z.array(z.strictObject({ test: id, min: z.number().optional(), max: z.number().optional() })).min(1),
     /** одобренные пары «поставщик — изготовитель» (Б3г; GMP ЕАЭС, ч. I, п. 4.14) — у исходного и упаковочного материала */
     pairs: z.array(z.strictObject({ supplier: id, maker: id })).min(1).optional(),
+    /** пары-кандидаты (Б6ж): изготовителя нет в досье — одобряют изменением досье (reg-eaeu, прил. 19, Б.I.а.1) */
+    candidates: z.array(z.strictObject({ supplier: id, maker: id })).min(1).optional(),
     source: sources.optional(),
     review: review.optional(),
   })
@@ -591,6 +696,9 @@ const centerCode = z.string().regex(/^[A-Z]{2}-\d{2}$/, 'код рабочего
 const placeCode = z.string().regex(/^[A-Z]{2}-\d{2}\.\d{2}$/, 'код места — рабочее место, точка и две цифры');
 /** прибор вне лаборатории: прибор МОК или датчик условий хранения — вид, помещение, код места */
 const meter = z.strictObject({ id: z.string(), type: id, room: z.string(), place: placeCode });
+
+/** Этаж (Б7а, решение по #82): в 1.0 этаж один — первый; запись его может не писать. */
+const floor = z.number().int().refine(f => f === 1, { message: 'в 1.0 этаж один — первый (Б7а)' }).default(1);
 
 /** План завода: метры участка. */
 export const plant = z.strictObject({
@@ -623,7 +731,7 @@ export const plant = z.strictObject({
     .min(1),
   /** здание — прямоугольник клеток со стенами по краю */
   building: cells,
-  docks: z.array(z.strictObject({ id: z.string(), kind: z.enum(['in', 'out']), x: z.number(), z: z.number() })).min(1),
+  docks: z.array(z.strictObject({ id: z.string(), kind: z.enum(['in', 'out']), x: z.number(), z: z.number(), floor })).min(1),
   zones: z.array(
     z.strictObject({
       id: z.string(),
@@ -644,7 +752,7 @@ export const plant = z.strictObject({
     }),
   ),
   /** помещение — прямоугольник клеток со стенами по краю; соседние делят стену; технике туда можно; рабочая точка */
-  rooms: z.array(z.strictObject({ id: z.string(), type: z.string(), rect: cells, grade: z.enum(['D', 'cnc']), vehicles: z.boolean().default(false), at: point.optional() })),
+  rooms: z.array(z.strictObject({ id: z.string(), type: z.string(), rect: cells, grade: z.enum(['D', 'cnc']), vehicles: z.boolean().default(false), at: point.optional(), floor })),
   /** двери на стенах: первая клетка, сколько клеток, вдоль какой оси идёт стена, вид */
   doors: z.array(
     z.strictObject({
@@ -677,7 +785,8 @@ export const plant = z.strictObject({
       }),
     )
     .default([]),
-  points: z.strictObject({ park: point, entrance: point }),
+  /** стоянка техники и вход; этаж — их и постов ролей */
+  points: z.strictObject({ park: point, entrance: point, floor }),
   /** посты ожидания: роль → точка, где человек ждёт задачи (docs/specs/2026-10-panels.md, 3а) */
   posts: z.record(id, point).default({}),
   /** вентиляция круглые сутки — Вт на м² помещения по классу; постоянная база (свет, офис, склад) — кВт */
@@ -705,6 +814,8 @@ export const product = z.strictObject({
   strength: z.strictObject({ mg: z.number().positive() }),
   /** в перечне ЖНВЛП: цена позиции — не выше зарегистрированной */
   jnvlp: z.boolean().default(false),
+  /** сезон спроса (Б6в): группа товаров — запись content/seasons/ */
+  season: id,
   source: sources.optional(),
   review: review.optional(),
 }).refine(paired, pairedMsg);
@@ -803,7 +914,17 @@ export const recipe = z
      * (Б1д): порядок загрузки сырья — часть технологической инструкции (GMP ЕАЭС, ч. I, п. 4.18 d)
      */
     bom: z
-      .array(z.strictObject({ material: id, kg: z.number().positive(), potency: z.boolean().optional(), qs: z.boolean().optional(), stage: z.string() }))
+      .array(
+        z.strictObject({
+          material: id,
+          kg: z.number().positive(),
+          potency: z.boolean().optional(),
+          qs: z.boolean().optional(),
+          stage: z.string(),
+          /** аналог (Б6ж): материал и коэффициент — сколько аналога на единицу основного */
+          alt: z.strictObject({ material: id, factor: z.number().positive() }).optional(),
+        }),
+      )
       .min(1),
     stages: z
       .array(
@@ -1065,6 +1186,65 @@ export const investigation = z
     review,
   });
 
+/**
+ * Политика руководителя (Б5г; геймдизайн, §8.5; docs/specs/2026-10-vertical-slice.md, «Б5г»): число или правило, по
+ * которому руководитель решает в свой час. С чего начинает завод — запись сценария; здесь — что задают и в каких пределах
+ * (гипотезы). Сутки и месяцы — от `min` до `max` с шагом `step`; износ узла — % ресурса так же, а `off` — «после отказа»;
+ * уровень ЗИП — «осталось столько — заказать до стольких»: два целых от `min` до `max`, первое меньше; выбор — из
+ * `options`; доля мест — из `shares`. `each` — своя у каждого узла или каждой запчасти; `off` у суток — «без».
+ */
+export const policy = z
+  .strictObject({
+    id: z.string(),
+    name: text,
+    head: z.enum(['plan', 'supply', 'maint', 'mes', 'wms', 'tech', 'qa']),
+    kind: z.enum(['days', 'months', 'wear', 'level', 'choice', 'share', 'count', 'mday', 'workdays']),
+    each: z.enum(['part', 'spare']).optional(),
+    min: z.number().int().min(0).optional(),
+    max: z.number().int().positive().optional(),
+    step: z.number().int().positive().optional(),
+    off: z.literal(true).optional(),
+    options: z.array(id).min(2).optional(),
+    shares: z.array(z.tuple([z.number().int().positive(), z.number().int().positive()]).refine(([a, b]) => a <= b, { message: 'доля больше целого' })).min(2).optional(),
+    source: sources.optional(),
+    review,
+  })
+  .superRefine((p, ctx) => {
+    const numeric = p.kind === 'days' || p.kind === 'months' || p.kind === 'wear' || p.kind === 'count' || p.kind === 'mday' || p.kind === 'workdays';
+    if (numeric || p.kind === 'level') {
+      if (p.min === undefined || p.max === undefined || p.min >= p.max) ctx.addIssue({ code: 'custom', message: 'нужны min и max, min меньше max' });
+      if (numeric && (p.step === undefined || (p.max! - p.min!) % p.step !== 0)) ctx.addIssue({ code: 'custom', message: 'от min до max — целое число шагов step' });
+    }
+    if (p.kind === 'choice' && !p.options) ctx.addIssue({ code: 'custom', message: 'у выбора нужны options' });
+    if (p.kind === 'share' && !p.shares) ctx.addIssue({ code: 'custom', message: 'у доли мест нужны shares' });
+    if (p.kind === 'wear' && p.max! > 100) ctx.addIssue({ code: 'custom', message: 'износ — не больше 100 % ресурса' });
+    if (p.kind === 'mday' && p.max! > 28) ctx.addIssue({ code: 'custom', message: 'число месяца — до 28-го: оно есть в каждом месяце; 0 — к дню серии' });
+    // замороженный горизонт (Б6е): от одного рабочего дня до четырёх пятидневок
+    if (p.kind === 'workdays' && (p.min! < 1 || p.max! > 20)) ctx.addIssue({ code: 'custom', message: 'горизонт — от 1 до 20 рабочих дней' });
+  });
+
+/**
+ * Действие CAPA каталога (Б5е; геймдизайн, §6.4): что делает движок; кто исполняет — руководитель отдела действия, у
+ * обучения — нет: его исполняет руководитель отдела тех, кого учат; к каким отклонениям подходит — по роду вероятной
+ * причины или по виду отклонения, хоть одно; порядок у правила начальника ООК — нет, назначает только игрок.
+ */
+export const capa = z
+  .strictObject({
+    id: z.string(),
+    name: text,
+    does: z.enum(['replace', 'earlier', 'train', 'calib', 'pair']),
+    head: z.enum(['maint', 'qa', 'mes', 'qc']).optional(),
+    causes: z.array(z.enum(['wear', 'param', 'lots', 'lab', 'none'])).min(1).optional(),
+    kinds: z.array(z.enum(['oos', 'ipc', 'param', 'yield', 'recon'])).min(1).optional(),
+    rule: z.number().int().min(1).max(9).optional(),
+    source: sources,
+    review,
+  })
+  .superRefine((c, ctx) => {
+    if (c.does === 'train' ? c.head !== undefined : c.head === undefined) ctx.addIssue({ code: 'custom', message: 'head — у всех, кроме обучения: его исполняет руководитель отдела тех, кого учат' });
+    if (!c.causes && !c.kinds) ctx.addIssue({ code: 'custom', message: 'нужны causes или kinds: к чему действие подходит' });
+  });
+
 /** Папка в content/ → приставка идентификатора и схема. */
 export const KINDS = {
   profiles: { prefix: 'prf', schema: profile },
@@ -1093,6 +1273,9 @@ export const KINDS = {
   regimes: { prefix: 'reg', schema: regime },
   makers: { prefix: 'mkr', schema: maker },
   agreements: { prefix: 'qag', schema: agreement },
+  seasons: { prefix: 'sea', schema: season },
+  policies: { prefix: 'pol', schema: policy },
+  capa: { prefix: 'capa', schema: capa },
 } as const;
 
 export type Kind = keyof typeof KINDS;

@@ -19,7 +19,7 @@ const SC = 'scn.proto';
 const RCP = 'rcp.paracetamol500.wet.v1';
 const N10 = 'sku.paracetamol500.n10';
 const N20 = 'sku.paracetamol500.n20';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 
 /** Завод без заданий сценария: серии в тесте заказываются вручную. */
 const bare: ContentDb = { ...db, scenarios: { ...db.scenarios, [SC]: { ...db.scenarios[SC], batches: [] } } };
@@ -213,7 +213,7 @@ describe('уполномоченное лицо', () => {
     apply(bare, s, { kind: 'seat', seats: ['production', 'quality'] });
     const b = order(s, N20);
     live(s, 10, undefined, () => b.status === 'fg');
-    s.deviations.D900 = { id: 'D900', opened: s.t, kind: 'ipc', batch: b.id, stage: 'compress', test: 'test.ipc.mass', status: 'open' };
+    s.deviations.D900 = { id: 'D900', opened: s.t, kind: 'ipc', batch: b.id, stage: 'compress', test: 'test.ipc.mass', status: 'open', cls: 'major' };
     const out = live(s, 5, undefined, () => b.held === true);
     expect(out.some(n => n.kind === 'batchHeld' && n.batch === b.id && !n.mine)).toBe(true);
     expect(s.lots[b.pack!.fg!].status).toBe('blocked');

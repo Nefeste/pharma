@@ -8,9 +8,10 @@ import type { ContentDb, Id, ParamUnit } from '../content/types';
 import { batchNo } from '../engine/batchno';
 import { RECON_LIMIT, usedByCount } from '../engine/line';
 import { stageMass } from '../engine/mes';
+import { editInFrozen, editPrice } from '../engine/plan/price';
 import { planOf } from '../engine/plant';
 import { unitsOfLot } from '../engine/stock';
-import type { Batch, BatchStatus, Deviation, KitLine, LotStatus, PackJob, PlantState, Recon } from '../engine/types';
+import type { Batch, BatchStatus, Deviation, EditPrice, KitLine, LotStatus, PackJob, PlantState, Recon } from '../engine/types';
 import { whoBatch, type WhoRow } from './journal';
 import { wastedAt } from './waste';
 
@@ -133,6 +134,12 @@ export interface DossierView {
   product?: Id;
   sku?: Id;
   status?: BatchStatus;
+  /** срок и под что (Б6а): запас позиции или заказ покупателя — его покупатель; до комплектовки — можно отменить */
+  due?: number;
+  goal?: { kind: 'stock' } | { kind: 'order'; order: string; customer?: Id };
+  open?: true;
+  /** снять задание в замороженном горизонте (Б6е): цена правки — до команды */
+  cancelPrice?: EditPrice;
   /** размер серии по карте: масса и таблеток */
   mass?: number;
   units?: number;
@@ -188,7 +195,7 @@ function lotsOf(s: PlantState, lines: readonly KitLine[]): LotQty[] {
 
 /** Оборудование стадии: по досье — то, на чём работали; впереди — то, что стоит в её помещении. */
 function equipmentOf(db: ContentDb, s: PlantState, ids: readonly string[]) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   return ids.map(id => {
     const i = plan.plant.equipment.findIndex(e => e.id === id);
     return { type: s.equipment[id]?.type ?? id, i, ...(s.assets[id] ? { inv: s.assets[id].inv } : {}) };
@@ -215,7 +222,7 @@ export function dossierView(db: ContentDb, s: PlantState, q: DossierQuery): Doss
   const b = s.batches[`B${q.batch}`];
   if (!b) return { view: 'dossier', batch: q.batch, gone: true };
   const r = db.recipes[b.recipe];
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const src = lines(b);
   const devs = Object.values(s.deviations).filter(d => d.batch === b.id);
   const disp: DispRow[] = r.bom.map(l => {
@@ -266,6 +273,9 @@ export function dossierView(db: ContentDb, s: PlantState, q: DossierQuery): Doss
     product: b.product,
     ...(b.sku ? { sku: b.sku } : {}),
     status: b.status,
+    ...(b.due !== undefined ? { due: b.due } : {}),
+    ...(b.for ? { goal: b.for.kind === 'order' ? { kind: 'order' as const, order: b.for.order, ...(s.orders[b.for.order] ? { customer: s.orders[b.for.order].customer } : {}) } : { kind: 'stock' as const } } : {}),
+    ...(b.status === 'waiting' || b.status === 'reserved' ? { open: true as const, ...(editInFrozen(db, s, { drop: [b.id] }) ? { cancelPrice: editPrice(db, s, { drop: [b.id] }) } : {}) } : {}),
     mass: r.batch.mass,
     units: r.batch.units,
     ...(b.issued !== undefined ? { issued: b.issued } : {}),
@@ -298,14 +308,14 @@ export function dossierView(db: ContentDb, s: PlantState, q: DossierQuery): Doss
     view.bulk = { code: codeOf(bulk.code), status: bulk.status, ...(bulk.since !== undefined ? { since: bulk.since } : {}), ...(u ? { unit: num(u.id) } : {}) };
   }
   if (b.pack) view.pack = packOf(db, s, b, b.pack);
-  const who = whoBatch(s, b);
+  const who = whoBatch(s, b, db);
   if (who.length > 0) view.who = who;
   return view;
 }
 
 /** Упаковка серии в досье (п. 4.21): люди, очистка, итог по таблеткам и штукам, материалы по машинам и сверка. */
 function packOf(db: ContentDb, s: PlantState, b: Batch, job: PackJob): PackDossier {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const li = plan.plant.lines.findIndex(l => l.id === job.line);
   const def = plan.plant.lines[li];
   const sku = db.skus[job.sku];

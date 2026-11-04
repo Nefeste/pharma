@@ -1,0 +1,11 @@
+# Политика начальника ООК (Б5е): оценка пары поставщик — изготовитель — до конца одобрения, суток. С чего начинает
+# завод — запись сценария `partners.ahead`; пределы — гипотезы: аудит с отчётом укладывается в наименьший срок
+id: pol.qa.ahead
+name: { ru: Оценка пары — до конца одобрения, en: Supplier pair evaluation before the approval ends }
+head: qa
+kind: days
+min: 14
+max: 60
+step: 1
+source: [gmp-eaeu]
+review: draft

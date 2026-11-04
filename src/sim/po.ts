@@ -7,7 +7,7 @@
 import type { ContentDb, Id } from '../content/types';
 import { momentOf } from '../engine/core/calendar';
 import { approved, contractOf, listPrice } from '../engine/partners';
-import { quotePo, supplyPlan } from '../engine/supply';
+import { quotePo, supplyOrders } from '../engine/supply';
 import type { PlantState, PoLine, Refusal } from '../engine/types';
 
 /** Запрос окна: поставщик и строки черновика — материал и количество, мг или шт. */
@@ -82,6 +82,6 @@ export function poView(db: ContentDb, s: PlantState, q: PoQuery): PoView {
     const r = quotePo(db, s, supplier, q.lines as PoLine[]);
     answer = 'why' in r ? { why: r.why, ...(r.detail ? { detail: r.detail } : {}) } : { lines: r.lines.map((l, i) => ({ material: l.material, qty: l.qty, cost: r.costs[i] })), net: r.net, vat: r.vat, prepaid: r.prepaid };
   }
-  const plan = supplyPlan(db, s).map(o => ({ supplier: o.supplier, lines: o.lines.map(l => ({ material: l.material, qty: l.qty })) }));
+  const plan = supplyOrders(db, s).map(o => ({ supplier: o.supplier, lines: o.lines.map(l => ({ material: l.material, qty: l.qty })) }));
   return { view: 'po', suppliers, ...(supplier ? { supplier } : {}), ...(answer ? { answer } : {}), plan };
 }

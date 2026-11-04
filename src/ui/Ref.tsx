@@ -10,7 +10,9 @@ import { daysFromCivil, weekday } from '../engine/core/calendar';
 import type { DocKind } from '../engine/docs';
 import { DEPT_SEAT } from '../engine/seats';
 import { dayText, durText, hText, lang, money, named, num, pctText, priceText, qtyText, T, whenText } from '../i18n';
+import type { BossRow } from '../sim/bosses';
 import type { FormerRow, HireRow, HiringView, StaffRow, VacancyRow } from '../sim/hire';
+import type { Via } from '../engine/types';
 import type { RefContract, RefMaker, RefPair } from '../sim/partners';
 import type { DocNow } from '../sim/people';
 import type { AssetInfo, PlaceArea, PlaceCenter } from '../sim/places';
@@ -18,7 +20,9 @@ import type { RefCustomer, RefDoc, RefEquipment, RefInstrument, RefLine, RefMach
 import { assetClass, stateKey, untilText, unfitText, workName } from './assets';
 import { admText } from './Card';
 import { db, docText, headOf } from './db';
+import { Deputy, limitWords } from './Bosses';
 import { LeavePlan } from './Leave';
+import { actOf, actOn } from './memo';
 import { type Actions, type Hud, holds, REF_TABS } from './store';
 import { attrNum, attrText, paramNum, paramText } from './units';
 
@@ -162,7 +166,7 @@ function Recipe({ r, t, q }: { r: RefRecipe; t: number; q: string }) {
     { name: b.qty, text: l => qtyText(l.qty, unitOf(l.material)), num: l => l.qty },
     // стадия загрузки (Б1д): порядок загрузки сырья — часть технологической инструкции
     { name: b.stage, text: l => T.stages[l.stage] ?? l.stage, num: l => order.get(l.stage) ?? 0 },
-    { name: b.how, text: l => [l.potency ? T.ref.potency : '', l.qs ? T.ref.qs : ''].filter(Boolean).join(', ') },
+    { name: b.how, text: l => [l.potency ? T.ref.potency : '', l.qs ? T.ref.qs : '', l.alt ? T.ref.alt(named(db?.materials[l.alt.material]?.name, l.alt.material), num(l.alt.factor / 10_000, l.alt.factor % 10_000 === 0 ? 0 : 2)) : ''].filter(Boolean).join(', ') },
   ];
   const stages: Col<RefStage>[] = [
     { name: c.n, text: st => num(order.get(st.id) ?? 0), num: st => order.get(st.id) ?? 0 },
@@ -479,33 +483,23 @@ function Calendar({ v }: { v: RefView }) {
 }
 
 /**
- * Политики отделов (Б4а): сверхурочные — «по потребности» или «только закончить начатое». Меняет пост отдела или
- * директор; места не выбраны — кто угодно (как команды других постов, 3е).
+ * Политики отделов (Б4а): сверхурочные — «по потребности» или «только закончить начатое». С Б5г их меняют в окне
+ * «Политики» (P), как и другие политики руководителей; здесь — что сейчас и ссылка на окно.
  */
-function Policies({ v, hud, actions }: { v: RefView; hud: Hud; actions: Actions }) {
+function Policies({ v, actions }: { v: RefView; actions: Actions }) {
   const pc = T.ref.policyCols;
   const ot = v.overtime;
-  const mine = (d: Dept) => holds(hud, DEPT_SEAT[d]);
   const cols: Col<Dept>[] = [
     { name: pc.dept, text: d => T.morning.depts[d] ?? d },
     { name: pc.overtime, text: d => T.ref.modes[v.policy[d]] ?? v.policy[d], show: d => <span data-test="policy-mode">{T.ref.modes[v.policy[d]] ?? v.policy[d]}</span> },
-    {
-      name: '',
-      text: () => '',
-      show: d => {
-        const other: OvertimeMode = v.policy[d] === 'need' ? 'finish' : 'need';
-        return (
-          <button type="button" disabled={!mine(d)} onClick={() => actions.overtime(d, other)} title={mine(d) ? '' : T.seats.notYours(T.seats.names[DEPT_SEAT[d]])} data-test="policy-set" data-dept={d}>
-            {T.ref.modeSet(T.ref.modes[other])}
-          </button>
-        );
-      },
-    },
     { name: pc.seat, text: d => T.seats.names[DEPT_SEAT[d]] ?? DEPT_SEAT[d] },
   ];
   return (
     <section className="rsec" data-test="ref-policy">
-      <b>{T.ref.policy}</b>
+      <b>{T.ref.policy}</b>{' '}
+      <button type="button" className="small" onClick={() => actions.togglePolicies()} title={T.policies.hint} data-test="policy-open">
+        {T.ref.policyGo}
+      </button>
       <Table cols={cols} items={[...DEPTS]} keyOf={d => d} q="" />
       <div className="muted small">{T.ref.policyNote(hText(ot.shift), hText(ot.year))}</div>
     </section>
@@ -515,12 +509,16 @@ function Policies({ v, hud, actions }: { v: RefView; hud: Hud; actions: Actions 
 const roleName = (id: Id) => named(db?.roles[id]?.name, id);
 const shiftName = (id: Id) => named(db?.shifts[id]?.name, id);
 
-/** Пост, чья команда найма роли (Б4в): пост отдела роли; держит ли его игрок и подпись, если нет. */
-function roleSeat(hud: Hud, role: Id): { mine: boolean; title: string } {
+/**
+ * Пост, чья команда найма роли (Б4в): пост отдела роли; держит ли его игрок и подпись, если нет; чужой пост (Б5д) —
+ * запиской руководителю отдела роли: `mine` — можно нажать, `memo` — уйдёт запиской.
+ */
+function roleSeat(hud: Hud, role: Id): { mine: boolean; title: string; memo: boolean } {
   const dept = db?.roles[role]?.dept;
   const seat = dept ? DEPT_SEAT[dept] : undefined;
-  const mine = !seat || holds(hud, seat);
-  return { mine, title: mine || !seat ? '' : T.seats.notYours(T.seats.names[seat] ?? seat) };
+  if (!seat || holds(hud, seat)) return { mine: true, title: '', memo: false };
+  const a = actOf(hud, seat, { kind: 'vacancy', role, shift: '', via: 'ad' }, role);
+  return { mine: actOn(a), title: a.title, memo: !!a.memo };
 }
 
 /** Вакансия (Б4в): роль, график, канал, кто открыл; кандидаты — навык, ожидание, до какого дня ищут; «Принять…». */
@@ -528,14 +526,14 @@ function Vacancy({ v, h, q, hud, actions }: { v: VacancyRow; h: HiringView; q: s
   const hc = T.hire;
   const [pick, setPick] = useState<string | undefined>();
   const [trial, setTrial] = useState(h.probation);
-  const { mine, title } = roleSeat(hud, v.role);
+  const { mine, title, memo } = roleSeat(hud, v.role);
   type Cand = VacancyRow['candidates'][number];
   const cols: Col<Cand>[] = [
     { name: hc.candCols.id, text: x => hc.candidate(Number(x.id.slice(1))) },
     { name: hc.candCols.skill, text: x => num(x.skill), num: x => x.skill },
     { name: hc.candCols.salary, text: x => money(x.salary), num: x => x.salary },
     { name: hc.candCols.until, text: x => dayText(x.until), num: x => x.until },
-    { name: hc.candCols.fee, text: x => (x.fee !== undefined ? money(x.fee) : '—'), num: x => x.fee ?? 0 },
+    { name: hc.candCols.fee, text: x => (x.fee !== undefined ? money(x.fee) : x.move !== undefined ? money(x.move) : '—'), num: x => x.fee ?? x.move ?? 0 },
     {
       name: hc.candCols.hire,
       text: () => '',
@@ -552,14 +550,14 @@ function Vacancy({ v, h, q, hud, actions }: { v: VacancyRow; h: HiringView; q: s
       <div>
         <b>{hc.vacancy(roleName(v.role), shiftName(v.shift), hc.via[v.via], dayText(v.from))}</b>
         {v.by && v.instead !== undefined ? <span className="muted"> · {hc.byColleague(v.instead)}</span> : null}{' '}
-        <button type="button" className="link" disabled={!mine} title={title} onClick={() => actions.closeVacancy(v.id)} data-test="vacancy-close">
+        <button type="button" className="link" disabled={!mine} title={title} onClick={() => actions.closeVacancy(v.id, memo)} data-test="vacancy-close">
           {hc.close}
         </button>
       </div>
       {v.candidates.length > 0 ? (
         <Table test="ref-candidates" cols={cols} items={v.candidates} keyOf={x => x.id} q={q} />
       ) : (
-        <div className="muted small">{v.via === 'ad' ? hc.waitAd : hc.waitAgency(v.next !== undefined ? dayText(v.next) : '—')}</div>
+        <div className="muted small">{v.via === 'ad' ? hc.waitAd : (v.via === 'move' ? hc.waitMove : hc.waitAgency)(v.next !== undefined ? dayText(v.next) : '—')}</div>
       )}
       {pick && v.candidates.some(c => c.id === pick) ? (
         <div className="hireask" data-test="hire-ask">
@@ -573,12 +571,16 @@ function Vacancy({ v, h, q, hud, actions }: { v: VacancyRow; h: HiringView; q: s
               ))}
             </select>
           </label>{' '}
-          <span className="muted">{hc.hireAsk(dayText(v.exam), v.first !== undefined ? dayText(v.first) : '—', money(h.costs.medical))}</span>{' '}
+          <span className="muted">
+            {v.arrive !== undefined && h.move
+              ? hc.hireAskMove(dayText(v.arrive), dayText(v.exam), v.first !== undefined ? dayText(v.first) : '—', money(h.costs.medical), money(h.move.pay))
+              : hc.hireAsk(dayText(v.exam), v.first !== undefined ? dayText(v.first) : '—', money(h.costs.medical))}
+          </span>{' '}
           <button
             type="button"
             disabled={!mine}
             onClick={() => {
-              actions.hire(pick, trial);
+              actions.hire(pick, trial, memo);
               setPick(undefined);
             }}
             data-test="hire-do"
@@ -602,8 +604,10 @@ function OpenVacancy({ h, hud, actions }: { h: HiringView; hud: Hud; actions: Ac
   const [role, setRole] = useState(roles[0] ?? '');
   const firstShift = (r: Id) => h.staff.find(x => x.role === r)?.shift ?? Object.keys(db?.shifts ?? {})[0] ?? '';
   const [shift, setShift] = useState(firstShift(roles[0] ?? ''));
-  const [via, setVia] = useState<'ad' | 'agency'>('ad');
-  const { mine, title } = roleSeat(hud, role);
+  const [via, setVia] = useState<Via>('ad');
+  const { mine, title, memo } = roleSeat(hud, role);
+  // переезд (Б5в) — только для тех, кого в городе по объявлению не найти
+  const canMove = h.movable.includes(role);
   if (!open) {
     return (
       <div>
@@ -623,6 +627,7 @@ function OpenVacancy({ h, hud, actions }: { h: HiringView; hud: Hud; actions: Ac
           onChange={e => {
             setRole(e.target.value);
             setShift(firstShift(e.target.value));
+            if (via === 'move' && !h.movable.includes(e.target.value)) setVia('ad');
           }}
           data-test="vacancy-role"
         >
@@ -645,9 +650,10 @@ function OpenVacancy({ h, hud, actions }: { h: HiringView; hud: Hud; actions: Ac
       </label>{' '}
       <label>
         {hc.channel}{' '}
-        <select value={via} onChange={e => setVia(e.target.value as 'ad' | 'agency')} data-test="vacancy-via">
+        <select value={via} onChange={e => setVia(e.target.value as Via)} data-test="vacancy-via">
           <option value="ad">{hc.via.ad}</option>
           <option value="agency">{hc.via.agency}</option>
+          {canMove ? <option value="move">{hc.via.move}</option> : null}
         </select>
       </label>{' '}
       <button
@@ -655,7 +661,7 @@ function OpenVacancy({ h, hud, actions }: { h: HiringView; hud: Hud; actions: Ac
         disabled={!mine}
         title={title}
         onClick={() => {
-          actions.vacancy(role, shift, via);
+          actions.vacancy(role, shift, via, memo);
           setOpen(false);
         }}
         data-test="vacancy-do"
@@ -686,6 +692,7 @@ function Hiring({ h, q, hud, actions }: { h: HiringView; q: string; hud: Hud; ac
     { name: hc.hireCols.shift, text: x => shiftName(x.shift) },
     { name: hc.hireCols.skill, text: x => num(x.skill), num: x => x.skill },
     { name: hc.hireCols.salary, text: x => money(x.salary), num: x => x.salary },
+    { name: hc.hireCols.arrive, text: x => (x.arrive !== undefined ? dayText(x.arrive) : '—'), num: x => x.arrive ?? 0 },
     { name: hc.hireCols.exam, text: x => dayText(x.exam), num: x => x.exam },
     { name: hc.hireCols.day, text: x => dayText(x.day), num: x => x.day },
     { name: hc.hireCols.trial, text: x => hc.months(x.trial), num: x => x.trial },
@@ -721,6 +728,7 @@ function Hiring({ h, q, hud, actions }: { h: HiringView; q: string; hud: Hud; ac
         ))}
         <OpenVacancy h={h} hud={hud} actions={actions} />
         <div className="muted small">{hc.costs(money(h.costs.ad), h.costs.days[0], h.costs.days[1], pctText(h.costs.agency), money(h.costs.medical))}</div>
+        {h.move ? <div className="muted small">{hc.costsMove(h.move.days[0], h.move.days[1], h.move.notice, h.move.road, money(h.move.pay))}</div> : null}
         <div className="muted small">{hc.note}</div>
       </section>
       {h.hires.length > 0 ? (
@@ -782,6 +790,39 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
     { name: pc.trial, text: x => (x.trial !== undefined ? dayText(x.trial) : '—'), num: x => x.trial ?? 0 },
     { name: pc.quit, text: x => (x.quit ? T.card.quitLine(T.hire.why[x.quit.why] ?? x.quit.why, dayText(x.quit.last)) : '—'), show: x => (x.quit ? <span className="warn">{T.card.quitLine(T.hire.why[x.quit.why] ?? x.quit.why, dayText(x.quit.last))}</span> : '—'), num: x => x.quit?.last ?? 0 },
   ];
+  // руководители — люди (Б5в): кто, навык и что он ограничивает, заместитель, кто решает сегодня
+  const bc = T.boss.cols;
+  const who = (x: { role: Id; tab: number }) => T.card.person(named(db?.roles[x.role]?.name, x.role), x.tab);
+  const card = (x: { n: number; role: Id; tab: number }, head: string) => (
+    <button type="button" className="link" onClick={() => actions.show({ kind: 'person', n: x.n })} data-test="boss-card" data-head={head}>
+      {who(x)}
+    </button>
+  );
+  const bosses: Col<BossRow>[] = [
+    {
+      name: bc.head,
+      text: x => T.journal.names[x.head] ?? x.head,
+      show: x => (
+        <span data-test="boss-head" data-head={x.head} data-now={x.now}>
+          {T.journal.names[x.head] ?? x.head}
+        </span>
+      ),
+    },
+    { name: bc.person, text: x => (x.person ? who(x.person) : T.boss.vacant), show: x => (x.person ? card(x.person, x.head) : <span className="warn">{T.boss.vacant}</span>) },
+    { name: bc.skill, text: x => (x.person ? num(x.person.skill) : '—'), num: x => x.person?.skill ?? 0 },
+    { name: bc.limit, text: x => limitWords(x.person?.limit).join(' · ') || T.boss.nothing },
+    { name: bc.deputy, text: x => (x.deputy ? `${who(x.deputy)} · ${T.boss.skill(x.deputy.skill)}` : x.none ? T.boss.removed : T.boss.noDeputy), show: x => <Deputy b={x} hud={hud} actions={actions} bare /> },
+    {
+      name: bc.now,
+      text: x => (x.person?.away !== undefined ? T.boss.away(dayText(x.person.away)) : '') + (x.now === 'head' ? '' : ` ${T.boss.now[x.now]}`),
+      show: x => (
+        <span className={x.now === 'noOne' ? 'bad' : x.now === 'io' ? 'warn' : ''}>
+          {x.person?.away !== undefined ? `${T.boss.away(dayText(x.person.away))} · ` : ''}
+          {T.boss.now[x.now]}
+        </span>
+      ),
+    },
+  ];
   type Doc = { i: number; d: DocNow };
   const mc = T.ref.matrixCols;
   const cell = (x: Doc, j: number) => v.matrix.cells[x.i][j];
@@ -810,6 +851,12 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
   ];
   return (
     <>
+      {v.bosses.length > 0 ? (
+        <section className="rsec">
+          <b>{T.boss.table}</b>
+          <Table test="ref-bosses" cols={bosses} items={v.bosses} keyOf={x => x.head} q={q} />
+        </section>
+      ) : null}
       <section className="rsec">
         <Table test="ref-roles" cols={roles} items={v.roles.filter(x => x.shifts.length > 0)} keyOf={x => x.id} q={q} />
       </section>
@@ -822,7 +869,7 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
         <Table test="ref-shifts" cols={shifts} items={v.shifts} keyOf={x => x.id} q={q} />
       </section>
       <ShiftCal v={v} />
-      <Policies v={v} hud={hud} actions={actions} />
+      <Policies v={v} actions={actions} />
       <Calendar v={v} />
       <section className="rsec">
         <Table test="ref-matrix" cols={matrix} items={v.matrix.docs.map((d, i) => ({ i, d }))} keyOf={x => x.d.code} q={q} />
@@ -839,6 +886,13 @@ const makerName = (id: string) => named(db?.makers[id]?.name, id);
 
 /** Состояние одобрения пары словами (Б3г): «с 30.11.2026 до 29.11.2027»; приостановлена; идёт оценка. */
 function pairState(x: RefPair, start: { y: number; m: number; d: number }): string {
+  // пара-кандидат (Б6ж): пока не в спецификации — «кандидат» и шаг одобрения с наступившими днями
+  const c = x.cand;
+  if (c && c.spec === undefined) {
+    const days = [c.filed !== undefined ? T.pairApp.filed(dayText(c.filed)) : '', c.asked !== undefined ? T.pairApp.asked(dayText(c.asked)) : '', c.answered !== undefined ? T.pairApp.answered(dayText(c.answered)) : ''].filter(Boolean);
+    const trial = c.step === 'trial' && c.po && c.eta !== undefined ? T.pairApp.trialPo(c.po, whenText(start, c.eta)) : '';
+    return [T.pairApp.cand, c.step ? T.pairApp.steps[c.step] : '', trial, ...days].filter(Boolean).join(' · ');
+  }
   const base = x.until === undefined ? T.ref.pairNone : x.ok ? T.ref.pairOk(dayText(x.since!), dayText(x.until)) : T.ref.pairOff(dayText(x.until));
   const e = x.eval;
   const ev = !e ? '' : e.review ? T.ref.pairReview : e.how === 'audit' && e.to !== undefined ? T.ref.pairAudit(whenText(start, e.to)) : '';
@@ -852,7 +906,7 @@ function ctrLine(l: RefContract['lines'][number]): string {
   return T.ref.ctrLine(matName(l.material), price, qtyText(l.volume, unit), qtyText(l.bought, unit));
 }
 
-function Partners({ v, q, start }: { v: RefView; q: string; start: { y: number; m: number; d: number } }) {
+function Partners({ v, q, start, hud, actions }: { v: RefView; q: string; start: { y: number; m: number; d: number }; hud: Hud; actions: Actions }) {
   const s = T.ref.supCols;
   const c = T.ref.cusCols;
   const p = v.partners;
@@ -869,8 +923,25 @@ function Partners({ v, q, start }: { v: RefView; q: string; start: { y: number; 
     { name: pc.maker, text: x => makerName(x.maker) },
     { name: pc.materials, text: x => x.materials.map(matName).join('; '), show: x => <>{x.materials.map(m => <div key={m}>{matName(m)}</div>)}</>, num: x => x.materials.length },
     { name: pc.how, text: x => T.ref.how[x.how] },
-    { name: pc.until, text: x => pairState(x, start), show: x => <span className={x.ok ? '' : 'bad'} data-test="ref-pair-state">{pairState(x, start)}</span>, num: x => x.until ?? -1 },
+    { name: pc.until, text: x => pairState(x, start), show: x => <span className={x.cand && x.cand.spec === undefined ? 'muted' : x.ok ? '' : 'bad'} data-test="ref-pair-state" data-pair={x.id}>{pairState(x, start)}</span>, num: x => x.until ?? -1 },
     { name: pc.agreement, text: x => (x.agreement ? docText('agreements', x.agreement) : T.ref.noAgreement), show: x => (x.agreement ? <span className="mono nw">{docText('agreements', x.agreement)}</span> : <span className="bad">{T.ref.noAgreement}</span>) },
+    // доля поставок вовремя (Б6ж; SCOR RL.2.6): по записям завода — пришедшие заказы пары за 12 месяцев
+    { name: pc.onTime, text: x => (x.onTime.n > 0 ? T.mrp.onTime(pctText(Math.floor((x.onTime.ok * 10_000) / x.onTime.n)), x.onTime.n) : '—'), num: x => (x.onTime.n > 0 ? x.onTime.ok / x.onTime.n : -1) },
+    // «Одобрить пару» (Б6ж): у кандидата, пока одобрение не идёт, — пост «Качество» или директор
+    {
+      name: '',
+      text: () => '',
+      show: x => {
+        const c = x.cand;
+        if (!c || c.spec !== undefined || (c.step !== undefined && c.step !== 'failed')) return null;
+        const a = actOf(hud, 'quality', { kind: 'pairApprove', pair: x.id });
+        return (
+          <button type="button" className="small" disabled={!a.mine} title={a.mine ? T.pairApp.approveHint : a.title} onClick={() => actions.approvePair(x.id)} data-test="pair-approve" data-pair={x.id}>
+            {T.pairApp.approve}
+          </button>
+        );
+      },
+    },
   ];
   const cc = T.ref.ctrCols;
   const party = (x: RefContract) => (x.kind === 'frame' ? supName(x.party) : named(db?.customers[x.party]?.name, x.party));
@@ -1125,7 +1196,7 @@ export function Ref({ hud, actions }: { hud: Hud; actions: Actions }) {
           {tab === 'places' ? <Places v={v} q={q} actions={actions} /> : null}
           {tab === 'lab' ? <Lab v={v} q={q} /> : null}
           {tab === 'people' ? <People v={v} q={q} hud={hud} actions={actions} /> : null}
-          {tab === 'partners' ? <Partners v={v} q={q} start={hud.start} /> : null}
+          {tab === 'partners' ? <Partners v={v} q={q} start={hud.start} hud={hud} actions={actions} /> : null}
           {tab === 'docs' ? <Docs v={v} q={q} /> : null}
           <div className="muted small">{T.ref.noHidden}</div>
         </div>

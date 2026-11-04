@@ -2,7 +2,7 @@
 // → почему так → что можно сделать → история. Снизу экрана, как карточка выбранного в «Больнице» (её src/ui/App.tsx,
 // `card`). Вид приходит из потока расчёта (src/sim/views.ts) без истины и без слов; слова — отсюда, из src/i18n/.
 import { type ReactNode, useState } from 'react';
-import type { PartType } from '../content/types';
+import type { PartType, Plant } from '../content/types';
 import { civilFromDays, momentOf, weekday, type Ymd } from '../engine/core/calendar';
 import { clock, dayText, durText, hText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import { DEPT_SEAT } from '../engine/seats';
@@ -20,9 +20,12 @@ import { LeaveBlock } from './Leave';
 import { AndonRows, BottleBlock, LoadBlock } from './Layers';
 import { LossBlock } from './Losses';
 import { StatusIcon, TaskIcon } from './icons';
+import { BossBlock } from './Bosses';
+import { DailyCard } from './Daily';
 import { WhoList } from './Journal';
 import { placeText, supplierText } from './Stock';
-import { type Actions, type Hud, holds } from './store';
+import { actLabel, actOf, actOn } from './memo';
+import type { Actions, Hud } from './store';
 import { WasteBlock } from './Waste';
 
 /**
@@ -64,8 +67,11 @@ type PersonCard = Extract<CardView['card'], { kind: 'person' }>;
  */
 function Roster({ c, hud, actions }: { c: PersonCard; hud: Hud; actions: Actions }) {
   const dept = db?.roles[c.role]?.dept;
-  const mine = dept === undefined || holds(hud, DEPT_SEAT[dept]);
-  const title = mine ? '' : T.seats.notYours(T.seats.names[DEPT_SEAT[dept!]] ?? '');
+  // чужой пост (Б5д) — записка руководителю отдела роли
+  const act = dept === undefined ? { mine: true, title: '' } : actOf(hud, DEPT_SEAT[dept], { kind: 'roster', person: `E${c.person}`, shift: '' }, c.role);
+  const mine = actOn(act);
+  const title = act.title;
+  const roster = (shift: string) => (act.mine ? actions.roster(c.person, shift) : actions.memo([{ kind: 'roster', person: `E${c.person}`, shift }]));
   const will = c.next?.shift ?? c.shift;
   const ids = Object.keys(db?.shifts ?? {}).filter(id => id !== will);
   return (
@@ -77,8 +83,8 @@ function Roster({ c, hud, actions }: { c: PersonCard; hud: Hud; actions: Actions
           <span className="warn" data-test="card-next">
             {T.card.next(dayText(c.next.from), named(db?.shifts[c.next.shift]?.name, c.next.shift))}
           </span>{' '}
-          <button type="button" className="link" disabled={!mine} title={title} onClick={() => actions.roster(c.person, c.shift)} data-test="card-roster-cancel">
-            {T.card.rosterCancel}
+          <button type="button" className="link" disabled={!mine} title={title} onClick={() => roster(c.shift)} data-test="card-roster-cancel">
+            {actLabel(act, T.card.rosterCancel)}
           </button>
         </>
       ) : null}
@@ -88,11 +94,11 @@ function Roster({ c, hud, actions }: { c: PersonCard; hud: Hud; actions: Actions
           disabled={!mine}
           title={title}
           onChange={e => {
-            if (e.target.value) actions.roster(c.person, e.target.value);
+            if (e.target.value) roster(e.target.value);
           }}
           data-test="card-roster"
         >
-          <option value="">{T.card.rosterTo}</option>
+          <option value="">{actLabel(act, T.card.rosterTo)}</option>
           {ids.map(id => (
             <option key={id} value={id}>
               {named(db?.shifts[id]?.name, id)}
@@ -112,8 +118,10 @@ function Roster({ c, hud, actions }: { c: PersonCard; hud: Hud; actions: Actions
 function Dismiss({ c, hud, actions }: { c: PersonCard; hud: Hud; actions: Actions }) {
   const [ask, setAsk] = useState<'agree' | 'trial' | 'early' | undefined>();
   const dept = db?.roles[c.role]?.dept;
-  const mine = dept === undefined || holds(hud, DEPT_SEAT[dept]);
-  const title = mine ? '' : T.seats.notYours(T.seats.names[DEPT_SEAT[dept!]] ?? '');
+  // чужой пост (Б5д) — записка руководителю отдела роли
+  const act = dept === undefined ? { mine: true, title: '' } : actOf(hud, DEPT_SEAT[dept], { kind: 'dismiss', person: `E${c.person}`, why: 'agree' }, c.role);
+  const mine = actOn(act);
+  const title = act.title;
   const t = c.terms!;
   const words =
     ask === 'agree' && t.agree
@@ -147,12 +155,13 @@ function Dismiss({ c, hud, actions }: { c: PersonCard; hud: Hud; actions: Action
             type="button"
             disabled={!mine}
             onClick={() => {
-              actions.dismiss(c.person, ask);
+              if (act.mine) actions.dismiss(c.person, ask);
+              else actions.memo([{ kind: 'dismiss', person: `E${c.person}`, why: ask }]);
               setAsk(undefined);
             }}
             data-test="dismiss-do"
           >
-            {T.card.dismissDo}
+            {actLabel(act, T.card.dismissDo)}
           </button>{' '}
           <button type="button" className="link" onClick={() => setAsk(undefined)}>
             {T.card.dismissCancel}
@@ -268,7 +277,7 @@ function histText(h: Hist, unit: 'mass' | 'pcs' | undefined, parts: readonly Par
 }
 
 /** Актив в карточке (Б3в): инвентарный номер, код места, срок каждой нужной работы, визит подрядчика, не работает ли. */
-function AssetRows({ a, start }: { a: AssetInfo; start: Ymd }) {
+function AssetRows({ a, start, hud, actions }: { a: AssetInfo; start: Ymd; hud: Hud; actions: Actions }) {
   const visit = a.visit;
   return (
     <>
@@ -299,6 +308,7 @@ function AssetRows({ a, start }: { a: AssetInfo; start: Ymd }) {
           </span>
         </Row>
       ) : null}
+      {visit && a.move ? <MoveVisit key={`${a.id}:${visit.at}`} a={a} hud={hud} actions={actions} /> : null}
       {a.unfit === 'qual' || a.unfit === 'cal' ? (
         <Row k="">
           <b data-test="card-stopped">
@@ -307,6 +317,39 @@ function AssetRows({ a, start }: { a: AssetInfo; start: Ymd }) {
         </Row>
       ) : null}
     </>
+  );
+}
+
+/**
+ * «Перенести визит» (Б5г): рабочий день с завтра по последний день записи в силе — команда `visit` поста «Производство»
+ * (техслужба) или директора; чужой пост — без кнопки, с подписью, чей.
+ */
+function MoveVisit({ a, hud, actions }: { a: AssetInfo; hud: Hud; actions: Actions }) {
+  const days = a.move ?? [];
+  const [day, setDay] = useState(days[0]);
+  // чужой пост (Б5д) — «Записка: перенести визит» главному механику
+  const act = actOf(hud, 'production', { kind: 'visit', asset: a.id, day: day ?? 0 });
+  if (days.length === 0) return null;
+  const go = () => {
+    if (day === undefined) return;
+    if (act.mine) actions.moveVisit(a.id, day);
+    else actions.memo([{ kind: 'visit', asset: a.id, day }]);
+  };
+  return (
+    <Row k="">
+      <span data-test="card-visit-move">
+        <select value={day} disabled={!actOn(act)} onChange={e => setDay(Number(e.target.value))} aria-label={T.assets.moveDay} data-test="card-visit-day">
+          {days.map(z => (
+            <option key={z} value={z}>
+              {dayText(z)}
+            </option>
+          ))}
+        </select>{' '}
+        <button type="button" className="small" disabled={!actOn(act) || day === undefined} onClick={go} title={act.mine ? T.assets.moveHint : act.title} data-test="card-visit-go" data-memo={act.memo ?? undefined}>
+          {actLabel(act, T.assets.move)}
+        </button>
+      </span>
+    </Row>
   );
 }
 
@@ -400,8 +443,8 @@ function InsideBlock({ x }: { x: Inside }) {
 
 /** Материалы машины линии (Б1д): партия, выдано, израсходовано по счёту машины и на наладку, осталось у линии. */
 /** Машина карточки по имени плана: оборудование участка или машина линии. */
-function machineId(plant: string, c: { kind: 'equipment'; eq: number } | { kind: 'machine'; line: number; k: number }): string | undefined {
-  const p = db?.plants[plant];
+function machineId(plant: Plant, c: { kind: 'equipment'; eq: number } | { kind: 'machine'; line: number; k: number }): string | undefined {
+  const p = plant;
   return c.kind === 'equipment' ? p?.equipment[c.eq]?.id : p?.lines[c.line]?.machines[c.k]?.id;
 }
 
@@ -414,7 +457,13 @@ function machineId(plant: string, c: { kind: 'equipment'; eq: number } | { kind:
  * поста «Производство»: чужой пост — кнопка погашена; узел занят или запчасти нет — причина вместо кнопки.
  */
 function PartsBlock({ parts, names, machine, hud, actions }: { parts: readonly PartInfo[]; names?: readonly PartType[]; machine?: string; hud: Hud; actions: Actions }) {
-  const mine = holds(hud, 'production');
+  // чужой пост (Б5д) — «Записка: заменить» главному механику
+  const act = actOf(hud, 'production', { kind: 'maintain', machine: machine ?? '', part: '' });
+  const go = (part: string) => {
+    if (!machine) return;
+    if (act.mine) actions.maintain(machine, part);
+    else actions.memo([{ kind: 'maintain', machine, part }]);
+  };
   return (
     <div className="parts" data-test="card-parts">
       <div className="csec">{T.card.parts}</div>
@@ -426,8 +475,8 @@ function PartsBlock({ parts, names, machine, hud, actions }: { parts: readonly P
             {p.failed ? `, ${T.card.failed}` : ''}
             {p.repair ? `, ${p.plan ? T.card.replacing : T.card.repairing}` : p.plan ? `, ${T.card.replacePlanned}` : ''}{' '}
             {machine && !p.no ? (
-              <button type="button" className="small" disabled={!mine} onClick={() => actions.maintain(machine, p.type)} title={mine ? T.card.replaceHint(durText(p.work), p.spare) : T.seats.notYours(T.seats.names.production)} data-test="card-replace">
-                {T.card.replace}
+              <button type="button" className="small" disabled={!actOn(act)} onClick={() => go(p.type)} title={act.mine ? T.card.replaceHint(durText(p.work), p.spare) : act.title} data-test="card-replace" data-memo={act.memo ?? undefined}>
+                {actLabel(act, T.card.replace)}
               </button>
             ) : p.no && !p.failed && !p.repair && !p.plan ? (
               <span className="muted" data-test="card-replace-no">
@@ -466,7 +515,7 @@ function LineMaterials({ list }: { list: readonly LineMaterial[] }) {
  * справочник, расследование): карточка поверх него непрозрачна, строки окна под ней не просвечивают (Б5ж); `watch` —
  * работа вещи в «Сейчас» (Б1б); `hud` — чьи посты у игрока и какие пояснения он уже понял (Б1г).
  */
-export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v: CardView; start: Ymd; plant: string; actions: Actions; hud: Hud; beside?: boolean; over?: boolean; watch?: NowRow }) {
+export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v: CardView; start: Ymd; plant: Plant; actions: Actions; hud: Hud; beside?: boolean; over?: boolean; watch?: NowRow }) {
   const c = v.card;
   let title: ReactNode = '';
   let body: ReactNode = null;
@@ -589,6 +638,7 @@ export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v
           {c.waste ? <WasteBlock w={c.waste} start={start} /> : null}
           <DossierButton n={c.bn} actions={actions} />
           <Why list={c.why} start={start} />
+          {c.daily ? <DailyCard rows={c.daily} plant={plant} start={start} /> : null}
           {hud.selected ? <LoadBlock key={JSON.stringify(hud.selected)} hud={hud} thing={hud.selected} plant={plant} actions={actions} /> : null}
           {hud.selected ? <BottleBlock hud={hud} thing={hud.selected} actions={actions} /> : null}
           {hud.selected ? <LossBlock hud={hud} thing={hud.selected} plant={plant} actions={actions} /> : null}
@@ -620,7 +670,7 @@ export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v
                 <span className="muted"> · {T.card.packingOf(docText('skus', c.sku))}</span>
               </Row>
             ) : null}
-            {c.asset ? <AssetRows a={c.asset} start={start} /> : null}
+            {c.asset ? <AssetRows a={c.asset} start={start} hud={hud} actions={actions} /> : null}
           </dl>
           {c.parts.length ? <PartsBlock parts={c.parts} names={rec?.parts} machine={machineId(plant, c)} hud={hud} actions={actions} /> : null}
           {c.kind === 'equipment' && c.inside ? <InsideBlock x={c.inside} /> : null}
@@ -632,6 +682,7 @@ export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v
           {c.kind === 'equipment' && c.knobs ? <KnobsBlock list={c.knobs} hud={hud} actions={actions} /> : null}
           <DossierButton n={c.bn} actions={actions} />
           <Why list={c.why} start={start} />
+          {c.daily ? <DailyCard rows={c.daily} plant={plant} start={start} /> : null}
           <WhoList rows={c.who} start={start} actions={actions} />
           <History list={c.history} start={start} parts={rec?.parts} asset={c.asset} />
         </>
@@ -671,6 +722,7 @@ export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v
             <Row k={T.card.skill}>{num(c.skill)}</Row>
             <Row k={T.card.salary}>
               <span data-test="card-salary">{T.card.perMonth(money(c.salary))}</span>
+              {c.later ? <span className="muted" data-test="card-salary-later"> · {T.boss.later}</span> : null}
             </Row>
             {c.hired !== undefined ? <Row k={T.card.hiredOn}>{dayText(c.hired)}</Row> : null}
             {c.trial !== undefined ? (
@@ -691,6 +743,8 @@ export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v
               </span>
             </Row>
           </dl>
+          <BossBlock boss={c.boss} deputyFor={c.deputyFor} hud={hud} actions={actions} />
+          <WhoList rows={c.decided} start={start} actions={actions} title={T.boss.decided} test="card-decided" />
           {c.terms ? <Dismiss c={c} hud={hud} actions={actions} /> : null}
           <WhoList rows={c.who} start={start} actions={actions} />
           <div className="csec">{T.card.training}</div>

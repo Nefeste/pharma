@@ -5,8 +5,9 @@
 // партии, задачу и чего она ждёт, журнал оборудования, инвентарный номер и записи квалификации и калибровки (Б3в). Что окно
 // уже получило, помнит `ViewDesk` — как «стол врача»
 // «Больницы» (её src/sim/doctor.ts, `DoctorDesk`): вид уходит, только когда изменился.
-import type { ContentDb, Id, MaterialKind } from '../content/types';
+import type { ContentDb, HeadId, Id, MaterialKind } from '../content/types';
 import { batchNo } from '../engine/batchno';
+import { paidLater } from '../engine/bosses';
 import { salaryOf } from '../engine/cash';
 import { dismissTerms, laborOf } from '../engine/hire';
 import { momentOf } from '../engine/core/calendar';
@@ -15,6 +16,7 @@ import { inForce } from '../engine/docs';
 import { CLEAN_HOLD, DIRTY_HOLD } from '../engine/mes';
 import { speedOf } from '../engine/modes';
 import { planOf } from '../engine/plant';
+import { numOf, POL } from '../engine/policies';
 import { pendingOf } from '../engine/shifts';
 import { shiftEnd } from '../engine/staff';
 import { TAG } from '../engine/stock';
@@ -26,7 +28,12 @@ import { type DossierQuery, type DossierView, dossierView, type Inside, insideOf
 import { type FloorQuery, type FloorView, floorView } from './floor';
 import { type SaView, type SheetView, saOf, sheetOf } from './hours';
 import { type InvQuery, type InvView, invView } from './inv';
-import { type JournalQuery, type JournalView, journalView, whoAsset, whoBatch, whoLot, whoMachine, whoPerson, type WhoRow } from './journal';
+import { type BossLimit, type BossRow, bossOfPerson } from './bosses';
+import { type JournalQuery, type JournalView, journalView, whoAsset, whoBatch, whoDecided, whoLot, whoMachine, whoPerson, type WhoRow } from './journal';
+import { type PoliciesQuery, type PoliciesView, policiesView } from './policies';
+import { type MrpQuery, type MrpView, mrpView } from './mrp';
+import { type SopQuery, type SopView, sopView } from './sop';
+import { type DailyRowView, dailyOf } from './daily';
 import { type PoQuery, type PoView, poView } from './po';
 import { type ChartQuery, type ChartView, chartView, type LabQuery, type LabView, labView } from './lab';
 import { type EqState, eqStateOf } from './pack';
@@ -73,7 +80,7 @@ export interface CardQuery {
   thing: Thing;
 }
 
-export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery | PoQuery);
+export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery | PoQuery | PoliciesQuery | SopQuery | MrpQuery);
 
 /** Место паллеты: место плана (номер по порядку), помещение (номер по порядку), фура. */
 export type PlaceRef = { k: 'slot'; i: number } | { k: 'room'; i: number } | { k: 'truck'; n: number; customer: boolean; waste?: true };
@@ -200,9 +207,10 @@ export interface SpeedView {
  */
 export type CardData =
   | { kind: 'unit'; unit: number; tag: Tag; containers: number; holds?: Holds; where: PlaceRef; lot?: LotInfo; release?: ReleaseView; why: Why[]; history: Hist[]; who?: WhoRow[] }
-  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; clean?: RoomClean; batch?: string; bn?: number; recipe?: Id; stage?: string; inside?: Inside; regimes?: Regimes; knobs?: Knobs[]; waste?: WasteRoom; why: Why[] }
-  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; bn?: number; recipe?: Id; inside?: Inside; parts: PartInfo[]; asset?: AssetInfo; regimes?: Regimes; knobs?: Knobs[]; why: Why[]; history: Hist[]; who?: WhoRow[] }
-  | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; bn?: number; sku?: Id; materials?: LineMaterial[]; speed?: SpeedView; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[]; who?: WhoRow[] }
+  /** у помещения, оборудования и машины линии с Б6б — строки сегодняшнего задания на сутки (`daily`) */
+  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; clean?: RoomClean; batch?: string; bn?: number; recipe?: Id; stage?: string; inside?: Inside; regimes?: Regimes; knobs?: Knobs[]; waste?: WasteRoom; daily?: DailyRowView[]; why: Why[] }
+  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; bn?: number; recipe?: Id; inside?: Inside; parts: PartInfo[]; asset?: AssetInfo; regimes?: Regimes; knobs?: Knobs[]; daily?: DailyRowView[]; why: Why[]; history: Hist[]; who?: WhoRow[] }
+  | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; bn?: number; sku?: Id; materials?: LineMaterial[]; speed?: SpeedView; parts: PartInfo[]; asset?: AssetInfo; daily?: DailyRowView[]; why: Why[]; history: Hist[]; who?: WhoRow[] }
   /** человек (Б3б): табельный номер, навык, допуск сегодня, обучение по матрице его роли, что изучает сейчас; табель месяца (Б4а) */
   /** с Б4б — ждущий перевод на другой график и учётный период сменного по циклу */
   /** с Б4в — оклад, день приёма, последний день испытания, увольнение; ушёл с завода — `gone` с днём и основанием */
@@ -235,6 +243,14 @@ export type CardData =
       terms?: { agree?: { last: number; pay: number }; trial?: { last: number; ok: boolean }; early?: { last: number } };
       /** кто решил (Б5а): вакансия и приём */
       who?: WhoRow[];
+      /**
+       * руководитель — человек (Б5в): чей он руководитель — строка отдела; чей заместитель и решает ли сейчас «и. о.»; его
+       * последние решения за руководителя; оклад придёт в кассу вместе с общими расходами завода
+       */
+      boss?: BossRow;
+      deputyFor?: { head: HeadId; acting: boolean; limit: BossLimit }[];
+      decided?: WhoRow[];
+      later?: true;
     }
   | { kind: 'vehicle'; vehicle: number; type: Id; task?: TaskKind }
   /** фура подрядчика по вывозу отклонённого (Б1з) — `waste`: когда и кто заказал вывоз */
@@ -279,8 +295,15 @@ export interface PartInfo {
 /** «Кто решил» (Б5а): записей журнала о вещи нет — поля нет. */
 const whoOf = (rows: WhoRow[]): { who?: WhoRow[] } => (rows.length > 0 ? { who: rows } : {});
 
+/** Решения человека за руководителя (Б5в): нет — поля нет. */
+const decidedOf = (rows: WhoRow[]): { decided?: WhoRow[] } => (rows.length > 0 ? { decided: rows } : {});
+
 /** Решения об оборудовании и машине линии (Б5а): визиты подрядчика к активу, ремонты и замены узлов, ЗИП. */
-const thingWho = (db: ContentDb, s: PlantState, id: string): WhoRow[] => [...whoAsset(s, id), ...whoMachine(db, s, id)].sort((a, b) => a.n - b.n);
+const thingWho = (db: ContentDb, s: PlantState, id: string): WhoRow[] => {
+  // записка о машине и визите сразу (Б5д) — одна строка
+  const rows = new Map([...whoAsset(s, id, db), ...whoMachine(db, s, id)].map(r => [r.n, r]));
+  return [...rows.values()].sort((a, b) => a.n - b.n);
+};
 
 /** Отпуска в карточке человека (Б4г): ушёл с завода или у сценария нет отпусков — нет. */
 function personLeaveOf(db: ContentDb, s: PlantState, p: Person, gone: boolean): { leave?: PersonLeave } {
@@ -298,14 +321,14 @@ export interface CardView {
   card: CardData;
 }
 
-export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView | PoView;
+export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView | PoView | PoliciesView | SopView | MrpView;
 
 const num = (id: string) => Number(id.slice(1));
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
 
 /** Где паллета — номерами плана и среза. */
 function placeOf(db: ContentDb, s: PlantState, u: Unit): PlaceRef {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   if (u.where.kind === 'slot') {
     const id = u.where.id;
     return { k: 'slot', i: plan.slots.findIndex(sl => sl.id === id) };
@@ -393,7 +416,7 @@ export function stockView(db: ContentDb, s: PlantState, q: StockQuery): StockVie
  */
 function cleanOf(db: ContentDb, s: PlantState, r: Room): RoomClean | undefined {
   if (r.batch) return undefined;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   if (!plan.plant.lines.some(l => l.room === r.id) && !Object.values(db.recipes).some(rc => rc.stages.some(st => plan.roomOf[st.room] === r.id))) return undefined;
   if (r.status === 'clean') return { k: 'clean', ...(r.cleanFor ? { product: r.cleanFor } : {}), until: r.since + CLEAN_HOLD, ...(s.t - r.since > CLEAN_HOLD ? { expired: true as const } : {}) };
   if (r.status !== 'dirty') return undefined;
@@ -508,7 +531,6 @@ function holdsOf(db: ContentDb, s: PlantState, u: Unit): Holds {
 }
 
 function partsOfMachine(db: ContentDb, s: PlantState, machine: string): PartInfo[] {
-  const policy = db.scenarios[s.scenario].maint;
   return Object.values(s.parts)
     .filter(p => p.machine === machine)
     .map(p => {
@@ -517,7 +539,9 @@ function partsOfMachine(db: ContentDb, s: PlantState, machine: string): PartInfo
       const spare = sp ? sp.qty - sp.reserved : 0;
       // те же отказы, что у команды `maintain` (src/engine/maint.ts)
       const no = p.state !== 'ok' || p.task || p.plan ? ('busy' as const) : spare <= 0 ? ('noSpare' as const) : undefined;
-      return { type: p.type, wear: wearAt(ty, p.done), failed: p.state === 'failed', repair: p.task !== undefined, ...(policy[p.id] !== undefined ? { at: policy[p.id] } : {}), ...(p.plan ? { plan: true as const } : {}), spare, work: ty.replace, ...(no ? { no } : {}) };
+      // порог замены по наработке — политика главного механика (Б5г); «после отказа» — порога нет
+      const at = numOf(db, s, POL.replace, p.id);
+      return { type: p.type, wear: wearAt(ty, p.done), failed: p.state === 'failed', repair: p.task !== undefined, ...(at !== undefined ? { at } : {}), ...(p.plan ? { plan: true as const } : {}), spare, work: ty.replace, ...(no ? { no } : {}) };
     });
 }
 
@@ -545,7 +569,7 @@ export function cardView(db: ContentDb, s: PlantState, thing: Thing): CardView {
 }
 
 function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   switch (thing.kind) {
     case 'unit': {
       const u = s.units[`U${thing.n}`];
@@ -568,7 +592,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(release ? { release } : {}),
         why: [...tasks.map(t => taskWhy(db, s, t)), ...(lot ? lotWhy(s, lot) : [])],
         history: lot ? lotHistory(s, lot) : [],
-        ...whoOf(lot ? (b ? whoBatch(s, b) : whoLot(s, lot)) : []),
+        ...whoOf(lot ? (b ? whoBatch(s, b, db) : whoLot(s, lot, db)) : []),
       };
     }
     case 'room': {
@@ -581,6 +605,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       const knobs = knobsAt(db, s, def.id);
       const inside = insideOf(db, s, def.id);
       const tidy = cleanOf(db, s, r);
+      const daily = dailyOf(db, s, { room: def.id });
       return {
         kind: 'room',
         room: thing.i,
@@ -596,6 +621,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(knobs.length > 0 ? { knobs } : {}),
         // помещение отклонённого (Б1з): места зоны, ждущие места, вывоз и журнал отходов
         ...(def.type === 'rejected' ? { waste: wasteRoom(db, s) } : {}),
+        ...(daily.length > 0 ? { daily } : {}),
         why: [...clean.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.room === def.id)],
       };
     }
@@ -609,6 +635,8 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       // уставки (Б1ж): стадии на этом оборудовании
       const knobs = knobsAt(db, s, def.room).filter(k => db.recipes[k.recipe].stages.find(st => st.id === k.stage)!.equipment.includes(def.type));
       const inside = b ? insideOf(db, s, def.room) : undefined;
+      // задание на сутки (Б6б): стадии в его помещении, у которых оно в карте
+      const daily = dailyOf(db, s, { room: def.room }).filter(r => r.kind === 'stage' && !!r.stage && Object.values(db.recipes).some(rc => rc.stages.some(st => st.id === r.stage && st.equipment.includes(def.type))));
       return {
         kind: 'equipment',
         eq: thing.i,
@@ -621,6 +649,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(s.assets[def.id] ? { asset: assetInfo(db, s, def.id)! } : {}),
         ...(regimes ? { regimes } : {}),
         ...(knobs.length > 0 ? { knobs } : {}),
+        ...(daily.length > 0 ? { daily } : {}),
         why: [...repairs.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.asset === def.id)],
         history: maintHistory(s, def.id),
         ...whoOf(thingWho(db, s, def.id)),
@@ -641,6 +670,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       // скорость блистерной (Б1ж): задание на линии и уставки всех позиций — в инструкциях в силе
       const day = momentOf(s.start, s.t).day;
       const skus = db.machines[def.type].fast ? [...new Set(Object.keys(db.skus).map(id => inForce(db, 'skus', id, day)))].map(id => db.skus[id]) : [];
+      const daily = dailyOf(db, s, { line: ln.id });
       return {
         kind: 'machine',
         line: thing.line,
@@ -661,6 +691,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
           : {}),
         parts: partsOfMachine(db, s, def.id),
         ...(s.assets[def.id] ? { asset: assetInfo(db, s, def.id)! } : {}),
+        ...(daily.length > 0 ? { daily } : {}),
         why: [...repairs.map(t => taskWhy(db, s, t)), ...held, ...cleans.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.asset === def.id)],
         history: maintHistory(s, def.id),
         ...whoOf(thingWho(db, s, def.id)),
@@ -706,6 +737,9 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(personLeaveOf(db, s, p, gone)),
         ...(gone || !laborOf(db, s) ? {} : p.quit ? (p.quit.why === 'own' && p.quit.last > momentOf(s.start, s.t).day ? { terms: { early: { last: momentOf(s.start, s.t).day } } } : {}) : { terms: dismissTerms(db, s, p) }),
         ...whoOf(whoPerson(s, p)),
+        ...(gone ? {} : bossOfPerson(db, s, p)),
+        ...decidedOf(whoDecided(s, p)),
+        ...(paidLater(p) ? { later: true as const } : {}),
       };
     }
     case 'vehicle': {
@@ -781,6 +815,12 @@ export function viewOf(db: ContentDb, s: PlantState, q: ViewQuery): ViewData {
       return kpiView(db, s, q);
     case 'po':
       return poView(db, s, q);
+    case 'policies':
+      return policiesView(db, s);
+    case 'sop':
+      return sopView(db, s, q);
+    case 'mrp':
+      return mrpView(db, s);
   }
 }
 
@@ -795,14 +835,24 @@ export interface ViewOut {
 export const VIEW_EVERY = 100;
 
 /**
+ * Виды, которые собирать дорого, — не чаще, мс (Б6г): окно S&OP — прогон плана вперёд на трёх вариантах спроса и касса,
+ * около 13 мс; с Б6д потребность в материалах — прогон плана на 12 месяцев, 5–8 мс: вкладка «Материалы», планёрка с
+ * блоком «Материалы» и окно «Заказ поставщику» — «Предложить» по правилу снабжения. Новый запрос или команда — сразу;
+ * тот же миг завода — не пересобирать.
+ */
+export const VIEW_SLOW: Partial<Record<ViewQuery['view'], number>> = { sop: 1000, mrp: 1000, morning: 1000, po: 1000 };
+
+/**
  * Что окно уже получило: открытые виды и их последние данные. Новый запрос или команда — собрать сразу; иначе — не чаще
  * `VIEW_EVERY`. Уходит только вид, чьи данные изменились, с версией на единицу больше.
  */
 export class ViewDesk {
   private queries: ViewQuery[] = [];
-  private sent = new Map<string, { json: string; v: number }>();
+  /** у дорогого вида (`VIEW_SLOW`) — ещё миг завода и время сборки, запрос строкой и счёт команд к ней */
+  private sent = new Map<string, { json: string; v: number; t?: number; at?: number; q?: string; touch?: number }>();
   private builtAt = Number.NEGATIVE_INFINITY;
   private dirty = true;
+  private touches = 0;
 
   constructor(private db: ContentDb) {}
 
@@ -822,6 +872,7 @@ export class ViewDesk {
   /** Собрать при ближайшем срезе, не дожидаясь `VIEW_EVERY`: после команды. */
   touch() {
     this.dirty = true;
+    this.touches++;
   }
 
   /** Виды для среза в мгновение `now` (мс, часы потока): изменившиеся; нечего — `undefined`. */
@@ -832,12 +883,19 @@ export class ViewDesk {
     this.builtAt = now;
     const out: ViewOut[] = [];
     for (const q of this.queries) {
+      const last = this.sent.get(q.id);
+      const slow = VIEW_SLOW[q.view];
+      const key = slow !== undefined ? JSON.stringify(q) : undefined;
+      if (slow !== undefined && last && last.q === key && last.touch === this.touches && (last.t === s.t || now - (last.at ?? 0) < slow)) continue;
       const data = viewOf(this.db, s, q);
       const json = JSON.stringify(data);
-      const last = this.sent.get(q.id);
-      if (last?.json === json) continue;
+      const meta = slow !== undefined ? { t: s.t, at: now, q: key, touch: this.touches } : {};
+      if (last?.json === json) {
+        this.sent.set(q.id, { ...last, ...meta });
+        continue;
+      }
       const v = (last?.v ?? 0) + 1;
-      this.sent.set(q.id, { json, v });
+      this.sent.set(q.id, { json, v, ...meta });
       out.push({ id: q.id, v, data });
     }
     return out.length > 0 ? out : undefined;

@@ -13,7 +13,7 @@ import { fromSave } from '../../src/engine/save';
 import type { PlantState, RoomPhase, RoomTimes, TaskKind } from '../../src/engine/types';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const PHASES: RoomPhase[] = ['work', 'clean', 'held', 'dirty', 'free'];
 const lineRoom: Record<string, string> = Object.fromEntries(plan.plant.lines.map(l => [l.id, l.room]));
 const PREP = new Set<TaskKind>(['clean', 'roomClean', 'changeover', 'clearance', 'clearCheck']);

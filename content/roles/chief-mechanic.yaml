@@ -1,0 +1,4 @@
+id: role.chief-mechanic
+name: { ru: Главный механик, en: Chief mechanic }
+dept: maint
+salary: 120000

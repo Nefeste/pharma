@@ -7,11 +7,12 @@
 import type { ContentDb } from '../content/types';
 import { schedule } from './core/agenda';
 import { MIN, momentOf } from './core/calendar';
+import { openClass } from './devclass';
 import { inForce } from './docs';
 import { incidentMeasured, invTestDone, modelFor, openInvestigation } from './investigation';
 import { note } from './journal';
 import { batchLost, defect } from './lean';
-import { approved, pairKey } from './partners';
+import { approved, pairKey, trialDecided } from './partners';
 import { coldOf } from './places';
 import { type PlantPlan, planOf } from './plant';
 import { openDevs } from './qa';
@@ -105,7 +106,7 @@ export function startSampling(db: ContentDb, s: PlantState) {
   // готовую продукцию не испытывают в лаборатории — её проверяет ООК (qa.ts)
   const todo = Object.values(s.lots).filter(l => l.status === 'quarantine' && !l.sample && db.materials[l.material].kind !== 'fg');
   if (todo.length === 0) return;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const byLot = containersByLot(s);
   for (const lot of todo) {
     const cs = byLot.get(lot.id) ?? [];
@@ -142,7 +143,7 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       const sm = sampleOf(s, t.lot!);
       const n = u.items.filter(c => sm.plan.includes(c)).length;
       // паллета ждёт в шлюзе пробоотборной, пробы берут под ламинаром в самой пробоотборной (docs/specs/2026-10-view.md, 2а)
-      const at = planOf(db, s.plant).room[planOf(db, s.plant).roomOf.sampling];
+      const at = planOf(db, s.plan).room[planOf(db, s.plan).roomOf.sampling];
       addTask(s, { kind: 'sample', roles: [...QC.samplers], unit: u.id, from: { kind: 'point', x: at.x, z: at.z }, work: n * SAMPLE_WORK, prio: prioOf(s, 'sample', t), lot: t.lot });
       return true;
     }
@@ -163,11 +164,11 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       }
       sm.left = sm.left.filter(id => id !== u.id);
       // из пробоотборной — обратно в карантин; балк, отобранный на месте, остаётся где стоит
-      if (u.where.kind === 'slot') addTask(s, { kind: 'fromSampling', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from: t.from, toKind: coldOf(db, s.plant, m.id) ? 'cold' : 'quarantine', work: 0, prio: prioOf(s, 'fromSampling', { lot: lot.id }), lot: lot.id });
+      if (u.where.kind === 'slot') addTask(s, { kind: 'fromSampling', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from: t.from, toKind: coldOf(db, s.plan, m.id) ? 'cold' : 'quarantine', work: 0, prio: prioOf(s, 'fromSampling', { lot: lot.id }), lot: lot.id });
       if (sm.left.length === 0) {
         sm.taken = s.t;
         setLotStatus(s, lot, 'sampled');
-        addTask(s, { kind: 'handover', roles: [...QC.samplers], from: labPlace(planOf(db, s.plant)), work: HANDOVER_WORK, prio: prioOf(s, 'handover', { lot: lot.id }), lot: lot.id });
+        addTask(s, { kind: 'handover', roles: [...QC.samplers], from: labPlace(planOf(db, s.plan)), work: HANDOVER_WORK, prio: prioOf(s, 'handover', { lot: lot.id }), lot: lot.id });
       }
       return true;
     }
@@ -228,7 +229,10 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       const sm = sampleOf(s, lot.id);
       const out = sm.tests.filter(id => !s.tests[id].pass);
       const model = modelFor(db, s, lot, out);
-      // журнал решений (Б5а): начальник ОКК — по испытаниям пробы, с результатами и пределами
+      // журнал решений (Б5а): начальник ОКК — по испытаниям пробы, с результатами и пределами; решил тот, кто сделал
+      // работу (Б5в): начальник ОКК, а в его отпуске — заместитель по смежной профессии, «и. о.»
+      const by = t.people[0] ? s.people[t.people[0]] : undefined;
+      const who = by ? { p: by.id, ...((QC.heads as readonly string[]).includes(by.role) ? {} : { io: true as const }) } : undefined;
       const tests: TestWhy[] = sm.tests.map(id => {
         const q = s.tests[id];
         return { test: q.method, ...(q.result !== undefined ? { result: q.result } : {}), ...(q.min !== undefined ? { min: q.min } : {}), ...(q.max !== undefined ? { max: q.max } : {}), pass: !!q.pass };
@@ -236,24 +240,32 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       if (out.length === 0) {
         setLotStatus(s, lot, 'released');
         stockChanged(s);
-        note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'release', why: { tests } });
+        note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'release', why: { tests } }, undefined, undefined, who);
         notices.push({ kind: 'lotReleased', lot: lot.id });
+        // пробная партия одобрения пары (Б6ж): заблокирована до решения по досье, дальше — аудит
+        trialDecided(db, s, lot, true, notices);
       } else if (model) {
         // результат вне спецификации у своей продукции — расследование (часть 4): партия ждёт его решения
         const inv = openInvestigation(db, s, model, lot, out, notices);
-        note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'investigate', inv: inv.id, dev: inv.deviation, why: { tests } });
+        note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'investigate', inv: inv.id, dev: inv.deviation, why: { tests } }, undefined, undefined, who);
         return true;
       } else {
         setLotStatus(s, lot, 'rejected');
-        // партию отклонили — отклонение решено с ней, у балка — и открытые отклонения серии (Б1г): оценивать нечего
-        const d: Deviation = { id: nextId(s, 'D'), opened: s.t, kind: 'oos', lot: lot.id, tests: out, status: 'closed' };
+        // партию отклонили — отклонение решено с ней, у балка — и открытые отклонения серии (Б1г): оценивать нечего. Класс
+        // (Б5е); у купленной партии — материал для подписи повтора и причина «партия поставщика», у своей — «не
+        // установлена»; начальник ООК посмотрит, нужна ли CAPA
+        const own = lot.batch !== undefined;
+        const method = s.tests[out[0]]?.method;
+        const d: Deviation = { id: nextId(s, 'D'), opened: s.t, kind: 'oos', lot: lot.id, ...(own ? {} : { material: lot.material }), tests: out, ...(method ? { test: method } : {}), status: 'closed', cls: openClass('oos'), cause: own ? 'none' : 'lot', capaDue: 'rule' };
         if (lot.batch) for (const x of openDevs(s, s.batches[lot.batch])) x.status = 'closed';
         s.deviations[d.id] = d;
         defect(s, 'deviations');
         defect(s, lot.batch ? 'batches' : 'lots');
         if (lot.batch) batchLost(s, s.batches[lot.batch]);
-        note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'reject', dev: d.id, why: { tests } });
+        note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'reject', dev: d.id, why: { tests } }, undefined, undefined, who);
         notices.push({ kind: 'lotRejected', lot: lot.id, deviation: d.id });
+        // пробная партия одобрения пары (Б6ж): отклонили — одобрение кончилось
+        trialDecided(db, s, lot, false, notices);
       }
       for (const u of unitsOfLot(s, lot.id)) settleLot(db, s, lot, u);
       return true;
@@ -279,7 +291,7 @@ function measured(db: ContentDb, s: PlantState, q: LabTest) {
   incidentMeasured(db, s, q);
   if (q.inst) delete s.instruments[q.inst].test;
   q.state = 'review';
-  addTask(s, { kind: 'review', roles: [...QC.reviewers], not: q.by ? [q.by] : [], from: labPlace(planOf(db, s.plant)), work: REVIEW_WORK, prio: prioOf(s, 'review', { test: q.id }), test: q.id });
+  addTask(s, { kind: 'review', roles: [...QC.reviewers], not: q.by ? [q.by] : [], from: labPlace(planOf(db, s.plan)), work: REVIEW_WORK, prio: prioOf(s, 'review', { test: q.id }), test: q.id });
 }
 
 /**
@@ -287,13 +299,14 @@ function measured(db: ContentDb, s: PlantState, q: LabTest) {
  * холоде — остаётся в холоде; отклонённое — в зону отклонённого. Паллету, которую уже везут, — когда довезут.
  */
 export function settleLot(db: ContentDb, s: PlantState, lot: Lot, u: Unit) {
-  if (lot.status !== 'released' && lot.status !== 'rejected') return;
+  if (lot.status !== 'released' && lot.status !== 'rejected' && lot.status !== 'blocked') return;
   if (u.where.kind !== 'slot' || Object.values(s.tasks).some(x => x.unit === u.id)) return;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const at = plan.slot[u.where.id];
   const from: Place = { kind: 'slot', id: at.id };
-  if (lot.status === 'released') {
-    if (at.kind === 'storage' || coldOf(db, s.plant, lot.material)) return;
+  // заблокированная пробная партия (Б6ж) ждёт решения по досье на стеллаже, как разрешённая
+  if (lot.status === 'released' || lot.status === 'blocked') {
+    if (at.kind === 'storage' || coldOf(db, s.plan, lot.material)) return;
     const gate = plan.byKind.staging[0];
     addTask(s, { kind: 'putaway', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from, toKind: 'storage', near: { x: gate.x, z: gate.z }, work: 0, prio: PRIO.putaway, lot: lot.id });
   } else if (at.kind !== 'rejected') {

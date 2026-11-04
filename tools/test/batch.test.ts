@@ -19,7 +19,7 @@ import type { Batch, Notice, PlantState } from '../../src/engine/types';
 
 const SC = 'scn.proto';
 const RCP = 'rcp.paracetamol500.wet.v1';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const recipe = db.recipes[RCP];
 
 /** Завод без заданий сценария: серии в тесте заказываются вручную. */
@@ -265,7 +265,8 @@ describe('сценарий', () => {
     for (const b of batches.filter(x => x.dispensed.some(d => d.lot === api.id))) {
       expect(b.records[0].start).toBeGreaterThan(api.received);
     }
-  });
+    // 90 суток завода — около пяти секунд счёта: под нагрузкой всего набора — больше, чем пять по умолчанию
+  }, 30_000);
 });
 
 describe('сохранение посреди стадии', () => {

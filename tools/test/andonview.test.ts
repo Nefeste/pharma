@@ -17,7 +17,7 @@ import { ANDON, type AndonItem, type AndonKind, andonView, WEIGHT } from '../../
 import type { Thing } from '../../src/sim/views';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const room = (id: string): Thing => ({ kind: 'room', i: plan.plant.rooms.findIndex(r => r.id === id) });
 
 /** Завод после 40 суток и ещё 10 часов. */
@@ -100,7 +100,8 @@ describe('по значку над каждой вещью', () => {
   test('задача ждёт «нет допуска», «нет часов», «в отпуске» — над вещью задачи: помещение стадии, машина, лаборатория', () => {
     const c: PlantState = structuredClone(s);
     const b = Object.values(c.batches).find(x => x.status === 'process')!;
-    const stageRoom = plan.roomOf[db.recipes[b.recipe].stages[b.stage].room];
+    // помещение, которое держит серия, а между стадиями — помещение её стадии
+    const stageRoom = b.room ?? plan.roomOf[db.recipes[b.recipe].stages[b.stage].room];
     waiting(c, 'K9001', { kind: 'stage', batch: b.id, why: 'qual', lack: 'SOP-0001' });
     waiting(c, 'K9002', { kind: 'repair', part: linePart.id, why: 'hours' });
     waiting(c, 'K9003', { kind: 'review', why: 'leave' });

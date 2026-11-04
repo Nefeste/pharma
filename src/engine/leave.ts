@@ -4,7 +4,8 @@
 // дни части у человека нет смен (shifts.ts): работу его роли берут другие люди роли и заместитель — человек со смежной
 // профессией роли ушедшего, в свои смены (ст. 60.2; tasks.ts). Деньги — доплата заместителю, отпускные по среднему
 // заработку и компенсация при увольнении — cash.ts. График — знание завода: его видят окно и двойник прогона.
-import { type ContentDb, DEPTS, type Id, type LeaveRule } from '../content/types';
+import { type ContentDb, DEPTS, HEAD_IDS, type Id, type LeaveRule } from '../content/types';
+import { deputyOf as headDeputy, headOf } from './bosses';
 import { addMonths, civilFromDays, daysFromCivil, HOUR, isHoliday, isWorkday, momentOf, weekday, workdayOnOrAfter, workdayOnOrBefore, type WorkCalendar } from './core/calendar';
 import { note } from './journal';
 import type { Away, Command, Deputy, Notice, Person, PlantState } from './types';
@@ -156,6 +157,8 @@ export interface DraftPerson {
   also?: readonly Id[];
   right: number;
   days: number;
+  /** с кем не в отпуск в одни дни (Б5в): руководитель и его заместитель — друг с другом */
+  apart?: readonly string[];
 }
 
 /** Часть, которая уже стоит или поставлена черновиком: чья, какой роли, дни с и по, заместитель. */
@@ -220,7 +223,7 @@ export function placeDraft(db: ContentDb, s: Clock, y: number, who: readonly Dra
   const rounds = Math.max(0, ...[...lens.values()].map(l => l.length));
   const overlap = (q: Placed, f: number, t: number) => q.from <= t && q.to >= f;
   const clash = (p: DraftPerson, f: number, t: number): boolean => {
-    for (const q of placed) if (overlap(q, f, t) && (q.person === p.id || q.role === p.role || q.deputy === p.id)) return true;
+    for (const q of placed) if (overlap(q, f, t) && (q.person === p.id || q.role === p.role || q.deputy === p.id || p.apart?.includes(q.person))) return true;
     const d = dept(p.role);
     for (let z = f; z <= t; z++) {
       let n = 1;
@@ -297,9 +300,29 @@ function busyIn(s: PlantState, y: number): Placed[] {
   return out;
 }
 
+/** Кого с кем не ставить в отпуск в одни дни (Б5в): руководителя отдела и его заместителя — друг с другом. */
+function apartOf(db: ContentDb, s: PlantState): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const add = (a: string, b: string) => {
+    const list = out.get(a);
+    if (!list) out.set(a, [b]);
+    else if (!list.includes(b)) list.push(b);
+  };
+  for (const h of HEAD_IDS) {
+    const head = headOf(s, h);
+    const dep = head && headDeputy(db, s, h);
+    if (head && dep) {
+      add(head.id, dep.id);
+      add(dep.id, head.id);
+    }
+  }
+  return out;
+}
+
 /** Человек черновика года `y`: дни — по закону и остаток прошлых лет. */
-function draftPerson(db: ContentDb, s: PlantState, p: Person, y: number): DraftPerson {
-  return { id: p.id, role: p.role, shift: p.shift, tab: p.tab, ...(p.also ? { also: p.also } : {}), right: rightOf(db, s, p), days: lawOf(db, s).days + remaining(p, y - 1) };
+function draftPerson(db: ContentDb, s: PlantState, p: Person, y: number, apart = apartOf(db, s)): DraftPerson {
+  const ap = apart.get(p.id);
+  return { id: p.id, role: p.role, shift: p.shift, tab: p.tab, ...(p.also ? { also: p.also } : {}), right: rightOf(db, s, p), days: lawOf(db, s).days + remaining(p, y - 1), ...(ap ? { apart: ap } : {}) };
 }
 
 /** Новая часть отпуска: по порядку начала. */
@@ -322,8 +345,9 @@ function putDraft(db: ContentDb, s: PlantState, y: number, people: readonly Pers
 /** Черновик графика года `y` (кадры, 09:00): все люди завода, кроме уходящих. */
 function draftYear(db: ContentDb, s: PlantState, y: number, notices: Notice[]) {
   const people = Object.values(s.people).filter(p => !p.quit && !givenIn(p, y));
-  const dps = people.map(p => draftPerson(db, s, p, y));
-  const all = Object.values(s.people).filter(p => !p.quit).map(p => draftPerson(db, s, p, y));
+  const apart = apartOf(db, s);
+  const dps = people.map(p => draftPerson(db, s, p, y, apart));
+  const all = Object.values(s.people).filter(p => !p.quit).map(p => draftPerson(db, s, p, y, apart));
   const d = placeDraft(db, s, y, dps, all, busyIn(s, y));
   putDraft(db, s, y, people, d);
   s.leave[y] = { st: 'draft', ...(d.miss.length > 0 ? { miss: d.miss } : {}) };
@@ -340,8 +364,9 @@ function approveYear(db: ContentDb, s: PlantState, y: number, notices: Notice[])
   const fresh = Object.values(s.people).filter(p => !p.quit && !givenIn(p, y));
   const yr = s.leave[y];
   if (fresh.length > 0) {
-    const all = Object.values(s.people).filter(p => !p.quit).map(p => draftPerson(db, s, p, y));
-    const d = placeDraft(db, s, y, fresh.map(p => draftPerson(db, s, p, y)), all, busyIn(s, y));
+    const apart = apartOf(db, s);
+    const all = Object.values(s.people).filter(p => !p.quit).map(p => draftPerson(db, s, p, y, apart));
+    const d = placeDraft(db, s, y, fresh.map(p => draftPerson(db, s, p, y, apart)), all, busyIn(s, y));
     putDraft(db, s, y, fresh, d);
     const miss = [...(yr.miss ?? []), ...d.miss];
     if (miss.length > 0) yr.miss = miss;
@@ -454,6 +479,24 @@ export function deputyGone(db: ContentDb, s: PlantState, who: string, from: numb
       const f = Math.max(a.from, from);
       setDeputy(a, undefined, f);
       setDeputy(a, pickDeputy(db, s, p, a, f), f);
+    }
+  }
+}
+
+/**
+ * У ролей `roles` появился человек со смежной профессией (0.0.65): новый человек на место ушедшего или «Обучить смежной
+ * профессии». Частям людей этих ролей, которые ещё идут или впереди и у которых с дня `from` заместителя нет, кадры
+ * ставят заместителя по правилу — как ушедшему заместителю следующего (`deputyGone`); нет свободного — часть остаётся
+ * без заместителя.
+ */
+export function deputyCame(db: ContentDb, s: PlantState, roles: readonly Id[], from: number) {
+  for (const p of Object.values(s.people)) {
+    if (!roles.includes(p.role) || db.roles[p.role].same) continue;
+    for (const a of p.away ?? []) {
+      if (a.to < from || a.deputy) continue;
+      const f = Math.max(a.from, from);
+      const d = pickDeputy(db, s, p, a, f);
+      if (d) setDeputy(a, d, f);
     }
   }
 }

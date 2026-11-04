@@ -15,7 +15,7 @@ import { BELT_MAX, beltOffsets, beltSpeed, bufferCount, type Lamp, LAMP_COLOR, l
 import { EQ_STATES, MACHINE_STATES, type MachineRow, Packer, unpack } from '../../src/sim/pack';
 import { modelErrors } from '../content/load';
 
-const plan = planOf(db, 'plant.proto');
+const plan = planOf(db, db.plants['plant.proto']);
 const LAMPS = Object.keys(LAMP_COLOR) as Lamp[];
 
 describe('модели кодом', () => {

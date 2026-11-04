@@ -237,7 +237,7 @@ function holderOf(s: PlantState, roomId: string, from: number): string | undefin
 
 /** Вид «Пол» за окно: помещения учёта, машины линий, ключевая машина и OEE, доски «План — факт». */
 export function floorView(db: ContentDb, s: PlantState, q: FloorQuery): FloorView {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const days = winDays(s, q.win);
   const list = lossesOf(s, days);
   const today = momentOf(s.start, s.t).day;
@@ -317,7 +317,7 @@ function lossesAt(db: ContentDb, s: PlantState, list: DayLoss[], today: boolean)
       addThing(a, t.why === 'shift' ? 'shift' : 'wait', taskThing(s, t), s.t - t.since);
     }
   }
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const out: FloorLoss[] = [];
   for (const [spot, a] of by) {
     const total = LOSS_KINDS.reduce((n, k) => n + (k === 'shift' ? 0 : (a.sec[k] ?? 0)), 0);

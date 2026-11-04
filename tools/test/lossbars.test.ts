@@ -17,7 +17,7 @@ import { layoutOf } from '../../src/render/layout';
 import { floorView } from '../../src/sim/floor';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const l = layoutOf(plan);
 const spots = lossSpotsOf(db, l);
 setLang('ru');

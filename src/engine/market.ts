@@ -4,11 +4,13 @@
 // рампе встаёт фура покупателя. Ушла фура — отгрузка: ящики с отрезками кодов — в запись отгрузки, счёт — в кассу.
 import type { ContentDb, Customer, Id, Scenario, Sku } from '../content/types';
 import { batchNo } from './batchno';
+import { cutOrder } from './commerce';
 import { schedule } from './core/agenda';
 import type { Rng } from './core/rng';
 import { addWorkdays, civilFromDays, DAY, daysFromCivil, HOUR, isWorkday, momentOf, workdayOnOrAfter, workdayOnOrBefore } from './core/calendar';
 import { BANK_HOUR, dueIn, owe, part } from './cash';
 import { dockWait } from './lean';
+import { addDemand, seasonSec } from './forecast';
 import { fgExpiry } from './line';
 import { coldOf } from './places';
 import { casesOf } from './planner';
@@ -56,7 +58,7 @@ export function newCustomers(sc: Scenario, t: number): PlantState['customers'] {
 export function seedFg(db: ContentDb, sc: Scenario, s: PlantState, startDay: number) {
   const fg = sc.fg;
   if (!fg) return;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const cal = calOf(db, s);
   const near = plan.byKind.shipping?.[0] ?? plan.byKind.storage[0];
   const at = momentOf(s.start, s.t).date;
@@ -113,7 +115,7 @@ export function seedFg(db: ContentDb, sc: Scenario, s: PlantState, startDay: num
       // ящики — последние по номерам серии: прежние уже отгружены; коды пачек — по порядку ящиков
       const first = x.per - x.cases;
       for (let c = 0; c < x.cases; c += x.sku.pallet.cases) {
-        const sl = findSlot(s, plan, coldOf(db, sc.plant, x.sku.fg) ? 'cold' : 'storage', near, 99);
+        const sl = findSlot(s, plan, coldOf(db, s.plan, x.sku.fg) ? 'cold' : 'storage', near, 99);
         if (!sl) throw new Error(`scenario ${sc.id}: no slot for start finished goods ${x.sku.fg}`);
         const u: Unit = { id: nextId(s, 'U'), type: 'unit.pallet.euro', where: { kind: 'slot', id: sl.id }, items: [], tag: 'released' };
         s.units[u.id] = u;
@@ -157,14 +159,19 @@ export function marketHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   if (now.sec === TRUCK_HOUR) trucksArrive(db, s, notices);
 }
 
-/** Заказ покупателя: по каждой позиции — целые ящики, пуассоновское число со средним по спросу с прошлого заказа. */
+/**
+ * Заказ покупателя: по каждой позиции — целые ящики, пуассоновское число со средним по спросу с прошлого заказа; у
+ * сценария с прогнозом (Б6в) — с сезоном группы товаров каждого месяца этих суток, и ящики — в факт спроса месяца.
+ */
 function placeOrder(db: ContentDb, s: PlantState, c: Customer) {
   const st = s.customers[c.id];
   const lines: Order['lines'] = [];
   for (const [sku, perDay] of Object.entries(c.demand)) {
     const per = db.skus[sku].case.per;
-    const cases = roll(s, `market/${c.id}/${sku}`, r => poisson(r, (perDay * (s.t - st.last)) / (DAY * per)));
+    // снятый спрос (Б6е): покупатель не возьмёт снятых ящиков позиции — бросок тот же, ящиков меньше
+    const cases = cutOrder(s, c.id, sku, roll(s, `market/${c.id}/${sku}`, r => poisson(r, (perDay * seasonSec(db, s, sku, st.last, s.t)) / (DAY * per))));
     if (cases > 0) lines.push({ sku, cases, reserved: 0, shipped: 0 });
+    if (cases > 0) addDemand(s, sku, cases);
   }
   st.last = s.t;
   if (lines.length === 0) return;
@@ -221,7 +228,7 @@ export function marketStep(db: ContentDb, s: PlantState, notices: Notice[]) {
  * ящики кладут на паллету заказа уже в кузове — задачи, ещё не начатые и ждущие места, едут к фуре.
  */
 function crossDock(db: ContentDb, s: PlantState, tr: Truck) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const dock = plan.dock[outDock(db, s)];
   if (findSlot(s, plan, 'shipping', dock, 0)) return;
   const mine = new Set(truckOrders(s, tr).map(o => o.id));
@@ -245,7 +252,7 @@ function crossDock(db: ContentDb, s: PlantState, tr: Truck) {
  */
 function allocate(db: ContentDb, s: PlantState, o: Order) {
   o.checked = s.next.stock ?? 0;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const day = today(s);
   const byLot = containersByLot(s);
   const picks = new Map<string, string[]>();
@@ -284,7 +291,7 @@ function allocate(db: ContentDb, s: PlantState, o: Order) {
   }
 }
 
-const outDock = (db: ContentDb, s: PlantState) => db.plants[s.plant].docks.find(d => d.kind === 'out')!.id;
+const outDock = (db: ContentDb, s: PlantState) => s.plan.docks.find(d => d.kind === 'out')!.id;
 
 /** Сколько ящиков влезает на паллету заказа: по самой мелкой укладке позиций заказа. */
 const capacity = (db: ContentDb, o: Order) => Math.min(...o.lines.map(l => db.skus[l.sku].pallet.cases));
@@ -356,7 +363,7 @@ export function marketDone(db: ContentDb, s: PlantState, t: Task, notices: Notic
  * освободится. Паллета на стеллаже остаётся на месте.
  */
 function pickTask(db: ContentDb, s: PlantState, o: Order, u: Unit, cases: string[]) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const cap = capacity(db, o);
   const coming = (uid: string) =>
     s.units[uid].items.length + Object.values(s.tasks).reduce((n, t) => n + (t.kind === 'casePick' && t.dest === uid ? t.cases!.length : 0), 0);

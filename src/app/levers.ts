@@ -5,12 +5,10 @@
 import type { Dept, Id, OvertimeMode, Scenario, SeatId } from '../content/types';
 import { DEPT_SEAT } from '../engine/seats';
 import type { HeldRow, MainLoss, PendingDev, RiskRow } from '../sim/report';
+import type { Thing } from '../sim/views';
 
-/**
- * Что будет: стройка (Б7), политики продаж и классификация отклонений с CAPA (Б5), план под спрос — S&OP (Б6); часть
- * и слова — в src/i18n/.
- */
-export const LATERS = ['build', 'sales', 'sop', 'capa'] as const;
+/** Что будет: стройка (Б7), политики продаж (Б5); часть и слова — в src/i18n/. */
+export const LATERS = ['build', 'sales'] as const;
 export type Later = (typeof LATERS)[number];
 
 /**
@@ -18,7 +16,7 @@ export type Later = (typeof LATERS)[number];
  * «по потребности» (`on` — уже так); слой «Потоки — люди»; справочник на вкладке; срочное задание позиции; решение по
  * удержанной серии — карточка её ГП; оценка отклонения — его карточка; доска расследования; найм и графики (Б4б, Б4в) —
  * справочник «Люди» поста отдела; график отпусков там же (Б4г); карточка человека; журнал решений (Б5а) — на записи или
- * сначала; будет позже.
+ * сначала; вкладка «Задания» расписания (Б6а); будет позже.
  */
 export type Lever =
   | { k: 'gantt'; seat: SeatId }
@@ -34,6 +32,20 @@ export type Lever =
   | { k: 'leave'; seat: SeatId }
   | { k: 'person'; n: number; tab: number; role: Id; seat: SeatId }
   | { k: 'journal'; n?: number }
+  /** вкладка «Задания» окна расписания (Б6а): заказы без покрытия планёрки */
+  | { k: 'jobs' }
+  /** вкладка «План запуска» окна расписания (Б6б): задания на сутки производства */
+  | { k: 'launch' }
+  /** вкладка «Прогноз» окна расписания (Б6в): прогноз закрытого месяца на планёрке */
+  | { k: 'forecast' }
+  /** окно совещания S&OP (Б6г): цели запаса по продуктам и месяцам */
+  | { k: 'sop' }
+  /** вкладка «Материалы» окна расписания (Б6д): плановые заказы и заказы в пути планёрки */
+  | { k: 'materials' }
+  /** панель склада (Б6б): задания на сутки склада */
+  | { k: 'stock' }
+  /** карточка вещи на полу (Б6б): оборудование или машина строки техслужбы */
+  | { k: 'thing'; thing: Thing }
   /** окно «Показатели» (Б5ж) на закрытом месяце: «Итоги месяца» планёрки */
   | { k: 'kpi'; month?: number }
   /** заказать вывоз отклонённого (Б1з): команда поста «Снабжение и склад» */
@@ -81,8 +93,8 @@ export function mainLevers(m: MainLoss, policy: Record<Dept, OvertimeMode>): Lev
 
 /**
  * Заказ под угрозой: срочное задание на каждую позицию, которой не хватит, — по карте плана выпуска; решение по
- * удержанной серии той же позиции; ящики ещё в лаборатории или на решении — «Поднять» пробы балка; будут политики
- * продаж и S&OP.
+ * удержанной серии той же позиции; ящики ещё в лаборатории или на решении — «Поднять» пробы балка; запас позиций —
+ * окно S&OP (Б6г); будут политики продаж.
  */
 export function riskLevers(r: RiskRow, sc: Pick<Scenario, 'plan'>, held: readonly HeldRow[]): Lever[] {
   const out: Lever[] = [];
@@ -92,12 +104,12 @@ export function riskLevers(r: RiskRow, sc: Pick<Scenario, 'plan'>, held: readonl
   }
   for (const h of held) if (r.short.includes(h.sku) && h.unit !== undefined) out.push({ k: 'batch', unit: h.unit, code: h.code, seat: 'quality' });
   if (r.pending > 0) out.push({ k: 'lab', seat: 'quality' });
-  return [...out, ...later('sales', 'sop')];
+  return [...out, { k: 'sop' }, ...later('sales')];
 }
 
-/** Отклонение: оценить в его карточке, а решает расследование — его доска; будут классификация и CAPA. */
+/** Отклонение: оценить в его карточке — там же класс, причина и CAPA (Б5е), — а решает расследование — его доска. */
 export function devLevers(d: Pick<PendingDev, 'dev' | 'inv'>): Lever[] {
-  return [d.inv ? { k: 'inv', id: d.inv, seat: 'quality' } : { k: 'dev', n: d.dev, seat: 'quality' }, ...later('capa')];
+  return [d.inv ? { k: 'inv', id: d.inv, seat: 'quality' } : { k: 'dev', n: d.dev, seat: 'quality' }];
 }
 
 /**
@@ -106,6 +118,31 @@ export function devLevers(d: Pick<PendingDev, 'dev' | 'inv'>): Lever[] {
 export function resignLevers(r: { person: number; tab: number; role: Id }, dept: Dept): Lever[] {
   const seat = DEPT_SEAT[dept];
   return [{ k: 'staff', seat }, { k: 'person', n: r.person, tab: r.tab, role: r.role, seat }];
+}
+
+/** Заказы без покрытия (Б6а): вкладка «Задания» расписания — там они построчно со «Срочным заданием под заказ». */
+export const uncoveredLevers = (): Lever[] => [{ k: 'jobs' }];
+
+/**
+ * Задание на сутки отдела (Б6б): окно отдела — у производства расписание и «План запуска», у упаковки расписание, у
+ * склада панель склада, у лаборатории и ООК окно лаборатории, у техслужбы — карточка оборудования его строки.
+ */
+export function dailyLevers(dept: Dept, thing?: Thing): Lever[] {
+  switch (dept) {
+    case 'mes':
+      return [{ k: 'gantt', seat: 'production' }, { k: 'launch' }];
+    case 'line':
+      return [{ k: 'gantt', seat: 'production' }];
+    case 'wms':
+      return [{ k: 'stock' }];
+    case 'qc':
+    case 'qa':
+      return [{ k: 'lab', seat: 'quality' }];
+    case 'maint':
+      return thing ? [{ k: 'thing', thing }] : [];
+    default:
+      return [];
+  }
 }
 
 /** Удержанная серия: решение по ней — в карточке её ГП. */

@@ -122,6 +122,15 @@ export function needFor(db: ContentDb, kind: TaskKind, at: { stage?: RecipeStage
   return [...out].sort();
 }
 
+/** Процедуры оборудования и машин линии (Б5е, CAPA «обучить заново»): коды без повторов, по порядку кода. */
+export function equipmentDocs(db: ContentDb, equipment: readonly Id[], machines: readonly Id[] = []): string[] {
+  const ix = index(db);
+  const out = new Set<string>();
+  for (const e of equipment) for (const c of ix.equipment.get(e) ?? []) out.add(c);
+  for (const m of machines) for (const c of ix.machine.get(m) ?? []) out.add(c);
+  return [...out].sort();
+}
+
 /** Требования задачи — один раз на задачу и базу: её стадия, линия и испытание за её жизнь не меняются. */
 const needs = new WeakMap<ContentDb, WeakMap<Task, string[]>>();
 
@@ -137,7 +146,7 @@ export function needOf(db: ContentDb, s: PlantState, t: Task): string[] {
 function needOfTask(db: ContentDb, s: PlantState, t: Task): string[] {
   const b = t.kind === 'stage' && t.batch ? s.batches[t.batch] : undefined;
   const stage = b ? db.recipes[b.recipe].stages[b.stage] : undefined;
-  const line = LINE_WORK.has(t.kind) && t.line ? planOf(db, s.plant).plant.lines.find(l => l.id === t.line) : undefined;
+  const line = LINE_WORK.has(t.kind) && t.line ? planOf(db, s.plan).plant.lines.find(l => l.id === t.line) : undefined;
   const method = (t.kind === 'prep' || t.kind === 'review') && t.test ? s.tests[t.test]?.method : undefined;
   return needFor(db, t.kind, { ...(stage ? { stage } : {}), ...(line ? { machines: line.machines.map(m => m.type) } : {}), ...(method ? { method } : {}) });
 }

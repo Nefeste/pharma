@@ -101,6 +101,18 @@ describe('команда уставки', () => {
   });
 });
 
+describe('политика главного технолога (Б5г)', () => {
+  test('«оставить»: игрок ушёл с поста «Качество и технология» — уставки остались, записи «к цели» нет', () => {
+    const s = newPlant(bare, { scenario: SC });
+    apply(bare, s, { kind: 'seat', seats: ['quality'] });
+    expect(set(s, 'speed', SPEED.target + SPEED.step * 2, 'player')).toEqual([]);
+    expect(apply(bare, s, { kind: 'policy', policy: 'pol.tech.setpoints', value: 'keep', by: 'player' })).toEqual([{ kind: 'policy', policy: 'pol.tech.setpoints', head: 'tech' }]);
+    expect(apply(bare, s, { kind: 'seat', seats: ['production'] })).toEqual([]);
+    expect(s.setpoints[paramKey(CODE, 'compress', 'speed')]?.v).toBe(SPEED.target + SPEED.step * 2);
+    expect(s.journal.some(r => r.d.kind === 'targets')).toBe(false);
+  });
+});
+
 describe('стадия берёт уставки, когда начинается', () => {
   // две серии: у первой таблетирование идёт по цели, вторая начнёт его после смены уставки
   const s = newPlant(bare, { scenario: SC });

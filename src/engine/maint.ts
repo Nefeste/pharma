@@ -6,17 +6,19 @@
 // Отказ — неоднородный пуассоновский поток по наработке: при установке узел получает запас до отказа — показательную
 // величину со средним «один отказ», а работа расходует его по ступеням таблицы. Кончился — отказ.
 import type { ContentDb, Id, PartType } from '../content/types';
+import { decider, replacesBy, skillOf, type Who, whoDecides } from './bosses';
 import { dueIn, owe, part, post } from './cash';
 import { schedule } from './core/agenda';
 import { P_ONE } from './core/rng';
 import { modeOf, moot, propose } from './heads';
 import { note, noteCmd } from './journal';
 import { planOf } from './plant';
+import { numOf, pairOf, POL } from './policies';
 import { expo, roll } from './random';
 import { nextId } from './stock';
 import { etaOf } from './supply';
 import { addTask } from './tasks';
-import type { Command, Notice, Part, PlantState, Task } from './types';
+import type { Command, Notice, Part, PlantState, Refusal, Task } from './types';
 
 /** Запас до отказа считается в 10⁻¹² отказа: средний запас — один отказ. */
 export const ONE_FAILURE = 1_000_000_000_000;
@@ -76,7 +78,7 @@ const budgetOf = (s: PlantState, id: string) => roll(s, `maint/${id}`, r => expo
 
 /** Узлы машин плана — износ на старте из сценария; на складе ЗИП — начальный уровень каждой их запчасти. */
 export function newParts(db: ContentDb, s: PlantState) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const wear = db.scenarios[s.scenario].wear;
   const add = (machine: string, of: Id, t: PartType, line?: string) => {
     const id = `${machine}/${t.id}`;
@@ -124,16 +126,20 @@ export const replaceKey = (part: string) => `replace/${part}`;
  * и машина свободна; решённая замена — как только машина свободна и есть запчасть. Нет запчасти — ремонт ждёт поставки, а
  * ЗИП пополняется. Замена по наработке — в режиме техслужбы (Б5б): «сам» — решает, «советует» — предлагает то же в тот же
  * миг, а замена больше не нужна — предложение «не нужно»; «вручную» — ничего. Ремонт после отказа — в любом режиме.
+ * Порог у каждого узла — политика главного механика (Б5г): с чего начинает завод — запись сценария.
  */
 export function maintStep(db: ContentDb, s: PlantState, notices: Notice[]) {
-  const policy = db.scenarios[s.scenario].maint;
+  // руководитель — человек (Б5в): замену по наработке решает главный механик, а без него — заместитель, в свою смену;
+  // ремонт после отказа и пополнение ЗИП — процедура техслужбы, их не ждут: в журнал — тот, кто сейчас в смене за него
+  let planner: Who | undefined | null = null;
+  const plannerNow = () => (planner === null ? (planner = decider(db, s, 'maint', notices)) : planner);
   for (const pt of Object.values(s.parts)) {
     if (pt.task) continue;
     const t = partType(db, pt);
     if (pt.state === 'failed') {
       if (free(s, t.spare) > 0) {
         // журнал решений (Б5а): главный механик — ремонт после отказа, запчасть из мастерской
-        note(s, 'maint', { kind: 'repair', part: pt.id, why: { failed: pt.failed ?? s.t, spare: t.spare, free: free(s, t.spare) } });
+        note(s, 'maint', { kind: 'repair', part: pt.id, why: { failed: pt.failed ?? s.t, spare: t.spare, free: free(s, t.spare) } }, undefined, undefined, whoDecides(db, s, 'maint'));
         repairTask(db, s, pt, false);
       } else {
         // ремонт ждёт запчасть (Б5ж; EN 15341 O26 — запчасти по требованию): в запись журнала, когда его сделают
@@ -142,15 +148,18 @@ export function maintStep(db: ContentDb, s: PlantState, notices: Notice[]) {
       }
       continue;
     }
-    const at = policy[pt.id];
+    const at = numOf(db, s, POL.replace, pt.id);
     if (at !== undefined) {
       const need = !pt.plan && wearAt(t, pt.done) >= at;
-      const mode = need && idle(s, pt) ? modeOf(s, 'maint') : undefined;
+      let mode = need && idle(s, pt) ? modeOf(s, 'maint') : undefined;
+      // со слабым навыком главный механик меняет узлы только после отказа (геймдизайн, §8.5)
+      const w = mode === 'auto' || mode === 'advise' ? plannerNow() : undefined;
+      if ((mode === 'auto' || mode === 'advise') && (!w || !replacesBy(skillOf(s, w)))) mode = undefined;
       const why = { wear: wearAt(t, pt.done), at };
       if (mode === 'auto') {
         pt.plan = 'policy';
-        note(s, 'maint', { kind: 'replace', part: pt.id, why });
-      } else if (mode === 'advise') propose(s, 'maint', replaceKey(pt.id), { kind: 'maintain', machine: pt.machine, part: pt.type }, { kind: 'replace', part: pt.id, why }, notices);
+        note(s, 'maint', { kind: 'replace', part: pt.id, why }, undefined, undefined, w);
+      } else if (mode === 'advise') propose(s, 'maint', replaceKey(pt.id), { kind: 'maintain', machine: pt.machine, part: pt.type }, { kind: 'replace', part: pt.id, why }, notices, undefined, w);
       else if (!need && s.heads.open[replaceKey(pt.id)] !== undefined) moot(s, replaceKey(pt.id));
     }
     if (!pt.plan || !idle(s, pt)) continue;
@@ -164,7 +173,7 @@ export function maintStep(db: ContentDb, s: PlantState, notices: Notice[]) {
  * ремонт после отказа — от и до из ветви узла. Запчасть — в резерв.
  */
 function repairTask(db: ContentDb, s: PlantState, pt: Part, planned: boolean) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const t = partType(db, pt);
   const shop = plan.room[plan.roomOf.workshop];
   const room = pt.line ? plan.plant.lines.find(l => l.id === pt.line)!.room : s.equipment[pt.machine].room;
@@ -177,15 +186,16 @@ function repairTask(db: ContentDb, s: PlantState, pt: Part, planned: boolean) {
 
 /**
  * Пополнение по уровню неснижаемого запаса (ГОСТ 27.507-2015, п. 7.3.4): «на складе − в резерве + в заказе» дошло до
- * неснижаемого — заказ до начального уровня.
+ * неснижаемого — заказ до начального уровня. Оба уровня — политика главного механика (Б5г): с чего начинает завод — запись
+ * запчасти.
  */
 function replenish(db: ContentDb, s: PlantState, spare: Id) {
-  const rec = db.spares[spare];
+  const [min, max] = pairOf(db, s, POL.spare, spare)!;
   let level = free(s, spare);
   for (const o of Object.values(s.spareOrders)) if (o.spare === spare && o.status === 'ordered') level += o.qty;
-  if (level > rec.stock.min) return;
-  const id = orderSpare(db, s, spare, rec.stock.max - level);
-  note(s, 'maint', { kind: 'spare', order: id, spare, qty: rec.stock.max - level, why: { level, min: rec.stock.min, max: rec.stock.max } });
+  if (level > min) return;
+  const id = orderSpare(db, s, spare, max - level);
+  note(s, 'maint', { kind: 'spare', order: id, spare, qty: max - level, why: { level, min, max } }, undefined, undefined, whoDecides(db, s, 'maint'));
 }
 
 /** Заказ запчасти — как заказ поставщику (1д): предоплата сейчас, остаток с НДС — через `payDays` после поставки. */
@@ -244,8 +254,18 @@ export function maintDone(db: ContentDb, s: PlantState, t: Task, notices: Notice
 export function maintainCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'maintain' }>, notices: Notice[]) {
   const pt = s.parts[`${cmd.machine}/${cmd.part}`];
   if (!pt) return notices.push({ kind: 'refused', cmd: 'maintain', why: 'noPart', detail: `${cmd.machine}/${cmd.part}` });
-  if (pt.state !== 'ok' || pt.task || pt.plan) return notices.push({ kind: 'refused', cmd: 'maintain', why: 'busy', detail: pt.id });
-  if (free(s, partType(db, pt).spare) <= 0) return notices.push({ kind: 'refused', cmd: 'maintain', why: 'noSpare', detail: pt.id });
-  pt.plan = 'player';
+  const why = planReplace(db, s, pt, 'player');
+  if (why) return notices.push({ kind: 'refused', cmd: 'maintain', why, detail: pt.id });
   noteCmd(s, cmd, { kind: 'replace', part: pt.id });
+}
+
+/**
+ * Решить замену узла вне отказа — как только машина свободна (Б1е; с Б5е — и по CAPA «заменить узел»): узел цел, его не
+ * чинят и замена ещё не решена, в мастерской есть свободная запчасть. Нельзя — причина.
+ */
+export function planReplace(db: ContentDb, s: PlantState, pt: Part, by: NonNullable<Part['plan']>): Refusal | undefined {
+  if (pt.state !== 'ok' || pt.task || pt.plan) return 'busy';
+  if (free(s, partType(db, pt).spare) <= 0) return 'noSpare';
+  pt.plan = by;
+  return undefined;
 }

@@ -7,6 +7,7 @@
 // Щелчок по полосе — камера к помещению или линии. Виды собирает поток расчёта (src/sim/plan.ts), итог прогона — поток
 // прогона (src/sim/planHost.ts); здесь — слова, рисунок и мышь.
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
+import type { Id, Plant } from '../content/types';
 import { HOUR, momentOf, type Ymd } from '../engine/core/calendar';
 import type { Range, RunSum } from '../engine/plan/run';
 import type { Bar, Why } from '../engine/plan/schedule';
@@ -16,8 +17,15 @@ import type { BatchLabel, GanttRow, GanttView } from '../sim/plan';
 import type { Thing } from '../sim/views';
 import { assetClass, assetName, unfitText, workName } from './assets';
 import { db } from './db';
+import { Jobs } from './Jobs';
+import { Launch } from './Launch';
+import { Forecast } from './Forecast';
+import { Materials } from './Materials';
 import { draftKey } from './draft';
-import { type Actions, type GanttDays, type Hud, holds, PLAN_RUN, type PlanRun } from './store';
+import { actLabel, actOf, actOn } from './memo';
+import { policyText } from './policy';
+import { priceLine } from './price';
+import { type Actions, type GanttDays, type Hud, PLAN_RUN, type PlanRun } from './store';
 
 /** Шаг срока, куда тянут: 15 минут; стрелка с Shift — час. */
 const SNAP = 15 * 60;
@@ -46,7 +54,7 @@ const short = (l: Labels, id: string | undefined) => {
   return b?.code ?? (b ? T.gantt.order(b.n) : '');
 };
 
-export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; plant: string }) {
+export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; plant: Plant }) {
   const g = hud.gantt;
   const v = g.view;
   const start = hud.start;
@@ -73,14 +81,28 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
   const day = (t: number) => momentOf(start, t).day;
   const roomType = new Map(v.rows.map(r => [r.id, r.type]));
   const roomName = (id: string) => T.roomTypes[roomType.get(id) ?? ''] ?? id;
-  // тянуть — только с постом производства (3е): расписание — его команда
-  const mine = holds(hud, 'production');
+  // тянуть — с постом производства (3е): расписание — его команда; без поста — черновик уходит начальнику отдела
+  // планирования одной запиской (Б5д)
+  const act = actOf(hud, 'production', { kind: 'shift', batch: '', notBefore: 0 });
+  const mine = actOn(act);
   const movable = new Set(mine ? v.movable : []);
   const labels: Labels = { ...v.batches, ...(g.ghost?.batches ?? {}) };
   // черновик: полосы сдвинутых им серий — в белой рамке; прежние — бледнее
   const moved = new Set(v.moved);
   // срочное задание (Б1г) — по позициям плана выпуска сценария этого завода
-  const items = Object.values(db?.scenarios ?? {}).find(sc => sc.plant === plant)?.plan?.items ?? [];
+  const scen = Object.values(db?.scenarios ?? {}).find(sc => sc.plant === plant.id);
+  const items = scen?.plan?.items ?? [];
+  // вкладка «Прогноз» (Б6в) — у сценария с прогнозом
+  const fcOn = !!scen?.forecast;
+
+  /** Строка срочного задания черновика: позиция, а под заказ покупателя (Б6а) — и чей заказ; из плана запуска (Б6б) — день. */
+  const urgentText = (u: { sku: Id; for?: string; at?: number }) => {
+    const sku = named(db?.skus[u.sku]?.name, u.sku);
+    if (u.at !== undefined && !u.for) return T.urgent.itemOn(sku, dayText(day(u.at)));
+    if (!u.for) return T.urgent.item(sku);
+    const c = v.jobs.uncovered.find(x => x.order === u.for)?.customer;
+    return T.urgent.itemFor(sku, c ? named(db?.customers[c]?.name, c) : u.for);
+  };
 
   /** Мгновение — словами для причин: сегодня — часы; в пределах недели — день недели и часы; дальше — дата и часы. */
   const timeText = (t: number) => {
@@ -152,6 +174,17 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
     }
   };
 
+  /** Строка задания на сутки этой полосы — последняя из заданий, где она была (Б6б). */
+  const markOf = (b: Bar) => {
+    if (!b.batch || (b.kind !== 'kit' && b.kind !== 'stage' && b.kind !== 'pack')) return undefined;
+    let out: GanttView['daily'][number] | undefined;
+    for (const m of v.daily) {
+      if (m.batch !== b.batch || m.kind !== b.kind || (b.kind === 'stage' && m.stage !== b.stage) || (b.kind === 'kit' && !!m.pack !== !!b.pack)) continue;
+      if (!out || m.from > out.from) out = m;
+    }
+    return out;
+  };
+
   const titleOf = (b: Bar): string => {
     const lines = [barText(b), `${T.gantt.span(whenText(start, b.from), whenText(start, b.to))} · ${T.gantt.when[b.when]}`];
     if ((b.kind === 'clean' || b.kind === 'roomClean') && b.batch) lines[0] = `${lines[0]} · ${who(labels, b.batch)}`;
@@ -163,6 +196,12 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
       lines.push(T.gantt.visit);
     }
     if (b.batch && b.when === 'plan' && moved.has(b.batch)) lines.push(T.gantt.inDraft);
+    // задание на сутки (Б6б): полоса — строка задания; когда сутки кончились — итог
+    const mark = markOf(b);
+    if (mark) {
+      const res = mark.res ? [T.daily.res[mark.res] ?? mark.res, ...(mark.res !== 'ok' && mark.why ? [T.daily.why(T.daily.what[mark.why] ?? mark.why)] : []), ...(mark.after !== undefined ? [T.daily.after(whenText(start, mark.after))] : [])] : [];
+      lines.push([T.daily.inTask(dayText(day(mark.from))), ...res].join(' · '));
+    }
     lines.push(...whyOf(b, v.why[b.batch ?? '']).map(whyText));
     if (b.batch && movable.has(b.batch)) lines.push(T.gantt.hintDrag);
     return lines.join('\n');
@@ -256,7 +295,32 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
     <div className="gantt panel" id="gantt" role="dialog" aria-labelledby="gantt-title" data-test="gantt">
       <div className="phead">
         <b id="gantt-title">{T.gantt.title}</b>
-        <span className="muted">{T.gantt.question}</span>
+        <span className="filters" data-test="gantt-tabs">
+          <button type="button" className={g.tab ? '' : 'on'} onClick={() => actions.ganttTab()} data-test="gantt-tab-plan">
+            {T.jobs.bars}
+          </button>
+          <button type="button" className={g.tab === 'jobs' ? 'on' : ''} onClick={() => actions.ganttTab('jobs')} data-test="gantt-tab-jobs">
+            {T.jobs.tab}
+          </button>
+          <button type="button" className={g.tab === 'launch' ? 'on' : ''} onClick={() => actions.ganttTab('launch')} data-test="gantt-tab-launch">
+            {T.launch.tab}
+          </button>
+          {fcOn ? (
+            <button type="button" className={g.tab === 'forecast' ? 'on' : ''} onClick={() => actions.ganttTab('forecast')} data-test="gantt-tab-forecast">
+              {T.fc.tab}
+            </button>
+          ) : null}
+          {/* потребность в материалах (Б6д): план производства — из прогона S&OP на прогнозе, у сценария без прогноза её нет */}
+          {fcOn ? (
+            <button type="button" className={g.tab === 'mrp' ? 'on' : ''} onClick={() => actions.ganttTab('mrp')} data-test="gantt-tab-mrp">
+              {T.mrp.tab}
+            </button>
+          ) : null}
+        </span>
+        <span className="muted">{g.tab === 'jobs' ? T.jobs.question : g.tab === 'launch' ? T.launch.question : g.tab === 'forecast' ? T.fc.question : g.tab === 'mrp' ? T.mrp.question : T.gantt.question}</span>
+        {g.tab === 'forecast' || g.tab === 'mrp' ? (
+          <span className="grow" />
+        ) : (
         <span className="filters grow">
           {DAYS.map(d => (
             <button type="button" key={d} className={g.days === d ? 'on' : ''} onClick={() => actions.setGanttDays(d)} data-test={`gantt-days-${d}`}>
@@ -273,6 +337,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
             ›
           </button>
         </span>
+        )}
         <button type="button" className="close" onClick={() => actions.toggleGantt()} title={T.card.closeHint}>
           ✕
         </button>
@@ -303,15 +368,21 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
             ) : null}
           </span>
         ) : null}
-        {g.draft.length + g.urgent.length > 0 ? (
+        {g.draft.length + g.urgent.length + g.drop.length > 0 ? (
           <>
-            <span data-test="draft-list">{T.plan.draft([...g.draft.map(c => who(labels, c.batch) || c.batch), ...g.urgent.map(u => T.urgent.item(named(db?.skus[u.sku]?.name, u.sku)))].join(', '))}</span>
-            <button type="button" onClick={() => actions.approveDraft()} disabled={!mine} title={T.plan.approveHint} data-test="draft-approve">
-              {T.plan.approve}
+            <span data-test="draft-list">{T.plan.draft([...g.drop.map(id => T.jobs.dropped(who(labels, id) || T.jobs.order(Number(id.slice(1))))), ...g.draft.map(c => who(labels, c.batch) || c.batch), ...g.urgent.map(u => urgentText(u))].join(', '))}</span>
+            <button type="button" onClick={() => actions.approveDraft()} disabled={!mine} title={act.mine ? T.plan.approveHint : act.title} data-test="draft-approve" data-memo={act.memo ?? undefined}>
+              {actLabel(act, T.plan.approve)}
             </button>
             <button type="button" onClick={() => actions.resetDraft()} title={T.plan.resetHint} data-test="draft-reset">
               {T.plan.reset}
             </button>
+            {/* правка в замороженном горизонте (Б6е): цена — до «Утвердить» */}
+            {v.price ? (
+              <span className="gprice" data-test="draft-price">
+                {priceLine(v.price, id => who(labels, id) || T.jobs.order(Number(id.slice(1))))}
+              </span>
+            ) : null}
           </>
         ) : mine ? (
           <span className="muted">{T.plan.noDraft}</span>
@@ -327,14 +398,44 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
             </button>
           </>
         ) : (
-          <button type="button" className="on" onClick={() => actions.runPlan()} title={T.plan.runHint(PLAN_RUN.days, PLAN_RUN.seeds)} data-test="plan-run">
+          // поток прогона один на расписание и политики (Б5г): пока идёт прогон политик, этот ждёт
+          <button type="button" className="on" disabled={hud.policies.run.running} onClick={() => actions.runPlan()} title={hud.policies.run.running ? T.plan.busyPolicies : T.plan.runHint(PLAN_RUN.days, PLAN_RUN.seeds)} data-test="plan-run">
             {T.plan.run}
           </button>
         )}
       </div>
+      {g.tab === 'jobs' ? (
+        <Jobs hud={hud} actions={actions} jobs={v.jobs} mine={mine} items={items} />
+      ) : g.tab === 'launch' ? (
+        v.launch ? (
+          <Launch hud={hud} actions={actions} v={v.launch} labels={labels} assets={v.assets} mine={mine} title={act.title} edge={momentOf(start, v.frozen.edge).day} />
+        ) : (
+          <div className="muted">{T.app.loading}</div>
+        )
+      ) : g.tab === 'forecast' ? (
+        v.forecast ? (
+          <Forecast hud={hud} actions={actions} v={v.forecast} />
+        ) : (
+          <div className="muted">{T.app.loading}</div>
+        )
+      ) : g.tab === 'mrp' ? (
+        g.mrp ? (
+          <Materials hud={hud} actions={actions} v={g.mrp} />
+        ) : (
+          <div className="muted">{T.app.loading}</div>
+        )
+      ) : (
+        <>
       <div className="grow-row gaxis">
         <div className="glabel" />
         <div className="gtrack">
+          {/* край замороженного горизонта (Б6е): правки до него — с ценой */}
+          {v.frozen.edge > v.from && v.frozen.edge < v.to ? (
+            // край у правого края окна — подпись слева от черты: справа её срезало бы окно
+            <div className={`gfrozen-tick${pct(v.frozen.edge) > 70 ? ' end' : ''}`} style={{ left: `${pct(v.frozen.edge)}%` }} title={T.price.edgeHint(policyText(db?.policies['pol.plan.frozen'], v.frozen.days))} data-test="frozen-edge" data-edge={v.frozen.edge}>
+              <span>{T.price.edge(dayText(momentOf(start, v.frozen.edge).day))}</span>
+            </div>
+          ) : null}
           {ticks.map(t => {
             const m = momentOf(start, t);
             const midnight = m.sec === 0;
@@ -356,6 +457,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
             {v.off.map(([a, b]) => (
               <div key={a} className="goff" style={{ left: `${pct(a)}%`, width: `${pct(b) - pct(a)}%` }} />
             ))}
+            {v.frozen.edge > v.from ? <div className="gfrozen" style={{ left: `${pct(Math.max(v.now, v.from))}%`, width: `${pct(v.frozen.edge) - pct(Math.max(v.now, v.from))}%` }} /> : null}
             {ticks.filter(t => momentOf(start, t).sec === 0).map(t => (
               <div key={t} className="gday" style={{ left: `${pct(t)}%` }} />
             ))}
@@ -381,6 +483,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
                   can ? 'move' : '',
                   b.batch && b.when === 'plan' && moved.has(b.batch) ? 'draft' : '',
                   ghost && b.batch === ghost.batch && b.when === 'plan' ? 'dim' : '',
+                  b.batch && b.batch === g.focus ? 'focus' : '',
                 ].filter(Boolean).join(' ');
                 return (
                   <div
@@ -432,7 +535,9 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         </span>
         {v.stuck.length > 0 ? <span className="bad">{T.gantt.stuck(v.stuck.map(id => who(labels, id)).join(', '))}</span> : null}
       </div>
-      {p.running || p.error || p.sums.some(Boolean) ? <PlanSum p={p} start={start} stale={p.key !== draftKey(g.draft, g.urgent)} rowName={rowName} lineNo={lineNo} /> : null}
+        </>
+      )}
+      {p.running || p.error || p.sums.some(Boolean) ? <PlanSum p={p} start={start} stale={p.key !== draftKey(g.draft, g.urgent, g.drop)} rowName={rowName} lineNo={lineNo} /> : null}
       {g.drag && tip ? (
         <div className="gtip panel" style={{ left: Math.min(tip.x + 14, window.innerWidth - 380), top: tip.y + 14 }} data-test="gtip">
           <div>

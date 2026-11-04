@@ -1,26 +1,35 @@
 // Сохранение — снимок состояния со схемой и цепочкой миграций (ADR студии 0004; docs/02-architecture.md, §13). Забытая
 // миграция стирает игру человека, поэтому каждый шаг закреплён образцом в tools/test/fixtures/.
-import type { ContentDb } from '../content/types';
-import { seedAssets } from './assets';
+import type { ContentDb, Plant } from '../content/types';
+import { BOOK_HOUR as VISIT_HOUR, seedAssets } from './assets';
+import { PAID_LATER } from './bosses';
 import { newHeads } from './heads';
 import { batchNo } from './batchno';
 import { type Agenda, schedule } from './core/agenda';
-import { HOUR, momentOf } from './core/calendar';
+import { HOUR, isWorkday, momentOf } from './core/calendar';
 import { newCash } from './cash';
+import { openClass } from './devclass';
 import { inForce } from './docs';
+import { LABOR_HOUR } from './hire';
 import { newPolicy } from './hours';
+import { addDemand, monthAt, newForecast, runForecast } from './forecast';
+import { DEPT_HEAD } from './journal';
 import { newKpi } from './kpi';
 import { leanStep, newLoss } from './lean';
 import { newLines } from './line';
 import { newParts } from './maint';
 import { newCustomers } from './market';
-import { bulkOut, stageTaskNorm } from './mes';
-import { seedContracts, seedPairs, specPairs } from './partners';
+import { BATCH_HOUR, bulkOut, stageTaskNorm } from './mes';
+import { BOOK_HOUR as EVAL_HOUR, seedContracts, seedPairs, specPairs } from './partners';
 import { planOf } from './plant';
+import { newPolicies } from './policies';
 import { nominal } from './quality';
 import { shiftEndAt } from './staff';
 import { rowsOf } from './quals';
+import { SUPPLY_HOUR } from './supply';
 import { seedTraining } from './train';
+import { WASTE_HOUR } from './waste';
+import { calOf } from './workdays';
 import type { Ymd } from './core/calendar';
 import { type Batch, type Person, type PlantEvent, type PlantState, SCHEMA, type Task } from './types';
 
@@ -33,7 +42,7 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   1: (raw, db) => {
     const sc = db.scenarios[raw.scenario as string];
     if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
-    const plan = planOf(db, sc.plant);
+    const plan = planOf(db, raw.plan as Plant);
     const next: Record<string, number> = {};
     const people: Raw = {};
     for (const row of sc.staff) {
@@ -97,7 +106,7 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   // позиции у них нет.
   4: (raw, db) => {
     if (!db.plants[raw.plant as string]) throw new Error(`save: no plant ${String(raw.plant)}`);
-    return { ...raw, lines: newLines(db, raw.plant as string, raw.t as number) };
+    return { ...raw, lines: newLines(db, raw.plan as Plant, raw.t as number) };
   },
   // 5 → 6 (часть 1д): касса — проводки и счета от остатка на момент сохранения (он уже в копейках); выпущенная раньше ГП —
   // в обороте с момента выпуска; покупатели сценария копят спрос с момента миграции; заказов и отгрузок нет.
@@ -244,7 +253,7 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     const sc = db.scenarios[raw.scenario as string];
     if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
     raw.assets = {};
-    seedAssets(db, sc, raw as unknown as PlantState, momentOf(raw.start as Ymd, raw.t as number).day);
+    seedAssets(db, sc, raw.plan as Plant, raw as unknown as PlantState, momentOf(raw.start as Ymd, raw.t as number).day);
     for (const i of Object.values((raw.instruments ?? {}) as Record<string, Raw>)) if (i.check === 'overdue') i.check = 'typo';
     return raw;
   },
@@ -316,7 +325,7 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     s.candidates = {};
     s.hires = {};
     s.former = {};
-    const plan = planOf(db, s.plant);
+    const plan = planOf(db, s.plan);
     const day = momentOf(s.start, s.t).day;
     const { y, m, d } = momentOf(s.start, s.t).date;
     // зарплата до схемы 24 начислена людям партии за весь месяц: по 15-е этого или по конец прошлого; первая половина —
@@ -348,7 +357,7 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
     const s = raw as unknown as PlantState;
     s.leave = {};
-    const plan = planOf(db, s.plant);
+    const plan = planOf(db, s.plan);
     const day = momentOf(s.start, s.t).day;
     const { y } = momentOf(s.start, s.t).date;
     const want = new Map<string, number>();
@@ -467,9 +476,103 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     (raw as unknown as PlantState).heads = newHeads();
     return raw;
   },
-  // 34 → 35 (Б1л): потери у мест — с мгновения загрузки, у прошлых суток их нет; у грязного помещения нет серии, после
-  // которой убирать, — вещь уборки — само помещение
+  // 34 → 35 (Б5г): политики руководителей — значений игрока нет, все с записи сценария; истории нет
   34: raw => {
+    (raw as unknown as PlantState).policies = newPolicies();
+    return raw;
+  },
+  // 35 → 36 (Б5в): руководители — люди штата. Шесть руководителей сценария, которые с этой версии люди, приходят в день
+  // загрузки — у входа, с табельными номерами по порядку приёма и записями обучения, как на старте партии; заместители —
+  // по сценарию, назначенных игроком нет. Правила руководителей, чей час сегодня уже прошёл, сегодня отработали — отметка
+  // дня, чтобы второй раз не решили. Записи журнала до этой версии — без человека: решала должность.
+  35: (raw, db) => {
+    const sc = db.scenarios[raw.scenario as string];
+    if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
+    const s = raw as unknown as PlantState;
+    const now = momentOf(s.start, s.t);
+    const plan = planOf(db, s.plan);
+    const have = new Set([...Object.values(s.people), ...Object.values(s.hires)].map(p => p.role));
+    for (const row of sc.staff) {
+      if (!PAID_LATER.has(row.role) || have.has(row.role)) continue;
+      for (let i = 0; i < row.n; i++) {
+        const n = (s.next.E = (s.next.E ?? 0) + 1);
+        const p: Person = { id: `E${n}`, role: row.role, shift: row.shift, skill: row.skill, tab: sc.training.tab + n - 1, train: {}, x: plan.entrance.x, z: plan.entrance.z, ot: [], otYear: { y: now.date.y, sec: 0 }, hired: now.day, ...(row.also ? { also: [...row.also] } : {}) };
+        s.people[p.id] = p;
+        seedTraining(db, sc, p, now.day);
+      }
+    }
+    if (isWorkday(calOf(db, s), now.day)) {
+      const rules: [string, number][] = [['plan', BATCH_HOUR], ['supply', SUPPLY_HOUR], ['waste', WASTE_HOUR], ['visit', VISIT_HOUR], ['pairEval', EVAL_HOUR], ...[...new Set(Object.values(DEPT_HEAD))].map(h => [`hire/${h}`, LABOR_HOUR] as [string, number])];
+      for (const [key, hour] of rules) if (now.sec >= hour) (s.ruled ??= {})[key] = now.day;
+    }
+    return raw;
+  },
+  // 36 → 37 (Б5д): служебные записки и вопросы «Просят решить» — записи журнала с ответом; до этой версии их нет:
+  // открытых нет, расследования ведёт ООК
+  36: raw => raw,
+  // 37 → 38 (Б5е): у отклонения — класс по правилу открытия; у оценённого и решённого — причина «не установлена»; у
+  // результата вне спецификации — методика, у купленной партии — и материал для подписи повтора; CAPA нет
+  37: raw => {
+    const s = raw as unknown as PlantState;
+    for (const d of Object.values(s.deviations)) {
+      d.cls = openClass(d.kind);
+      if (d.status !== 'open' || d.assess?.done !== undefined) d.cause = 'none';
+      const lot = d.lot ? s.lots[d.lot] : undefined;
+      if (d.kind === 'oos' && !d.batch && lot && !lot.batch) d.material ??= lot.material;
+      // методика результата вне спецификации — для подписи повтора
+      const q = d.kind === 'oos' && d.tests?.[0] ? s.tests[d.tests[0]] : undefined;
+      if (q && d.test === undefined) d.test = q.method;
+    }
+    s.capas = {};
+    return raw;
+  },
+  // Б6а: срок, «под что» и отмена задания на серию — необязательные поля; у прежних заданий срока нет
+  38: raw => raw,
+  // Б6б: сменно-суточные задания — с первых 08:00 после загрузки
+  39: raw => ({ ...raw, daily: [] }),
+  // 39 → 40 выше; 40 → 41 (Б6в): прогноз продаж — история спроса до старта тем же правилом и ветвью зерна, что у новой
+  // игры, факт — по заказам с начала, прогноз — сразу, как 1-го числа, без записи журнала; у сценария без прогноза — нет
+  40: (raw, db) => {
+    const s = raw as unknown as PlantState;
+    const f = newForecast(db, s);
+    if (!f) return raw;
+    s.forecast = f;
+    for (const o of Object.values(s.orders)) for (const l of o.lines) addDemand(s, l.sku, l.cases, o.placed);
+    runForecast(db, s, monthAt(s, s.t), { lag: true, journal: false });
+    return raw;
+  },
+  // 41 → 42 (Б6г): совещание S&OP — утверждённых планов нет: правило берёт политику «запас позиций», как раньше; первое
+  // совещание — в третий рабочий день ближайшего месяца
+  41: raw => raw,
+  // 42 → 43 (Б6д): у заказа поставщику — «отменён» с неустойкой и ускорение с доплатой, необязательные поля; заказы в
+  // пути — как были; политик «срок завоза» и «как заказывать» игрок не задавал — правило снабжения берёт запись сценария
+  42: raw => raw,
+  // 43 → 44 (Б6е): события коммерции — снятого спроса нет, дни событий месяца вытянет первый час событий после загрузки;
+  // у записей журнала и заказов — необязательные поля цены правки и крупного заказа; политику «замороженный горизонт»
+  // игрок не задавал — правило берёт запись сценария, 10 рабочих дней, как раньше
+  43: raw => raw,
+  // 44 → 45 (Б6ж): у пар-кандидатов спецификаций — записи пар без одобрения; заказы в пути — как были: обещанный приход
+  // и есть настоящий, они не опоздают; у пришедших дня прихода нет — в долю вовремя они не идут; политику «кому заказывать»
+  // игрок не задавал — правило берёт запись сценария
+  44: (raw, db) => {
+    const pairs = (raw.pairs ?? {}) as Record<string, Raw>;
+    for (const sp of Object.values(db.specs))
+      for (const x of sp.candidates ?? []) {
+        const key = `${x.supplier}|${x.maker}`;
+        pairs[key] ??= { id: key, supplier: x.supplier, maker: x.maker, recs: [] };
+      }
+    raw.pairs = pairs;
+    return raw;
+  },
+  // 45 → 46 (Б7а): план здания — в состоянии: план сценария из базы (его кладёт `fromSave` до шагов) с первым этажом,
+  // правка 0 — у записи номера правки нет; номер записи плана — у плана, отдельного поля больше нет
+  45: raw => {
+    delete raw.plant;
+    return raw;
+  },
+  // 46 → 47 (Б1л): потери у мест — с мгновения загрузки, у прошлых суток их нет; у грязного помещения нет серии, после
+  // которой убирать, — вещь уборки — само помещение
+  46: raw => {
     for (const d of (raw as unknown as PlantState).losses) d.spots ??= {};
     return raw;
   },
@@ -484,6 +587,14 @@ export function fromSave(db: ContentDb, json: string): PlantState {
   let v = raw.schema;
   if (typeof v !== 'number' || !Number.isInteger(v) || v < 1) throw new Error('save: no schema');
   if (v > SCHEMA) throw new Error(`save: schema ${v} is newer than ${SCHEMA}`);
+  // план здания — в состоянии со схемы 46 (Б7а): у прежнего сохранения — план сценария из базы, и шаги миграции до 46
+  // берут его оттуда же, как раньше брали из базы; у схемы 1 номера плана ещё нет — он у сценария
+  if (v < 46) {
+    const id = (raw.plant ?? db.scenarios[raw.scenario as string]?.plant) as string | undefined;
+    const plant = id ? db.plants[id] : undefined;
+    if (!plant) throw new Error(`save: no plant ${String(id)}`);
+    raw.plan = plant;
+  }
   while (v < SCHEMA) {
     const step = STEPS[v];
     if (!step) throw new Error(`save: no migration from schema ${v}`);
@@ -491,8 +602,9 @@ export function fromSave(db: ContentDb, json: string): PlantState {
     v++;
     raw.schema = v;
   }
-  // план из базы мог вырасти без смены схемы (план здания, docs/specs/2026-10-view.md, 2а): новые помещения — чистые
-  const plant = db.plants[raw.plant as string];
+  // план мог вырасти без смены схемы (план здания, docs/specs/2026-10-view.md, 2а): новые помещения — чистые; с Б7а
+  // план — в сохранении
+  const plant = raw.plan as Plant | undefined;
   const rooms = raw.rooms as Record<string, Raw> | undefined;
   if (plant && rooms) for (const r of plant.rooms) rooms[r.id] ??= { id: r.id, type: r.type, status: 'clean', since: raw.t };
   return raw as unknown as PlantState;

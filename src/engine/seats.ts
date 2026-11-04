@@ -6,12 +6,18 @@ import { type ContentDb, type Dept, SEATS, type SeatId } from '../content/types'
 import { staleAsks } from './heads';
 import { HEAD_SEAT, recordOf } from './journal';
 import { colleagueTargets } from './modes';
+import { policyHead } from './policies';
 import type { Command, Notice, PlantState } from './types';
 
 /** Чья команда — пост, к которому она относится; ход времени и выбор места — ничьи; политика отдела — пост отдела. */
 export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
   order: 'production',
   shift: 'production',
+  cancel: 'production',
+  // правка прогноза планирования (Б6в) — пост планирования
+  forecast: 'production',
+  // план S&OP (Б6г) — директор или пост планирования
+  sop: 'production',
   pack: 'production',
   maintain: 'production',
   rush: 'quality',
@@ -21,25 +27,39 @@ export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
   assess: 'quality',
   setpoint: 'quality',
   po: 'supply',
+  // ускорить и отменить заказ поставщику (Б6д)
+  expedite: 'supply',
+  cancelPo: 'supply',
   waste: 'supply',
+  visit: 'production',
+  classify: 'quality',
+  capa: 'quality',
+  // одобрить пару-кандидата (Б6ж) — пост «Качество» или директор
+  pairApprove: 'quality',
 };
 
 /** Пост отдела (Б4а): производство, линию и техслужбу ведёт «Производство», ОКК и ООК — «Качество», склад — «Снабжение и склад». */
 export const DEPT_SEAT: Record<Dept, SeatId> = { mes: 'production', line: 'production', maint: 'production', qc: 'quality', qa: 'quality', wms: 'supply' };
 
 /**
- * Пост команды: у политики отдела — пост этого отдела, у перевода на другой график (Б4б), команд найма и увольнения (Б4в),
- * частей отпуска и смежной профессии (Б4г) — пост отдела роли (`dept`), у остальных — по виду команды.
+ * Пост команды: у политики отдела — пост этого отдела, у режима и политики руководителя (Б5б, Б5г) — пост его отдела, у
+ * перевода на другой график (Б4б), команд найма и увольнения (Б4в), частей отпуска и смежной профессии (Б4г) — пост
+ * отдела роли (`dept`), у остальных — по виду команды.
  */
 export function ownerOf(cmd: Command, dept?: Dept): SeatId | undefined {
   if (cmd.kind === 'overtime') return DEPT_SEAT[cmd.dept];
   if (cmd.kind === 'mode') return HEAD_SEAT[cmd.head];
+  if (cmd.kind === 'deputy') return HEAD_SEAT[cmd.head];
+  if (cmd.kind === 'policy') {
+    const head = policyHead(cmd.policy);
+    return head && HEAD_SEAT[head];
+  }
   if (cmd.kind === 'roster' || cmd.kind === 'vacancy' || cmd.kind === 'agency' || cmd.kind === 'close' || cmd.kind === 'hire' || cmd.kind === 'dismiss' || cmd.kind === 'leave' || cmd.kind === 'also') return dept && DEPT_SEAT[dept];
   return OWNER[cmd.kind];
 }
 
 /** Роль, о которой команда найма (Б4в), перевода (Б4б) или отпуска (Б4г): её отдел — чей пост. */
-function roleOf(s: PlantState, cmd: Command): string | undefined {
+export function roleOf(s: PlantState, cmd: Command): string | undefined {
   switch (cmd.kind) {
     case 'roster':
     case 'dismiss':
@@ -67,6 +87,12 @@ export function playerHolds(s: PlantState, dept: Dept): boolean {
   return !!h && (h.includes('director') || h.includes(DEPT_SEAT[dept]));
 }
 
+/** Ведёт ли расследование игрок (Б5д): ответил «Веду сам» и держит «Качество» или место директора. */
+export function playerLeads(s: PlantState, inv: { lead?: 'player' }): boolean {
+  const h = held(s);
+  return inv.lead === 'player' && !!h && (h.includes('director') || h.includes('quality'));
+}
+
 /** Места, которые игрок держит сейчас; ещё не выбирал — `undefined`. */
 export function held(s: PlantState): SeatId[] | undefined {
   return s.seats?.filter(x => x.to === undefined).map(x => x.seat);
@@ -78,7 +104,7 @@ export function held(s: PlantState): SeatId[] | undefined {
  */
 export function foreign(s: PlantState, cmd: Command, db?: ContentDb): SeatId | undefined {
   const role = roleOf(s, cmd);
-  const own = cmd.kind === 'accept' || cmd.kind === 'decline' ? askOwner(s, cmd.n) : ownerOf(cmd, role ? db?.roles[role]?.dept : undefined);
+  const own = cmd.kind === 'accept' || cmd.kind === 'decline' ? askOwner(s, cmd.n) : cmd.kind === 'answer' ? forkOwner(s, cmd.n) : cmd.kind === 'capaRun' ? capaOwner(s, cmd.capa) : ownerOf(cmd, role ? db?.roles[role]?.dept : undefined);
   if (!own || ('by' in cmd && cmd.by !== undefined && cmd.by !== 'player')) return undefined;
   const h = held(s);
   return !h || h.includes('director') || h.includes(own) ? undefined : own;
@@ -88,6 +114,17 @@ export function foreign(s: PlantState, cmd: Command, db?: ContentDb): SeatId | u
 function askOwner(s: PlantState, n: number): SeatId | undefined {
   const r = recordOf(s, n);
   return r && r.by !== 'player' ? HEAD_SEAT[r.by] : undefined;
+}
+
+/** Пост исполнения CAPA (Б5е): пост отдела её исполнителя; CAPA нет — ничей, отказ даст команда. */
+export function capaOwner(s: PlantState, capa: string): SeatId | undefined {
+  const c = s.capas?.[capa];
+  return c ? HEAD_SEAT[c.head] : undefined;
+}
+
+/** Пост ответа на вопрос «Просят решить» (Б5д): кого спросили — пост развилки или директор; вопроса нет — ничей. */
+function forkOwner(s: PlantState, n: number): SeatId | undefined {
+  return recordOf(s, n)?.q?.to;
 }
 
 /**
@@ -104,8 +141,8 @@ export function seatCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
   const log = (s.seats ??= []);
   for (const x of log) if (x.to === undefined && !want.has(x.seat)) x.to = s.t;
   for (const id of SEATS) if (want.has(id) && !log.some(x => x.seat === id && x.to === undefined)) log.push({ seat: id, from: s.t });
-  // игрок ушёл с поста «Качество и технология» — коллега технологии держит цель (Б1ж)
-  if (had && !playerHolds(s, 'qa')) colleagueTargets(s, notices);
+  // игрок ушёл с поста «Качество и технология» — коллега технологии держит цель (Б1ж) или оставляет уставки (Б5г)
+  if (had && !playerHolds(s, 'qa')) colleagueTargets(db, s, notices);
   // пост отпущен (Б5б): открытые предложения его руководителей устарели — они решат в свой час
   staleAsks(s);
 }

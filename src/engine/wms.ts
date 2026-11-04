@@ -38,11 +38,12 @@ export function truckArrives(db: ContentDb, s: PlantState, poId: string, notices
   const po = s.pos[poId];
   if (!po || po.status !== 'ordered') return;
   po.status = 'arrived';
+  po.came = s.t;
   if (po.sum !== undefined) {
     s.cash.vat.in += po.vat!;
     owe(s, 'supplier', -(po.sum - po.prepaid!), dueIn(db, s, db.suppliers[po.supplier].payDays), po.id);
   }
-  const dock = db.plants[s.plant].docks.find(d => d.kind === 'in')!.id;
+  const dock = s.plan.docks.find(d => d.kind === 'in')!.id;
   const truck: Truck = { id: `K${po.id.slice(1)}`, dock, po: po.id, units: [], arrived: s.t, docked: false, open: false };
   s.trucks[truck.id] = truck;
   for (const line of po.lines) {
@@ -74,13 +75,13 @@ function dockNext(db: ContentDb, s: PlantState, dock: string) {
   dockWait(s, s.t - next.arrived, dock, next.po ? `po:${next.po}` : undefined);
   // время «от рампы до места» (Б5ж): с этого мгновения у каждой партии фуры
   for (const u of next.units) for (const c of s.units[u].items) s.lots[s.containers[c].lot].docked ??= s.t;
-  const cold = next.units.some(u => coldOf(db, s.plant, s.lots[s.containers[s.units[u].items[0]].lot].material));
+  const cold = next.units.some(u => coldOf(db, s.plan, s.lots[s.containers[s.units[u].items[0]].lot].material));
   addTask(s, { kind: 'truckCheck', roles: [...WMS.keepers], from: { kind: 'truck', id: next.id }, work: CHECK_WORK + (cold ? CHECK_COLD : 0), prio: PRIO.check });
 }
 
 /** Есть ли у партии паллета на фуре или в зоне приёмки — ещё не размещённая. */
 function receiving(db: ContentDb, s: PlantState, lot: Lot): boolean {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   for (const u of Object.values(s.units)) {
     if (!u.items.some(c => s.containers[c]?.lot === lot.id)) continue;
     if (u.where.kind === 'truck' || (u.where.kind === 'slot' && plan.slot[u.where.id]?.kind === 'receiving')) return true;
@@ -113,7 +114,7 @@ export function wmsDone(db: ContentDb, s: PlantState, t: Task, _notices: Notice[
     case 'receive': {
       // ярлык «Карантин» уже на паллете (createLot); холод — в холодную камеру
       const lot = s.lots[s.containers[u!.items[0]].lot];
-      const cold = coldOf(db, s.plant, lot.material);
+      const cold = coldOf(db, s.plan, lot.material);
       addTask(s, { kind: 'putaway', roles: [...WMS.movers], veh: [...WMS.floor], unit: u!.id, from: t.from, toKind: cold ? 'cold' : 'quarantine', work: 0, prio: PRIO.putaway });
       return;
     }

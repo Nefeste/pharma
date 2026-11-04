@@ -7,7 +7,7 @@ import type { ContentDb, Id, Scenario } from '../content/types';
 import { addMonths, momentOf } from './core/calendar';
 import { fnv1a } from './core/hash';
 import { headOf, inForce } from './docs';
-import { deputyGone } from './leave';
+import { deputyCame, deputyGone } from './leave';
 import { type PlantPlan, planOf, type Point } from './plant';
 import { dueRev, knows, learnable, learnRec, rowsOf } from './quals';
 import { addTask, dropTask } from './tasks';
@@ -70,7 +70,7 @@ const openStudies = (db: ContentDb, s: PlantState) => new Set(Object.values(s.ta
 /** Кому пора учиться в день `day` — задача изучить документ на своём посту, если такой ещё нет. */
 function study(db: ContentDb, s: PlantState, p: Person, day: number, open: ReadonlySet<string>) {
   const sc = db.scenarios[s.scenario];
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   for (const code of rowsOf(db, p)) {
     if (open.has(`${p.id}/${code}`)) continue;
     const rev = dueRev(db, p, code, day, sc.training.ahead);
@@ -78,6 +78,31 @@ function study(db: ContentDb, s: PlantState, p: Person, day: number, open: Reado
     const work = learnRec(db, learnable(db, code)!, rev).study;
     addTask(s, { kind: 'train', roles: [p.role], from: point(postOf(plan, p.role)), work, prio: TRAIN_PRIO.train, trainee: p.id, doc: rev });
   }
+}
+
+/**
+ * Учить заново (Б5е, CAPA «обучить заново»): задача изучить документ — редакцию, действующую сегодня, — у тех из `people`
+ * (нет — у всех), кого ему учат по строкам матрицы, если у человека такой задачи ещё нет; проверка знаний — как всегда.
+ * Сколько задач.
+ */
+export function retrain(db: ContentDb, s: PlantState, codes: readonly string[], people?: readonly string[]): number {
+  const day = momentOf(s.start, s.t).day;
+  const plan = planOf(db, s.plan);
+  const open = openStudies(db, s);
+  let n = 0;
+  const who = people ? people.flatMap(id => (s.people[id] ? [s.people[id]] : [])) : Object.values(s.people);
+  for (const p of who) {
+    const rows = rowsOf(db, p);
+    for (const code of codes) {
+      if (!rows.includes(code) || open.has(`${p.id}/${code}`)) continue;
+      const d = learnable(db, code);
+      if (!d) continue;
+      const rev = inForce(db, d.kind, d.id, day);
+      addTask(s, { kind: 'train', roles: [p.role], from: point(postOf(plan, p.role)), work: learnRec(db, d, rev).study, prio: TRAIN_PRIO.train, trainee: p.id, doc: rev });
+      n++;
+    }
+  }
+  return n;
 }
 
 /** Новый человек (Б4в) и новая смежная профессия (Б4г): задачи изучить всё, чему пора, — сейчас, не дожидаясь полуночи. */
@@ -104,6 +129,8 @@ export function alsoCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
     if (has) return;
     p.also = [...(p.also ?? []), cmd.role];
     trainNow(db, s, p);
+    // части людей роли без заместителя — ему или другому по правилу (0.0.65)
+    deputyCame(db, s, [cmd.role], momentOf(s.start, s.t).day + 1);
     return;
   }
   if (!has) return;
@@ -118,7 +145,7 @@ export function alsoCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
 export function trainDone(db: ContentDb, s: PlantState, t: Task): boolean {
   if (t.kind === 'train') {
     const sc = db.scenarios[s.scenario];
-    const at = postOf(planOf(db, s.plant), CHECKERS[0]);
+    const at = postOf(planOf(db, s.plan), CHECKERS[0]);
     addTask(s, { kind: 'trainCheck', roles: [...CHECKERS], not: [t.trainee!], from: point(at), work: sc.training.check, prio: TRAIN_PRIO.trainCheck, trainee: t.trainee, doc: t.doc });
     return true;
   }

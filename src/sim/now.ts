@@ -160,7 +160,7 @@ export function kitItem(s: PlantState, t: Task): { material: Id; lot: [number, n
 }
 
 export function nowView(db: ContentDb, s: PlantState): NowView {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const roomIx = (id: string) => plan.plant.rooms.findIndex(r => r.id === id);
   const roomType = (id: string) => plan.plant.rooms.find(r => r.id === id)?.type;
   const lab = plan.plant.rooms.findIndex(r => r.type === 'lab');

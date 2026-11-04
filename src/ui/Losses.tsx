@@ -3,6 +3,7 @@
 // места карточки с часами, у раскрытого — часы по видам и причинам ожидания и вещи каждой части, щелчок по вещи — её
 // карточка или досье. Вид — «Пол» из потока расчёта (src/sim/floor.ts), слова — из src/i18n/.
 import { ALL_KINDS, FAMILY_OF, lossColor, type LossPart, LOSS_PICKS, lossSpotsOf, partsOfLoss, secOfLoss, spotName, spotsOfThing, WAIT_FAMILIES } from '../app/losses';
+import type { Plant } from '../content/types';
 import type { LossKind, WaitCause } from '../engine/types';
 import { planOf } from '../engine/plant';
 import { durText, named, T } from '../i18n';
@@ -17,7 +18,7 @@ import type { Actions, Hud } from './store';
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 
 /** Раскладка завода: имена мест и места карточки — по ней. */
-const layoutAt = (plant: string) => (db ? layoutOf(planOf(db, plant)) : undefined);
+const layoutAt = (plant: Plant) => (db ? layoutOf(planOf(db, plant)) : undefined);
 
 /** Слово части столбика: вид или семья причин ожидания. */
 const partWord = (p: LossPart): string => (p in T.losses.family ? T.losses.family[p as keyof typeof T.losses.family] : T.losses.kind[p as LossKind]);
@@ -62,7 +63,7 @@ function causeRows(x: FloorLoss): { cause: Exclude<WaitCause, 'shift'>; sec: num
 /**
  * Подсказка у столбика «Потерь»: место, часы частей вида слоя, у ожидания — по причинам, «нет смены» отдельно, окно.
  */
-export function LossTip({ hud, plant }: { hud: Hud; plant: string }) {
+export function LossTip({ hud, plant }: { hud: Hud; plant: Plant }) {
   const h = hud.floor.hover;
   const v = hud.floor.view;
   const l = layoutAt(plant);
@@ -96,7 +97,7 @@ export function LossTip({ hud, plant }: { hud: Hud; plant: string }) {
 }
 
 /** Вещь потерь словами: партия, серия, паллета, заказ, поставка, вывоз, покупатель, человек, помещение, машина. */
-export function refText(r: JournalRef, plant: string): string {
+export function refText(r: JournalRef, plant: Plant): string {
   const L = T.losses.thing;
   if (r.lot) return `${L.lot(T.lotCode(...r.lot))}${r.material ? `, ${named(db?.materials[r.material]?.name, r.material)}` : ''}`;
   if (r.code || r.bn !== undefined) return L.batch(r.code ?? `B${r.bn}`);
@@ -107,7 +108,7 @@ export function refText(r: JournalRef, plant: string): string {
   if (r.customer) return named(db?.customers[r.customer]?.name, r.customer);
   if (r.person) return T.card.person(named(db?.roles[r.person.role]?.name, r.person.role), r.person.tab);
   if (r.room) {
-    const type = db?.plants[plant]?.rooms.find(x => x.id === r.room)?.type;
+    const type = plant.rooms.find(x => x.id === r.room)?.type;
     return type ? (T.roomTypes[type] ?? type) : r.room;
   }
   if (r.machine) return named(db?.equipment[r.machine]?.name ?? db?.machines[r.machine]?.name, r.machine);
@@ -123,7 +124,7 @@ function goOf(r: JournalRef, actions: Actions): (() => void) | undefined {
 }
 
 /** Вещи части: по убыванию часов, щелчок — к вещи. */
-function Things({ list, plant, actions }: { list: readonly FloorThing[] | undefined; plant: string; actions: Actions }) {
+function Things({ list, plant, actions }: { list: readonly FloorThing[] | undefined; plant: Plant; actions: Actions }) {
   if (!list || list.length === 0) return null;
   return (
     <ul className="loadrows things" data-test="loss-things">
@@ -150,7 +151,7 @@ function Things({ list, plant, actions }: { list: readonly FloorThing[] | undefi
  * Потери места за окно: виды по порядку столбика, у ожидания — причины, у каждой части — её вещи; «нет смены» — в
  * конце.
  */
-function SpotRows({ x, plant, actions }: { x: FloorLoss; plant: string; actions: Actions }) {
+function SpotRows({ x, plant, actions }: { x: FloorLoss; plant: Plant; actions: Actions }) {
   const kinds = ([...ALL_KINDS, 'shift'] as LossKind[]).filter(k => (x.sec[k] ?? 0) > 0);
   return (
     <ul className="loadrows" data-test="card-loss-rows">
@@ -181,7 +182,7 @@ function SpotRows({ x, plant, actions }: { x: FloorLoss; plant: string; actions:
  * Блок «Потери» в карточке помещения или машины линии (Б1л): места карточки с потерями за окно слоя — по убыванию;
  * раскрыто место столбика, по которому щёлкнули, или первое; щелчок по месту — раскрыть его.
  */
-export function LossBlock({ hud, thing, plant, actions }: { hud: Hud; thing: Thing; plant: string; actions: Actions }) {
+export function LossBlock({ hud, thing, plant, actions }: { hud: Hud; thing: Thing; plant: Plant; actions: Actions }) {
   const v: FloorView | undefined = hud.floor.view;
   const l = layoutAt(plant);
   if (!v || !l || !db) return null;

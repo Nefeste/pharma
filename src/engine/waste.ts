@@ -1,6 +1,7 @@
 // Вывоз отклонённого (Б1з; docs/specs/2026-10-vertical-slice.md, «Б1з»; геймдизайн, §4.5): вывоз на уничтожение заказывает
 // склад — команда `waste` поста «Снабжение и склад»; в режиме отдела «сам» — заведующий складом в 09:00 рабочего дня, когда
-// в зоне отклонённого заняты две трети мест или паллета ждёт вывоза дольше срока, в режиме «советует» — предлагает (Б5б). Вывоз один: пока подрядчик не уехал,
+// в зоне отклонённого заняты две трети мест или паллета ждёт вывоза дольше срока (с Б5г — по его политике), в режиме
+// «советует» — предлагает (Б5б). Вывоз один: пока подрядчик не уехал,
 // второго не заказывают. Подрядчик по договору приезжает на следующий рабочий день к началу своих часов; его фура встаёт
 // к рампе отгрузки, как фура покупателя (market.ts, `dockNext`), а рампа занята — ждёт во дворе до конца его часов и
 // приедет снова на следующий рабочий день. Кладовщик и водитель грузят в кузов всё, что лежит в зоне, когда фура встала;
@@ -11,10 +12,12 @@
 import type { ContentDb } from '../content/types';
 import { part, post } from './cash';
 import { addMonths, addWorkdays, civilFromDays, DAY, daysFromCivil, HOUR, isWorkday, lastOfMonth, momentOf } from './core/calendar';
+import { dueRule } from './bosses';
 import { modeOf, moot, propose } from './heads';
 import { note, noteCmd } from './journal';
 import { dockWait } from './lean';
 import { planOf } from './plant';
+import { numOf, pairOf, POL } from './policies';
 import { nextId } from './stock';
 import { addTask } from './tasks';
 import type { Command, Notice, PlantState, Task, Truck, Unit, WasteEntry, WasteLot } from './types';
@@ -30,17 +33,10 @@ export const WASTE_PRIO = { load: 45, sign: 40 } as const;
 /** Коллега склада смотрит зону в 09:00 рабочего дня, как коллега снабжения — заказы (гипотеза). */
 export const WASTE_HOUR = 9 * HOUR;
 
-/**
- * Правило коллеги склада (геймдизайн, §4.5, гипотезы): заняты две трети мест зоны — `FULL[0] / FULL[1]`; паллета ждёт
- * вывоза дольше `KEEP` месяцев с решения об отклонении — чтобы не выйти за 11 месяцев накопления отходов (`fz-89`, ст. 1).
- */
-export const FULL = [2, 3] as const;
-export const KEEP = 10;
-
 /** Паллеты в зоне отклонённого: на местах зоны, по порядку мест плана. */
 export function zoneUnits(db: ContentDb, s: PlantState): Unit[] {
   const out: Unit[] = [];
-  for (const sl of planOf(db, s.plant).byKind.rejected ?? []) {
+  for (const sl of planOf(db, s.plan).byKind.rejected ?? []) {
     const id = s.slots[sl.id]?.unit;
     if (id) out.push(s.units[id]);
   }
@@ -48,7 +44,7 @@ export function zoneUnits(db: ContentDb, s: PlantState): Unit[] {
 }
 
 /** Сколько мест в зоне отклонённого. */
-export const zonePlaces = (db: ContentDb, s: PlantState) => (planOf(db, s.plant).byKind.rejected ?? []).length;
+export const zonePlaces = (db: ContentDb, s: PlantState) => (planOf(db, s.plan).byKind.rejected ?? []).length;
 
 /** С какого мгновения отклонена партия паллеты — с этого она отходы; в сохранениях до схемы 10 — мгновение приёмки. */
 function rejectedAt(s: PlantState, u: Unit): number {
@@ -92,7 +88,7 @@ export function wasteHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   const w = db.scenarios[s.scenario].waste;
   if (!w) return;
   const now = momentOf(s.start, s.t);
-  if (now.sec === WASTE_HOUR && isWorkday(calOf(db, s), now.day)) colleague(db, s, now.day, notices);
+  colleague(db, s, now.day, notices);
   const o = s.waste.order;
   const yard = o?.truck !== undefined ? s.trucks[o.truck] : undefined;
   if (o && yard && !yard.docked && s.t >= at(s, momentOf(s.start, yard.arrived).day, w.hours[1])) {
@@ -103,7 +99,7 @@ export function wasteHour(db: ContentDb, s: PlantState, notices: Notice[]) {
     return;
   }
   if (o && o.truck === undefined && s.t >= o.at) {
-    const dock = db.plants[s.plant].docks.find(d => d.kind === 'out')!.id;
+    const dock = s.plan.docks.find(d => d.kind === 'out')!.id;
     const tr: Truck = { id: nextId(s, 'R'), dock, waste: o.id, units: [], arrived: s.t, docked: false, open: false };
     s.trucks[tr.id] = tr;
     o.truck = tr.id;
@@ -114,19 +110,22 @@ export function wasteHour(db: ContentDb, s: PlantState, notices: Notice[]) {
 export const WASTE_KEY = 'waste';
 
 /**
- * Нужен ли вывоз по правилу склада (Б1з; геймдизайн, §4.5): заняты две трети мест зоны или паллета ждёт вывоза дольше
- * срока. Причина — сколько мест занято из скольких, а по сроку — с какого мгновения отклонена самая давняя паллета; вывоз
- * уже заказан или нужды нет — нет.
+ * Нужен ли вывоз по правилу склада (Б1з; геймдизайн, §4.5): заняты столько мест зоны или паллета ждёт вывоза дольше
+ * срока с решения об отклонении — чтобы не выйти за 11 месяцев накопления отходов (`fz-89`, ст. 1). Доля мест и срок —
+ * политики заведующего складом (Б5г): с чего начинает завод — запись сценария. Причина — сколько мест занято из
+ * скольких, а по сроку — с какого мгновения отклонена самая давняя паллета; вывоз уже заказан или нужды нет — нет.
  */
 function wasteWhy(db: ContentDb, s: PlantState, today: number) {
   if (s.waste.order) return undefined;
   const units = zoneUnits(db, s);
   if (units.length === 0) return undefined;
   const places = zonePlaces(db, s);
-  const full = units.length * FULL[1] >= places * FULL[0];
+  const [num, den] = pairOf(db, s, POL.full)!;
+  const months = numOf(db, s, POL.keep)!;
+  const full = units.length * den >= places * num;
   const since = Math.min(...units.map(u => rejectedAt(s, u)));
-  const old = addMonths(momentOf(s.start, since).day, KEEP) <= today;
-  return full || old ? { used: units.length, places, ...(old ? { since } : {}), months: KEEP } : undefined;
+  const old = addMonths(momentOf(s.start, since).day, months) <= today;
+  return full || old ? { used: units.length, places, ...(old ? { since } : {}), months, full: [num, den] as [number, number] } : undefined;
 }
 
 /**
@@ -137,15 +136,18 @@ function wasteWhy(db: ContentDb, s: PlantState, today: number) {
 function colleague(db: ContentDb, s: PlantState, today: number, notices: Notice[]) {
   const mode = modeOf(s, 'wms');
   if (mode === 'manual') return;
+  // руководитель — человек (Б5в): с 09:00 рабочего дня, в первый час, когда есть кому решить
+  const who = dueRule(db, s, 'waste', 'wms', WASTE_HOUR, notices);
+  if (!who) return;
   const why = wasteWhy(db, s, today);
   if (mode === 'advise') {
-    if (why) propose(s, 'wms', WASTE_KEY, { kind: 'waste' }, { kind: 'waste', why }, notices);
+    if (why) propose(s, 'wms', WASTE_KEY, { kind: 'waste' }, { kind: 'waste', why }, notices, undefined, who);
     else moot(s, WASTE_KEY);
     return;
   }
   if (!why) return;
   const order = book(db, s, 'head:wms');
-  note(s, 'wms', { kind: 'waste', order: order.id, at: order.at, why });
+  note(s, 'wms', { kind: 'waste', order: order.id, at: order.at, why }, undefined, undefined, who);
 }
 
 /**

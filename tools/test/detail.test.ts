@@ -14,7 +14,7 @@ import { AT, camDetail, DETAIL, type Detail, ease, shownOf, speedDetail, type We
 import { layoutOf } from '../../src/render/layout';
 import { Packer, unpack } from '../../src/sim/pack';
 
-const plan = planOf(db, 'plant.proto');
+const plan = planOf(db, db.plants['plant.proto']);
 const layout = layoutOf(plan);
 
 describe('уровень показа', () => {

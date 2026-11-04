@@ -4,7 +4,7 @@
 // structured clone; массив среза передаётся без копии.
 // Сохранение ходит строкой: состояние с истинными свойствами партий окно не разбирает (§9) — его пишет и читает поток
 // расчёта, со своими миграциями (src/engine/save.ts).
-import type { Id } from '../content/types';
+import type { Id, Plant } from '../content/types';
 import { DAY } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
 import type { RunSum } from '../engine/plan/run';
@@ -30,13 +30,22 @@ export type ToSim =
   /** открытые виды панелей — весь набор (docs/specs/2026-10-panels.md, 3б): собрать и прислать со срезом */
   | { kind: 'views'; views: ViewQuery[] };
 
+/**
+ * План здания (Б7а): окно строит сцену и номера вещей среза из него. Поток шлёт его со срезом, когда объект плана
+ * сменился, — после старта и загрузки, с Б7б — после правки стройки.
+ */
+export interface World {
+  plan: Plant;
+  rev: number;
+}
+
 export type FromSim =
   /**
    * после каждого `tick`, `command` и `views`: срез, извещения, на сколько часы завода отстают от часов игры (игровые
    * секунды); виды панелей, которые изменились; `tick` — это ответ на `tick` (клиент держит в пути не больше одного);
    * `stopped` — `tick` встал на извещении автопаузы: часы завода — на его событии, отставания нет
    */
-  | { kind: 'slice'; buf: Int32Array; notices: Notice[]; lag: number; views?: ViewOut[]; tick?: true; stopped?: true }
+  | { kind: 'slice'; buf: Int32Array; notices: Notice[]; lag: number; views?: ViewOut[]; tick?: true; stopped?: true; world?: World }
   /** ответ на `save`: снимок состояния строкой */
   | { kind: 'saved'; json: string }
   | { kind: 'error'; message: string };
@@ -53,6 +62,8 @@ export type FromPlan =
    * снимку), сколько миллисекунд считался
    */
   | { kind: 'variant'; id: number; index: number; at: number; sum: RunSum; batches: Record<string, BatchLabel>; ms: number }
+  /** зерно `k` варианта `index` готово (Б5г): ход прогона по зёрнам */
+  | { kind: 'seed'; id: number; index: number; k: number; ms: number }
   /** все варианты готовы */
   | { kind: 'done'; id: number; ms: number }
   | { kind: 'error'; id: number; message: string };
@@ -61,9 +72,17 @@ export type FromPlan =
  * Ключ извещения для автопауз (Б2а): его вид, а у вышедшего срока актива (Б3в) — вид и род актива: чьё это дело, зависит
  * от того, оборудование это, прибор лаборатории или датчик склада; у сверхурочных года на исходе (Б4а) и заявления
  * об увольнении (Б4в) — вид и отдел; у предложения руководителя (Б5б) — пост отдела и «до планёрки»: такое предложение
- * ждёт планёрку.
+ * ждёт планёрку; у «Некому решить» (Б5в) — пост отдела руководителя; у отклонения (Б5е) — незначительное отдельно: мир
+ * встаёт на критическом и существенном.
  */
 export function stopKey(n: Notice): string {
   if (n.kind === 'proposal') return `proposal/${n.seat}${n.t % DAY < MORNING ? '/early' : ''}`;
+  if (n.kind === 'deviation' && n.cls === 'minor') return 'deviation/minor';
+  if (n.kind === 'noOne') return `noOne/${n.seat}`;
+  // «Просят решить» и ответ на записку (Б5д): у того, кого спросили, и у поста, с которого записка
+  if (n.kind === 'ask') return `ask/${n.seat}`;
+  if (n.kind === 'memoDone') return `memoDone/${n.seat ?? 'director'}`;
+  // совещание S&OP (Б6г): встаёт только открытое — план, который утвердил коллега, лишь извещение
+  if (n.kind === 'sop') return n.open ? 'sop' : 'sop/approved';
   return n.kind === 'assetExpired' ? `${n.kind}/${n.family}` : n.kind === 'overtimeLow' || n.kind === 'resign' ? `${n.kind}/${n.dept}` : n.kind;
 }

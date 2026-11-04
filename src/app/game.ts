@@ -6,10 +6,12 @@ import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { ContentDb, Scenario } from '../content/types';
 import { DAY, momentOf } from '../engine/core/calendar';
+import { stableJson } from '../engine/core/hash';
 import { MORNING } from '../engine/engine';
 import { planOf } from '../engine/plant';
 import type { Command, DeptMode, Head, Notice } from '../engine/types';
-import { dayText, durText, hText, named, qtyText, T } from '../i18n';
+import type { RunSum } from '../engine/plan/run';
+import { dayText, durText, hText, named, qtyText, T, whenText } from '../i18n';
 import { bakeLook, lodOf, packPeople } from '../render/bake';
 import type { ArtIndex } from '../render/blender';
 import { AT, camDetail, type Detail, ease, speedDetail, type Weights } from '../render/detail';
@@ -25,16 +27,18 @@ import { unpack } from '../sim/pack';
 import { PlanClient } from '../sim/planClient';
 import type { Thing, ViewQuery } from '../sim/views';
 import { assetClass, workName } from '../ui/assets';
+import { capaName, headText } from '../ui/capa';
 import { useDb } from '../ui/db';
-import { commandsOf, draftKey, ordersOf, prune, upsert } from '../ui/draft';
-import { type Actions, holds, type Hud, LIVE, NO_RUN, PLAN_RUN, type Speed, type Store } from '../ui/store';
+import { cancelsOf, commandsOf, draftKey, freshOf, ordersOf, prune, pruneDrop, toggleDrop, upsert } from '../ui/draft';
+import { draftCommands, draftKey as policyKey, sameValue } from '../ui/policy';
+import { type Actions, holds, type Hud, LIVE, NO_POLICY_RUN, NO_RUN, PLAN_RUN, POLICY_RUN, type Speed, type Store } from '../ui/store';
 import { type ArtMode, loadArt } from './art';
 import { keepFirsts, keptFirsts } from './firsts';
 import { andonBoxes, andonMarks, barBoxes, DATA_LAYERS, midSpot, nextLayer, plateBoxes, platesOf } from './floor';
 import { lossBoxes } from './losses';
 import { fillsOf, Flows, lineArrows, moveArrows, movesOf, peopleMoves } from './flows';
 import { type Movers, moversAt, taskIcons } from './movers';
-import { stopKey } from '../sim/protocol';
+import { stopKey, type World } from '../sim/protocol';
 import { EVENT_CAP, type Go, goOf, keepOff, keptOff, stopKinds } from './pauses';
 import { keep, windowKeep } from './preset';
 import { type Box, machineBoxes, nearest, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
@@ -43,12 +47,14 @@ import { type TruckPose, Yard } from './yard';
 
 /** Сценарий части 0 (content/scenarios/proto.yaml) и его план. */
 export const SCENARIO = 'scn.proto';
-export const PLANT = 'plant.proto';
 
 /** Игровых секунд в секунду на каждой скорости (геймдизайн, §2). */
 export const RATE: Record<Speed, number> = { 0: 0, 1: 60, 2: 300, 3: 1200, 4: 7200, 5: 1 };
 
 /** Промотка: кусок игровых секунд на кадр и предел отставания, при котором поток получает новый кусок. */
+/** Окно расписания закрыли или открыли: черновик, отмены, срочные задания, окно времени, вкладка и отбор остаются. */
+const ganttKept = (g: Hud['gantt']) => ({ days: g.days, draft: g.draft, urgent: g.urgent, drop: g.drop, ...(g.from !== undefined ? { from: g.from } : {}), ...(g.tab ? { tab: g.tab } : {}), ...(g.jobs ? { jobs: g.jobs } : {}) });
+
 const FF_CHUNK = 1800;
 const FF_LAG = 900;
 
@@ -100,7 +106,17 @@ export class Game {
   /** поток прогона плана (часть 5): заводится к первому прогону; номер последнего «Прогнать план» */
   readonly planner = new PlanClient('./plan.js');
   private planSeq = 0;
+  /** чей прогон идёт в потоке прогона: расписания (часть 5) или политик (Б5г) */
+  planFor: 'gantt' | 'policies' = 'gantt';
+  /** «как сейчас» прогона политик (Б5г) на снимке: снимок тот же — итог тот же, его не считают заново */
+  private policyBase?: { json: string; sum: RunSum; at: number };
+  /** идущий прогон политик: снимок и считают ли с ним «как сейчас» */
+  private policyRun?: { json: string; withBase: boolean };
   scenario!: Scenario;
+  /** план здания от потока расчёта (Б7а), по которому построена сцена, и номер его правки */
+  private world!: World;
+  /** поток прислал другой план: срезы не разбирать — номера вещей в них — номера другого плана; перестройка сцены — с Б7б */
+  private alien = false;
   layout!: Layout;
   /** что видно на полу: паллеты, фуры, помещения — из срезов */
   readonly view = new SceneState();
@@ -177,7 +193,17 @@ export class Game {
     const sc = db.scenarios[SCENARIO];
     if (!sc) throw new Error(`no scenario ${SCENARIO}`);
     g.scenario = sc;
-    g.layout = layoutOf(planOf(db, sc.plant));
+    // план здания — от потока расчёта (Б7а): поток запускается первым, сцена строится по плану первого среза
+    g.client = new SimClient('./sim.js');
+    g.client.onError = m => store.set({ error: m });
+    const first = await new Promise<Slice>(done => {
+      g.client.onSlice = done;
+      g.client.start({ kind: 'start', scenario: SCENARIO });
+    });
+    if (!first.world) throw new Error('slice: no plan');
+    g.world = first.world;
+    store.set({ world: first.world.plan });
+    g.layout = layoutOf(planOf(db, g.world.plan));
     g.machineBoxes = machineBoxes(db, g.layout);
     g.models = (await (await fetch(`${MODELS}/index.json`)).json()) as ModelIndex;
     const models = art === 'blender' ? await loadArt(loader, MODELS, g.models) : undefined;
@@ -186,18 +212,27 @@ export class Game {
     g.stage = new Stage({ host, layout: g.layout, db, quality, capacity: g.layout.plan.slots.length + 256, art: models });
     const crowd = await loadPeople(g.models);
     g.stage.setPeople(crowd.people, crowd.names);
-    g.client = new SimClient('./sim.js');
     g.client.onSlice = s => g.receive(s);
-    g.client.onError = m => store.set({ error: m });
-    g.client.start({ kind: 'start', scenario: SCENARIO });
+    g.receive(first);
+    // один поток прогона на два окна: расписание (часть 5) и политики (Б5г) — чей прогон идёт, тому и итог
     g.planner.onVariant = m => {
+      if (g.planFor === 'policies') return g.policyVariant(m.index, m.at, m.sum);
       const p = store.get().plan;
       const sums = [...p.sums];
       sums[m.index] = m.sum;
       store.set({ plan: { ...p, at: m.at, sums, batches: { ...p.batches, ...m.batches } } });
     };
-    g.planner.onDone = m => store.set({ plan: { ...store.get().plan, running: false, ms: m.ms } });
-    g.planner.onError = message => store.set({ plan: { ...store.get().plan, running: false, error: message } });
+    g.planner.onSeed = m => {
+      if (g.planFor === 'policies') g.policySeed(m.index, m.k);
+    };
+    g.planner.onDone = m => {
+      if (g.planFor === 'policies') store.set({ policies: { ...store.get().policies, run: { ...store.get().policies.run, running: false, progress: undefined, ms: m.ms } } });
+      else store.set({ plan: { ...store.get().plan, running: false, ms: m.ms } });
+    };
+    g.planner.onError = message => {
+      if (g.planFor === 'policies') store.set({ policies: { ...store.get().policies, run: { ...store.get().policies.run, running: false, progress: undefined, error: message } } });
+      else store.set({ plan: { ...store.get().plan, running: false, error: message } });
+    };
     await g.firstSlice;
     new ResizeObserver(() => g.stage.resize()).observe(host);
     g.bindInput();
@@ -212,7 +247,19 @@ export class Game {
   }
 
   private receive(s: Slice) {
+    if (s.world) {
+      // план здания (Б7а): после старта и загрузки — тот же план, сцена та же; другой план (номер правки или сам план)
+      // сцена примет с Б7б, а пока окно о нём говорит и его срезов не разбирает
+      this.alien = s.world.rev !== this.world.rev || stableJson(s.world.plan) !== stableJson(this.world.plan);
+      if (this.alien) this.store.set({ error: `plan ${s.world.plan.id} rev ${s.world.rev}: not the plan of the scene` });
+      else {
+        this.world = s.world;
+        this.store.set({ world: s.world.plan });
+      }
+    }
     const sl = unpack(s.buf);
+    // срез другой правки плана окно не разбирает: номера вещей в нём — номера другого плана
+    if (this.alien || sl.rev !== this.world.rev) return;
     // перевозки — по прежним местам паллет окна, до того как срез их перепишет
     this.flows.step(sl.t, movesOf(this.layout.plan, this.view.units, this.view.trucks, sl));
     this.peopleFlows.step(sl.t, peopleMoves(this.layout, this.peopleAt, sl.people));
@@ -246,8 +293,9 @@ export class Game {
         // задания, которые тянуть уже нельзя, уходят из черновика сами
         const g = this.store.get().gantt;
         const draft = prune(g.draft, d.gone);
-        if (g.open || draft !== g.draft) this.store.set({ gantt: { ...g, ...(g.open ? { view: d } : {}), draft } });
-        if (draft !== g.draft) this.sendViews();
+        const drop = pruneDrop(g.drop, d.gone);
+        if (g.open || draft !== g.draft || drop !== g.drop) this.store.set({ gantt: { ...g, ...(g.open ? { view: d } : {}), draft, drop } });
+        if (draft !== g.draft || drop !== g.drop) this.sendViews();
       } else if (d.view === 'inv') {
         if (hud.inv.open) this.store.set({ inv: { ...this.store.get().inv, view: d } });
       } else if (d.view === 'journal') {
@@ -259,6 +307,13 @@ export class Game {
         if (x.open && x.batch === d.batch) this.store.set({ dossier: { ...x, view: d } });
       } else if (d.view === 'ref') {
         if (hud.ref.open) this.store.set({ ref: { ...this.store.get().ref, view: d } });
+      } else if (d.view === 'policies') {
+        if (hud.policies.open) this.store.set({ policies: { ...this.store.get().policies, view: d } });
+      } else if (d.view === 'sop') {
+        if (hud.sop.open) this.store.set({ sop: { ...this.store.get().sop, view: d } });
+      } else if (d.view === 'mrp') {
+        const g = this.store.get().gantt;
+        if (g.open && g.tab === 'mrp') this.store.set({ gantt: { ...g, mrp: d } });
       } else if (d.view === 'kpi') {
         // окно «Показатели» (Б5ж): вид прежней вкладки или месяца, отправленный до нового запроса, не показываем
         const k = this.store.get().kpi;
@@ -289,6 +344,8 @@ export class Game {
     for (const n of s.notices) if (stop(n) && n.kind === 'proposal') this.notice(n, true);
     for (const n of s.notices) if (stop(n) && n.kind !== 'proposal') this.notice(n, true);
     if (s.notices.some(n => n.kind === 'morning')) this.morning(sl.t);
+    // совещание S&OP (Б6г) открылось и ждёт игрока — окно совещания открывается само, как планёрка
+    if (s.notices.some(n => n.kind === 'sop' && n.open) && !this.store.get().sop.open) this.actions.toggleSop();
     if (s.stopped) this.autopause();
     this.gotSlice();
   }
@@ -346,7 +403,7 @@ export class Game {
     if (this.view.version === this.shownVersion && key === this.moving) return;
     this.shownVersion = this.view.version;
     this.moving = key;
-    const list = palletsOf(this.db, this.scenario.plant, this.view, new Set(moving));
+    const list = palletsOf(this.db, this.world.plan, this.view, new Set(moving));
     this.pallets = list;
     this.stage.setPallets(this.extra.length ? [...list, ...this.extra] : list);
   }
@@ -369,10 +426,27 @@ export class Game {
     this.stage.setSelection(this.outline());
   }
 
+  /**
+   * Команда игрока: своя — от игрока; пост её отдела не у игрока — служебная записка руководителю отдела (Б5д), кнопка уже
+   * сказала, кому.
+   */
+  private send(cmd: Command, memo?: boolean) {
+    this.client.command(memo ? { kind: 'memo', cmds: [cmd] } : ({ ...cmd, by: 'player' } as Command));
+  }
+
   private notice(n: Notice, stop: boolean) {
     const text =
       n.kind === 'morning' ? T.notices.morning(n.day)
       : n.kind === 'ordered' ? T.notices.ordered
+      // ускорение и отмена заказа поставщику (Б6д)
+      : n.kind === 'poFast' ? T.notices.poFast(whenText(this.store.get().start, n.eta))
+      : n.kind === 'poCancelled' ? T.notices.poCancelled
+      // второй источник (Б6ж): заказ не пришёл к обещанному дню; шаг одобрения пары-кандидата
+      : n.kind === 'poLate' ? T.notices.poLate(named(this.db.suppliers[n.supplier]?.name, n.supplier), whenText(this.store.get().start, n.eta))
+      : n.kind === 'pairStep' ? T.notices.pairStep(n.pair.split('|').map((x, i) => named((i === 0 ? this.db.suppliers[x] : this.db.makers[x])?.name, x)).join(' — '), T.pairApp.steps[n.step] ?? n.step)
+      // события коммерции (Б6е)
+      : n.kind === 'bigOrder' ? T.notices.bigOrder(named(this.db.customers[n.customer]?.name, n.customer), named(this.db.skus[n.sku]?.name, n.sku), n.cases, whenText(this.store.get().start, n.due))
+      : n.kind === 'demandCut' ? T.notices.demandCut(named(this.db.customers[n.customer]?.name, n.customer), named(this.db.skus[n.sku]?.name, n.sku), n.cases)
       : n.kind === 'truck' ? T.notices.truck
       : n.kind === 'lotReleased' ? T.notices.lotReleased
       : n.kind === 'lotRejected' ? T.notices.lotRejected
@@ -381,7 +455,11 @@ export class Game {
       : n.kind === 'batchReleased' ? T.notices.batchReleased
       : n.kind === 'batchRejected' ? T.notices.batchRejected
       : n.kind === 'batchHeld' ? (n.mine ? T.notices.batchHeldMine : T.notices.batchHeld)
-      : n.kind === 'deviation' ? T.notices.deviation(T.morning.devKinds[n.what], n.code ? T.gantt.batch(n.code) : '')
+      : n.kind === 'deviation' ? T.notices.deviation(T.morning.devKinds[n.what], n.code ? T.gantt.batch(n.code) : '', T.dev.clsLow[n.cls] ?? n.cls)
+      : n.kind === 'devLate' ? T.notices.devLate(T.dev.no(Number(n.id.slice(1))), n.code ? T.gantt.batch(n.code) : '')
+      : n.kind === 'capa' ? T.notices.capa(T.dev.no(Number(n.dev.slice(1))), capaName(n.action), headText(n.head))
+      : n.kind === 'capaDone' ? T.notices.capaDone(T.dev.no(Number(n.dev.slice(1))), capaName(n.action), headText(n.head))
+      : n.kind === 'capaCheck' ? T.notices.capaCheck(T.dev.no(Number(n.dev.slice(1))), n.ok, n.rep ? T.dev.no(Number(n.rep.slice(1))) : '')
       : n.kind === 'shipped' ? T.notices.shipped
       : n.kind === 'lateOrder' ? T.notices.lateOrder
       : n.kind === 'cashLow' ? T.notices.cashLow
@@ -417,6 +495,14 @@ export class Game {
       : n.kind === 'pairSuspended' ? T.notices.pairSuspended(named(this.db.suppliers[n.supplier]?.name, n.supplier), named(this.db.makers[n.maker]?.name, n.maker))
       : n.kind === 'setpoints' ? T.notices.setpoints(n.n)
       : n.kind === 'proposal' ? T.notices.proposal(T.journal.names[n.head] ?? n.head)
+      : n.kind === 'sop' ? T.notices.sop(T.sop.month(n.m), n.open)
+      : n.kind === 'policy' ? (n.policy === 'pol.plan.method' ? T.notices.policyFc(named(this.db.policies[n.policy]?.name, n.policy)) : T.notices.policy(T.journal.names[n.head] ?? n.head, named(this.db.policies[n.policy]?.name, n.policy)))
+      : n.kind === 'visitMoved' ? T.notices.visitMoved(`${workName(n, n.work)} — ${assetClass(n)}, ${T.assets.inv(n.inv)}`, whenText(this.store.get().start, n.at))
+      : n.kind === 'noOne' ? T.notices.noOne(T.journal.namesOf[n.head] ?? n.head)
+      : n.kind === 'deputy' ? T.notices.deputy(T.journal.namesOf[n.head] ?? n.head, n.role && n.tab !== undefined ? T.card.person(this.roleName(n.role), n.tab) : undefined)
+      : n.kind === 'memo' ? T.notices.memo(T.journal.namesTo[n.head] ?? n.head, n.at !== undefined ? whenText(this.store.get().start, n.at) : undefined)
+      : n.kind === 'memoDone' ? T.notices.memoDone(T.journal.names[n.head] ?? n.head, n.ok, n.of)
+      : n.kind === 'ask' ? T.notices.ask(T.journal.names[n.head] ?? n.head, T.journal.what.fork[n.fork] ?? n.fork)
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;
@@ -572,6 +658,10 @@ export class Game {
         if (!this.store.get().gantt.open) this.actions.toggleGantt();
       } else if (g.panel === 'lab') {
         if (!this.store.get().lab.open) this.actions.toggleLab();
+      } else if (g.panel === 'policies') {
+        if (!this.store.get().policies.open) this.actions.togglePolicies();
+      } else if (g.panel === 'sop') {
+        if (!this.store.get().sop.open) this.actions.toggleSop();
       } else if (g.panel === 'ref') {
         // справочник на вкладке извещения: «Места» (Б3в), «Контрагенты» (Б3г), «Люди» (Б4в)
         if (!this.store.get().ref.open) this.actions.toggleRef();
@@ -617,7 +707,7 @@ export class Game {
       const g = this.store.get().gantt;
       // большое окно поверх карты во всю ширину: панели справа закрываются; закрыли — то, что тянули, отменено
       const open = !g.open;
-      this.store.set({ gantt: { open, days: g.days, draft: g.draft, urgent: g.urgent, ...(g.from !== undefined ? { from: g.from } : {}) }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false } } : {}) });
+      this.store.set({ gantt: { ...ganttKept(g), open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, ...this.policiesClosed(), ...this.sopClosed() } : {}) });
       this.sendViews();
     },
     setGanttDays: days => {
@@ -656,27 +746,34 @@ export class Game {
     },
     approveDraft: () => {
       // утвердить — команды `shift` по строкам по порядку и срочные задания — команды `order` (Б1г); черновик пуст.
-      // Расписание — команда производства (3е)
+      // Расписание — команда производства (3е); пост не у игрока — черновик уходит планированию одной запиской (Б5д)
       const h = this.store.get();
-      if ((h.gantt.draft.length === 0 && h.gantt.urgent.length === 0) || !holds(h, 'production')) return;
-      for (const cmd of [...commandsOf(h.gantt.draft), ...ordersOf(h.gantt.urgent)]) this.client.command(cmd);
-      this.store.set({ gantt: { ...h.gantt, draft: [], urgent: [] } });
+      if (h.gantt.draft.length === 0 && h.gantt.urgent.length === 0 && h.gantt.drop.length === 0) return;
+      // отмены (Б6а) — первыми: их резерв нужен заданиям черновика; записку об отмене не пишут — пост отдали, пока
+      // черновик ждал, — отмены уходят из него
+      const own = holds(h, 'production');
+      const cmds = [...(own ? cancelsOf(h.gantt.drop) : []), ...commandsOf(h.gantt.draft), ...ordersOf(h.gantt.urgent)];
+      if (own) for (const cmd of cmds) this.client.command(cmd);
+      else if (cmds.length > 0) this.client.command({ kind: 'memo', cmds: cmds.map(c => ({ ...c, by: undefined }) as Command) });
+      this.store.set({ gantt: { ...h.gantt, draft: [], urgent: [], drop: [] } });
       this.sendViews();
     },
     resetDraft: () => {
       const g = this.store.get().gantt;
-      if (g.draft.length === 0 && g.urgent.length === 0) return;
-      this.store.set({ gantt: { ...g, draft: [], urgent: [] } });
+      if (g.draft.length === 0 && g.urgent.length === 0 && g.drop.length === 0) return;
+      this.store.set({ gantt: { ...g, draft: [], urgent: [], drop: [] } });
       this.sendViews();
     },
     runPlan: () => {
       // «как сейчас» и черновик, если он есть, — на одних и тех же зёрнах; снимок — строкой от потока расчёта
       const h = this.store.get();
-      if (h.plan.running) return;
-      const { draft, urgent } = h.gantt;
-      const changes = [...commandsOf(draft), ...ordersOf(urgent)];
+      if (h.plan.running || h.policies.run.running) return;
+      this.planFor = 'gantt';
+      const { draft, urgent, drop } = h.gantt;
+      // отмены черновика (Б6а) — команды варианта, первыми
+      const changes = [...cancelsOf(drop), ...commandsOf(draft), ...ordersOf(urgent)];
       const variants: Command[][] = [[], ...(changes.length > 0 ? [changes] : [])];
-      this.store.set({ plan: { ...NO_RUN, running: true, variants: variants.length, key: draftKey(draft, urgent) } });
+      this.store.set({ plan: { ...NO_RUN, running: true, variants: variants.length, key: draftKey(draft, urgent, drop) } });
       const seq = ++this.planSeq;
       void this.client.save().then(json => {
         // прервали или прогнали заново, пока снимок шёл, — этого прогона нет
@@ -692,11 +789,11 @@ export class Game {
     toggleInv: () => {
       // большое окно поверх карты, как расписание: панели справа, расписание и справочник закрываются
       const open = !this.store.get().inv.open;
-      this.store.set({ inv: { open }, ...(open ? { ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false } } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ inv: { open }, ...(open ? { ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.sopClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     openInv: id => {
-      this.store.set({ inv: { open: true, id }, ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ inv: { open: true, id }, ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.sopClosed(), ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     // досье серии (Б1д) — поверх остальных окон: открыли из карточки, «Сейчас» или расписания — они остаются под ним
@@ -713,7 +810,7 @@ export class Game {
       // справочник — большое окно поверх карты, как доска расследования
       const r = this.store.get().ref;
       const open = !r.open;
-      this.store.set({ ref: { ...r, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, kpi: { ...this.store.get().kpi, open: false } } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ ref: { ...r, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.sopClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     setRefTab: tab => this.store.set({ ref: { ...this.store.get().ref, tab } }),
@@ -731,7 +828,7 @@ export class Game {
       const held = this.store.get().top?.seats?.[0];
       const tab = !k.view && held ? held : k.tab;
       const keep = k.view?.tab === tab && (k.view.month.closed ? k.view.month.from : undefined) === month;
-      this.store.set({ kpi: { open: true, tab, ...(k.why ? { why: k.why } : {}), ...(month !== undefined ? { month } : {}), ...(keep ? { view: k.view } : {}) }, ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ kpi: { open: true, tab, ...(k.why ? { why: k.why } : {}), ...(month !== undefined ? { month } : {}), ...(keep ? { view: k.view } : {}) }, ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, ...this.policiesClosed(), ...this.sopClosed(), ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     setKpiTab: tab => {
@@ -752,14 +849,67 @@ export class Game {
     },
     investigate: (inv, step) => this.client.command({ kind: 'investigate', inv, step, by: 'player' }),
     release: (batch, decision) => this.client.command({ kind: 'release', batch, decision }),
-    assess: (deviation, verdict) => this.client.command({ kind: 'assess', deviation, verdict, by: 'player' }),
+    assess: (deviation, verdict, cause) => this.client.command({ kind: 'assess', deviation, verdict, ...(cause !== undefined ? { cause } : {}), by: 'player' }),
+    classify: (deviation, cls) => this.client.command({ kind: 'classify', deviation, cls, by: 'player' }),
+    capa: (deviation, action) => this.client.command({ kind: 'capa', deviation, action, by: 'player' }),
+    capaRun: capa => this.client.command({ kind: 'capaRun', capa, by: 'player' }),
     setpoint: x => this.client.command({ kind: 'setpoint', ...x, by: 'player' }),
-    urgent: (recipe, sku) => {
-      // срочное задание (Б1г) — строка черновика, его полосы — в расписании (0.0.39); «Прогнать план» — что оно изменит
+    urgent: (recipe, sku, order, at) => {
+      // срочное задание (Б1г) — строка черновика, его полосы — в расписании (0.0.39); «Прогнать план» — что оно изменит;
+      // под заказ покупателя (Б6а) — со сроком заказа; из плана запуска (Б6б) — на день пунктирной клетки
       const g = this.store.get().gantt;
-      this.store.set({ gantt: { ...g, urgent: [...g.urgent, { recipe, sku }] } });
+      this.store.set({ gantt: { ...g, urgent: [...g.urgent, { recipe, sku, ...(order ? { for: order } : {}), ...(at !== undefined ? { at } : {}) }] } });
       if (!g.open) this.actions.toggleGantt();
       else this.sendViews();
+    },
+    ganttTab: tab => {
+      const g = this.store.get().gantt;
+      this.store.set({ gantt: { ...g, tab } });
+      // план запуска (Б6б) считают, только пока открыта его вкладка
+      this.sendViews();
+    },
+    ganttBars: (batch, at) => {
+      const g = this.store.get().gantt;
+      const { from: now } = this.ganttWindow(undefined, g.days);
+      // окно — с суток начала его полос, а если это нынешнее окно — снова вслед за часами
+      const from = Math.floor(at / DAY) * DAY - (g.days > 1 ? DAY : 0);
+      const { from: _f, ...rest } = g;
+      this.store.set({ gantt: { ...rest, tab: undefined, focus: batch, ...(from === now ? {} : { from }) } });
+      this.sendViews();
+    },
+    jobsFilter: f => {
+      const g = this.store.get().gantt;
+      this.store.set({ gantt: { ...g, jobs: f } });
+    },
+    dropJob: batch => {
+      // «Отменить» в черновике (Б6а): прогон расписания и «Прогнать план» — без задания; «Утвердить» — команда `cancel`
+      const g = this.store.get().gantt;
+      this.store.set({ gantt: { ...g, drop: toggleDrop(g.drop, batch) } });
+      this.sendViews();
+    },
+    fcKey: key => {
+      const g = this.store.get().gantt;
+      this.store.set({ gantt: { ...g, fcKey: key } });
+      this.sendViews();
+    },
+    // правка прогноза (Б6в): своя — от игрока, с чужого поста — записка начальнику отдела планирования
+    fcEdit: (sku, m, cases, memo) => this.send({ kind: 'forecast', sku, m, ...(cases !== undefined ? { cases } : {}) }, memo),
+    // политики прогноза (Б6в) — команда поста; записки о политиках не пишут, у чужого поста кнопки погашены
+    fcPolicy: (policy, value) => {
+      if (holds(this.store.get(), 'production')) this.client.command({ kind: 'policy', policy, value, by: 'player' });
+    },
+    mrpOrder: (supplier, lines) => {
+      // «Заказать» (Б6д): окно «Заказ поставщику» с поставщиком и строками плановых заказов — отправит игрок
+      const po = this.store.get().po;
+      this.store.set({ po: { ...po, open: true, supplier, lines: lines.map(l => ({ ...l })) } });
+      this.sendViews();
+    },
+    expedite: (po, memo) => this.send({ kind: 'expedite', po }, memo),
+    cancelPo: (po, memo) => this.send({ kind: 'cancelPo', po }, memo),
+    cancelJob: batch => {
+      // «Отменить» в карточке серии (Б6а): команда поста «Производство» или директора; записку об отмене не пишут —
+      // у чужого поста кнопка погашена
+      if (holds(this.store.get(), 'production')) this.client.command({ kind: 'cancel', batch, by: 'player' });
     },
     toggleFlows: () => this.actions.setLayer(this.store.get().layer === 'people' ? 'plain' : 'people'),
     setLayer: l => {
@@ -913,6 +1063,102 @@ export class Game {
     answer: (n, ok) => this.client.command({ kind: ok ? 'accept' : 'decline', n }),
     setMode: (head, mode) => this.client.command({ kind: 'mode', head, mode, by: 'player' }),
     maintain: (machine, part) => this.client.command({ kind: 'maintain', machine, part }),
+    // служебная записка (Б5д): команды чужого отдела — его руководителю; отозвать; ответ на «Просят решить»
+    memo: cmds => this.client.command({ kind: 'memo', cmds }),
+    withdraw: n => this.client.command({ kind: 'withdraw', n }),
+    answerFork: (n, opt, day) => this.client.command({ kind: 'answer', n, opt, ...(day !== undefined ? { day } : {}) }),
+    togglePolicies: () => {
+      // окно «Политики» (Б5г) — большое, как справочник и показатели: панели справа и другие большие окна закрываются
+      const p = this.store.get().policies;
+      const open = !p.open;
+      this.store.set({ policies: { ...p, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.sopClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.sendViews();
+    },
+    setPolicyTab: head => this.store.set({ policies: { ...this.store.get().policies, tab: head } }),
+    draftPolicy: (policy, of, value) => {
+      // то же, что сейчас, — из черновика; `overtime` с отделом — сверхурочные отдела (Б4а)
+      const p = this.store.get().policies;
+      const key = policyKey(policy, of);
+      const tabs = p.view?.tabs ?? [];
+      const now = policy === 'overtime' ? tabs.flatMap(x => x.overtime).find(o => o.dept === of)?.mode : tabs.flatMap(x => x.rows).find(r => r.policy === policy && r.of === of)?.value;
+      const draft = { ...p.draft };
+      if (now !== undefined && sameValue(now, value)) delete draft[key];
+      else draft[key] = value;
+      this.store.set({ policies: { ...p, draft } });
+    },
+    runPolicies: () => {
+      // «как сейчас» и черновик на одних и тех же зёрнах (Б5г); «как сейчас» снимка, уже посчитанное, — из запаса
+      const h = this.store.get();
+      const p = h.policies;
+      const cmds = draftCommands(p.draft);
+      if (p.run.running || h.plan.running || cmds.length === 0) return;
+      this.planFor = 'policies';
+      this.store.set({ policies: { ...p, run: { ...NO_POLICY_RUN, running: true, key: JSON.stringify(p.draft), progress: { index: 0, k: 0 } } } });
+      const seq = ++this.planSeq;
+      void this.client.save().then(json => {
+        if (seq !== this.planSeq || !this.store.get().policies.run.running) return;
+        const base = this.policyBase?.json === json ? this.policyBase : undefined;
+        this.policyRun = { json, withBase: !base };
+        if (base) {
+          const q = this.store.get().policies;
+          this.store.set({ policies: { ...q, run: { ...q.run, at: base.at, sums: [base.sum], progress: { index: 1, k: 0 } } } });
+        }
+        this.planner.run(json, base ? [cmds] : [[], cmds], POLICY_RUN.days, POLICY_RUN.seeds);
+      });
+    },
+    stopPolicies: () => {
+      const p = this.store.get().policies;
+      if (!p.run.running) return;
+      this.planSeq++;
+      this.planner.stop();
+      this.store.set({ policies: { ...p, run: NO_POLICY_RUN } });
+    },
+    applyPolicies: () => {
+      // черновик — команды `policy` игрока по порядку; политики чужого поста окно не даёт задать, движок отказал бы (3е)
+      const p = this.store.get().policies;
+      const cmds = draftCommands(p.draft);
+      if (cmds.length === 0) return;
+      for (const cmd of cmds) this.client.command({ ...cmd, by: 'player' });
+      this.store.set({ policies: { ...p, draft: {} } });
+    },
+    resetPolicies: () => {
+      const p = this.store.get().policies;
+      if (Object.keys(p.draft).length > 0) this.store.set({ policies: { ...p, draft: {} } });
+    },
+    toggleSop: () => {
+      // окно совещания S&OP (Б6г) — большое, как политики: панели справа и другие большие окна закрываются
+      const p = this.store.get().sop;
+      const open = !p.open;
+      this.store.set({ sop: { ...p, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.sendViews();
+    },
+    setSopCell: (product, i, days) => {
+      // черновик — от показанного плана: клетка меняется, остальные — как в окне; совпал с показанным — черновика нет
+      const p = this.store.get().sop;
+      const shown = p.view?.cover;
+      if (!shown || !shown[product]) return;
+      const base = p.draft ?? shown;
+      const draft = Object.fromEntries(Object.entries(base).map(([k, xs]) => [k, k === product ? xs.map((x, j) => (j === i ? days : x)) : [...xs]]));
+      const same = p.view?.shown !== 'draft' && Object.entries(draft).every(([k, xs]) => xs.every((x, j) => x === shown[k]?.[j]));
+      this.store.set({ sop: { ...p, draft: same ? undefined : draft } });
+      this.sendViews();
+    },
+    resetSop: () => {
+      const p = this.store.get().sop;
+      if (!p.draft) return;
+      this.store.set({ sop: { ...p, draft: undefined } });
+      this.sendViews();
+    },
+    approveSop: () => {
+      // «Утвердить» (Б6г): показанный план — черновик или лучший план совещания — команда `sop`; черновик больше не нужен
+      const p = this.store.get().sop;
+      const cover = p.view?.cover;
+      if (!cover || !p.view?.open) return;
+      this.client.command({ kind: 'sop', cover: Object.fromEntries(Object.entries(cover).map(([k, xs]) => [k, [...xs]])), by: 'player' });
+      this.store.set({ sop: { ...p, draft: undefined } });
+      this.sendViews();
+    },
+    moveVisit: (asset, day) => this.client.command({ kind: 'visit', asset, day, by: 'player' }),
     togglePo: () => {
       const po = this.store.get().po;
       this.store.set({ po: { ...po, open: !po.open } });
@@ -936,23 +1182,28 @@ export class Game {
       this.sendViews();
     },
     sendPo: () => {
-      const po = this.store.get().po;
+      const h = this.store.get();
+      const po = h.po;
       const supplier = po.supplier ?? po.view?.supplier;
       if (!supplier || po.lines.length === 0) return;
-      this.client.command({ kind: 'po', supplier, lines: po.lines.map(l => ({ material: l.material, qty: l.qty })), by: 'player' });
+      const cmd: Command = { kind: 'po', supplier, lines: po.lines.map(l => ({ material: l.material, qty: l.qty })) };
+      // пост «Снабжение и склад» не у игрока — записка начальнику отдела снабжения (Б5д)
+      this.client.command(holds(h, 'supply') ? { ...cmd, by: 'player' } : { kind: 'memo', cmds: [cmd] });
       this.store.set({ po: { ...po, lines: [] } });
       this.sendViews();
     },
     roster: (person, shift) => this.client.command({ kind: 'roster', person: `E${person}`, shift, by: 'player' }),
-    vacancy: (role, shift, via) => this.client.command({ kind: 'vacancy', role, shift, via, by: 'player' }),
-    closeVacancy: id => this.client.command({ kind: 'close', vacancy: id, by: 'player' }),
-    hire: (candidate, trial) => this.client.command({ kind: 'hire', candidate, trial, by: 'player' }),
+    vacancy: (role, shift, via, memo) => this.send({ kind: 'vacancy', role, shift, via }, memo),
+    closeVacancy: (id, memo) => this.send({ kind: 'close', vacancy: id }, memo),
+    approvePair: pair => this.send({ kind: 'pairApprove', pair }),
+    hire: (candidate, trial, memo) => this.send({ kind: 'hire', candidate, trial }, memo),
     dismiss: (person, why) => this.client.command({ kind: 'dismiss', person: `E${person}`, why, by: 'player' }),
-    leaveAdd: (person, from, days) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'add', from, days, by: 'player' }),
-    leaveMove: (person, part, from) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'move', part, from, by: 'player' }),
-    leaveDrop: (person, part) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'drop', part, by: 'player' }),
-    leaveDeputy: (person, part, deputy) => this.client.command({ kind: 'leave', person: `E${person}`, op: 'deputy', part, ...(deputy !== undefined ? { deputy: `E${deputy}` } : {}), by: 'player' }),
-    also: (person, role, on) => this.client.command({ kind: 'also', person: `E${person}`, role, on, by: 'player' }),
+    leaveAdd: (person, from, days, memo) => this.send({ kind: 'leave', person: `E${person}`, op: 'add', from, days }, memo),
+    leaveMove: (person, part, from, memo) => this.send({ kind: 'leave', person: `E${person}`, op: 'move', part, from }, memo),
+    leaveDrop: (person, part, memo) => this.send({ kind: 'leave', person: `E${person}`, op: 'drop', part }, memo),
+    leaveDeputy: (person, part, deputy, memo) => this.send({ kind: 'leave', person: `E${person}`, op: 'deputy', part, ...(deputy !== undefined ? { deputy: `E${deputy}` } : {}) }, memo),
+    deputy: (head, person) => this.client.command({ kind: 'deputy', head, person: person === null ? null : `E${person}`, by: 'player' }),
+    also: (person, role, on, memo) => this.send({ kind: 'also', person: `E${person}`, role, on }, memo),
     setCashPage: page => {
       this.store.set({ cash: { ...this.store.get().cash, page } });
       this.sendViews();
@@ -1008,7 +1259,7 @@ export class Game {
       ...(keep !== 'lab' ? { lab: { ...h.lab, open: false } } : {}),
       ...(keep !== 'now' ? { now: { ...h.now, open: false } } : {}),
       ...(keep !== 'journal' ? { journal: { ...h.journal, open: false } } : {}),
-      ...(keep && h.gantt.open ? { gantt: { open: false, days: h.gantt.days, draft: h.gantt.draft, urgent: h.gantt.urgent, ...(h.gantt.from !== undefined ? { from: h.gantt.from } : {}) } } : {}),
+      ...(keep && h.gantt.open ? { gantt: { ...ganttKept(h.gantt), open: false } } : {}),
     };
   }
 
@@ -1021,9 +1272,39 @@ export class Game {
   }
 
   /** Расписание закрыто: черновик и окно времени остаются. */
+  /** Итог варианта прогона политик (Б5г): «как сейчас» — ещё и в запас снимка. */
+  policyVariant(index: number, at: number, sum: RunSum) {
+    const p = this.store.get().policies;
+    const run = this.policyRun;
+    const i = run?.withBase ? index : index + 1;
+    if (run?.withBase && index === 0) this.policyBase = { json: run.json, sum, at };
+    const sums = [...p.run.sums];
+    sums[i] = sum;
+    this.store.set({ policies: { ...p, run: { ...p.run, at, sums } } });
+  }
+
+  /** Ход прогона политик (Б5г): вариант и сколько его зёрен готово. */
+  policySeed(index: number, k: number) {
+    const p = this.store.get().policies;
+    const i = this.policyRun?.withBase ? index : index + 1;
+    this.store.set({ policies: { ...p, run: { ...p.run, progress: { index: i, k: k + 1 } } } });
+  }
+
+  /** Окно «Политики» закрыто (Б5г): черновик и прогон остаются — их видно, когда окно откроют снова. */
+  private policiesClosed(): Partial<Hud> {
+    const p = this.store.get().policies;
+    return p.open ? { policies: { ...p, open: false } } : {};
+  }
+
+  /** Окно совещания S&OP закрыто (Б6г): черновик живёт до «Утвердить» или «Сбросить». */
+  private sopClosed(): Partial<Hud> {
+    const p = this.store.get().sop;
+    return p.open ? { sop: { ...p, open: false } } : {};
+  }
+
   private ganttClosed(): Partial<Hud> {
     const g = this.store.get().gantt;
-    return { gantt: { open: false, days: g.days, draft: g.draft, urgent: g.urgent, ...(g.from !== undefined ? { from: g.from } : {}) } };
+    return { gantt: { ...ganttKept(g), open: false } };
   }
 
   /** Окно расписания: с `from` или, вслед за часами, от полуночи — сегодняшней для суток, вчерашней для трёх суток и недели. */
@@ -1048,16 +1329,21 @@ export class Game {
     // черновик: новые сроки заданий и новые срочные задания (0.0.39) — их полосы расписание показывает до «Утвердить»
     const draft = {
       ...(h.gantt.draft.length > 0 ? { draft: [...h.gantt.draft] } : {}),
-      ...(h.gantt.urgent.length > 0 ? { fresh: h.gantt.urgent.map(u => ({ recipe: u.recipe, sku: u.sku })) } : {}),
+      ...(h.gantt.urgent.length > 0 ? { fresh: freshOf(h.gantt.urgent) } : {}),
+      ...(h.gantt.drop.length > 0 ? { drop: [...h.gantt.drop] } : {}),
     };
-    if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days), ...draft });
+    if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days), ...draft, ...(h.gantt.tab === 'launch' ? { launch: true as const } : {}), ...(h.gantt.tab === 'forecast' ? { forecast: h.gantt.fcKey ? { key: h.gantt.fcKey } : {} } : {}) });
     if (h.gantt.open && h.gantt.drag) list.push({ id: 'ghost', view: 'ghost', ...h.gantt.drag, ...draft });
+    // вкладка «Материалы» (Б6д) — свой вид: потребность в материалах дорога, её собирают не чаще раза в секунду
+    if (h.gantt.open && h.gantt.tab === 'mrp') list.push({ id: 'mrp', view: 'mrp' });
     if (h.inv.open) list.push({ id: 'inv', view: 'inv', ...(h.inv.id ? { inv: h.inv.id } : {}) });
     if (h.journal.open) list.push({ id: 'journal', view: 'journal', page: h.journal.page, ...(h.journal.seat ? { seat: h.journal.seat } : {}), ...(h.journal.who ? { who: h.journal.who } : {}), ...(h.journal.focus !== undefined ? { focus: h.journal.focus } : {}) });
     if (h.dossier.open && h.dossier.batch !== undefined) list.push({ id: 'dossier', view: 'dossier', batch: h.dossier.batch });
     if (h.ref.open) list.push({ id: 'ref', view: 'ref' });
     if (h.po.open) list.push({ id: 'po', view: 'po', ...(h.po.supplier ? { supplier: h.po.supplier } : {}), lines: h.po.lines.map(l => ({ material: l.material, qty: l.qty })) });
     if (h.kpi.open) list.push({ id: 'kpi', view: 'kpi', tab: h.kpi.tab, ...(h.kpi.why ? { why: h.kpi.why } : {}), ...(h.kpi.month !== undefined ? { month: h.kpi.month } : {}) });
+    if (h.policies.open) list.push({ id: 'policies', view: 'policies' });
+    if (h.sop.open) list.push({ id: 'sop', view: 'sop', ...(h.sop.draft ? { draft: Object.fromEntries(Object.entries(h.sop.draft).map(([p, xs]) => [p, [...xs]])) } : {}) });
     // «Сейчас» — и при закрытой панели: карточке — для «Смотреть», смотрящему — чтобы знать, когда работа кончилась
     if (h.now.open || this.selected || this.watching) list.push({ id: 'now', view: 'now' });
     // «Пол» (Б1и) — пока включён слой «Загрузка», «Узкие места» (Б1к) или «Потери» (Б1л) и пока открыта карточка помещения
@@ -1289,6 +1575,8 @@ export class Game {
       else if (k === 'KeyN') this.actions.toggleNow();
       else if (k === 'KeyJ') this.actions.toggleJournal();
       else if (k === 'KeyK') this.actions.toggleKpi();
+      else if (k === 'KeyP') this.actions.togglePolicies();
+      else if (k === 'KeyO') this.actions.toggleSop();
       else if (k === 'KeyL') this.actions.nextLayer();
       else if (k === 'F1') {
         e.preventDefault();
@@ -1309,6 +1597,8 @@ export class Game {
         else if (h.inv.open) this.actions.toggleInv();
         else if (h.ref.open) this.actions.toggleRef();
         else if (h.kpi.open) this.actions.toggleKpi();
+        else if (h.policies.open) this.actions.togglePolicies();
+        else if (h.sop.open) this.actions.toggleSop();
         else if (h.morning.open) this.actions.closeMorning(false);
         else if (h.cash.open) this.actions.toggleCash();
         else if (h.lab.open) this.actions.toggleLab();

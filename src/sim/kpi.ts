@@ -2,7 +2,8 @@
 // поста, взятые места первыми; строка — руководитель и его показатели: число нынешнего месяца, прошлый месяц, 12
 // закрытых месяцев, лучше или хуже по направлению, противовес. «Почему?» — записи, из которых число: серии, заказы,
 // отклонения, пробы, партии, отказы, люди — со ссылкой на их карточку. Нынешний месяц считает та же функция движка, что
-// пишет итог месяца в полночь на 1-е (src/engine/kpi.ts). Только записи завода: полей истины здесь нет.
+// пишет итог месяца в полночь на 1-е (src/engine/kpi.ts). С Б5г — смены политик руководителя по журналу политик завода:
+// у столбика месяца и у месяца окна. Только записи завода: полей истины здесь нет.
 import type { ContentDb, Id, SeatId } from '../content/types';
 import { SEATS } from '../content/types';
 import { batchNo } from '../engine/batchno';
@@ -10,6 +11,7 @@ import { DAY, momentOf } from '../engine/core/calendar';
 import { HEAD_SEAT } from '../engine/journal';
 import {
   assessTimes,
+  capaChecks,
   cleanBatch,
   cpkOf,
   CPK_MIN,
@@ -38,7 +40,8 @@ import {
 } from '../engine/kpi';
 import { P_ONE } from '../engine/core/rng';
 import { planOf } from '../engine/plant';
-import type { Deviation, PlantState } from '../engine/types';
+import { policyHead } from '../engine/policies';
+import type { Deviation, PlantState, PolicyValue } from '../engine/types';
 import type { Thing } from './views';
 
 export interface KpiQuery {
@@ -79,9 +82,27 @@ export interface KpiCell {
   why: boolean;
 }
 
+/**
+ * Смена политики руководителя (Б5г) на столбиках: место месяца среди 12 (`HIST` — месяц окна, ещё не закрытый), день в
+ * нём — тысячные доли месяца от его начала; когда, какая политика, у узла — вид машины и узла; прежнее и новое значение.
+ */
+export interface KpiMark {
+  bar: number;
+  at: number;
+  t: number;
+  policy: Id;
+  of?: string;
+  machine?: Id;
+  part?: string;
+  from: PolicyValue;
+  to: PolicyValue;
+}
+
 export interface KpiHeadRow {
   head: KpiHead;
   cells: KpiCell[];
+  /** смены его политик в месяцах окна (Б5г) — по порядку */
+  marks?: KpiMark[];
 }
 
 /** Запись «Почему?»: серия, заказ, отклонение, партия, отказ, человек или показатель МОК — со ссылкой, где она есть. */
@@ -92,7 +113,9 @@ export type KpiWhyRow =
   | { k: 'lot'; code: [number, number, number]; material: Id; sec?: number; unit?: number; rejected?: true }
   | { k: 'fail'; thing?: Thing; type?: Id; part: string; t: number; sec?: number; spare?: true }
   | { k: 'person'; role: Id; tab: number; person?: number; day?: number; days?: number }
-  | { k: 'cpk'; recipe: Id; test: Id; cpk: number; n: number };
+  | { k: 'cpk'; recipe: Id; test: Id; cpk: number; n: number }
+  /** проверка эффективности CAPA (Б5е): CAPA, её отклонение и действие, когда проверили, итог и повтор */
+  | { k: 'capa'; n: number; dev: number; action: Id; t: number; ok: boolean; rep?: number };
 
 export interface KpiView {
   view: 'kpi';
@@ -120,7 +143,7 @@ export const HIST = 12;
 export const WHY_MAX = 30;
 
 /** Показатели, у которых есть «Почему?». */
-export const WHY: ReadonlySet<string> = new Set(['otif', 'otifOrders', 'rft', 'lar', 'testTime', 'incoming', 'assess', 'release', 'devs', 'repeat', 'mtbf', 'mttr', 'spares', 'dockToStock', 'matWait', 'cpk', 'turnover', 'vacancy', 'onDay', 'supRej']);
+export const WHY: ReadonlySet<string> = new Set(['otif', 'otifOrders', 'rft', 'lar', 'testTime', 'incoming', 'assess', 'release', 'devs', 'repeat', 'mtbf', 'mttr', 'spares', 'dockToStock', 'matWait', 'cpk', 'turnover', 'vacancy', 'onDay', 'supRej', 'capaEff']);
 
 /** Руководители вкладки: у поста — его отделы (журнал решений, Б5а), у директора — он сам и отдел кадров. */
 export function headsOf(tab: SeatId): KpiHead[] {
@@ -136,7 +159,7 @@ const num2 = (id: string) => Number(id.replace(/^[A-Z]+/, ''));
 
 /** Машина журнала оборудования: вещь на полу — машина линии или оборудование — и её вид по плану. */
 function machineOf(db: ContentDb, s: PlantState, machine: string): { thing?: Thing; type?: Id } {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   for (const [li, l] of plan.plant.lines.entries()) {
     const k = l.machines.findIndex(m => m.id === machine);
     if (k >= 0) return { thing: { kind: 'machine', line: li, k }, type: l.machines[k].type };
@@ -235,6 +258,12 @@ export function whyRows(db: ContentDb, s: PlantState, c: KpiCtx, id: string): Kp
         .filter(x => x.prev)
         .reverse()
         .map(x => devRow(s, x.dev, undefined, x.prev));
+    case 'capaEff':
+      // проверки эффективности окна (Б5е): новые первыми
+      return capaChecks(c)
+        .map(x => s.capas[x.capa])
+        .sort((a, b) => b.check!.t - a.check!.t || num(b.id) - num(a.id))
+        .map(x => ({ k: 'capa' as const, n: num(x.id), dev: num(x.dev), action: x.action, t: x.check!.t, ok: x.check!.ok, ...(x.check!.dev ? { rep: num(x.check!.dev) } : {}) }));
     case 'mtbf':
     case 'mttr':
       return failuresOf(s, p.yFrom, p.to)
@@ -298,7 +327,7 @@ function moreOf(db: ContentDb, s: PlantState, c: KpiCtx, id: string): Record<str
  * Сдвиг, который окно ещё показывает, в единицах показателя: половина последнего знака числа — рубль, десятая процента,
  * часа, суток, случая на 1000 и кВт·ч. Меньше — «так же»: на экране числа равны.
  */
-export const SAME: Readonly<Record<KpiUnit, number>> = { kop: 50, share: 5, sec: 180, day: 5, per: 5, wh: 50 };
+export const SAME: Readonly<Record<KpiUnit, number>> = { kop: 50, share: 5, sec: 180, day: 5, per: 5, wh: 50, n: 1 };
 
 /** Лучше (1), хуже (−1) или так же (0) — по знаку изменения, направлению показателя и сдвигу, который видно. */
 const trendOf = (delta: number, k: Pick<KpiDef, 'dir' | 'unit'>) => (Math.abs(delta) < SAME[k.unit] ? 0 : (Math.sign(delta * k.dir) as 1 | -1 | 0));
@@ -391,6 +420,35 @@ export function monthClose(s: PlantState, at: number): MonthClose | undefined {
  * Окно «Показатели»: вкладка, её руководители и показатели нынешнего месяца или выбранного закрытого; «Почему?» — у одного
  * показателя по запросу, записи того же периода.
  */
+/**
+ * Смены политик (Б5г) по руководителям: в закрытых месяцах окна — у их столбика, с нынешнего месяца (`from`) — у месяца
+ * окна. Журнал политик завода хранит все смены, поэтому 12 месяцев видны целиком.
+ */
+function marksOf(s: PlantState, months: readonly { from: number; to: number }[], from: number | undefined): Partial<Record<KpiHead, KpiMark[]>> {
+  const out: Partial<Record<KpiHead, KpiMark[]>> = {};
+  const off = HIST - months.length;
+  for (const e of s.policies?.log ?? []) {
+    const head = policyHead(e.policy);
+    if (!head) continue;
+    const i = months.findIndex(m => e.t >= m.from && e.t < m.to);
+    const now = i < 0 && from !== undefined && e.t >= from;
+    if (i < 0 && !now) continue;
+    const m = i >= 0 ? months[i] : undefined;
+    const pt = e.of ? s.parts[e.of] : undefined;
+    (out[head] ??= []).push({
+      bar: m ? off + i : HIST,
+      at: m ? Math.min(999, Math.floor(((e.t - m.from) * 1000) / Math.max(1, m.to - m.from))) : 0,
+      t: e.t,
+      policy: e.policy,
+      ...(e.of ? { of: e.of } : {}),
+      ...(pt ? { machine: pt.of, part: pt.type } : {}),
+      from: e.from,
+      to: e.to,
+    });
+  }
+  return out;
+}
+
 export function kpiView(db: ContentDb, s: PlantState, q: KpiQuery): KpiView {
   const held = (s.seats ?? []).filter(x => x.to === undefined).map(x => x.seat);
   const tabs = [...SEATS.filter(x => held.includes(x)), ...SEATS.filter(x => !held.includes(x))];
@@ -406,8 +464,10 @@ export function kpiView(db: ContentDb, s: PlantState, q: KpiQuery): KpiView {
   const last = sel ? all[at - 1] : months.at(-1);
   const d = momentOf(s.start, p.from).date;
   const part = sel ? !!sel.part : d.d !== 1;
+  const marks = marksOf(s, months, sel ? undefined : p.from);
   const rows: KpiHeadRow[] = headsOf(q.tab).map(head => ({
     head,
+    ...(marks[head]?.length ? { marks: marks[head] } : {}),
     cells: cellsOf(head).map(k => {
       const v = now[k.id];
       const prev = last?.v[k.id];

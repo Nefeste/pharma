@@ -50,18 +50,43 @@
 // уже копится; вывоза посреди дела здесь нет — его держит образец схемы 31. С схемы 34 — посреди предложений: у постов
 // производства и качества руководители советуют, техслужба — «вручную» по выбору игрока; одно задание на серию принято,
 // другое отклонено, третье устарело, а предложение руководителя открыто и ждёт ответа; закрытых месяцев показателей здесь
-// нет — их держит образец схемы 33. С схемы 35 — посреди учёта потерь у мест: у нынешних суток — места с вещами четырёх
-// видов и больше, у прошлых — не больше пяти вещей у вида, у грязного помещения — серия, после которой убирать;
-// предложений посреди дела здесь нет — их держит образец схемы 34.
+// нет — их держит образец схемы 33. С схемы 35 — посреди политик: игрок на посту производства задал запас позиций 28
+// суток и замену пуансонов при 90 % ресурса, начальник планирования уже ставит задания по новому запасу, а визит
+// подрядчика перенесён на последний рабочий день записи в силе и ждёт его; предложения здесь тоже есть, но их держит
+// образец схемы 34. С схемы 36 — посреди замещения: начальника отдела планирования уволили по соглашению — задания на
+// серию ставит и. о., начальник производства; заместитель начальника ОКК назначен игроком — начальник ООК; у главного
+// механика заместителя сняли, и самого уволили — техслужбе некому решить; политик здесь нет — их держит образец схемы 35.
+// С схемы 37 — посреди записки и вопроса: игрок на постах производства и качества — отделы производства «сам» — пишет
+// начальнику снабжения заказ поставщику ниже минимальной партии, тот отвечает отказом с причиной; главный механик
+// спрашивает «Производство» — вопрос открыт, а вторая записка ещё ждёт ответа; техслужба «вручную» и замещение здесь
+// не нужны — их держат образцы схем 34 и 36. С схемы 38 — посреди CAPA: игрок на посту «Качество» оценивает отклонения,
+// принимает CAPA начальника ООК и сам назначает внеочередную калибровку прибора МОК, одному отклонению задаёт класс;
+// руководители постов игрока советуют: выполнить CAPA — предложения, принятые выполнены и ждут проверки эффективности, а
+// калибровку главный механик предложил — предложение открыто; записок и вопросов здесь нет — их держит образец схемы 37.
+// С схемы 39 — посреди заданий на серию: у заданий начальника отдела планирования — срок и «под что», игрок на посту
+// «Производство» отменил задание на запас позиции до комплектовки — до его «не раньше» начальник позицию не ставит, и
+// причина в журнале это называет, — а срочное задание под заказ покупателя стоит со сроком заказа; CAPA здесь тоже
+// есть, но их держит образец схемы 38. С схемы 40 — ещё и посреди сменно-суточных заданий: в закрытых есть строки «позже»
+// и «не сделано» с тем, чего ждали, а у сегодняшнего одни строки начаты, другие ещё нет. С схемы 42 — ещё и посреди S&OP:
+// на совещании сентября пост «Производство» утвердил свой план — запас парацетамола 28 суток, — а совещание октября
+// открыто и ждёт «Утвердить». С схемы 43 — ещё и посреди потребности: директор в первые сутки ускорил заказ поставщику,
+// что придёт позже всех, и отменил следующий, а правило снабжения заказывало по потребности. С схемы 44 — ещё и посреди
+// правок плана: у срочного задания поста «Производство» и у сдвига задания начальника в замороженном горизонте — цена в
+// журнале, а события коммерции месяца уже были. С схемы 47 — ещё и посреди учёта потерь у мест: у нынешних суток — места
+// с вещами четырёх видов и больше, у прошлых — не больше пяти вещей у вида, у грязного помещения — серия, после которой
+// убирать.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
-import { DAY, daysFromCivil, HOUR, MIN, momentOf } from '../../src/engine/core/calendar';
+import { visitLast } from '../../src/engine/assets';
+import { DAY, daysFromCivil, HOUR, isWorkday, MIN, momentOf } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
 import { planOf } from '../../src/engine/plant';
 import { assessBlock, linkedTests } from '../../src/engine/qa';
 import { toSave } from '../../src/engine/save';
+import { frozenEdge } from '../../src/engine/plan/price';
 import { pendingOf } from '../../src/engine/shifts';
 import { SCHEMA } from '../../src/engine/types';
+import { calOf } from '../../src/engine/workdays';
 
 const s = newPlant(db, { scenario: 'scn.proto', seed: 1 });
 // отпуска (Б4г) — с января 2028 года: до 9 января — по часу
@@ -114,7 +139,7 @@ const recorded = () => {
 };
 // посреди уборки помещения упаковки (Б1е): машину линии моют, а задание следующей серии уже на линии и ждёт, когда
 // помещение будет чисто
-const lineRoom = planOf(db, s.plant).plant.lines[0].room;
+const lineRoom = planOf(db, s.plan).plant.lines[0].room;
 const lineCleaning = () =>
   Object.values(s.tasks).some(t => t.kind === 'clean' && t.room === lineRoom && t.state === 'busy') &&
   Object.values(s.lines).some(l => l.batch !== undefined && s.batches[l.batch].pack?.state !== 'running');
@@ -148,6 +173,48 @@ const kpied = () => s.kpi.months.length >= 2 && s.kpi.snap.n >= 3 && Object.valu
 // посреди предложений (Б5б): выбор режима у отдела, ответы всех трёх видов и открытое предложение
 const how = (h: string) => s.journal.some(r => r.ask?.end?.how === h);
 const asked = () => s.heads.mode.maint === 'manual' && how('ok') && how('no') && how('stale') && Object.keys(s.heads.open).length > 0;
+// посреди замещения (Б5в): задание на серию от и. о., заместитель назначен игроком, у техслужбы некому решить
+const bossed = () => s.journal.some(r => r.by === 'plan' && r.d.kind === 'order' && r.io) && !!s.deputies?.qc && !!s.noOne?.maint;
+// посреди записки и вопроса (Б5д): на одну записку ответили, другая ждёт, вопрос «Просят решить» открыт
+const memoed = () => s.journal.some(r => r.memo?.end?.res) && s.journal.some(r => r.memo && !r.memo.end) && !!s.heads.qs;
+// посреди политик (Б5г): две политики игрока, задание на серию по новому запасу, перенесённый визит ещё впереди
+const moved = () => s.journal.some(r => r.by === 'player' && r.d.kind === 'visit' && s.assets[r.d.asset]?.visit?.at === r.d.at && s.t < r.d.at);
+const policied = () => s.policies.log.length >= 2 && s.journal.some(r => r.by === 'plan' && r.d.kind === 'order' && r.d.why?.cover === 28) && moved();
+// посреди CAPA (Б5е): выполненная ждёт проверки, другая — ответа на предложение исполнителя; у отклонения — класс игрока
+const capaed = () =>
+  Object.values(s.capas).some(c => c.done !== undefined && !c.check) &&
+  Object.values(s.capas).some(c => c.done === undefined && s.heads.open[`capa/${c.id}`] !== undefined) &&
+  Object.values(s.deviations).some(d => d.clsBy);
+// посреди заданий на серию (Б6а): отменённое игроком на запас держит позицию, причина в журнале, задание под заказ стоит
+const heldRec = () => s.journal.some(r => r.by === 'plan' && r.d.kind === 'order' && r.d.why?.items.some(i => i.held) && r.d.due !== undefined);
+const jobbed = () =>
+  Object.values(s.batches).some(b => b.status === 'cancelled' && b.for?.kind === 'stock' && b.notBefore > s.t) &&
+  Object.values(s.batches).some(b => b.for?.kind === 'order' && (b.status === 'waiting' || b.status === 'reserved')) &&
+  heldRec();
+// посреди заданий на сутки (Б6б): закрытые — «позже» и «не сделано» с причиной; у сегодняшнего начатые и ещё нет
+const dailied = () => {
+  const d = s.daily ?? [];
+  const rows = d.filter(x => x.closed).flatMap(x => x.rows);
+  const cur = d.at(-1);
+  return rows.some(r => r.res === 'late' && r.why) && rows.some(r => r.res === 'no' && r.why) && !!cur && !cur.closed && cur.rows.some(r => r.done !== undefined) && cur.rows.some(r => r.done === undefined);
+};
+// посреди прогноза (Б6в): у показателя отдела продаж — значение закрытого месяца, у планирования — правка игрока в силе, а
+// спрос правила задания — по прогнозу
+const forecasted = () =>
+  s.kpi.months.some(m => m.v.fcErr !== undefined) && Object.keys(s.forecast?.edits ?? {}).length > 0 && s.policies.log.some(x => x.policy === 'pol.plan.demand');
+// посреди S&OP (Б6г): план игрока утверждён, а следующее совещание открыто
+const sopped = () => !!s.sop?.open && s.sop.plans.some(p => p.by === 'player');
+// посреди потребности (Б6д): заказ поставщику ускорен, другой отменён; правило заказывало по потребности
+const supplied = () =>
+  Object.values(s.pos).some(p => p.fast) && Object.values(s.pos).some(p => p.status === 'cancelled') && s.journal.some(r => r.d.kind === 'po' && (r.d.why ?? []).some(w => w.rule === 'need'));
+// посреди правок плана (Б6е): у задания игрока и его сдвига в замороженном горизонте — цена, события коммерции уже были
+const priced = (kind: string) => s.journal.some(r => r.by === 'player' && r.d.kind === kind && 'frozen' in r.d && r.d.frozen !== undefined);
+const edited = () => priced('order') && priced('shift') && s.journal.some(r => r.by === 'sales');
+// посреди второго источника (Б6ж): одобрение пары-кандидата идёт — пробная партия уже заказана; заказ в пути опаздывает,
+// а пришедшие — с днём прихода
+const PAR2 = 'sup.api-par2|mkr.api-par2';
+const sourced = () =>
+  ['trial', 'audit', 'dossier'].includes(s.pairs[PAR2]?.app?.step ?? '') && Object.values(s.pos).some(p => p.status === 'ordered' && p.truth !== undefined) && Object.values(s.pos).some(p => p.came !== undefined);
 // посреди учёта потерь у мест (Б1л): вещи нынешних суток — четырёх видов и больше, прошлые сутки уже обрезаны в полночь
 const spotted = () => {
   const d = s.losses.at(-1);
@@ -155,7 +222,7 @@ const spotted = () => {
   return s.losses.length >= 2 && kinds.size >= 4 && Object.values(s.rooms).some(r => r.after !== undefined && r.status === 'dirty');
 };
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : SCHEMA < 34 ? seated() && kpied() : SCHEMA < 35 ? seated() && asked() : seated() && spotted();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : SCHEMA < 34 ? seated() && kpied() : SCHEMA < 35 ? seated() && asked() : SCHEMA < 36 ? seated() && policied() : SCHEMA < 37 ? seated() && bossed() : SCHEMA < 38 ? seated() && memoed() : SCHEMA < 39 ? seated() && capaed() : SCHEMA < 40 ? seated() && jobbed() : SCHEMA < 41 ? seated() && jobbed() && dailied() : SCHEMA < 42 ? seated() && dailied() && forecasted() : SCHEMA < 43 ? seated() && dailied() && forecasted() && sopped() : SCHEMA < 44 ? seated() && dailied() && forecasted() && sopped() && supplied() : SCHEMA < 45 ? seated() && dailied() && forecasted() && sopped() && supplied() && edited() : SCHEMA < 47 ? seated() && dailied() && forecasted() && sopped() && supplied() && edited() && sourced() : seated() && dailied() && forecasted() && sopped() && supplied() && edited() && sourced() && spotted();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 const refused = new Set<string>();
@@ -167,8 +234,30 @@ if (SCHEMA >= 24) for (const role of ['role.operator', 'role.packer']) apply(db,
 while (s.t < end && !busy()) {
   if (SCHEMA >= 13 && s.t >= t0 + DAY && s.seats?.some(x => x.seat === 'director' && x.to === undefined)) {
     apply(db, s, { kind: 'seat', seats: ['production', 'quality'] });
-    // с схемы 34 — техслужба «вручную»: выбор игрока у отдела
-    if (SCHEMA >= 34) apply(db, s, { kind: 'mode', head: 'maint', mode: 'manual', by: 'player' });
+    // схемы 34–36 — техслужба «вручную»: выбор игрока у отдела; с схемы 37 — отделы производства «сам», а начальнику
+    // снабжения — записка: заказ ниже минимальной партии
+    if (SCHEMA >= 34 && SCHEMA < 37) apply(db, s, { kind: 'mode', head: 'maint', mode: 'manual', by: 'player' });
+    if ((SCHEMA as number) === 37) {
+      for (const head of ['plan', 'mes', 'maint'] as const) apply(db, s, { kind: 'mode', head, mode: 'auto', by: 'player' });
+      apply(db, s, { kind: 'memo', cmds: [{ kind: 'po', supplier: 'sup.exc', lines: [{ material: 'mat.exc.mcc', qty: 1000 }] }] });
+    }
+    // с схемы 38 — планирование и производство «сам», техслужба советует (пост у игрока)
+    if (SCHEMA >= 38) for (const head of ['plan', 'mes'] as const) apply(db, s, { kind: 'mode', head, mode: 'auto', by: 'player' });
+    // схема 36 — замещение: начальника отдела планирования и главного механика — по соглашению, у главного механика
+    // заместителя снять, начальнику ОКК — заместителем начальника ООК
+    if ((SCHEMA as number) === 36) {
+      for (const role of ['role.plan-head', 'role.chief-mechanic']) {
+        const p = Object.values(s.people).find(x => x.role === role)!;
+        apply(db, s, { kind: 'dismiss', person: p.id, why: 'agree', by: 'player' });
+      }
+      apply(db, s, { kind: 'deputy', head: 'maint', person: null, by: 'player' });
+      apply(db, s, { kind: 'deputy', head: 'qc', person: Object.values(s.people).find(x => x.role === 'role.qa-head')!.id, by: 'player' });
+    }
+    // с схемы 35 — политики производства: запас позиций и замена пуансонов
+    if ((SCHEMA as number) === 35) {
+      apply(db, s, { kind: 'policy', policy: 'pol.plan.cover', value: 28, by: 'player' });
+      apply(db, s, { kind: 'policy', policy: 'pol.maint.replace', of: 'press-1/punches', value: 9000, by: 'player' });
+    }
     // с схемы 28 — на посту качества: скорость ротора обеих карт на шаг выше цели, блистерной у всех позиций — тоже
     if (SCHEMA >= 28) {
       for (const r of Object.values(db.recipes)) {
@@ -221,6 +310,77 @@ while (s.t < end && !busy()) {
       if (!how('ok')) apply(db, s, { kind: 'accept', n });
       else if (!how('no')) apply(db, s, { kind: 'decline', n });
     }
+  // схема 35 — первый назначенный визит подрядчика, который можно отложить, — на последний рабочий день записи в силе
+  if ((SCHEMA as number) === 35 && s.seats?.some(x => x.seat === 'production' && x.to === undefined) && !s.journal.some(r => r.by === 'player' && r.d.kind === 'visit')) {
+    const today = momentOf(s.start, s.t).day;
+    const cal = calOf(db, s);
+    for (const a of Object.values(s.assets)) {
+      if (!a.visit || a.visit.from !== undefined) continue;
+      let day = visitLast(a, today);
+      while (day > today && !isWorkday(cal, day)) day--;
+      if (day > today + 1) {
+        apply(db, s, { kind: 'visit', asset: a.id, day, by: 'player' });
+        break;
+      }
+    }
+  }
+  // с схемы 38 — пост «Качество»: CAPA начальника ООК принять, у МОК — внеочередная калибровка прибора, одному
+  // оценённому отклонению — класс игрока
+  if (SCHEMA >= 38 && s.seats?.some(x => x.seat === 'quality' && x.to === undefined)) {
+    // предложения: CAPA начальника ООК — принять; выполнить CAPA — принять, кроме калибровки: она ждёт ответа
+    for (const [key, n] of Object.entries(s.heads.open))
+      if (key.startsWith('capaFor/') || (key.startsWith('capa/') && s.capas[key.slice(5)]?.action !== 'capa.calib')) apply(db, s, { kind: 'accept', n });
+    if (!Object.values(s.capas).some(c => c.action === 'capa.calib'))
+      for (const d of Object.values(s.deviations)) if (d.kind === 'ipc' && d.status === 'open') apply(db, s, { kind: 'capa', deviation: d.id, action: 'capa.calib', by: 'player' });
+    const done = Object.values(s.deviations).find(d => d.assess?.done !== undefined);
+    if (done && !Object.values(s.deviations).some(d => d.clsBy)) apply(db, s, { kind: 'classify', deviation: done.id, cls: done.cls === 'minor' ? 'major' : 'minor', by: 'player' });
+  }
+  // с схемы 39 — пост «Производство»: отменить последнее задание начальника на запас до комплектовки; когда начальник
+  // уже ставит задания со сроком и причина называет отменённое — срочное задание под открытый заказ позиции плана,
+  // не раньше чем через трое суток
+  if (SCHEMA >= 39 && s.seats?.some(x => x.seat === 'production' && x.to === undefined)) {
+    if (!Object.values(s.batches).some(b => b.status === 'cancelled')) {
+      const b = Object.values(s.batches)
+        .filter(x => x.by === 'head:plan' && (x.status === 'waiting' || x.status === 'reserved') && x.notBefore > s.t + 5 * DAY)
+        .sort((a, c) => c.notBefore - a.notBefore)[0];
+      if (b) apply(db, s, { kind: 'cancel', batch: b.id, by: 'player' });
+    }
+    if (!Object.values(s.batches).some(b => b.for?.kind === 'order') && heldRec()) {
+      const items = db.scenarios['scn.proto'].plan!.items;
+      const o = Object.values(s.orders).find(x => x.status === 'open' && x.lines.some(l => items.some(i => i.sku === l.sku)));
+      const it = o && items.find(i => o.lines.some(l => l.sku === i.sku));
+      if (o && it) apply(db, s, { kind: 'order', recipe: it.recipe, sku: it.sku, for: o.id, notBefore: s.t + 3 * DAY, by: 'player' });
+    }
+  }
+  // с схемы 45 — пост «Качество»: одобрить пару-кандидата парацетамола; пробную партию отклонили — начать заново
+  if (SCHEMA >= 45 && s.seats?.some(x => x.seat === 'quality' && x.to === undefined) && (!s.pairs[PAR2]?.app || s.pairs[PAR2].app!.step === 'failed')) apply(db, s, { kind: 'pairApprove', pair: PAR2, by: 'player' });
+  // с схемы 44 — пост «Производство»: задание начальника в замороженном горизонте — на сутки позже, один раз
+  if (SCHEMA >= 44 && s.seats?.some(x => x.seat === 'production' && x.to === undefined) && !priced('shift')) {
+    const edge = frozenEdge(db, s);
+    const b = Object.values(s.batches).find(x => x.by === 'head:plan' && x.status === 'waiting' && x.notBefore > s.t + DAY && momentOf(s.start, x.notBefore).day < edge);
+    if (b) apply(db, s, { kind: 'shift', batch: b.id, notBefore: b.notBefore + DAY, by: 'player' });
+  }
+  // с схемы 41 — пост «Производство»: спрос правила задания — по прогнозу; правка прогноза парацетамола № 20 через месяц —
+  // на десятую часть выше, один раз
+  if (SCHEMA >= 41 && s.forecast && s.seats?.some(x => x.seat === 'production' && x.to === undefined) && !s.journal.some(r => r.d.kind === 'fcEdit')) {
+    apply(db, s, { kind: 'policy', policy: 'pol.plan.demand', value: 'forecast', by: 'player' });
+    const sku = 'sku.paracetamol500.n20';
+    apply(db, s, { kind: 'forecast', sku, m: s.forecast.at + 2, cases: Math.round((s.forecast.plan[sku][2] * 11) / 10), by: 'player' });
+  }
+  // с схемы 43 — директор в первые сутки: заказ поставщику, что придёт позже всех, — ускорить, следующий — отменить
+  if (SCHEMA >= 43 && s.seats?.some(x => x.seat === 'director' && x.to === undefined)) {
+    const open = Object.values(s.pos)
+      .filter(p => p.status === 'ordered')
+      .sort((a, b) => b.eta - a.eta);
+    if (!Object.values(s.pos).some(p => p.fast) && open[0]) apply(db, s, { kind: 'expedite', po: open[0].id, by: 'player' });
+    if (!Object.values(s.pos).some(p => p.status === 'cancelled') && open[1]) apply(db, s, { kind: 'cancelPo', po: open[1].id, by: 'player' });
+  }
+  // с схемы 42 — совещание S&OP сентября: свой план поста «Производство», следующие совещания ждут
+  if (SCHEMA >= 42 && s.sop?.open && s.sop.plans.length === 0)
+    apply(db, s, { kind: 'sop', cover: { 'prd.paracetamol500': [28, 28, 28, 28, 28, 28], 'prd.loratadine10': [21, 21, 21, 21, 21, 21] }, by: 'player' });
+  // схема 37 — вопрос открыт: вторая записка начальнику снабжения, тот же заказ
+  if ((SCHEMA as number) === 37 && s.heads.qs && !s.journal.some(r => r.memo && !r.memo.end))
+    apply(db, s, { kind: 'memo', cmds: [{ kind: 'po', supplier: 'sup.exc', lines: [{ material: 'mat.exc.mcc', qty: 1000 }] }] });
   // с схемы 23 — у бригады появились часы после смены: пост производства переводит механика первой смены в бригаду 2
   if ((SCHEMA as number) === 23 && afterShift() && !Object.values(s.people).some(p => pendingOf(s, p))) {
     const p = Object.values(s.people).find(x => x.role === 'role.mechanic' && x.shift === 'shift.a');

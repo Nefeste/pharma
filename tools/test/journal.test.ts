@@ -179,8 +179,8 @@ describe('причина — числа правила', () => {
     for (const r of visits) {
       expect(r.by).toBe('maint');
       const day = momentOf(s90.start, r.t).day;
-      expect(r.d.why.ahead).toBe(sc.assets.ahead);
-      if (r.d.why.until !== undefined) expect(r.d.why.until - day).toBeLessThanOrEqual(sc.assets.ahead);
+      expect(r.d.why!.ahead).toBe(sc.assets.ahead);
+      if (r.d.why!.until !== undefined) expect(r.d.why!.until - day).toBeLessThanOrEqual(sc.assets.ahead);
       // визит ещё впереди или идёт — или его запись уже принята, не раньше дня решения
       const a = s90.assets[r.d.asset];
       expect(a.visit?.work === r.d.work || a.recs.some(x => x.work === r.d.work && x.day >= day)).toBe(true);

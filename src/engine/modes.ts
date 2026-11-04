@@ -9,6 +9,7 @@ import { momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { inForce } from './docs';
 import { note, noteCmd } from './journal';
+import { POL, policyOf } from './policies';
 import type { Command, Notice, PlantState } from './types';
 
 /** Ключ уставки режима стадии: код карты, стадия, режим; скорости блистерной — код инструкции по упаковке. */
@@ -97,11 +98,11 @@ export function setpointCommand(db: ContentDb, s: PlantState, cmd: Extract<Comma
 
 /**
  * Коллега технологии держит цель (Б1ж; геймдизайн, §29.3): игрок ушёл с поста «Качество и технология» — уставки к цели;
- * начатые стадии и задания идут со своими.
+ * начатые стадии и задания идут со своими. С Б5г — по политике главного технолога: «к цели карты» или «оставить».
  */
-export function colleagueTargets(s: PlantState, notices: Notice[]) {
+export function colleagueTargets(db: ContentDb, s: PlantState, notices: Notice[]) {
   const n = Object.keys(s.setpoints).length;
-  if (n === 0) return;
+  if (n === 0 || policyOf(db, s, POL.setpoints) === 'keep') return;
   s.setpoints = {};
   notices.push({ kind: 'setpoints', n, by: 'colleague' });
   // журнал решений (Б5а): главный технолог — сколько уставок вернули к цели

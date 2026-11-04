@@ -53,6 +53,8 @@ export type FromPlan =
    * снимку), сколько миллисекунд считался
    */
   | { kind: 'variant'; id: number; index: number; at: number; sum: RunSum; batches: Record<string, BatchLabel>; ms: number }
+  /** зерно `k` варианта `index` готово (Б5г): ход прогона по зёрнам */
+  | { kind: 'seed'; id: number; index: number; k: number; ms: number }
   /** все варианты готовы */
   | { kind: 'done'; id: number; ms: number }
   | { kind: 'error'; id: number; message: string };

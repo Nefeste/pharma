@@ -13,6 +13,7 @@ import { dayText, money, named, num, pctText, qtyText, T, whenText } from '../i1
 import type { AskInfo, JournalRef, JournalRow, ModeInfo, WhoRow } from '../sim/journal';
 import { assetClass, workName } from './assets';
 import { db } from './db';
+import { policyName, policyText } from './policy';
 import type { Actions, Hud } from './store';
 import { attrNum, attrText, paramText } from './units';
 
@@ -78,7 +79,9 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
     case 'visit': {
       const a = r.asset;
       const what = a ? `${assetClass(a)}, ${T.assets.inv(a.inv)}` : d.asset;
-      return J.visit(a ? workName(a, d.work).toLowerCase() : d.work, what, whenText(start, d.at));
+      const work = a ? workName(a, d.work).toLowerCase() : d.work;
+      // перенос игроком (Б5г): новое мгновение вместо прежнего
+      return d.from !== undefined ? J.visitMoved(work, what, whenText(start, d.at), whenText(start, d.from)) : J.visit(work, what, whenText(start, d.at));
     }
     case 'repair':
       return J.repair(partName(r.machine, r.part), machineName(r.machine));
@@ -108,6 +111,10 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
       return J.waste(d.at !== undefined ? whenText(start, d.at) : undefined);
     case 'mode':
       return J.mode(T.journal.names[d.head] ?? d.head, T.journal.modes[d.mode] ?? d.mode);
+    case 'policy': {
+      const p = db?.policies[d.policy];
+      return J.policy(policyName(p, d.policy, { of: d.of, machine: r.machine, part: r.part }), policyText(p, d.to), policyText(p, d.from));
+    }
   }
 }
 
@@ -134,7 +141,7 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
               : J.order.need;
       const below = w.items.filter(x => x.sku !== d.sku && x.ordered > 0 && x.cases * x.work * 1000 < x.ordered * w.ahead);
       const others = below.length > 0 ? J.order.others(below.map(x => J.order.other(sku(x.sku), Math.round(pos(x) * 10) / 10)).join('; ')) : J.order.alone;
-      return [[head, J.order.threshold(Number.isInteger(ahead) ? ahead : Math.round(ahead * 10) / 10), rule].filter(Boolean).join('; '), others];
+      return [[head, J.order.threshold(Number.isInteger(ahead) ? ahead : Math.round(ahead * 10) / 10, w.cover), rule].filter(Boolean).join('; '), others];
     }
     case 'po': {
       const out = (d.why ?? []).map(w => {
@@ -174,8 +181,12 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
     }
     case 'pairEval':
       return [`${J.pair(J.until(dayText(d.why.until), d.why.until - day, d.why.ahead))}; ${d.how === 'audit' ? J.audit : J.docs}`];
-    case 'visit':
-      return [d.why.until === undefined ? J.noRec : J.rec(J.until(dayText(d.why.until), d.why.until - day, d.why.ahead))];
+    case 'visit': {
+      // у переноса игроком причины нет; срок предупреждения — политика главного механика (Б5г)
+      const w = d.why;
+      if (!w) return [];
+      return [w.until === undefined ? J.noRec : J.rec(J.until(dayText(w.until), w.until - day, w.ahead, true))];
+    }
     case 'repair':
       return [J.repair(whenText(start, d.why.failed), named(db?.spares[d.why.spare]?.name, d.why.spare), d.why.free)];
     case 'replace':
@@ -219,7 +230,8 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
       // коллега склада (Б1з): по заполнению зоны или по сроку; у игрока причины нет
       const w = d.why;
       if (!w) return [];
-      return w.since !== undefined ? [J.waste.old(dayText(momentOf(start, w.since).day), w.months)] : [J.waste.full(w.used, w.places)];
+      const share = w.full ? policyText(db?.policies['pol.wms.full'], w.full) : undefined;
+      return w.since !== undefined ? [J.waste.old(dayText(momentOf(start, w.since).day), w.months)] : [J.waste.full(w.used, w.places, share)];
     }
     default:
       return [];

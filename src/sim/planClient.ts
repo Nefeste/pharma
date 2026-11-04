@@ -9,6 +9,7 @@ export class PlanClient {
   /** номер текущего прогона: ответы с другим номером — от прерванного */
   private id = 0;
   onVariant: (m: Extract<FromPlan, { kind: 'variant' }>) => void = () => {};
+  onSeed: (m: Extract<FromPlan, { kind: 'seed' }>) => void = () => {};
   onDone: (m: Extract<FromPlan, { kind: 'done' }>) => void = () => {};
   onError: (message: string) => void = () => {};
 
@@ -26,6 +27,7 @@ export class PlanClient {
     if (msg.kind === 'error' && msg.id < 0) return this.onError(msg.message);
     if (msg.id !== this.id) return;
     if (msg.kind === 'variant') this.onVariant(msg);
+    else if (msg.kind === 'seed') this.onSeed(msg);
     else if (msg.kind === 'done') this.onDone(msg);
     else this.onError(msg.message);
   }

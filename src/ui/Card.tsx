@@ -267,7 +267,7 @@ function histText(h: Hist, unit: 'mass' | 'pcs' | undefined, parts: readonly Par
 }
 
 /** Актив в карточке (Б3в): инвентарный номер, код места, срок каждой нужной работы, визит подрядчика, не работает ли. */
-function AssetRows({ a, start }: { a: AssetInfo; start: Ymd }) {
+function AssetRows({ a, start, hud, actions }: { a: AssetInfo; start: Ymd; hud: Hud; actions: Actions }) {
   const visit = a.visit;
   return (
     <>
@@ -298,6 +298,7 @@ function AssetRows({ a, start }: { a: AssetInfo; start: Ymd }) {
           </span>
         </Row>
       ) : null}
+      {visit && a.move ? <MoveVisit key={`${a.id}:${visit.at}`} a={a} hud={hud} actions={actions} /> : null}
       {a.unfit === 'qual' || a.unfit === 'cal' ? (
         <Row k="">
           <b data-test="card-stopped">
@@ -306,6 +307,33 @@ function AssetRows({ a, start }: { a: AssetInfo; start: Ymd }) {
         </Row>
       ) : null}
     </>
+  );
+}
+
+/**
+ * «Перенести визит» (Б5г): рабочий день с завтра по последний день записи в силе — команда `visit` поста «Производство»
+ * (техслужба) или директора; чужой пост — без кнопки, с подписью, чей.
+ */
+function MoveVisit({ a, hud, actions }: { a: AssetInfo; hud: Hud; actions: Actions }) {
+  const days = a.move ?? [];
+  const [day, setDay] = useState(days[0]);
+  const mine = holds(hud, 'production');
+  if (days.length === 0) return null;
+  return (
+    <Row k="">
+      <span data-test="card-visit-move">
+        <select value={day} disabled={!mine} onChange={e => setDay(Number(e.target.value))} aria-label={T.assets.moveDay} data-test="card-visit-day">
+          {days.map(z => (
+            <option key={z} value={z}>
+              {dayText(z)}
+            </option>
+          ))}
+        </select>{' '}
+        <button type="button" className="small" disabled={!mine || day === undefined} onClick={() => day !== undefined && actions.moveVisit(a.id, day)} title={mine ? T.assets.moveHint : T.seats.notYours(T.seats.names.production ?? 'production')} data-test="card-visit-go">
+          {T.assets.move}
+        </button>
+      </span>
+    </Row>
   );
 }
 
@@ -618,7 +646,7 @@ export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v
                 <span className="muted"> · {T.card.packingOf(docText('skus', c.sku))}</span>
               </Row>
             ) : null}
-            {c.asset ? <AssetRows a={c.asset} start={start} /> : null}
+            {c.asset ? <AssetRows a={c.asset} start={start} hud={hud} actions={actions} /> : null}
           </dl>
           {c.parts.length ? <PartsBlock parts={c.parts} names={rec?.parts} machine={machineId(plant, c)} hud={hud} actions={actions} /> : null}
           {c.kind === 'equipment' && c.inside ? <InsideBlock x={c.inside} /> : null}

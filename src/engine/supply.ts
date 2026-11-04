@@ -15,6 +15,7 @@ import { packNeeds } from './mes';
 import { approved, linePrice, pairsFor, priceLine } from './partners';
 import { aheadMilli, casesOf, positionOf } from './planner';
 import { planOf } from './plant';
+import { numOf, POL } from './policies';
 import { roll } from './random';
 import { containersByLot, containersFor, free, nextId } from './stock';
 import type { Command, Notice, PackJob, PlantState, Po, PoLine, PoWhy, Refusal } from './types';
@@ -109,14 +110,16 @@ export const SUPPLY_HOUR = 9 * HOUR;
 
 /**
  * Расход по плану выпуска за `days` суток: серий в рабочий день по позиции — по спросу её заказов на рабочий день (как
- * у коллеги планирования, Б4а), а пока спроса не видно — по серии в рабочий день поровну, — на рабочие дни этих суток;
- * на серию — состав карты и упаковка позиции. Счёт — в тысячных долях серии, в целых.
+ * у коллеги планирования, Б4а; окно спроса — его политика, Б5г), а пока спроса не видно — по серии в рабочий день
+ * поровну, — на рабочие дни этих суток; на серию — состав карты и упаковка позиции. Счёт — в тысячных долях серии, в
+ * целых.
  */
 export function planUse(db: ContentDb, s: PlantState, days: number, byLot = containersByLot(s)): Map<Id, number> {
   const plan = db.scenarios[s.scenario].plan;
   const out = new Map<Id, number>();
   if (!plan) return out;
-  const pos = plan.items.map(it => positionOf(db, s, it.sku, plan.window, byLot));
+  const window = numOf(db, s, POL.window)!;
+  const pos = plan.items.map(it => positionOf(db, s, it.sku, window, byLot));
   const blind = pos.some(p => p.span === 0);
   const today = momentOf(s.start, s.t).day;
   // серии идут в рабочие дни (Б4а): расход — на рабочие дни пятидневки в этих сутках, тысячных
@@ -168,7 +171,10 @@ export function supplyPlan(db: ContentDb, s: PlantState): SupplyOrder[] {
   const sc = db.scenarios[s.scenario];
   if (!sc.supply || !sc.plan) return [];
   const now = momentOf(s.start, s.t);
-  const { safety, every, qc } = sc.supply;
+  // страховой запас и на сколько суток заказ — политики начальника отдела снабжения (Б5г); входной контроль — сценария
+  const safety = numOf(db, s, POL.safety)!;
+  const every = numOf(db, s, POL.every)!;
+  const { qc } = sc.supply;
   const room = Math.max(1, Math.floor((planOf(db, s.plant).byKind.quarantine?.length ?? 2) / 2));
   // тара по партиям — один проход на весь расчёт
   const byLot = containersByLot(s);

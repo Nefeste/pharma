@@ -20,5 +20,5 @@ console.log(
     `поставщиков ${n(db.suppliers)}, ролей ${n(db.roles)}, техники ${n(db.vehicles)}, графиков ${n(db.shifts)}, грузовых единиц ${n(db.units)}, ` +
     `приборов ${n(db.instruments)}, методик ${n(db.tests)}, спецификаций ${n(db.specs)}, продуктов ${n(db.products)}, ` +
     `оборудования ${n(db.equipment)}, карт ${n(db.recipes)}, причин ${n(db.causes)}, машин ${n(db.machines)}, позиций ${n(db.skus)}, покупателей ${n(db.customers)}, запчастей ${n(db.spares)}, процедур ${n(db.sops)}, режимов хранения ${n(db.regimes)}, ` +
-    `изготовителей ${n(db.makers)}, соглашений по качеству ${n(db.agreements)}; файлов ${files}.`,
+    `изготовителей ${n(db.makers)}, соглашений по качеству ${n(db.agreements)}, политик ${n(db.policies)}; файлов ${files}.`,
 );

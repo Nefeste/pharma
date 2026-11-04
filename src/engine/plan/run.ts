@@ -6,6 +6,7 @@ import { DAY, momentOf } from '../core/calendar';
 import { P_ONE } from '../core/rng';
 import { apply } from '../engine';
 import { MODED, modeOf } from '../heads';
+import { kpiSnapshot, otIn } from '../kpi';
 import { oee, type Switches, switchesOf } from '../lean';
 import { planOf } from '../plant';
 import type { Command, HeadsState, LineDay, PlantState } from '../types';
@@ -36,6 +37,15 @@ export interface SeedOut {
   busy: { row: string; share: number }[];
   /** генеральные уборки помещений и переналадки линий, кончившиеся в горизонте (Б2г): сколько и их работа, с */
   switches: Switches;
+  /**
+   * в конце горизонта (Б5г): разрешённой ГП на складе, пачек, и запас материалов по цене партии, копейки; сверхурочные,
+   * кончившиеся в горизонте, с — как срез суток показателей (kpi.ts)
+   */
+  fg: number;
+  stock: number;
+  ot: number;
+  /** серий, выпущенных в горизонте (Б5г): и тех, которых к снимку ещё не было */
+  released: number;
 }
 
 /** Сутки линии за горизонт — суммой; OEE ключевой машины (с наименьшим выпуском по номиналу). */
@@ -91,6 +101,7 @@ function measure(db: ContentDb, c: PlantState, from: number, to: number, seed: n
   }
   const rooms = new Set(Object.values(db.recipes).flatMap(r => r.stages.map(st => plan.roomOf[st.room])));
   const all = switchesOf(days);
+  const snap = kpiSnapshot(db, c);
   return {
     seed,
     orders,
@@ -105,6 +116,10 @@ function measure(db: ContentDb, c: PlantState, from: number, to: number, seed: n
       ...plan.plant.lines.map(l => ({ row: l.id, share: share(packSpans.get(l.id) ?? [], from, to) })),
     ],
     switches: { major: all.major - before.major, majorSec: all.majorSec - before.majorSec, changes: all.changes - before.changes, changeSec: all.changeSec - before.changeSec },
+    fg: snap.fg,
+    stock: snap.stock,
+    ot: otIn(c, from, to),
+    released: Object.values(c.batches).filter(b => b.released !== undefined && b.released >= from && b.released < to).length,
   };
 }
 
@@ -129,8 +144,8 @@ export function runSeed(db: ContentDb, s: PlantState, variant: Command[], o: Run
   return c;
 }
 
-/** Прогон варианта: итог каждого зерна. Состояние `s` не меняется. */
-export function runPlan(db: ContentDb, s: PlantState, variant: Command[], o: RunOpts): SeedOut[] {
+/** Прогон варианта: итог каждого зерна; `seed` — после каждого зерна (ход прогона, Б5г). Состояние `s` не меняется. */
+export function runPlan(db: ContentDb, s: PlantState, variant: Command[], o: RunOpts, seed?: (k: number) => void): SeedOut[] {
   const open = Object.values(s.batches)
     .filter(b => b.status !== 'released' && b.status !== 'rejected')
     .map(b => b.id);
@@ -142,6 +157,7 @@ export function runPlan(db: ContentDb, s: PlantState, variant: Command[], o: Run
     const c = runSeed(db, s, variant, o, k);
     const to = c.t;
     out.push(measure(db, c, to - o.days * DAY, to, k, open, known, before));
+    seed?.(k);
   }
   return out;
 }
@@ -172,6 +188,17 @@ export interface RunSum {
   busy: { row: string; share: Range }[];
   /** генеральные уборки и переналадки в горизонте (Б2г): сколько и их работа, с, — по зёрнам */
   switches: Record<keyof Switches, Range>;
+  /** в конце горизонта (Б5г): разрешённой ГП, пачек, запас материалов, копейки; сверхурочные в горизонте, с — по зёрнам */
+  fg: Range;
+  stock: Range;
+  ot: Range;
+  /**
+   * по зёрнам (Б5г): заказов со сроком в горизонте, которые сорвутся, — и снимка, и новых; недопоставленных ящиков; серий,
+   * выпущенных в горизонте
+   */
+  failed: Range;
+  short: Range;
+  released: Range;
 }
 
 export function summarize(outs: SeedOut[], days: number): RunSum {
@@ -222,5 +249,11 @@ export function summarize(outs: SeedOut[], days: number): RunSum {
       changes: range(outs.map(o => o.switches.changes)) ?? [0, 0, 0],
       changeSec: range(outs.map(o => o.switches.changeSec)) ?? [0, 0, 0],
     },
+    fg: range(outs.map(o => o.fg)) ?? [0, 0, 0],
+    stock: range(outs.map(o => o.stock)) ?? [0, 0, 0],
+    ot: range(outs.map(o => o.ot)) ?? [0, 0, 0],
+    failed: range(outs.map(o => o.orders.filter(x => !x.ok).length)) ?? [0, 0, 0],
+    short: range(outs.map(o => o.orders.reduce((n, x) => n + x.missing, 0))) ?? [0, 0, 0],
+    released: range(outs.map(o => o.released)) ?? [0, 0, 0],
   };
 }

@@ -1,0 +1,8 @@
+# Уставки, когда игрок уходит с поста «Качество и технология» (Б5г; геймдизайн, §8.5): коллега технологии возвращает их к
+# цели карты или оставляет. С чего начинает завод — запись сценария (`policies.setpoints`)
+id: pol.tech.setpoints
+name: { ru: "Уставки, когда игрок уходит с поста", en: Setpoints when the player leaves the post }
+head: tech
+kind: choice
+options: [target, keep]
+review: draft

@@ -114,6 +114,14 @@ export function staleAsks(s: PlantState) {
   }
 }
 
+/** Политика руководителя сменилась (Б5г): его открытые предложения устарели — он посчитает заново в свой час. */
+export function staleHead(s: PlantState, head: Head) {
+  for (const n of Object.values(s.heads.open)) {
+    const r = recordOf(s, n);
+    if (r && r.by === head) end(s, r, 'stale');
+  }
+}
+
 /** Полночь: отклонённое вчера руководитель может предложить снова. */
 export function headsDay(s: PlantState) {
   if (Object.keys(s.heads.no).length > 0) s.heads.no = {};

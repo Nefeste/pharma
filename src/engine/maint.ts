@@ -12,6 +12,7 @@ import { P_ONE } from './core/rng';
 import { modeOf, moot, propose } from './heads';
 import { note, noteCmd } from './journal';
 import { planOf } from './plant';
+import { numOf, pairOf, POL } from './policies';
 import { expo, roll } from './random';
 import { nextId } from './stock';
 import { etaOf } from './supply';
@@ -124,9 +125,9 @@ export const replaceKey = (part: string) => `replace/${part}`;
  * и машина свободна; решённая замена — как только машина свободна и есть запчасть. Нет запчасти — ремонт ждёт поставки, а
  * ЗИП пополняется. Замена по наработке — в режиме техслужбы (Б5б): «сам» — решает, «советует» — предлагает то же в тот же
  * миг, а замена больше не нужна — предложение «не нужно»; «вручную» — ничего. Ремонт после отказа — в любом режиме.
+ * Порог у каждого узла — политика главного механика (Б5г): с чего начинает завод — запись сценария.
  */
 export function maintStep(db: ContentDb, s: PlantState, notices: Notice[]) {
-  const policy = db.scenarios[s.scenario].maint;
   for (const pt of Object.values(s.parts)) {
     if (pt.task) continue;
     const t = partType(db, pt);
@@ -142,7 +143,7 @@ export function maintStep(db: ContentDb, s: PlantState, notices: Notice[]) {
       }
       continue;
     }
-    const at = policy[pt.id];
+    const at = numOf(db, s, POL.replace, pt.id);
     if (at !== undefined) {
       const need = !pt.plan && wearAt(t, pt.done) >= at;
       const mode = need && idle(s, pt) ? modeOf(s, 'maint') : undefined;
@@ -177,15 +178,16 @@ function repairTask(db: ContentDb, s: PlantState, pt: Part, planned: boolean) {
 
 /**
  * Пополнение по уровню неснижаемого запаса (ГОСТ 27.507-2015, п. 7.3.4): «на складе − в резерве + в заказе» дошло до
- * неснижаемого — заказ до начального уровня.
+ * неснижаемого — заказ до начального уровня. Оба уровня — политика главного механика (Б5г): с чего начинает завод — запись
+ * запчасти.
  */
 function replenish(db: ContentDb, s: PlantState, spare: Id) {
-  const rec = db.spares[spare];
+  const [min, max] = pairOf(db, s, POL.spare, spare)!;
   let level = free(s, spare);
   for (const o of Object.values(s.spareOrders)) if (o.spare === spare && o.status === 'ordered') level += o.qty;
-  if (level > rec.stock.min) return;
-  const id = orderSpare(db, s, spare, rec.stock.max - level);
-  note(s, 'maint', { kind: 'spare', order: id, spare, qty: rec.stock.max - level, why: { level, min: rec.stock.min, max: rec.stock.max } });
+  if (level > min) return;
+  const id = orderSpare(db, s, spare, max - level);
+  note(s, 'maint', { kind: 'spare', order: id, spare, qty: max - level, why: { level, min, max } });
 }
 
 /** Заказ запчасти — как заказ поставщику (1д): предоплата сейчас, остаток с НДС — через `payDays` после поставки. */

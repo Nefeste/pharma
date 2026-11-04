@@ -174,7 +174,12 @@ describe('сборщик базы — на испорченной копии con
       broken({ 'scenarios/proto.yaml': [['assets: { ahead: 14,', 'assets: { ahead: 30,']], 'instruments/balance.yaml': [['cal: { every: 12,', 'cal: { every: 1,']] }),
       'сценарий scn.proto: assets.ahead — срок предупреждения не короче самого короткого интервала, 1 мес.',
     );
-    expect(broken({ 'instruments/balance.yaml': [['cal: { every: 12,', 'cal: { every: 1,']] })).toEqual([]);
+    // политика Б5г: и наибольший срок, какой выберет игрок, — короче самого короткого интервала
+    has(
+      broken({ 'instruments/balance.yaml': [['cal: { every: 12,', 'cal: { every: 1,']] }),
+      'сценарий scn.proto: pol.maint.ahead — наибольший срок предупреждения не короче самого короткого интервала, 1 мес.',
+    );
+    expect(broken({ 'instruments/balance.yaml': [['cal: { every: 12,', 'cal: { every: 1,']], 'policies/maint/ahead.yaml': [['max: 30', 'max: 20']] })).toEqual([]);
   });
 });
 

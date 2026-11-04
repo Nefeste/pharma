@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 34;
+export const SCHEMA = 35;
 
 // ---------------------------------------------------------------- склад
 
@@ -1360,6 +1360,8 @@ export interface OrderWhy {
   rule: 'turn' | 'need' | 'campaign' | 'urgent';
   items: SkuWhy[];
   ahead: number;
+  /** запас позиций по политике (Б5г), суток: порог — две недели и они */
+  cover?: number;
   seen?: number;
   soon?: number;
   prev?: Id;
@@ -1428,8 +1430,11 @@ export type Decided =
   | { kind: 'assess'; dev: string; verdict: 'none' | 'reject'; why?: { tests: TestWhy[] } }
   /** оценка пары «поставщик — изготовитель»: до какого дня одобрение и срок предупреждения, суток */
   | { kind: 'pairEval'; pair: string; how: 'audit' | 'docs'; why: { until: number; ahead: number } }
-  /** визит подрядчика: работа и её мгновение; до какого дня запись (нет — `until` нет) и срок предупреждения, суток */
-  | { kind: 'visit'; asset: string; work: 'qual' | 'cal'; at: number; why: { until?: number; ahead: number } }
+  /**
+   * визит подрядчика: работа и её мгновение; до какого дня запись (нет — `until` нет) и срок предупреждения, суток; у
+   * переноса игроком (Б5г) — прежнее мгновение
+   */
+  | { kind: 'visit'; asset: string; work: 'qual' | 'cal'; at: number; from?: number; why?: { until?: number; ahead: number } }
   /** ремонт после отказа: когда отказал узел, запчасть и сколько её свободно в мастерской */
   | { kind: 'repair'; part: string; why: { failed: number; spare: Id; free: number } }
   /** замена узла: по наработке — износ и порог сценария, доли 1/10 000 */
@@ -1462,11 +1467,36 @@ export type Decided =
   | { kind: 'extend'; contract: string; party: Id; to: number; why: { end: number } }
   /**
    * вывоз отклонённого (Б1з): заказ и мгновение приезда подрядчика; у коллеги склада — сколько мест зоны занято из
-   * скольких и, если паллета ждёт вывоза дольше срока, — с какого мгновения она отклонена и срок, месяцев
+   * скольких и, если паллета ждёт вывоза дольше срока, — с какого мгновения она отклонена и срок, месяцев; с Б5г — и порог
+   * доли мест по политике: числитель и знаменатель
    */
-  | { kind: 'waste'; order?: string; at?: number; why?: { used: number; places: number; since?: number; months: number } }
+  | { kind: 'waste'; order?: string; at?: number; why?: { used: number; places: number; since?: number; months: number; full?: [number, number] } }
   /** режим отдела руководителя (Б5б): игрок сменил его на посту отдела */
-  | { kind: 'mode'; head: Head; mode: DeptMode };
+  | { kind: 'mode'; head: Head; mode: DeptMode }
+  /** политика руководителя (Б5г): игрок задал её — у вещи политики «у каждого» — с прежним значением */
+  | { kind: 'policy'; policy: Id; of?: string; from: PolicyValue; to: PolicyValue };
+
+/**
+ * Значение политики руководителя (Б5г; src/engine/policies.ts): сутки, месяцы или порог износа — доли 1/10 000 ресурса;
+ * «без» — `off`; вариант выбора; уровень ЗИП «осталось — до» или доля мест — пара целых.
+ */
+export type PolicyValue = number | string | [number, number];
+
+/** Смена политики (Б5г): какая, у какой вещи, когда и с какого места игрока, прежнее и новое значение. */
+export interface PolicySet {
+  policy: Id;
+  of?: string;
+  t: number;
+  seat?: SeatId;
+  from: PolicyValue;
+  to: PolicyValue;
+}
+
+/** Политики завода (Б5г): заданные игроком значения по ключу политики (и вещи) — нет ключа — с записи сценария; смены по порядку. */
+export interface PoliciesState {
+  v: Record<string, PolicyValue>;
+  log: PolicySet[];
+}
 
 /**
  * Режим отдела (Б5б; геймдизайн, §8.5): «сам» — руководитель решает по правилу; «советует» — в свой час предлагает то же
@@ -1572,6 +1602,8 @@ export interface PlantState {
   contracts: Record<string, Contract>;
   /** политики отделов (Б4а): сверхурочные — «по потребности» или «только закончить начатое» (src/engine/hours.ts) */
   policy: Record<Dept, OvertimeMode>;
+  /** политики руководителей (Б5г): числа и правила, по которым они решают (src/engine/policies.ts) */
+  policies: PoliciesState;
   /**
    * уставки режимов (Б1ж; src/engine/modes.ts): `<код карты>/<стадия>/<режим>` и `<код инструкции по упаковке>/speed`;
    * ключа нет — цель документа
@@ -1784,7 +1816,11 @@ export type Command =
   | { kind: 'mode'; head: Head; mode: DeptMode; by?: string }
   /** ответ на предложение руководителя (Б5б): номер записи журнала; «Принять» отдаёт его команду от имени игрока */
   | { kind: 'accept'; n: number }
-  | { kind: 'decline'; n: number };
+  | { kind: 'decline'; n: number }
+  /** политика руководителя (Б5г): у политики «у каждого» — вещь, узел или запчасть; значение — в единицах движка */
+  | { kind: 'policy'; policy: Id; of?: string; value: PolicyValue; by?: string }
+  /** перенести визит подрядчика к активу (Б5г): на день — сутки завода от начала его календаря */
+  | { kind: 'visit'; asset: string; day: number; by?: string };
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
@@ -1873,7 +1909,21 @@ export type Refusal =
   | 'noWaste'
   /** предложение (Б5б): такой записи с предложением нет; на него уже ответили, оно устарело или не нужно */
   | 'noAsk'
-  | 'askDone';
+  | 'askDone'
+  /**
+   * политика (Б5г): такой политики или её вещи нет, сценарий её не задаёт; значение вне пределов, не на шаге или не из
+   * вариантов; то же, что сейчас
+   */
+  | 'noPolicy'
+  | 'policyRange'
+  | 'policySame'
+  /**
+   * перенос визита (Б5г): визита нет или он уже идёт; день не рабочий, не позже завтра или позже последнего дня записи в
+   * силе; тот же день
+   */
+  | 'noVisit'
+  | 'visitDay'
+  | 'visitSame';
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
@@ -1962,4 +2012,7 @@ export type Notice =
    * предложение руководителя (Б5б): запись журнала, руководитель и пост отдела; мгновение — до планёрки предложение
    * ждёт её (автопауза, src/app/pauses.ts)
    */
-  | { kind: 'proposal'; n: number; head: Head; seat: SeatId; t: number };
+  | { kind: 'proposal'; n: number; head: Head; seat: SeatId; t: number }
+  /** политика руководителя задана (Б5г); визит подрядчика перенесён — на какое мгновение */
+  | { kind: 'policy'; policy: Id; of?: string; head: Head }
+  | { kind: 'visitMoved'; asset: string; family: AssetFamily; type: Id; inv: number; work: 'qual' | 'cal'; at: number };

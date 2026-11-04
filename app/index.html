@@ -287,6 +287,17 @@
     .kpi .phead .filters { order: 10; flex-basis: 100%; }
     .kpi .kmonth { margin-left: auto; font-size: 12px; white-space: nowrap; }
     .kpi .phead .close { margin-left: 8px; }
+    /* окно «Политики» (Б5г) — как показатели: строка политики — имя, значение с «−» и «+» или вариантами, пределы и кто
+       задал; черновик — полосой акцента слева; итог прогона — таблица двух вариантов */
+    .pol .prow { display: grid; grid-template-columns: minmax(220px, 1.2fr) minmax(240px, 1.4fr) 2fr; gap: 4px 12px; align-items: center; padding: 5px 0 5px 8px; border-bottom: 1px solid rgba(255,255,255,.06); border-left: 3px solid transparent; }
+    .pol .prow.drafted { border-left-color: var(--accent); background: rgba(47,181,201,.06); }
+    .pol .pctl { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .pol .pctl b { min-width: 3.5em; text-align: center; }
+    .pol .pfoot { display: flex; align-items: center; gap: 8px; padding: 8px 0 4px; flex-wrap: wrap; }
+    .pol .pfoot > .muted { margin-right: auto; }
+    .pol .ptab { border-collapse: collapse; margin: 4px 0; }
+    .pol .ptab td, .pol .ptab th { padding: 3px 12px 3px 0; text-align: left; font-variant-numeric: tabular-nums; }
+    .pol .ptab th { color: var(--muted); font-weight: 400; }
     .kpi .khead { display: grid; grid-template-columns: 180px 1fr; gap: 6px 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
     .kpi .khname { font-weight: 600; padding-top: 4px; }
     .kpi .kcells { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -300,6 +311,10 @@
     .kpi .kspark rect.klast { fill: var(--accent); }
     .kpi .kspark rect:hover { fill: #a9bcc2; }
     .kpi .kspark .kbase { stroke: rgba(255,255,255,.14); stroke-width: 1; }
+    .kpi .kspark .kmark line { stroke: var(--yellow); stroke-width: 1; stroke-dasharray: 2 2; }
+    .kpi .kspark .kmark .khit { stroke: transparent; stroke-width: 6; stroke-dasharray: none; }
+    .kpi .kspark .kmark:hover line:first-child { stroke-width: 2; }
+    .kpi .kmarks { font-weight: 400; font-size: 11px; margin-top: 4px; }
     .kpi .ksub { font-size: 11px; }
     .kpi .kwhy { font-size: 12px; align-self: flex-start; }
     .kpi .kwhylist { grid-column: 2; padding: 6px 10px; border-left: 2px solid var(--accent); background: rgba(255,255,255,.03); }

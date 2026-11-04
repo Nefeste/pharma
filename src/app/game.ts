@@ -9,7 +9,8 @@ import { DAY, momentOf } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
 import { planOf } from '../engine/plant';
 import type { Command, DeptMode, Head, Notice } from '../engine/types';
-import { dayText, durText, hText, named, qtyText, T } from '../i18n';
+import type { RunSum } from '../engine/plan/run';
+import { dayText, durText, hText, named, qtyText, T, whenText } from '../i18n';
 import { bakeLook, lodOf, packPeople } from '../render/bake';
 import type { ArtIndex } from '../render/blender';
 import { AT, camDetail, type Detail, ease, speedDetail, type Weights } from '../render/detail';
@@ -27,7 +28,8 @@ import type { Thing, ViewQuery } from '../sim/views';
 import { assetClass, workName } from '../ui/assets';
 import { useDb } from '../ui/db';
 import { commandsOf, draftKey, ordersOf, prune, upsert } from '../ui/draft';
-import { type Actions, holds, type Hud, LIVE, NO_RUN, PLAN_RUN, type Speed, type Store } from '../ui/store';
+import { draftCommands, draftKey as policyKey, sameValue } from '../ui/policy';
+import { type Actions, holds, type Hud, LIVE, NO_POLICY_RUN, NO_RUN, PLAN_RUN, POLICY_RUN, type Speed, type Store } from '../ui/store';
 import { type ArtMode, loadArt } from './art';
 import { keepFirsts, keptFirsts } from './firsts';
 import { andonBoxes, andonMarks, barBoxes, DATA_LAYERS, midSpot, nextLayer, plateBoxes, platesOf } from './floor';
@@ -99,6 +101,12 @@ export class Game {
   /** поток прогона плана (часть 5): заводится к первому прогону; номер последнего «Прогнать план» */
   readonly planner = new PlanClient('./plan.js');
   private planSeq = 0;
+  /** чей прогон идёт в потоке прогона: расписания (часть 5) или политик (Б5г) */
+  planFor: 'gantt' | 'policies' = 'gantt';
+  /** «как сейчас» прогона политик (Б5г) на снимке: снимок тот же — итог тот же, его не считают заново */
+  private policyBase?: { json: string; sum: RunSum; at: number };
+  /** идущий прогон политик: снимок и считают ли с ним «как сейчас» */
+  private policyRun?: { json: string; withBase: boolean };
   scenario!: Scenario;
   layout!: Layout;
   /** что видно на полу: паллеты, фуры, помещения — из срезов */
@@ -189,14 +197,25 @@ export class Game {
     g.client.onSlice = s => g.receive(s);
     g.client.onError = m => store.set({ error: m });
     g.client.start({ kind: 'start', scenario: SCENARIO });
+    // один поток прогона на два окна: расписание (часть 5) и политики (Б5г) — чей прогон идёт, тому и итог
     g.planner.onVariant = m => {
+      if (g.planFor === 'policies') return g.policyVariant(m.index, m.at, m.sum);
       const p = store.get().plan;
       const sums = [...p.sums];
       sums[m.index] = m.sum;
       store.set({ plan: { ...p, at: m.at, sums, batches: { ...p.batches, ...m.batches } } });
     };
-    g.planner.onDone = m => store.set({ plan: { ...store.get().plan, running: false, ms: m.ms } });
-    g.planner.onError = message => store.set({ plan: { ...store.get().plan, running: false, error: message } });
+    g.planner.onSeed = m => {
+      if (g.planFor === 'policies') g.policySeed(m.index, m.k);
+    };
+    g.planner.onDone = m => {
+      if (g.planFor === 'policies') store.set({ policies: { ...store.get().policies, run: { ...store.get().policies.run, running: false, progress: undefined, ms: m.ms } } });
+      else store.set({ plan: { ...store.get().plan, running: false, ms: m.ms } });
+    };
+    g.planner.onError = message => {
+      if (g.planFor === 'policies') store.set({ policies: { ...store.get().policies, run: { ...store.get().policies.run, running: false, progress: undefined, error: message } } });
+      else store.set({ plan: { ...store.get().plan, running: false, error: message } });
+    };
     await g.firstSlice;
     new ResizeObserver(() => g.stage.resize()).observe(host);
     g.bindInput();
@@ -258,6 +277,8 @@ export class Game {
         if (x.open && x.batch === d.batch) this.store.set({ dossier: { ...x, view: d } });
       } else if (d.view === 'ref') {
         if (hud.ref.open) this.store.set({ ref: { ...this.store.get().ref, view: d } });
+      } else if (d.view === 'policies') {
+        if (hud.policies.open) this.store.set({ policies: { ...this.store.get().policies, view: d } });
       } else if (d.view === 'kpi') {
         // окно «Показатели» (Б5ж): вид прежней вкладки или месяца, отправленный до нового запроса, не показываем
         const k = this.store.get().kpi;
@@ -416,6 +437,8 @@ export class Game {
       : n.kind === 'pairSuspended' ? T.notices.pairSuspended(named(this.db.suppliers[n.supplier]?.name, n.supplier), named(this.db.makers[n.maker]?.name, n.maker))
       : n.kind === 'setpoints' ? T.notices.setpoints(n.n)
       : n.kind === 'proposal' ? T.notices.proposal(T.journal.names[n.head] ?? n.head)
+      : n.kind === 'policy' ? T.notices.policy(T.journal.names[n.head] ?? n.head, named(this.db.policies[n.policy]?.name, n.policy))
+      : n.kind === 'visitMoved' ? T.notices.visitMoved(`${workName(n, n.work)} — ${assetClass(n)}, ${T.assets.inv(n.inv)}`, whenText(this.store.get().start, n.at))
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;
@@ -571,6 +594,8 @@ export class Game {
         if (!this.store.get().gantt.open) this.actions.toggleGantt();
       } else if (g.panel === 'lab') {
         if (!this.store.get().lab.open) this.actions.toggleLab();
+      } else if (g.panel === 'policies') {
+        if (!this.store.get().policies.open) this.actions.togglePolicies();
       } else if (g.panel === 'ref') {
         // справочник на вкладке извещения: «Места» (Б3в), «Контрагенты» (Б3г), «Люди» (Б4в)
         if (!this.store.get().ref.open) this.actions.toggleRef();
@@ -616,7 +641,7 @@ export class Game {
       const g = this.store.get().gantt;
       // большое окно поверх карты во всю ширину: панели справа закрываются; закрыли — то, что тянули, отменено
       const open = !g.open;
-      this.store.set({ gantt: { open, days: g.days, draft: g.draft, urgent: g.urgent, ...(g.from !== undefined ? { from: g.from } : {}) }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false } } : {}) });
+      this.store.set({ gantt: { open, days: g.days, draft: g.draft, urgent: g.urgent, ...(g.from !== undefined ? { from: g.from } : {}) }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, ...this.policiesClosed() } : {}) });
       this.sendViews();
     },
     setGanttDays: days => {
@@ -671,7 +696,8 @@ export class Game {
     runPlan: () => {
       // «как сейчас» и черновик, если он есть, — на одних и тех же зёрнах; снимок — строкой от потока расчёта
       const h = this.store.get();
-      if (h.plan.running) return;
+      if (h.plan.running || h.policies.run.running) return;
+      this.planFor = 'gantt';
       const { draft, urgent } = h.gantt;
       const changes = [...commandsOf(draft), ...ordersOf(urgent)];
       const variants: Command[][] = [[], ...(changes.length > 0 ? [changes] : [])];
@@ -691,11 +717,11 @@ export class Game {
     toggleInv: () => {
       // большое окно поверх карты, как расписание: панели справа, расписание и справочник закрываются
       const open = !this.store.get().inv.open;
-      this.store.set({ inv: { open }, ...(open ? { ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false } } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ inv: { open }, ...(open ? { ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     openInv: id => {
-      this.store.set({ inv: { open: true, id }, ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ inv: { open: true, id }, ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     // досье серии (Б1д) — поверх остальных окон: открыли из карточки, «Сейчас» или расписания — они остаются под ним
@@ -712,7 +738,7 @@ export class Game {
       // справочник — большое окно поверх карты, как доска расследования
       const r = this.store.get().ref;
       const open = !r.open;
-      this.store.set({ ref: { ...r, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, kpi: { ...this.store.get().kpi, open: false } } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ ref: { ...r, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     setRefTab: tab => this.store.set({ ref: { ...this.store.get().ref, tab } }),
@@ -730,7 +756,7 @@ export class Game {
       const held = this.store.get().top?.seats?.[0];
       const tab = !k.view && held ? held : k.tab;
       const keep = k.view?.tab === tab && (k.view.month.closed ? k.view.month.from : undefined) === month;
-      this.store.set({ kpi: { open: true, tab, ...(k.why ? { why: k.why } : {}), ...(month !== undefined ? { month } : {}), ...(keep ? { view: k.view } : {}) }, ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ kpi: { open: true, tab, ...(k.why ? { why: k.why } : {}), ...(month !== undefined ? { month } : {}), ...(keep ? { view: k.view } : {}) }, ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, ...this.policiesClosed(), ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     setKpiTab: tab => {
@@ -897,6 +923,65 @@ export class Game {
     answer: (n, ok) => this.client.command({ kind: ok ? 'accept' : 'decline', n }),
     setMode: (head, mode) => this.client.command({ kind: 'mode', head, mode, by: 'player' }),
     maintain: (machine, part) => this.client.command({ kind: 'maintain', machine, part }),
+    togglePolicies: () => {
+      // окно «Политики» (Б5г) — большое, как справочник и показатели: панели справа и другие большие окна закрываются
+      const p = this.store.get().policies;
+      const open = !p.open;
+      this.store.set({ policies: { ...p, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false } } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.sendViews();
+    },
+    setPolicyTab: head => this.store.set({ policies: { ...this.store.get().policies, tab: head } }),
+    draftPolicy: (policy, of, value) => {
+      // то же, что сейчас, — из черновика; `overtime` с отделом — сверхурочные отдела (Б4а)
+      const p = this.store.get().policies;
+      const key = policyKey(policy, of);
+      const tabs = p.view?.tabs ?? [];
+      const now = policy === 'overtime' ? tabs.flatMap(x => x.overtime).find(o => o.dept === of)?.mode : tabs.flatMap(x => x.rows).find(r => r.policy === policy && r.of === of)?.value;
+      const draft = { ...p.draft };
+      if (now !== undefined && sameValue(now, value)) delete draft[key];
+      else draft[key] = value;
+      this.store.set({ policies: { ...p, draft } });
+    },
+    runPolicies: () => {
+      // «как сейчас» и черновик на одних и тех же зёрнах (Б5г); «как сейчас» снимка, уже посчитанное, — из запаса
+      const h = this.store.get();
+      const p = h.policies;
+      const cmds = draftCommands(p.draft);
+      if (p.run.running || h.plan.running || cmds.length === 0) return;
+      this.planFor = 'policies';
+      this.store.set({ policies: { ...p, run: { ...NO_POLICY_RUN, running: true, key: JSON.stringify(p.draft), progress: { index: 0, k: 0 } } } });
+      const seq = ++this.planSeq;
+      void this.client.save().then(json => {
+        if (seq !== this.planSeq || !this.store.get().policies.run.running) return;
+        const base = this.policyBase?.json === json ? this.policyBase : undefined;
+        this.policyRun = { json, withBase: !base };
+        if (base) {
+          const q = this.store.get().policies;
+          this.store.set({ policies: { ...q, run: { ...q.run, at: base.at, sums: [base.sum], progress: { index: 1, k: 0 } } } });
+        }
+        this.planner.run(json, base ? [cmds] : [[], cmds], POLICY_RUN.days, POLICY_RUN.seeds);
+      });
+    },
+    stopPolicies: () => {
+      const p = this.store.get().policies;
+      if (!p.run.running) return;
+      this.planSeq++;
+      this.planner.stop();
+      this.store.set({ policies: { ...p, run: NO_POLICY_RUN } });
+    },
+    applyPolicies: () => {
+      // черновик — команды `policy` игрока по порядку; политики чужого поста окно не даёт задать, движок отказал бы (3е)
+      const p = this.store.get().policies;
+      const cmds = draftCommands(p.draft);
+      if (cmds.length === 0) return;
+      for (const cmd of cmds) this.client.command({ ...cmd, by: 'player' });
+      this.store.set({ policies: { ...p, draft: {} } });
+    },
+    resetPolicies: () => {
+      const p = this.store.get().policies;
+      if (Object.keys(p.draft).length > 0) this.store.set({ policies: { ...p, draft: {} } });
+    },
+    moveVisit: (asset, day) => this.client.command({ kind: 'visit', asset, day, by: 'player' }),
     togglePo: () => {
       const po = this.store.get().po;
       this.store.set({ po: { ...po, open: !po.open } });
@@ -1005,6 +1090,30 @@ export class Game {
   }
 
   /** Расписание закрыто: черновик и окно времени остаются. */
+  /** Итог варианта прогона политик (Б5г): «как сейчас» — ещё и в запас снимка. */
+  policyVariant(index: number, at: number, sum: RunSum) {
+    const p = this.store.get().policies;
+    const run = this.policyRun;
+    const i = run?.withBase ? index : index + 1;
+    if (run?.withBase && index === 0) this.policyBase = { json: run.json, sum, at };
+    const sums = [...p.run.sums];
+    sums[i] = sum;
+    this.store.set({ policies: { ...p, run: { ...p.run, at, sums } } });
+  }
+
+  /** Ход прогона политик (Б5г): вариант и сколько его зёрен готово. */
+  policySeed(index: number, k: number) {
+    const p = this.store.get().policies;
+    const i = this.policyRun?.withBase ? index : index + 1;
+    this.store.set({ policies: { ...p, run: { ...p.run, progress: { index: i, k: k + 1 } } } });
+  }
+
+  /** Окно «Политики» закрыто (Б5г): черновик и прогон остаются — их видно, когда окно откроют снова. */
+  private policiesClosed(): Partial<Hud> {
+    const p = this.store.get().policies;
+    return p.open ? { policies: { ...p, open: false } } : {};
+  }
+
   private ganttClosed(): Partial<Hud> {
     const g = this.store.get().gantt;
     return { gantt: { open: false, days: g.days, draft: g.draft, urgent: g.urgent, ...(g.from !== undefined ? { from: g.from } : {}) } };
@@ -1042,6 +1151,7 @@ export class Game {
     if (h.ref.open) list.push({ id: 'ref', view: 'ref' });
     if (h.po.open) list.push({ id: 'po', view: 'po', ...(h.po.supplier ? { supplier: h.po.supplier } : {}), lines: h.po.lines.map(l => ({ material: l.material, qty: l.qty })) });
     if (h.kpi.open) list.push({ id: 'kpi', view: 'kpi', tab: h.kpi.tab, ...(h.kpi.why ? { why: h.kpi.why } : {}), ...(h.kpi.month !== undefined ? { month: h.kpi.month } : {}) });
+    if (h.policies.open) list.push({ id: 'policies', view: 'policies' });
     // «Сейчас» — и при закрытой панели: карточке — для «Смотреть», смотрящему — чтобы знать, когда работа кончилась
     if (h.now.open || this.selected || this.watching) list.push({ id: 'now', view: 'now' });
     // «Пол» (Б1и) — пока включён слой «Загрузка» или «Узкие места» (Б1к) и пока открыта карточка помещения или машины: в
@@ -1266,6 +1376,7 @@ export class Game {
       else if (k === 'KeyN') this.actions.toggleNow();
       else if (k === 'KeyJ') this.actions.toggleJournal();
       else if (k === 'KeyK') this.actions.toggleKpi();
+      else if (k === 'KeyP') this.actions.togglePolicies();
       else if (k === 'KeyL') this.actions.nextLayer();
       else if (k === 'F1') {
         e.preventDefault();
@@ -1286,6 +1397,7 @@ export class Game {
         else if (h.inv.open) this.actions.toggleInv();
         else if (h.ref.open) this.actions.toggleRef();
         else if (h.kpi.open) this.actions.toggleKpi();
+        else if (h.policies.open) this.actions.togglePolicies();
         else if (h.morning.open) this.actions.closeMorning(false);
         else if (h.cash.open) this.actions.toggleCash();
         else if (h.lab.open) this.actions.toggleLab();

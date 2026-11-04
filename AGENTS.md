@@ -282,6 +282,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   packs, receivables and payables, taken places, people without full admission — summed per month; at 00:00 on the 1st
   the month's results written into the state and never changed, the month's kWh taken before cash resets the meter;
   the same functions for the window, the meeting and the post's summary — `kpiValues`, `kpiPick`, `sincePeriod`),
+  `policies.ts` (with Б5г, the heads' policies — the numbers and rules a head decides by in his hour: in the plant's
+  state the player's values by the policy's key, of a part or a spare for a policy «of each», and the history of
+  changes; no key — the scenario's record; kinds, ranges and steps in `content/policies/`; the `policy` command of the
+  head's department post or the director — out of range, off a step or the same value refused, a journal record «you»
+  with the previous value, the head's open proposals stale; rules read it in their hour, a reason names it),
   `waste.ts` (with Б1з, the removal of rejected material: the
   `waste` command of the «Снабжение и склад» post — the contractor on the next workday at the start of his hours; by the
   warehouse head's mode (Б5б), the warehouse colleague at 09:00 on a workday when two thirds of the zone's places
@@ -305,7 +310,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   within the interval less the warning period; why an asset takes no new work — no record in force or a contractor visit;
   the techservice colleague books a visit at 09:00 on a workday for the next workday; the contractor starts in his hours
   once the asset is free, the bill on the visit day, the acceptance by the QC head or the QA specialist; a pallet stored
-  only in a zone whose regime fits and whose sensor is fit; what holds a stage or a line), `partners.ts` (makers and
+  only in a zone whose regime fits and whose sensor is fit; what holds a stage or a line; with Б5г «Перенести визит» —
+  the `visit` command: a workday from tomorrow to the last day of the record in force, a running visit refused),
+  `partners.ts` (makers and
   suppliers — the maker itself or a distributor; approved supplier–maker pairs from the material spec in force; pair
   approvals with a term, start records by a hash, not before the pair entered a spec; the quality colleague books an
   evaluation at 09:00 on a workday — an audit at the maker by a third-party auditor, the bill with the report, or a
@@ -371,7 +378,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   plant's answer to the draft and the supply rule's orders for «Предложить» (`po.ts`); with Б5ж, the indicators — tabs
   of the places, held ones first, the heads' rows of the current or a chosen closed month with last month, 12 closed
   months, better or worse by direction — a sum of the month per day —, «Почему?» — the records behind a number with
-  their links, and the meeting's «Итоги месяца» on the first meeting after a close (`kpi.ts`); with Б1и, the floor —
+  their links, and the meeting's «Итоги месяца» on the first meeting after a close, with Б5г a head's policy changes at
+  the bars of their months and of the window's month (`kpi.ts`); with Б5г, the policies — tabs of the heads, held posts
+  first, a policy's value, range and step, who set it and when, how many journal decisions of 30 days read it, the
+  departments' overtime (`policies.ts`); with Б1и, the floor —
   rooms and line machines over today, yesterday or
   seven days, the key machine and OEE by the meeting's `lineSum`, the plan-vs-actual board of the shift by hours, the
   batch a held room leads to — records of the plant, and with Б1к the hours batches waited at each place over the
@@ -387,9 +397,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   new not-before times and new urgent batch orders, the old bars of what the draft moves, and the ghost of a dragged
   batch order (`plan.ts`), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how far the window's
   clock ran ahead of the last slice; at most one `tick` in flight); the plan run's own thread — a second Web Worker over
-  the same engine (`planHost.ts`, `planWorker.ts` → `dist/plan.js`) and its client in the window (`planClient.ts`; a
-  stop terminates the thread). The window never runs the engine. Saves cross the thread boundary as a string: the window
-  never parses the state with the true lot properties — the plan run gets the same string.
+  the same engine (`planHost.ts`, `planWorker.ts` → `dist/plan.js`; with Б5г the progress after each seed) and its
+  client in the window (`planClient.ts`; a stop terminates the thread). The window never runs the engine. Saves cross
+  the thread boundary as a string: the window never parses the state with the true lot properties — the plan run gets
+  the same string.
 - `src/app/` — the game in the window: content, stage, clock and speeds with live time 1:1, input, panels (`game.ts`,
   `main.tsx`); what the slice puts on the floor — pallets, trucks, rooms, pallets on forks (`scene.ts`); where people
   and vehicles are now — a pure function of the tasks in the slice and the clock, on the plan's routes and with the
@@ -441,7 +452,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   Б5б the proposals with «Принять» and «Отклонить» — in the journal, the meeting and the card — and the mode bar
   (`Journal.tsx`), the «Заказ поставщику» window from the warehouse panel — supplier, lines, «Предложить», «Отправить»
   (`Po.tsx`), the indicators window — K, tabs, tiles with 12 bars, the formula and source on hover, «Почему?», the
-  month arrows (`Kpi.tsx`), the layers menu on the left with the window and the legend, the column tooltip and the
+  month arrows, with Б5г the dashed day of a policy change (`Kpi.tsx`), the «Политики» window — P, tabs of the heads,
+  rows with «−» and «+» or options, the draft, «Прогнать» on 13 weeks and 5 seeds with the progress by seeds and
+  «Стоп», «Применить», «Сбросить» (`Policies.tsx`) and its pure rules — a value in words, the next one by a step, the
+  draft's commands (`policy.ts`), the layers menu on the left with the window and the legend, the column tooltip and the
   card's «Загрузка» block (`Layers.tsx`), quality attribute and
   process parameter
   values in words (`units.ts`), what is going on now with «Смотреть»
@@ -470,7 +484,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   line of a recipe's composition; with Б1е — the minor and general cleaning of a line machine that touches tablets; with
   Б1ж — a parameter's setpoint step, the turret speed of compression, a part's load by a parameter (`stress`), a cause's
   IPC scatter, a line machine's rated speed and the blister machine's speed factors (`fast`), a SKU's blister speed;
-  with Б1з — the scenario's contractor `waste`: his hours, the minutes of the handover signature and the prices);
+  with Б1з — the scenario's contractor `waste`: his hours, the minutes of the handover signature and the prices; with
+  Б5г — `policies/`: the heads' policies — the head by the id, the kind, range and step, «off», of each part or spare);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a

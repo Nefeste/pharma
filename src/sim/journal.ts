@@ -9,6 +9,7 @@ import { batchNo } from '../engine/batchno';
 import { MODED, modeOf as deptMode } from '../engine/heads';
 import { DEPT_HEAD, HEAD_SEAT } from '../engine/journal';
 import { planOf } from '../engine/plant';
+import { policyHead } from '../engine/policies';
 import { foreign, held } from '../engine/seats';
 import { unitsOfLot } from '../engine/stock';
 import { quotePo } from '../engine/supply';
@@ -136,6 +137,8 @@ function headOf(db: ContentDb, d: Decided): Head {
       return 'wms';
     case 'mode':
       return d.head;
+    case 'policy':
+      return policyHead(d.policy) ?? 'plan';
   }
 }
 
@@ -227,6 +230,12 @@ export function refOf(db: ContentDb, s: PlantState, d: Decided, ask?: Ask): Jour
       return personRef(s, hiredAs(s, d.cand));
     case 'setpoint':
       return { mode: modeOf(db, d.key) };
+    case 'policy': {
+      // политика узла (Б5г): вид машины и узла, к машине на полу
+      const pt = d.of ? s.parts[d.of] : undefined;
+      const thing = pt ? thingOf(db, s, pt.machine, plan) : undefined;
+      return pt ? { machine: pt.of, part: pt.type, ...(thing ? { thing } : {}) } : {};
+    }
     default:
       return {};
   }

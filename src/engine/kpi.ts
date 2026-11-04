@@ -371,7 +371,7 @@ export function kpiSnapshot(db: ContentDb, s: PlantState): Omit<KpiSnap, 'n' | '
  * Сверхурочные людей и ушедших, с: отрезки табеля, кончившиеся в [from, to), — целиком. Отрезок пишется, когда работа
  * кончилась, поэтому за сутки — то, что кончилось в них, а работа через полночь — в сутки своего конца.
  */
-function otIn(s: PlantState, from: number, to: number): number {
+export function otIn(s: PlantState, from: number, to: number): number {
   let sec = 0;
   for (const p of [...Object.values(s.people), ...Object.values(s.former)]) for (const [a, b] of p.ot) if (b >= from && b < to) sec += b - a;
   return sec;

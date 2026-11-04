@@ -210,7 +210,13 @@ export const scenario = z.strictObject({
    * политики отделов на старте (Б4а): сверхурочные — «по потребности» (задачу ставят и тогда, когда она кончится после
    * смены, в пределах закона) или «только закончить начатое»
    */
-  policies: z.strictObject({ overtime: z.enum(['need', 'finish']) }),
+  policies: z.strictObject({
+    overtime: z.enum(['need', 'finish']),
+    /** уборка после серии (Б5г): малая сразу, генеральная — перед другим продуктом, или генеральная сразу, если следующая серия — другой продукт */
+    clean: z.enum(['minor', 'major']),
+    /** уставки, когда игрок уходит с поста «Качество и технология» (Б5г): к цели карты или оставить */
+    setpoints: z.enum(['target', 'keep']),
+  }),
   /**
    * учётный период суммированного учёта сменных графиков по циклу (Б4б; ст. 104 ТК РФ), месяцев: делитель года, не
    * длиннее года — load.ts
@@ -291,6 +297,9 @@ export const scenario = z.strictObject({
       sign: z.number().int().min(1).max(240),
       trip: z.number().positive(),
       pallet: z.number().positive(),
+      /** порог коллеги склада (Б5г): заняты столько мест зоны — числитель и знаменатель доли — или паллета ждёт `keep` месяцев */
+      full: z.tuple([z.number().int().positive(), z.number().int().positive()]).refine(([a, b]) => a <= b, { message: 'доля больше целого' }),
+      keep: z.number().int().min(1).max(10),
     })
     .optional(),
   /**
@@ -1065,6 +1074,40 @@ export const investigation = z
     review,
   });
 
+/**
+ * Политика руководителя (Б5г; геймдизайн, §8.5; docs/specs/2026-10-vertical-slice.md, «Б5г»): число или правило, по
+ * которому руководитель решает в свой час. С чего начинает завод — запись сценария; здесь — что задают и в каких пределах
+ * (гипотезы). Сутки и месяцы — от `min` до `max` с шагом `step`; износ узла — % ресурса так же, а `off` — «после отказа»;
+ * уровень ЗИП — «осталось столько — заказать до стольких»: два целых от `min` до `max`, первое меньше; выбор — из
+ * `options`; доля мест — из `shares`. `each` — своя у каждого узла или каждой запчасти; `off` у суток — «без».
+ */
+export const policy = z
+  .strictObject({
+    id: z.string(),
+    name: text,
+    head: z.enum(['plan', 'supply', 'maint', 'mes', 'wms', 'tech']),
+    kind: z.enum(['days', 'months', 'wear', 'level', 'choice', 'share']),
+    each: z.enum(['part', 'spare']).optional(),
+    min: z.number().int().min(0).optional(),
+    max: z.number().int().positive().optional(),
+    step: z.number().int().positive().optional(),
+    off: z.literal(true).optional(),
+    options: z.array(id).min(2).optional(),
+    shares: z.array(z.tuple([z.number().int().positive(), z.number().int().positive()]).refine(([a, b]) => a <= b, { message: 'доля больше целого' })).min(2).optional(),
+    source: sources.optional(),
+    review,
+  })
+  .superRefine((p, ctx) => {
+    const numeric = p.kind === 'days' || p.kind === 'months' || p.kind === 'wear';
+    if (numeric || p.kind === 'level') {
+      if (p.min === undefined || p.max === undefined || p.min >= p.max) ctx.addIssue({ code: 'custom', message: 'нужны min и max, min меньше max' });
+      if (numeric && (p.step === undefined || (p.max! - p.min!) % p.step !== 0)) ctx.addIssue({ code: 'custom', message: 'от min до max — целое число шагов step' });
+    }
+    if (p.kind === 'choice' && !p.options) ctx.addIssue({ code: 'custom', message: 'у выбора нужны options' });
+    if (p.kind === 'share' && !p.shares) ctx.addIssue({ code: 'custom', message: 'у доли мест нужны shares' });
+    if (p.kind === 'wear' && p.max! > 100) ctx.addIssue({ code: 'custom', message: 'износ — не больше 100 % ресурса' });
+  });
+
 /** Папка в content/ → приставка идентификатора и схема. */
 export const KINDS = {
   profiles: { prefix: 'prf', schema: profile },
@@ -1093,6 +1136,7 @@ export const KINDS = {
   regimes: { prefix: 'reg', schema: regime },
   makers: { prefix: 'mkr', schema: maker },
   agreements: { prefix: 'qag', schema: agreement },
+  policies: { prefix: 'pol', schema: policy },
 } as const;
 
 export type Kind = keyof typeof KINDS;

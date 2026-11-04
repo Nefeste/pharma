@@ -724,7 +724,7 @@ function finish(db: ContentDb, s: PlantState, line: Line, g: Geo, b: Batch, noti
   delete line.batch;
   line.clear = false;
   // помещение линии — грязное после серии, уборка сразу, как в помещениях производства (Б1е)
-  leaveRoom(db, s, roomOfLine(db, s, line), b.product);
+  leaveRoom(db, s, roomOfLine(db, s, line), b.product, b.id);
   line.packs += goodCartons;
   line.made = 0;
   for (const t of tasksOf(s, line, 'crew')) {

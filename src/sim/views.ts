@@ -15,6 +15,7 @@ import { inForce } from '../engine/docs';
 import { CLEAN_HOLD, DIRTY_HOLD } from '../engine/mes';
 import { speedOf } from '../engine/modes';
 import { planOf } from '../engine/plant';
+import { numOf, POL } from '../engine/policies';
 import { pendingOf } from '../engine/shifts';
 import { shiftEnd } from '../engine/staff';
 import { TAG } from '../engine/stock';
@@ -27,6 +28,7 @@ import { type FloorQuery, type FloorView, floorView } from './floor';
 import { type SaView, type SheetView, saOf, sheetOf } from './hours';
 import { type InvQuery, type InvView, invView } from './inv';
 import { type JournalQuery, type JournalView, journalView, whoAsset, whoBatch, whoLot, whoMachine, whoPerson, type WhoRow } from './journal';
+import { type PoliciesQuery, type PoliciesView, policiesView } from './policies';
 import { type PoQuery, type PoView, poView } from './po';
 import { type ChartQuery, type ChartView, chartView, type LabQuery, type LabView, labView } from './lab';
 import { type EqState, eqStateOf } from './pack';
@@ -73,7 +75,7 @@ export interface CardQuery {
   thing: Thing;
 }
 
-export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery | PoQuery);
+export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery | PoQuery | PoliciesQuery);
 
 /** Место паллеты: место плана (номер по порядку), помещение (номер по порядку), фура. */
 export type PlaceRef = { k: 'slot'; i: number } | { k: 'room'; i: number } | { k: 'truck'; n: number; customer: boolean; waste?: true };
@@ -298,7 +300,7 @@ export interface CardView {
   card: CardData;
 }
 
-export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView | PoView;
+export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView | PoView | PoliciesView;
 
 const num = (id: string) => Number(id.slice(1));
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
@@ -508,7 +510,6 @@ function holdsOf(db: ContentDb, s: PlantState, u: Unit): Holds {
 }
 
 function partsOfMachine(db: ContentDb, s: PlantState, machine: string): PartInfo[] {
-  const policy = db.scenarios[s.scenario].maint;
   return Object.values(s.parts)
     .filter(p => p.machine === machine)
     .map(p => {
@@ -517,7 +518,9 @@ function partsOfMachine(db: ContentDb, s: PlantState, machine: string): PartInfo
       const spare = sp ? sp.qty - sp.reserved : 0;
       // те же отказы, что у команды `maintain` (src/engine/maint.ts)
       const no = p.state !== 'ok' || p.task || p.plan ? ('busy' as const) : spare <= 0 ? ('noSpare' as const) : undefined;
-      return { type: p.type, wear: wearAt(ty, p.done), failed: p.state === 'failed', repair: p.task !== undefined, ...(policy[p.id] !== undefined ? { at: policy[p.id] } : {}), ...(p.plan ? { plan: true as const } : {}), spare, work: ty.replace, ...(no ? { no } : {}) };
+      // порог замены по наработке — политика главного механика (Б5г); «после отказа» — порога нет
+      const at = numOf(db, s, POL.replace, p.id);
+      return { type: p.type, wear: wearAt(ty, p.done), failed: p.state === 'failed', repair: p.task !== undefined, ...(at !== undefined ? { at } : {}), ...(p.plan ? { plan: true as const } : {}), spare, work: ty.replace, ...(no ? { no } : {}) };
     });
 }
 
@@ -781,6 +784,8 @@ export function viewOf(db: ContentDb, s: PlantState, q: ViewQuery): ViewData {
       return kpiView(db, s, q);
     case 'po':
       return poView(db, s, q);
+    case 'policies':
+      return policiesView(db, s);
   }
 }
 

@@ -6,7 +6,7 @@ import type { Layer } from '../app/floor';
 import type { Go, Pause } from '../app/pauses';
 import type { Dept, Id, OvertimeMode, SeatId } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
-import type { DeptMode, Head } from '../engine/types';
+import type { DeptMode, Head, PolicyValue } from '../engine/types';
 import type { RunSum } from '../engine/plan/run';
 import type { Change } from '../engine/plan/schedule';
 import type { Lang } from '../i18n';
@@ -18,6 +18,7 @@ import type { FloorView, FloorWin } from '../sim/floor';
 import type { InvView } from '../sim/inv';
 import type { JournalView } from '../sim/journal';
 import type { PoView } from '../sim/po';
+import type { PoliciesView } from '../sim/policies';
 import type { KpiView } from '../sim/kpi';
 import type { ChartView, LabView } from '../sim/lab';
 import type { BatchLabel, GanttView, GhostView } from '../sim/plan';
@@ -119,6 +120,11 @@ export interface Hud {
   /** окно «Показатели» (Б5ж): открыто ли, вкладка — место, у какого показателя открыт «Почему?», вид */
   kpi: { open: boolean; tab: SeatId; why?: string; month?: number; view?: KpiView };
   /**
+   * окно «Политики» (Б5г): открыто ли, вкладка — руководитель, вид; черновик — новые значения по ключу политики и вещи;
+   * прогон черновика на 13 неделях
+   */
+  policies: { open: boolean; tab?: Head; view?: PoliciesView; draft: Readonly<Record<string, PolicyValue>>; run: PolicyRun };
+  /**
    * слой слева (Б1и; геймдизайн, §3.6, §18): обычный вид; «Загрузка и OEE» — столбики, числа, доски «План — факт»;
    * «Узкие места» и «Проблемы» (Б1к) — таблички над местами, где серии ждут, и значки андона; «Потоки — люди» (Б1г) —
    * стрелки переходов людей между помещениями вместо перевозок паллет
@@ -166,6 +172,25 @@ export interface PlanRun {
 
 export const NO_RUN: PlanRun = { running: false, variants: 0, sums: [], batches: {} };
 
+/**
+ * Прогон политик (Б5г): идёт ли; ход — вариант и сколько зёрен готово; черновик, с которым прогнали, строкой; мгновение
+ * снимка; итоги «как сейчас» и с черновиком; ошибка.
+ */
+export interface PolicyRun {
+  running: boolean;
+  progress?: { index: number; k: number };
+  key?: string;
+  at?: number;
+  sums: (RunSum | undefined)[];
+  ms?: number;
+  error?: string;
+}
+
+export const NO_POLICY_RUN: PolicyRun = { running: false, sums: [] };
+
+/** Прогон политик (Б5г): 13 недель × 5 зёрен — на 13 неделях политика видна (замер спецификации, «Б5г»). */
+export const POLICY_RUN = { days: 91, seeds: 5 };
+
 /** Прогон плана в прототипе: 14 суток × 5 зёрен (спецификация прототипа, часть 5; геймдизайн, §9.5). */
 export const PLAN_RUN = { days: 14, seeds: 5 };
 
@@ -210,6 +235,7 @@ export const initial: Hud = {
   seats: { open: false, pick: [] },
   ref: { open: false, tab: 'recipes' },
   kpi: { open: false, tab: 'director' },
+  policies: { open: false, draft: {}, run: NO_POLICY_RUN },
   layer: 'plain',
   floor: { win: 'today' },
   andon: {},
@@ -337,6 +363,19 @@ export interface Actions {
    * закрытый по мгновению начала, нет — нынешний; открыть на месяце — рычаг «Итогов месяца»
    */
   toggleKpi(): void;
+  /**
+   * окно «Политики» (Б5г): открыть или закрыть (P), вкладка руководителя; новое значение — в черновик (то же, что сейчас, —
+   * из черновика); прогнать черновик и «как сейчас» на 13 неделях, прервать; применить — команды `policy`; сбросить
+   */
+  togglePolicies(): void;
+  setPolicyTab(head: Head): void;
+  draftPolicy(policy: Id, of: string | undefined, value: PolicyValue): void;
+  runPolicies(): void;
+  stopPolicies(): void;
+  applyPolicies(): void;
+  resetPolicies(): void;
+  /** перенести визит подрядчика к активу на день (Б5г) — команда `visit` */
+  moveVisit(asset: string, day: number): void;
   setKpiTab(tab: SeatId): void;
   kpiWhy(id: string): void;
   setKpiMonth(month?: number): void;

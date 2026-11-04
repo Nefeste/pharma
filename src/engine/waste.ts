@@ -1,6 +1,7 @@
 // Вывоз отклонённого (Б1з; docs/specs/2026-10-vertical-slice.md, «Б1з»; геймдизайн, §4.5): вывоз на уничтожение заказывает
 // склад — команда `waste` поста «Снабжение и склад»; в режиме отдела «сам» — заведующий складом в 09:00 рабочего дня, когда
-// в зоне отклонённого заняты две трети мест или паллета ждёт вывоза дольше срока, в режиме «советует» — предлагает (Б5б). Вывоз один: пока подрядчик не уехал,
+// в зоне отклонённого заняты две трети мест или паллета ждёт вывоза дольше срока (с Б5г — по его политике), в режиме
+// «советует» — предлагает (Б5б). Вывоз один: пока подрядчик не уехал,
 // второго не заказывают. Подрядчик по договору приезжает на следующий рабочий день к началу своих часов; его фура встаёт
 // к рампе отгрузки, как фура покупателя (market.ts, `dockNext`), а рампа занята — ждёт во дворе до конца его часов и
 // приедет снова на следующий рабочий день. Кладовщик и водитель грузят в кузов всё, что лежит в зоне, когда фура встала;
@@ -15,6 +16,7 @@ import { modeOf, moot, propose } from './heads';
 import { note, noteCmd } from './journal';
 import { dockWait } from './lean';
 import { planOf } from './plant';
+import { numOf, pairOf, POL } from './policies';
 import { nextId } from './stock';
 import { addTask } from './tasks';
 import type { Command, Notice, PlantState, Task, Truck, Unit, WasteEntry, WasteLot } from './types';
@@ -29,13 +31,6 @@ export const WASTE_PRIO = { load: 45, sign: 40 } as const;
 
 /** Коллега склада смотрит зону в 09:00 рабочего дня, как коллега снабжения — заказы (гипотеза). */
 export const WASTE_HOUR = 9 * HOUR;
-
-/**
- * Правило коллеги склада (геймдизайн, §4.5, гипотезы): заняты две трети мест зоны — `FULL[0] / FULL[1]`; паллета ждёт
- * вывоза дольше `KEEP` месяцев с решения об отклонении — чтобы не выйти за 11 месяцев накопления отходов (`fz-89`, ст. 1).
- */
-export const FULL = [2, 3] as const;
-export const KEEP = 10;
 
 /** Паллеты в зоне отклонённого: на местах зоны, по порядку мест плана. */
 export function zoneUnits(db: ContentDb, s: PlantState): Unit[] {
@@ -114,19 +109,22 @@ export function wasteHour(db: ContentDb, s: PlantState, notices: Notice[]) {
 export const WASTE_KEY = 'waste';
 
 /**
- * Нужен ли вывоз по правилу склада (Б1з; геймдизайн, §4.5): заняты две трети мест зоны или паллета ждёт вывоза дольше
- * срока. Причина — сколько мест занято из скольких, а по сроку — с какого мгновения отклонена самая давняя паллета; вывоз
- * уже заказан или нужды нет — нет.
+ * Нужен ли вывоз по правилу склада (Б1з; геймдизайн, §4.5): заняты столько мест зоны или паллета ждёт вывоза дольше
+ * срока с решения об отклонении — чтобы не выйти за 11 месяцев накопления отходов (`fz-89`, ст. 1). Доля мест и срок —
+ * политики заведующего складом (Б5г): с чего начинает завод — запись сценария. Причина — сколько мест занято из
+ * скольких, а по сроку — с какого мгновения отклонена самая давняя паллета; вывоз уже заказан или нужды нет — нет.
  */
 function wasteWhy(db: ContentDb, s: PlantState, today: number) {
   if (s.waste.order) return undefined;
   const units = zoneUnits(db, s);
   if (units.length === 0) return undefined;
   const places = zonePlaces(db, s);
-  const full = units.length * FULL[1] >= places * FULL[0];
+  const [num, den] = pairOf(db, s, POL.full)!;
+  const months = numOf(db, s, POL.keep)!;
+  const full = units.length * den >= places * num;
   const since = Math.min(...units.map(u => rejectedAt(s, u)));
-  const old = addMonths(momentOf(s.start, since).day, KEEP) <= today;
-  return full || old ? { used: units.length, places, ...(old ? { since } : {}), months: KEEP } : undefined;
+  const old = addMonths(momentOf(s.start, since).day, months) <= today;
+  return full || old ? { used: units.length, places, ...(old ? { since } : {}), months, full: [num, den] as [number, number] } : undefined;
 }
 
 /**

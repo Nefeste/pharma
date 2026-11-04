@@ -102,8 +102,9 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # then the S&OP meeting of 3 September (e2e-sop.mjs, sop.png), then the materials of
                                    # 2 September (e2e-mrp.mjs, mrp.png), then the plan edits — a commerce event at the
                                    # meeting, a priced edit in the frozen horizon, the horizon policy (e2e-edits.mjs,
-                                   # edits.png);
-                                   # `-- --only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits` for one
+                                   # edits.png), then the sources — a pair approval to its trial lot, the offers of a
+                                   # planned order (e2e-sources.mjs, sources.png; `--long 1` — on to the dossier filing);
+                                   # `-- --only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits|sources` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -721,7 +722,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   «Утвердить», the journal and the rule's batch order by the plan (`e2e-sop.mjs`), the materials — the meeting's block
   on 2 September, the «Материалы» tab, «Заказать» and «Отправить», «Ускорить» and the journal (`e2e-mrp.mjs`), the
   plan edits — a commerce event at the meeting, a batch order dragged inside the frozen horizon with its price,
-  «Утвердить» and the journal, the horizon policy and its edge (`e2e-edits.mjs`), the
+  «Утвердить» and the journal, the horizon policy and its edge (`e2e-edits.mjs`), the sources — candidate pairs and
+  «Одобрить пару» to the trial lot with its promised day, the trial PO in the «Материалы» tab, a planned order's
+  «Предложения» and «Заказать», with `--long 1` on to the dossier filing (`e2e-sources.mjs`), the
   «code —
   Blender» sheet
   of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench

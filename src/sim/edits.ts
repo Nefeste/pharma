@@ -3,6 +3,7 @@
 // знает завод; истины тут нет.
 import type { ContentDb, Id, SeatId } from '../content/types';
 import type { EditPrice, PlantState } from '../engine/types';
+import { laterCodes } from './journal';
 
 /** Событие коммерции: крупный заказ — со сроком и номером заказа, снятый спрос — без. */
 export interface EventRow {
@@ -24,6 +25,8 @@ export interface EditRow {
   by: 'player' | 'head';
   seat?: SeatId;
   price: EditPrice;
+  /** номера серий заданий, которые кончат позже, — у тех, кому номер выдан */
+  codes?: Record<string, string>;
 }
 
 export interface EditsMeeting {
@@ -40,8 +43,10 @@ export function editsMeeting(_db: ContentDb, s: PlantState, from: number, at: nu
     const d = r.d;
     if (d.kind === 'bigOrder') events.push({ t: r.t, kind: 'big', customer: d.customer, sku: d.sku, cases: d.cases, due: d.due, order: d.order });
     else if (d.kind === 'demandCut') events.push({ t: r.t, kind: 'cut', customer: d.customer, sku: d.sku, cases: d.cases });
-    else if ((d.kind === 'order' || d.kind === 'cancel' || d.kind === 'shift') && d.frozen)
-      edits.push({ t: r.t, kind: d.kind, ...(d.batch ? { batch: d.batch } : {}), ...(d.sku ? { sku: d.sku } : {}), by: r.by === 'player' ? 'player' : 'head', ...(r.seat ? { seat: r.seat } : {}), price: d.frozen });
+    else if ((d.kind === 'order' || d.kind === 'cancel' || d.kind === 'shift') && d.frozen) {
+      const codes = laterCodes(s, d.frozen);
+      edits.push({ t: r.t, kind: d.kind, ...(d.batch ? { batch: d.batch } : {}), ...(d.sku ? { sku: d.sku } : {}), by: r.by === 'player' ? 'player' : 'head', ...(r.seat ? { seat: r.seat } : {}), price: d.frozen, ...(codes ? { codes } : {}) });
+    }
   }
   return events.length + edits.length > 0 ? { events, edits } : undefined;
 }

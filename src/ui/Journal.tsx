@@ -254,8 +254,8 @@ export function forkPrices(d: Extract<Decided, { kind: 'fork' }>, t: number, sta
 /** Причина — строки с числами завода; у решения игрока её нет (кроме предоплаты заказа). */
 export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): string[] {
   const out = ruleLines(d, r, t, start);
-  // правка в замороженном горизонте (Б6е): цена — первой строкой
-  return (d.kind === 'order' || d.kind === 'cancel' || d.kind === 'shift') && d.frozen ? [priceLine(d.frozen, b => T.now.batch(b)), ...out] : out;
+  // правка в замороженном горизонте (Б6е): цена — первой строкой; задания позже — номером серии, если выдан, как в расписании
+  return (d.kind === 'order' || d.kind === 'cancel' || d.kind === 'shift') && d.frozen ? [priceLine(d.frozen, x => (r.codes?.[x] ? T.gantt.batch(r.codes[x]) : T.gantt.order(Number(x.slice(1))))), ...out] : out;
 }
 
 /** Причина решения по правилу — строки «Почему?». */

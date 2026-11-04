@@ -15,7 +15,7 @@ import { foreign, held } from '../engine/seats';
 import { unitsOfLot } from '../engine/stock';
 import { quotePo } from '../engine/supply';
 import { memoAt } from '../engine/memos';
-import type { Ask, AssetFamily, Batch, BatchFor, Command, Decided, Decision, DeptMode, ForkAsk, Head, Lot, MemoRes, Person, PlantState } from '../engine/types';
+import type { Ask, AssetFamily, Batch, BatchFor, Command, Decided, Decision, DeptMode, EditPrice, ForkAsk, Head, Lot, MemoRes, Person, PlantState } from '../engine/types';
 import { movable, thingOf } from './places';
 import type { Thing } from './views';
 
@@ -68,6 +68,8 @@ export interface JournalRef {
   capa?: number;
   /** задание под заказ покупателя (Б6а): покупатель */
   customer?: Id;
+  /** правка в замороженном горизонте (Б6е): номера серий заданий, которые кончат позже, — у тех, кому номер выдан */
+  codes?: Record<string, string>;
 }
 
 /**
@@ -243,6 +245,16 @@ function batchRef(s: PlantState, id: string): JournalRef {
   return { bn: num(id), ...(c ? { code: c } : {}), ...(b?.sku ? { sku: b.sku } : {}) };
 }
 
+/** Правка в горизонте (Б6е): номера серий заданий, которые кончат позже, — у тех, кому номер выдан. */
+export function laterCodes(s: PlantState, p: EditPrice | undefined): Record<string, string> | undefined {
+  const codes: Record<string, string> = {};
+  for (const x of p?.later ?? []) {
+    const b = s.batches[x.batch];
+    if (b && b.code.n > 0) codes[x.batch] = batchNo(b.code);
+  }
+  return Object.keys(codes).length > 0 ? codes : undefined;
+}
+
 /** Покупатель заказа, под который задание (Б6а). */
 function customerOf(s: PlantState, f: BatchFor | undefined): JournalRef {
   const o = f?.kind === 'order' ? s.orders[f.order] : undefined;
@@ -288,12 +300,14 @@ export function refOf(db: ContentDb, s: PlantState, d: Decided, ask?: Ask): Jour
   }
   switch (d.kind) {
     case 'order':
-      return { ...(d.batch ? batchRef(s, d.batch) : {}), ...customerOf(s, d.for) };
     case 'cancel':
-      return { ...batchRef(s, d.batch), ...customerOf(s, d.for) };
-    // правка в замороженном горизонте и события коммерции (Б6е)
-    case 'shift':
-      return batchRef(s, d.batch);
+    case 'shift': {
+      // правка в замороженном горизонте (Б6е): номера серий заданий, которые кончат позже
+      const codes = laterCodes(s, d.frozen);
+      const base = d.kind === 'shift' ? batchRef(s, d.batch) : { ...(d.batch ? batchRef(s, d.batch) : {}), ...customerOf(s, d.for) };
+      return { ...base, ...(codes ? { codes } : {}) };
+    }
+    // события коммерции (Б6е)
     case 'bigOrder':
     case 'demandCut':
       return { customer: d.customer };

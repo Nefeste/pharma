@@ -314,7 +314,7 @@ function EditsBlock({ x, hud, actions, close }: { x: EditsMeeting; hud: Hud; act
           <ul className="mlist">
             {x.edits.map(e => (
               <li key={`${e.t}/${e.kind}/${e.batch ?? ''}`} data-test="morning-edit" data-kind={e.kind}>
-                {T.edits.line(T.edits.kind[e.kind] ?? e.kind, skuName(e.sku) || (e.batch ? label(e.batch) : ''), priceParts(e.price, label).join('; '))}
+                {T.edits.line(T.edits.kind[e.kind] ?? e.kind, skuName(e.sku) || (e.batch ? label(e.batch) : ''), priceParts(e.price, id => (e.codes?.[id] ? T.gantt.batch(e.codes[id]) : label(id))).join('; '))}
               </li>
             ))}
           </ul>

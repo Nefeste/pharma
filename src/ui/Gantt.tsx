@@ -431,7 +431,8 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         <div className="gtrack">
           {/* край замороженного горизонта (Б6е): правки до него — с ценой */}
           {v.frozen.edge > v.from && v.frozen.edge < v.to ? (
-            <div className="gfrozen-tick" style={{ left: `${pct(v.frozen.edge)}%` }} title={T.price.edgeHint(policyText(db?.policies['pol.plan.frozen'], v.frozen.days))} data-test="frozen-edge" data-edge={v.frozen.edge}>
+            // край у правого края окна — подпись слева от черты: справа её срезало бы окно
+            <div className={`gfrozen-tick${pct(v.frozen.edge) > 70 ? ' end' : ''}`} style={{ left: `${pct(v.frozen.edge)}%` }} title={T.price.edgeHint(policyText(db?.policies['pol.plan.frozen'], v.frozen.days))} data-test="frozen-edge" data-edge={v.frozen.edge}>
               <span>{T.price.edge(dayText(momentOf(start, v.frozen.edge).day))}</span>
             </div>
           ) : null}

@@ -133,11 +133,17 @@ describe('прогон плана вперёд', () => {
   test('запас и недопоставки сходятся до ящика: запас на конец — прежний, плюс выпуск, минус продано', () => {
     for (const it of sc.plan!.items) {
       let fg = ctx.fg.get(it.sku)!;
+      // прогноз — медиана срока серий: в работе — от их первой стадии или «не раньше», новые — от «не раньше»
+      const lead = ctx.lead.get(db.skus[it.sku].product)![1];
       const arrive = new Map<number, number>();
-      for (const [z, xs] of ctx.arrive) for (const a of xs) if (a.sku === it.sku) arrive.set(z, (arrive.get(z) ?? 0) + a.cases);
+      for (const w of ctx.wip) {
+        if (w.sku !== it.sku) continue;
+        const z = Math.max(ctx.z0, momentOf(before.start, w.from + lead).day);
+        arrive.set(z, (arrive.get(z) ?? 0) + w.cases);
+      }
       for (const b of trace.made) {
         if (b.sku !== it.sku) continue;
-        const z = momentOf(before.start, (b.day - ctx.zero) * DAY + 7 * HOUR + ctx.lead.get(db.skus[it.sku].product)!).day;
+        const z = momentOf(before.start, (b.day - ctx.zero) * DAY + 7 * HOUR + lead).day;
         arrive.set(z, (arrive.get(z) ?? 0) + ctx.cases.get(it.sku)!);
       }
       const sold = trace.sold.get(it.sku)!;
@@ -170,7 +176,7 @@ describe('прогон плана вперёд', () => {
   });
 
   test('цена денег в запасе: ГП без спроса и новых серий — запас × материалы и упаковка × ставка за сутки', () => {
-    const quiet: P.SopCtx = { ...ctx, rate: new Map([...ctx.rate].map(([k, xs]) => [k, xs.map(() => 0)])), work: ctx.work.map(() => false), rule: ctx.rule.map(() => -1), arrive: new Map() };
+    const quiet: P.SopCtx = { ...ctx, rate: new Map([...ctx.rate].map(([k, xs]) => [k, xs.map(() => 0)])), work: ctx.work.map(() => false), rule: ctx.rule.map(() => -1), wip: [] };
     const x = P.sopRun(quiet, flat(21));
     expect(x.margin).toBe(0);
     let want = 0;
@@ -356,5 +362,27 @@ describe('сборщик базы', () => {
     expect(over.some(e => e.includes('pol.plan.reserve: доля 3/5 — больше половины мощности'))).toBe(true);
     const off = broken({ 'scenarios/proto.yaml': [['reserve: [3, 10]', 'reserve: [1, 4]']] });
     expect(off.some(e => e.includes('pol.plan.reserve = [1,4] — вне пределов политики'))).toBe(true);
+  });
+});
+
+describe('срок серий в вариантах', () => {
+  test('10-й процентиль, медиана и 90-й выпущенных за 180 суток; выпущенных нет — срок по умолчанию; у плюса выпуск позже', () => {
+    expect(P.leadOf(s0, PARA)).toEqual([10 * DAY, 10 * DAY, 10 * DAY]);
+    const s = structuredClone(before);
+    apply(db, s, { kind: 'advance', seconds: at(2027, 11, 1) - s.t });
+    const xs = Object.values(s.batches)
+      .filter(b => b.product === PARA && b.released !== undefined && b.records.length > 0)
+      .map(b => b.released! - b.records[0].start)
+      .sort((a, b) => a - b);
+    expect(xs.length).toBeGreaterThan(10);
+    const [lo, mid, hi] = P.leadOf(s, PARA);
+    expect([lo, mid, hi]).toEqual([xs[Math.floor((xs.length - 1) / 10)], xs[Math.floor(xs.length / 2)], xs[Math.floor(((xs.length - 1) * 9) / 10)]]);
+    expect(lo).toBeLessThanOrEqual(mid);
+    expect(mid).toBeLessThanOrEqual(hi);
+    // плюс-вариант: спрос выше и выпуск медленнее — не продано не меньше, чем у прогноза
+    const ctx = P.sopCtx(db, s, monthNo(2027, 11));
+    const runs = P.SOP_CASES.map(k => P.sopRun(ctx, flat(21), k));
+    expect(runs[2].short).toBeGreaterThanOrEqual(runs[1].short);
+    expect(runs[1].short).toBeGreaterThanOrEqual(runs[0].short);
   });
 });

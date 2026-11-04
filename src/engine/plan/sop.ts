@@ -46,7 +46,10 @@ const LEAD_DEFAULT = 10 * DAY;
 /** Ошибка прогноза, пока записей с запаздыванием нет, — 1/10 000 (10 %). */
 const ERR_DEFAULT = 1000;
 
-/** Варианты спроса прогона: прогноз минус ошибка, прогноз, прогноз плюс ошибка — множитель ошибки. */
+/**
+ * Варианты прогона — множитель ошибки прогноза: спрос ниже прогноза на его ошибку и быстрый выпуск серий (10-й процентиль
+ * срока), прогноз и медиана, спрос выше прогноза и медленный выпуск (90-й процентиль).
+ */
 export const SOP_CASES = [-1, 0, 1] as const;
 
 const P = 10000;
@@ -278,13 +281,17 @@ export function capacityOf(db: ContentDb, s: PlantState, n: number): SopCap {
   return { cap, have };
 }
 
-/** Срок серии продукта от первой стадии до выпуска: медиана выпущенных за 180 суток, с. */
-export function leadOf(s: PlantState, product: Id): number {
+/**
+ * Срок серии продукта от первой стадии до выпуска по сериям, выпущенным за 180 суток, с: 10-й процентиль, медиана и 90-й —
+ * у вариантов спроса ниже прогноза, прогноза и выше него. Выпущенных нет — срок по умолчанию у всех трёх.
+ */
+export function leadOf(s: PlantState, product: Id): [number, number, number] {
   const xs = Object.values(s.batches)
     .filter(b => b.product === product && b.released !== undefined && b.records.length > 0 && b.released > s.t - 180 * DAY)
     .map(b => b.released! - b.records[0].start)
     .sort((a, b) => a - b);
-  return xs.length === 0 ? LEAD_DEFAULT : xs[Math.floor(xs.length / 2)];
+  if (xs.length === 0) return [LEAD_DEFAULT, LEAD_DEFAULT, LEAD_DEFAULT];
+  return [xs[Math.floor((xs.length - 1) / 10)], xs[Math.floor(xs.length / 2)], xs[Math.floor(((xs.length - 1) * 9) / 10)]];
 }
 
 /** План S&OP: цель запаса по продукту и месяцу, сутки; месяц — номер прогноза, с которого план. */
@@ -367,8 +374,10 @@ export interface SopCtx {
   rateSum: Map<Id, number[]>;
   pos: Map<Id, number>;
   fg: Map<Id, number>;
-  arrive: Map<number, { sku: Id; cases: number }[]>;
-  lead: Map<Id, number>;
+  /** серии в работе — к выпуску: позиция, продукт, тысячные ящика и мгновение, от которого считают срок */
+  wip: { sku: Id; product: Id; cases: number; from: number }[];
+  /** срок серий продукта: 10-й процентиль, медиана, 90-й */
+  lead: Map<Id, [number, number, number]>;
   runs: Run[];
   taken: Set<number>;
   lastId: Map<Id, number>;
@@ -448,7 +457,7 @@ export function sopCtx(db: ContentDb, s: PlantState, from: number): SopCtx {
     fg.set(it.sku, n * 1000);
   }
   const lead = new Map(products.map(p => [p, leadOf(s, p)]));
-  const arrive = new Map<number, { sku: Id; cases: number }[]>();
+  const wip: SopCtx['wip'] = [];
   const runs: Run[] = [];
   const lastId = new Map<Id, number>();
   const fixed = new Map<number, Map<Id, number>>();
@@ -467,10 +476,7 @@ export function sopCtx(db: ContentDb, s: PlantState, from: number): SopCtx {
     if (!b.sku || b.status === 'released' || b.status === 'rejected' || b.status === 'fg') continue;
     const k = db.skus[b.sku];
     const cases = b.status === 'packing' && b.pack?.fg ? Math.max(0, casesOf(db.recipes[b.recipe], k) - (byLot.get(b.pack.fg)?.length ?? 0)) : casesOf(db.recipes[b.recipe], k);
-    const z = Math.max(z0, momentOf(s.start, (b.records[0]?.start ?? b.notBefore) + lead.get(b.product)!).day);
-    const xs = arrive.get(z) ?? [];
-    xs.push({ sku: b.sku, cases: cases * 1000 });
-    arrive.set(z, xs);
+    wip.push({ sku: b.sku, product: b.product, cases: cases * 1000, from: b.records[0]?.start ?? b.notBefore });
   }
   const cap = new Map<number, SopCap>();
   for (let n = from; n < from + SOP_MONTHS; n++) cap.set(n, capacityOf(db, s, n));
@@ -494,7 +500,7 @@ export function sopCtx(db: ContentDb, s: PlantState, from: number): SopCtx {
     rateSum,
     pos,
     fg,
-    arrive,
+    wip,
     lead,
     runs,
     taken: new Set(runs.map(b => momentOf(s.start, b.notBefore).day)),
@@ -529,7 +535,8 @@ function addBatches(ctx: SopCtx, row: SopMonth, product: Id, n: number) {
  * серии в работе против открытых заказов); запас для продаж — ГП и серии в работе к их выпуску. Каждый рабочий день —
  * правило `choose` на день через две рабочие недели, запас позиций продукта — цель плана на месяц дня правила, с пределом
  * навыка руководителя; спрос — прогноз планирования за календарный день. Серии выходят через срок серий завода от первой
- * стадии или «не раньше». Нагрузка месяца — и задания, которые уже стоят. `trace` — продажи по дням и новые серии.
+ * стадии или «не раньше» — у варианта `k` свой процентиль. Нагрузка месяца — и задания, которые уже стоят. `trace` —
+ * продажи по дням и новые серии.
  */
 export function sopRun(ctx: SopCtx, plan: Record<Id, number[]>, k = 0, trace?: SopTrace): SopResult {
   const { db, s, from, items, end, z0 } = ctx;
@@ -548,8 +555,16 @@ export function sopRun(ctx: SopCtx, plan: Record<Id, number[]>, k = 0, trace?: S
   const pos = skus.map(x => ctx.pos.get(x)!);
   const fg = skus.map(x => ctx.fg.get(x)!);
   const index = new Map(skus.map((x, i) => [x, i]));
+  // срок серий варианта: ниже прогноза — быстрый выпуск, выше — медленный
+  const li = k < 0 ? 0 : k > 0 ? 2 : 1;
+  const leadOfP = (product: Id) => ctx.lead.get(product)![li];
   const arrive = new Map<number, { i: number; cases: number }[]>();
-  for (const [z, xs] of ctx.arrive) arrive.set(z, xs.map(a => ({ i: index.get(a.sku)!, cases: a.cases })));
+  const arriveAt = (z: number, i: number, cases: number) => {
+    const xs = arrive.get(z) ?? [];
+    xs.push({ i, cases });
+    arrive.set(z, xs);
+  };
+  for (const w of ctx.wip) arriveAt(Math.max(z0, momentOf(s.start, w.from + leadOfP(w.product)).day), index.get(w.sku)!, w.cases);
   const taken = new Set(ctx.taken);
   const lastId = new Map(ctx.lastId);
   let next = ctx.next;
@@ -630,10 +645,7 @@ export function sopRun(ctx: SopCtx, plan: Record<Id, number[]>, k = 0, trace?: S
     const i = index.get(c.it.sku)!;
     const product = prod[i];
     pos[i] += batchCases[i];
-    const zr = momentOf(s.start, at + ctx.lead.get(product)!).day;
-    const xs = arrive.get(zr) ?? [];
-    xs.push({ i, cases: batchCases[i] });
-    arrive.set(zr, xs);
+    arriveAt(momentOf(s.start, at + leadOfP(product)).day, i, batchCases[i]);
     taken.add(day);
     const id = `B${next++}`;
     lastId.set(c.it.sku, idNum(id));
@@ -661,8 +673,9 @@ export function sopRun(ctx: SopCtx, plan: Record<Id, number[]>, k = 0, trace?: S
 }
 
 /**
- * План на трёх вариантах спроса (Б6г): прогноз минус его ошибка, прогноз, прогноз плюс ошибка. Месяцы и числа — у
- * прогноза; цель — средняя трёх: так запас позиций чего-то стоит и против ошибки прогноза, а не только против сезона.
+ * План на трёх вариантах (Б6г): спрос ниже прогноза на его ошибку с быстрым выпуском, прогноз, спрос выше с медленным.
+ * Месяцы и числа — у прогноза; цель — средняя трёх: так запас позиций чего-то стоит и против ошибки прогноза и задержки
+ * выпуска, а не только против сезона.
  */
 export function sopEval(ctx: SopCtx, plan: Record<Id, number[]>, trace?: SopTrace): SopResult {
   const runs = SOP_CASES.map(k => sopRun(ctx, plan, k, k === 0 ? trace : undefined));

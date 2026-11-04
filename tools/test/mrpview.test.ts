@@ -102,7 +102,8 @@ describe('планёрка', () => {
 
 describe('сборка вида', () => {
   test('дорогой вид «Материалы»: на том же миге завода не пересобирают; команда — сразу', () => {
-    expect(VIEW_SLOW.mrp).toBe(1000);
+    // потребность в материалах дорога — и у планёрки с блоком «Материалы», и у окна «Заказ поставщику»
+    expect([VIEW_SLOW.mrp, VIEW_SLOW.morning, VIEW_SLOW.po]).toEqual([1000, 1000, 1000]);
     const c = structuredClone(s);
     const desk = new ViewDesk(db);
     const q: ViewQuery = { id: 'mrp', view: 'mrp' };

@@ -123,7 +123,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     former: {},
     leave: {},
     journal: [],
-    daily: [],
+    planning: { daily: [] },
     heads: newHeads(),
     waste: { log: [] },
     kpi: newKpi(sc.start.hour * HOUR),
@@ -176,9 +176,9 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   // склад ГП на старте (Б1г): завод уже работает — выпущенная ГП в обороте, ближе к экспедиции
   seedFg(db, sc, s, startDay);
   // прогноз продаж (Б6в): история спроса до старта и первый прогноз — в начале игры, без записи журнала
-  s.forecast = newForecast(db, s);
-  if (s.forecast) runForecast(db, s, s.forecast.at, { lag: true, journal: false });
-  else delete s.forecast;
+  s.planning.forecast = newForecast(db, s);
+  if (s.planning.forecast) runForecast(db, s, s.planning.forecast.at, { lag: true, journal: false });
+  else delete s.planning.forecast;
   // первая планёрка — ближайшие 08:00; часы — с ближайшего целого часа
   const today = Math.floor(s.t / DAY) * DAY;
   schedule(s.agenda, s.t < today + MORNING ? today + MORNING : today + DAY + MORNING, { kind: 'morning' });

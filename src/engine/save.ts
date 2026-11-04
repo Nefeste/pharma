@@ -503,7 +503,7 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     }
     if (isWorkday(calOf(db, s), now.day)) {
       const rules: [string, number][] = [['plan', BATCH_HOUR], ['supply', SUPPLY_HOUR], ['waste', WASTE_HOUR], ['visit', VISIT_HOUR], ['pairEval', EVAL_HOUR], ...[...new Set(Object.values(DEPT_HEAD))].map(h => [`hire/${h}`, LABOR_HOUR] as [string, number])];
-      for (const [key, hour] of rules) if (now.sec >= hour) (s.ruled ??= {})[key] = now.day;
+      for (const [key, hour] of rules) if (now.sec >= hour) (s.heads.ruled ??= {})[key] = now.day;
     }
     return raw;
   },
@@ -529,14 +529,17 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   // Б6а: срок, «под что» и отмена задания на серию — необязательные поля; у прежних заданий срока нет
   38: raw => raw,
   // Б6б: сменно-суточные задания — с первых 08:00 после загрузки
-  39: raw => ({ ...raw, daily: [] }),
+  39: raw => {
+    (raw as unknown as PlantState).planning.daily = [];
+    return raw;
+  },
   // 39 → 40 выше; 40 → 41 (Б6в): прогноз продаж — история спроса до старта тем же правилом и ветвью зерна, что у новой
   // игры, факт — по заказам с начала, прогноз — сразу, как 1-го числа, без записи журнала; у сценария без прогноза — нет
   40: (raw, db) => {
     const s = raw as unknown as PlantState;
     const f = newForecast(db, s);
     if (!f) return raw;
-    s.forecast = f;
+    s.planning.forecast = f;
     for (const o of Object.values(s.orders)) for (const l of o.lines) addDemand(s, l.sku, l.cases, o.placed);
     runForecast(db, s, monthAt(s, s.t), { lag: true, journal: false });
     return raw;
@@ -570,7 +573,36 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     delete raw.plant;
     return raw;
   },
+  // 46 → 47 (Б7б): заместители, «Некому решить» и отработанные правила — в `heads`, задания суток, прогноз, S&OP и
+  // события коммерции — в `planning`; переносит их `fromSave` до шагов, прежние шаги пишут их уже на новые места
+  46: raw => raw,
 };
+
+/** Поля состояния, сгруппированные с Б7б (схема 47): куда переехало прежнее поле верхнего уровня. */
+const GROUPED: [string, 'heads' | 'planning'][] = [
+  ['deputies', 'heads'],
+  ['noOne', 'heads'],
+  ['ruled', 'heads'],
+  ['daily', 'planning'],
+  ['forecast', 'planning'],
+  ['sop', 'planning'],
+  ['commerce', 'planning'],
+];
+
+/**
+ * Сохранение до схемы 47: прежние поля верхнего уровня — на места группы. `heads` до схемы 34 нет (его ставит шаг
+ * 33 → 34), но и полей руководителей тогда ещё нет: их ставят шаги с 35 → 36.
+ */
+function regroup(raw: Raw): void {
+  const planning: Raw = {};
+  raw.planning = planning;
+  for (const [k, to] of GROUPED) {
+    if (!(k in raw)) continue;
+    const box = to === 'planning' ? planning : (raw.heads as Raw | undefined);
+    if (raw[k] !== undefined && box) box[k] = raw[k];
+    delete raw[k];
+  }
+}
 
 export function toSave(s: PlantState): string {
   return JSON.stringify(s);
@@ -589,6 +621,8 @@ export function fromSave(db: ContentDb, json: string): PlantState {
     if (!plant) throw new Error(`save: no plant ${String(id)}`);
     raw.plan = plant;
   }
+  // группы полей состояния — со схемы 47 (Б7б): у прежнего сохранения — до шагов, шаги до 47 пишут поля на новые места
+  if (v < 47) regroup(raw);
   while (v < SCHEMA) {
     const step = STEPS[v];
     if (!step) throw new Error(`save: no migration from schema ${v}`);

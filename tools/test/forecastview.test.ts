@@ -20,7 +20,7 @@ import { fcGeom, niceTicks, overFact, runs } from '../../src/ui/fcchart';
 
 const SC = 'scn.proto';
 const s: PlantState = fromSave(db, readFileSync(join(import.meta.dir, 'fixtures/save-v41.json'), 'utf8'));
-const f = s.forecast!;
+const f = s.planning.forecast!;
 const NOV = F.monthNo(2027, 11);
 const N20 = 'sku.paracetamol500.n20';
 const PAR = 'prd.paracetamol500';
@@ -84,7 +84,7 @@ describe('вкладка «Прогноз»', () => {
     expect(ganttView(db, s, q).forecast).toBeUndefined();
     expect(ganttView(db, s, { ...q, forecast: { key: N20 } }).forecast?.key).toBe(N20);
     const l = newPlant(db, { scenario: SC });
-    delete l.forecast;
+    delete l.planning.forecast;
     expect(forecastView(db, l)).toBeUndefined();
   });
 

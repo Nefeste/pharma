@@ -46,7 +46,7 @@ function liveAccepting(s: PlantState, end: number) {
       expect(refusals(apply(db, s, { kind: 'accept', n: a.n }))).toEqual([]);
       accepted++;
     }
-    if (meet) expect(refusals(apply(db, s, { kind: 'sop', cover: s.sop!.open!.best, by: 'player' }))).toEqual([]);
+    if (meet) expect(refusals(apply(db, s, { kind: 'sop', cover: s.planning.sop!.open!.best, by: 'player' }))).toEqual([]);
     if (rest !== undefined) s.until = rest;
   }
   return accepted;
@@ -65,7 +65,7 @@ const life = (s: PlantState) => ({
   // мгновения, руководители и причины, по порядку (номера записей сдвинуты развилками); план S&OP (Б6г) утверждает пост —
   // запись «вы», а не начальника, — а планы те же
   journal: s.journal.filter(r => r.d.kind !== 'fork' && r.d.kind !== 'sop').map(({ t, by, d }) => ({ t, by, d })),
-  sop: (s.sop?.plans ?? []).map(p => [p.at, p.from, p.cover, p.value, p.best]),
+  sop: (s.planning.sop?.plans ?? []).map(p => [p.at, p.from, p.cover, p.value, p.best]),
 });
 
 describe('режим по умолчанию', () => {

@@ -65,7 +65,7 @@ describe('день совещания', () => {
     expect(sops(n2)).toEqual([{ kind: 'sop', m: SEP, open: false }]);
     const n3 = apply(db, s, { kind: 'advance', seconds: at(2027, 10, 1) - s.t });
     expect(sops(n3)).toEqual([]);
-    expect(s.sop!.held).toBe(SEP);
+    expect(s.planning.sop!.held).toBe(SEP);
   });
 });
 
@@ -221,8 +221,8 @@ describe('совещание и правило задания', () => {
   test('без мест игрока лучший план утверждает коллега: запись журнала начальника отдела планирования', () => {
     const s = structuredClone(before);
     apply(db, s, { kind: 'advance', seconds: HOUR });
-    const p = s.sop!.plans[0];
-    expect(s.sop!.plans.length).toBe(1);
+    const p = s.planning.sop!.plans[0];
+    expect(s.planning.sop!.plans.length).toBe(1);
     expect(p).toMatchObject({ at: at(2027, 9, 3, 10), from: SEP, by: 'head:plan' });
     expect(p.value).toBe(p.best);
     expect(Object.keys(p.cover).sort()).toEqual([LOR, PARA]);
@@ -231,7 +231,7 @@ describe('совещание и правило задания', () => {
     const rec = s.journal.filter(x => x.d.kind === 'sop');
     expect(rec.length).toBe(1);
     expect(rec[0].by).toBe('plan');
-    expect(s.sop!.open).toBeUndefined();
+    expect(s.planning.sop!.open).toBeUndefined();
   });
 
   test('игрок на месте «Производство»: совещание открыто и ждёт, мир встаёт; «Утвердить» — план игрока; без совещания — отказ', () => {
@@ -239,17 +239,17 @@ describe('совещание и правило задания', () => {
     apply(db, s, { kind: 'seat', seats: ['production'] });
     const n = apply(db, s, { kind: 'advance', seconds: HOUR });
     expect(sops(n)).toEqual([{ kind: 'sop', m: SEP, open: true }]);
-    expect(s.sop!.plans.length).toBe(0);
-    expect(s.sop!.open).toMatchObject({ at: at(2027, 9, 3, 10), from: SEP });
+    expect(s.planning.sop!.plans.length).toBe(0);
+    expect(s.planning.sop!.open).toMatchObject({ at: at(2027, 9, 3, 10), from: SEP });
     // цели не из вариантов, без продукта или с чужим — отказ
     expect(refusals(apply(db, s, { kind: 'sop', cover: { ...flat(21), [PARA]: [21, 21, 21, 21, 21, 20] }, by: 'player' }))).toEqual(['badPlan']);
     expect(refusals(apply(db, s, { kind: 'sop', cover: { [PARA]: flat(21)[PARA] }, by: 'player' }))).toEqual(['badPlan']);
     expect(refusals(apply(db, s, { kind: 'sop', cover: { ...flat(21), 'prd.none': flat(21)[PARA] }, by: 'player' }))).toEqual(['badPlan']);
     const cover = { [PARA]: [28, 28, 35, 35, 28, 21], [LOR]: [21, 21, 21, 28, 28, 21] };
     expect(refusals(apply(db, s, { kind: 'sop', cover, by: 'player' }))).toEqual([]);
-    expect(s.sop!.plans.length).toBe(1);
-    expect(s.sop!.plans[0]).toMatchObject({ from: SEP, cover, by: 'player' });
-    expect(s.sop!.open).toBeUndefined();
+    expect(s.planning.sop!.plans.length).toBe(1);
+    expect(s.planning.sop!.plans[0]).toMatchObject({ from: SEP, cover, by: 'player' });
+    expect(s.planning.sop!.open).toBeUndefined();
     expect(refusals(apply(db, s, { kind: 'sop', cover, by: 'player' }))).toEqual(['noMeeting']);
     const rec = s.journal.filter(x => x.d.kind === 'sop');
     expect(rec.at(-1)!.by).toBe('player');
@@ -302,8 +302,8 @@ describe('совещание и правило задания', () => {
   test('план, утверждённый в сентябре, держит месяцы до февраля; новое совещание — новый план', () => {
     const s = structuredClone(before);
     apply(db, s, { kind: 'advance', seconds: at(2027, 10, 5, 11) - s.t });
-    expect(s.sop!.plans.map(p => p.from)).toEqual([SEP, OCT]);
-    expect(s.sop!.held).toBe(OCT);
+    expect(s.planning.sop!.plans.map(p => p.from)).toEqual([SEP, OCT]);
+    expect(s.planning.sop!.held).toBe(OCT);
     expect(check(db, s)).toEqual([]);
   });
 });
@@ -343,13 +343,13 @@ describe('ГП и срок годности', () => {
 describe('сохранение', () => {
   test('образец схемы 41: плана S&OP нет — правило берёт политику; совещание — в свой день и ждёт места игрока', () => {
     const s: PlantState = fromSave(db, readFileSync(join(import.meta.dir, 'fixtures', 'save-v41.json'), 'utf8'));
-    expect(s.sop).toBeUndefined();
+    expect(s.planning.sop).toBeUndefined();
     expect(sopCover(s, PARA, momentOf(s.start, s.t).day)).toBeUndefined();
     // образец — 1 ноября 2027 года, места «Производство» и «Качество»: совещание 3 ноября открыто и ждёт «Утвердить»
     const n = apply(db, s, { kind: 'advance', seconds: at(2027, 11, 3, 11) - s.t });
     expect(sops(n)).toEqual([{ kind: 'sop', m: SEP + 2, open: true }]);
-    expect(s.sop!.plans).toEqual([]);
-    expect(s.sop!.open!.from).toBe(SEP + 2);
+    expect(s.planning.sop!.plans).toEqual([]);
+    expect(s.planning.sop!.open!.from).toBe(SEP + 2);
     expect(check(db, s)).toEqual([]);
   });
 });

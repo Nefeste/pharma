@@ -146,15 +146,15 @@ describe('события коммерции', () => {
 
   test('снятый спрос: рынок вычитает его из ближайших заказов позиции покупателя', () => {
     const c = newPlant(db, { scenario: SC });
-    c.commerce = { month: monthAt(c, c.t), days: [], cut: { 'cus.national': { 'sku.paracetamol500.n20': 30 } } };
+    c.planning.commerce = { month: monthAt(c, c.t), days: [], cut: { 'cus.national': { 'sku.paracetamol500.n20': 30 } } };
     expect(cutOrder(c, 'cus.national', 'sku.paracetamol500.n20', 12)).toBe(0);
-    expect(c.commerce.cut['cus.national']['sku.paracetamol500.n20']).toBe(18);
+    expect(c.planning.commerce.cut['cus.national']['sku.paracetamol500.n20']).toBe(18);
     expect(cutOrder(c, 'cus.national', 'sku.paracetamol500.n20', 25)).toBe(7);
-    expect(c.commerce.cut['cus.national']['sku.paracetamol500.n20']).toBeUndefined();
+    expect(c.planning.commerce.cut['cus.national']['sku.paracetamol500.n20']).toBeUndefined();
     expect(cutOrder(c, 'cus.regional', 'sku.paracetamol500.n20', 25)).toBe(25);
     // в заказе: снято всё — строки позиции нет, у другого покупателя — есть
     const d = newPlant(db, { scenario: SC });
-    d.commerce = { month: monthAt(d, d.t), days: [], cut: { 'cus.national': { 'sku.paracetamol500.n20': 1_000_000 } } };
+    d.planning.commerce = { month: monthAt(d, d.t), days: [], cut: { 'cus.national': { 'sku.paracetamol500.n20': 1_000_000 } } };
     live(d, 7);
     const lines = Object.values(d.orders).filter(o => !o.big).flatMap(o => o.lines.map(l => ({ customer: o.customer, sku: l.sku })));
     expect(lines.some(l => l.customer === 'cus.national' && l.sku === 'sku.paracetamol500.n20')).toBe(false);
@@ -171,7 +171,7 @@ describe('события коммерции', () => {
     const l = newPlant(legacy, { scenario: SC });
     expect(legacy.scenarios[SC].commerce).toBeUndefined();
     for (let h = 0; h < 40 * 24; h++) expect(apply(legacy, l, { kind: 'advance', seconds: HOUR }).some(n => n.kind === 'bigOrder' || n.kind === 'demandCut')).toBe(false);
-    expect(l.commerce).toBeUndefined();
+    expect(l.planning.commerce).toBeUndefined();
   });
 });
 
@@ -297,10 +297,10 @@ describe('сохранение и сборщик базы', () => {
     const raw = readFileSync(join(import.meta.dir, 'fixtures/save-v43.json'), 'utf8');
     const s = fromSave(db, raw);
     expect(s.schema).toBe(SCHEMA);
-    expect(s.commerce).toBeUndefined();
+    expect(s.planning.commerce).toBeUndefined();
     expect(frozenOf(db, s)).toBe(10);
     live(s, 40);
-    expect(s.commerce?.month).toBe(monthAt(s, s.t));
+    expect(s.planning.commerce?.month).toBe(monthAt(s, s.t));
     expect(check(db, s)).toEqual([]);
   });
 

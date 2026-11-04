@@ -66,7 +66,7 @@ export function headOf(s: PlantState, h: HeadId, z = today(s)): Person | undefin
  * номеру человек роли заместителя из записи сценария (не сам руководитель).
  */
 export function deputyOf(db: ContentDb, s: PlantState, h: HeadId, z = today(s)): Person | undefined {
-  const set = s.deputies?.[h];
+  const set = s.heads.deputies?.[h];
   if (set === '') return undefined;
   if (set !== undefined) {
     const p = s.people[set];
@@ -125,11 +125,11 @@ export function noOneFor(db: ContentDb, s: PlantState, head: Head, z = today(s))
 export function decider(db: ContentDb, s: PlantState, head: Head, notices: Notice[]): Who | undefined {
   const w = whoDecides(db, s, head);
   if (w) {
-    if (s.noOne?.[head]) delete s.noOne[head];
+    if (s.heads.noOne?.[head]) delete s.heads.noOne[head];
     return w;
   }
-  if (!s.noOne?.[head] && noOneFor(db, s, head)) {
-    (s.noOne ??= {})[head] = true;
+  if (!s.heads.noOne?.[head] && noOneFor(db, s, head)) {
+    (s.heads.noOne ??= {})[head] = true;
     notices.push({ kind: 'noOne', head, seat: HEAD_SEAT[head] });
   }
   return undefined;
@@ -141,9 +141,9 @@ export function decider(db: ContentDb, s: PlantState, head: Head, notices: Notic
  */
 export function dueRule(db: ContentDb, s: PlantState, key: string, head: Head, hour: number, notices: Notice[]): Who | undefined {
   const now = momentOf(s.start, s.t);
-  if (now.sec < hour || !isWorkday(calOf(db, s), now.day) || s.ruled?.[key] === now.day) return undefined;
+  if (now.sec < hour || !isWorkday(calOf(db, s), now.day) || s.heads.ruled?.[key] === now.day) return undefined;
   const w = decider(db, s, head, notices);
-  if (w) (s.ruled ??= {})[key] = now.day;
+  if (w) (s.heads.ruled ??= {})[key] = now.day;
   return w;
 }
 
@@ -188,14 +188,14 @@ export function deputyCommand(db: ContentDb, s: PlantState, cmd: Extract<Command
   let who: Person | undefined;
   if (cmd.person === null) {
     if (!was) return notices.push({ kind: 'refused', cmd: 'deputy', why: 'deputySame', detail: cmd.head });
-    (s.deputies ??= {})[cmd.head] = '';
+    (s.heads.deputies ??= {})[cmd.head] = '';
   } else {
     const p = s.people[cmd.person];
     if (!p || !employedOn(p, z)) return notices.push({ kind: 'refused', cmd: 'deputy', why: 'noPerson', detail: cmd.person });
     if (p.role === HEAD_ROLE[cmd.head]) return notices.push({ kind: 'refused', cmd: 'deputy', why: 'ownRole', detail: cmd.person });
     if (!row.can.includes(p.role)) return notices.push({ kind: 'refused', cmd: 'deputy', why: 'notDeputy', detail: p.role });
     if (was?.id === p.id) return notices.push({ kind: 'refused', cmd: 'deputy', why: 'deputySame', detail: cmd.person });
-    (s.deputies ??= {})[cmd.head] = p.id;
+    (s.heads.deputies ??= {})[cmd.head] = p.id;
     who = p;
   }
   noteCmd(s, cmd, { kind: 'deputy', head: cmd.head, ...(cmd.person ? { person: cmd.person } : {}), ...(was ? { was: was.id } : {}) });

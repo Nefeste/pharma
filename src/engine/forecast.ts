@@ -120,7 +120,7 @@ const emptyBy = (): ForecastState['by'] => ({ 'last-year': {}, ma: {}, ses: {}, 
 
 /** Заказ покупателя (market.ts): его ящики — в факт месяца заказа, мгновение `t` — сейчас или, в миграции, его. */
 export function addDemand(s: PlantState, sku: Id, cases: number, t = s.t) {
-  const f = s.forecast;
+  const f = s.planning.forecast;
   const row = f?.demand[sku];
   if (!f || !row) return;
   const k = monthAt(s, t) - f.from;
@@ -283,7 +283,7 @@ export function bestMethod(db: ContentDb, f: ForecastState, skus: readonly Id[],
  * уходят.
  */
 export function runForecast(db: ContentDb, s: PlantState, M: number, o: { lag: boolean; journal: boolean }) {
-  const f = s.forecast;
+  const f = s.planning.forecast;
   const sc = db.scenarios[s.scenario];
   if (!f || !sc.forecast) return;
   const skus = fcSkus(db, s);
@@ -325,7 +325,7 @@ export function runForecast(db: ContentDb, s: PlantState, M: number, o: { lag: b
  * способов; записи с запаздыванием не меняются.
  */
 export function replan(db: ContentDb, s: PlantState) {
-  const f = s.forecast;
+  const f = s.planning.forecast;
   if (!f) return;
   const skus = fcSkus(db, s);
   const pol = policyOf(db, s, POL.method);
@@ -337,17 +337,17 @@ export function replan(db: ContentDb, s: PlantState) {
 
 /** Каждый час, после показателей (Б5ж): в 00:00 1-го числа — прогноз нового месяца. */
 export function forecastHour(db: ContentDb, s: PlantState) {
-  if (!s.forecast) return;
+  if (!s.planning.forecast) return;
   const now = momentOf(s.start, s.t);
   if (now.sec !== 0 || now.date.d !== 1) return;
   const M = monthNo(now.date.y, now.date.m);
-  if (s.forecast.at >= M) return;
+  if (s.planning.forecast.at >= M) return;
   runForecast(db, s, M, { lag: true, journal: true });
 }
 
 /** Прогноз планирования позиции на месяц `n`: из нынешнего прогноза; вне его — крайний месяц. */
 export function planCases(s: PlantState, sku: Id, n: number): number {
-  const f = s.forecast!;
+  const f = s.planning.forecast!;
   const row = f.plan[sku] ?? [];
   if (row.length === 0) return 0;
   return row[Math.max(0, Math.min(row.length - 1, n - f.at))];
@@ -380,7 +380,7 @@ export function forecastAhead(db: ContentDb, s: PlantState, sku: Id, window: num
  * одной — `undefined`.
  */
 export function lagError(s: PlantState, who: 'plan' | 'sales', a: number, b: number, of?: readonly Id[]): { abs: number; err: number; fact: number } | undefined {
-  const f = s.forecast;
+  const f = s.planning.forecast;
   if (!f) return undefined;
   let abs = 0;
   let err = 0;
@@ -413,7 +413,7 @@ export const shares = (e: { abs: number; err: number; fact: number } | undefined
  */
 export function forecastCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'forecast' }>, notices: Notice[]) {
   const refuse = (why: Extract<Notice, { kind: 'refused' }>['why'], detail?: string) => notices.push({ kind: 'refused', cmd: 'forecast', why, ...(detail ? { detail } : {}) });
-  const f = s.forecast;
+  const f = s.planning.forecast;
   if (!f) return refuse('noForecast');
   if (!fcSkus(db, s).includes(cmd.sku)) return refuse('noSku', cmd.sku);
   if (!Number.isInteger(cmd.m) || cmd.m < f.at || cmd.m >= f.at + HORIZON) return refuse('fcMonth', String(cmd.m));

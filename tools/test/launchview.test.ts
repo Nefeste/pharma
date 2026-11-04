@@ -130,7 +130,7 @@ describe('задания на сутки в окне', () => {
   test('планёрка: вчера — итог отделов и кого ждали, строки раскрываются; сегодня — строки задания', () => {
     const m = morningView(db, s, { view: 'morning', day });
     expect(m.daily).toEqual(dailyMeeting(db, s, at8));
-    const y = s.daily!.find(d => d.from === at8 - DAY)!;
+    const y = s.planning.daily!.find(d => d.from === at8 - DAY)!;
     expect(m.daily.yday!.from).toBe(y.from);
     expect(m.daily.yday!.rows.length).toBe(y.rows.length);
     for (const x of m.daily.yday!.depts) {
@@ -138,7 +138,7 @@ describe('задания на сутки в окне', () => {
       expect(x.done).toBe(x.ok + x.late);
       expect(x.ok + x.late + x.no).toBe(x.n);
     }
-    const t = s.daily!.find(d => d.from === at8)!;
+    const t = s.planning.daily!.find(d => d.from === at8)!;
     expect(m.daily.today!.rows.length).toBe(t.rows.length);
     expect(m.daily.today!.depts.reduce((n, x) => n + x.n, 0)).toBe(t.rows.length);
     // кого ждали — тот же отдел, что по строкам
@@ -147,7 +147,7 @@ describe('задания на сутки в окне', () => {
 
   test('итог отдела: главное «ждали» — отдел с наибольшим ожиданием строк «позже» и «не сделано»', () => {
     let seen = 0;
-    for (const d of s.daily!.filter(x => x.closed)) {
+    for (const d of s.planning.daily!.filter(x => x.closed)) {
       for (const dept of new Set(d.rows.map(r => r.dept))) {
         const x = deptSum(d, dept);
         if (!x.main) continue;
@@ -169,7 +169,7 @@ describe('задания на сутки в окне', () => {
     expect(g.daily).toEqual(dailyMarks(db, s, s.t - 3 * DAY, s.t + DAY));
     expect(g.daily.length).toBeGreaterThan(5);
     for (const mk of g.daily) {
-      const task = s.daily!.find(d => d.from === mk.from)!;
+      const task = s.planning.daily!.find(d => d.from === mk.from)!;
       const r = task.rows.find(x => x.batch === mk.batch && x.kind === mk.kind && x.stage === mk.stage && !!x.pack === !!mk.pack)!;
       expect(r).toBeDefined();
       expect(mk.res).toBe(r.res);
@@ -179,7 +179,7 @@ describe('задания на сутки в окне', () => {
       }
     }
     // «после суток»: не сделанная в сутки стадия, начатая позже, — со своим началом по досье
-    const late = s.daily!.filter(d => d.closed).flatMap(d => d.rows.map(r => ({ d, r }))).find(({ r }) => r.kind === 'stage' && r.res === 'no' && s.batches[r.batch!].records.some(x => x.stage === r.stage));
+    const late = s.planning.daily!.filter(d => d.closed).flatMap(d => d.rows.map(r => ({ d, r }))).find(({ r }) => r.kind === 'stage' && r.res === 'no' && s.batches[r.batch!].records.some(x => x.stage === r.stage));
     if (late) {
       const mk = dailyMarks(db, s, late.d.from, late.d.from + DAY).find(x => x.batch === late.r.batch && x.stage === late.r.stage && x.from === late.d.from)!;
       expect(mk.after).toBe(s.batches[late.r.batch!].records.find(x => x.stage === late.r.stage)!.start);
@@ -188,7 +188,7 @@ describe('задания на сутки в окне', () => {
 
   test('карточка помещения и машины линии — строки сегодняшнего задания', () => {
     const plan = planOf(db, s.plan).plant;
-    const cur = s.daily!.at(-1)!;
+    const cur = s.planning.daily!.at(-1)!;
     const stage = cur.rows.find(r => r.kind === 'stage');
     if (stage) {
       const i = plan.rooms.findIndex(r => r.id === stage.room);

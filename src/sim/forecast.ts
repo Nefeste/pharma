@@ -78,7 +78,7 @@ const sum = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0);
 
 /** Ошибка за 12 закрытых месяцев до `at` у позиций `of`. */
 function errsOf(db: ContentDb, s: PlantState, all: readonly Id[], of: readonly Id[]): FcErrs {
-  const f = s.forecast!;
+  const f = s.planning.forecast!;
   const plan = shares(lagError(s, 'plan', f.at - BEST_N, f.at, of));
   const sales = shares(lagError(s, 'sales', f.at - BEST_N, f.at, of));
   const by: FcErrs['by'] = {};
@@ -92,7 +92,7 @@ function errsOf(db: ContentDb, s: PlantState, all: readonly Id[], of: readonly I
 
 /** Вкладка «Прогноз»: сетка и «прогноз против факта» ключа `key` — позиции или продукта; нет — первого продукта плана. */
 export function forecastView(db: ContentDb, s: PlantState, key?: Id): ForecastView | undefined {
-  const f = s.forecast;
+  const f = s.planning.forecast;
   if (!f) return undefined;
   const all = fcSkus(db, s);
   const rows = all.map(sku => ({
@@ -144,7 +144,7 @@ export interface FcMeeting {
 }
 
 export function fcMeeting(db: ContentDb, s: PlantState, at: number): FcMeeting | undefined {
-  const f = s.forecast;
+  const f = s.planning.forecast;
   if (!f) return undefined;
   const now = monthAt(s, at);
   // первые сутки месяца, и прогноз уже на него

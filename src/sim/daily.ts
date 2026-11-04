@@ -166,7 +166,7 @@ export function deptSum(task: DailyTask, dept: Dept): DailyDeptSum {
 
 /** Блок планёрки: задание, закрытое в 08:00 дня планёрки, и поставленное тогда же. */
 export function dailyMeeting(db: ContentDb, s: PlantState, at: number): DailyMeeting {
-  const list = s.daily ?? [];
+  const list = s.planning.daily ?? [];
   const yday = list.find(d => d.closed && d.from === at - DAY);
   const today = list.find(d => d.from === at);
   const depts = (d: DailyTask) => ORDER.filter(x => d.rows.some(r => r.dept === x));
@@ -194,7 +194,7 @@ export interface DailyMark {
 /** Отметки полос, у которых план — в окне `[from, to)` расписания. */
 export function dailyMarks(db: ContentDb, s: PlantState, from: number, to: number): DailyMark[] {
   const out: DailyMark[] = [];
-  for (const d of s.daily ?? []) {
+  for (const d of s.planning.daily ?? []) {
     if (d.from + DAY <= from - DAY || d.from >= to) continue;
     for (const r of d.rows) {
       if ((r.kind !== 'kit' && r.kind !== 'stage' && r.kind !== 'pack') || !r.batch) continue;
@@ -221,7 +221,7 @@ export function dailyMarks(db: ContentDb, s: PlantState, from: number, to: numbe
  * помещение), линии — её задания на упаковку.
  */
 export function dailyOf(db: ContentDb, s: PlantState, thing: { room?: string; line?: string }): DailyRowView[] {
-  const d = s.daily?.at(-1);
+  const d = s.planning.daily?.at(-1);
   if (!d || d.closed) return [];
   const insts = thing.room !== undefined ? new Set(Object.values(s.instruments).filter(i => i.room === thing.room).map(i => i.type)) : new Set<Id>();
   const onInst = (r: DailyRow) => r.kind === 'test' && !!r.test && insts.has(db.tests[s.tests[r.test]?.method]?.inst ?? '');

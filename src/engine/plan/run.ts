@@ -131,7 +131,18 @@ export function runHeads(s: PlantState): HeadsState {
   const mode: HeadsState['mode'] = { ...s.heads.mode };
   for (const h of MODED) if (modeOf(s, h) === 'advise') mode[h] = 'auto';
   // записки без ответа (Б5д) — руководитель ответит в копии в свой час; о чём уже спрашивали — не спросит снова
-  return { mode, open: {}, no: {}, ...(s.heads.memos ? { memos: [...s.heads.memos] } : {}), ...(s.heads.asked ? { asked: { ...s.heads.asked } } : {}) };
+  // заместители, «Некому решить» и отработанные правила (Б5в; с Б7б — в `heads`) — как у завода
+  const { deputies, noOne, ruled } = s.heads;
+  return {
+    mode,
+    open: {},
+    no: {},
+    ...(s.heads.memos ? { memos: [...s.heads.memos] } : {}),
+    ...(s.heads.asked ? { asked: { ...s.heads.asked } } : {}),
+    ...(deputies ? { deputies: { ...deputies } } : {}),
+    ...(noOne ? { noOne: { ...noOne } } : {}),
+    ...(ruled ? { ruled: { ...ruled } } : {}),
+  };
 }
 
 /** Зерно `k` варианта: копия состояния, двойник (если не выключен), команды варианта по порядку, ход времени на горизонт. */
@@ -142,8 +153,9 @@ export function runSeed(db: ContentDb, s: PlantState, variant: Command[], o: Run
   // руководитель решит, как сейчас; «Веду сам» — ведёт ООК, как «советует» — как «сам»
   const memos = s.journal.filter(r => r.memo && !r.memo.end);
   // план здания на месте не меняется (Б7а): копия делит его с заводом, и разбор плана (`planOf`) не считается на каждое зерно
+  const { daily: _daily, ...planning } = s.planning;
   const c: PlantState = {
-    ...structuredClone({ ...s, plan: undefined, journal: memos, heads: runHeads(s), kpi: { ...s.kpi, months: [] }, daily: undefined }),
+    ...structuredClone({ ...s, plan: undefined, journal: memos, heads: runHeads(s), kpi: { ...s.kpi, months: [] }, planning }),
     plan: s.plan,
   };
   for (const inv of Object.values(c.investigations)) delete inv.lead;

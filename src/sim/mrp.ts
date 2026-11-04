@@ -84,7 +84,7 @@ export interface MrpMeeting {
 /** Блок планёрки «Материалы» (Б6д): только у сценария с прогнозом; заказывать нечего и ничего не опоздает — нет. */
 export function mrpMeeting(db: ContentDb, s: PlantState): MrpMeeting | undefined {
   const sc = db.scenarios[s.scenario];
-  if (!s.forecast || !sc.plan || !sc.supply) return undefined;
+  if (!s.planning.forecast || !sc.plan || !sc.supply) return undefined;
   const r = mrpPlan(db, s);
   const due = r.planned.filter(o => o.orderBy <= r.today).map(o => ({ material: o.material, supplier: o.supplier, qty: o.qty, need: o.need, late: o.late }));
   const late = r.msgs.flatMap(m => (m.kind === 'late' ? [{ po: m.po, material: m.material, days: m.days }] : []));

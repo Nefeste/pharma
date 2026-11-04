@@ -54,7 +54,7 @@ function drawMonth(db: ContentDb, s: PlantState, st: CommerceState, month: numbe
 
 /** Состояние событий: заводится с первым часом событий у сценария с записью `commerce`. */
 export function commerceOf(s: PlantState): CommerceState {
-  return (s.commerce ??= { month: -1, days: [], cut: {} });
+  return (s.planning.commerce ??= { month: -1, days: [], cut: {} });
 }
 
 /**
@@ -114,7 +114,7 @@ export function commerceHour(db: ContentDb, s: PlantState, notices: Notice[]) {
  * сколько ещё снято, — ящиков в заказе.
  */
 export function cutOrder(s: PlantState, customer: Id, sku: Id, drawn: number): number {
-  const row = s.commerce?.cut[customer];
+  const row = s.planning.commerce?.cut[customer];
   const cut = row?.[sku] ?? 0;
   if (cut <= 0 || drawn <= 0) return drawn;
   const take = Math.min(cut, drawn);

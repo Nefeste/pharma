@@ -135,12 +135,12 @@ export function sopView(db: ContentDb, s: PlantState, q: SopQuery): SopView {
   const now = monthAt(s, s.t);
   const products = sc.plan ? [...new Set(sc.plan.items.map(i => db.skus[i.sku].product))] : [];
   const policy = numOf(db, s, POL.cover) ?? 21;
-  const open = s.sop?.open;
+  const open = s.planning.sop?.open;
   // совещание, которое не утвердили до конца месяца, идёт, пока не начнётся следующее: его план — с его месяца
   const from = open?.from ?? now;
-  const approved = s.sop?.plans.at(-1);
-  const next = sopAt(db, s, s.sop?.held === now ? now + 1 : now);
-  if (!s.forecast || !sc.plan) {
+  const approved = s.planning.sop?.plans.at(-1);
+  const next = sopAt(db, s, s.planning.sop?.held === now ? now + 1 : now);
+  if (!s.planning.forecast || !sc.plan) {
     const blank = { months: [], low: { day: 0, at: 0, balance: 0 }, limit: sc.credit.limit };
     return { view: 'sop', none: true, from, products, covers: SOP_COVERS, cover: {}, shown: 'policy', policy, next, value: 0, margin: 0, carry: 0, lost: 0, short: 0, high: 0, err: 0, reserve: [0, 1], demand: [], res: [], bottleneck: [], stock: [], cash: blank, people: [] };
   }
@@ -152,7 +152,7 @@ export function sopView(db: ContentDb, s: PlantState, q: SopQuery): SopView {
   const trace: SopTrace = { sold: new Map(), demand: new Map(), made: [] };
   const r = sopEval(ctx, cover, trace);
   const reserve = reserveOf(db, s);
-  const f = s.forecast;
+  const f = s.planning.forecast;
   const items = sc.plan.items;
   const months = r.months;
   const demand: SopDemandRow[] = products.map(p => {
@@ -242,11 +242,11 @@ export interface SopMeeting {
 }
 
 export function sopMeeting(db: ContentDb, s: PlantState, at: number): SopMeeting | undefined {
-  if (!s.forecast || !db.scenarios[s.scenario].plan) return undefined;
+  if (!s.planning.forecast || !db.scenarios[s.scenario].plan) return undefined;
   const n = monthAt(s, at);
   const meet = sopAt(db, s, n);
   const today = meet >= at && meet < Math.floor(at / DAY) * DAY + DAY ? meet : undefined;
-  const p = s.sop?.plans.filter(x => x.at <= at && x.at > at - DAY).at(-1);
+  const p = s.planning.sop?.plans.filter(x => x.at <= at && x.at > at - DAY).at(-1);
   if (today === undefined && !p) return undefined;
   return {
     ...(today !== undefined ? { today } : {}),

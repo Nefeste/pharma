@@ -38,7 +38,7 @@ const PHASES = new Set(['plan', 'materials', 'kitting', 'people', 'room', 'clean
 describe('сменно-суточное задание', () => {
   test('в 08:00 — производство и комплектовка по прогону расписания на сутки, отгрузки и фуры дня', () => {
     const s = at(22, MORNING);
-    const cur = s.daily!.at(-1)!;
+    const cur = s.planning.daily!.at(-1)!;
     expect(cur.from).toBe(s.t);
     expect(cur.closed).toBeUndefined();
     const t1 = s.t + DAY;
@@ -66,7 +66,7 @@ describe('сменно-суточное задание', () => {
     let packs = 0;
     for (let d = 10; d <= 40; d++) {
       apply(db, s, { kind: 'advance', seconds: d * DAY + MORNING - s.t });
-      const cur = s.daily!.at(-1)!;
+      const cur = s.planning.daily!.at(-1)!;
       const rows = cur.rows.filter(r => r.kind === 'pack');
       packs += rows.length;
       // взятое линией задание — первое; дальше — по порядку серий, как их берёт линия
@@ -95,7 +95,7 @@ describe('сменно-суточное задание', () => {
     let n = 0;
     for (let day = 8; day <= 40; day++) {
       apply(db, s, { kind: 'advance', seconds: day * DAY + MORNING - s.t });
-      const cur = s.daily!.at(-1)!;
+      const cur = s.planning.daily!.at(-1)!;
       const z = momentOf(s.start, s.t).day;
       const tests = cur.rows.filter(r => r.kind === 'test');
       n += tests.length;
@@ -134,9 +134,9 @@ describe('сменно-суточное задание', () => {
 
   test('в следующие 08:00 — итог по записям: в срок, позже — в сутки, не сделано; чего ждали — состояние серии или причина', () => {
     const s = at(45, MORNING + HOUR);
-    const closed = s.daily!.filter(d => d.closed);
+    const closed = s.planning.daily!.filter(d => d.closed);
     expect(closed.length).toBeGreaterThan(20);
-    expect(s.daily!.length).toBeLessThanOrEqual(DAILY_KEEP);
+    expect(s.planning.daily!.length).toBeLessThanOrEqual(DAILY_KEEP);
     let late = 0;
     for (const d of closed)
       for (const r of d.rows) {
@@ -162,23 +162,23 @@ describe('сменно-суточное задание', () => {
   test('правила задание не читают: без заданий — то же состояние завода', () => {
     const a = newPlant(db, { scenario: SC });
     const b = newPlant(db, { scenario: SC });
-    delete b.daily;
+    delete b.planning.daily;
     apply(db, a, { kind: 'advance', seconds: 21 * DAY });
     apply(db, b, { kind: 'advance', seconds: 21 * DAY });
-    const { daily, ...rest } = a;
+    const { daily, ...planning } = a.planning;
     expect(daily!.length).toBe(21);
-    expect(fingerprint(rest)).toBe(fingerprint(b));
+    expect(fingerprint({ ...a, planning })).toBe(fingerprint(b));
   }, 60_000);
 
   test('образец схемы 39: задания — с первых 08:00 после загрузки; копия прогона плана их не ставит', () => {
     const s = fromSave(db, readFileSync(join(import.meta.dir, 'fixtures/save-v39.json'), 'utf8'));
-    expect(s.daily).toEqual([]);
+    expect(s.planning.daily).toEqual([]);
     apply(db, s, { kind: 'advance', seconds: 2 * DAY });
-    expect(s.daily!.length).toBe(2);
+    expect(s.planning.daily!.length).toBe(2);
     expect(check(db, s)).toEqual([]);
     const c = runSeed(db, s, [], { days: 2, seeds: 1 }, 0);
-    expect(c.daily).toBeUndefined();
-    expect(s.daily!.length).toBe(2);
+    expect(c.planning.daily).toBeUndefined();
+    expect(s.planning.daily!.length).toBe(2);
   }, 60_000);
 });
 

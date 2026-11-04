@@ -101,7 +101,7 @@ export function bossRows(db: ContentDb, s: PlantState): BossRow[] {
     if (!row) return [];
     const p = headOf(s, h, z);
     const d = deputyOf(db, s, h, z);
-    const set = s.deputies?.[h];
+    const set = s.heads.deputies?.[h];
     const here = (x: Person | undefined) => !!x && !awayOn(x, z);
     const now: BossRow['now'] = here(p) ? 'head' : here(d) ? 'io' : 'noOne';
     const can = Object.values(s.people)

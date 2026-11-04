@@ -63,12 +63,18 @@ export interface NewPlant {
 export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   const sc = db.scenarios[o.scenario];
   if (!sc) throw new Error(`no scenario ${o.scenario}`);
-  const plan = planOf(db, sc.plant);
+  // план здания — в состоянии (Б7а): запись плана сценария — образец старта; план не правят на месте, так что копия —
+  // сам объект записи, и свежие заводы одной базы делят один построенный план
+  const start = db.plants[sc.plant];
+  if (!start) throw new Error(`no plant ${sc.plant}`);
+  const plan = planOf(db, start);
   const s: PlantState = {
     schema: SCHEMA,
     content: db.hash,
     scenario: sc.id,
     plant: sc.plant,
+    plan: start,
+    planRev: 0,
     seed: (o.seed ?? sc.seed) >>> 0,
     rng: {},
     start: sc.start.date,
@@ -143,13 +149,13 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   }
   for (const i of plan.plant.instruments) s.instruments[i.id] = { id: i.id, type: i.type, room: i.room };
   // физические активы (Б3в): вещи плана и техника — инвентарные номера и записи квалификации и калибровки
-  seedAssets(db, sc, s, startDay);
+  seedAssets(db, sc, s.plan, s, startDay);
   // пары «поставщик — изготовитель» (Б3г): одобрения на старте — в сроке
   seedPairs(db, sc, s, startDay);
   // помещения — чистые с начала партии; оборудование — по плану
   for (const r of plan.plant.rooms) s.rooms[r.id] = { id: r.id, type: r.type, status: 'clean', since: s.t };
   for (const e of plan.plant.equipment) s.equipment[e.id] = { id: e.id, type: e.type, room: e.room };
-  s.lines = newLines(db, sc.plant, s.t);
+  s.lines = newLines(db, s.plan, s.t);
   newParts(db, s);
   // запас на старте — разрешённые партии на стеллажах, ближе к шлюзу для материалов и ниже
   const near = plan.slot[plan.byKind.staging[0].id];
@@ -163,7 +169,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
       qty: st.qty,
       status: 'released',
       where: () => {
-        const sl = findSlot(s, plan, coldOf(db, sc.plant, st.material) ? 'cold' : 'storage', near, 99);
+        const sl = findSlot(s, plan, coldOf(db, s.plan, st.material) ? 'cold' : 'storage', near, 99);
         if (!sl) throw new Error(`scenario ${sc.id}: no slot for start stock ${st.material}`);
         return { kind: 'slot', id: sl.id };
       },

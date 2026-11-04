@@ -283,7 +283,7 @@ function crewWork(db: ContentDb, s: PlantState, people: readonly Person[], at: n
 /** Раздать открытые задачи — в их порядке, пока хватает людей, техники и приборов; не досталась — запомнить почему. */
 export function dispatch(db: ContentDb, s: PlantState) {
   if (s.open.length === 0) return;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const at = new Map<string, Point>();
   const where = (p: Person) => {
     let q = at.get(p.id);
@@ -597,7 +597,7 @@ export function dropTask(db: ContentDb, s: PlantState, t: Task) {
 
 /** Освободить людей и технику задачи и поставить их туда, где задача кончилась. Задача уходит из состояния; прибор — нет. */
 export function release(db: ContentDb, s: PlantState, t: Task) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const endAt = t.to ? plan.slot[t.to] : (destOf(plan, s, t) ?? pointOf(plan, s, t.from));
   for (const id of t.people) {
     const p = s.people[id];

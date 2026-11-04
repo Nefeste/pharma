@@ -24,7 +24,7 @@ const UNDECIDED: ReadonlySet<LotStatus> = new Set(['quarantine', 'sampled', 'tes
 
 export function check(db: ContentDb, s: PlantState): string[] {
   const bad: string[] = [];
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   // баланс масс: принято = остаток в таре + израсходовано + в пробах + списано
   const left: Record<string, number> = {};
   for (const c of Object.values(s.containers)) {
@@ -306,7 +306,7 @@ function partners(db: ContentDb, s: PlantState, bad: string[]) {
  * с её задачей; приёмка — только у актива с законченной работой.
  */
 function assets(db: ContentDb, s: PlantState, bad: string[]) {
-  const P = placesOf(planOf(db, s.plant).plant);
+  const P = placesOf(planOf(db, s.plan).plant);
   for (const t of P.things) if (!s.assets[t.id]) bad.push(`вещь ${t.id}: нет актива`);
   for (const v of Object.values(s.vehicles)) if (!s.assets[v.id]) bad.push(`техника ${v.id}: нет актива`);
   const invs = new Set<number>();
@@ -479,7 +479,7 @@ function production(db: ContentDb, s: PlantState, bad: string[]) {
   for (const lot of Object.values(s.lots)) if (lot.used !== (used[lot.id] ?? 0)) bad.push(`партия ${lot.id}: израсходовано ${lot.used}, а отвешено в серии ${used[lot.id] ?? 0}`);
   // помещение занято серией — только «занято»; оборудование занято — только серией, которая в этом помещении; помещение
   // линии — серией, которую линия упаковывает (Б1е)
-  const lineRooms = new Map(planOf(db, s.plant).plant.lines.map(l => [l.id, l.room]));
+  const lineRooms = new Map(planOf(db, s.plan).plant.lines.map(l => [l.id, l.room]));
   for (const room of Object.values(s.rooms)) {
     if ((room.status === 'busy') !== (room.batch !== undefined)) bad.push(`помещение ${room.id}: ${room.status}, серия ${room.batch ?? '—'}`);
     const b = room.batch ? s.batches[room.batch] : undefined;

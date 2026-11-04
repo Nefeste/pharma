@@ -68,7 +68,7 @@ const WAREHOUSE = new Set(['warehouse', 'cold', 'rejected']);
 
 /** Мощность, которая работает круглые сутки: вентиляция по площади помещений и их классу и постоянная база, Вт. */
 export function baseLoad(db: ContentDb, s: PlantState): number {
-  const plant = planOf(db, s.plant).plant;
+  const plant = planOf(db, s.plan).plant;
   let w = plant.energy.base;
   // вентиляция — помещения производства, лаборатории и вспомогательные, площадь без стен (см² → м²); склад с холодом и
   // отклонённым — в постоянной базе (docs/specs/2026-10-view.md, 2а)

@@ -1,13 +1,13 @@
 // Состояние завода и обмен с движком (docs/02-architecture.md, §1, §3, §7; docs/specs/2026-10-engine.md). Состояние —
 // обычный сериализуемый объект: сохранение — его снимок со схемой и миграциями (ADR студии 0004). Сущности — словари с
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
-import type { Attr, Dept, DevClass, FcMethod, HeadId, Id, IncidentRoot, OvertimeMode, SeatId, TaskKind, ZoneKind } from '../content/types';
+import type { Attr, Dept, DevClass, FcMethod, HeadId, Id, IncidentRoot, OvertimeMode, Plant, SeatId, TaskKind, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 45;
+export const SCHEMA = 46;
 
 // ---------------------------------------------------------------- склад
 
@@ -1955,7 +1955,14 @@ export interface PlantState {
   /** отпечаток базы, с которой начата партия */
   content: string;
   scenario: Id;
+  /** запись плана базы, с которой начат завод, — образец старта (Б7а) */
   plant: Id;
+  /**
+   * план здания (Б7а): копия записи плана сценария на старте; движок, прогон плана, виды и сохранение берут план отсюда.
+   * Его не правят на месте: правка стройки (Б7б) даёт новый объект и номер правки на один больше
+   */
+  plan: Plant;
+  planRev: number;
   seed: number;
   /** ветви зерна по именам (src/engine/random.ts): своя ветвь у подсистемы и у вещи */
   rng: Record<string, RngState>;

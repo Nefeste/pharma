@@ -136,7 +136,7 @@ function lineRun(db: ContentDb, recipe: Id, sku: Id): number {
 }
 
 /** Помещение плана вида `type` — первое: в прототипе каждого вида по одному. */
-const roomOf = (db: ContentDb, s: PlantState, type: string) => planOf(db, s.plant).plant.rooms.find(r => r.type === type)?.id;
+const roomOf = (db: ContentDb, s: PlantState, type: string) => planOf(db, s.plan).plant.rooms.find(r => r.type === type)?.id;
 
 /** Нагрузка серии продукта на ключевые ресурсы по нормам, с (задания — штуки). */
 export type SopLoad = Record<SopRes, number>;
@@ -213,7 +213,7 @@ export function batchHours(db: ContentDb, s: PlantState, product: Id, use = plan
     const id = roomOf(db, s, st.room);
     if (id) rooms.add(id);
   }
-  const plan = planOf(db, s.plant).plant;
+  const plan = planOf(db, s.plan).plant;
   const run = lineRun(db, r.id, sku);
   for (const ln of plan.lines) {
     rooms.add(ln.room);
@@ -225,7 +225,7 @@ export function batchHours(db: ContentDb, s: PlantState, product: Id, use = plan
   }
   for (const id of rooms) {
     const wash = washWork(db, s, id, false);
-    const by = washRoles(db, s.plant, id).find(x => x in out);
+    const by = washRoles(db, s.plan, id).find(x => x in out);
     if (by) out[by as SopRole] += wash;
     out['role.cleaner'] += roomWork(db, s, id, false);
   }

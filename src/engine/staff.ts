@@ -68,7 +68,7 @@ export function canTake(db: ContentDb, s: PlantState, p: Person): boolean {
 export function goHome(db: ContentDb, s: PlantState, p: Person) {
   if (p.task || shiftEnd(db, s, p) !== undefined) return;
   stopWalk(db, s, p);
-  const e = planOf(db, s.plant).entrance;
+  const e = planOf(db, s.plan).entrance;
   p.x = e.x;
   p.z = e.z;
 }
@@ -106,7 +106,7 @@ function progress(plan: PlantPlan, p: Person, t: number): { cm: number; sec: num
  * раздачи задач: кому досталась задача, тот не идёт.
  */
 export function toPosts(db: ContentDb, s: PlantState) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   for (const p of Object.values(s.people)) {
     if (p.task || p.walk) continue;
     const end = shiftEnd(db, s, p);
@@ -132,7 +132,7 @@ function walkTime(plan: PlantPlan, p: Person): number {
 export function stopWalk(db: ContentDb, s: PlantState, p: Person) {
   const w = p.walk;
   if (!w) return;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const d = progress(plan, p, s.t);
   const at = d.cm >= d.len ? { x: p.x, z: p.z } : pointAlong(route(plan.nav, w, p, 'walk'), d.cm);
   walked(s, db.roles[p.role].dept, d.cm, d.sec);
@@ -148,6 +148,6 @@ export function stopWalk(db: ContentDb, s: PlantState, p: Person) {
 export function postArrive(db: ContentDb, s: PlantState, person: string, t: number) {
   const p = s.people[person];
   if (!p?.walk || p.walk.t !== t) return;
-  if (s.t < t + walkTime(planOf(db, s.plant), p)) return;
+  if (s.t < t + walkTime(planOf(db, s.plan), p)) return;
   stopWalk(db, s, p);
 }

@@ -36,7 +36,7 @@ export const WASTE_HOUR = 9 * HOUR;
 /** Паллеты в зоне отклонённого: на местах зоны, по порядку мест плана. */
 export function zoneUnits(db: ContentDb, s: PlantState): Unit[] {
   const out: Unit[] = [];
-  for (const sl of planOf(db, s.plant).byKind.rejected ?? []) {
+  for (const sl of planOf(db, s.plan).byKind.rejected ?? []) {
     const id = s.slots[sl.id]?.unit;
     if (id) out.push(s.units[id]);
   }
@@ -44,7 +44,7 @@ export function zoneUnits(db: ContentDb, s: PlantState): Unit[] {
 }
 
 /** Сколько мест в зоне отклонённого. */
-export const zonePlaces = (db: ContentDb, s: PlantState) => (planOf(db, s.plant).byKind.rejected ?? []).length;
+export const zonePlaces = (db: ContentDb, s: PlantState) => (planOf(db, s.plan).byKind.rejected ?? []).length;
 
 /** С какого мгновения отклонена партия паллеты — с этого она отходы; в сохранениях до схемы 10 — мгновение приёмки. */
 function rejectedAt(s: PlantState, u: Unit): number {
@@ -99,7 +99,7 @@ export function wasteHour(db: ContentDb, s: PlantState, notices: Notice[]) {
     return;
   }
   if (o && o.truck === undefined && s.t >= o.at) {
-    const dock = db.plants[s.plant].docks.find(d => d.kind === 'out')!.id;
+    const dock = s.plan.docks.find(d => d.kind === 'out')!.id;
     const tr: Truck = { id: nextId(s, 'R'), dock, waste: o.id, units: [], arrived: s.t, docked: false, open: false };
     s.trucks[tr.id] = tr;
     o.truck = tr.id;

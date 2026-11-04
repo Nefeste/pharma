@@ -1,6 +1,6 @@
 // Сохранение — снимок состояния со схемой и цепочкой миграций (ADR студии 0004; docs/02-architecture.md, §13). Забытая
 // миграция стирает игру человека, поэтому каждый шаг закреплён образцом в tools/test/fixtures/.
-import type { ContentDb } from '../content/types';
+import type { ContentDb, Plant } from '../content/types';
 import { BOOK_HOUR as VISIT_HOUR, seedAssets } from './assets';
 import { PAID_LATER } from './bosses';
 import { newHeads } from './heads';
@@ -42,7 +42,7 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   1: (raw, db) => {
     const sc = db.scenarios[raw.scenario as string];
     if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
-    const plan = planOf(db, sc.plant);
+    const plan = planOf(db, raw.plan as Plant);
     const next: Record<string, number> = {};
     const people: Raw = {};
     for (const row of sc.staff) {
@@ -106,7 +106,7 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   // позиции у них нет.
   4: (raw, db) => {
     if (!db.plants[raw.plant as string]) throw new Error(`save: no plant ${String(raw.plant)}`);
-    return { ...raw, lines: newLines(db, raw.plant as string, raw.t as number) };
+    return { ...raw, lines: newLines(db, raw.plan as Plant, raw.t as number) };
   },
   // 5 → 6 (часть 1д): касса — проводки и счета от остатка на момент сохранения (он уже в копейках); выпущенная раньше ГП —
   // в обороте с момента выпуска; покупатели сценария копят спрос с момента миграции; заказов и отгрузок нет.
@@ -253,7 +253,7 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     const sc = db.scenarios[raw.scenario as string];
     if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
     raw.assets = {};
-    seedAssets(db, sc, raw as unknown as PlantState, momentOf(raw.start as Ymd, raw.t as number).day);
+    seedAssets(db, sc, raw.plan as Plant, raw as unknown as PlantState, momentOf(raw.start as Ymd, raw.t as number).day);
     for (const i of Object.values((raw.instruments ?? {}) as Record<string, Raw>)) if (i.check === 'overdue') i.check = 'typo';
     return raw;
   },
@@ -325,7 +325,7 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     s.candidates = {};
     s.hires = {};
     s.former = {};
-    const plan = planOf(db, s.plant);
+    const plan = planOf(db, s.plan);
     const day = momentOf(s.start, s.t).day;
     const { y, m, d } = momentOf(s.start, s.t).date;
     // зарплата до схемы 24 начислена людям партии за весь месяц: по 15-е этого или по конец прошлого; первая половина —
@@ -357,7 +357,7 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
     const s = raw as unknown as PlantState;
     s.leave = {};
-    const plan = planOf(db, s.plant);
+    const plan = planOf(db, s.plan);
     const day = momentOf(s.start, s.t).day;
     const { y } = momentOf(s.start, s.t).date;
     const want = new Map<string, number>();
@@ -490,7 +490,7 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
     const s = raw as unknown as PlantState;
     const now = momentOf(s.start, s.t);
-    const plan = planOf(db, s.plant);
+    const plan = planOf(db, s.plan);
     const have = new Set([...Object.values(s.people), ...Object.values(s.hires)].map(p => p.role));
     for (const row of sc.staff) {
       if (!PAID_LATER.has(row.role) || have.has(row.role)) continue;
@@ -564,6 +564,12 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     raw.pairs = pairs;
     return raw;
   },
+  // 45 → 46 (Б7а): план здания — в состоянии: план сценария из базы (его кладёт `fromSave` до шагов) с первым этажом,
+  // номер правки — 0
+  45: raw => {
+    raw.planRev = 0;
+    return raw;
+  },
 };
 
 export function toSave(s: PlantState): string {
@@ -575,6 +581,14 @@ export function fromSave(db: ContentDb, json: string): PlantState {
   let v = raw.schema;
   if (typeof v !== 'number' || !Number.isInteger(v) || v < 1) throw new Error('save: no schema');
   if (v > SCHEMA) throw new Error(`save: schema ${v} is newer than ${SCHEMA}`);
+  // план здания — в состоянии со схемы 46 (Б7а): у прежнего сохранения — план сценария из базы, и шаги миграции до 46
+  // берут его оттуда же, как раньше брали из базы; у схемы 1 номера плана ещё нет — он у сценария
+  if (v < 46) {
+    const id = (raw.plant ?? db.scenarios[raw.scenario as string]?.plant) as string | undefined;
+    const plant = id ? db.plants[id] : undefined;
+    if (!plant) throw new Error(`save: no plant ${String(id)}`);
+    raw.plan = plant;
+  }
   while (v < SCHEMA) {
     const step = STEPS[v];
     if (!step) throw new Error(`save: no migration from schema ${v}`);
@@ -582,8 +596,9 @@ export function fromSave(db: ContentDb, json: string): PlantState {
     v++;
     raw.schema = v;
   }
-  // план из базы мог вырасти без смены схемы (план здания, docs/specs/2026-10-view.md, 2а): новые помещения — чистые
-  const plant = db.plants[raw.plant as string];
+  // план мог вырасти без смены схемы (план здания, docs/specs/2026-10-view.md, 2а): новые помещения — чистые; с Б7а
+  // план — в сохранении
+  const plant = raw.plan as Plant | undefined;
   const rooms = raw.rooms as Record<string, Raw> | undefined;
   if (plant && rooms) for (const r of plant.rooms) rooms[r.id] ??= { id: r.id, type: r.type, status: 'clean', since: raw.t };
   return raw as unknown as PlantState;

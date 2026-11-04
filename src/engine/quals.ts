@@ -146,7 +146,7 @@ export function needOf(db: ContentDb, s: PlantState, t: Task): string[] {
 function needOfTask(db: ContentDb, s: PlantState, t: Task): string[] {
   const b = t.kind === 'stage' && t.batch ? s.batches[t.batch] : undefined;
   const stage = b ? db.recipes[b.recipe].stages[b.stage] : undefined;
-  const line = LINE_WORK.has(t.kind) && t.line ? planOf(db, s.plant).plant.lines.find(l => l.id === t.line) : undefined;
+  const line = LINE_WORK.has(t.kind) && t.line ? planOf(db, s.plan).plant.lines.find(l => l.id === t.line) : undefined;
   const method = (t.kind === 'prep' || t.kind === 'review') && t.test ? s.tests[t.test]?.method : undefined;
   return needFor(db, t.kind, { ...(stage ? { stage } : {}), ...(line ? { machines: line.machines.map(m => m.type) } : {}), ...(method ? { method } : {}) });
 }

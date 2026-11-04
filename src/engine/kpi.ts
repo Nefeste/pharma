@@ -271,7 +271,7 @@ export function lineOee(days: readonly LineDay[]): Oee | undefined {
 
 /** Сутки каждой линии плана за период, по порядку плана. */
 const lineDays = (db: ContentDb, s: PlantState, days: readonly DayLoss[]): LineDay[][] =>
-  planOf(db, s.plant).plant.lines.map(l => days.flatMap(d => (d.lines[l.id] ? [d.lines[l.id]] : [])));
+  planOf(db, s.plan).plant.lines.map(l => days.flatMap(d => (d.lines[l.id] ? [d.lines[l.id]] : [])));
 
 /** OEE каждой линии плана за сутки периода, по порядку плана. */
 export function oeeOf(db: ContentDb, s: PlantState, days: readonly DayLoss[]): (Oee | undefined)[] {
@@ -495,7 +495,7 @@ const CALC: Record<string, Calc> = {
     return o.length > 0 ? Math.round(o.reduce((n, x) => n + x.oee, 0) / o.length) : undefined;
   },
   setup: c => {
-    const rooms = roomsOf(planOf(c.db, c.s.plant)).rooms;
+    const rooms = roomsOf(planOf(c.db, c.s.plan)).rooms;
     let clean = 0;
     let work = 0;
     for (const d of c.days)

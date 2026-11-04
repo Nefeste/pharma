@@ -81,7 +81,7 @@ function docsOf(db: ContentDb, s: PlantState, d: Deviation): { docs: string[]; p
   const recOf = (stage: string | undefined) => (b && stage ? b.records.find(x => x.stage === stage) : undefined);
   const out = (docs: string[], people: string[], head: Head) => (docs.length && people.length ? { docs: [...docs].sort(), people, head } : undefined);
   if (d.kind === 'recon') {
-    const line = b?.pack?.line ? planOf(db, s.plant).plant.lines.find(l => l.id === b.pack!.line) : undefined;
+    const line = b?.pack?.line ? planOf(db, s.plan).plant.lines.find(l => l.id === b.pack!.line) : undefined;
     return out(line ? equipmentDocs(db, [], line.machines.map(m => m.type)) : [], here(b?.pack?.people ?? []), 'mes');
   }
   if (d.kind === 'oos') {
@@ -108,7 +108,7 @@ function meterOf(db: ContentDb, s: PlantState, d: Deviation): string | undefined
   if (d.kind === 'ipc' && d.test && d.batch) {
     const rec = s.batches[d.batch].records.find(x => x.stage === d.stage);
     const inst = db.tests[d.test].inst;
-    const meters = rec ? placesOf(planOf(db, s.plant).plant).ipcIn[rec.room] : undefined;
+    const meters = rec ? placesOf(planOf(db, s.plan).plant).ipcIn[rec.room] : undefined;
     return meters?.find(m => m.type === inst)?.id;
   }
   const inv = d.inv ? s.investigations[d.inv] : undefined;

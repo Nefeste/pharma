@@ -239,7 +239,7 @@ interface Proj {
  */
 export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[] = [], fresh: readonly Fresh[] = [], drop: readonly string[] = [], until?: number): Forecast {
   const asked = new Map(changes.map(c => [c.batch, c.notBefore]));
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const now = s.t;
   const crews = new Map<string, Crew>();
   const out: Forecast = { bars: [], why: {}, stuck: [] };
@@ -325,7 +325,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     } else {
       const w = washWork(db, s, r.id, major);
       if (w > 0) {
-        const c = take(washRoles(db, s.plant, r.id), 1, at, cleanNeed, { kind: 'clean', nom: w, max: w });
+        const c = take(washRoles(db, s.plan, r.id), 1, at, cleanNeed, { kind: 'clean', nom: w, max: w });
         if (!c) return undefined;
         if (!major && c.t - dirtySince > DIRTY_HOLD) major = true;
         const sec = washWork(db, s, r.id, major);

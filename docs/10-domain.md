@@ -386,6 +386,28 @@ GQ — годное, SQ — брак, CM — израсходованный ма
 | В учёте по выпуску выпуск — цена минус прямые материалы: остальное в основном постоянное — работников не нанимают и не увольняют по дням, им платят и в простое. Когда ресурса не хватает, ассортимент выбирают по выпуску на час узкого места, а не на единицу; час, потерянный на узком месте, потерян для всего завода | `acca-ta-1`; `acca-ta-2` | 03.11.2026 |
 | В GSK тактическое планирование АФИ — ежемесячно на площадке: спрос, мощности, сценарии, горизонт 2 года; производственный график строят по нынешнему плану S&OP, чтобы выполнить заказы и держать запас | `ispe-pe-2014` (с. 36–37, 48) | 03.11.2026 |
 
+### Потребность в материалах
+
+| Факт | Источник | Сверено |
+|---|---|---|
+| MRP от независимого спроса верхнего уровня разузловкой состава считает зависимый спрос, собирает его в партии по правилу и планирует закупку или производство вовремя; итог — предложения заказов | `eth-opess` (§ 5.3.2b) | 04.11.2026 |
+| Четыре шага по каждой позиции — от готовой продукции к сырью: валовая потребность, чистая, размер партии, плановый заказ; валовая потребность готовой продукции — из главного графика: заказы покупателей и прогноз продаж | `eth-opess` (§ 12.3.2) | 04.11.2026 |
+| Прогнозный доступный остаток = физический запас + открытые поступления − зарезервированное + плановые поступления − валовая потребность, суммы к дате; страховой запас вычитают сразу; чистая потребность — отрицательный прогнозный остаток по периодам | `eth-opess` (§ 12.1.1, рис. 12.1.1.1; § 12.3.2); `mit-2854-mrp` | 04.11.2026 |
+| Открытое поступление — непоставленный остаток выпущенного заказа с назначенной датой; приёмка увеличивает запас и уменьшает открытые поступления | `eth-opess` (§ 12.1.1) | 04.11.2026 |
+| Плановый заказ задаёт материал, количество и последний срок готовности; плановый запуск — плановое поступление, сдвинутое назад на срок; невыпущенные предложения при следующем расчёте удаляют и считают заново | `eth-opess` (§ 5.1.2b, § 12.3.2); `mit-2854-mrp` | 04.11.2026 |
+| Расчёт по плану производства — валовой, без запаса и открытых заказов, его итог — план закупок материалов; детальный расчёт — чистый, с запасом и открытыми заказами, его итог — предложения заказов | `eth-opess` (§ 5.1.2, § 5.1.2b) | 04.11.2026 |
+| Сдвиг на срок: старт заказа — дата готовности минус срок; у покупного предложение — точка заказа с учётом срока из основных данных | `eth-opess` (§ 1.2.3b, § 12.3.3); `mit-2854-mrp` | 04.11.2026 |
+| Срок закупки — подготовка и выпуск заказа, срок поставщика, транспорт, приёмка, контроль и размещение на хранение | `eth-opess` (§ 1.2.3b, по словарю ASCM 2022) | 04.11.2026 |
+| Горизонт планирования — не короче совокупного срока, а в нём — сроки закупки всех компонентов | `eth-opess` (§ 1.2.3b, § 5.1.2, § 12.1.2) | 04.11.2026 |
+| Страховой запас защищает от неопределённости количества, страховое время — от неопределённости сроков; MRP в принципе не требует страхового запаса компонентов, но в срок закладывают страховое время против опозданий поставок | `eth-opess` (§ 12.3.1); `mit-2854-mrp` | 04.11.2026 |
+| Правило размера партии делает партии из чистой потребности: «партия в партию» — каждая потребность одним заказом; фиксированный размер неизбежно оставляет запас и невыгоден при «комковатом» спросе | `eth-opess` (§ 12.4.1); `mit-2854-mrp` | 04.11.2026 |
+| Минимальная и максимальная партия — модификаторы после расчёта размера: минимум у покупных задают минимальные объёмы поставщика и ожидаемый дефицит, максимум — срок годности, место на складе и деньги | `eth-opess` (§ 11.4.3b, рис. 11.4.3.6, по словарю ASCM 2022) | 04.11.2026 |
+| Кратность: заказ округляют вверх до кратного количества, лишнее переходит в следующий период как поступление; расчёт «партия в партию» упирается в упаковку поставщика и его минимальную партию | `oracle-mrp-r11` (документация ПО); `javadi-2025` | 04.11.2026 |
+| Сообщение о действии — что и какое действие нужно, чтобы исправить проблему: плановые заказы с прошедшим или близким, в пределах недели, запуском; открытые заказы, которые надо ускорить или замедлить; сообщений много — их сортируют, срочные первыми | `eth-opess` (§ 12.5.2, по словарю ASCM 2022) | 04.11.2026 |
+| Виды сообщений — ускорить заказ, новое предложение, отложить, лишний заказ; MRP сначала ускоряет выпущенные заказы и только потом предлагает новые; заказ без потребности можно отменить | `eth-opess` (§ 12.5.1, § 12.1.3, § 12.6); `mit-2854-mrp`; `oracle-mrp-r11` | 04.11.2026 |
+| Каждая поставка — от одобренной цепи поставки; поступившие материалы — сразу в карантин до разрешения; в производство — только разрешённые ОКК исходные материалы в пределах срока переиспытания (ЕС) или срока годности (ЕАЭС) | `eu-gmp-1` (п. 1.4 (vi)); `eu-gmp-5` (пп. 5.5, 5.34); `gmp-eaeu` (ч. I, пп. 1.4 vi), 5.5, 5.34) | 04.11.2026 |
+| Вывод из двух строк выше, а не цитата: запасом в расчёте материал становится после разрешения ОКК, поэтому поступление ставят раньше потребности на срок поставки и входного контроля; прямой фразы об этом в фармацевтическом источнике нет | `eth-opess` (§ 1.2.3b); `eu-gmp-5`; `gmp-eaeu` | 04.11.2026 |
+
 ## 8. Что ещё нужно найти
 
 До спецификации каждой системы — источники на её механики. Список растёт. Сейчас нужны:
@@ -518,8 +540,11 @@ GQ — годное, SQ — брак, CM — израсходованный ма
 - **прогноз, S&OP и потребность в материалах** ([`specs/2026-10-vertical-slice.md`](specs/2026-10-vertical-slice.md),
   Б6в–Б6е): способы прогноза и меры его точности — найдено (§7, «Прогноз и сезон спроса»); шаги и роли S&OP, грубая
   проверка мощности, резерв и маржа на час узкого места — найдено (§7, «S&OP и мощности»); расчёт чистой потребности,
-  срок поставки и страховой запас — учебник по MRP (Orlicky's MRP, Vollmann и др.); замороженный горизонт и «твёрдое»
-  плановое задание — словарь ASCM. Сменно-суточное задание и диспетчирование — по ГОСТ Р МЭК 62264-3-2012 (§7, копия
+  срок закупки, размер заказа и сообщения о действиях — найдено (§7, «Потребность в материалах»): определения — по
+  курсу ETH со ссылкой на словарь ASCM 2022, сам словарь и учебники Orlicky (Ptak, Smith) и Vollmann не открыты;
+  кратность заказа — только в документации ПО; что входной контроль — часть срока закупки, фармацевтический источник
+  прямо не говорит — вывод; замороженный горизонт и «твёрдое» плановое задание — словарь ASCM. Сменно-суточное
+  задание и диспетчирование — по ГОСТ Р МЭК 62264-3-2012 (§7, копия
   открылась 03.11.2026); его издание — по IEC 62264-3:2007, у МЭК с 2016 года — второе, его текст не открыт.
 
 ## 9. Источники
@@ -825,7 +850,7 @@ GQ — годное, SQ — брак, CM — израсходованный ма
 | `stahl-wallace-2012` | Stahl R. A., Wallace T. F. — десять принципов Executive S&OP; пересказ с разрешения авторов статьи «S&OP Principles: The Foundation for Success» (Foresight, № 27, 2012) | John Galt Solutions, без даты | https://johngalt.com/learn/blog/principles-of-successful-s-op |
 | `kalla-2025` | Kalla C., Hellingrath B., Scavarda L. F., Caiado R. G. G. Adapting sales and operations planning to dynamic and complex supply chains // Review of Managerial Science | Springer, 2025 | https://link.springer.com/article/10.1007/s11846-025-00894-x |
 | `ow-ibp-eame` | Transitioning from Sales and Operations Planning to Integrated Business Planning | Oliver Wight EAME, без даты | https://oliverwight-eame.com/transitioning-from-sales-and-operations-planning-to-integrated-business-planning |
-| `eth-opess` | Schönsleben P. Integral Logistics Management — онлайн-курс по книге (Springer), § 5.2.2, 5.2.2b, 5.2.3c, 13.2.3, 14.4.1; определения — по словарю ASCM 2022 | ETH Zürich, без даты | https://opess.ethz.ch/course/section-5-2/5-2-2-sales-and-operations-planning-and-resource-requirements-planning/ · https://opess.ethz.ch/course/section-5-2/5-2-3c-rough-cut-capacity-planning-rccp · https://opess.ethz.ch/course/section-13-2/13-2-3-conclusions-for-job-shop-production · https://opess.ethz.ch/course/section-14-4/14-4-1-rough-cut-network-plans-and-load-profiles |
+| `eth-opess` | Schönsleben P. Integral Logistics Management — онлайн-курс по книге (Springer), § 5.2.2, 5.2.2b, 5.2.3c, 13.2.3, 14.4.1; с Б6д — § 1.2.3b, 5.1.2, 5.1.2b, 5.3.2b, 11.4.3b, 12.1.1, 12.1.2, 12.1.3, 12.3.1, 12.3.2, 12.3.3, 12.4.1, 12.5.1, 12.5.2, 12.6; определения — по словарю ASCM 2022 | ETH Zürich, без даты; страницы § 12 изменены в феврале 2025 | https://opess.ethz.ch/course/section-5-2/5-2-2-sales-and-operations-planning-and-resource-requirements-planning/ · https://opess.ethz.ch/course/section-5-2/5-2-3c-rough-cut-capacity-planning-rccp · https://opess.ethz.ch/course/section-13-2/13-2-3-conclusions-for-job-shop-production · https://opess.ethz.ch/course/section-14-4/14-4-1-rough-cut-network-plans-and-load-profiles · https://opess.ethz.ch/course/section-12-3/12-3-2-the-material-requirements-planning-technique-mrp-technique-and-planned-orders/ · https://opess.ethz.ch/course/section-12-1/12-1-1-projected-available-inventory/ · https://opess.ethz.ch/course/section-12-5/12-5-2-action-messages/ · https://opess.ethz.ch/course/section-1-2/1-2-3b-production-structure-product-module-cumulative-lead-time-process-plan-lead-time-offset-process-related-business-objects/ · https://opess.ethz.ch/course/section-11-4/11-4-3b-economic-order-quantity-eoq-and-optimum-length-of-order-cycle-in-practical-application/ |
 | `abbas-goosheh-2024` | Abbas A., Goosheh S. Operations Management, § 14.3 «Aggregate Planning Strategies» | eCampusOntario Pressbooks, 2024 | https://ecampusontario.pressbooks.pub/opsmgmt/?p=1615 |
 | `fp-intel-2008` | Tafoya, Skowronski (Intel). A Fast Cycle Time Story — Factory Physics application at Intel, слайды | IIE Conference, 2008 | https://factoryphysics.com/wp-content/uploads/2023/02/factory_physics_application_at_intel.pdf |
 | `spearman-fp` | Spearman M. L. Factory Physics, слайды доклада | Project Production Institute, 2021 | https://projectproduction.org/wp-content/uploads/2021/03/6-Spearman-Factory-Physics.pdf |
@@ -837,6 +862,11 @@ GQ — годное, SQ — брак, CM — израсходованный ма
 | `acca-ta-1` | Throughput accounting and the theory of constraints, part 1 | ACCA, без даты | https://www.accaglobal.com/gb/en/student/exam-support-resources/fundamentals-exams-study-resources/f5/technical-articles/throughput-constraints1.html |
 | `acca-ta-2` | Throughput accounting and the theory of constraints, part 2 | ACCA, без даты | https://www.accaglobal.com/us/en/student/exam-support-resources/fundamentals-exams-study-resources/f5/technical-articles/throughput-constraints2.html |
 | `ispe-pe-2014` | Pharmaceutical Engineering, май — июнь 2014: управление цепочкой поставок — риски поставки АФИ в GSK, с. 36–37; Mierau D. J. Defining Holistic Asset Criticality to Manage Risk, с. 48 | ISPE, 2014 | https://ispewebassets.org/files/attachments/public/14MJ_PharmEngineering_low-res_web_0.pdf |
+| `eu-gmp-1` | EudraLex, vol. 4, EU GMP, Chapter 1 «Pharmaceutical Quality System» | Еврокомиссия, в силе с 31.01.2013; действует (страница EudraLex vol. 4, 04.11.2026) | https://health.ec.europa.eu/document/download/e458c423-f564-4171-b344-030a461c567f_en?filename=vol4-chap1_2013-01_en.pdf |
+| `eu-gmp-5` | EudraLex, vol. 4, EU GMP, Part I, Chapter 5 «Production» | Еврокомиссия, 13.08.2014, в силе с 01.03.2015; действует (страница EudraLex vol. 4, 04.11.2026) | https://health.ec.europa.eu/document/download/4a1fdb4f-6f6f-49c4-b264-8056e5bbe078_en?filename=chapter_5.pdf |
+| `mit-2854-mrp` | Gershwin S. B. Material Requirements Planning — лекция курса 2.853/2.854 «Introduction to Manufacturing Systems» (по «Factory Physics» Hopp и Spearman) | MIT OpenCourseWare, осень 2016 | https://ocw.mit.edu/courses/2-854-introduction-to-manufacturing-systems-fall-2016/4eec617bb52d64f4ea1bed6d9905bc00_MIT2_854F16_MatrialRequire.pdf |
+| `javadi-2025` | Javadi S. M., Sadjadi S. J., Teimoury E., Makui A. Material requirements planning with a novel lot sizing method and a new algorithm for production scheduling // Scientific Reports, 2025, т. 15, doi:10.1038/s41598-025-13197-8, CC BY 4.0 | Nature Publishing Group, 29.07.2025 | https://www.ebi.ac.uk/europepmc/webservices/rest/PMC12307884/fullTextXML |
+| `oracle-mrp-r11` | Oracle Master Scheduling/MRP and Supply Chain Planning — справка «Order Modifiers» и «Rescheduling Scheduled Receipts»; документация программы, а не учебник: берём, только где другого источника нет | Oracle, без даты | https://docs.oracle.com/cd/A60725_05/html/comnls/us/mrp/ordmod.htm · https://docs.oracle.com/cd/A60725_05/html/comnls/us/mrp/implan06.htm |
 
 Названия поставщиков оборудования и инструмента здесь — только источники фактов о скоростях, износе и уходе. В игре их
 нет: производители оборудования вымышленные (ADR [0004](adr/0004-regulatory-profile.md)).

@@ -5,6 +5,7 @@
 // не ждёт, люди на смене заняты, инварианты — каждые сутки.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
+import { coverBy, skillOf, whoDecides } from '../../src/engine/bosses';
 import { addWorkdays, DAY, HOUR, isWorkday, momentOf } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
 import { check } from '../../src/engine/invariants';
@@ -12,6 +13,7 @@ import { BATCH_HOUR } from '../../src/engine/mes';
 import { pairsFor } from '../../src/engine/partners';
 import { AHEAD, AHEAD_WORK, aheadMilli, casesOf, positionOf } from '../../src/engine/planner';
 import { planOf } from '../../src/engine/plant';
+import { sopCover } from '../../src/engine/sop';
 import { takesAt } from '../../src/engine/staff';
 import { planUse, SUPPLY_HOUR, supplyPosition } from '../../src/engine/supply';
 import type { PlantState } from '../../src/engine/types';
@@ -117,7 +119,11 @@ describe('коллега планирования', () => {
       const added = Object.values(s.batches).slice(before);
       if (!isWorkday(calOf(db, s), dayOf(s)) || busy || pos.some(x => x.span === 0)) continue;
       seen.checked++;
-      const need = pos.filter(x => x.cases * x.work * 1000 < x.ordered * aheadMilli(AHEAD + p.cover));
+      // запас позиций продукта — из утверждённого плана S&OP (Б6г), без плана — политика; с событиями коммерции (Б6е)
+      // лучший план чаще отходит от политики, поэтому — как у правила, по продукту
+      const skill = skillOf(s, whoDecides(db, s, 'plan'));
+      const coverOf = (sku: string) => coverBy(skill, sopCover(s, productOf(sku), dayOf(s, at)) ?? p.cover);
+      const need = pos.filter(x => x.cases * x.work * 1000 < x.ordered * aheadMilli(AHEAD + coverOf(x.sku)));
       if (need.length === 0) {
         expect(added).toHaveLength(0);
         continue;
@@ -237,11 +243,12 @@ describe('год завода прототипа', () => {
     const tens = work.slice(9).map((_, i) => work.slice(i, i + 10).reduce((n, d) => n + (per.get(d) ?? 0), 0));
     expect(Math.min(...tens)).toBeGreaterThanOrEqual(3);
     expect(tens.filter(n => n < 4).length).toBeLessThanOrEqual(10);
-    // после пуска — недопоставок почти нет: за год больше шести из семи заказов — в срок полностью. До Б6д было больше
+    // после пуска — недопоставок немного: за год больше четырёх из пяти заказов — в срок полностью. До Б6д было больше
     // девяти из десяти; с правилом снабжения «по потребности» запас АФС тоньше, и на зерне сценария отклонённая в январе
-    // 2028 партия парацетамола на 1 250 кг остановила серии в марте — 88 %
+    // 2028 партия парацетамола на 1 250 кг остановила серии в марте — 88 %; с событиями коммерции (Б6е) крупный заказ
+    // берёт запас позиции разом, а коллеги в замороженном горизонте план не правят — 82 %
     const orders = Object.values(s.orders).filter(o => o.status !== 'open');
-    expect(orders.filter(o => o.status === 'shipped').length / orders.length).toBeGreaterThan(0.85);
+    expect(orders.filter(o => o.status === 'shipped').length / orders.length).toBeGreaterThan(0.8);
     // аппаратчики и кладовщик на смене заняты задачами не меньше трети времени
     for (const r of ['role.operator', 'role.storekeeper']) expect([r, (busy[r] ?? 0) / shift[r] > 0.33]).toEqual([r, true]);
     // журнал решений (Б5а): записей руководителей — столько же, сколько решений в замере «Как сейчас» спецификации Б5:

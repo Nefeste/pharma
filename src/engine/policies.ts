@@ -233,6 +233,12 @@ export function policyErrors(db: ContentDb): string[] {
   }
   // резерв мощности (Б6г; §9.2): план оставляет свободной долю мощности от 0 до половины
   for (const [a, b] of db.policies[POL.reserve]?.shares ?? []) if (a * 2 > b) out.push(`политика ${POL.reserve}: доля ${a}/${b} — больше половины мощности`);
+  // замороженный горизонт (Б6е): цену правки считают не короче наибольшего горизонта — иначе правка у края без цены
+  const fz = db.policies[POL.frozen];
+  for (const sc of Object.values(db.scenarios)) {
+    const price = sc.plan?.price;
+    if (fz?.max !== undefined && price !== undefined && price < Math.floor((fz.max * 7) / 5)) out.push(`сценарий ${sc.id}: горизонт цены правки ${price} суток — короче замороженного горизонта ${fz.max} рабочих дней`);
+  }
   if (out.length > 0) return out;
   for (const sc of Object.values(db.scenarios))
     for (const p of Object.values(db.policies)) {

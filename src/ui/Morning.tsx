@@ -256,7 +256,7 @@ function SopBlock({ x, hud, actions, close }: { x: SopMeeting; hud: Hud; actions
       {x.today !== undefined ? <div data-test="morning-sop-today">{T.sop.today(clock(x.today % 86400))}</div> : null}
       {p ? (
         <div data-test="morning-sop-plan" data-gap={p.gap}>
-          {T.sop.meetingText(T.sop.month(p.to), p.cover.map(c => T.sop.coverOf(named(db?.products[c.product]?.name, c.product), T.sop.days(c.days))).join(', '), p.by === 'player' ? T.journal.player('') : (T.journal.names.plan ?? p.by), money(p.gap))}
+          {T.sop.meetingText(T.sop.month(p.to), p.cover.map(c => T.sop.coverOf(named(db?.products[c.product]?.name, c.product), T.sop.days(c.days))).join(', '), p.by === 'player' ? T.journal.player('') : T.sop.colleague, money(p.gap))}
         </div>
       ) : null}
       <Levers list={[{ k: 'sop' }]} hud={hud} actions={actions} close={close} />

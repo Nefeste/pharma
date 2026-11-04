@@ -99,6 +99,11 @@ export interface SopView {
   high: number;
   /** «до лучшего плана», копейки: на открытом совещании — у показанного плана, иначе — у утверждённого на совещании */
   gap?: number;
+  /**
+   * на сколько цель плана выше лучшего, копейки: лучший план не копит впрок сверх линии резерва, а план игрока может —
+   * он берёт резерв мощности
+   */
+  over?: number;
   /** ошибка прогноза в прогоне, WAPE, 1/10 000; резерв мощности — доля */
   err: number;
   reserve: [number, number];
@@ -194,6 +199,7 @@ export function sopView(db: ContentDb, s: PlantState, q: SopQuery): SopView {
   }));
   const people: SopPeopleRow[] = SOP_ROLES.map(role => ({ role, need: months.map(m => m.hours[role]), have: months.map(m => m.have[role]) }));
   const gap = open ? (draft ? Math.max(0, open.value - r.mean) : 0) : approved && shown === 'approved' ? Math.max(0, approved.best - approved.value) : undefined;
+  const over = open ? r.mean - open.value : approved && shown === 'approved' ? approved.value - approved.best : 0;
   return {
     view: 'sop',
     from,
@@ -212,6 +218,7 @@ export function sopView(db: ContentDb, s: PlantState, q: SopQuery): SopView {
     short: r.short,
     high: r.high,
     ...(gap !== undefined ? { gap } : {}),
+    ...(over > 0 ? { over } : {}),
     err: ctx.err,
     reserve,
     demand,

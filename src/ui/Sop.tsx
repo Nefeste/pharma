@@ -78,7 +78,7 @@ function Plan({ v, actions }: { v: SopView; actions: Actions }) {
 
 /** Состояние совещания: идёт, утверждён план, плана нет; следующее совещание. */
 function State({ v, hud }: { v: SopView; hud: Hud }) {
-  const by = (x: string) => (x === 'player' ? T.journal.player('') : (T.journal.names.plan ?? x));
+  const by = (x: string) => (x === 'player' ? T.journal.player('') : T.sop.colleague);
   const lines: string[] = [];
   if (v.open) lines.push(T.sop.open(whenText(hud.start, v.open.at)));
   else if (v.approved && v.shown !== 'policy') lines.push(T.sop.approved(whenText(hud.start, v.approved.at), by(v.approved.by)));
@@ -103,6 +103,11 @@ function Result({ v, hud, actions }: { v: SopView; hud: Hud; actions: Actions })
       {v.gap !== undefined ? (
         <div className={v.gap > 0 ? 'warn' : 'muted'} data-test="sop-gap">
           {T.sop.gap(money(v.gap))}
+        </div>
+      ) : null}
+      {v.over !== undefined ? (
+        <div className="warn" data-test="sop-over" data-v={v.over}>
+          {T.sop.above(money(v.over))}
         </div>
       ) : null}
       <div className="cbtns">

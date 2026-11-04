@@ -4,8 +4,9 @@
 // серии по рабочим дням, запас и недопоставки сходятся до ящика; маржа пачки и цена денег в запасе — на примере; лучший
 // план не хуже плана по политике и копит впрок только в резерве; утверждённый план — запас позиций правила; касса на три
 // месяца; миграция схемы 41 → 42.
-import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { afterAll, describe, expect, test } from 'bun:test';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { db } from '../../src/content';
 import { DAY, daysFromCivil, HOUR, isWorkday, momentOf } from '../../src/engine/core/calendar';
@@ -17,6 +18,7 @@ import { fromSave } from '../../src/engine/save';
 import { sopAt, sopCover, sopDay } from '../../src/engine/sop';
 import type { Decided, Notice, PlantState } from '../../src/engine/types';
 import { calOf } from '../../src/engine/workdays';
+import { buildDb } from '../content/load';
 
 const SC = 'scn.proto';
 const sc = db.scenarios[SC];
@@ -168,7 +170,7 @@ describe('прогон плана вперёд', () => {
   });
 
   test('цена денег в запасе: ГП без спроса и новых серий — запас × материалы и упаковка × ставка за сутки', () => {
-    const quiet: P.SopCtx = { ...ctx, rate: new Map([...ctx.rate].map(([k, xs]) => [k, xs.map(() => 0)])), work: ctx.work.map(() => false), arrive: new Map() };
+    const quiet: P.SopCtx = { ...ctx, rate: new Map([...ctx.rate].map(([k, xs]) => [k, xs.map(() => 0)])), work: ctx.work.map(() => false), rule: ctx.rule.map(() => -1), arrive: new Map() };
     const x = P.sopRun(quiet, flat(21));
     expect(x.margin).toBe(0);
     let want = 0;
@@ -323,5 +325,36 @@ describe('сохранение', () => {
     expect(s.sop!.plans).toEqual([]);
     expect(s.sop!.open!.from).toBe(SEP + 2);
     expect(check(db, s)).toEqual([]);
+  });
+});
+
+describe('сборщик базы', () => {
+  const dirs: string[] = [];
+  afterAll(() => {
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+  });
+  function broken(edits: Record<string, [string, string][]>): string[] {
+    const dir = mkdtempSync(join(tmpdir(), 'pharma-content-'));
+    dirs.push(dir);
+    cpSync(join(import.meta.dir, '../../content'), dir, { recursive: true });
+    for (const [file, e] of Object.entries(edits)) {
+      const p = join(dir, file);
+      let text = readFileSync(p, 'utf8');
+      for (const [a, b] of e) {
+        expect(text.includes(a)).toBe(true);
+        text = text.replace(a, b);
+      }
+      writeFileSync(p, text);
+    }
+    return buildDb(dir).errors;
+  }
+  const SHARES = 'shares: [[1, 10], [1, 5], [3, 10], [2, 5], [1, 2]]';
+
+  test('резерв мощности — доля от 0 до половины; у сценария — вариант политики', () => {
+    expect(broken({})).toEqual([]);
+    const over = broken({ 'policies/plan/reserve.yaml': [[SHARES, 'shares: [[1, 10], [1, 5], [3, 10], [2, 5], [3, 5]]']] });
+    expect(over.some(e => e.includes('pol.plan.reserve: доля 3/5 — больше половины мощности'))).toBe(true);
+    const off = broken({ 'scenarios/proto.yaml': [['reserve: [3, 10]', 'reserve: [1, 4]']] });
+    expect(off.some(e => e.includes('pol.plan.reserve = [1,4] — вне пределов политики'))).toBe(true);
   });
 });

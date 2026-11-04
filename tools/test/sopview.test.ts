@@ -78,6 +78,15 @@ describe('окно S&OP', () => {
     expect(v.cover).toEqual(draft);
     expect(v.gap).toBe(Math.max(0, s.sop!.open!.value - v.value));
     expect(v.value).not.toBe(s.sop!.open!.value);
+    expect(v.over).toBeUndefined();
+    // запас 28 суток ровно — цель выше лучшего: лучший не берёт резерв мощности, а этот план — берёт
+    const flat28 = { [PARA]: Array(6).fill(28), [LOR]: Array(6).fill(28) };
+    const w = sopView(db, s, { view: 'sop', draft: flat28 });
+    expect(w.value).toBeGreaterThan(s.sop!.open!.value);
+    expect(w.over).toBe(w.value - s.sop!.open!.value);
+    expect(w.gap).toBe(0);
+    const hplc = w.res.find(r => r.res === 'hplc')!;
+    expect(hplc.load.some((x, i) => x > hplc.line[i])).toBe(true);
     expect(sopView(db, s, { view: 'sop', draft: { [PARA]: draft[PARA] } }).shown).toBe('best');
     expect(sopView(db, s, { view: 'sop', draft: { ...draft, [PARA]: [42, 42, 42, 42, 42, 40] } }).shown).toBe('best');
   });

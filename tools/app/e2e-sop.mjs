@@ -60,8 +60,8 @@ async function openGame({ browser, port, errors, requests, q }) {
     window.__seen = {
       // окно совещания открыто, его вид пришёл и совещание идёт
       open: () => h().sop.open && !!v()?.open && !!document.querySelector('[data-test=sop-state][data-open="1"]'),
-      // правка клетки: план — черновик, клетка — с новой целью, цель плана пересчитана
-      drafted: ([product, i, days, was]) => v()?.shown === 'draft' && v().cover[product]?.[i] === days && v().value !== was && document.querySelector(`[data-test=sop-cell][data-product="${product}"][data-i="${i}"]`)?.getAttribute('data-v') === String(days),
+      // правка клетки: план — черновик, клетка — с новой целью — окно пересчитало план
+      drafted: ([product, i, days]) => v()?.shown === 'draft' && v().cover[product]?.[i] === days && document.querySelector(`[data-test=sop-cell][data-product="${product}"][data-i="${i}"]`)?.getAttribute('data-v') === String(days),
       // утверждён: совещания нет, показан утверждённый план
       approved: () => !v()?.open && v()?.shown === 'approved' && !!document.querySelector('[data-test=sop-state][data-open="0"][data-shown=approved]'),
       journal: () => !!h().journal.view,
@@ -125,6 +125,13 @@ function steps(page, { out, fail, shots, feel }) {
       await page.click('[data-test=seats-take]');
       await page.waitForFunction(w => [...(window.__game.store.get().top?.seats ?? [])].sort().join() === w, [...want].sort().join(), { timeout: 20_000 });
       await page.evaluate(() => window.__game.actions.setSpeed(0));
+    },
+    /** «До утра» (5): до 08:00 или до автопаузы по дороге; окна закрыть — мир идёт дальше. */
+    untilMorning: async () => {
+      for (let k = 0; k < 4 && (await page.evaluate(() => { const h = window.__game.store.get(); return h.morning.open || h.journal.open || h.sop.open || !!h.selected; })); k++) await page.keyboard.press('Escape');
+      await page.keyboard.press('Digit5');
+      await page.waitForFunction(() => !window.__game.ff, null, { timeout: 180_000 });
+      await frames(2);
     },
     /** «До события» (6): до автопаузы; планёрку и окна закрыть — мир идёт дальше. Открыто ли окно совещания. */
     untilEvent: async () => {
@@ -199,11 +206,11 @@ async function production(x) {
     await page.evaluate(() => document.querySelector('[data-test=sop-plan]')?.scrollIntoView({ block: 'center' }));
     const was = await page.evaluate(p => ({ c: window.__game.store.get().sop.view.cover[p][0], v: window.__game.store.get().sop.view.value }), PARA);
     const to = was.c === 35 ? 28 : 35;
-    await s.measure('Цель клетки — пересчёт', () => page.selectOption(`[data-test=sop-cell][data-product="${PARA}"][data-i="0"]`, String(to)), 'drafted', [PARA, 0, to, was.v]);
+    await s.measure('Цель клетки — пересчёт', () => page.selectOption(`[data-test=sop-cell][data-product="${PARA}"][data-i="0"]`, String(to)), 'drafted', [PARA, 0, to]);
     const drafted = await page.evaluate(() => ({ gap: document.querySelector('[data-test=sop-result]')?.getAttribute('data-gap') ?? '', text: document.querySelector('[data-test=sop-gap]')?.textContent ?? '', value: window.__game.store.get().sop.view.value }));
     await s.shot('S&OP: своя цель клетки');
     if (drafted.gap === '' || Number(drafted.gap) < 0 || !/^До лучшего плана — [\d\s ]+ ₽$/.test(drafted.text)) fail(`черновик: ${JSON.stringify(drafted)}`);
-    else ok(`черновик: запас парацетамола в первом месяце ${was.c} → ${to} суток; «${drafted.text}»`);
+    else ok(`черновик: запас парацетамола в первом месяце ${was.c} → ${to} суток, цель плана ${was.v} → ${drafted.value} коп.; «${drafted.text}»`);
 
     // «Утвердить» — план завода; запись журнала «вы»
     await s.measure('«Утвердить»', () => page.click('[data-test=sop-approve]'), 'approved');
@@ -213,22 +220,27 @@ async function production(x) {
     else ok(`утверждён: запас — ${Object.entries(plan.cover).map(([p, xs]) => `${p.replace('prd.', '')} ${xs.join(', ')}`).join('; ')}`);
     await page.keyboard.press('Escape');
     await s.openJournal();
-    const rec = await page.evaluate(() => [...document.querySelectorAll('[data-test=journal-row]')].map(r => r.textContent ?? '').find(t => t.includes('План S&OP с сентября 2027')) ?? '');
+    const rec = await page.evaluate(() => document.querySelector('[data-test=journal-row][data-kind=sop][data-by=player]')?.textContent ?? '');
     await s.shot('Журнал: план S&OP');
-    if (!rec || !/вы/.test(rec)) fail(`журнал: «${rec}»`);
+    if (!/План S&OP с сентября 2027: запас — /.test(rec)) fail(`журнал: «${rec}»`);
     else ok(`журнал: «${rec.slice(0, 160)}»`);
     await page.keyboard.press('Escape');
 
-    // через неделю задание начальника — с запасом позиций из плана S&OP
-    await page.evaluate(() => window.__game.actions.setSpeed(4));
-    await page.waitForFunction(() => window.__game.store.get().day >= 10, null, { timeout: 240_000 });
-    await page.evaluate(() => window.__game.actions.setSpeed(0));
-    for (let k = 0; k < 4 && (await page.evaluate(() => { const h = window.__game.store.get(); return h.morning.open || !!h.selected; })); k++) await page.keyboard.press('Escape');
+    // через неделю задание начальника — с запасом позиций из плана S&OP: «До утра» до 10 сентября
+    for (let i = 0; i < 20 && (await page.evaluate(() => window.__game.store.get().day)) < 10; i++) await s.untilMorning();
+    for (let k = 0; k < 4 && (await page.evaluate(() => { const h = window.__game.store.get(); return h.morning.open || !!h.selected || h.sop.open; })); k++) await page.keyboard.press('Escape');
     await s.openJournal();
-    const why = await page.evaluate(() => [...document.querySelectorAll('[data-test=journal-row]')].map(r => r.textContent ?? '').find(t => t.includes('из утверждённого плана S&OP')) ?? '');
+    const row = '[data-test=journal-row][data-kind=order][data-by=plan]';
+    if (!(await page.evaluate(r => !!document.querySelector(r), row))) {
+      fail('журнал: заданий начальника отдела планирования нет');
+      return;
+    }
+    await page.click(`${row} [data-test=journal-more]`);
+    await page.waitForSelector(`${row} [data-test=journal-why]`, { timeout: 20_000 });
+    const why = await page.evaluate(r => document.querySelector(`${r} [data-test=journal-why]`)?.textContent ?? '', row);
     await s.shot('Журнал: задание по плану S&OP');
-    if (!why) fail('журнал: задания с запасом позиций из плана S&OP нет');
-    else ok(`задание по плану: «${why.slice(0, 200)}»`);
+    if (!why.includes('Запас позиций продукта — из утверждённого плана S&OP')) fail(`журнал: причина задания — «${why}»`);
+    else ok(`задание по плану — ${await s.clock()}: «${why.slice(0, 200)}»`);
     await page.keyboard.press('Escape');
   } finally {
     await ctx.close();

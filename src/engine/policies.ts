@@ -214,6 +214,8 @@ export function policyErrors(db: ContentDb): string[] {
     if (p.kind !== want.kind || p.each !== want.each || !!p.off !== !!want.off) out.push(`политика ${p.id}: правило читает ${want.kind}${want.each ? ` у каждого ${want.each}` : ''}${want.off ? ' или «без»' : ''}`);
     if (want.options && JSON.stringify(p.options) !== JSON.stringify(want.options)) out.push(`политика ${p.id}: варианты правила — ${want.options.join(', ')}`);
   }
+  // резерв мощности (Б6г; §9.2): план оставляет свободной долю мощности от 0 до половины
+  for (const [a, b] of db.policies[POL.reserve]?.shares ?? []) if (a * 2 > b) out.push(`политика ${POL.reserve}: доля ${a}/${b} — больше половины мощности`);
   if (out.length > 0) return out;
   for (const sc of Object.values(db.scenarios))
     for (const p of Object.values(db.policies)) {

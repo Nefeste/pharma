@@ -195,7 +195,7 @@ function lotsOf(s: PlantState, lines: readonly KitLine[]): LotQty[] {
 
 /** Оборудование стадии: по досье — то, на чём работали; впереди — то, что стоит в её помещении. */
 function equipmentOf(db: ContentDb, s: PlantState, ids: readonly string[]) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   return ids.map(id => {
     const i = plan.plant.equipment.findIndex(e => e.id === id);
     return { type: s.equipment[id]?.type ?? id, i, ...(s.assets[id] ? { inv: s.assets[id].inv } : {}) };
@@ -222,7 +222,7 @@ export function dossierView(db: ContentDb, s: PlantState, q: DossierQuery): Doss
   const b = s.batches[`B${q.batch}`];
   if (!b) return { view: 'dossier', batch: q.batch, gone: true };
   const r = db.recipes[b.recipe];
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const src = lines(b);
   const devs = Object.values(s.deviations).filter(d => d.batch === b.id);
   const disp: DispRow[] = r.bom.map(l => {
@@ -315,7 +315,7 @@ export function dossierView(db: ContentDb, s: PlantState, q: DossierQuery): Doss
 
 /** Упаковка серии в досье (п. 4.21): люди, очистка, итог по таблеткам и штукам, материалы по машинам и сверка. */
 function packOf(db: ContentDb, s: PlantState, b: Batch, job: PackJob): PackDossier {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const li = plan.plant.lines.findIndex(l => l.id === job.line);
   const def = plan.plant.lines[li];
   const sku = db.skus[job.sku];

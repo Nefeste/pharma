@@ -4,7 +4,7 @@
 import { useSyncExternalStore } from 'react';
 import type { Layer } from '../app/floor';
 import type { Go, Pause } from '../app/pauses';
-import type { Dept, HeadId, Id, OvertimeMode, SeatId } from '../content/types';
+import type { Dept, HeadId, Id, OvertimeMode, Plant, SeatId } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
 import type { Command, DeptMode, ForkOpt, Head, PolicyValue, Via } from '../engine/types';
 import type { RunSum } from '../engine/plan/run';
@@ -42,6 +42,8 @@ export interface Hud {
   error?: string;
   lang: Lang;
   version: string;
+  /** план здания (Б7а): его присылает поток расчёта со срезом — после старта и загрузки */
+  world?: Plant;
   /** дата начала и часы завода из последнего среза */
   start: Ymd;
   t: number;

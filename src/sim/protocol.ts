@@ -4,7 +4,7 @@
 // structured clone; массив среза передаётся без копии.
 // Сохранение ходит строкой: состояние с истинными свойствами партий окно не разбирает (§9) — его пишет и читает поток
 // расчёта, со своими миграциями (src/engine/save.ts).
-import type { Id } from '../content/types';
+import type { Id, Plant } from '../content/types';
 import { DAY } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
 import type { RunSum } from '../engine/plan/run';
@@ -30,13 +30,22 @@ export type ToSim =
   /** открытые виды панелей — весь набор (docs/specs/2026-10-panels.md, 3б): собрать и прислать со срезом */
   | { kind: 'views'; views: ViewQuery[] };
 
+/**
+ * План здания (Б7а): окно строит сцену и номера вещей среза из него. Поток шлёт его со срезом, когда объект плана
+ * сменился, — после старта и загрузки, с Б7б — после правки стройки.
+ */
+export interface World {
+  plan: Plant;
+  rev: number;
+}
+
 export type FromSim =
   /**
    * после каждого `tick`, `command` и `views`: срез, извещения, на сколько часы завода отстают от часов игры (игровые
    * секунды); виды панелей, которые изменились; `tick` — это ответ на `tick` (клиент держит в пути не больше одного);
    * `stopped` — `tick` встал на извещении автопаузы: часы завода — на его событии, отставания нет
    */
-  | { kind: 'slice'; buf: Int32Array; notices: Notice[]; lag: number; views?: ViewOut[]; tick?: true; stopped?: true }
+  | { kind: 'slice'; buf: Int32Array; notices: Notice[]; lag: number; views?: ViewOut[]; tick?: true; stopped?: true; world?: World }
   /** ответ на `save`: снимок состояния строкой */
   | { kind: 'saved'; json: string }
   | { kind: 'error'; message: string };

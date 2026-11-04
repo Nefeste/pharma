@@ -1,7 +1,7 @@
 // Что видно на полу (docs/specs/2026-10-view.md, 2а): состояние окна, собранное из срезов, и паллеты сцены из него. Срез
 // несёт только изменённые паллеты — здесь они копятся; помещения и фуры приходят целиком. Чистые функции без Three.js и
 // DOM: правду вещи (сколько тары в учёте — столько на паллете) проверяют тесты в Bun.
-import type { ContentDb } from '../content/types';
+import type { ContentDb, Plant } from '../content/types';
 import { planOf } from '../engine/plant';
 import { layoutOf, type Layout, levelY, roomSpots, truckSpot } from '../render/layout';
 import type { PalletView } from '../render/loads';
@@ -62,8 +62,8 @@ export function dockFront(l: Layout, dock: number): { x: number; z: number } {
  * от двери по номеру паллеты, в фуре у рампы — рядами от дверей кузова. Паллета, которую везут (`moving`), числится там,
  * откуда взяли, но рисуется на вилах (`carriedOf`).
  */
-export function palletsOf(db: ContentDb, plantId: string, st: SceneState, moving: ReadonlySet<number> = new Set()): PalletView[] {
-  const l = layoutOf(planOf(db, plantId));
+export function palletsOf(db: ContentDb, plant: Plant, st: SceneState, moving: ReadonlySet<number> = new Set()): PalletView[] {
+  const l = layoutOf(planOf(db, plant));
   const out: PalletView[] = [];
   const inRoom = new Map<number, UnitRow[]>();
   const onTruck = new Map<number, UnitRow[]>();

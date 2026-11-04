@@ -8,7 +8,7 @@ import { setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import { App } from '../ui/App';
 import { type Actions, Store } from '../ui/store';
-import { Game, PLANT, SCENARIO } from './game';
+import { Game, SCENARIO } from './game';
 import { kept, medianFrame, PRESET, pickPreset, keep as remember, windowKeep } from './preset';
 
 declare const __VERSION__: string;
@@ -142,7 +142,7 @@ const actions: Actions = {
   takeSeats: later('takeSeats'),
   closeSeats: later('closeSeats'),
 };
-createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} plant={PLANT} scenario={SCENARIO} />);
+createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} scenario={SCENARIO} />);
 
 const asked = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q'));
 // пресет: из адреса (проверки) — как есть; иначе запомненный; первый запуск — средний, замер решит (preset.ts)

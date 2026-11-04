@@ -331,7 +331,7 @@ const ORDER: LineLoss[] = ['fail', 'setup', 'micro', 'wait', 'speed', 'quality']
 
 /** Машина по имени в плане — вещь для карточки: машина линии или оборудование участка. */
 function thingOf(db: ContentDb, s: PlantState, id: string): { thing?: Thing; type: Id } {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   for (const [line, l] of plan.plant.lines.entries()) {
     const k = l.machines.findIndex(m => m.id === id);
     if (k >= 0) return { thing: { kind: 'machine', line, k }, type: l.machines[k].type };
@@ -403,7 +403,7 @@ function dayChange(s: PlantState, t: number): number {
 
 /** Планёрка суток `day`: вчера — календарные сутки; события — за 24 часа до 08:00; сейчас — эта минута. */
 export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): MorningView {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const day0 = momentOf(s.start, 0).day;
   const at = (q.day - day0) * DAY + MORNING;
   const from = at - DAY;

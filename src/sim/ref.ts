@@ -311,7 +311,7 @@ function unitOf(kind: MaterialKind | 'spare', unit: 'mass' | 'pcs'): OkeiUnit {
 }
 
 export function refView(db: ContentDb, s: PlantState): RefView {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const today = momentOf(s.start, s.t).day;
   const okei = db.profiles[db.scenarios[s.scenario].profile].okei;
   const roomType = (id: string) => plan.plant.rooms.find(r => r.id === id)?.type ?? id;

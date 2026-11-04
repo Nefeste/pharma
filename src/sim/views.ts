@@ -328,7 +328,7 @@ const codeOf = (c: { y: number; m: number; n: number }): [number, number, number
 
 /** Где паллета — номерами плана и среза. */
 function placeOf(db: ContentDb, s: PlantState, u: Unit): PlaceRef {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   if (u.where.kind === 'slot') {
     const id = u.where.id;
     return { k: 'slot', i: plan.slots.findIndex(sl => sl.id === id) };
@@ -416,7 +416,7 @@ export function stockView(db: ContentDb, s: PlantState, q: StockQuery): StockVie
  */
 function cleanOf(db: ContentDb, s: PlantState, r: Room): RoomClean | undefined {
   if (r.batch) return undefined;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   if (!plan.plant.lines.some(l => l.room === r.id) && !Object.values(db.recipes).some(rc => rc.stages.some(st => plan.roomOf[st.room] === r.id))) return undefined;
   if (r.status === 'clean') return { k: 'clean', ...(r.cleanFor ? { product: r.cleanFor } : {}), until: r.since + CLEAN_HOLD, ...(s.t - r.since > CLEAN_HOLD ? { expired: true as const } : {}) };
   if (r.status !== 'dirty') return undefined;
@@ -569,7 +569,7 @@ export function cardView(db: ContentDb, s: PlantState, thing: Thing): CardView {
 }
 
 function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   switch (thing.kind) {
     case 'unit': {
       const u = s.units[`U${thing.n}`];

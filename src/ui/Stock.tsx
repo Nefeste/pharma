@@ -2,7 +2,7 @@
 // заводе; фильтр по статусу и виду материала, сортировка по столбцу, страницы. Вид собирает поток расчёта (src/sim/views.ts),
 // панель только показывает и просит: щелчок по строке — камера к паллете партии (мимо панели) и её карточка.
 import { Fragment } from 'react';
-import type { MaterialKind } from '../content/types';
+import type { MaterialKind, Plant } from '../content/types';
 import type { LotStatus } from '../engine/types';
 import { planOf } from '../engine/plant';
 import { dayText, named, qtyText, T } from '../i18n';
@@ -16,7 +16,7 @@ const KINDS: MaterialKind[] = ['api', 'excipient', 'packaging', 'bulk', 'fg'];
 const COLS: StockSort[] = ['code', 'material', 'supplier', 'status', 'left', 'expiry'];
 
 /** Место паллеты словами: место стеллажа — его адрес, место зоны — зона и номер, помещение, фура. */
-export function placeText(p: PlaceRef, plant: string): string {
+export function placeText(p: PlaceRef, plant: Plant): string {
   if (!db) return '';
   const plan = planOf(db, plant);
   if (p.k === 'slot') {
@@ -38,7 +38,7 @@ export function supplierText(id: string): string {
   return named(db?.suppliers[id]?.name, id);
 }
 
-export function Stock({ hud, actions, plant }: { hud: Hud; actions: Actions; plant: string }) {
+export function Stock({ hud, actions, plant }: { hud: Hud; actions: Actions; plant: Plant }) {
   const { query: q, view } = hud.stock;
   const toggle = <K extends 'status' | 'kinds'>(key: K, v: K extends 'status' ? LotStatus : MaterialKind) => {
     const list = q[key] as string[];

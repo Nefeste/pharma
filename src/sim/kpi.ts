@@ -159,7 +159,7 @@ const num2 = (id: string) => Number(id.replace(/^[A-Z]+/, ''));
 
 /** Машина журнала оборудования: вещь на полу — машина линии или оборудование — и её вид по плану. */
 function machineOf(db: ContentDb, s: PlantState, machine: string): { thing?: Thing; type?: Id } {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   for (const [li, l] of plan.plant.lines.entries()) {
     const k = l.machines.findIndex(m => m.id === machine);
     if (k >= 0) return { thing: { kind: 'machine', line: li, k }, type: l.machines[k].type };

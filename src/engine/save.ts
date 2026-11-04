@@ -505,6 +505,9 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     }
     return raw;
   },
+  // 36 → 37 (Б5д): служебные записки и вопросы «Просят решить» — записи журнала с ответом; до этой версии их нет:
+  // открытых нет, расследования ведёт ООК
+  36: raw => raw,
 };
 
 export function toSave(s: PlantState): string {

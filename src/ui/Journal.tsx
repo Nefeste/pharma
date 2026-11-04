@@ -8,8 +8,10 @@ import { useState } from 'react';
 import { SEATS, type SeatId } from '../content/types';
 import { momentOf, type Ymd } from '../engine/core/calendar';
 import { KEEP } from '../engine/journal';
-import type { Decided, DeptMode, Head } from '../engine/types';
-import { dayText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
+import { FORK_OPTS } from '../engine/forks';
+import { ONE_FAILURE } from '../engine/maint';
+import type { Command, Decided, DeptMode, Head } from '../engine/types';
+import { dayText, durText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { AskInfo, JournalAs, JournalRef, JournalRow, ModeInfo, WhoRow } from '../sim/journal';
 import { assetClass, workName } from './assets';
 import { db } from './db';
@@ -123,7 +125,82 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
     }
     case 'deputy':
       return J.deputy(T.journal.namesOf[d.head] ?? d.head, r.person ? T.card.person(role(r.person.role), r.person.tab) : undefined);
+    case 'memo':
+      // служебная записка (Б5д): кому и о чём — команды по порядку
+      return J.memo(T.journal.namesTo[d.to] ?? d.to, d.cmds.map((c, i) => cmdText(c, r.cmds?.[i] ?? {}, start)).join('; '));
+    case 'fork':
+      // «Просят решить» (Б5д): какая развилка и о чём
+      return `${J.fork[d.fork] ?? d.fork}: ${forkWhat(d, r)}`;
   }
+}
+
+/** Команда записки словами (Б5д): то, о чём просят отдел, — с номерами вещей из ссылок. */
+export function cmdText(c: Command, r: JournalRef, start: Ymd): string {
+  const C = T.journal.memo.cmd;
+  const who = r.person ? T.card.person(role(r.person.role), r.person.tab) : '';
+  switch (c.kind) {
+    case 'order':
+      return C.order(sku(c.sku) || named(db?.recipes[c.recipe]?.name, c.recipe), c.notBefore !== undefined ? whenText(start, c.notBefore) : '—');
+    case 'shift':
+      return C.shift(T.now.batch(batchCode(r) || c.batch), whenText(start, c.notBefore));
+    case 'pack':
+      return C.pack(T.now.batch(batchCode(r) || c.batch), sku(c.sku));
+    case 'maintain':
+      return C.maintain(partName(r.machine, r.part), machineName(r.machine));
+    case 'visit':
+      return C.visit(r.asset ? `${assetClass(r.asset)}, ${T.assets.inv(r.asset.inv)}` : c.asset, dayText(c.day));
+    case 'rush':
+      return C.rush(r.lot ? T.lotCode(...r.lot) : c.lot);
+    case 'setpoint':
+      return C.setpoint(modeWhat(r), modeText(r, c.value));
+    case 'po':
+      return C.po(party(c.supplier), c.lines.map(l => `${material(l.material)}, ${qty(l.material, l.qty)}`).join('; '));
+    case 'waste':
+      return C.waste;
+    case 'roster':
+      return C.roster(who, named(db?.shifts[c.shift]?.name, c.shift));
+    case 'vacancy':
+      return C.vacancy(role(c.role));
+    case 'agency':
+      return C.agency(r.role ? role(r.role) : c.vacancy);
+    case 'close':
+      return C.close(r.role ? role(r.role) : c.vacancy);
+    case 'hire':
+      return C.hire(r.role ? role(r.role) : c.candidate, c.trial);
+    case 'dismiss':
+      return C.dismiss(who);
+    case 'leave':
+      return C.leave(who);
+    case 'also':
+      return C.also(who, role(c.role), c.on);
+    default:
+      return C.other;
+  }
+}
+
+/** О чём развилка (Б5д): визит — работа, актив и ждущие серии; замена — узел, машина и следующая серия; OOS — серия. */
+function forkWhat(d: Extract<Decided, { kind: 'fork' }>, r: JournalRef): string {
+  const F = T.journal.fork;
+  if (d.fork === 'visit') return F.visit(r.asset ? workName(r.asset, d.work).toLowerCase() : d.work, r.asset ? `${assetClass(r.asset)}, ${T.assets.inv(r.asset.inv)}` : d.asset, (r.batches ?? []).map(b => T.now.batch(b)).join(', '));
+  if (d.fork === 'replace') return F.replace(partName(r.machine, r.part), machineName(r.machine), T.now.batch(batchCode(r) || d.batch));
+  return F.oos(T.now.batch(batchCode(r)));
+}
+
+/** Риск отказа за работу по таблице узла (Б5д): ожидаемое число отказов — в вероятность, проценты 1/10 000. */
+export const riskOf = (hz: number) => Math.round((1 - Math.exp(-hz / ONE_FAILURE)) * 10_000);
+
+/**
+ * Цены вариантов развилки (Б5д) — числа завода: визит — до какого мгновения ждут серии и сколько суток до конца записи
+ * от сегодня; замена — износ, риск отказа и ремонт, время замены; OOS — порог вывода.
+ */
+export function forkPrices(d: Extract<Decided, { kind: 'fork' }>, t: number, start: Ymd): Record<string, string> {
+  const P = T.journal.fork.price;
+  if (d.fork === 'visit') {
+    const left = d.last - momentOf(start, t).day;
+    return { wait: P.wait(whenText(start, d.end), durText(Math.max(0, d.end - t))), move: P.move(Math.max(0, left)) };
+  }
+  if (d.fork === 'replace') return { wear: P.wear(pctText(d.wear), pctText(d.after), pctText(d.at)), after: P.after(pctText(riskOf(d.hz)), durText(d.repair[0]), durText(d.repair[1])), now: P.now(durText(d.replace)) };
+  return { lead: P.lead(pctText(d.threshold)), self: P.self };
 }
 
 /** Причина — строки с числами завода; у решения игрока её нет (кроме предоплаты заказа). */
@@ -243,6 +320,11 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
       const share = w.full ? policyText(db?.policies['pol.wms.full'], w.full) : undefined;
       return w.since !== undefined ? [J.waste.old(dayText(momentOf(start, w.since).day), w.months)] : [J.waste.full(w.used, w.places, share)];
     }
+    case 'fork': {
+      // «Просят решить» (Б5д): цена каждого ответа — «как сейчас» первым
+      const p = forkPrices(d, t, start);
+      return [...(p.wear ? [p.wear] : []), ...FORK_OPTS[d.fork].map(o => `${T.journal.fork.opt[o]}: ${p[o]}`)];
+    }
     default:
       return [];
   }
@@ -288,14 +370,111 @@ export function AskLine({ n, ask, start, actions }: { n: number; ask: AskInfo; s
   );
 }
 
+/**
+ * Служебная записка (Б5д): без ответа — когда ответят и «Отозвать»; с ответом — когда и кто, по каждой команде —
+ * выполнено (с записью руководителя) или отказ с причиной движка; отозвана — когда.
+ */
+export function MemoLine({ row, start, actions }: { row: JournalRow; start: Ymd; actions: Actions }) {
+  const m = row.memo!;
+  const M = T.journal.memo;
+  if (!m.end)
+    return (
+      <span className="ask open" data-test="memo-open">
+        <span className="warn">{m.at !== undefined ? M.at(whenText(start, m.at)) : M.never}</span>{' '}
+        {m.can ? (
+          <button type="button" className="small" onClick={() => actions.withdraw(row.n)} title={M.withdrawHint} data-test="memo-withdraw">
+            {M.withdraw}
+          </button>
+        ) : null}
+      </span>
+    );
+  if (m.end.off)
+    return (
+      <span className="ask stale" data-test="memo-end" data-how="off">
+        {M.off(whenText(start, m.end.t))}
+      </span>
+    );
+  const cmds = row.d.kind === 'memo' ? row.d.cmds : [];
+  const who = whoText(row.d.kind === 'memo' ? row.d.to : 'plan', undefined, m.end.as);
+  return (
+    <span className="ask ok" data-test="memo-end" data-how="answered">
+      {M.answered(whenText(start, m.end.t), who)}
+      {(m.end.res ?? []).map((x, i) => (
+        <span key={i} className={'why' in x ? 'warn' : ''} data-test="memo-res" data-ok={'why' in x ? 'no' : 'ok'}>
+          {' · '}
+          {cmds[i] ? `${cmdText(cmds[i], row.ref.cmds?.[i] ?? {}, start)} — ` : ''}
+          {'why' in x ? M.no(T.notices.why[x.why] ?? x.why) : x.n !== undefined ? M.okRec(x.n) : M.ok}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * Вопрос «Просят решить» (Б5д): открыт — варианты кнопками с ценой у каждого и «решит сам в …», у переноса визита — день;
+ * ответ — кто и что выбрал, «решил сам» или «решилось без ответа».
+ */
+export function QLine({ row, start, actions }: { row: JournalRow; start: Ymd; actions: Actions }) {
+  const q = row.q!;
+  const F = T.journal.fork;
+  const d = row.d.kind === 'fork' ? row.d : undefined;
+  const days = q.move ?? [];
+  const [day, setDay] = useState(days[0]);
+  if (!d) return null;
+  const opts = FORK_OPTS[d.fork];
+  if (q.end) {
+    const opt = q.end.opt ? (F.opt[q.end.opt] ?? q.end.opt) : '';
+    const text = q.end.how === 'player' ? F.end.player(opt, whenText(start, q.end.t)) : q.end.how === 'moot' ? F.end.moot(whenText(start, q.end.t)) : q.to ? F.end.self(opt, whenText(start, q.end.t)) : F.end.alone(opt);
+    return (
+      <span className={`ask ${q.end.how === 'player' ? 'ok' : 'stale'}`} data-test="q-end" data-how={q.end.how} {...(q.end.opt ? { 'data-opt': q.end.opt } : {})}>
+        {text}
+      </span>
+    );
+  }
+  const prices = forkPrices(d, row.t, start);
+  return (
+    <span className="ask open" data-test="q-open" data-fork={d.fork}>
+      {q.due !== undefined ? <span className="warn">{F.due(whenText(start, q.due))}</span> : null}
+      {opts.map(o => (
+        <span key={o} className="qopt" data-opt={o}>
+          {' '}
+          {o === 'move' ? (
+            <select value={day} disabled={!q.can || days.length === 0} onChange={e => setDay(Number(e.target.value))} aria-label={F.day} data-test="q-day">
+              {days.map(z => (
+                <option key={z} value={z}>
+                  {dayText(z)}
+                </option>
+              ))}
+            </select>
+          ) : null}{' '}
+          <button type="button" className="small" disabled={!q.can || (o === 'move' && day === undefined)} onClick={() => actions.answerFork(row.n, o, o === 'move' ? day : undefined)} title={F.optHint[o]} data-test="q-answer">
+            {F.opt[o]}
+          </button>{' '}
+          <span className="muted">{prices[o]}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function Row({ row, start, open, toggle, actions }: { row: JournalRow; start: Ymd; open: boolean; toggle: () => void; actions: Actions }) {
   const why = whyLines(row.d, row.ref, row.t, start);
   const go = goOf(row.ref, actions);
   return (
-    <li className={`jrow${open ? ' on' : ''}${row.ask && !row.ask.end ? ' asking' : ''}`} data-test="journal-row" data-n={row.n} data-kind={row.d.kind} data-by={row.by} {...(row.ask ? { 'data-ask': row.ask.end?.how ?? 'open' } : {})}>
+    <li
+      className={`jrow${open ? ' on' : ''}${(row.ask && !row.ask.end) || (row.q && !row.q.end) ? ' asking' : ''}`}
+      data-test="journal-row"
+      data-n={row.n}
+      data-kind={row.d.kind}
+      data-by={row.by}
+      {...(row.ask ? { 'data-ask': row.ask.end?.how ?? 'open' } : {})}
+      {...(row.q ? { 'data-q': row.q.end?.how ?? 'open' } : {})}
+      {...(row.memo ? { 'data-memo': row.memo.end ? (row.memo.end.off ? 'off' : 'answered') : 'open' } : {})}
+    >
       <div className="jline">
         <span className="muted">{whenText(start, row.t)}</span> <b>{whoText(row.by, row.seat, row.as)}</b>
         {row.ask ? <span className="muted"> · {T.journal.ask.proposes}</span> : null}
+        {row.q?.to ? <span className="muted"> · {T.journal.fork.asks}</span> : null}
       </div>
       <div className="jline">
         {why.length > 0 ? (
@@ -321,6 +500,21 @@ function Row({ row, start, open, toggle, actions }: { row: JournalRow; start: Ym
       {row.ask ? (
         <div className="jline">
           <AskLine n={row.n} ask={row.ask} start={start} actions={actions} />
+        </div>
+      ) : null}
+      {row.via ? (
+        <div className="jline muted" data-test="journal-via">
+          {row.via.seat ? T.journal.memo.via(T.seats.names[row.via.seat] ?? row.via.seat, row.via.n) : T.journal.memo.viaYou(row.via.n)}
+        </div>
+      ) : null}
+      {row.memo ? (
+        <div className="jline">
+          <MemoLine row={row} start={start} actions={actions} />
+        </div>
+      ) : null}
+      {row.q ? (
+        <div className="jline">
+          <QLine row={row} start={start} actions={actions} />
         </div>
       ) : null}
     </li>
@@ -383,6 +577,12 @@ export function Journal({ hud, actions }: { hud: Hud; actions: Actions }) {
           {v.asks.length > 0 ? <AskRows rows={v.asks} start={hud.start} actions={actions} /> : <div className="muted">{T.journal.ask.none}</div>}
         </div>
       ) : null}
+      {v && v.memos.length > 0 ? (
+        <div className="jasks" data-test="journal-memos">
+          <div className="msec">{T.journal.memo.title}</div>
+          <AskRows rows={v.memos} start={hud.start} actions={actions} />
+        </div>
+      ) : null}
       <div className="filters" data-test="journal-seats">
         <span className="muted">{T.journal.seatFilter}:</span>
         <button type="button" className={!j.seat ? 'on' : ''} aria-pressed={!j.seat} onClick={() => actions.setJournal({ seat: null })}>
@@ -404,6 +604,9 @@ export function Journal({ hud, actions }: { hud: Hud; actions: Actions }) {
         </button>
         <button type="button" className={j.who === 'player' ? 'on' : ''} aria-pressed={j.who === 'player'} onClick={() => actions.setJournal({ who: 'player' })} data-who="player">
           {T.journal.you}
+        </button>
+        <button type="button" className={j.who === 'memos' ? 'on' : ''} aria-pressed={j.who === 'memos'} onClick={() => actions.setJournal({ who: 'memos' })} data-who="memos">
+          {T.journal.memos}
         </button>
       </div>
       {!v ? <div className="muted">{T.app.loading}</div> : null}
@@ -453,9 +656,58 @@ export function WhoList({ rows, start, actions, title, test }: { rows: readonly 
                 <AskLine n={r.n} ask={r.ask} start={start} actions={actions} />
               </div>
             ) : null}
+            {r.via ? (
+              <div className="muted" data-test="who-via">
+                {r.via.seat ? T.journal.memo.via(T.seats.names[r.via.seat] ?? r.via.seat, r.via.n) : T.journal.memo.viaYou(r.via.n)}
+              </div>
+            ) : null}
+            {r.q ? (
+              <div className="muted" data-test="who-q" data-how={r.q.end?.how ?? 'open'}>
+                {r.q.end ? (r.q.end.opt ? `${T.journal.fork.opt[r.q.end.opt] ?? r.q.end.opt}` : '') : T.journal.ask.open}
+              </div>
+            ) : null}
+            {r.memo ? <WhoMemo n={r.n} memo={r.memo} start={start} actions={actions} /> : null}
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * Записка в «Кто решил» вещи (Б5д): ждёт — когда ответят и «Отозвать»; отозвана; ответ — когда, кто ответил и причины
+ * отказа, если команда не прошла.
+ */
+function WhoMemo({ n, memo, start, actions }: { n: number; memo: NonNullable<WhoRow['memo']>; start: Ymd; actions: Actions }) {
+  const M = T.journal.memo;
+  if (!memo.end)
+    return (
+      <div className="muted" data-test="who-memo" data-how="open">
+        <span className="warn">{memo.at !== undefined ? M.at(whenText(start, memo.at)) : M.never}</span>{' '}
+        {memo.can ? (
+          <button type="button" className="small" onClick={() => actions.withdraw(n)} title={M.withdrawHint} data-test="memo-withdraw">
+            {M.withdraw}
+          </button>
+        ) : null}
+      </div>
+    );
+  if (memo.end.off)
+    return (
+      <div className="muted" data-test="who-memo" data-how="off">
+        {M.off(whenText(start, memo.end.t))}
+      </div>
+    );
+  return (
+    <div className="muted" data-test="who-memo" data-how="answered">
+      {M.answered(whenText(start, memo.end.t), whoText(memo.to, undefined, memo.end.as))}
+      {(memo.end.res ?? []).flatMap((x, i) =>
+        'why' in x ? [
+          <span key={i} className="warn">
+            {' · '}
+            {M.no(T.notices.why[x.why] ?? x.why)}
+          </span>,
+        ] : [],
+      )}
     </div>
   );
 }

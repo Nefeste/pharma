@@ -6,7 +6,7 @@ import type { Layer } from '../app/floor';
 import type { Go, Pause } from '../app/pauses';
 import type { Dept, HeadId, Id, OvertimeMode, SeatId } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
-import type { DeptMode, Head, PolicyValue, Via } from '../engine/types';
+import type { Command, DeptMode, ForkOpt, Head, PolicyValue, Via } from '../engine/types';
 import type { RunSum } from '../engine/plan/run';
 import type { Change } from '../engine/plan/schedule';
 import type { Lang } from '../i18n';
@@ -85,7 +85,7 @@ export interface Hud {
    * журнал решений (Б5а): открыт ли; отбор по посту и автору; страница; запись, на которой открыли («Почему?»), — она
    * раскрыта; вид
    */
-  journal: { open: boolean; seat?: SeatId; who?: 'heads' | 'player'; page: number; focus?: number; view?: JournalView };
+  journal: { open: boolean; seat?: SeatId; who?: 'heads' | 'player' | 'memos'; page: number; focus?: number; view?: JournalView };
   /** окно «Заказ поставщику» (Б5б): открыто ли; поставщик и строки черновика — мг или шт.; вид */
   po: { open: boolean; supplier?: Id; lines: readonly { material: Id; qty: number }[]; view?: PoView };
   /** «Смотреть»: какую работу — строка «Сейчас» в мгновение, когда начали смотреть */
@@ -286,7 +286,14 @@ export interface Actions {
    */
   toggleJournal(): void;
   openJournal(focus?: number): void;
-  setJournal(patch: { seat?: SeatId | null; who?: 'heads' | 'player' | null; page?: number }): void;
+  setJournal(patch: { seat?: SeatId | null; who?: 'heads' | 'player' | 'memos' | null; page?: number }): void;
+  /**
+   * служебная записка (Б5д): команды чужого отдела — его руководителю, ответ в его час; отозвать записку без ответа;
+   * ответ на «Просят решить» — вариант и, у переноса визита, день
+   */
+  memo(cmds: Command[]): void;
+  withdraw(n: number): void;
+  answerFork(n: number, opt: ForkOpt, day?: number): void;
   /** «Смотреть» работу по ключу строки «Сейчас»: камера к месту, ×1, пока работа не кончится; затем — прежняя скорость */
   watch(key: string): void;
   unwatch(): void;
@@ -318,19 +325,20 @@ export interface Actions {
    * найм и увольнение (Б4в): открыть вакансию — роль, график, канал; закрыть её; принять кандидата с испытанием
    * на столько месяцев; уволить — по соглашению, не выдержал испытание или отпустить раньше
    */
-  vacancy(role: Id, shift: Id, via: Via): void;
-  closeVacancy(id: string): void;
-  hire(candidate: string, trial: number): void;
+  vacancy(role: Id, shift: Id, via: Via, memo?: boolean): void;
+  closeVacancy(id: string, memo?: boolean): void;
+  hire(candidate: string, trial: number, memo?: boolean): void;
   dismiss(person: number, why: 'agree' | 'trial' | 'early'): void;
   /**
    * отпуска (Б4г): часть — добавить с дня на столько дней, перенести на другой день, убрать, сменить или снять
-   * заместителя (номер человека); смежная профессия — обучить или снять
+   * заместителя (номер человека); смежная профессия — обучить или снять. `memo` — пост отдела роли не у игрока: команда
+   * уходит служебной запиской его руководителю (Б5д)
    */
-  leaveAdd(person: number, from: number, days: number): void;
-  leaveMove(person: number, part: string, from: number): void;
-  leaveDrop(person: number, part: string): void;
-  leaveDeputy(person: number, part: string, deputy?: number): void;
-  also(person: number, role: Id, on: boolean): void;
+  leaveAdd(person: number, from: number, days: number, memo?: boolean): void;
+  leaveMove(person: number, part: string, from: number, memo?: boolean): void;
+  leaveDrop(person: number, part: string, memo?: boolean): void;
+  leaveDeputy(person: number, part: string, deputy?: number, memo?: boolean): void;
+  also(person: number, role: Id, on: boolean, memo?: boolean): void;
   /** заместитель руководителя (Б5в): назначить — номер человека, снять — `null`; команда `deputy` */
   deputy(head: HeadId, person: number | null): void;
   /**

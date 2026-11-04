@@ -17,7 +17,8 @@ import type { Thing } from '../sim/views';
 import { assetClass, assetName, unfitText, workName } from './assets';
 import { db } from './db';
 import { draftKey } from './draft';
-import { type Actions, type GanttDays, type Hud, holds, PLAN_RUN, type PlanRun } from './store';
+import { actLabel, actOf, actOn } from './memo';
+import { type Actions, type GanttDays, type Hud, PLAN_RUN, type PlanRun } from './store';
 
 /** Шаг срока, куда тянут: 15 минут; стрелка с Shift — час. */
 const SNAP = 15 * 60;
@@ -73,8 +74,10 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
   const day = (t: number) => momentOf(start, t).day;
   const roomType = new Map(v.rows.map(r => [r.id, r.type]));
   const roomName = (id: string) => T.roomTypes[roomType.get(id) ?? ''] ?? id;
-  // тянуть — только с постом производства (3е): расписание — его команда
-  const mine = holds(hud, 'production');
+  // тянуть — с постом производства (3е): расписание — его команда; без поста — черновик уходит начальнику отдела
+  // планирования одной запиской (Б5д)
+  const act = actOf(hud, 'production', { kind: 'shift', batch: '', notBefore: 0 });
+  const mine = actOn(act);
   const movable = new Set(mine ? v.movable : []);
   const labels: Labels = { ...v.batches, ...(g.ghost?.batches ?? {}) };
   // черновик: полосы сдвинутых им серий — в белой рамке; прежние — бледнее
@@ -306,8 +309,8 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         {g.draft.length + g.urgent.length > 0 ? (
           <>
             <span data-test="draft-list">{T.plan.draft([...g.draft.map(c => who(labels, c.batch) || c.batch), ...g.urgent.map(u => T.urgent.item(named(db?.skus[u.sku]?.name, u.sku)))].join(', '))}</span>
-            <button type="button" onClick={() => actions.approveDraft()} disabled={!mine} title={T.plan.approveHint} data-test="draft-approve">
-              {T.plan.approve}
+            <button type="button" onClick={() => actions.approveDraft()} disabled={!mine} title={act.mine ? T.plan.approveHint : act.title} data-test="draft-approve" data-memo={act.memo ?? undefined}>
+              {actLabel(act, T.plan.approve)}
             </button>
             <button type="button" onClick={() => actions.resetDraft()} title={T.plan.resetHint} data-test="draft-reset">
               {T.plan.reset}

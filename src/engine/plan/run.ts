@@ -130,14 +130,19 @@ function measure(db: ContentDb, c: PlantState, from: number, to: number, seed: n
 export function runHeads(s: PlantState): HeadsState {
   const mode: HeadsState['mode'] = { ...s.heads.mode };
   for (const h of MODED) if (modeOf(s, h) === 'advise') mode[h] = 'auto';
-  return { mode, open: {}, no: {} };
+  // записки без ответа (Б5д) — руководитель ответит в копии в свой час; о чём уже спрашивали — не спросит снова
+  return { mode, open: {}, no: {}, ...(s.heads.memos ? { memos: [...s.heads.memos] } : {}), ...(s.heads.asked ? { asked: { ...s.heads.asked } } : {}) };
 }
 
 /** Зерно `k` варианта: копия состояния, двойник (если не выключен), команды варианта по порядку, ход времени на горизонт. */
 export function runSeed(db: ContentDb, s: PlantState, variant: Command[], o: RunOpts, k: number): PlantState {
   // копия — без журнала решений (Б5а) и закрытых месяцев показателей (Б5ж): будущему они не нужны, правила их не читают;
-  // режимы отделов — «советует» как «сам» (Б5б)
-  const c: PlantState = structuredClone({ ...s, journal: [], heads: runHeads(s), kpi: { ...s.kpi, months: [] } });
+  // режимы отделов — «советует» как «сам» (Б5б). Записки без ответа (Б5д) остаются — руководитель ответит на них в свой
+  // час; на вопросы «Просят решить» в копии никто не ответит — руководитель решит, как сейчас; «Веду сам» — ведёт ООК, как
+  // «советует» — как «сам»
+  const memos = s.journal.filter(r => r.memo && !r.memo.end);
+  const c: PlantState = structuredClone({ ...s, journal: memos, heads: runHeads(s), kpi: { ...s.kpi, months: [] } });
+  for (const inv of Object.values(c.investigations)) delete inv.lead;
   if (o.twin !== false) blind(db, c, k);
   for (const cmd of variant) apply(db, c, cmd);
   apply(db, c, { kind: 'advance', seconds: o.days * DAY });

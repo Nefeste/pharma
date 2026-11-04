@@ -56,6 +56,10 @@
 // образец схемы 34. С схемы 36 — посреди замещения: начальника отдела планирования уволили по соглашению — задания на
 // серию ставит и. о., начальник производства; заместитель начальника ОКК назначен игроком — начальник ООК; у главного
 // механика заместителя сняли, и самого уволили — техслужбе некому решить; политик здесь нет — их держит образец схемы 35.
+// С схемы 37 — посреди записки и вопроса: игрок на постах производства и качества — отделы производства «сам» — пишет
+// начальнику снабжения заказ поставщику ниже минимальной партии, тот отвечает отказом с причиной; главный механик
+// спрашивает «Производство» — вопрос открыт, а вторая записка ещё ждёт ответа; техслужба «вручную» и замещение здесь
+// не нужны — их держат образцы схем 34 и 36.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { visitLast } from '../../src/engine/assets';
@@ -155,11 +159,13 @@ const how = (h: string) => s.journal.some(r => r.ask?.end?.how === h);
 const asked = () => s.heads.mode.maint === 'manual' && how('ok') && how('no') && how('stale') && Object.keys(s.heads.open).length > 0;
 // посреди замещения (Б5в): задание на серию от и. о., заместитель назначен игроком, у техслужбы некому решить
 const bossed = () => s.journal.some(r => r.by === 'plan' && r.d.kind === 'order' && r.io) && !!s.deputies?.qc && !!s.noOne?.maint;
+// посреди записки и вопроса (Б5д): на одну записку ответили, другая ждёт, вопрос «Просят решить» открыт
+const memoed = () => s.journal.some(r => r.memo?.end?.res) && s.journal.some(r => r.memo && !r.memo.end) && !!s.heads.qs;
 // посреди политик (Б5г): две политики игрока, задание на серию по новому запасу, перенесённый визит ещё впереди
 const moved = () => s.journal.some(r => r.by === 'player' && r.d.kind === 'visit' && s.assets[r.d.asset]?.visit?.at === r.d.at && s.t < r.d.at);
 const policied = () => s.policies.log.length >= 2 && s.journal.some(r => r.by === 'plan' && r.d.kind === 'order' && r.d.why?.cover === 28) && moved();
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : SCHEMA < 34 ? seated() && kpied() : SCHEMA < 35 ? seated() && asked() : SCHEMA < 36 ? seated() && policied() : seated() && bossed();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : SCHEMA < 34 ? seated() && kpied() : SCHEMA < 35 ? seated() && asked() : SCHEMA < 36 ? seated() && policied() : SCHEMA < 37 ? seated() && bossed() : seated() && memoed();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 const refused = new Set<string>();
@@ -171,11 +177,16 @@ if (SCHEMA >= 24) for (const role of ['role.operator', 'role.packer']) apply(db,
 while (s.t < end && !busy()) {
   if (SCHEMA >= 13 && s.t >= t0 + DAY && s.seats?.some(x => x.seat === 'director' && x.to === undefined)) {
     apply(db, s, { kind: 'seat', seats: ['production', 'quality'] });
-    // с схемы 34 — техслужба «вручную»: выбор игрока у отдела
-    if (SCHEMA >= 34) apply(db, s, { kind: 'mode', head: 'maint', mode: 'manual', by: 'player' });
-    // с схемы 36 — замещение: начальника отдела планирования и главного механика — по соглашению, у главного механика
+    // схемы 34–36 — техслужба «вручную»: выбор игрока у отдела; с схемы 37 — отделы производства «сам», а начальнику
+    // снабжения — записка: заказ ниже минимальной партии
+    if (SCHEMA >= 34 && SCHEMA < 37) apply(db, s, { kind: 'mode', head: 'maint', mode: 'manual', by: 'player' });
+    if (SCHEMA >= 37) {
+      for (const head of ['plan', 'mes', 'maint'] as const) apply(db, s, { kind: 'mode', head, mode: 'auto', by: 'player' });
+      apply(db, s, { kind: 'memo', cmds: [{ kind: 'po', supplier: 'sup.exc', lines: [{ material: 'mat.exc.mcc', qty: 1000 }] }] });
+    }
+    // схема 36 — замещение: начальника отдела планирования и главного механика — по соглашению, у главного механика
     // заместителя снять, начальнику ОКК — заместителем начальника ООК
-    if (SCHEMA >= 36) {
+    if ((SCHEMA as number) === 36) {
       for (const role of ['role.plan-head', 'role.chief-mechanic']) {
         const p = Object.values(s.people).find(x => x.role === role)!;
         apply(db, s, { kind: 'dismiss', person: p.id, why: 'agree', by: 'player' });
@@ -254,6 +265,9 @@ while (s.t < end && !busy()) {
       }
     }
   }
+  // с схемы 37 — вопрос открыт: вторая записка начальнику снабжения, тот же заказ
+  if (SCHEMA >= 37 && s.heads.qs && !s.journal.some(r => r.memo && !r.memo.end))
+    apply(db, s, { kind: 'memo', cmds: [{ kind: 'po', supplier: 'sup.exc', lines: [{ material: 'mat.exc.mcc', qty: 1000 }] }] });
   // с схемы 23 — у бригады появились часы после смены: пост производства переводит механика первой смены в бригаду 2
   if ((SCHEMA as number) === 23 && afterShift() && !Object.values(s.people).some(p => pendingOf(s, p))) {
     const p = Object.values(s.people).find(x => x.role === 'role.mechanic' && x.shift === 'shift.a');

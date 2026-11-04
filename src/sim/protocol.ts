@@ -68,5 +68,8 @@ export type FromPlan =
 export function stopKey(n: Notice): string {
   if (n.kind === 'proposal') return `proposal/${n.seat}${n.t % DAY < MORNING ? '/early' : ''}`;
   if (n.kind === 'noOne') return `noOne/${n.seat}`;
+  // «Просят решить» и ответ на записку (Б5д): у того, кого спросили, и у поста, с которого записка
+  if (n.kind === 'ask') return `ask/${n.seat}`;
+  if (n.kind === 'memoDone') return `memoDone/${n.seat ?? 'director'}`;
   return n.kind === 'assetExpired' ? `${n.kind}/${n.family}` : n.kind === 'overtimeLow' || n.kind === 'resign' ? `${n.kind}/${n.dept}` : n.kind;
 }

@@ -295,7 +295,11 @@ const whoOf = (rows: WhoRow[]): { who?: WhoRow[] } => (rows.length > 0 ? { who: 
 const decidedOf = (rows: WhoRow[]): { decided?: WhoRow[] } => (rows.length > 0 ? { decided: rows } : {});
 
 /** Решения об оборудовании и машине линии (Б5а): визиты подрядчика к активу, ремонты и замены узлов, ЗИП. */
-const thingWho = (db: ContentDb, s: PlantState, id: string): WhoRow[] => [...whoAsset(s, id), ...whoMachine(db, s, id)].sort((a, b) => a.n - b.n);
+const thingWho = (db: ContentDb, s: PlantState, id: string): WhoRow[] => {
+  // записка о машине и визите сразу (Б5д) — одна строка
+  const rows = new Map([...whoAsset(s, id, db), ...whoMachine(db, s, id)].map(r => [r.n, r]));
+  return [...rows.values()].sort((a, b) => a.n - b.n);
+};
 
 /** Отпуска в карточке человека (Б4г): ушёл с завода или у сценария нет отпусков — нет. */
 function personLeaveOf(db: ContentDb, s: PlantState, p: Person, gone: boolean): { leave?: PersonLeave } {
@@ -584,7 +588,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(release ? { release } : {}),
         why: [...tasks.map(t => taskWhy(db, s, t)), ...(lot ? lotWhy(s, lot) : [])],
         history: lot ? lotHistory(s, lot) : [],
-        ...whoOf(lot ? (b ? whoBatch(s, b) : whoLot(s, lot)) : []),
+        ...whoOf(lot ? (b ? whoBatch(s, b, db) : whoLot(s, lot, db)) : []),
       };
     }
     case 'room': {

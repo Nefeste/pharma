@@ -94,7 +94,8 @@ npm run typecheck                  # content + tsc --noEmit (src incl. .tsx, too
 npm test                           # content + bun test tools/test
 npm run build                      # content + page and its two workers (esbuild) → dist/ (not in git)
 npm run e2e                        # after build: the game in headless Chromium; tools/app/out/e2e*.png and contact.png;
-                                   # then the first week of a newcomer (e2e-week.mjs, week.png); `-- --only main|week` for one
+                                   # then the first week of a newcomer (e2e-week.mjs, week.png), then memos and
+                                   # questions (e2e-memo.mjs, memo.png); `-- --only main|week|memo` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -283,7 +284,18 @@ first, or copy the working code of Bolnitsa on the same versions.
   nobody — the rules wait and «Некому решить» once; a rule of a head's hour runs once a workday from that hour when
   someone may decide (`dueRule`); skill 4–5 the whole rule, lower — the limits of §8.5 (`coverBy`, `thresholdBy`,
   `replacesBy`, `hireMinBy`); the six new heads paid with the overheads (`PAID_LATER`); a scenario without `heads` keeps
-  heads as positions; the `deputy` command), `kpi.ts` (with Б5ж, the heads'
+  heads as positions; the `deputy` command), `memos.ts` (with Б5д, service memos: a command of another department's
+  post — the `memo` command to the head of the command's department, a journal record «you» with the place; the
+  answer in the head's hour — an hour later if the memo came in their working time, otherwise an hour after it starts;
+  the commands run as the head's own through the same engine — passed, the head's record «по записке»; refused, the
+  engine's reason in the answer; no memos about the decisions of QA and the qualified person, policies and modes;
+  `withdraw` before the answer), `forks.ts` (with Б5д, «Просят решить»: a visit holds a batch, a part replacement
+  before a machine's work, who leads an OOS investigation — asked by whoever decides for the head now, to the fork's
+  post or the director, with each answer's price from the plant's norms and records; no answer in two hours or the
+  fork settled itself — «as now»; the `answer` command — the head's command from the player's place, checked anew;
+  after every event, but the batches are scanned for a machine's next work only when one work could bring the part to
+  the threshold — a bound from the recipes),
+  `kpi.ts` (with Б5ж, the heads'
   indicators: 47 definitions — the head, unit, direction, month or rolling 12 months, source keys, the counterweight —,
   each a pure function of plant
   records over a period and never of truth; the midnight snapshot of what records do not keep — stock at lot price, FG
@@ -381,7 +393,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   plant (`leave.ts`); with Б5а, the decision journal — pages newest first, filters by post and author, the numbers
   and codes of a record's things, «Кто решил» of the cards and the batch record, the meeting's decisions of the day by
   head, with Б5б «Ждут вашего решения» — open proposals with their reason and whether the player may answer — and the
-  mode bar of the held posts — records of the plant (`journal.ts`); with Б5б, the «Заказ поставщику» window — suppliers
+  mode bar of the held posts, with Б5д the «Записки» — when the head answers and the answer —, questions with each
+  answer's price, memos and forks in «Кто решил» and the meeting's «Записки и вопросы» — records of the plant
+  (`journal.ts`); with Б5б, the «Заказ поставщику» window — suppliers
   with an approved pair, their materials with the smallest lot, the container and the contract or list price, the
   plant's answer to the draft and the supply rule's orders for «Предложить» (`po.ts`); with Б5ж, the indicators — tabs
   of the places, held ones first, the heads' rows of the current or a chosen closed month with last month, 12 closed
@@ -479,7 +493,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   on a batch bar of the schedule (`Dossier.tsx`), the rejected room's block of the card — the zone's places, the
   removal, the waste log (`Waste.tsx`), the levers of a row (`Levers.tsx`), the deviation card, the batch
   decision, stage parameters, with Б1ж the setpoints with «−» and «+» and a blister machine's speed, and
-  the first-event explanation in the card (`Decide.tsx`), status and work icons (`icons.tsx`), asset words — class and
+  the first-event explanation in the card (`Decide.tsx`), with Б5д a button of another's post — «Записка: …» with whom
+  and when, or dimmed with why (`memo.ts`), status and work icons (`icons.tsx`), asset words — class and
   inventory number, the work's name, «until» and why it does not work
   (`assets.ts`), the content base for names (`db.ts`); `src/i18n/` — every player-facing string, Russian
   and English, and number, quantity, money, duration and date formats.
@@ -535,7 +550,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   one file (`models/machines.glb`), and `LICENSES.md` (sources, licenses, SHA-256); never add a model without its line
   there and in `assets/models/sources.json`.
 - `tools/app/` — page build (the page, the calculation thread and the plan run's thread), local server, browser scenario
-  with the contact sheet and the first week of a newcomer in a clean window (`e2e-week.mjs`), the «code — Blender» sheet
+  with the contact sheet and the first week of a newcomer in a clean window (`e2e-week.mjs`), memos and questions in two
+  clean windows (`e2e-memo.mjs`), the «code — Blender» sheet
   of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench
   (`bench.mjs`, `--art code` — machines in code), the release update archive — one `resources/app.asar`
   (`update-zip.mjs`); `tools/test/` — Bun tests

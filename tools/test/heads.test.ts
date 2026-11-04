@@ -56,7 +56,9 @@ const life = (s: PlantState) => ({
   people: Object.values(s.people).map(p => [p.id, p.role, p.shift]),
   vacancies: Object.values(s.vacancies).map(v => [v.id, v.role, v.via, v.by, v.instead]),
   maint: s.maintLog.map(e => [e.t, e.machine, e.part, e.what]),
-  journal: s.journal.map(({ n, t, by, d }) => ({ n, t, by, d })),
+  // с Б5д у взятого поста — ещё развилки «Просят решить»: записи руководителя, которые завод не меняют; без них журнал тот же —
+  // мгновения, руководители и причины, по порядку (номера записей сдвинуты развилками)
+  journal: s.journal.filter(r => r.d.kind !== 'fork').map(({ t, by, d }) => ({ t, by, d })),
 });
 
 describe('режим по умолчанию', () => {
@@ -110,7 +112,7 @@ describe('«советует»', () => {
     expect([...kinds].sort()).toEqual(['hire', 'order', 'replace', 'vacancy']);
     expect(asks(b).every(r => r.ask!.end?.how === 'ok' && r.ask!.end.seat === 'production')).toBe(true);
     expect(asks(b).length).toBe(n);
-    // записи журнала — те же номера, мгновения, руководители и причины; номера вещей — те же
+    // записи журнала — те же мгновения, руководители и причины; номера вещей — те же
     expect(life(b)).toEqual(life(a));
     expect(check(db, b)).toEqual([]);
   }, 120_000);

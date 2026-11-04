@@ -22,6 +22,7 @@ import { admText } from './Card';
 import { db, docText, headOf } from './db';
 import { Deputy, limitWords } from './Bosses';
 import { LeavePlan } from './Leave';
+import { actOf, actOn } from './memo';
 import { type Actions, type Hud, holds, REF_TABS } from './store';
 import { attrNum, attrText, paramNum, paramText } from './units';
 
@@ -508,12 +509,16 @@ function Policies({ v, actions }: { v: RefView; actions: Actions }) {
 const roleName = (id: Id) => named(db?.roles[id]?.name, id);
 const shiftName = (id: Id) => named(db?.shifts[id]?.name, id);
 
-/** Пост, чья команда найма роли (Б4в): пост отдела роли; держит ли его игрок и подпись, если нет. */
-function roleSeat(hud: Hud, role: Id): { mine: boolean; title: string } {
+/**
+ * Пост, чья команда найма роли (Б4в): пост отдела роли; держит ли его игрок и подпись, если нет; чужой пост (Б5д) —
+ * запиской руководителю отдела роли: `mine` — можно нажать, `memo` — уйдёт запиской.
+ */
+function roleSeat(hud: Hud, role: Id): { mine: boolean; title: string; memo: boolean } {
   const dept = db?.roles[role]?.dept;
   const seat = dept ? DEPT_SEAT[dept] : undefined;
-  const mine = !seat || holds(hud, seat);
-  return { mine, title: mine || !seat ? '' : T.seats.notYours(T.seats.names[seat] ?? seat) };
+  if (!seat || holds(hud, seat)) return { mine: true, title: '', memo: false };
+  const a = actOf(hud, seat, { kind: 'vacancy', role, shift: '', via: 'ad' }, role);
+  return { mine: actOn(a), title: a.title, memo: !!a.memo };
 }
 
 /** Вакансия (Б4в): роль, график, канал, кто открыл; кандидаты — навык, ожидание, до какого дня ищут; «Принять…». */
@@ -521,7 +526,7 @@ function Vacancy({ v, h, q, hud, actions }: { v: VacancyRow; h: HiringView; q: s
   const hc = T.hire;
   const [pick, setPick] = useState<string | undefined>();
   const [trial, setTrial] = useState(h.probation);
-  const { mine, title } = roleSeat(hud, v.role);
+  const { mine, title, memo } = roleSeat(hud, v.role);
   type Cand = VacancyRow['candidates'][number];
   const cols: Col<Cand>[] = [
     { name: hc.candCols.id, text: x => hc.candidate(Number(x.id.slice(1))) },
@@ -545,7 +550,7 @@ function Vacancy({ v, h, q, hud, actions }: { v: VacancyRow; h: HiringView; q: s
       <div>
         <b>{hc.vacancy(roleName(v.role), shiftName(v.shift), hc.via[v.via], dayText(v.from))}</b>
         {v.by && v.instead !== undefined ? <span className="muted"> · {hc.byColleague(v.instead)}</span> : null}{' '}
-        <button type="button" className="link" disabled={!mine} title={title} onClick={() => actions.closeVacancy(v.id)} data-test="vacancy-close">
+        <button type="button" className="link" disabled={!mine} title={title} onClick={() => actions.closeVacancy(v.id, memo)} data-test="vacancy-close">
           {hc.close}
         </button>
       </div>
@@ -575,7 +580,7 @@ function Vacancy({ v, h, q, hud, actions }: { v: VacancyRow; h: HiringView; q: s
             type="button"
             disabled={!mine}
             onClick={() => {
-              actions.hire(pick, trial);
+              actions.hire(pick, trial, memo);
               setPick(undefined);
             }}
             data-test="hire-do"
@@ -600,7 +605,7 @@ function OpenVacancy({ h, hud, actions }: { h: HiringView; hud: Hud; actions: Ac
   const firstShift = (r: Id) => h.staff.find(x => x.role === r)?.shift ?? Object.keys(db?.shifts ?? {})[0] ?? '';
   const [shift, setShift] = useState(firstShift(roles[0] ?? ''));
   const [via, setVia] = useState<Via>('ad');
-  const { mine, title } = roleSeat(hud, role);
+  const { mine, title, memo } = roleSeat(hud, role);
   // переезд (Б5в) — только для тех, кого в городе по объявлению не найти
   const canMove = h.movable.includes(role);
   if (!open) {
@@ -656,7 +661,7 @@ function OpenVacancy({ h, hud, actions }: { h: HiringView; hud: Hud; actions: Ac
         disabled={!mine}
         title={title}
         onClick={() => {
-          actions.vacancy(role, shift, via);
+          actions.vacancy(role, shift, via, memo);
           setOpen(false);
         }}
         data-test="vacancy-do"

@@ -7,6 +7,8 @@ import { batchNo } from '../engine/batchno';
 import { DAY, momentOf } from '../engine/core/calendar';
 import { inForce } from '../engine/docs';
 import { MORNING } from '../engine/engine';
+import { HEAD_SEAT } from '../engine/journal';
+import { memoAt } from '../engine/memos';
 import { cleanBatch, closedAt, closedShifts, kpiCtx, type KpiPeriod, kpiPick, oeeOf, rejectedAt, sincePeriod } from '../engine/kpi';
 import { AREA, type Oee, oee, rhythm, shiftsOfDay, type Switches, switchesOf } from '../engine/lean';
 import { orderRisks, type OrderRisk } from '../engine/market';
@@ -18,7 +20,7 @@ import { type BossRow, bossMeeting } from './bosses';
 import { type PeopleMeeting, peopleMeeting } from './hire';
 import { type LeaveMeeting, leaveMeeting } from './leave';
 import { type HoursMeeting, hoursMeeting } from './hours';
-import { type HeadDay, headDays, type JournalRow, openAsks } from './journal';
+import { type HeadDay, headDays, type JournalRow, memoDays, openAsks } from './journal';
 import { type MonthClose, monthClose } from './kpi';
 import { type PartnerSum, partnerSum } from './partners';
 import { type TrainSum, trainSum } from './people';
@@ -230,8 +232,10 @@ export interface MorningView {
   modes: ModeRow[];
   /** решения за сутки (Б5а): строка на руководителя — сколько, какие, у заказов поставщикам — предоплата */
   heads: HeadDay[];
-  /** предложения (Б5б): открытые, новые сверху — с причиной, «Принять» и «Отклонить» у поста отдела */
+  /** предложения (Б5б) и вопросы «Просят решить» (Б5д): открытые, новые сверху — с причиной и вариантами у поста */
   asks: JournalRow[];
+  /** записки и вопросы за сутки (Б5д): ответы на записки и вопросы, решённые без игрока */
+  memos: JournalRow[];
   /** итог игры (обёртка): что завод сделал с мгновения `since` запроса; меньше суток игры — нет */
   session?: SessionSum;
   /** отклонённое (Б1з): места зоны, ждущие места, вывоз, вывозы с прошлой планёрки; у сценария без подрядчика — нет */
@@ -469,6 +473,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     modes: modeRows(db, s),
     heads: headDays(s, from, at),
     asks: openAsks(db, s),
+    memos: memoDays(db, s, from, at),
     ...(q.since !== undefined && at - q.since >= DAY ? { session: sessionSum(s, q.since, at) } : {}),
     ...(rejects ? { rejects } : {}),
     ...(month ? { month } : {}),
@@ -821,10 +826,25 @@ export interface TopView {
   inv: number;
   /** режимы отделов (Б5б): выбор игрока, который завод помнит, — экран «Кем вы будете» показывает его у мест */
   modes: Partial<Record<Head, DeptMode>>;
+  /**
+   * служебные записки (Б5д): когда ответит руководитель отдела, чей пост не у игрока, на записку, отправленную сейчас;
+   * не ответит за срок окна — нет; директор и места не выбраны — пусто
+   */
+  memo: Partial<Record<Head, number>>;
 }
+
+/** Руководители, которым пишут записки (Б5д). */
+const MEMO_HEADS: readonly Head[] = ['plan', 'mes', 'maint', 'qa', 'qc', 'tech', 'supply', 'wms'];
 
 export function topView(db: ContentDb, s: PlantState): TopView {
   const held = s.seats?.filter(x => x.to === undefined).map(x => x.seat);
   const inv = Object.values(s.investigations).filter(i => i.status === 'open').length;
-  return { view: 'top', balance: s.cash.balance, day: dayChange(s, s.t), ...(held ? { seats: held } : {}), offered: db.scenarios[s.scenario].seats, inv, modes: { ...s.heads.mode } };
+  const memo: Partial<Record<Head, number>> = {};
+  if (held && !held.includes('director'))
+    for (const h of MEMO_HEADS) {
+      if (held.includes(HEAD_SEAT[h])) continue;
+      const at = memoAt(db, s, h);
+      if (at !== undefined) memo[h] = at;
+    }
+  return { view: 'top', balance: s.cash.balance, day: dayChange(s, s.t), ...(held ? { seats: held } : {}), offered: db.scenarios[s.scenario].seats, inv, modes: { ...s.heads.mode }, memo };
 }

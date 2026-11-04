@@ -8,7 +8,8 @@ import type { Id } from '../content/types';
 import { money, named, pctText, qtyText, T } from '../i18n';
 import type { PoItem, PoSupplier } from '../sim/po';
 import { db } from './db';
-import { type Actions, type Hud, holds } from './store';
+import { actLabel, actOf, actOn } from './memo';
+import type { Actions, Hud } from './store';
 
 const material = (id: Id) => named(db?.materials[id]?.name, id);
 const unitOf = (m: Id) => db?.materials[m]?.unit ?? 'mass';
@@ -27,8 +28,10 @@ function priceText(it: PoItem): string {
 
 export function Po({ hud, actions }: { hud: Hud; actions: Actions }) {
   const po = hud.po;
-  // заказ — команда поста «Снабжение и склад» (или директора): чужой пост — «Отправить» погашено
-  const mine = holds(hud, 'supply');
+  // заказ — команда поста «Снабжение и склад» (или директора): чужой пост — «Записка: отправить» начальнику отдела
+  // снабжения (Б5д)
+  const act = actOf(hud, 'supply', { kind: 'po', supplier: '', lines: [] });
+  const mine = actOn(act);
   const v = po.view;
   const sup: PoSupplier | undefined = v?.suppliers.find(x => x.id === (po.supplier ?? v.supplier));
   const items = sup?.items.filter(i => i.ok) ?? [];
@@ -118,8 +121,8 @@ export function Po({ hud, actions }: { hud: Hud; actions: Actions }) {
             <button type="button" onClick={() => actions.suggestPo()} disabled={!plan} title={plan ? T.po.suggestHint : T.po.noPlan} data-test="po-suggest">
               {T.po.suggest}
             </button>
-            <button type="button" className="go" onClick={() => actions.sendPo()} disabled={!good || !mine} title={mine ? '' : T.seats.notYours(T.seats.names.supply)} data-test="po-send">
-              {T.po.send}
+            <button type="button" className="go" onClick={() => actions.sendPo()} disabled={!good || !mine} title={act.title} data-test="po-send" data-memo={act.memo ?? undefined}>
+              {actLabel(act, T.po.send)}
             </button>
           </div>
           {good ? (

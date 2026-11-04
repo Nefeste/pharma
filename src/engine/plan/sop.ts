@@ -356,6 +356,8 @@ export interface SopCtx {
   db: ContentDb;
   s: PlantState;
   from: number;
+  /** месяцев прогона: у совещания — 6, у потребности в материалах (Б6д) — 12 */
+  months: number;
   items: { recipe: Id; sku: Id }[];
   products: Id[];
   /** первый день прогона и день за последним */
@@ -401,15 +403,15 @@ export interface SopCtx {
   ordered: Run[];
 }
 
-export function sopCtx(db: ContentDb, s: PlantState, from: number): SopCtx {
+export function sopCtx(db: ContentDb, s: PlantState, from: number, months = SOP_MONTHS, withCap = true): SopCtx {
   const sc = db.scenarios[s.scenario];
   const items = sc.plan!.items;
   const cal = calOf(db, s);
   const window = numOf(db, s, POL.window)!;
   const now = momentOf(s.start, s.t);
   const z0 = now.day + 1;
-  const end = firstDay(from + SOP_MONTHS);
-  const sell = firstDay(from + SOP_MONTHS + 1);
+  const end = firstDay(from + months);
+  const sell = firstDay(from + months + 1);
   const products = [...new Set(items.map(i => db.skus[i.sku].product))];
   // дни прогона, месяц продаж после него и ещё окно правила — для спроса вперёд
   const span = sell - z0 + window + 1;
@@ -468,7 +470,7 @@ export function sopCtx(db: ContentDb, s: PlantState, from: number): SopCtx {
     if (b.status === 'cancelled') continue;
     runs.push({ id: b.id, notBefore: b.notBefore, product: b.product });
     const bm = monthAt(s, b.notBefore);
-    if (bm >= from && bm < from + SOP_MONTHS) {
+    if (bm >= from && bm < from + months) {
       const f = fixed.get(bm) ?? new Map<Id, number>();
       f.set(b.product, (f.get(b.product) ?? 0) + 1);
       fixed.set(bm, f);
@@ -479,12 +481,14 @@ export function sopCtx(db: ContentDb, s: PlantState, from: number): SopCtx {
     wip.push({ sku: b.sku, product: b.product, cases: cases * 1000, from: b.records[0]?.start ?? b.notBefore });
   }
   const cap = new Map<number, SopCap>();
-  for (let n = from; n < from + SOP_MONTHS; n++) cap.set(n, capacityOf(db, s, n));
+  // мощность нужна окну и лучшему плану; потребности в материалах (Б6д) — нет
+  for (let n = from; n < from + months; n++) cap.set(n, withCap ? capacityOf(db, s, n) : { cap: blankLoad(), have: blankHours() });
   const use = planUse(db, s, 1000, byLot);
   return {
     db,
     s,
     from,
+    months,
     items,
     products,
     z0,
@@ -531,8 +535,9 @@ function addBatches(ctx: SopCtx, row: SopMonth, product: Id, n: number) {
 }
 
 /**
- * Прогон плана вперёд (Б6г): с завтра до конца месяца `from + 5`. Положение позиции для правила — как у правила (ГП и
- * серии в работе против открытых заказов); запас для продаж — ГП и серии в работе к их выпуску. Каждый рабочий день —
+ * Прогон плана вперёд (Б6г): с завтра до конца месяца `from + months − 1` — у совещания `from + 5`. Положение позиции
+ * для правила — как у правила (ГП и серии в работе против открытых заказов); запас для продаж — ГП и серии в работе к
+ * их выпуску. Каждый рабочий день —
  * правило `choose` на день через две рабочие недели, запас позиций продукта — цель плана на месяц дня правила, с пределом
  * навыка руководителя; спрос — прогноз планирования за календарный день. Серии выходят через срок серий завода от первой
  * стадии или «не раньше» — у варианта `k` свой процентиль. Нагрузка месяца — и задания, которые уже стоят. `trace` —
@@ -578,8 +583,9 @@ export function sopRun(ctx: SopCtx, plan: Record<Id, number[]>, k = 0, trace?: S
     return lastNew && (!a || lastNew.notBefore >= a.notBefore) ? lastNew.product : a?.product;
   };
   // запас позиций продукта на месяц правила: тысячные рабочего дня — один раз на прогон
-  const aheadOf = new Map(ctx.products.map(p => [p, Array.from({ length: SOP_MONTHS }, (_, i) => aheadMilli(AHEAD + coverBy(ctx.skill, plan[p]?.[i] ?? ctx.policy)))]));
-  const M = SOP_MONTHS;
+  const M = ctx.months;
+  // за горизонтом плана (потребность в материалах, Б6д, — 12 месяцев) — цель политики
+  const aheadOf = new Map(ctx.products.map(p => [p, Array.from({ length: M }, (_, i) => aheadMilli(AHEAD + coverBy(ctx.skill, plan[p]?.[i] ?? ctx.policy)))]));
   const months: SopMonth[] = [];
   const dem: number[][] = [];
   const sh: number[][] = [];

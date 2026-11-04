@@ -16,7 +16,8 @@ import { packNeeds } from './mes';
 import { approved, linePrice, pairsFor, priceLine } from './partners';
 import { aheadMilli, casesOf, positionOf } from './planner';
 import { planOf } from './plant';
-import { numOf, POL } from './policies';
+import { mrpPlan } from './plan/mrp';
+import { numOf, POL, policyOf } from './policies';
 import { roll } from './random';
 import { containersByLot, containersFor, free, nextId } from './stock';
 import type { Command, Notice, PackJob, PlantState, Po, PoLine, PoWhy, Refusal } from './types';
@@ -104,6 +105,88 @@ export function etaOf(db: ContentDb, s: PlantState, supplier: Id, lead: [number,
 function arrival(db: ContentDb, s: PlantState, t: number, extra: number): number {
   const m = momentOf(s.start, t);
   return t - m.sec + (workdayOnOrAfter(calOf(db, s), m.day) - m.day) * DAY + ARRIVE_FROM + extra;
+}
+
+/** Ускорить заказ в пути (Б6д; геймдизайн, §9.3): приход — через столько суток, рабочим днём к началу окна прихода. */
+export const FAST_DAYS = 7;
+/** Доплата за ускорение — доля суммы заказа без НДС, 1/10 000; НДС к ней — в доле НДС заказа (геймдизайн, §9.3). */
+export const FAST_SHARE = 1500;
+/** Неустойка за отмену до прихода — доля суммы заказа без НДС, 1/10 000 (геймдизайн, §9.3). */
+export const CANCEL_SHARE = 1000;
+
+/**
+ * Ускорение без записи (Б6д; окно — «Ускорить»): новый приход — в 09:00 первого рабочего дня через `FAST_DAYS` суток,
+ * доплата без НДС и НДС к ней. Отказ: такого заказа нет; он уже пришёл или отменён; уже ускорен; ускоренный придёт не
+ * раньше нынешнего.
+ */
+export function fastQuote(db: ContentDb, s: PlantState, poId: string): { eta: number; net: number; vat: number } | { why: Refusal } {
+  const po = s.pos[poId];
+  if (!po) return { why: 'noPo' };
+  if (po.status !== 'ordered') return { why: 'poDone' };
+  if (po.fast) return { why: 'fastAgain' };
+  const eta = arrival(db, s, s.t + FAST_DAYS * DAY, 0);
+  if (eta >= po.eta) return { why: 'notFaster' };
+  return { eta, net: part((po.sum ?? 0) - (po.vat ?? 0), FAST_SHARE), vat: part(po.vat ?? 0, FAST_SHARE) };
+}
+
+/**
+ * Команда «ускорить заказ поставщику» (Б6д): доплата с НДС — сразу, в сумме заказа и в его предоплате, НДС к ней — к
+ * вычету с приходом; фура — к новому сроку, прежнее событие прихода уже ничего не найдёт: заказ пришёл.
+ */
+export function expediteCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'expedite' }>, notices: Notice[]) {
+  const q = fastQuote(db, s, cmd.po);
+  if ('why' in q) {
+    notices.push({ kind: 'refused', cmd: 'expedite', why: q.why, detail: cmd.po });
+    return;
+  }
+  const po = s.pos[cmd.po];
+  const was = po.eta;
+  const fee = q.net + q.vat;
+  po.fast = { t: s.t, was, net: q.net, vat: q.vat };
+  po.eta = q.eta;
+  po.sum = (po.sum ?? 0) + fee;
+  po.vat = (po.vat ?? 0) + q.vat;
+  po.prepaid = (po.prepaid ?? 0) + fee;
+  post(s, -fee, 'poFast', po.id);
+  schedule(s.agenda, q.eta, { kind: 'truck', po: po.id });
+  notices.push({ kind: 'poFast', po: po.id, eta: q.eta });
+  noteCmd(s, cmd, { kind: 'expedite', po: po.id, supplier: po.supplier, was, eta: q.eta, fee });
+}
+
+/**
+ * Отмена без записи (Б6д; окно — «Отменить»): неустойка — доля суммы заказа без НДС, без доплаты за ускорение; возврат —
+ * предоплата без доплаты за ускорение и без неустойки, меньше нуля — доплата сверх предоплаты. Отказ: такого заказа нет;
+ * он уже пришёл или отменён.
+ */
+export function cancelQuote(s: PlantState, poId: string): { fee: number; back: number } | { why: Refusal } {
+  const po = s.pos[poId];
+  if (!po) return { why: 'noPo' };
+  if (po.status !== 'ordered') return { why: 'poDone' };
+  const fast = po.fast ? po.fast.net + po.fast.vat : 0;
+  const fee = part((po.sum ?? 0) - (po.vat ?? 0) - (po.fast?.net ?? 0), CANCEL_SHARE);
+  return { fee, back: (po.prepaid ?? 0) - fast - fee };
+}
+
+/**
+ * Команда «отменить заказ поставщику» до прихода (Б6д): заказ — «отменён», возврат — в кассу; по договору отменённое не
+ * куплено — его количество снова в остатке обещанного. Фура не придёт: событие прихода найдёт отменённый заказ.
+ */
+export function cancelPoCommand(s: PlantState, cmd: Extract<Command, { kind: 'cancelPo' }>, notices: Notice[]) {
+  const q = cancelQuote(s, cmd.po);
+  if ('why' in q) {
+    notices.push({ kind: 'refused', cmd: 'cancelPo', why: q.why, detail: cmd.po });
+    return;
+  }
+  const po = s.pos[cmd.po];
+  po.status = 'cancelled';
+  po.cancelled = { t: s.t, fee: q.fee, back: q.back };
+  post(s, q.back, 'poCancel', po.id);
+  for (const l of po.lines) {
+    const cl = l.contract ? s.contracts[l.contract]?.lines.find(x => x.material === l.material && x.maker === l.maker) : undefined;
+    if (cl) cl.bought = Math.max(0, cl.bought - (l.qty - (l.list ?? 0)));
+  }
+  notices.push({ kind: 'poCancelled', po: po.id });
+  noteCmd(s, cmd, { kind: 'cancelPo', po: po.id, supplier: po.supplier, fee: q.fee, back: q.back });
 }
 
 /** Коллега снабжения сидит с 09:00: в этот час рабочего дня он и считает (гипотеза). */
@@ -212,11 +295,51 @@ export function supplyPlan(db: ContentDb, s: PlantState): SupplyOrder[] {
   return [...lines].map(([supplier, l]) => ({ supplier, lines: l, why: whys.get(supplier)! }));
 }
 
+/** Как заказывает начальник отдела снабжения (Б6д): по потребности или по точке заказа; без политики — по точке. */
+export const howOf = (db: ContentDb, s: PlantState) => (policyOf(db, s, POL.how) === 'need' ? 'need' : 'point');
+
+/**
+ * Правило снабжения по потребности (Б6д) без записи: плановые заказы потребности в материалах (src/engine/plan/mrp.ts),
+ * чья дата заказа пришла; у поставщика — одним заказом, не больше половины зоны карантина в паллетах, как у точки заказа.
+ */
+export function needPlan(db: ContentDb, s: PlantState): SupplyOrder[] {
+  const sc = db.scenarios[s.scenario];
+  if (!sc.supply || !sc.plan) return [];
+  const r = mrpPlan(db, s);
+  const room = Math.max(1, Math.floor((planOf(db, s.plant).byKind.quarantine?.length ?? 2) / 2));
+  const lines = new Map<Id, PoLine[]>();
+  const whys = new Map<Id, PoWhy[]>();
+  const taken = new Map<Id, number>();
+  const rows = new Map(r.rows.map(x => [x.material, x]));
+  const every = numOf(db, s, POL.every)!;
+  for (const o of r.planned) {
+    if (o.orderBy > r.today) continue;
+    const c = db.containers[db.materials[o.material].container];
+    const pallet = c.perPallet * c.capacity;
+    const moq = db.suppliers[o.supplier].items[o.material].moq;
+    // у поставщика — не больше половины зоны карантина в паллетах, как у точки заказа
+    const qty = Math.min(o.qty, (room - (taken.get(o.supplier) ?? 0)) * pallet);
+    if (qty < moq) continue;
+    taken.set(o.supplier, (taken.get(o.supplier) ?? 0) + Math.ceil(qty / pallet));
+    lines.set(o.supplier, [...(lines.get(o.supplier) ?? []), { material: o.material, qty, maker: o.maker }]);
+    const row = rows.get(o.material)!;
+    const have = row.free + row.quarantine + row.transit.reduce((n, t) => n + t.qty, 0);
+    const gross = row.months.find(m => m.m === o.month)?.gross ?? 0;
+    const why: PoWhy = { rule: 'need', material: o.material, maker: o.maker, month: o.month, gross, have, need: o.need, deficit: o.deficit, late: o.late, lead: db.suppliers[o.supplier].lead[1], qc: sc.supply.qc, arrive: r.arrive, safety: row.safety, every, moq, want: o.want, ...(qty < o.qty ? { cut: true as const } : {}) };
+    whys.set(o.supplier, [...(whys.get(o.supplier) ?? []), why]);
+  }
+  return [...lines].map(([supplier, l]) => ({ supplier, lines: l, why: whys.get(supplier)! }));
+}
+
+/** Заказы правила снабжения сейчас (Б6д): по политике «как заказывать» — по потребности или по точке заказа. */
+export const supplyOrders = (db: ContentDb, s: PlantState): SupplyOrder[] => (howOf(db, s) === 'need' ? needPlan(db, s) : supplyPlan(db, s));
+
 /** Вещь предложения снабжения (Б5б): заказ поставщику — одно открытое у поставщика. */
 export const poKey = (supplier: Id) => `po/${supplier}`;
 
 /**
- * Каждый час: в рабочий день в 09:00 — правило снабжения (`supplyPlan`). Режим отдела (Б5б): «сам» — заказы; «советует»
+ * Каждый час: в рабочий день в 09:00 — правило снабжения (`supplyOrders`: с Б6д — по потребности или по точке заказа,
+ * по политике «как заказывать»). Режим отдела (Б5б): «сам» — заказы; «советует»
  * — предложения тех же заказов с той же причиной и предоплатой по договору; у поставщика, которому заказ больше не
  * нужен, предложение «не нужно»; «вручную» — ничего.
  */
@@ -228,7 +351,7 @@ export function supplyDay(db: ContentDb, s: PlantState, notices: Notice[]) {
   // руководитель — человек (Б5в): с 09:00, в первый час, когда есть кому решить
   const who = dueRule(db, s, 'supply', 'supply', SUPPLY_HOUR, notices);
   if (!who) return;
-  const orders = supplyPlan(db, s);
+  const orders = supplyOrders(db, s);
   if (mode === 'auto') {
     asWho('supply', who, () => {
       for (const o of orders) placePo(db, s, { kind: 'po', supplier: o.supplier, lines: o.lines, by: 'head:supply' }, notices, o.why);

@@ -90,6 +90,11 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
       return `${J.cancel(sku(d.sku) || T.now.batch(r.code || `B${r.bn ?? ''}`), whenText(start, d.notBefore))}${goalText(d.due, d.for, r, start)}`;
     case 'po':
       return J.po(party(d.supplier), (r.po?.lines ?? []).map(l => `${material(l.material)}, ${qty(l.material, l.qty)}`).join('; '));
+    // ускорение и отмена заказа поставщику (Б6д)
+    case 'expedite':
+      return J.expedite(d.po, party(d.supplier), whenText(start, d.eta), whenText(start, d.was));
+    case 'cancelPo':
+      return J.cancelPo(d.po, party(d.supplier));
     case 'step':
       return `${J.step(named(model(r)?.steps.find(s => s.id === d.step)?.name, d.step))}${batchCode(r) ? ` · ${T.now.batch(batchCode(r))}` : ''}`;
     case 'conclude':
@@ -186,6 +191,10 @@ export function cmdText(c: Command, r: JournalRef, start: Ymd): string {
       return C.setpoint(modeWhat(r), modeText(r, c.value));
     case 'po':
       return C.po(party(c.supplier), c.lines.map(l => `${material(l.material)}, ${qty(l.material, l.qty)}`).join('; '));
+    case 'expedite':
+      return C.expedite(c.po);
+    case 'cancelPo':
+      return C.cancelPo(c.po);
     case 'waste':
       return C.waste;
     case 'roster':
@@ -273,16 +282,26 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
         const line = r.po?.lines.find(l => l.material === w.material);
         const c = db?.containers[db?.materials[w.material]?.container ?? ''];
         const n = line && c ? Math.round(line.qty / c.capacity) : 0;
-        const parts = [
-          J.po.line(material(w.material), qty(w.material, w.have), qty(w.material, w.point), qtyText(w.per / 1000, unitOf(w.material)), w.lead, w.qc, w.safety),
-          w.want === w.moq ? J.po.moq(qty(w.material, w.moq)) : J.po.qty(w.every, qty(w.material, w.want)),
-          ...(w.cut ? [J.po.cut] : []),
-          ...(c && n > 0 ? [J.po.tare(n, c.kind, qtyText(c.capacity, unitOf(w.material), 0))] : []),
-        ];
-        return parts.join('; ');
+        const tail = [...(w.cut ? [J.po.cut] : []), ...(c && n > 0 ? [J.po.tare(n, c.kind, qtyText(c.capacity, unitOf(w.material), 0))] : [])];
+        const moq = w.want === w.moq ? J.po.moq(qty(w.material, w.moq)) : undefined;
+        // по потребности в материалах (Б6д): месяц, потребность, есть и в пути, к какому дню и сколько не хватит
+        if (w.rule === 'need')
+          return [
+            J.po.need(material(w.material), T.sop.month(w.month), qty(w.material, w.gross), qty(w.material, w.have), dayText(w.need), qty(w.material, w.deficit), qty(w.material, w.safety)),
+            J.po.by(w.arrive, w.qc, w.lead),
+            ...(w.late > 0 ? [J.po.late(w.late)] : []),
+            moq ?? J.po.more(w.every, qty(w.material, w.want)),
+            ...tail,
+          ].join('; ');
+        return [J.po.line(material(w.material), qty(w.material, w.have), qty(w.material, w.point), qtyText(w.per / 1000, unitOf(w.material)), w.lead, w.qc, w.safety), moq ?? J.po.qty(w.every, qty(w.material, w.want)), ...tail].join('; ');
       });
       return d.prepaid > 0 ? [...out, J.po.prepaid(money(d.prepaid))] : out;
     }
+    // ускорение и отмена заказа поставщику (Б6д): доплата; неустойка и возврат предоплаты
+    case 'expedite':
+      return [J.po.fast(money(d.fee))];
+    case 'cancelPo':
+      return [[J.po.fee(money(d.fee)), d.back >= 0 ? J.po.back(money(d.back)) : J.po.over(money(-d.back))].join('; ')];
     case 'step': {
       const w = d.why;
       if (!w) return [];

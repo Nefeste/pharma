@@ -166,6 +166,10 @@ export const scenario = z.strictObject({
       safety: z.number().int().min(0).max(365),
       every: z.number().int().min(1).max(365),
       qc: z.number().int().min(0).max(60),
+      /** срок завоза (Б6д): число предыдущего месяца, 0 — к дню серии */
+      arrive: z.number().int().min(0).max(28).optional(),
+      /** как заказывают (Б6д): по потребности или по точке заказа */
+      how: z.enum(['need', 'point']).optional(),
     })
     .optional(),
   stock: z.array(z.strictObject({ material: id, qty })).default([]),
@@ -1138,7 +1142,7 @@ export const policy = z
     id: z.string(),
     name: text,
     head: z.enum(['plan', 'supply', 'maint', 'mes', 'wms', 'tech', 'qa']),
-    kind: z.enum(['days', 'months', 'wear', 'level', 'choice', 'share', 'count']),
+    kind: z.enum(['days', 'months', 'wear', 'level', 'choice', 'share', 'count', 'mday']),
     each: z.enum(['part', 'spare']).optional(),
     min: z.number().int().min(0).optional(),
     max: z.number().int().positive().optional(),
@@ -1150,7 +1154,7 @@ export const policy = z
     review,
   })
   .superRefine((p, ctx) => {
-    const numeric = p.kind === 'days' || p.kind === 'months' || p.kind === 'wear' || p.kind === 'count';
+    const numeric = p.kind === 'days' || p.kind === 'months' || p.kind === 'wear' || p.kind === 'count' || p.kind === 'mday';
     if (numeric || p.kind === 'level') {
       if (p.min === undefined || p.max === undefined || p.min >= p.max) ctx.addIssue({ code: 'custom', message: 'нужны min и max, min меньше max' });
       if (numeric && (p.step === undefined || (p.max! - p.min!) % p.step !== 0)) ctx.addIssue({ code: 'custom', message: 'от min до max — целое число шагов step' });
@@ -1158,6 +1162,7 @@ export const policy = z
     if (p.kind === 'choice' && !p.options) ctx.addIssue({ code: 'custom', message: 'у выбора нужны options' });
     if (p.kind === 'share' && !p.shares) ctx.addIssue({ code: 'custom', message: 'у доли мест нужны shares' });
     if (p.kind === 'wear' && p.max! > 100) ctx.addIssue({ code: 'custom', message: 'износ — не больше 100 % ресурса' });
+    if (p.kind === 'mday' && p.max! > 28) ctx.addIssue({ code: 'custom', message: 'число месяца — до 28-го: оно есть в каждом месяце; 0 — к дню серии' });
   });
 
 /**

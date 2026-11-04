@@ -170,6 +170,9 @@ function headOf(db: ContentDb, d: Decided): Head {
     case 'cancel':
       return 'plan';
     case 'po':
+    // ускорить и отменить заказ поставщику (Б6д)
+    case 'expedite':
+    case 'cancelPo':
     case 'contract':
       return 'supply';
     case 'step':
@@ -284,7 +287,9 @@ export function refOf(db: ContentDb, s: PlantState, d: Decided, ask?: Ask): Jour
       return { ...batchRef(s, d.batch), ...customerOf(s, d.for) };
     case 'batch':
       return batchRef(s, d.batch);
-    case 'po': {
+    case 'po':
+    case 'expedite':
+    case 'cancelPo': {
       const po = d.po ? s.pos[d.po] : undefined;
       return po ? { po: { lines: po.lines.map(l => ({ material: l.material, qty: l.qty })), eta: po.eta } } : {};
     }

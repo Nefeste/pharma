@@ -1,6 +1,7 @@
 // Сценарий в браузере, часть «Материалы» (Б6д; docs/specs/2026-10-vertical-slice.md, «Б6д», «Проверки Б6д»): чистое окно,
-// как при первом запуске, место «Директор» — поста «Снабжение и склад» в сценарии нет. «До утра» — 2 сентября 08:00: в
-// пути заказы правила первого дня, на планёрке — блок «Материалы». Расписание (G), вкладка «Материалы»: 12 месяцев,
+// как при первом запуске, место «Директор» — поста «Снабжение и склад» в сценарии нет. «До утра» — планёрка 1 сентября:
+// блок «Материалы» — что заказать сегодня, лоратадин опаздывает; ещё «До утра» — 2 сентября 08:00: в пути заказы правила
+// первого дня. Расписание (G), вкладка «Материалы»: 12 месяцев,
 // материалы по видам, необеспеченная — красным, плановые заказы по поставщикам и заказы в пути с сообщениями.
 // «Заказать» — окно «Заказ поставщику» со строками плановых заказов поставщика; «Отправить» — заказ в пути. «Ускорить» —
 // новый день прихода и запись журнала с доплатой. Отклик — в кадрах (геймдизайн, §21). Снимки — tools/app/out/mrp-*.png,
@@ -138,14 +139,15 @@ async function director(x) {
   try {
     await s.seats(['director']);
     await s.untilMorning();
-    // планёрка 2 сентября: заказы правила первого дня в пути; блок «Материалы» — если что-то опоздает или пора заказать
+    // планёрка 1 сентября: заказов ещё нет — блок «Материалы»: плановые заказы на сегодня, лоратадин опаздывает
     await page.waitForFunction(() => !!window.__game.store.get().morning.view, null, { timeout: 30_000 });
-    const meet = await page.evaluate(() => document.querySelector('[data-test=morning-materials]')?.textContent ?? '');
-    if (meet) {
-      await page.evaluate(() => document.querySelector('[data-test=morning-materials]')?.scrollIntoView({ block: 'center' }));
-      await s.shot('Планёрка: блок «Материалы»');
-      ok(`планёрка — ${await s.clock()}: «${meet.slice(0, 200)}»`);
-    } else ok(`планёрка — ${await s.clock()}: заказывать сегодня нечего, опаздывающих заказов нет`);
+    const meet = await page.evaluate(() => ({ text: document.querySelector('[data-test=morning-materials]')?.textContent ?? '', due: document.querySelectorAll('[data-test=morning-materials-due]').length, lor: document.querySelector('[data-test=morning-materials-due][data-material="mat.api.loratadine"]')?.textContent ?? '' }));
+    await page.evaluate(() => document.querySelector('[data-test=morning-materials]')?.scrollIntoView({ block: 'center' }));
+    await s.shot('Планёрка 1 сентября: блок «Материалы»');
+    if (meet.due === 0 || !/^Заказать сегодня — \d+ плановы/.test(meet.text) || !/опаздывает на \d+ сут/.test(meet.lor)) fail(`планёрка: ${JSON.stringify(meet)}`);
+    else ok(`планёрка — ${await s.clock()}: плановых заказов на сегодня ${meet.due}; «${meet.lor}»`);
+    // ещё «До утра» — 2 сентября: заказы правила первого дня в пути
+    await s.untilMorning();
     for (let k = 0; k < 4 && (await page.evaluate(() => { const h = window.__game.store.get(); return h.morning.open || !!h.selected; })); k++) await page.keyboard.press('Escape');
 
     // расписание (G), вкладка «Материалы»

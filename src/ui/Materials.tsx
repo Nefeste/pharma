@@ -1,9 +1,10 @@
 // Вкладка «Материалы» окна расписания (Б6д; docs/specs/2026-10-vertical-slice.md, «Б6д»; геймдизайн, §9.3): над сеткой —
 // как заказывает снабжение и срок завоза; сетка — материалы по видам строками (АФС, вспомогательные, упаковка), 12 месяцев
-// столбцами: в клетке — потребность месяца, необеспеченная — красным числом со словом; подсказка клетки — есть, в пути с
-// днями, когда будет разрешено, и плановый заказ. Ниже — плановые заказы по поставщикам с датой заказа и «Заказать» — окно
-// «Заказ поставщику» со строками тех, чья дата заказа — в пределах недели, по материалу, — и заказы в пути с сообщениями,
-// «Ускорить» и «Отменить». Вид собран в потоке расчёта (src/sim/mrp.ts) — истины в нём нет.
+// столбцами: в клетке — потребность месяца, необеспеченная — красным числом со знаком «−», а слово — у материала: «не
+// хватит с …»; подсказка клетки — есть, в пути с днями, когда будет разрешено, и плановый заказ. Ниже — плановые заказы по
+// поставщикам на два месяца вперёд с датой заказа и «Заказать» — окно «Заказ поставщику» со строками тех, чья дата заказа —
+// в пределах недели, по материалу, — и заказы в пути с сообщениями, «Ускорить» и «Отменить». Вид собран в потоке расчёта
+// (src/sim/mrp.ts) — истины в нём нет.
 import type { Id } from '../content/types';
 import { MRP_SOON, type MrpMsg, type MrpOrder, type MrpRow } from '../engine/plan/mrp';
 import { dayText, money, named, num, T, whenText } from '../i18n';
@@ -13,6 +14,8 @@ import { actLabel, actOf, actOn } from './memo';
 import type { Actions, Hud } from './store';
 
 const KINDS = ['api', 'excipient', 'packaging'] as const;
+/** Плановые заказы у поставщика — с датой заказа на столько суток вперёд; дальше — числом. */
+const AHEAD = 62;
 const ym = (n: number) => ({ y: Math.floor(n / 12), m: (n % 12) + 1 });
 const material = (id: Id) => named(db?.materials[id]?.name, id);
 const party = (id: Id) => named(db?.suppliers[id]?.name, id);
@@ -85,6 +88,15 @@ export function Materials({ hud, actions, v }: { hud: Hud; actions: Actions; v: 
                   <tr key={r.material} data-test="mrp-row" data-material={r.material}>
                     <th title={material(r.material)}>
                       {material(r.material)}, {unitOf(r.material) === 'mass' ? T.units.kg : T.units.pcs}
+                      {(() => {
+                        const m = r.months.find(c => c.net > 0)?.m;
+                        return m !== undefined ? (
+                          <small className="bad" data-test="mrp-short-from">
+                            <br />
+                            {T.mrp.shortFrom(T.fc.short(ym(m).y, ym(m).m))}
+                          </small>
+                        ) : null;
+                      })()}
                     </th>
                     {r.months.map(c => (
                       <td key={c.m} className={c.net > 0 ? 'bad' : undefined} title={cellTip(r, c.m, c.gross, c.net, v.planned)} data-test="mrp-cell" data-month={c.m} data-net={c.net > 0 ? c.net : undefined}>
@@ -92,7 +104,7 @@ export function Materials({ hud, actions, v }: { hud: Hud; actions: Actions; v: 
                         {c.net > 0 ? (
                           <>
                             <br />
-                            <b>−{cellQty(r.material, c.net)}</b> <small>{T.mrp.shortWord}</small>
+                            <b>−{cellQty(r.material, c.net)}</b>
                           </>
                         ) : null}
                       </td>
@@ -112,6 +124,8 @@ export function Materials({ hud, actions, v }: { hud: Hud; actions: Actions; v: 
           const soon = new Map<Id, number>();
           for (const { o } of xs) if (o.orderBy - v.today <= MRP_SOON) soon.set(o.material, (soon.get(o.material) ?? 0) + o.qty);
           const first = xs.reduce((z, x) => Math.min(z, x.o.orderBy), Number.POSITIVE_INFINITY);
+          const near = xs.filter(x => x.o.orderBy - v.today <= AHEAD);
+          const far = xs.filter(x => x.o.orderBy - v.today > AHEAD);
           return (
           <div key={supplier} className="mrp-sup" data-test="mrp-supplier" data-supplier={supplier} data-soon={soon.size}>
             <span>{party(supplier)}</span>{' '}
@@ -119,7 +133,7 @@ export function Materials({ hud, actions, v }: { hud: Hud; actions: Actions; v: 
               {actLabel(order, T.mrp.order)}
             </button>
             <ul className="mlist">
-              {xs.map(({ o, i }) => {
+              {near.map(({ o, i }) => {
                 const m = msgOf(i);
                 return (
                   <li key={i} data-test="mrp-planned-row" data-material={o.material} data-msg={m?.kind} data-soon={o.orderBy - v.today <= MRP_SOON ? '1' : undefined}>
@@ -129,6 +143,11 @@ export function Materials({ hud, actions, v }: { hud: Hud; actions: Actions; v: 
                   </li>
                 );
               })}
+              {far.length > 0 ? (
+                <li className="muted" data-test="mrp-planned-more">
+                  {T.mrp.more(far.length, day(far[far.length - 1].o.orderBy))}
+                </li>
+              ) : null}
             </ul>
           </div>
           );

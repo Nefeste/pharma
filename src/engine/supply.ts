@@ -312,6 +312,7 @@ export function needPlan(db: ContentDb, s: PlantState): SupplyOrder[] {
   const taken = new Map<Id, number>();
   const rows = new Map(r.rows.map(x => [x.material, x]));
   const every = numOf(db, s, POL.every)!;
+  const safety = numOf(db, s, POL.safety)!;
   for (const o of r.planned) {
     if (o.orderBy > r.today) continue;
     const c = db.containers[db.materials[o.material].container];
@@ -325,7 +326,7 @@ export function needPlan(db: ContentDb, s: PlantState): SupplyOrder[] {
     const row = rows.get(o.material)!;
     const have = row.free + row.quarantine + row.transit.reduce((n, t) => n + t.qty, 0);
     const gross = row.months.find(m => m.m === o.month)?.gross ?? 0;
-    const why: PoWhy = { rule: 'need', material: o.material, maker: o.maker, month: o.month, gross, have, need: o.need, deficit: o.deficit, late: o.late, lead: db.suppliers[o.supplier].lead[1], qc: sc.supply.qc, arrive: r.arrive, safety: row.safety, every, moq, want: o.want, ...(qty < o.qty ? { cut: true as const } : {}) };
+    const why: PoWhy = { rule: 'need', material: o.material, maker: o.maker, month: o.month, gross, have, need: o.need, deficit: o.deficit, late: o.late, lead: db.suppliers[o.supplier].lead[1], qc: sc.supply.qc, arrive: r.arrive, safety, safeQty: row.safety, every, moq, want: o.want, ...(qty < o.qty ? { cut: true as const } : {}) };
     whys.set(o.supplier, [...(whys.get(o.supplier) ?? []), why]);
   }
   return [...lines].map(([supplier, l]) => ({ supplier, lines: l, why: whys.get(supplier)! }));

@@ -81,6 +81,9 @@ export const en: Strings = {
   notices: {
     morning: (day: number) => `08:00 meeting: day ${day} has begun`,
     ordered: 'Purchase order placed',
+    /** expediting and cancelling a purchase order (Б6д) */
+    poFast: (when: string) => `Purchase order expedited: arrives ${when}`,
+    poCancelled: 'Purchase order cancelled: the fee comes out of the prepayment, the rest is refunded',
     truck: 'A truck is at the receiving dock',
     lotReleased: 'Lot released: all tests within specification',
     lotRejected: 'Lot rejected: out-of-specification result',
@@ -1413,6 +1416,8 @@ export const en: Strings = {
     launchWhat: 'a schedule tab: what goes into production on which day, and what the head will place by the rule',
     forecast: 'Forecast',
     forecastWhat: 'a schedule tab: the forecast by items and months, the method, edits by hand, forecast against actual',
+    materials: 'Materials',
+    materialsWhat: 'a schedule tab: material requirements for the year, planned orders, orders on the way — “Expedite” and “Cancel”',
     sop: 'S&OP',
     sopWhat: 'the S&OP meeting: item stock by product and month — demand, capacity, stock and money on one page',
     stock: 'Warehouse',
@@ -2076,8 +2081,8 @@ export const en: Strings = {
       tare: (n: number, kind: string, cap: string) => `to whole containers — ${groupEn(n)} ${tareEn(n, kind)} of ${cap}`,
       prepaid: (sum: string) => `Prepayment ${sum}`,
       /** by the material requirements (Б6д) */
-      need: (material: string, month: string, gross: string, have: string, by: string, deficit: string, safety: string) =>
-        `${material}: the batches of ${month} need ${gross}, on hand and on the way ${have}; by ${by} it falls ${deficit} short of the safety stock ${safety}`,
+      need: (material: string, month: string, gross: string, have: string, by: string, deficit: string, safety: string, days: number) =>
+        `${material}: the batches of ${month} need ${gross}, on hand and on the way ${have}; by ${by} it falls ${deficit} short of the safety stock ${safety} — ${daysEn(days)} of average use by the policy`,
       by: (arrive: number, qc: number, lead: number) =>
         `${arrive > 0 ? `the month's material — in stock by the ${ordEn(arrive)} of the previous month` : 'the material — by the batch day'} and through incoming control of ${daysEn(qc)}; lead time — up to ${daysEn(lead)}`,
       late: (days: number) => `late: arrives ${daysEn(days)} after it is needed`,
@@ -2641,6 +2646,47 @@ export const en: Strings = {
       noAdm: 'People without a training record in force for at least one document of their role’s row — mean over midnights',
       otLimit: 'The largest share of the yearly overtime limit used by one person in the month',
     } as Record<string, string>,
+  },
+  /** material requirements (Б6д): the schedule's “Materials” tab and the meeting block */
+  mrp: {
+    tab: 'Materials',
+    question: 'What will run short under the plan for the year, and what to order',
+    how: (how: string, arrive: number) => `Supply orders ${how}; arrival deadline — ${arrive > 0 ? `by the ${ordEn(arrive)} of the previous month` : 'by the batch day'}`,
+    hows: { need: 'by need', point: 'by the reorder point' } as Record<string, string>,
+    material: 'Material',
+    kinds: { api: 'APIs', excipient: 'Excipients', packaging: 'Packaging' } as Record<string, string>,
+    cell: (gross: string) => `Requirement of the month — ${gross}`,
+    short: (net: string) => `${net} short`,
+    shortWord: 'short',
+    have: (free: string, wait: string) => `on hand ${free}, in quarantine and under test ${wait}`,
+    transit: (po: string, qty: string, day: string) => `on the way: ${po} — ${qty}, released by ${day}`,
+    safety: (qty: string) => `safety stock ${qty}`,
+    plannedCell: (qty: string, need: string, by: string) => `planned order ${qty} by ${need}, order by ${by}`,
+    planned: 'Planned orders',
+    noPlanned: 'No planned orders',
+    plannedLine: (material: string, qty: string, need: string) => `${material} — ${qty} by ${need}`,
+    orderBy: (day: string) => `order by ${day}`,
+    overdue: (days: number) => `late: arrives ${daysEn(days)} after it is needed`,
+    order: 'Order',
+    orderHint: 'The “Purchase order” window with the lines of this supplier’s planned orders due within a week',
+    orderNone: (day: string) => `Nothing to order yet: the next order date is ${day}`,
+    transitTitle: 'Orders on the way',
+    noTransit: 'No orders on the way',
+    late: (material: string, days: number) => `${material}: ${daysEn(days)} late`,
+    extra: (material: string) => `${material}: extra — it will be needed later than the lead time`,
+    fast: 'expedited',
+    expedite: 'Expedite',
+    expediteHint: (when: string, fee: string) => `Arrives ${when}; surcharge ${fee} with VAT — paid at once`,
+    cancel: 'Cancel',
+    cancelHint: (fee: string, back: string) => `Cancellation fee ${fee}; prepayment refunded ${back}`,
+    cancelOver: (fee: string, over: string) => `The fee ${fee} exceeds the prepayment: ${over} more to pay`,
+    cols: { po: 'Order', supplier: 'Supplier', lines: 'Lines', eta: 'Arrival', msgs: 'Messages' },
+    // the meeting
+    meeting: 'Materials',
+    due: (n: number) => `To order today — ${groupEn(n)} ${pl(n, 'planned order', 'planned orders')}`,
+    dueLine: (material: string, supplier: string, qty: string, need: string, late: number) => `${material} from ${supplier} — ${qty} by ${need}${late > 0 ? `, ${daysEn(late)} late` : ''}`,
+    lateTitle: 'Orders on the way that will be late',
+    lateLine: (po: string, material: string, days: number) => `${po}: ${material} — ${daysEn(days)}`,
   },
   /** sales forecast (Б6в): months in words, methods */
   fc: {

@@ -88,6 +88,9 @@ export const ru = {
   notices: {
     morning: (day: number) => `Планёрка в 08:00: начались сутки ${day}`,
     ordered: 'Заказ поставщику принят',
+    /** ускорение и отмена заказа поставщику (Б6д) */
+    poFast: (when: string) => `Заказ поставщику ускорен: придёт ${when}`,
+    poCancelled: 'Заказ поставщику отменён: неустойка — из предоплаты, остаток вернут',
     truck: 'Фура у рампы приёмки',
     lotReleased: 'Партия разрешена: все испытания в пределах',
     lotRejected: 'Партия отклонена: результат вне спецификации',
@@ -1500,6 +1503,8 @@ export const ru = {
     launchWhat: 'вкладка расписания: что и в какой день пойдёт в производство, а что поставит начальник по правилу',
     forecast: 'Прогноз',
     forecastWhat: 'вкладка расписания: прогноз по позициям и месяцам, способ, правка руками, прогноз против факта',
+    materials: 'Материалы',
+    materialsWhat: 'вкладка расписания: потребность в материалах на год, плановые заказы, заказы в пути — «Ускорить» и «Отменить»',
     sop: 'S&OP',
     sopWhat: 'совещание S&OP: запас позиций по продуктам и месяцам — спрос, мощности, запас и деньги на одной странице',
     stock: 'Склад',
@@ -2178,8 +2183,8 @@ export const ru = {
       tare: (n: number, kind: string, cap: string) => `до целой тары — ${groupRu(n)} ${tareRu(n, kind)} по ${cap}`,
       prepaid: (sum: string) => `Предоплата ${sum}`,
       /** по потребности в материалах (Б6д) */
-      need: (material: string, month: string, gross: string, have: string, by: string, deficit: string, safety: string) =>
-        `${material}: под серии ${month} нужно ${gross}, есть и в пути ${have}; к ${by} не хватит ${deficit} до страхового запаса ${safety}`,
+      need: (material: string, month: string, gross: string, have: string, by: string, deficit: string, safety: string, days: number) =>
+        `${material}: под серии ${month} нужно ${gross}, есть и в пути ${have}; к ${by} не хватит ${deficit} до страхового запаса ${safety} — ${daysRu(days)} среднего расхода по политике`,
       by: (arrive: number, qc: number, lead: number) =>
         `${arrive > 0 ? `материал месяца — на складе к ${arrive}-му числу предыдущего` : 'материал — к дню серии'} и через входной контроль ${daysRu(qc)}; срок поставки — до ${daysRu(lead)}`,
       late: (days: number) => `опаздывает: придёт на ${daysRu(days)} позже, чем нужен`,
@@ -2767,6 +2772,47 @@ export const ru = {
       noAdm: 'Люди без записи обучения в силе хотя бы на один документ строки своей роли — среднее по срезам',
       otLimit: 'Наибольшая доля предела сверхурочных года у одного человека за месяц',
     } as Record<string, string>,
+  },
+  /** потребность в материалах (Б6д): вкладка «Материалы» расписания и блок планёрки */
+  mrp: {
+    tab: 'Материалы',
+    question: 'Чего не хватит под план на год и что заказать',
+    how: (how: string, arrive: number) => `Снабжение заказывает ${how}; срок завоза — ${arrive > 0 ? `к ${arrive}-му числу предыдущего месяца` : 'к дню серии'}`,
+    hows: { need: 'по потребности', point: 'по точке заказа' } as Record<string, string>,
+    material: 'Материал',
+    kinds: { api: 'АФС', excipient: 'Вспомогательные вещества', packaging: 'Упаковка' } as Record<string, string>,
+    cell: (gross: string) => `Потребность месяца — ${gross}`,
+    short: (net: string) => `не хватит ${net}`,
+    shortWord: 'не хватит',
+    have: (free: string, wait: string) => `есть ${free}, в карантине и на испытаниях ${wait}`,
+    transit: (po: string, qty: string, day: string) => `в пути: ${po} — ${qty}, разрешён к ${day}`,
+    safety: (qty: string) => `страховой запас ${qty}`,
+    plannedCell: (qty: string, need: string, by: string) => `плановый заказ ${qty} к ${need}, заказать до ${by}`,
+    planned: 'Плановые заказы',
+    noPlanned: 'Плановых заказов нет',
+    plannedLine: (material: string, qty: string, need: string) => `${material} — ${qty} к ${need}`,
+    orderBy: (day: string) => `заказать до ${day}`,
+    overdue: (days: number) => `опаздывает: придёт на ${daysRu(days)} позже, чем нужен`,
+    order: 'Заказать',
+    orderHint: 'Окно «Заказ поставщику» со строками плановых заказов этого поставщика, чья дата заказа — в пределах недели',
+    orderNone: (day: string) => `Заказывать пока нечего: ближайшая дата заказа — ${day}`,
+    transitTitle: 'Заказы в пути',
+    noTransit: 'Заказов в пути нет',
+    late: (material: string, days: number) => `${material}: опоздает на ${daysRu(days)}`,
+    extra: (material: string) => `${material}: лишний — потребность под него наступит позже срока поставки`,
+    fast: 'ускорен',
+    expedite: 'Ускорить',
+    expediteHint: (when: string, fee: string) => `Придёт ${when}; доплата ${fee} с НДС — сразу`,
+    cancel: 'Отменить',
+    cancelHint: (fee: string, back: string) => `Неустойка ${fee}; возврат предоплаты ${back}`,
+    cancelOver: (fee: string, over: string) => `Неустойка ${fee} больше предоплаты: доплата ${over}`,
+    cols: { po: 'Заказ', supplier: 'Поставщик', lines: 'Строки', eta: 'Приход', msgs: 'Сообщения' },
+    // планёрка
+    meeting: 'Материалы',
+    due: (n: number) => `Заказать сегодня — ${groupRu(n)} ${pluralRu(n, 'плановый заказ', 'плановых заказа', 'плановых заказов')}`,
+    dueLine: (material: string, supplier: string, qty: string, need: string, late: number) => `${material} у поставщика ${supplier} — ${qty} к ${need}${late > 0 ? `, опаздывает на ${daysRu(late)}` : ''}`,
+    lateTitle: 'Заказы в пути, которые опоздают',
+    lateLine: (po: string, material: string, days: number) => `${po}: ${material} — на ${daysRu(days)}`,
   },
   /** прогноз продаж (Б6в): месяц словом, способы */
   fc: {

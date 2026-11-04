@@ -13,6 +13,7 @@ import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import type { DossierView } from '../sim/dossier';
+import type { MrpView } from '../sim/mrp';
 import type { SopView } from '../sim/sop';
 import type { AndonView } from '../sim/andon';
 import type { FloorView, FloorWin } from '../sim/floor';
@@ -111,8 +112,10 @@ export interface Hud {
     urgent: readonly Urgent[];
     /** отмены черновика (Б6а): командами `cancel` станут при «Утвердить» */
     drop: readonly string[];
-    /** вкладка (Б6а): полосы расписания, список заданий или, с Б6б, план запуска, с Б6в — прогноз; отбор списка */
-    tab?: 'jobs' | 'launch' | 'forecast';
+    /** вкладка (Б6а): полосы расписания, список заданий или, с Б6б, план запуска, с Б6в — прогноз, с Б6д — материалы; отбор списка */
+    tab?: 'jobs' | 'launch' | 'forecast' | 'mrp';
+    /** вид вкладки «Материалы» (Б6д): потребность в материалах — свой вид, дорогой, не чаще раза в секунду */
+    mrp?: MrpView;
     /** «прогноз против факта» (Б6в): позиция или продукт; нет — первый продукт плана */
     fcKey?: string;
     jobs?: JobsFilter;
@@ -437,7 +440,7 @@ export interface Actions {
   /** срочное задание черновика (Б1г); под заказ покупателя (Б6а) */
   urgent(recipe: Id, sku: Id, order?: string, at?: number): void;
   /** задания на серию (Б6а): вкладка окна расписания, отбор списка, «Отменить» в черновике, отмена из карточки */
-  ganttTab(tab?: 'jobs' | 'launch' | 'forecast'): void;
+  ganttTab(tab?: 'jobs' | 'launch' | 'forecast' | 'mrp'): void;
   /**
    * прогноз продаж (Б6в): позиция или продукт «прогноза против факта»; правка прогноза планирования — команда `forecast`
    * (без ящиков — снять), с чужого поста — записка начальнику отдела планирования; политика способа или спроса — `policy`
@@ -450,6 +453,11 @@ export interface Actions {
   jobsFilter(f: JobsFilter): void;
   dropJob(batch: string): void;
   cancelJob(batch: string): void;
+  /** «Заказать» вкладки «Материалы» (Б6д): окно «Заказ поставщику» со строками плановых заказов поставщика */
+  mrpOrder(supplier: Id, lines: readonly { material: Id; qty: number }[]): void;
+  /** «Ускорить» и «Отменить» заказ поставщику в пути (Б6д): команда поста «Снабжение и склад» или записка */
+  expedite(po: string, memo?: boolean): void;
+  cancelPo(po: string, memo?: boolean): void;
   toggleFlows(): void;
   /** слой слева (Б1и): выбрать; следующий по кругу — клавиша L; окно слоя данных */
   setLayer(l: Layer): void;

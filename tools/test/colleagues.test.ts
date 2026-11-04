@@ -145,6 +145,8 @@ describe('коллега планирования', () => {
 describe('коллега снабжения', () => {
   test('в 09:00 рабочего дня — всё, что ниже точки заказа, у одобренного поставщика одним заказом, не больше половины карантина', () => {
     const s = newPlant(db, { scenario: SC });
+    // правило по точке заказа, как до Б6д; по потребности — tools/test/mrp.test.ts
+    apply(db, s, { kind: 'policy', policy: 'pol.supply.how', value: 'point' });
     until(s, 0, SUPPLY_HOUR - HOUR);
     const per = planUse(db, s, 1000);
     const below = new Set<string>();
@@ -210,9 +212,15 @@ describe('год завода прототипа', () => {
         }
       if (s.t % DAY !== 0) continue;
       bad.push(...check(db, s));
-      // заказ покупателя не висит открытым дольше суток после срока; задание на серию не ждёт материал дольше трёх суток
+      // заказ покупателя не висит открытым дольше суток после срока; задание на серию не ждёт материал дольше трёх суток.
+      // С Б6д запас по потребности тоньше точки заказа: ждать дольше можно, только если входной контроль отклонил партию
+      // этого материала за 120 суток до того, и не дольше двух недель (на зерне сценария — АФС парацетамола в марте 2028)
       for (const o of Object.values(s.orders)) if (o.status === 'open' && o.due < s.t - DAY) bad.push(`заказ ${o.id} открыт после срока`);
-      for (const b of Object.values(s.batches)) if (b.status === 'waiting' && b.notBefore < s.t - 3 * DAY) bad.push(`задание ${b.id} ждёт материал`);
+      for (const b of Object.values(s.batches)) {
+        if (b.status !== 'waiting' || b.notBefore >= s.t - 3 * DAY) continue;
+        const after = (b.short ?? []).every(x => Object.values(s.lots).some(l => l.material === x.material && l.po && l.status === 'rejected' && l.since !== undefined && s.t - l.since < 120 * DAY));
+        if (!after || b.notBefore < s.t - 14 * DAY) bad.push(`задание ${b.id} ждёт материал`);
+      }
     }
     expect([...new Set(bad)].slice(0, 5)).toEqual([]);
     // с третьей недели — не меньше четырёх упакованных серий за любые десять рабочих дней подряд (две рабочие недели).

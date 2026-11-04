@@ -240,7 +240,7 @@ describe('правило снабжения', () => {
         if (w.rule !== 'need') throw new Error('not by need');
         const o = due.find(x => x.material === w.material)!;
         const row = r.rows.find(x => x.material === w.material)!;
-        expect([w.month, w.need, w.deficit, w.late, w.want, w.arrive, w.qc, w.safety]).toEqual([o.month, o.need, o.deficit, o.late, o.want, 25, QC, row.safety]);
+        expect([w.month, w.need, w.deficit, w.late, w.want, w.arrive, w.qc, w.safety, w.safeQty]).toEqual([o.month, o.need, o.deficit, o.late, o.want, 25, QC, sc.supply!.safety, row.safety]);
         expect(w.have).toBe(row.free + row.quarantine + row.transit.reduce((x, t) => x + t.qty, 0));
         expect(w.gross).toBe(row.months.find(m => m.m === o.month)!.gross);
         expect(w.lead).toBe(db.suppliers[rec.d.supplier].lead[1]);

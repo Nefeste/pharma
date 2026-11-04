@@ -3,12 +3,13 @@
 // вопросом в заголовке. Вид собирает поток расчёта (src/sim/report.ts) без слов и без истины; слова — отсюда.
 import type { ReactNode } from 'react';
 import { devLevers, heldLevers, mainLevers, resignLevers, riskLevers, uncoveredLevers, wasteLevers } from '../app/levers';
-import type { PartType, Scenario } from '../content/types';
+import type { Id, PartType, Scenario } from '../content/types';
 import { civilFromDays, DAY, HOUR, momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
 import { DEPT_SEAT } from '../engine/seats';
 import { clock, dateText, daysText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { FcMeeting } from '../sim/forecast';
+import type { MrpMeeting } from '../sim/mrp';
 import type { SopMeeting } from '../sim/sop';
 import type { HeadDay } from '../sim/journal';
 import type { MonthClose } from '../sim/kpi';
@@ -283,6 +284,45 @@ function FcBlock({ x, hud, actions, close }: { x: FcMeeting; hud: Hud; actions: 
 }
 
 /**
+ * Материалы (Б6д): плановые заказы с датой сегодня и раньше — у поставщика, сколько, к какому дню, на сколько опоздают, —
+ * и заказы в пути, которые опоздают. Рычаг — вкладка «Материалы» расписания.
+ */
+function MrpBlock({ x, hud, actions, close }: { x: MrpMeeting; hud: Hud; actions: Actions; close: () => void }) {
+  const unitOf = (m: Id) => db?.materials[m]?.unit ?? 'mass';
+  const mat = (m: Id) => named(db?.materials[m]?.name, m);
+  const sup = (id: Id) => named(db?.suppliers[id]?.name, id);
+  return (
+    <div className="mblock" data-test="morning-materials">
+      {x.due.length > 0 ? (
+        <>
+          <div>{T.mrp.due(x.due.length)}</div>
+          <ul className="mlist">
+            {x.due.map(o => (
+              <li key={`${o.supplier}/${o.material}/${o.need}`} className={o.late > 0 ? 'bad' : undefined} data-test="morning-materials-due" data-material={o.material}>
+                {T.mrp.dueLine(mat(o.material), sup(o.supplier), qtyText(o.qty, unitOf(o.material), 0), dayText(o.need).slice(0, 5), o.late)}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {x.late.length > 0 ? (
+        <>
+          <div>{T.mrp.lateTitle}</div>
+          <ul className="mlist">
+            {x.late.map(l => (
+              <li key={`${l.po}/${l.material}`} data-test="morning-materials-late" data-po={l.po}>
+                {T.mrp.lateLine(l.po, mat(l.material), l.days)}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      <Levers list={[{ k: 'materials' }]} hud={hud} actions={actions} close={close} />
+    </div>
+  );
+}
+
+/**
  * Итоги месяца (Б5ж) — на первой планёрке месяца: у руководителя — показатели, сдвинувшиеся сильнее всего против месяца до
  * него, с противовесом; первый закрытый месяц — сравнивать не с чем. Рычаг — окно «Показатели». Это отчёт, а не событие:
  * без автопаузы и без извещения.
@@ -484,6 +524,11 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
           {v.sop ? (
             <Section title={T.sop.title}>
               <SopBlock x={v.sop} hud={hud} actions={actions} close={close} />
+            </Section>
+          ) : null}
+          {v.materials ? (
+            <Section title={T.mrp.meeting}>
+              <MrpBlock x={v.materials} hud={hud} actions={actions} close={close} />
             </Section>
           ) : null}
           {v.modes.length > 0 ? (

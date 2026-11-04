@@ -287,7 +287,7 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
         // по потребности в материалах (Б6д): месяц, потребность, есть и в пути, к какому дню и сколько не хватит
         if (w.rule === 'need')
           return [
-            J.po.need(material(w.material), T.sop.month(w.month), qty(w.material, w.gross), qty(w.material, w.have), dayText(w.need), qty(w.material, w.deficit), qty(w.material, w.safety)),
+            J.po.need(material(w.material), T.sop.month(w.month), qty(w.material, w.gross), qty(w.material, w.have), dayText(w.need), qty(w.material, w.deficit), qty(w.material, w.safeQty), w.safety),
             J.po.by(w.arrive, w.qc, w.lead),
             ...(w.late > 0 ? [J.po.late(w.late)] : []),
             moq ?? J.po.more(w.every, qty(w.material, w.want)),

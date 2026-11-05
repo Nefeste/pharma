@@ -7,8 +7,9 @@ import type { PartType, Scenario } from '../content/types';
 import { civilFromDays, DAY, HOUR, momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
 import { DEPT_SEAT } from '../engine/seats';
-import { dateText, daysText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
+import { clock, dateText, daysText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { FcMeeting } from '../sim/forecast';
+import type { SopMeeting } from '../sim/sop';
 import type { HeadDay } from '../sim/journal';
 import type { MonthClose } from '../sim/kpi';
 import type { CapaRow } from '../sim/devs';
@@ -245,6 +246,25 @@ function SeatBlock({ x, start }: { x: SeatSum; start: Ymd }) {
 }
 
 /**
+ * Совещание S&OP (Б6г): в день совещания — его час; утверждён план за сутки — до какого месяца, запас позиций продуктов
+ * в первом месяце, кто утвердил и «до лучшего плана». Рычаг — окно S&OP.
+ */
+function SopBlock({ x, hud, actions, close }: { x: SopMeeting; hud: Hud; actions: Actions; close: () => void }) {
+  const p = x.plan;
+  return (
+    <div className="mblock" data-test="morning-sop">
+      {x.today !== undefined ? <div data-test="morning-sop-today">{T.sop.today(clock(x.today % 86400))}</div> : null}
+      {p ? (
+        <div data-test="morning-sop-plan" data-gap={p.gap}>
+          {T.sop.meetingText(T.sop.month(p.to), p.cover.map(c => T.sop.coverOf(named(db?.products[c.product]?.name, c.product), T.sop.days(c.days))).join(', '), p.by === 'player' ? T.journal.player('') : T.sop.colleague, money(p.gap))}
+        </div>
+      ) : null}
+      <Levers list={[{ k: 'sop' }]} hud={hud} actions={actions} close={close} />
+    </div>
+  );
+}
+
+/**
  * Прогноз (Б6в) — в первые сутки после закрытия месяца: сколько в нём заказано и что ему прогнозировали месяц назад
  * планирование и отдел продаж — со знаком против факта, — и прогноз нынешнего месяца у обоих. Рычаг — вкладка «Прогноз».
  */
@@ -459,6 +479,11 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
           {v.forecast ? (
             <Section title={T.fc.meeting}>
               <FcBlock x={v.forecast} hud={hud} actions={actions} close={close} />
+            </Section>
+          ) : null}
+          {v.sop ? (
+            <Section title={T.sop.title}>
+              <SopBlock x={v.sop} hud={hud} actions={actions} close={close} />
             </Section>
           ) : null}
           {v.modes.length > 0 ? (

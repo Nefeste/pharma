@@ -67,7 +67,9 @@
 // «Производство» отменил задание на запас позиции до комплектовки — до его «не раньше» начальник позицию не ставит, и
 // причина в журнале это называет, — а срочное задание под заказ покупателя стоит со сроком заказа; CAPA здесь тоже
 // есть, но их держит образец схемы 38. С схемы 40 — ещё и посреди сменно-суточных заданий: в закрытых есть строки «позже»
-// и «не сделано» с тем, чего ждали, а у сегодняшнего одни строки начаты, другие ещё нет.
+// и «не сделано» с тем, чего ждали, а у сегодняшнего одни строки начаты, другие ещё нет. С схемы 42 — ещё и посреди S&OP:
+// на совещании сентября пост «Производство» утвердил свой план — запас парацетамола 28 суток, — а совещание октября
+// открыто и ждёт «Утвердить».
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { visitLast } from '../../src/engine/assets';
@@ -194,8 +196,10 @@ const dailied = () => {
 // спрос правила задания — по прогнозу
 const forecasted = () =>
   s.kpi.months.some(m => m.v.fcErr !== undefined) && Object.keys(s.forecast?.edits ?? {}).length > 0 && s.policies.log.some(x => x.policy === 'pol.plan.demand');
+// посреди S&OP (Б6г): план игрока утверждён, а следующее совещание открыто
+const sopped = () => !!s.sop?.open && s.sop.plans.some(p => p.by === 'player');
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : SCHEMA < 34 ? seated() && kpied() : SCHEMA < 35 ? seated() && asked() : SCHEMA < 36 ? seated() && policied() : SCHEMA < 37 ? seated() && bossed() : SCHEMA < 38 ? seated() && memoed() : SCHEMA < 39 ? seated() && capaed() : SCHEMA < 40 ? seated() && jobbed() : SCHEMA < 41 ? seated() && jobbed() && dailied() : seated() && dailied() && forecasted();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : SCHEMA < 34 ? seated() && kpied() : SCHEMA < 35 ? seated() && asked() : SCHEMA < 36 ? seated() && policied() : SCHEMA < 37 ? seated() && bossed() : SCHEMA < 38 ? seated() && memoed() : SCHEMA < 39 ? seated() && capaed() : SCHEMA < 40 ? seated() && jobbed() : SCHEMA < 41 ? seated() && jobbed() && dailied() : SCHEMA < 42 ? seated() && dailied() && forecasted() : seated() && dailied() && forecasted() && sopped();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 const refused = new Set<string>();
@@ -332,6 +336,9 @@ while (s.t < end && !busy()) {
     const sku = 'sku.paracetamol500.n20';
     apply(db, s, { kind: 'forecast', sku, m: s.forecast.at + 2, cases: Math.round((s.forecast.plan[sku][2] * 11) / 10), by: 'player' });
   }
+  // с схемы 42 — совещание S&OP сентября: свой план поста «Производство», следующие совещания ждут
+  if (SCHEMA >= 42 && s.sop?.open && s.sop.plans.length === 0)
+    apply(db, s, { kind: 'sop', cover: { 'prd.paracetamol500': [28, 28, 28, 28, 28, 28], 'prd.loratadine10': [21, 21, 21, 21, 21, 21] }, by: 'player' });
   // схема 37 — вопрос открыт: вторая записка начальнику снабжения, тот же заказ
   if ((SCHEMA as number) === 37 && s.heads.qs && !s.journal.some(r => r.memo && !r.memo.end))
     apply(db, s, { kind: 'memo', cmds: [{ kind: 'po', supplier: 'sup.exc', lines: [{ material: 'mat.exc.mcc', qty: 1000 }] }] });

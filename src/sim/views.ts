@@ -31,6 +31,7 @@ import { type InvQuery, type InvView, invView } from './inv';
 import { type BossLimit, type BossRow, bossOfPerson } from './bosses';
 import { type JournalQuery, type JournalView, journalView, whoAsset, whoBatch, whoDecided, whoLot, whoMachine, whoPerson, type WhoRow } from './journal';
 import { type PoliciesQuery, type PoliciesView, policiesView } from './policies';
+import { type SopQuery, type SopView, sopView } from './sop';
 import { type DailyRowView, dailyOf } from './daily';
 import { type PoQuery, type PoView, poView } from './po';
 import { type ChartQuery, type ChartView, chartView, type LabQuery, type LabView, labView } from './lab';
@@ -78,7 +79,7 @@ export interface CardQuery {
   thing: Thing;
 }
 
-export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery | PoQuery | PoliciesQuery);
+export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery | PoQuery | PoliciesQuery | SopQuery);
 
 /** Место паллеты: место плана (номер по порядку), помещение (номер по порядку), фура. */
 export type PlaceRef = { k: 'slot'; i: number } | { k: 'room'; i: number } | { k: 'truck'; n: number; customer: boolean; waste?: true };
@@ -319,7 +320,7 @@ export interface CardView {
   card: CardData;
 }
 
-export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView | PoView | PoliciesView;
+export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView | PoView | PoliciesView | SopView;
 
 const num = (id: string) => Number(id.slice(1));
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
@@ -815,6 +816,8 @@ export function viewOf(db: ContentDb, s: PlantState, q: ViewQuery): ViewData {
       return poView(db, s, q);
     case 'policies':
       return policiesView(db, s);
+    case 'sop':
+      return sopView(db, s, q);
   }
 }
 
@@ -829,14 +832,22 @@ export interface ViewOut {
 export const VIEW_EVERY = 100;
 
 /**
+ * Виды, которые собирать дорого, — не чаще, мс (Б6г): окно S&OP — прогон плана вперёд на трёх вариантах спроса и касса,
+ * около 13 мс. Новый запрос или команда — сразу; тот же миг завода — не пересобирать.
+ */
+export const VIEW_SLOW: Partial<Record<ViewQuery['view'], number>> = { sop: 1000 };
+
+/**
  * Что окно уже получило: открытые виды и их последние данные. Новый запрос или команда — собрать сразу; иначе — не чаще
  * `VIEW_EVERY`. Уходит только вид, чьи данные изменились, с версией на единицу больше.
  */
 export class ViewDesk {
   private queries: ViewQuery[] = [];
-  private sent = new Map<string, { json: string; v: number }>();
+  /** у дорогого вида (`VIEW_SLOW`) — ещё миг завода и время сборки, запрос строкой и счёт команд к ней */
+  private sent = new Map<string, { json: string; v: number; t?: number; at?: number; q?: string; touch?: number }>();
   private builtAt = Number.NEGATIVE_INFINITY;
   private dirty = true;
+  private touches = 0;
 
   constructor(private db: ContentDb) {}
 
@@ -856,6 +867,7 @@ export class ViewDesk {
   /** Собрать при ближайшем срезе, не дожидаясь `VIEW_EVERY`: после команды. */
   touch() {
     this.dirty = true;
+    this.touches++;
   }
 
   /** Виды для среза в мгновение `now` (мс, часы потока): изменившиеся; нечего — `undefined`. */
@@ -866,12 +878,19 @@ export class ViewDesk {
     this.builtAt = now;
     const out: ViewOut[] = [];
     for (const q of this.queries) {
+      const last = this.sent.get(q.id);
+      const slow = VIEW_SLOW[q.view];
+      const key = slow !== undefined ? JSON.stringify(q) : undefined;
+      if (slow !== undefined && last && last.q === key && last.touch === this.touches && (last.t === s.t || now - (last.at ?? 0) < slow)) continue;
       const data = viewOf(this.db, s, q);
       const json = JSON.stringify(data);
-      const last = this.sent.get(q.id);
-      if (last?.json === json) continue;
+      const meta = slow !== undefined ? { t: s.t, at: now, q: key, touch: this.touches } : {};
+      if (last?.json === json) {
+        this.sent.set(q.id, { ...last, ...meta });
+        continue;
+      }
       const v = (last?.v ?? 0) + 1;
-      this.sent.set(q.id, { json, v });
+      this.sent.set(q.id, { json, v, ...meta });
       out.push({ id: q.id, v, data });
     }
     return out.length > 0 ? out : undefined;

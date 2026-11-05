@@ -13,6 +13,7 @@ import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import type { DossierView } from '../sim/dossier';
+import type { SopView } from '../sim/sop';
 import type { AndonView } from '../sim/andon';
 import type { FloorView, FloorWin } from '../sim/floor';
 import type { InvView } from '../sim/inv';
@@ -137,6 +138,10 @@ export interface Hud {
    */
   policies: { open: boolean; tab?: Head; view?: PoliciesView; draft: Readonly<Record<string, PolicyValue>>; run: PolicyRun };
   /**
+   * окно совещания S&OP (Б6г): открыто ли; черновик игрока — цели по продуктам на 6 месяцев, пока не утверждён; вид
+   */
+  sop: { open: boolean; draft?: Readonly<Record<Id, readonly number[]>>; view?: SopView };
+  /**
    * слой слева (Б1и; геймдизайн, §3.6, §18): обычный вид; «Загрузка и OEE» — столбики, числа, доски «План — факт»;
    * «Узкие места» и «Проблемы» (Б1к) — таблички над местами, где серии ждут, и значки андона; «Потоки — люди» (Б1г) —
    * стрелки переходов людей между помещениями вместо перевозок паллет
@@ -248,6 +253,7 @@ export const initial: Hud = {
   ref: { open: false, tab: 'recipes' },
   kpi: { open: false, tab: 'director' },
   policies: { open: false, draft: {}, run: NO_POLICY_RUN },
+  sop: { open: false },
   layer: 'plain',
   floor: { win: 'today' },
   andon: {},
@@ -396,6 +402,14 @@ export interface Actions {
   stopPolicies(): void;
   applyPolicies(): void;
   resetPolicies(): void;
+  /**
+   * окно совещания S&OP (Б6г): открыть или закрыть (O); цель клетки — продукт, месяц по порядку и сутки — в черновик;
+   * сбросить черновик; «Утвердить» — команда `sop` с показанным планом
+   */
+  toggleSop(): void;
+  setSopCell(product: Id, i: number, days: number): void;
+  resetSop(): void;
+  approveSop(): void;
   /** перенести визит подрядчика к активу на день (Б5г) — команда `visit` */
   moveVisit(asset: string, day: number): void;
   setKpiTab(tab: SeatId): void;

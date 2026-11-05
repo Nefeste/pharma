@@ -405,6 +405,8 @@ export interface ScenarioPlan {
   method: 'best' | FcMethod;
   /** откуда спрос правила задания (Б6в): по заказам за окно или по прогнозу планирования */
   demand: 'orders' | 'forecast';
+  /** резерв мощности (Б6г): доля, которую план S&OP оставляет свободной, — числитель и знаменатель */
+  reserve?: [number, number];
 }
 
 /**

@@ -148,7 +148,11 @@ describe('правило читает политику с ближайшего �
     const pos = s.journal.filter(r => r.t > t0 && r.by === 'supply' && r.d.kind === 'po');
     expect(orders.length).toBeGreaterThan(0);
     expect(pos.length).toBeGreaterThan(0);
-    for (const r of orders) if (r.d.kind === 'order') expect(r.d.why).toMatchObject({ cover: 35, ahead: aheadMilli(AHEAD + 35) });
+    // до первого совещания S&OP (Б6г) — запас позиций политики; после — цель утверждённого плана, и причина это называет
+    const before = orders.filter(r => r.d.kind === 'order' && !r.d.why?.sop);
+    expect(before.length).toBeGreaterThan(0);
+    for (const r of before) if (r.d.kind === 'order') expect(r.d.why).toMatchObject({ cover: 35, ahead: aheadMilli(AHEAD + 35) });
+    for (const r of orders) if (r.d.kind === 'order' && r.d.why?.sop) expect(r.t).toBeGreaterThan(s.sop!.plans[0].at);
     for (const r of pos) if (r.d.kind === 'po') for (const w of r.d.why ?? []) expect(w).toMatchObject({ safety: 14, every: 42 });
     expect(check(db, s)).toEqual([]);
   });
@@ -281,7 +285,7 @@ describe('вид «Политики»', () => {
     const v = policiesView(db, s);
     expect(v.tabs.map(t => t.head)).toEqual(['tech', 'qc', 'qa', 'plan', 'supply', 'maint', 'mes', 'wms']);
     const tab = (h: string) => v.tabs.find(t => t.head === h)!;
-    expect(tab('plan').rows.map(r => r.policy)).toEqual([POL.cover, POL.demand, POL.method, POL.urgent, POL.window]);
+    expect(tab('plan').rows.map(r => r.policy)).toEqual([POL.cover, POL.demand, POL.method, POL.reserve, POL.urgent, POL.window]);
     expect(tab('maint').rows.filter(r => r.policy === POL.replace).map(r => r.of)).toEqual(Object.keys(s.parts).sort());
     expect(tab('maint').rows.find(r => r.of === PUNCHES)).toMatchObject({ machine: s.parts[PUNCHES].of, part: s.parts[PUNCHES].type, value: sc.maint[PUNCHES] });
     expect(tab('tech').rows).toEqual([{ policy: POL.setpoints, value: 'keep', set: { t: s.t, seat: 'quality' }, used: 0 }]);

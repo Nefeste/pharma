@@ -7,8 +7,8 @@ import { DEPT_SEAT } from '../engine/seats';
 import type { HeldRow, MainLoss, PendingDev, RiskRow } from '../sim/report';
 import type { Thing } from '../sim/views';
 
-/** Что будет: стройка (Б7), политики продаж (Б5), план под спрос — S&OP (Б6); часть и слова — в src/i18n/. */
-export const LATERS = ['build', 'sales', 'sop'] as const;
+/** Что будет: стройка (Б7), политики продаж (Б5); часть и слова — в src/i18n/. */
+export const LATERS = ['build', 'sales'] as const;
 export type Later = (typeof LATERS)[number];
 
 /**
@@ -38,6 +38,8 @@ export type Lever =
   | { k: 'launch' }
   /** вкладка «Прогноз» окна расписания (Б6в): прогноз закрытого месяца на планёрке */
   | { k: 'forecast' }
+  /** окно совещания S&OP (Б6г): цели запаса по продуктам и месяцам */
+  | { k: 'sop' }
   /** панель склада (Б6б): задания на сутки склада */
   | { k: 'stock' }
   /** карточка вещи на полу (Б6б): оборудование или машина строки техслужбы */
@@ -89,8 +91,8 @@ export function mainLevers(m: MainLoss, policy: Record<Dept, OvertimeMode>): Lev
 
 /**
  * Заказ под угрозой: срочное задание на каждую позицию, которой не хватит, — по карте плана выпуска; решение по
- * удержанной серии той же позиции; ящики ещё в лаборатории или на решении — «Поднять» пробы балка; будут политики
- * продаж и S&OP.
+ * удержанной серии той же позиции; ящики ещё в лаборатории или на решении — «Поднять» пробы балка; запас позиций —
+ * окно S&OP (Б6г); будут политики продаж.
  */
 export function riskLevers(r: RiskRow, sc: Pick<Scenario, 'plan'>, held: readonly HeldRow[]): Lever[] {
   const out: Lever[] = [];
@@ -100,7 +102,7 @@ export function riskLevers(r: RiskRow, sc: Pick<Scenario, 'plan'>, held: readonl
   }
   for (const h of held) if (r.short.includes(h.sku) && h.unit !== undefined) out.push({ k: 'batch', unit: h.unit, code: h.code, seat: 'quality' });
   if (r.pending > 0) out.push({ k: 'lab', seat: 'quality' });
-  return [...out, ...later('sales', 'sop')];
+  return [...out, { k: 'sop' }, ...later('sales')];
 }
 
 /** Отклонение: оценить в его карточке — там же класс, причина и CAPA (Б5е), — а решает расследование — его доска. */

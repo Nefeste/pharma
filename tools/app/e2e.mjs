@@ -59,13 +59,14 @@
 // «Вывоз отходов». Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png. Первая неделя
 // (docs/specs/2026-10-vertical-slice.md): путь новичка от «Кем вы будете» до «За эту игру» на планёрке 8 сентября в
 // чистом окне — tools/app/e2e-week.mjs.
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa|jobs|launch|forecast]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa|jobs|launch|forecast|sop]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findChromium } from './e2e-lib.mjs';
 import { capaPart } from './e2e-capa.mjs';
 import { forecastPart } from './e2e-forecast.mjs';
+import { sopPart } from './e2e-sop.mjs';
 import { jobsPart } from './e2e-jobs.mjs';
 import { launchPart } from './e2e-launch.mjs';
 import { memoPart } from './e2e-memo.mjs';
@@ -276,8 +277,8 @@ const answerAsks = async (no = () => false) => {
 // «Записки и вопросы» (Б5д) — два чистых окна (tools/app/e2e-memo.mjs); «CAPA» (Б5е) — чистое окно поста «Качество»
 // (tools/app/e2e-capa.mjs); «Задания» (Б6а) — чистое окно поста «Производство» (tools/app/e2e-jobs.mjs); «План запуска»
 // (Б6б) — тоже, с заданиями на сутки на планёрке (tools/app/e2e-launch.mjs); «Прогноз» (Б6в) — тоже, до планёрки
-// 1 ноября (tools/app/e2e-forecast.mjs). `--only main`, `week`, `memo`, `capa`, `jobs`, `launch` или `forecast` — одна из
-// них
+// 1 ноября (tools/app/e2e-forecast.mjs); «S&OP» (Б6г) — тоже, до совещания 3 сентября (tools/app/e2e-sop.mjs). `--only
+// main`, `week`, `memo`, `capa`, `jobs`, `launch`, `forecast` или `sop` — одна из них
 const only = arg('only', '');
 try {
   // основная часть кончилась — её страницу закрыть: она рисует кадры и отняла бы у других частей процессор
@@ -291,6 +292,7 @@ try {
   if (only === '' || only === 'jobs') await jobsPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'launch') await launchPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'forecast') await forecastPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'sop') await sopPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
@@ -1307,10 +1309,10 @@ async function mainPart() {
   if (bottleShot) sheet.push(bottleShot);
   await writeSheet(sheet);
 
-  // автопаузы (Б2а): у производства и качества семнадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
+  // автопаузы (Б2а): у производства и качества восемнадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
   // вышел», с Б3г — «пара приостановлена», с Б4а — «сверхурочные года на исходе», с Б4в — «заявление об увольнении»,
   // с Б4г — «черновик графика отпусков», с Б5б — «предложение руководителя», с Б5в — «некому решить», с Б5д — «просят
-  // решить» и «ответ на служебную записку»),
+  // решить» и «ответ на служебную записку», с Б6г — «совещание S&OP»),
   // «фура» и «заказ» — не их; планёрку отключили — окно помнит; «До события» — мир
   // встал не в 08:00, а на первом событии автопаузы мест игрока: извещение со знаком паузы, часы стоят, отставания нет.
   // Планёрку включили обратно
@@ -1327,7 +1329,7 @@ async function mainPart() {
     await page.screenshot({ path: join(out, 'e2e-pauses.png') });
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('Escape');
-    if (menu.all !== 17 || menu.on !== 17 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
+    if (menu.all !== 18 || menu.on !== 18 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
       fail(`автопаузы: в меню ${menu.all}, включено ${menu.on}, не ваши ${menu.notYours.join(', ')}, в окне «${kept}»`);
     else ok(`автопаузы: в меню ${menu.all}, не ваши — ${menu.notYours.join(', ')}; планёрку отключили — в окне ${kept}; Esc закрыл меню`);
     const t0 = await gameT();

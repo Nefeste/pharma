@@ -203,6 +203,7 @@ function headOf(db: ContentDb, d: Decided): Head {
     case 'forecast':
       return 'sales';
     case 'fcEdit':
+    case 'sop':
       return 'plan';
     case 'waste':
       return 'wms';

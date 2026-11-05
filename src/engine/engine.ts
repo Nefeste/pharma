@@ -28,6 +28,7 @@ import { leaveCommand, leaveHour } from './leave';
 import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from './line';
 import { maintainCommand, maintDone, maintStep, newParts, spareArrives } from './maint';
 import { forecastCommand, forecastHour, newForecast, replan, runForecast } from './forecast';
+import { sopCommand, sopHour } from './sop';
 import { marketDone, marketHour, marketStep, newCustomers, rznPublished, seedFg } from './market';
 import { memoCommand, memoDue, memoHour, withdrawCommand } from './memos';
 import { BATCH_HOUR, cancelOrder, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
@@ -260,6 +261,12 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
     case 'forecast': {
       const notices: Notice[] = [];
       forecastCommand(db, s, cmd, notices);
+      steps(db, s, notices);
+      return notices;
+    }
+    case 'sop': {
+      const notices: Notice[] = [];
+      sopCommand(db, s, cmd, notices);
       steps(db, s, notices);
       return notices;
     }
@@ -512,6 +519,9 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       // коллеги планирования и снабжения (Б2в): задание через две недели, заказы поставщикам по расходу плана
       planHour(db, s, notices);
       supplyDay(db, s, notices);
+      // совещание S&OP (Б6г): в 10:00 третьего рабочего дня — лучший план; без игрока его утверждает коллега. После заказов
+      // покупателей и заданий часа: завод совещания — тот, что увидит игрок, когда мир встанет
+      sopHour(db, s, notices);
       // коллега качества (Б1г): отклонения, которые уже можно оценить; расследование, которое ждало смены руководителя
       // (Б5в), — в первый час, когда есть кому решить
       devHour(db, s, notices);

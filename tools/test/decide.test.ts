@@ -90,7 +90,7 @@ describe('рычаги планёрки — по таблице специфик
     ]);
   });
 
-  test('заказ под угрозой: срочное задание по позиции, удержанная серия той же позиции, «Поднять»; будут политики продаж и S&OP', () => {
+  test('заказ под угрозой: срочное задание по позиции, удержанная серия той же позиции, «Поднять», окно S&OP; будут политики продаж', () => {
     const sc = game.scenarios[SC];
     const risk = { order: 'O1', customer: 'cus.national', due: 0, missing: 5, pending: 3, short: [N20] };
     const held = [
@@ -98,11 +98,11 @@ describe('рычаги планёрки — по таблице специфик
       { code: 'LO0040927', bn: 2, sku: 'sku.loratadine10.n10', unit: 9, open: [2], reject: [] },
     ];
     const l = riskLevers(risk, sc, held);
-    expect(kinds(l)).toEqual(['urgent', 'batch', 'lab', 'later:sales', 'later:sop']);
+    expect(kinds(l)).toEqual(['urgent', 'batch', 'lab', 'sop', 'later:sales']);
     expect(l[0]).toEqual({ k: 'urgent', recipe: RCP, sku: N20, seat: 'production' });
     expect(l[1]).toEqual({ k: 'batch', unit: 7, code: 'PA0070927', seat: 'quality' });
     // ящиков на решении нет — «Поднять» не нужно
-    expect(kinds(riskLevers({ ...risk, pending: 0 }, sc, []))).toEqual(['urgent', 'later:sales', 'later:sop']);
+    expect(kinds(riskLevers({ ...risk, pending: 0 }, sc, []))).toEqual(['urgent', 'sop', 'later:sales']);
   });
 
   test('отклонение: оценить в карточке — там же класс и CAPA, а с расследованием — его доска', () => {

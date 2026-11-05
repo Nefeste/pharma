@@ -16,6 +16,7 @@ export const POL = {
   urgent: 'pol.plan.urgent',
   method: 'pol.plan.method',
   demand: 'pol.plan.demand',
+  reserve: 'pol.plan.reserve',
   safety: 'pol.supply.safety',
   every: 'pol.supply.every',
   replace: 'pol.maint.replace',
@@ -63,6 +64,9 @@ export function policyDefault(db: ContentDb, sc: Scenario, policy: Id, of?: stri
       return sc.forecast ? sc.plan?.method : undefined;
     case POL.demand:
       return sc.forecast ? sc.plan?.demand : undefined;
+    // резерв мощности (Б6г): только у сценария с прогнозом — совещание S&OP идёт по нему
+    case POL.reserve:
+      return sc.forecast ? sc.plan?.reserve : undefined;
     case POL.safety:
       return sc.supply?.safety;
     case POL.every:
@@ -178,6 +182,7 @@ const SHAPE: Record<string, Pick<Policy, 'kind' | 'each' | 'off' | 'options'>> =
   [POL.urgent]: { kind: 'days', off: true },
   [POL.method]: { kind: 'choice', options: ['best', 'last-year', 'ma', 'ses', 'holt', 'group'] },
   [POL.demand]: { kind: 'choice', options: ['orders', 'forecast'] },
+  [POL.reserve]: { kind: 'share' },
   [POL.safety]: { kind: 'days' },
   [POL.every]: { kind: 'days' },
   [POL.replace]: { kind: 'wear', each: 'part', off: true },
@@ -209,6 +214,8 @@ export function policyErrors(db: ContentDb): string[] {
     if (p.kind !== want.kind || p.each !== want.each || !!p.off !== !!want.off) out.push(`политика ${p.id}: правило читает ${want.kind}${want.each ? ` у каждого ${want.each}` : ''}${want.off ? ' или «без»' : ''}`);
     if (want.options && JSON.stringify(p.options) !== JSON.stringify(want.options)) out.push(`политика ${p.id}: варианты правила — ${want.options.join(', ')}`);
   }
+  // резерв мощности (Б6г; §9.2): план оставляет свободной долю мощности от 0 до половины
+  for (const [a, b] of db.policies[POL.reserve]?.shares ?? []) if (a * 2 > b) out.push(`политика ${POL.reserve}: доля ${a}/${b} — больше половины мощности`);
   if (out.length > 0) return out;
   for (const sc of Object.values(db.scenarios))
     for (const p of Object.values(db.policies)) {

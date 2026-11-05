@@ -48,8 +48,8 @@ describe('автопаузы', () => {
     const rs = (...d: string[]) => d.map(x => `resign/${x}`);
     // предложение руководителя (Б5б) — у поста его отдела; до планёрки — ждёт её, пока автопауза планёрки включена;
     // «Некому решить» (Б5в) — у поста отдела руководителя; «Просят решить» (Б5д) — у поста развилки производства или
-    // директора; ответ на записку (Б5д) — у поста, с которого она
-    expect(sorted(stopKinds([], ['production']))).toEqual(sorted(['failure', 'investigation', 'lotRejected', 'materialLate', 'morning', 'leaveDraft', 'noOne/production', 'proposal/production', 'ask/production', 'memoDone/production', ...eq, ...ot('mes', 'line', 'maint'), ...rs('mes', 'line', 'maint')]));
+    // директора; ответ на записку (Б5д) — у поста, с которого она; совещание S&OP (Б6г) — у «Производства» и директора
+    expect(sorted(stopKinds([], ['production']))).toEqual(sorted(['failure', 'investigation', 'lotRejected', 'materialLate', 'morning', 'leaveDraft', 'noOne/production', 'proposal/production', 'ask/production', 'memoDone/production', 'sop', ...eq, ...ot('mes', 'line', 'maint'), ...rs('mes', 'line', 'maint')]));
     expect(sorted(stopKinds([], ['quality']))).toEqual(sorted(['deviation', 'investigation', 'lotRejected', 'qualLost', 'morning', 'leaveDraft', 'assetExpired/lab', 'pairSuspended', 'noOne/quality', 'proposal/quality', 'memoDone/quality', ...ot('qc', 'qa'), ...rs('qc', 'qa')]));
     expect(stopKinds([], ['commerce'])).toEqual(['orderRisk', 'leaveDraft', 'memoDone/commerce', 'morning']);
     expect(sorted(stopKinds([], ['supply']))).toEqual(sorted(['materialLate', 'morning', 'leaveDraft', 'truckWait', 'assetExpired/sensor', 'pairSuspended', 'noOne/supply', 'proposal/supply', 'memoDone/supply', ...ot('wms'), ...rs('wms')]));
@@ -86,6 +86,20 @@ describe('автопаузы', () => {
     expect(goOf(plant, n)).toEqual({ panel: 'ref', tab: 'people' });
     expect(goOf(plant, { kind: 'deputy', head: 'qa', person: 'E7', role: 'role.qa', tab: 1007 })).toEqual({ thing: { kind: 'person', n: 7 } });
     expect(goOf(plant, { kind: 'deputy', head: 'qa' })).toEqual({ panel: 'ref', tab: 'people' });
+  });
+
+  test('совещание S&OP (Б6г): открытое ставит мир на паузу у «Производства», утверждённое коллегой — нет; щелчок — окно', () => {
+    const open: Notice = { kind: 'sop', m: 24332, open: true };
+    const done: Notice = { kind: 'sop', m: 24332, open: false };
+    expect(stopKey(open)).toBe('sop');
+    expect(stopKey(done)).toBe('sop/approved');
+    expect(pauseOf('sop')).toBe('sop');
+    expect(pauseOf('sop/approved')).toBeUndefined();
+    expect(stopKinds([], ['production'])).toContain('sop');
+    expect(stopKinds([], ['quality'])).not.toContain('sop');
+    expect(stopKinds(['sop'], ['production'])).not.toContain('sop');
+    expect(goOf(plant, open)).toEqual({ panel: 'sop' });
+    expect(goOf(plant, done)).toEqual({ panel: 'sop' });
   });
 
   test('«Просят решить» и ответ на записку (Б5д): ключ — пост, кого спросили или с которого записка; щелчок — журнал', () => {

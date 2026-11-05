@@ -151,6 +151,8 @@ export const scenario = z.strictObject({
       /** способ прогноза планирования и откуда спрос правила задания (Б6в) — с чего начинают политики */
       method: z.enum(['best', 'last-year', 'ma', 'ses', 'holt', 'group']).default('best'),
       demand: z.enum(['orders', 'forecast']).default('orders'),
+      /** резерв мощности (Б6г): доля, которую план S&OP оставляет свободной, — числитель и знаменатель */
+      reserve: z.tuple([z.number().int().min(0), z.number().int().positive()]).refine(([a, b]) => a <= b, { message: 'доля больше целого' }).optional(),
     })
     .optional(),
   /**

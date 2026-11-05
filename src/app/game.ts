@@ -454,7 +454,7 @@ export class Game {
       : n.kind === 'pairSuspended' ? T.notices.pairSuspended(named(this.db.suppliers[n.supplier]?.name, n.supplier), named(this.db.makers[n.maker]?.name, n.maker))
       : n.kind === 'setpoints' ? T.notices.setpoints(n.n)
       : n.kind === 'proposal' ? T.notices.proposal(T.journal.names[n.head] ?? n.head)
-      : n.kind === 'policy' ? T.notices.policy(T.journal.names[n.head] ?? n.head, named(this.db.policies[n.policy]?.name, n.policy))
+      : n.kind === 'policy' ? (n.policy === 'pol.plan.method' ? T.notices.policyFc(named(this.db.policies[n.policy]?.name, n.policy)) : T.notices.policy(T.journal.names[n.head] ?? n.head, named(this.db.policies[n.policy]?.name, n.policy)))
       : n.kind === 'visitMoved' ? T.notices.visitMoved(`${workName(n, n.work)} — ${assetClass(n)}, ${T.assets.inv(n.inv)}`, whenText(this.store.get().start, n.at))
       : n.kind === 'noOne' ? T.notices.noOne(T.journal.namesOf[n.head] ?? n.head)
       : n.kind === 'deputy' ? T.notices.deputy(T.journal.namesOf[n.head] ?? n.head, n.role && n.tab !== undefined ? T.card.person(this.roleName(n.role), n.tab) : undefined)
@@ -843,6 +843,17 @@ export class Game {
       this.store.set({ gantt: { ...g, drop: toggleDrop(g.drop, batch) } });
       this.sendViews();
     },
+    fcKey: key => {
+      const g = this.store.get().gantt;
+      this.store.set({ gantt: { ...g, fcKey: key } });
+      this.sendViews();
+    },
+    // правка прогноза (Б6в): своя — от игрока, с чужого поста — записка начальнику отдела планирования
+    fcEdit: (sku, m, cases, memo) => this.send({ kind: 'forecast', sku, m, ...(cases !== undefined ? { cases } : {}) }, memo),
+    // политики прогноза (Б6в) — команда поста; записки о политиках не пишут, у чужого поста кнопки погашены
+    fcPolicy: (policy, value) => {
+      if (holds(this.store.get(), 'production')) this.client.command({ kind: 'policy', policy, value, by: 'player' });
+    },
     cancelJob: batch => {
       // «Отменить» в карточке серии (Б6а): команда поста «Производство» или директора; записку об отмене не пишут —
       // у чужого поста кнопка погашена
@@ -1214,7 +1225,7 @@ export class Game {
       ...(h.gantt.urgent.length > 0 ? { fresh: freshOf(h.gantt.urgent) } : {}),
       ...(h.gantt.drop.length > 0 ? { drop: [...h.gantt.drop] } : {}),
     };
-    if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days), ...draft, ...(h.gantt.tab === 'launch' ? { launch: true as const } : {}) });
+    if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days), ...draft, ...(h.gantt.tab === 'launch' ? { launch: true as const } : {}), ...(h.gantt.tab === 'forecast' ? { forecast: h.gantt.fcKey ? { key: h.gantt.fcKey } : {} } : {}) });
     if (h.gantt.open && h.gantt.drag) list.push({ id: 'ghost', view: 'ghost', ...h.gantt.drag, ...draft });
     if (h.inv.open) list.push({ id: 'inv', view: 'inv', ...(h.inv.id ? { inv: h.inv.id } : {}) });
     if (h.journal.open) list.push({ id: 'journal', view: 'journal', page: h.journal.page, ...(h.journal.seat ? { seat: h.journal.seat } : {}), ...(h.journal.who ? { who: h.journal.who } : {}), ...(h.journal.focus !== undefined ? { focus: h.journal.focus } : {}) });

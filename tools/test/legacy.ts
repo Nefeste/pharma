@@ -82,3 +82,5 @@ legacy.spares['spare.punches'].stock = { min: 0, max: 1 };
 // нет; механику обучения проверяют свои тесты на базе игры
 sc.training = { ...sc.training, spread: 0 };
 delete legacy.sops['sop.cleaning-r2'];
+// прогноза и сезона спроса в прежней жизни завода нет (Б6в): спрос ровный, механику прогноза проверяют свои тесты
+delete sc.forecast;

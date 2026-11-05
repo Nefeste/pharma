@@ -59,12 +59,13 @@
 // «Вывоз отходов». Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png. Первая неделя
 // (docs/specs/2026-10-vertical-slice.md): путь новичка от «Кем вы будете» до «За эту игру» на планёрке 8 сентября в
 // чистом окне — tools/app/e2e-week.mjs.
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa|jobs|launch]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa|jobs|launch|forecast]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findChromium } from './e2e-lib.mjs';
 import { capaPart } from './e2e-capa.mjs';
+import { forecastPart } from './e2e-forecast.mjs';
 import { jobsPart } from './e2e-jobs.mjs';
 import { launchPart } from './e2e-launch.mjs';
 import { memoPart } from './e2e-memo.mjs';
@@ -274,8 +275,9 @@ const answerAsks = async (no = () => false) => {
 // части: основная — всё, что выше в шапке; «Первая неделя» — путь новичка в чистом окне (tools/app/e2e-week.mjs);
 // «Записки и вопросы» (Б5д) — два чистых окна (tools/app/e2e-memo.mjs); «CAPA» (Б5е) — чистое окно поста «Качество»
 // (tools/app/e2e-capa.mjs); «Задания» (Б6а) — чистое окно поста «Производство» (tools/app/e2e-jobs.mjs); «План запуска»
-// (Б6б) — тоже, с заданиями на сутки на планёрке (tools/app/e2e-launch.mjs). `--only main`, `week`, `memo`, `capa`,
-// `jobs` или `launch` — одна из них
+// (Б6б) — тоже, с заданиями на сутки на планёрке (tools/app/e2e-launch.mjs); «Прогноз» (Б6в) — тоже, до планёрки
+// 1 ноября (tools/app/e2e-forecast.mjs). `--only main`, `week`, `memo`, `capa`, `jobs`, `launch` или `forecast` — одна из
+// них
 const only = arg('only', '');
 try {
   // основная часть кончилась — её страницу закрыть: она рисует кадры и отняла бы у других частей процессор
@@ -288,6 +290,7 @@ try {
   if (only === '' || only === 'capa') await capaPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'jobs') await jobsPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'launch') await launchPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'forecast') await forecastPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
@@ -3249,7 +3252,9 @@ async function mainPart() {
     const tGone = await gameT();
     let io;
     let meet;
-    for (let i = 0; i < 8 && !io; i++) {
+    // заместитель бывает в отпуске сразу после ухода начальника: тогда на планёрке «Некому решить», а «и. о.» — когда
+    // он вернётся и отделу будет что решать; его часть отпуска — две недели
+    for (let i = 0; i < 20 && !io; i++) {
       await untilMorning(true);
       meet = await page.evaluate(() => document.querySelector('[data-test=morning-boss][data-head=plan]')?.textContent ?? '');
       await page.keyboard.press('Escape');
@@ -3268,16 +3273,18 @@ async function mainPart() {
     await page.waitForFunction(() => document.querySelector('[data-test=ref-bosses] [data-test=boss-head][data-head=plan]')?.getAttribute('data-now') === 'noOne', null, { timeout: 20_000 }).catch(() => {});
     const removed = (await bossNow()).plan;
     await page.keyboard.press('Escape');
+    // извещение — новое, после снятия: «Некому решить» за время отпуска заместителя могло остаться в ленте
+    const tRemoved = await gameT();
     let stop;
     for (let i = 0; i < 6 && !stop; i++) {
       await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
       await page.keyboard.press('Digit6');
       await page.waitForFunction(() => !window.__game.ff, null, { timeout: 120_000 });
       await frames(2);
-      stop = await page.evaluate(() => {
-        const n = window.__game.store.get().notices.find(x => x.stop && /^Некому решить за начальника отдела планирования/.test(x.text));
+      stop = await page.evaluate(tr => {
+        const n = window.__game.store.get().notices.find(x => x.t >= tr && x.stop && /^Некому решить за начальника отдела планирования/.test(x.text));
         return n ? { text: n.text, speed: window.__game.speed, go: n.go } : undefined;
-      });
+      }, tRemoved);
     }
     if (removed !== 'noOne' || !stop || stop.speed !== 0 || stop.go?.panel !== 'ref') fail(`заместителя сняли: в таблице ${removed}, стоп ${JSON.stringify(stop)}`);
     else ok(`заместителя сняли: «${stop.text.slice(0, 120)}» — мир стоит, щелчок ведёт во вкладку «Люди»`);

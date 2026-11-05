@@ -12,6 +12,7 @@ import { openClass } from './devclass';
 import { inForce } from './docs';
 import { LABOR_HOUR } from './hire';
 import { newPolicy } from './hours';
+import { addDemand, monthAt, newForecast, runForecast } from './forecast';
 import { DEPT_HEAD } from './journal';
 import { newKpi } from './kpi';
 import { leanStep, newLoss } from './lean';
@@ -529,6 +530,17 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   38: raw => raw,
   // Б6б: сменно-суточные задания — с первых 08:00 после загрузки
   39: raw => ({ ...raw, daily: [] }),
+  // 39 → 40 выше; 40 → 41 (Б6в): прогноз продаж — история спроса до старта тем же правилом и ветвью зерна, что у новой
+  // игры, факт — по заказам с начала, прогноз — сразу, как 1-го числа, без записи журнала; у сценария без прогноза — нет
+  40: (raw, db) => {
+    const s = raw as unknown as PlantState;
+    const f = newForecast(db, s);
+    if (!f) return raw;
+    s.forecast = f;
+    for (const o of Object.values(s.orders)) for (const l of o.lines) addDemand(s, l.sku, l.cases, o.placed);
+    runForecast(db, s, monthAt(s, s.t), { lag: true, journal: false });
+    return raw;
+  },
 };
 
 export function toSave(s: PlantState): string {

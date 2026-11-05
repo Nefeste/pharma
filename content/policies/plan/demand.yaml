@@ -1,0 +1,8 @@
+# Спрос правила задания (Б6в): по заказам покупателей за окно спроса — как до Б6в — или по прогнозу планирования: спрос
+# позиции в сутки впереди — прогноз её месяца / дней месяца. С чего начинает завод — запись сценария (`plan.demand`)
+id: pol.plan.demand
+name: { ru: Спрос задания — по, en: Batch order demand from }
+head: plan
+kind: choice
+options: [orders, forecast]
+review: draft

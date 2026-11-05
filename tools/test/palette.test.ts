@@ -1,11 +1,13 @@
 // Часть 2г: палитры и цветовая слепота (docs/specs/2026-10-view.md, 2г; требования — геймдизайн, §23). Статусы партий,
-// статусы чистоты помещений, лампы машин, части столбиков загрузки (Б1и) и вес значков андона (Б1к) различимы при
-// обычном зрении и в имитации протанопии, дейтеранопии и тританопии (Machado и др., 2009); оттенки зон — при обычном
+// статусы чистоты помещений, лампы машин, части столбиков загрузки (Б1и), вес значков андона (Б1к) и ряды «прогноза
+// против факта» (Б6в) различимы при обычном зрении и в имитации протанопии, дейтеранопии и тританопии (Machado и др.,
+// 2009); оттенки зон — при обычном
 // зрении, а в любом виде зону называет слово на полу. Значок на лампе и пиктограмма андона контрастны с фоном не меньше
 // 3:1 (WCAG 2.1, п. 1.4.11). Модель — src/render/color.ts; здесь же её простые свойства: белый, чёрный и серый,
 // сходство красного и зелёного при дейтеранопии.
 import { describe, expect, test } from 'bun:test';
 import { PART_COLOR } from '../../src/app/floor';
+import { FC_BG, FC_COLOR } from '../../src/ui/fcchart';
 import { ANDON_COLOR } from '../../src/render/andonicons';
 import { contrast, deltaE, inkOf, labOf, simulate, toLinear, VISIONS } from '../../src/render/color';
 import { LAMP_COLOR } from '../../src/render/flow';
@@ -96,6 +98,14 @@ describe('палитры', () => {
       expect([v, w.pair, w.min >= STATE_DE]).toEqual([v, w.pair, true]);
     }
     for (const c of Object.values(ANDON_COLOR)) expect(contrast(c, inkOf(c))).toBeGreaterThanOrEqual(3);
+  });
+
+  test(`ряды «прогноза против факта» (Б6в): каждая пара — не ближе ${STATE_DE} ΔE во всех видах; к фону — не ниже 3:1`, () => {
+    for (const v of VISIONS) {
+      const w = worst(FC_COLOR, v);
+      expect([v, w.pair, w.min >= STATE_DE]).toEqual([v, w.pair, true]);
+    }
+    for (const c of Object.values(FC_COLOR)) expect(contrast(c, FC_BG)).toBeGreaterThanOrEqual(3);
   });
 
   test(`оттенки зон: не ближе ${ZONE_DE} ΔE при обычном зрении; у каждой зоны — название на обоих языках`, () => {

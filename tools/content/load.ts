@@ -384,6 +384,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     shifts[sh.id] = { id: sh.id, name: sh.name, days: [...new Set(sh.days)].sort().map(d => d - 1), from: sh.from, to: sh.to, break: Math.round((sh.break ?? 0) * 3600) };
   }
   const products: Record<string, Product> = Object.fromEntries(Object.values(raw.products).map(pr => [pr.id, { ...pr, strength: pr.strength.mg }]));
+  // сезон спроса (Б6в): у продукта — группа базы
+  for (const pr of Object.values(raw.products)) need(raw.seasons[pr.season], `продукт ${pr.id}: нет сезона спроса ${pr.season}`);
   for (const pr of Object.values(raw.products)) if (pr.jnvlp) need(pr.source, `продукт ${pr.id}: «в перечне ЖНВЛП» — факт, нужен источник`);
   // код продукта в номере серии — у каждого свой: иначе номера двух продуктов совпадут
   const codes = new Map<string, string>();
@@ -1032,6 +1034,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       ...(s.heads ? { heads: headsOf(s.heads, s, where) } : {}),
       ...(s.leave ? { leave: leaveRuleOf(s.leave, s, where) } : {}),
       ...(s.waste ? { waste: { hours: [s.waste.hours[0] * 3600, s.waste.hours[1] * 3600] as [number, number], sign: sec(s.waste.sign), trip: kop(s.waste.trip), pallet: kop(s.waste.pallet), full: s.waste.full, keep: s.waste.keep } } : {}),
+      ...(s.forecast ? { forecast: { optimism: share(s.forecast.optimism) } } : {}),
     };
   }
   const profiles: Record<string, Profile> = {};
@@ -1191,6 +1194,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     agreements,
     policies,
     capa,
+    seasons: raw.seasons,
   };
 }
 

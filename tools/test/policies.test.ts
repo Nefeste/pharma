@@ -281,7 +281,7 @@ describe('вид «Политики»', () => {
     const v = policiesView(db, s);
     expect(v.tabs.map(t => t.head)).toEqual(['tech', 'qc', 'qa', 'plan', 'supply', 'maint', 'mes', 'wms']);
     const tab = (h: string) => v.tabs.find(t => t.head === h)!;
-    expect(tab('plan').rows.map(r => r.policy)).toEqual([POL.cover, POL.urgent, POL.window]);
+    expect(tab('plan').rows.map(r => r.policy)).toEqual([POL.cover, POL.demand, POL.method, POL.urgent, POL.window]);
     expect(tab('maint').rows.filter(r => r.policy === POL.replace).map(r => r.of)).toEqual(Object.keys(s.parts).sort());
     expect(tab('maint').rows.find(r => r.of === PUNCHES)).toMatchObject({ machine: s.parts[PUNCHES].of, part: s.parts[PUNCHES].type, value: sc.maint[PUNCHES] });
     expect(tab('tech').rows).toEqual([{ policy: POL.setpoints, value: 'keep', set: { t: s.t, seat: 'quality' }, used: 0 }]);

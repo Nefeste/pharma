@@ -190,8 +190,12 @@ const dailied = () => {
   const cur = d.at(-1);
   return rows.some(r => r.res === 'late' && r.why) && rows.some(r => r.res === 'no' && r.why) && !!cur && !cur.closed && cur.rows.some(r => r.done !== undefined) && cur.rows.some(r => r.done === undefined);
 };
+// посреди прогноза (Б6в): у показателя отдела продаж — значение закрытого месяца, у планирования — правка игрока в силе, а
+// спрос правила задания — по прогнозу
+const forecasted = () =>
+  s.kpi.months.some(m => m.v.fcErr !== undefined) && Object.keys(s.forecast?.edits ?? {}).length > 0 && s.policies.log.some(x => x.policy === 'pol.plan.demand');
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : SCHEMA < 34 ? seated() && kpied() : SCHEMA < 35 ? seated() && asked() : SCHEMA < 36 ? seated() && policied() : SCHEMA < 37 ? seated() && bossed() : SCHEMA < 38 ? seated() && memoed() : SCHEMA < 39 ? seated() && capaed() : SCHEMA < 40 ? seated() && jobbed() : seated() && jobbed() && dailied();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : SCHEMA < 34 ? seated() && kpied() : SCHEMA < 35 ? seated() && asked() : SCHEMA < 36 ? seated() && policied() : SCHEMA < 37 ? seated() && bossed() : SCHEMA < 38 ? seated() && memoed() : SCHEMA < 39 ? seated() && capaed() : SCHEMA < 40 ? seated() && jobbed() : SCHEMA < 41 ? seated() && jobbed() && dailied() : seated() && dailied() && forecasted();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 const refused = new Set<string>();
@@ -320,6 +324,13 @@ while (s.t < end && !busy()) {
       const it = o && items.find(i => o.lines.some(l => l.sku === i.sku));
       if (o && it) apply(db, s, { kind: 'order', recipe: it.recipe, sku: it.sku, for: o.id, notBefore: s.t + 3 * DAY, by: 'player' });
     }
+  }
+  // с схемы 41 — пост «Производство»: спрос правила задания — по прогнозу; правка прогноза парацетамола № 20 через месяц —
+  // на десятую часть выше, один раз
+  if (SCHEMA >= 41 && s.forecast && s.seats?.some(x => x.seat === 'production' && x.to === undefined) && !s.journal.some(r => r.d.kind === 'fcEdit')) {
+    apply(db, s, { kind: 'policy', policy: 'pol.plan.demand', value: 'forecast', by: 'player' });
+    const sku = 'sku.paracetamol500.n20';
+    apply(db, s, { kind: 'forecast', sku, m: s.forecast.at + 2, cases: Math.round((s.forecast.plan[sku][2] * 11) / 10), by: 'player' });
   }
   // схема 37 — вопрос открыт: вторая записка начальнику снабжения, тот же заказ
   if ((SCHEMA as number) === 37 && s.heads.qs && !s.journal.some(r => r.memo && !r.memo.end))

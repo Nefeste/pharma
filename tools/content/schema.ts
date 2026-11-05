@@ -148,8 +148,16 @@ export const scenario = z.strictObject({
       cover: z.number().int().min(1).max(365),
       window: z.number().int().min(7).max(365),
       urgent: z.number().int().min(0).max(365).optional(),
+      /** способ прогноза планирования и откуда спрос правила задания (Б6в) — с чего начинают политики */
+      method: z.enum(['best', 'last-year', 'ma', 'ses', 'holt', 'group']).default('best'),
+      demand: z.enum(['orders', 'forecast']).default('orders'),
     })
     .optional(),
+  /**
+   * прогноз продаж и сезон спроса (Б6в): история спроса до старта, месяцев; оптимизм отдела продаж, %. Нет — спрос
+   * покупателей ровный, прогноза нет
+   */
+  forecast: z.strictObject({ optimism: percent }).optional(),
   /** снабжение (Б2в): страховой запас и заказ — в сутках расхода, входной контроль — в сутках */
   supply: z
     .strictObject({
@@ -543,6 +551,21 @@ export const regime = z.strictObject({
   review,
 });
 
+/**
+ * Сезон спроса группы товаров (Б6в; геймдизайн, §10.1): индекс каждого месяца с января по декабрь, % среднего месяца —
+ * целые больше нуля, вместе 1200. Когда пик — по источникам, сколько — гипотеза.
+ */
+export const season = z.strictObject({
+  id: z.string(),
+  name: text,
+  months: z
+    .array(z.number().int().min(1).max(400))
+    .length(12)
+    .refine(m => m.reduce((a, b) => a + b, 0) === 1200, { message: 'индексы месяцев — вместе 1200: в среднем 100' }),
+  source: sources,
+  review,
+});
+
 /** Методика испытания (геймдизайн, §6.2). */
 export const test = z
   .strictObject({
@@ -739,6 +762,8 @@ export const product = z.strictObject({
   strength: z.strictObject({ mg: z.number().positive() }),
   /** в перечне ЖНВЛП: цена позиции — не выше зарегистрированной */
   jnvlp: z.boolean().default(false),
+  /** сезон спроса (Б6в): группа товаров — запись content/seasons/ */
+  season: id,
   source: sources.optional(),
   review: review.optional(),
 }).refine(paired, pairedMsg);
@@ -1183,6 +1208,7 @@ export const KINDS = {
   regimes: { prefix: 'reg', schema: regime },
   makers: { prefix: 'mkr', schema: maker },
   agreements: { prefix: 'qag', schema: agreement },
+  seasons: { prefix: 'sea', schema: season },
   policies: { prefix: 'pol', schema: policy },
   capa: { prefix: 'capa', schema: capa },
 } as const;

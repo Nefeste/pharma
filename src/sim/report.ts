@@ -27,6 +27,7 @@ import { type DailyMeeting, dailyMeeting } from './daily';
 import { jobsOf } from './jobs';
 import { type HeadDay, headDays, type JournalRow, memoDays, openAsks } from './journal';
 import { type MonthClose, monthClose } from './kpi';
+import { type FcMeeting, fcMeeting } from './forecast';
 import { type PartnerSum, partnerSum } from './partners';
 import { type TrainSum, trainSum } from './people';
 import { type AssetSum, assetSum } from './places';
@@ -275,6 +276,8 @@ export interface MorningView {
   rejects?: RejectSum;
   /** итоги месяца (Б5ж): на первой планёрке месяца — что сдвинулось сильнее всего против месяца до него */
   month?: MonthClose;
+  /** прогноз продаж (Б6в): в первые сутки после закрытия месяца — заказано и прогнозы на него, прогноз нынешнего */
+  forecast?: FcMeeting;
   /** руководители (Б5в): где сегодня решает не руководитель — «и. о.» с его навыком, или некому; все на месте — пусто */
   bosses: BossRow[];
 }
@@ -477,6 +480,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
   const next = s.cash.dues.filter(d => d.sum < 0).sort((a, b) => a.due - b.due)[0];
   const rejects = rejectSum(db, s, from, at);
   const month = monthClose(s, at);
+  const fc = fcMeeting(db, s, at);
   const unc = jobsOf(db, s, forecast(db, s)).uncovered;
   return {
     view: 'morning',
@@ -515,6 +519,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     ...(q.since !== undefined && at - q.since >= DAY ? { session: sessionSum(s, q.since, at) } : {}),
     ...(rejects ? { rejects } : {}),
     ...(month ? { month } : {}),
+    ...(fc ? { forecast: fc } : {}),
     bosses: bossMeeting(db, s),
   };
 }

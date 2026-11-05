@@ -8,6 +8,7 @@ import { civilFromDays, DAY, HOUR, momentOf, type Ymd } from '../engine/core/cal
 import { planOf } from '../engine/plant';
 import { DEPT_SEAT } from '../engine/seats';
 import { dateText, daysText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
+import type { FcMeeting } from '../sim/forecast';
 import type { HeadDay } from '../sim/journal';
 import type { MonthClose } from '../sim/kpi';
 import type { CapaRow } from '../sim/devs';
@@ -17,6 +18,8 @@ import type { Thing } from '../sim/views';
 import { assetName, workName } from './assets';
 import { BossMeeting } from './Bosses';
 import { capaName, headText } from './capa';
+import { overFact } from './fcchart';
+import { signed } from './Forecast';
 import { DailyMeet } from './Daily';
 import { headName, kpiName, kpiText, kpiValue, monthText } from './Kpi';
 import { db } from './db';
@@ -242,6 +245,24 @@ function SeatBlock({ x, start }: { x: SeatSum; start: Ymd }) {
 }
 
 /**
+ * Прогноз (Б6в) — в первые сутки после закрытия месяца: сколько в нём заказано и что ему прогнозировали месяц назад
+ * планирование и отдел продаж — со знаком против факта, — и прогноз нынешнего месяца у обоих. Рычаг — вкладка «Прогноз».
+ */
+function FcBlock({ x, hud, actions, close }: { x: FcMeeting; hud: Hud; actions: Actions; close: () => void }) {
+  const ym = (n: number) => ({ y: Math.floor(n / 12), m: (n % 12) + 1 });
+  const was = ym(x.m);
+  const now = ym(x.next.m);
+  return (
+    <div className="mblock" data-test="morning-forecast">
+      <div>
+        {T.fc.meetingText(T.fc.monthIn(was.y, was.m), T.fc.cases(x.fact), num(x.plan), signed(overFact(x.plan, x.fact), 0), num(x.sales), signed(overFact(x.sales, x.fact), 0), T.fc.month(now.y, now.m), num(x.next.plan), num(x.next.sales))}
+      </div>
+      <Levers list={[{ k: 'forecast' }]} hud={hud} actions={actions} close={close} />
+    </div>
+  );
+}
+
+/**
  * Итоги месяца (Б5ж) — на первой планёрке месяца: у руководителя — показатели, сдвинувшиеся сильнее всего против месяца до
  * него, с противовесом; первый закрытый месяц — сравнивать не с чем. Рычаг — окно «Показатели». Это отчёт, а не событие:
  * без автопаузы и без извещения.
@@ -433,6 +454,11 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
           {v.month ? (
             <Section title={T.kpi.close.title(`${monthText(v.month)}${v.month.part ? ` · ${T.kpi.part}` : ''}`)}>
               <MonthBlock x={v.month} hud={hud} actions={actions} close={close} />
+            </Section>
+          ) : null}
+          {v.forecast ? (
+            <Section title={T.fc.meeting}>
+              <FcBlock x={v.forecast} hud={hud} actions={actions} close={close} />
             </Section>
           ) : null}
           {v.modes.length > 0 ? (

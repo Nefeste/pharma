@@ -9,6 +9,7 @@ import { addMonths, civilFromDays, DAY, daysFromCivil, HOUR, momentOf } from './
 import { P_ONE } from './core/rng';
 import { baseLoad } from './cash';
 import { before, REPEAT, sameDev } from './devclass';
+import { lagError, monthAt, shares } from './forecast';
 import { yearOver } from './hours';
 import { oee, type Oee, rhythm, roomsOf } from './lean';
 import { planOf } from './plant';
@@ -102,6 +103,8 @@ export const KPIS: readonly KpiDef[] = [
   { id: 'otif', head: 'sales', unit: 'share', dir: 1, win: 'm', src: ['ghsc-fy2019'], pair: 'fgDays' },
   { id: 'revenue', head: 'sales', unit: 'kop', dir: 1, win: 'm', src: ['fsbu-4-2023'], pair: 'dso', acc: true },
   { id: 'dso', head: 'sales', unit: 'day', dir: -1, win: 'm', src: ['gks-fhd-2002'], pair: 'revenue' },
+  // точность прогноза (Б6в; §8.6): WAPE прогноза отдела продаж с запаздыванием в месяц
+  { id: 'fcErr', head: 'sales', unit: 'share', dir: -1, win: 'm', src: ['ghsc-fy2019', 'fpp3'], pair: 'otif' },
   // кадры
   { id: 'turnover', head: 'hr', unit: 'share', dir: -1, win: 'y', src: ['ispe-qm-w2'], pair: 'otLimit', also: ['dir'] },
   { id: 'vacancy', head: 'hr', unit: 'day', dir: -1, win: 'y', src: ['iso-30414'] },
@@ -626,6 +629,8 @@ const CALC: Record<string, Calc> = {
     return share(closed.filter(o => o.status === 'shipped').length, closed.length);
   },
   revenue: c => Object.values(c.s.shipments).reduce((n, x) => n + (inside(x.t, c.p.from, c.p.to) ? x.sum : 0), 0),
+  // месяцы периода, закрытые к этому мигу; записи с запаздыванием нет — нет и значения
+  fcErr: c => shares(lagError(c.s, 'sales', monthAt(c.s, c.p.from), monthAt(c.s, c.p.to - 1) + 1))?.wape,
   dso: c => {
     if (c.p.snap.n === 0) return undefined;
     const rev = CALC.revenue(c) ?? 0;

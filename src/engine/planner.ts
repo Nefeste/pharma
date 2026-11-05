@@ -12,10 +12,11 @@ import type { ContentDb, Id, Recipe, Sku } from '../content/types';
 import { addWorkdays, DAY, daysFromCivil, isWorkday, momentOf, workdayOnOrAfter } from './core/calendar';
 import { coverBy, dueRule, skillOf, whoDecides } from './bosses';
 import { modeOf, moot, propose } from './heads';
+import { forecastAhead } from './forecast';
 import { asWho } from './journal';
 import { TRUCK_HOUR } from './market';
 import { BATCH_HOUR, placeOrder } from './mes';
-import { numOf, POL } from './policies';
+import { numOf, POL, policyOf } from './policies';
 import { containersByLot } from './stock';
 import type { Notice, OrderWhy, PlantState } from './types';
 import { calOf } from './workdays';
@@ -80,6 +81,11 @@ export function positionOf(db: ContentDb, s: PlantState, sku: Id, window: number
     cases += b.status === 'packing' && b.pack?.fg ? Math.max(0, expect - (byLot.get(b.pack.fg)?.length ?? 0)) : expect;
   }
   for (const o of Object.values(s.orders)) if (o.status === 'open') for (const l of o.lines) if (l.sku === sku) cases -= l.cases - l.shipped;
+  // спрос по прогнозу планирования (Б6в): ящики прогноза на окно вперёд и рабочие дни в нём — тем же счётом, что окно заказов
+  if (s.forecast && policyOf(db, s, POL.demand) === 'forecast') {
+    const a = forecastAhead(db, s, sku, window);
+    return { sku, cases, ordered: a.ordered, span: window * DAY, work: a.work };
+  }
   const span = Math.min(window * DAY, s.t);
   if (span < SEEN * DAY) return { sku, cases, ordered: 0, span: 0, work: 0 };
   let ordered = 0;
@@ -199,7 +205,9 @@ function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], co
   const pos = items.map(it => ({ it, p: positionOf(db, s, it.sku, window, byLot), held: heldOf(s, it.sku) }));
   // запас < заказано за рабочий день окна × рабочих дней пятидневки в AHEAD + cover суток (Б4а)
   const ahead = aheadMilli(AHEAD + cover);
-  const why = (rule: OrderWhy['rule'], extra: Partial<OrderWhy> = {}): OrderWhy => ({ rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work, ...(x.held ? { held: x.held } : {}) })), ahead, cover, ...(policy !== undefined ? { policy } : {}), ...extra });
+  // спрос по прогнозу (Б6в) — в причине: положение позиций считали по нему
+  const fc = !!s.forecast && policyOf(db, s, POL.demand) === 'forecast';
+  const why = (rule: OrderWhy['rule'], extra: Partial<OrderWhy> = {}): OrderWhy => ({ rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work, ...(x.held ? { held: x.held } : {}) })), ahead, cover, ...(policy !== undefined ? { policy } : {}), ...(fc ? { fc: true as const } : {}), ...extra });
   const last = (sku: Id) => Math.max(-1, ...Object.values(s.batches).filter(b => b.sku === sku).map(b => idNum(b.id)));
   const prev = urgent === undefined ? undefined : prevBefore(Object.values(s.batches), at);
   const c = choose(

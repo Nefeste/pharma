@@ -200,7 +200,10 @@ function headOf(db: ContentDb, d: Decided): Head {
     case 'leaveDraft':
       return 'hr';
     case 'extend':
+    case 'forecast':
       return 'sales';
+    case 'fcEdit':
+      return 'plan';
     case 'waste':
       return 'wms';
     case 'mode':

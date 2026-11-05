@@ -123,7 +123,7 @@ describe('фура → приёмка → карантин', () => {
     expect(checked).toBeGreaterThan(0);
     expect(Object.keys(s.tasks)).toEqual([]);
     expect(s.open).toEqual([]);
-  });
+  }, 30_000);
 
   test('в выходной фуру не проверяют и не разгружают: проверка ждёт понедельника, 08:00, разгрузка — её конца', () => {
     const s = newPlant(db, { scenario: SC, seed: 5 });

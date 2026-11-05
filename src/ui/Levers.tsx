@@ -44,6 +44,8 @@ function words(l: Exclude<Lever, { k: 'later' }>): [string, string] {
       return [T.levers.forecast, T.levers.forecastWhat];
     case 'sop':
       return [T.levers.sop, T.levers.sopWhat];
+    case 'materials':
+      return [T.levers.materials, T.levers.materialsWhat];
     case 'stock':
       return [T.levers.stock, T.levers.stockWhat];
     case 'thing':
@@ -110,6 +112,11 @@ function run(l: Lever, hud: Hud, actions: Actions) {
     case 'forecast':
       // вкладка «Прогноз» (Б6в): так же
       actions.ganttTab('forecast');
+      if (!hud.gantt.open) actions.toggleGantt();
+      return;
+    case 'materials':
+      // вкладка «Материалы» (Б6д): так же
+      actions.ganttTab('mrp');
       if (!hud.gantt.open) actions.toggleGantt();
       return;
     case 'sop':

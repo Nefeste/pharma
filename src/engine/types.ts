@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 42;
+export const SCHEMA = 43;
 
 // ---------------------------------------------------------------- склад
 
@@ -700,13 +700,18 @@ export interface Po {
   ordered: number;
   /** когда фура встанет к рампе */
   eta: number;
-  status: 'ordered' | 'arrived';
+  /** заказан, пришёл; с Б6д — отменён до прихода */
+  status: 'ordered' | 'arrived' | 'cancelled';
   /** кто заказал: игрок или руководитель */
   by: string;
-  /** сумма с НДС и НДС в ней; предоплата, копейки */
+  /** сумма с НДС и НДС в ней; предоплата, копейки — с Б6д в ней и доплата за ускорение */
   sum?: number;
   vat?: number;
   prepaid?: number;
+  /** ускорен (Б6д): когда, прежний приход, доплата без НДС и НДС в ней, копейки — уплачена сразу */
+  fast?: { t: number; was: number; net: number; vat: number };
+  /** отменён (Б6д): когда, неустойка, копейки; возврат предоплаты — плюс, доплата сверх неё — минус */
+  cancelled?: { t: number; fee: number; back: number };
 }
 
 export interface Truck {
@@ -1105,7 +1110,7 @@ export interface Shipment {
   vat: number;
 }
 
-export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle' | 'vacation' | 'waste';
+export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle' | 'vacation' | 'waste' | 'poFast' | 'poCancel';
 
 // ---------------------------------------------------------------- техслужба
 
@@ -1559,7 +1564,8 @@ export interface OrderWhy {
  * суток; точка заказа — расход на наибольший срок поставки, входной контроль и страховой запас, суток; хотели — до точки
  * и ещё `every` суток расхода, не меньше наименьшей партии; урезано до половины зоны карантина — `cut`. Мг или шт.
  */
-export interface PoWhy {
+export interface PoWhyPoint {
+  rule?: undefined;
   material: Id;
   maker: Id;
   have: number;
@@ -1573,6 +1579,38 @@ export interface PoWhy {
   want: number;
   cut?: true;
 }
+
+/**
+ * Заказ по потребности (Б6д): месяц первой серии заказа (год × 12 + месяц − 1) и валовая потребность этого месяца, есть
+ * и в пути сегодня; день, к которому материал нужен разрешённым (от 1970-01-01), дефицит к нему до страхового запаса и на
+ * сколько суток заказ опоздает; верх срока поставки и входной контроль, сутки, срок завоза — число предыдущего месяца,
+ * 0 — к дню серии; страховой запас — сутки политики, как у точки заказа, и количество; на сколько суток заказ по
+ * политике, наименьшая партия и сколько хотели — дефицит и расход этих суток, не меньше наименьшей партии; урезан ли
+ * заказ зоной карантина. Количества — мг или штуки.
+ */
+export interface PoWhyNeed {
+  rule: 'need';
+  material: Id;
+  maker: Id;
+  month: number;
+  gross: number;
+  have: number;
+  need: number;
+  deficit: number;
+  late: number;
+  lead: number;
+  qc: number;
+  arrive: number;
+  safety: number;
+  safeQty: number;
+  every: number;
+  moq: number;
+  want: number;
+  cut?: true;
+}
+
+/** Почему заказ поставщику: по точке заказа (Б2в) или по потребности (Б6д). */
+export type PoWhy = PoWhyPoint | PoWhyNeed;
 
 /**
  * Почему начальник ООК попросил шаг расследования (часть 4): сначала лаборатория — шаг проверяет отметку; повтор пробы —
@@ -1611,6 +1649,10 @@ export type Decided =
   | { kind: 'cancel'; batch: string; sku?: Id; notBefore: number; due?: number; for?: BatchFor }
   /** заказ поставщику: предоплата; по каждой строке — положение материала */
   | { kind: 'po'; po?: string; supplier: Id; prepaid: number; why?: PoWhy[] }
+  /** ускорение заказа поставщику (Б6д): прежний и новый приход; доплата с НДС, копейки */
+  | { kind: 'expedite'; po: string; supplier: Id; was: number; eta: number; fee: number }
+  /** отмена заказа поставщику (Б6д): неустойка; возврат предоплаты — плюс, доплата сверх неё — минус, копейки */
+  | { kind: 'cancelPo'; po: string; supplier: Id; fee: number; back: number }
   /** шаг расследования */
   | { kind: 'step'; inv: string; step: string; why?: StepWhy }
   /** вывод расследования: версия, её вероятность и порог, доли 1/10 000; ошибка лаборатории доказана */
@@ -2044,6 +2086,10 @@ export type Command =
   | { kind: 'advance'; seconds: number }
   /** заказ поставщику: количество — мг или шт., округляется вверх до целой тары */
   | { kind: 'po'; supplier: Id; lines: PoLine[]; by?: string }
+  /** ускорить заказ поставщику в пути (Б6д): приход через срок ускорения, раньше нынешнего; доплата — доля суммы */
+  | { kind: 'expedite'; po: string; by?: string }
+  /** отменить заказ поставщику до прихода (Б6д): неустойка — доля суммы, из предоплаты; остаток предоплаты вернут */
+  | { kind: 'cancelPo'; po: string; by?: string }
   /** задание на серию по карте: не раньше — игровые секунды; нет — сейчас */
   | { kind: 'order'; recipe: Id; notBefore?: number; by?: string; sku?: Id; for?: string }
   /** отменить задание на серию до комплектовки (Б6а) */
@@ -2155,6 +2201,14 @@ export type Refusal =
   | 'noSupplier'
   | 'notSold'
   | 'belowMoq'
+  /**
+   * заказ поставщику (Б6д): такого заказа нет; он уже пришёл или отменён; ускоренный не придёт раньше нынешнего; уже
+   * ускорен
+   */
+  | 'noPo'
+  | 'poDone'
+  | 'notFaster'
+  | 'fastAgain'
   | 'empty'
   | 'noRecipe'
   | 'noBatch'
@@ -2323,6 +2377,10 @@ export type Notice =
   | { kind: 'morning'; day: number }
   /** заказ поставщику принят */
   | { kind: 'ordered'; po: string; eta: number }
+  /** заказ поставщику ускорен (Б6д): новый приход */
+  | { kind: 'poFast'; po: string; eta: number }
+  /** заказ поставщику отменён (Б6д) */
+  | { kind: 'poCancelled'; po: string }
   /** фура встала к рампе */
   | { kind: 'truck'; po: string; truck: string }
   /** партия разрешена: все испытания в пределах */

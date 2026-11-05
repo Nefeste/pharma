@@ -610,7 +610,8 @@ const CALC: Record<string, Calc> = {
     let all = 0;
     let deal = 0;
     for (const po of Object.values(c.s.pos)) {
-      if (!inside(po.ordered, c.p.from, c.p.to)) continue;
+      // отменённый до прихода (Б6д) не куплен
+      if (po.status === 'cancelled' || !inside(po.ordered, c.p.from, c.p.to)) continue;
       for (const ln of po.lines) {
         const v = valueOf(c.db, ln.material, ln.qty, lotPrice(c.db, { supplier: po.supplier, material: ln.material }));
         all += v;

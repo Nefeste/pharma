@@ -19,6 +19,8 @@ export const POL = {
   reserve: 'pol.plan.reserve',
   safety: 'pol.supply.safety',
   every: 'pol.supply.every',
+  arrive: 'pol.supply.arrive',
+  how: 'pol.supply.how',
   replace: 'pol.maint.replace',
   spare: 'pol.maint.spare',
   ahead: 'pol.maint.ahead',
@@ -48,7 +50,8 @@ export const policyHead = (policy: Id): PolicyHead | undefined => {
  * С чего начинает завод — запись сценария: запас позиций, окно спроса и кампании планирования; страховой запас и заказ
  * снабжения; порог замены узла (нет — после отказа) и уровень ЗИП запчасти; срок визита подрядчика; уборка после серии;
  * порог вывоза отклонённого; уставки при уходе с поста; с Б5е — CAPA по повтору и срок оценки пары у начальника ООК;
- * с Б6в — способ прогноза и откуда спрос правила задания, если у сценария есть прогноз.
+ * с Б6в — способ прогноза и откуда спрос правила задания, если у сценария есть прогноз; с Б6д — срок завоза и как
+ * заказывать, у сценария с прогнозом.
  * Сценарий правила не задаёт — `undefined`: политики нет.
  */
 export function policyDefault(db: ContentDb, sc: Scenario, policy: Id, of?: string): PolicyValue | undefined {
@@ -71,6 +74,11 @@ export function policyDefault(db: ContentDb, sc: Scenario, policy: Id, of?: stri
       return sc.supply?.safety;
     case POL.every:
       return sc.supply?.every;
+    // потребность в материалах (Б6д): только у сценария с прогнозом — план производства идёт из прогона S&OP
+    case POL.arrive:
+      return sc.forecast ? sc.supply?.arrive : undefined;
+    case POL.how:
+      return sc.forecast ? sc.supply?.how : undefined;
     case POL.replace:
       return of === undefined ? undefined : (sc.maint[of] ?? OFF);
     case POL.spare: {
@@ -122,6 +130,7 @@ export function fits(p: Policy, v: PolicyValue): boolean {
     case 'months':
     case 'wear':
     case 'count':
+    case 'mday':
       if (v === OFF) return !!p.off;
       return typeof v === 'number' && Number.isInteger(v) && v >= p.min! && v <= p.max! && (v - p.min!) % p.step! === 0;
     case 'level':
@@ -185,6 +194,8 @@ const SHAPE: Record<string, Pick<Policy, 'kind' | 'each' | 'off' | 'options'>> =
   [POL.reserve]: { kind: 'share' },
   [POL.safety]: { kind: 'days' },
   [POL.every]: { kind: 'days' },
+  [POL.arrive]: { kind: 'mday' },
+  [POL.how]: { kind: 'choice', options: ['need', 'point'] },
   [POL.replace]: { kind: 'wear', each: 'part', off: true },
   [POL.spare]: { kind: 'level', each: 'spare' },
   [POL.ahead]: { kind: 'days' },

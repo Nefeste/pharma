@@ -20,6 +20,7 @@ import { db } from './db';
 import { Jobs } from './Jobs';
 import { Launch } from './Launch';
 import { Forecast } from './Forecast';
+import { Materials } from './Materials';
 import { draftKey } from './draft';
 import { actLabel, actOf, actOn } from './memo';
 import { type Actions, type GanttDays, type Hud, PLAN_RUN, type PlanRun } from './store';
@@ -307,9 +308,15 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
               {T.fc.tab}
             </button>
           ) : null}
+          {/* потребность в материалах (Б6д): план производства — из прогона S&OP на прогнозе, у сценария без прогноза её нет */}
+          {fcOn ? (
+            <button type="button" className={g.tab === 'mrp' ? 'on' : ''} onClick={() => actions.ganttTab('mrp')} data-test="gantt-tab-mrp">
+              {T.mrp.tab}
+            </button>
+          ) : null}
         </span>
-        <span className="muted">{g.tab === 'jobs' ? T.jobs.question : g.tab === 'launch' ? T.launch.question : g.tab === 'forecast' ? T.fc.question : T.gantt.question}</span>
-        {g.tab === 'forecast' ? (
+        <span className="muted">{g.tab === 'jobs' ? T.jobs.question : g.tab === 'launch' ? T.launch.question : g.tab === 'forecast' ? T.fc.question : g.tab === 'mrp' ? T.mrp.question : T.gantt.question}</span>
+        {g.tab === 'forecast' || g.tab === 'mrp' ? (
           <span className="grow" />
         ) : (
         <span className="filters grow">
@@ -400,6 +407,12 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
       ) : g.tab === 'forecast' ? (
         v.forecast ? (
           <Forecast hud={hud} actions={actions} v={v.forecast} />
+        ) : (
+          <div className="muted">{T.app.loading}</div>
+        )
+      ) : g.tab === 'mrp' ? (
+        g.mrp ? (
+          <Materials hud={hud} actions={actions} v={g.mrp} />
         ) : (
           <div className="muted">{T.app.loading}</div>
         )

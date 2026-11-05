@@ -203,7 +203,7 @@ export interface Policy {
   id: Id;
   name: Text;
   head: PolicyHead;
-  kind: 'days' | 'months' | 'wear' | 'level' | 'choice' | 'share' | 'count';
+  kind: 'days' | 'months' | 'wear' | 'level' | 'choice' | 'share' | 'count' | 'mday';
   each?: 'part' | 'spare';
   min?: number;
   max?: number;
@@ -426,11 +426,16 @@ export interface ScenarioPartners {
   ctr: number;
 }
 
-/** Снабжение сценария (Б2в): страховой запас и заказ — в сутках расхода, входной контроль — сутки. */
+/**
+ * Снабжение сценария (Б2в): страховой запас и заказ — в сутках расхода, входной контроль — сутки; с Б6д — срок завоза:
+ * число предыдущего месяца, 0 — к дню серии, и как заказывают: по потребности или по точке заказа.
+ */
 export interface ScenarioSupply {
   safety: number;
   every: number;
   qc: number;
+  arrive?: number;
+  how?: 'need' | 'point';
 }
 
 /** Корень происшествия: ошибка лаборатории, пересмазывание, сила прессования, сито калибратора. */

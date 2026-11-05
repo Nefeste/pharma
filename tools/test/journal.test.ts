@@ -82,8 +82,10 @@ describe('причина — числа правила', () => {
     expect(r.d.why?.seen).toBe(7);
   });
 
-  test('заказ поставщику: по строке — есть и в пути, расход, точка заказа, сколько хотели; в заказе — до целой тары', () => {
+  test('заказ поставщику по точке заказа: по строке — есть и в пути, расход, точка, сколько хотели; в заказе — до тары', () => {
     const s = newPlant(db, { scenario: SC });
+    // по точке заказа, как до Б6д: заказы по потребности — tools/test/mrp.test.ts
+    apply(db, s, { kind: 'policy', policy: 'pol.supply.how', value: 'point' });
     before(s, workday(s, 1), SUPPLY_HOUR);
     const per = planUse(db, s, 1000);
     const have = new Map([...per.keys()].map(m => [m, supplyPosition(db, s, m)]));
@@ -99,6 +101,7 @@ describe('причина — числа правила', () => {
       expect(r.d.prepaid).toBe(po.prepaid!);
       expect(r.d.why!.map(w => w.material)).toEqual(po.lines.map(l => l.material));
       for (const w of r.d.why!) {
+        if (w.rule === 'need') throw new Error('not by the reorder point');
         const sup = db.suppliers[po.supplier];
         const use = (d: number) => Math.ceil((per.get(w.material)! * d) / 1000);
         expect(w.have).toBe(have.get(w.material)!);

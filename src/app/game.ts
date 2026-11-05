@@ -286,6 +286,9 @@ export class Game {
         if (hud.policies.open) this.store.set({ policies: { ...this.store.get().policies, view: d } });
       } else if (d.view === 'sop') {
         if (hud.sop.open) this.store.set({ sop: { ...this.store.get().sop, view: d } });
+      } else if (d.view === 'mrp') {
+        const g = this.store.get().gantt;
+        if (g.open && g.tab === 'mrp') this.store.set({ gantt: { ...g, mrp: d } });
       } else if (d.view === 'kpi') {
         // окно «Показатели» (Б5ж): вид прежней вкладки или месяца, отправленный до нового запроса, не показываем
         const k = this.store.get().kpi;
@@ -410,6 +413,9 @@ export class Game {
     const text =
       n.kind === 'morning' ? T.notices.morning(n.day)
       : n.kind === 'ordered' ? T.notices.ordered
+      // ускорение и отмена заказа поставщику (Б6д)
+      : n.kind === 'poFast' ? T.notices.poFast(whenText(this.store.get().start, n.eta))
+      : n.kind === 'poCancelled' ? T.notices.poCancelled
       : n.kind === 'truck' ? T.notices.truck
       : n.kind === 'lotReleased' ? T.notices.lotReleased
       : n.kind === 'lotRejected' ? T.notices.lotRejected
@@ -861,6 +867,14 @@ export class Game {
     fcPolicy: (policy, value) => {
       if (holds(this.store.get(), 'production')) this.client.command({ kind: 'policy', policy, value, by: 'player' });
     },
+    mrpOrder: (supplier, lines) => {
+      // «Заказать» (Б6д): окно «Заказ поставщику» с поставщиком и строками плановых заказов — отправит игрок
+      const po = this.store.get().po;
+      this.store.set({ po: { ...po, open: true, supplier, lines: lines.map(l => ({ ...l })) } });
+      this.sendViews();
+    },
+    expedite: (po, memo) => this.send({ kind: 'expedite', po }, memo),
+    cancelPo: (po, memo) => this.send({ kind: 'cancelPo', po }, memo),
     cancelJob: batch => {
       // «Отменить» в карточке серии (Б6а): команда поста «Производство» или директора; записку об отмене не пишут —
       // у чужого поста кнопка погашена
@@ -1273,6 +1287,8 @@ export class Game {
     };
     if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days), ...draft, ...(h.gantt.tab === 'launch' ? { launch: true as const } : {}), ...(h.gantt.tab === 'forecast' ? { forecast: h.gantt.fcKey ? { key: h.gantt.fcKey } : {} } : {}) });
     if (h.gantt.open && h.gantt.drag) list.push({ id: 'ghost', view: 'ghost', ...h.gantt.drag, ...draft });
+    // вкладка «Материалы» (Б6д) — свой вид: потребность в материалах дорога, её собирают не чаще раза в секунду
+    if (h.gantt.open && h.gantt.tab === 'mrp') list.push({ id: 'mrp', view: 'mrp' });
     if (h.inv.open) list.push({ id: 'inv', view: 'inv', ...(h.inv.id ? { inv: h.inv.id } : {}) });
     if (h.journal.open) list.push({ id: 'journal', view: 'journal', page: h.journal.page, ...(h.journal.seat ? { seat: h.journal.seat } : {}), ...(h.journal.who ? { who: h.journal.who } : {}), ...(h.journal.focus !== undefined ? { focus: h.journal.focus } : {}) });
     if (h.dossier.open && h.dossier.batch !== undefined) list.push({ id: 'dossier', view: 'dossier', batch: h.dossier.batch });

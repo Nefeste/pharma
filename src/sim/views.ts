@@ -31,6 +31,7 @@ import { type InvQuery, type InvView, invView } from './inv';
 import { type BossLimit, type BossRow, bossOfPerson } from './bosses';
 import { type JournalQuery, type JournalView, journalView, whoAsset, whoBatch, whoDecided, whoLot, whoMachine, whoPerson, type WhoRow } from './journal';
 import { type PoliciesQuery, type PoliciesView, policiesView } from './policies';
+import { type MrpQuery, type MrpView, mrpView } from './mrp';
 import { type SopQuery, type SopView, sopView } from './sop';
 import { type DailyRowView, dailyOf } from './daily';
 import { type PoQuery, type PoView, poView } from './po';
@@ -79,7 +80,7 @@ export interface CardQuery {
   thing: Thing;
 }
 
-export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery | PoQuery | PoliciesQuery | SopQuery);
+export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery | PoQuery | PoliciesQuery | SopQuery | MrpQuery);
 
 /** Место паллеты: место плана (номер по порядку), помещение (номер по порядку), фура. */
 export type PlaceRef = { k: 'slot'; i: number } | { k: 'room'; i: number } | { k: 'truck'; n: number; customer: boolean; waste?: true };
@@ -320,7 +321,7 @@ export interface CardView {
   card: CardData;
 }
 
-export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView | PoView | PoliciesView | SopView;
+export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView | PoView | PoliciesView | SopView | MrpView;
 
 const num = (id: string) => Number(id.slice(1));
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
@@ -818,6 +819,8 @@ export function viewOf(db: ContentDb, s: PlantState, q: ViewQuery): ViewData {
       return policiesView(db, s);
     case 'sop':
       return sopView(db, s, q);
+    case 'mrp':
+      return mrpView(db, s);
   }
 }
 
@@ -833,9 +836,11 @@ export const VIEW_EVERY = 100;
 
 /**
  * Виды, которые собирать дорого, — не чаще, мс (Б6г): окно S&OP — прогон плана вперёд на трёх вариантах спроса и касса,
- * около 13 мс. Новый запрос или команда — сразу; тот же миг завода — не пересобирать.
+ * около 13 мс; с Б6д потребность в материалах — прогон плана на 12 месяцев, 5–8 мс: вкладка «Материалы», планёрка с
+ * блоком «Материалы» и окно «Заказ поставщику» — «Предложить» по правилу снабжения. Новый запрос или команда — сразу;
+ * тот же миг завода — не пересобирать.
  */
-export const VIEW_SLOW: Partial<Record<ViewQuery['view'], number>> = { sop: 1000 };
+export const VIEW_SLOW: Partial<Record<ViewQuery['view'], number>> = { sop: 1000, mrp: 1000, morning: 1000, po: 1000 };
 
 /**
  * Что окно уже получило: открытые виды и их последние данные. Новый запрос или команда — собрать сразу; иначе — не чаще

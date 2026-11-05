@@ -42,7 +42,7 @@ import { assessCommand, devHour, qaDone, qaStep, releaseCommand } from './qa';
 import { foreign, seatCommand } from './seats';
 import { goHome, LAST_CALL, postArrive, toPosts } from './staff';
 import { createLot, findSlot } from './stock';
-import { placePo, supplyDay } from './supply';
+import { cancelPoCommand, expediteCommand, placePo, supplyDay } from './supply';
 import { dispatch, release } from './tasks';
 import { alsoCommand, seedTraining, trainDay, trainDone } from './train';
 import { type Command, type Notice, type PlantEvent, type PlantState, SCHEMA } from './types';
@@ -214,6 +214,17 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
     case 'po': {
       const notices: Notice[] = [];
       placePo(db, s, cmd, notices);
+      return notices;
+    }
+    // ускорить и отменить заказ поставщику (Б6д)
+    case 'expedite': {
+      const notices: Notice[] = [];
+      expediteCommand(db, s, cmd, notices);
+      return notices;
+    }
+    case 'cancelPo': {
+      const notices: Notice[] = [];
+      cancelPoCommand(s, cmd, notices);
       return notices;
     }
     case 'order': {

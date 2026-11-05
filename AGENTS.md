@@ -99,8 +99,9 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # (e2e-capa.mjs, capa.png), then batch orders from the production post (e2e-jobs.mjs,
                                    # jobs.png), then the launch plan and the daily lists (e2e-launch.mjs, launch.png),
                                    # then the forecast to the meeting of 1 November (e2e-forecast.mjs, forecast.png),
-                                   # then the S&OP meeting of 3 September (e2e-sop.mjs, sop.png);
-                                   # `-- --only main|week|memo|capa|jobs|launch|forecast|sop` for one
+                                   # then the S&OP meeting of 3 September (e2e-sop.mjs, sop.png), then the materials of
+                                   # 2 September (e2e-mrp.mjs, mrp.png);
+                                   # `-- --only main|week|memo|capa|jobs|launch|forecast|sop|mrp` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -134,7 +135,12 @@ first, or copy the working code of Bolnitsa on the same versions.
   approved supplier–maker pair, one order per
   supplier, at most half the quarantine zone in pallets; with Б5б the rule without writing — `supplyPlan` — and an order
   quoted without writing — lines up to whole containers, cost, VAT and prepayment, or the refusal with the line's
-  material — `quotePo`, shared with the «Заказ поставщику» window), `planner.ts` (the planning colleague — at 07:00 on a
+  material — `quotePo`, shared with the «Заказ поставщику» window; with Б6д the rule by need — the planned orders whose
+  order date came, the same quarantine limit — `needPlan`, either rule by the supply head's policy «как заказывать» —
+  `supplyOrders`; a PO in transit expedited — the arrival at 09:00 of the workday a week on, no later than its own, the
+  surcharge with VAT paid at once — or cancelled before arrival — the fee from the prepayment, the rest refunded, the
+  contract's volume free again —, the quotes without writing — `fastQuote`, `cancelQuote`), `planner.ts` (the planning
+  colleague — at 07:00 on a
   workday, a batch order for the workday two working weeks on, for the SKU that runs out first by FG and work in
   progress against demand per working day seen in customer orders, over five-day weeks ahead; SKUs in turn until demand
   is seen; campaigns — the product of the last batch order goes on while its SKUs need a batch and no SKU of the other
@@ -157,6 +163,13 @@ first, or copy the working code of Bolnitsa on the same versions.
   role hours by norms, capacity by the people's shifts of the month, the planning head's rule day by day on the planning
   forecast for six months and a month of sales, the plan goal — margin less the cost of money in stock — on three demand
   variants, the best plan within the capacity reserve, the cash for three months and the FG shelf-life risk),
+  `plan/mrp.ts` (with Б6д, the material requirements, a pure function: the S&OP projection for 12 months and the batch
+  orders already placed — gross by the recipe in force and the SKU's packaging, availability through incoming control,
+  the safety stock by the policy's days, net by months, the material due released by the arrival deadline — a day of the
+  previous month and incoming control, passed or 0 — the batch day; planned orders — the shortage and the policy's days
+  of use more, whole containers, no less than the smallest lot — beyond the horizon of a new order with the upper lead
+  time to a workday, the order date the last workday whose order still makes it; messages «заказать до», «опаздывает»,
+  «опоздает», «лишний» — `mrpPlan`),
   `daily.ts` (with Б6б, the daily dispatch lists: at 08:00 each department's rows for the
   day — stages and kits by the schedule run cut at the day's end, packing by the line master's norm in the shifts of the
   line's people, the lab by the finite capacity of analysts on shift and instruments, shipments, supplier trucks,
@@ -454,7 +467,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   close (`forecast.ts`); with Б6г, the S&OP window — the shown plan, the best plan and «до лучшего плана», demand,
   capacity with the reserve line and the bottleneck, stock days by SKU with their flags, the cash for three months,
   people under the plan — and the meeting's block, the projection on the plant's records (`sop.ts`), a costly view not
-  rebuilt on the same moment (`VIEW_SLOW` of `views.ts`); people and admissions — a
+  rebuilt on the same moment (`VIEW_SLOW` of `views.ts`); with Б6д, the materials — the «Материалы» tab: the
+  requirements as they are, the POs in transit by arrival with what «Ускорить» and «Отменить» would give or why not, and
+  the meeting's block — planned orders due today or earlier and POs in transit that will be late; a costly view too
+  (`mrp.ts`); people and admissions — a
   person's admission
   today and what they are losing within the warning period, training rows of the card, the training matrix of the
   reference with how many people of a role are admitted, and of other roles by the related profession, the meeting's
@@ -565,7 +581,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   «Прогноз» tab — the method and demand policies, the grid, a cell's edit and its removal, «прогноз против факта» with
   the error table and «Таблицей» (`Forecast.tsx`) and the chart's pure rules — colours, ticks, places (`fcchart.ts`),
   with Б6г the S&OP window — O, the plan grid with a choice per cell, «Утвердить», «Сбросить», demand, capacity, stock,
-  cash and people under the plan (`Sop.tsx`), the meeting's
+  cash and people under the plan (`Sop.tsx`), with Б6д its «Материалы» tab — the grid of materials by kind and 12
+  months with the net in red, a cell's tooltip, planned orders by supplier with «Заказать» — the «Заказ поставщику»
+  window with the lines due within a week —, POs in transit with their messages, «Ускорить» and «Отменить»
+  (`Materials.tsx`), the meeting's
   «Сменно-суточные задания» block and a card's rows of the day (`Daily.tsx`), the draft's pure rules — a row per batch
   order, gone once kitting starts, `shift` commands on approval, with Б6а the cancels, with Б6б an urgent order on a
   day (`draft.ts`), the
@@ -602,7 +621,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   the cause classes and deviation kinds it fits, its place in the QA head's rule — and the scenario's `deviations`: the
   terms by class, the sign threshold of wear, the check's days and the repeats before a CAPA; with Б6в — `seasons/`: a
   product group's index of each month, and the scenario's `forecast` — the sales department's optimism; with Б6г — the
-  planning head's policy «резерв мощности» and the scenario's `plan.reserve`);
+  planning head's policy «резерв мощности» and the scenario's `plan.reserve`; with Б6д — the supply head's policies
+  «срок завоза» and «как заказывать» and the scenario's `supply.arrive` and `supply.how`);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
@@ -648,7 +668,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   the daily lists — the meeting's «ждали …», «Поставить сейчас» and «Утвердить», a bar's and a room card's rows of the
   day (`e2e-launch.mjs`), the forecast — the meeting's block on 1 November, the method, a cell's edit and its removal,
   «прогноз против факта» (`e2e-forecast.mjs`), the S&OP meeting — opened by itself on 3 September, a cell's target,
-  «Утвердить», the journal and the rule's batch order by the plan (`e2e-sop.mjs`), the «code —
+  «Утвердить», the journal and the rule's batch order by the plan (`e2e-sop.mjs`), the materials — the meeting's block
+  on 2 September, the «Материалы» tab, «Заказать» and «Отправить», «Ускорить» and the journal (`e2e-mrp.mjs`), the
+  «code —
   Blender» sheet
   of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench
   (`bench.mjs`, `--art code` — machines in code), the release update archive — one `resources/app.asar`

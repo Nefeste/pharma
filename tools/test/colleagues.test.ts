@@ -145,6 +145,8 @@ describe('коллега планирования', () => {
 describe('коллега снабжения', () => {
   test('в 09:00 рабочего дня — всё, что ниже точки заказа, у одобренного поставщика одним заказом, не больше половины карантина', () => {
     const s = newPlant(db, { scenario: SC });
+    // правило по точке заказа, как до Б6д; по потребности — tools/test/mrp.test.ts
+    apply(db, s, { kind: 'policy', policy: 'pol.supply.how', value: 'point' });
     until(s, 0, SUPPLY_HOUR - HOUR);
     const per = planUse(db, s, 1000);
     const below = new Set<string>();
@@ -210,9 +212,15 @@ describe('год завода прототипа', () => {
         }
       if (s.t % DAY !== 0) continue;
       bad.push(...check(db, s));
-      // заказ покупателя не висит открытым дольше суток после срока; задание на серию не ждёт материал дольше трёх суток
+      // заказ покупателя не висит открытым дольше суток после срока; задание на серию не ждёт материал дольше трёх суток.
+      // С Б6д запас по потребности тоньше точки заказа: ждать дольше можно, только если входной контроль отклонил партию
+      // этого материала за 120 суток до того, и не дольше двух недель (на зерне сценария — АФС парацетамола в марте 2028)
       for (const o of Object.values(s.orders)) if (o.status === 'open' && o.due < s.t - DAY) bad.push(`заказ ${o.id} открыт после срока`);
-      for (const b of Object.values(s.batches)) if (b.status === 'waiting' && b.notBefore < s.t - 3 * DAY) bad.push(`задание ${b.id} ждёт материал`);
+      for (const b of Object.values(s.batches)) {
+        if (b.status !== 'waiting' || b.notBefore >= s.t - 3 * DAY) continue;
+        const after = (b.short ?? []).every(x => Object.values(s.lots).some(l => l.material === x.material && l.po && l.status === 'rejected' && l.since !== undefined && s.t - l.since < 120 * DAY));
+        if (!after || b.notBefore < s.t - 14 * DAY) bad.push(`задание ${b.id} ждёт материал`);
+      }
     }
     expect([...new Set(bad)].slice(0, 5)).toEqual([]);
     // с третьей недели — не меньше четырёх упакованных серий за любые десять рабочих дней подряд (две рабочие недели).
@@ -229,23 +237,26 @@ describe('год завода прототипа', () => {
     const tens = work.slice(9).map((_, i) => work.slice(i, i + 10).reduce((n, d) => n + (per.get(d) ?? 0), 0));
     expect(Math.min(...tens)).toBeGreaterThanOrEqual(3);
     expect(tens.filter(n => n < 4).length).toBeLessThanOrEqual(10);
-    // после пуска — недопоставок почти нет: за год больше девяти из десяти заказов — в срок полностью
+    // после пуска — недопоставок почти нет: за год больше шести из семи заказов — в срок полностью. До Б6д было больше
+    // девяти из десяти; с правилом снабжения «по потребности» запас АФС тоньше, и на зерне сценария отклонённая в январе
+    // 2028 партия парацетамола на 1 250 кг остановила серии в марте — 88 %
     const orders = Object.values(s.orders).filter(o => o.status !== 'open');
-    expect(orders.filter(o => o.status === 'shipped').length / orders.length).toBeGreaterThan(0.9);
+    expect(orders.filter(o => o.status === 'shipped').length / orders.length).toBeGreaterThan(0.85);
     // аппаратчики и кладовщик на смене заняты задачами не меньше трети времени
     for (const r of ['role.operator', 'role.storekeeper']) expect([r, (busy[r] ?? 0) / shift[r] > 0.33]).toEqual([r, true]);
     // журнал решений (Б5а): записей руководителей — столько же, сколько решений в замере «Как сейчас» спецификации Б5:
     // 201 задание, 112 заказов, 330 решений ОКК по партиям — разрешить или отклонить (решение «расследование» замер
     // считал с расследованием), 196 выпусков, 17 визитов подрядчика. С Б5в руководители — люди: решения ОКК и
     // уполномоченного лица ждут смены, — заказов поставщикам 113, решений по партиям 332, выпусков 197. С Б6в спрос — с
-    // сезоном группы: заданий 198, заказов 119, решений по партиям 326, выпусков 196
+    // сезоном группы: заданий 198, заказов 119, решений по партиям 326, выпусков 196. С Б6д снабжение — по потребности:
+    // заказов поставщикам 78 — у поставщика одним заказом больше строк, решений по партиям 367, выпусков 194
     expect({
       orders: notes['plan/order'],
       pos: notes['supply/po'],
       lots: (notes['qc/lot:release'] ?? 0) + (notes['qc/lot:reject'] ?? 0),
       releases: notes['qp/batch:release'],
       visits: notes['maint/visit'],
-    }).toEqual({ orders: 198, pos: 119, lots: 326, releases: 196, visits: 17 });
+    }).toEqual({ orders: 198, pos: 78, lots: 367, releases: 194, visits: 17 });
     // за срок журнала — около 220 записей разом (спецификация Б5а)
     expect(s.journal.length).toBeGreaterThan(180);
     expect(s.journal.length).toBeLessThan(270);

@@ -27,6 +27,9 @@ export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
   assess: 'quality',
   setpoint: 'quality',
   po: 'supply',
+  // ускорить и отменить заказ поставщику (Б6д)
+  expedite: 'supply',
+  cancelPo: 'supply',
   waste: 'supply',
   visit: 'production',
   classify: 'quality',

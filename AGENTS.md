@@ -282,8 +282,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   market by role; a vacancy by an ad — candidates on Monday at 09:00, the ad paid by the week — or through an agency —
   an experienced candidate after its days, the fee on hiring; a candidate looks for work only so many days; hiring — the
   medical exam on workdays at the plant's cost, the first day — the first shift of the vacancy's schedule after it, the
-  next personnel number, training at once, the trial; dismissal — by agreement today with a payment, a failed trial in
-  three days and only within the trial, by own wish two weeks after the application, «let go earlier»; turnover; the
+  next personnel number, training at once, the trial; with 0.0.65 a vacancy in place of a leaver is their place — the
+  hire takes the leaver's related professions and learns their rows from the first day; dismissal — by agreement today
+  with a payment, a failed trial in three days and only within the trial, by own wish two weeks after the application,
+  «let go earlier»; turnover; the
   person leaves after the last shift, the vacation parts after the last day dropped and the parts they deputized for
   given to the next deputy; the colleague of a post the player does not hold opens a vacancy for each
   application and hires the first fit candidate — an agency at once for a role no ad finds, the price within the
@@ -296,7 +298,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   hinders nobody and the fewest days of others' parts fall; edits by the department's post or the director, the
   approval on 17 December or the last workday before it, then a move by agreement no closer than two weeks; the notice
   two weeks ahead; away and back at midnight; a deputy — the first by personnel number with the related profession of
-  the absent's role, of the same shift if any; who covers whom on a day; days earned and used, the compensation days;
+  the absent's role, of the same shift if any; with 0.0.65, once a role gains someone with its related profession,
+  the parts of its people without a deputy get one by the same rule from the next day (`deputyCame`); who covers whom on
+  a day; days earned and used, the compensation days;
   the `leave` command), `journal.ts` (with Б5а, the decision journal: a record for each decision a rule makes for a
   department head — the head by position, what was decided about which thing, the reason with the plant's numbers and
   never the truth; the player's command of the same kinds — «you» with the place it came from; a colleague's command —

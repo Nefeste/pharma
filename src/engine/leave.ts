@@ -484,6 +484,24 @@ export function deputyGone(db: ContentDb, s: PlantState, who: string, from: numb
 }
 
 /**
+ * У ролей `roles` появился человек со смежной профессией (0.0.65): новый человек на место ушедшего или «Обучить смежной
+ * профессии». Частям людей этих ролей, которые ещё идут или впереди и у которых с дня `from` заместителя нет, кадры
+ * ставят заместителя по правилу — как ушедшему заместителю следующего (`deputyGone`); нет свободного — часть остаётся
+ * без заместителя.
+ */
+export function deputyCame(db: ContentDb, s: PlantState, roles: readonly Id[], from: number) {
+  for (const p of Object.values(s.people)) {
+    if (!roles.includes(p.role) || db.roles[p.role].same) continue;
+    for (const a of p.away ?? []) {
+      if (a.to < from || a.deputy) continue;
+      const f = Math.max(a.from, from);
+      const d = pickDeputy(db, s, p, a, f);
+      if (d) setDeputy(a, d, f);
+    }
+  }
+}
+
+/**
  * Последний день уходящего (Б4в): части после него снимаются; часть, в которой он, кончается им — её дни оплачены
  * отпускными, использованы (cash.ts, компенсация).
  */

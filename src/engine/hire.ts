@@ -14,7 +14,7 @@ import { addMonths, addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf }
 import { hiringPay, salaryOf, settle } from './cash';
 import { modeOf, round } from './heads';
 import { asWho, DEPT_HEAD, note, noteCmd } from './journal';
-import { deputyGone, dropAfter } from './leave';
+import { deputyCame, deputyGone, dropAfter } from './leave';
 import { planOf } from './plant';
 import { normal, roll, spread } from './random';
 import { graphSpan, spanOn } from './shifts';
@@ -210,7 +210,8 @@ function hireCandidate(db: ContentDb, s: PlantState, lab: Labor, id: string, tri
 /**
  * Первый день: человек у входа с табельным номером по порядку приёма; договор и приказ — мгновение (гипотеза); у
  * сменного по циклу — график с этого дня (суммированный учёт с дня приёма, Б4б); сразу — задачи изучить документы
- * строки матрицы роли (Б3б).
+ * строки матрицы роли (Б3б). Вакансия на место ушедшего (0.0.65) — его место: те же роль, график и смежные профессии
+ * (Б4г) — задачи изучить и их строки, а частям людей этих ролей без заместителя — заместитель по правилу.
  */
 function start(db: ContentDb, s: PlantState, h: Hire, notices: Notice[]) {
   const sc = db.scenarios[s.scenario];
@@ -234,9 +235,14 @@ function start(db: ContentDb, s: PlantState, h: Hire, notices: Notice[]) {
     ...(db.shifts[h.shift].cycle ? { roster: [{ shift: h.shift, from: h.day }] } : {}),
     ...(h.trial > 0 ? { trial: addMonths(h.day, h.trial) - 1 } : {}),
   };
+  // место ушедшего — вакансия его роли на его заявление; вакансия другой роли вместо него — не его место
+  const was = Object.values(s.people).find(q => q.quit?.vacancy === h.vacancy) ?? Object.values(s.former).find(q => q.quit?.vacancy === h.vacancy);
+  const also = was?.role === p.role ? (was.also ?? []).filter(r => r !== p.role && !db.roles[r]?.same) : [];
+  if (also.length > 0) p.also = also;
   s.people[p.id] = p;
   delete s.hires[h.id];
   trainNow(db, s, p);
+  if (also.length > 0) deputyCame(db, s, also, h.day + 1);
   notices.push({ kind: 'hired', person: p.id, role: p.role, tab: p.tab });
 }
 

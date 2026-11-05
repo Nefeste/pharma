@@ -7,7 +7,7 @@ import type { ContentDb, Id, Scenario } from '../content/types';
 import { addMonths, momentOf } from './core/calendar';
 import { fnv1a } from './core/hash';
 import { headOf, inForce } from './docs';
-import { deputyGone } from './leave';
+import { deputyCame, deputyGone } from './leave';
 import { type PlantPlan, planOf, type Point } from './plant';
 import { dueRev, knows, learnable, learnRec, rowsOf } from './quals';
 import { addTask, dropTask } from './tasks';
@@ -129,6 +129,8 @@ export function alsoCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
     if (has) return;
     p.also = [...(p.also ?? []), cmd.role];
     trainNow(db, s, p);
+    // части людей роли без заместителя — ему или другому по правилу (0.0.65)
+    deputyCame(db, s, [cmd.role], momentOf(s.start, s.t).day + 1);
     return;
   }
   if (!has) return;

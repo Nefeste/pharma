@@ -7,7 +7,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 38;
+export const SCHEMA = 39;
 
 // ---------------------------------------------------------------- склад
 
@@ -436,7 +436,10 @@ export interface CauseHit {
  * `packing` — задание на упаковку; `fg` — упакована, ГП в карантине до решения уполномоченного лица; `released` —
  * выпущена; `rejected` — отклонена (балк или ГП).
  */
-export type BatchStatus = 'waiting' | 'reserved' | 'kitting' | 'process' | 'bulk' | 'packing' | 'fg' | 'released' | 'rejected';
+export type BatchStatus = 'waiting' | 'reserved' | 'kitting' | 'process' | 'bulk' | 'packing' | 'fg' | 'released' | 'rejected' | 'cancelled';
+
+/** Под что задание на серию (Б6а): запас позиции или заказ покупателя. */
+export type BatchFor = { kind: 'stock' } | { kind: 'order'; order: string };
 
 /**
  * Чем занято время серии (геймдизайн, §5.4): ждёт своей даты; нет материалов; комплектация; стадия ждёт людей;
@@ -615,6 +618,15 @@ export interface Batch {
   ordered: number;
   by: string;
   status: BatchStatus;
+  /**
+   * срок (Б6а): к какому мгновению серия нужна — у заказа покупателя его срок отгрузки, у запаса позиции — отгрузка того
+   * рабочего дня, когда запас кончится по спросу; нет — стартовые задания, задания до схемы 39 и пока спроса не видно
+   */
+  due?: number;
+  /** под что (Б6а); нет — как `due` */
+  for?: BatchFor;
+  /** когда отменено (Б6а) */
+  cancelled?: number;
   /** чего не хватает, мг или шт., и при каком состоянии склада это посчитано (`next.stock`) */
   short?: { material: Id; qty: number }[];
   tried?: number;
@@ -1409,6 +1421,8 @@ export interface SkuWhy {
   cases: number;
   ordered: number;
   work: number;
+  /** задание на запас позиции отменили (Б6а): когда — и до какого «не раньше» отменённого его не ставят снова */
+  held?: { t: number; until: number };
 }
 
 /**
@@ -1482,7 +1496,9 @@ export interface TestWhy {
  */
 export type Decided =
   /** задание на серию: позиция, карта и «не раньше» */
-  | { kind: 'order'; batch?: string; recipe: Id; sku?: Id; notBefore: number; why?: OrderWhy }
+  | { kind: 'order'; batch?: string; recipe: Id; sku?: Id; notBefore: number; due?: number; for?: BatchFor; why?: OrderWhy }
+  /** отмена задания на серию до комплектовки (Б6а): позиция, «не раньше», срок и под что */
+  | { kind: 'cancel'; batch: string; sku?: Id; notBefore: number; due?: number; for?: BatchFor }
   /** заказ поставщику: предоплата; по каждой строке — положение материала */
   | { kind: 'po'; po?: string; supplier: Id; prepaid: number; why?: PoWhy[] }
   /** шаг расследования */
@@ -1898,7 +1914,9 @@ export type Command =
   /** заказ поставщику: количество — мг или шт., округляется вверх до целой тары */
   | { kind: 'po'; supplier: Id; lines: PoLine[]; by?: string }
   /** задание на серию по карте: не раньше — игровые секунды; нет — сейчас */
-  | { kind: 'order'; recipe: Id; notBefore?: number; by?: string; sku?: Id }
+  | { kind: 'order'; recipe: Id; notBefore?: number; by?: string; sku?: Id; for?: string }
+  /** отменить задание на серию до комплектовки (Б6а) */
+  | { kind: 'cancel'; batch: string; by?: string }
   /**
    * оценка влияния отклонения (Б1г): пост качества решает, специалист ООК делает работу; «без влияния» — только когда
    * связанные испытания серии готовы и в спецификации
@@ -2012,6 +2030,8 @@ export type Refusal =
   | 'notLab'
   | 'already'
   | 'started'
+  | 'cancelled'
+  | 'noOrder'
   | 'notYours'
   | 'noSeat'
   /** заказ не по одобренной паре «поставщик — изготовитель» действующей спецификации (Б3г) */

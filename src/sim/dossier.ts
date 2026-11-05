@@ -133,6 +133,10 @@ export interface DossierView {
   product?: Id;
   sku?: Id;
   status?: BatchStatus;
+  /** срок и под что (Б6а): запас позиции или заказ покупателя — его покупатель; до комплектовки — можно отменить */
+  due?: number;
+  goal?: { kind: 'stock' } | { kind: 'order'; order: string; customer?: Id };
+  open?: true;
   /** размер серии по карте: масса и таблеток */
   mass?: number;
   units?: number;
@@ -266,6 +270,9 @@ export function dossierView(db: ContentDb, s: PlantState, q: DossierQuery): Doss
     product: b.product,
     ...(b.sku ? { sku: b.sku } : {}),
     status: b.status,
+    ...(b.due !== undefined ? { due: b.due } : {}),
+    ...(b.for ? { goal: b.for.kind === 'order' ? { kind: 'order' as const, order: b.for.order, ...(s.orders[b.for.order] ? { customer: s.orders[b.for.order].customer } : {}) } : { kind: 'stock' as const } } : {}),
+    ...(b.status === 'waiting' || b.status === 'reserved' ? { open: true as const } : {}),
     mass: r.batch.mass,
     units: r.batch.units,
     ...(b.issued !== undefined ? { issued: b.issued } : {}),

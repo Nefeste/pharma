@@ -63,6 +63,10 @@
 // принимает CAPA начальника ООК и сам назначает внеочередную калибровку прибора МОК, одному отклонению задаёт класс;
 // руководители постов игрока советуют: выполнить CAPA — предложения, принятые выполнены и ждут проверки эффективности, а
 // калибровку главный механик предложил — предложение открыто; записок и вопросов здесь нет — их держит образец схемы 37.
+// С схемы 39 — посреди заданий на серию: у заданий начальника отдела планирования — срок и «под что», игрок на посту
+// «Производство» отменил задание на запас позиции до комплектовки — до его «не раньше» начальник позицию не ставит, и
+// причина в журнале это называет, — а срочное задание под заказ покупателя стоит со сроком заказа; CAPA здесь тоже
+// есть, но их держит образец схемы 38.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { visitLast } from '../../src/engine/assets';
@@ -172,8 +176,14 @@ const capaed = () =>
   Object.values(s.capas).some(c => c.done !== undefined && !c.check) &&
   Object.values(s.capas).some(c => c.done === undefined && s.heads.open[`capa/${c.id}`] !== undefined) &&
   Object.values(s.deviations).some(d => d.clsBy);
+// посреди заданий на серию (Б6а): отменённое игроком на запас держит позицию, причина в журнале, задание под заказ стоит
+const heldRec = () => s.journal.some(r => r.by === 'plan' && r.d.kind === 'order' && r.d.why?.items.some(i => i.held) && r.d.due !== undefined);
+const jobbed = () =>
+  Object.values(s.batches).some(b => b.status === 'cancelled' && b.for?.kind === 'stock' && b.notBefore > s.t) &&
+  Object.values(s.batches).some(b => b.for?.kind === 'order' && (b.status === 'waiting' || b.status === 'reserved')) &&
+  heldRec();
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : SCHEMA < 34 ? seated() && kpied() : SCHEMA < 35 ? seated() && asked() : SCHEMA < 36 ? seated() && policied() : SCHEMA < 37 ? seated() && bossed() : SCHEMA < 38 ? seated() && memoed() : seated() && capaed();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : SCHEMA < 34 ? seated() && kpied() : SCHEMA < 35 ? seated() && asked() : SCHEMA < 36 ? seated() && policied() : SCHEMA < 37 ? seated() && bossed() : SCHEMA < 38 ? seated() && memoed() : SCHEMA < 39 ? seated() && capaed() : seated() && jobbed();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 const refused = new Set<string>();
@@ -285,6 +295,23 @@ while (s.t < end && !busy()) {
       for (const d of Object.values(s.deviations)) if (d.kind === 'ipc' && d.status === 'open') apply(db, s, { kind: 'capa', deviation: d.id, action: 'capa.calib', by: 'player' });
     const done = Object.values(s.deviations).find(d => d.assess?.done !== undefined);
     if (done && !Object.values(s.deviations).some(d => d.clsBy)) apply(db, s, { kind: 'classify', deviation: done.id, cls: done.cls === 'minor' ? 'major' : 'minor', by: 'player' });
+  }
+  // с схемы 39 — пост «Производство»: отменить последнее задание начальника на запас до комплектовки; когда начальник
+  // уже ставит задания со сроком и причина называет отменённое — срочное задание под открытый заказ позиции плана,
+  // не раньше чем через трое суток
+  if (SCHEMA >= 39 && s.seats?.some(x => x.seat === 'production' && x.to === undefined)) {
+    if (!Object.values(s.batches).some(b => b.status === 'cancelled')) {
+      const b = Object.values(s.batches)
+        .filter(x => x.by === 'head:plan' && (x.status === 'waiting' || x.status === 'reserved') && x.notBefore > s.t + 5 * DAY)
+        .sort((a, c) => c.notBefore - a.notBefore)[0];
+      if (b) apply(db, s, { kind: 'cancel', batch: b.id, by: 'player' });
+    }
+    if (!Object.values(s.batches).some(b => b.for?.kind === 'order') && heldRec()) {
+      const items = db.scenarios['scn.proto'].plan!.items;
+      const o = Object.values(s.orders).find(x => x.status === 'open' && x.lines.some(l => items.some(i => i.sku === l.sku)));
+      const it = o && items.find(i => o.lines.some(l => l.sku === i.sku));
+      if (o && it) apply(db, s, { kind: 'order', recipe: it.recipe, sku: it.sku, for: o.id, notBefore: s.t + 3 * DAY, by: 'player' });
+    }
   }
   // схема 37 — вопрос открыт: вторая записка начальнику снабжения, тот же заказ
   if ((SCHEMA as number) === 37 && s.heads.qs && !s.journal.some(r => r.memo && !r.memo.end))

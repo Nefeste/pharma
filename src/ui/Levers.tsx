@@ -36,6 +36,8 @@ function words(l: Exclude<Lever, { k: 'later' }>): [string, string] {
       return [T.levers.person(T.card.person(named(db?.roles[l.role]?.name, l.role), l.tab)), T.levers.personWhat];
     case 'journal':
       return [T.levers.journal, T.levers.journalWhat];
+    case 'jobs':
+      return [T.levers.jobs, T.levers.jobsWhat];
     case 'kpi':
       return [T.levers.kpi, T.levers.kpiWhat];
     case 'waste':
@@ -84,6 +86,11 @@ function run(l: Lever, hud: Hud, actions: Actions) {
       return;
     case 'journal':
       actions.openJournal(l.n);
+      return;
+    case 'jobs':
+      // вкладка «Задания» (Б6а): сначала вкладка, потом окно — оно откроется на ней
+      actions.ganttTab('jobs');
+      if (!hud.gantt.open) actions.toggleGantt();
       return;
     case 'kpi':
       actions.openKpi(l.month);

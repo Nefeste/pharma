@@ -2,7 +2,7 @@
 // за время на нём (3е), вчера в цифрах, одна главная потеря, одна подсказка; что было с прошлой планёрки; что ждёт сейчас. Большое окно поверх карты с
 // вопросом в заголовке. Вид собирает поток расчёта (src/sim/report.ts) без слов и без истины; слова — отсюда.
 import type { ReactNode } from 'react';
-import { devLevers, heldLevers, mainLevers, resignLevers, riskLevers, wasteLevers } from '../app/levers';
+import { devLevers, heldLevers, mainLevers, resignLevers, riskLevers, uncoveredLevers, wasteLevers } from '../app/levers';
 import type { PartType, Scenario } from '../content/types';
 import { civilFromDays, DAY, HOUR, momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
@@ -623,6 +623,20 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                   <Levers list={riskLevers(x, scenario ?? {}, v.held)} hud={hud} actions={actions} close={close} />
                 </li>
               ))}
+            />
+            <Rows
+              title={T.jobs.uncovered}
+              rows={
+                // заказы без покрытия (Б6а): число — построчно они во вкладке «Задания» расписания
+                v.uncovered
+                  ? [
+                      <li key="u" className="bad" data-test="morning-uncovered">
+                        {T.jobs.morning(v.uncovered.orders, v.uncovered.cases)}
+                        <Levers list={uncoveredLevers()} hud={hud} actions={actions} close={close} />
+                      </li>,
+                    ]
+                  : []
+              }
             />
             <Rows
               title={T.morning.pendingTitle}

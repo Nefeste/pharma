@@ -10,7 +10,7 @@ import { dayText, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { DispRow, DossierView, LotQty, PackDossier, StageRow, Who } from '../sim/dossier';
 import { db, docText } from './db';
 import { WhoList } from './Journal';
-import type { Actions, Hud } from './store';
+import { type Actions, holds, type Hud } from './store';
 import { paramNum, paramText } from './units';
 
 /** Количество материала в его единице: масса — кг до граммов, штуки — штуками. */
@@ -77,7 +77,8 @@ function Disp({ v, start, actions }: { v: DossierView; start: Ymd; actions: Acti
   return (
     <div className="dsec" data-test="dossier-disp" data-weighed={v.weighed ? '1' : '0'}>
       <div className="msec">{T.dossier.weighed}</div>
-      {!v.weighed ? <div className="muted">{reserved ? T.dossier.reserve : T.dossier.noReserve}</div> : null}
+      {/* отменённое задание (Б6а): резерв вернулся в свободный запас, а не «не хватает материала» */}
+      {!v.weighed ? <div className="muted">{v.status === 'cancelled' ? T.dossier.noReserveCancelled : reserved ? T.dossier.reserve : T.dossier.noReserve}</div> : null}
       <table className="dtab">
         <thead>
           <tr>
@@ -403,6 +404,23 @@ export function Dossier({ hud, actions }: { hud: Hud; actions: Actions }) {
             {v.sku ? head(T.dossier.sku, `${named(db?.skus[v.sku]?.name, v.sku)} · ${T.card.packingOf(docText('skus', v.sku))}`) : null}
             {v.mass !== undefined && v.units !== undefined ? head(T.dossier.size, T.dossier.sizeText(kg(v.mass), num(v.units))) : null}
             {v.status ? head(T.dossier.state, T.dossier.status[v.status]) : null}
+            {v.goal ? head(T.dossier.goal, v.goal.kind === 'stock' ? T.jobs.stock : T.jobs.forOrder(v.goal.customer ? named(db?.customers[v.goal.customer]?.name, v.goal.customer) : v.goal.order)) : null}
+            {v.due !== undefined ? head(T.dossier.due, whenText(start, v.due)) : null}
+            {v.open ? (
+              <div>
+                {/* отменяет пост «Производство» или директор; у чужого поста — погашена с подписью, чей он (Б5б) */}
+                <button
+                  type="button"
+                  className="small"
+                  disabled={!holds(hud, 'production')}
+                  onClick={() => actions.cancelJob(`B${v.batch}`)}
+                  title={holds(hud, 'production') ? T.dossier.cancelHint : T.seats.notYours(T.seats.names.production)}
+                  data-test="dossier-cancel"
+                >
+                  {T.jobs.cancel}
+                </button>
+              </div>
+            ) : null}
             {v.issued !== undefined ? head(T.dossier.issued, whenText(start, v.issued)) : null}
             {v.produced !== undefined ? head(T.dossier.produced, <span title={T.dossier.producedHint}>{dayText(momentOf(start, v.produced).day)}</span>) : null}
           </dl>

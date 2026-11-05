@@ -19,12 +19,13 @@ import { cleaned, defect, recleaned } from './lean';
 import { blocked, consume, failPart, partsOf, partType, untilFail, wearAt } from './maint';
 import { stageSetpoints, unitsPerHour } from './modes';
 import { type PlantPlan, planOf } from './plant';
-import { POL, policyOf } from './policies';
+import { stockDue } from './planner';
+import { numOf, POL, policyOf } from './policies';
 import { measure, within } from './quality';
 import { normal, roll, spread } from './random';
 import { containersByLot, createLot, free, knownAssay, nextId, putUnit, stockChanged } from './stock';
 import { addTask, release } from './tasks';
-import type { Batch, Command, Container, Deviation, Equipment, KitLine, Lot, Notice, OrderWhy, PackJob, Part, Place, PlantEvent, PlantState, Room, StageRecord, StageRun, Task, Unit } from './types';
+import type { Batch, BatchFor, Command, Container, Deviation, Equipment, KitLine, Lot, Notice, OrderWhy, PackJob, Part, Place, PlantEvent, PlantState, Room, StageRecord, StageRun, Task, Unit } from './types';
 import { PRIO, WMS } from './wms';
 
 /** Роли производства. */
@@ -57,13 +58,58 @@ export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, {
     notices.push({ kind: 'refused', cmd: 'order', why: 'noRecipe', detail: cmd.recipe });
     return;
   }
+  // под что и срок (Б6а): под заказ покупателя — его срок отгрузки; на запас позиции — когда запас кончится по спросу,
+  // считают до нового задания
+  let goal: BatchFor | undefined;
+  let due: number | undefined;
+  if (cmd.for !== undefined) {
+    const o = s.orders[cmd.for];
+    if (!o || o.status !== 'open' || (cmd.sku !== undefined && !o.lines.some(l => l.sku === cmd.sku))) {
+      notices.push({ kind: 'refused', cmd: 'order', why: 'noOrder', detail: cmd.for });
+      return;
+    }
+    goal = { kind: 'order', order: o.id };
+    due = o.due;
+  } else if (cmd.sku !== undefined) {
+    goal = { kind: 'stock' };
+    const window = numOf(db, s, POL.window);
+    if (window !== undefined && db.skus[cmd.sku]) due = stockDue(db, s, cmd.sku, window);
+  }
   const notBefore = Math.max(s.t, cmd.notBefore ?? s.t);
   const b = newBatch(db, s, nextId(s, 'B'), cmd.recipe, notBefore, cmd.by ?? 'player', cmd.sku);
+  if (goal) b.for = goal;
+  if (due !== undefined) b.due = due;
   s.batches[b.id] = b;
   schedule(s.agenda, b.notBefore, { kind: 'batch', id: b.id });
   reserve(db, s, b);
   // журнал решений (Б5а): игрок или начальник отдела планирования — с причиной коллеги
-  noteCmd(s, cmd, { kind: 'order', batch: b.id, recipe: b.recipe, ...(b.sku ? { sku: b.sku } : {}), notBefore: b.notBefore, ...(why ? { why } : {}) });
+  noteCmd(s, cmd, { kind: 'order', batch: b.id, recipe: b.recipe, ...(b.sku ? { sku: b.sku } : {}), notBefore: b.notBefore, ...(due !== undefined ? { due } : {}), ...(goal ? { for: goal } : {}), ...(why ? { why } : {}) });
+}
+
+/**
+ * Команда `cancel` (Б6а): отменить задание на серию до комплектовки — пока оно ждёт своего дня или материала. Резерв —
+ * обратно в свободный запас, ждущие задания пробуют резерв снова; запись журнала — с позицией, «не раньше», сроком и под
+ * что. Отказы: задания нет; уже отменено; начато — досье выдано, серию не отменяют, остановить её можно только
+ * отклонением (Б5е).
+ */
+export function cancelOrder(s: PlantState, cmd: Extract<Command, { kind: 'cancel' }>, notices: Notice[]) {
+  const b = s.batches[cmd.batch];
+  if (!b) return notices.push({ kind: 'refused', cmd: 'cancel', why: 'noBatch', detail: cmd.batch });
+  if (b.status === 'cancelled') return notices.push({ kind: 'refused', cmd: 'cancel', why: 'cancelled', detail: cmd.batch });
+  if (b.status !== 'waiting' && b.status !== 'reserved') return notices.push({ kind: 'refused', cmd: 'cancel', why: 'started', detail: cmd.batch });
+  for (const k of b.kit) {
+    const c = s.containers[k.container];
+    if (!c) continue;
+    c.reserved = (c.reserved ?? 0) - k.qty;
+    if (c.reserved <= 0) delete c.reserved;
+  }
+  b.kit = [];
+  delete b.short;
+  delete b.tried;
+  b.status = 'cancelled';
+  b.cancelled = s.t;
+  stockChanged(s);
+  noteCmd(s, cmd, { kind: 'cancel', batch: b.id, ...(b.sku ? { sku: b.sku } : {}), notBefore: b.notBefore, ...(b.due !== undefined ? { due: b.due } : {}), ...(b.for ? { for: b.for } : {}) });
 }
 
 /**

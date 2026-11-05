@@ -15,7 +15,7 @@ import { foreign, held } from '../engine/seats';
 import { unitsOfLot } from '../engine/stock';
 import { quotePo } from '../engine/supply';
 import { memoAt } from '../engine/memos';
-import type { Ask, AssetFamily, Batch, Command, Decided, Decision, DeptMode, ForkAsk, Head, Lot, MemoRes, Person, PlantState } from '../engine/types';
+import type { Ask, AssetFamily, Batch, BatchFor, Command, Decided, Decision, DeptMode, ForkAsk, Head, Lot, MemoRes, Person, PlantState } from '../engine/types';
 import { movable, thingOf } from './places';
 import type { Thing } from './views';
 
@@ -66,6 +66,8 @@ export interface JournalRef {
   role?: Id;
   /** CAPA (Б5е): номер */
   capa?: number;
+  /** задание под заказ покупателя (Б6а): покупатель */
+  customer?: Id;
 }
 
 /**
@@ -165,6 +167,7 @@ export const JOURNAL_PAGE = 50;
 function headOf(db: ContentDb, d: Decided): Head {
   switch (d.kind) {
     case 'order':
+    case 'cancel':
       return 'plan';
     case 'po':
     case 'contract':
@@ -227,6 +230,12 @@ function batchRef(s: PlantState, id: string): JournalRef {
   return { bn: num(id), ...(c ? { code: c } : {}), ...(b?.sku ? { sku: b.sku } : {}) };
 }
 
+/** Покупатель заказа, под который задание (Б6а). */
+function customerOf(s: PlantState, f: BatchFor | undefined): JournalRef {
+  const o = f?.kind === 'order' ? s.orders[f.order] : undefined;
+  return o ? { customer: o.customer } : {};
+}
+
 function lotRef(s: PlantState, id: string): JournalRef {
   const l: Lot | undefined = s.lots[id];
   if (!l) return {};
@@ -266,7 +275,9 @@ export function refOf(db: ContentDb, s: PlantState, d: Decided, ask?: Ask): Jour
   }
   switch (d.kind) {
     case 'order':
-      return d.batch ? batchRef(s, d.batch) : {};
+      return { ...(d.batch ? batchRef(s, d.batch) : {}), ...customerOf(s, d.for) };
+    case 'cancel':
+      return { ...batchRef(s, d.batch), ...customerOf(s, d.for) };
     case 'batch':
       return batchRef(s, d.batch);
     case 'po': {
@@ -347,6 +358,7 @@ export function cmdRef(db: ContentDb, s: PlantState, c: Command): JournalRef {
   switch (c.kind) {
     case 'shift':
     case 'pack':
+    case 'cancel':
       return batchRef(s, c.batch);
     case 'rush':
       return lotRef(s, c.lot);

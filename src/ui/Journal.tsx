@@ -10,7 +10,7 @@ import { momentOf, type Ymd } from '../engine/core/calendar';
 import { KEEP } from '../engine/journal';
 import { FORK_OPTS } from '../engine/forks';
 import { ONE_FAILURE } from '../engine/maint';
-import type { Command, Decided, DeptMode, Head } from '../engine/types';
+import type { BatchFor, Command, Decided, DeptMode, Head } from '../engine/types';
 import { dayText, durText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { AskInfo, JournalAs, JournalRef, JournalRow, ModeInfo, WhoRow } from '../sim/journal';
 import { assetClass, workName } from './assets';
@@ -69,12 +69,21 @@ function modeWhat(r: JournalRef): string {
   return [T.ref.params[m?.param ?? ''] ?? m?.param, T.stages[m?.stage ?? ''] ?? m?.stage, m?.recipe ? named(db?.recipes[m.recipe]?.name, m.recipe) : ''].filter(Boolean).join(' · ');
 }
 
+/** Срок и под что задания (Б6а): « · срок 15.03 15:00 · под заказ Аптечной сети»; у прежних заданий — ничего. */
+function goalText(due: number | undefined, goal: BatchFor | undefined, r: JournalRef, start: Ymd): string {
+  const J = T.journal.what;
+  const when = due !== undefined ? J.due(whenText(start, due)) : '';
+  return `${when}${goal?.kind === 'order' ? J.forOrder(r.customer ? named(db?.customers[r.customer]?.name, r.customer) : goal.order) : ''}`;
+}
+
 /** Что решено и о чём — одной строкой. */
 export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
   const J = T.journal.what;
   switch (d.kind) {
     case 'order':
-      return `${J.order(sku(d.sku) || named(db?.recipes[d.recipe]?.name, d.recipe), whenText(start, d.notBefore))}${r.code ? ` · ${T.now.batch(r.code)}` : ''}`;
+      return `${J.order(sku(d.sku) || named(db?.recipes[d.recipe]?.name, d.recipe), whenText(start, d.notBefore))}${goalText(d.due, d.for, r, start)}${r.code ? ` · ${T.now.batch(r.code)}` : ''}`;
+    case 'cancel':
+      return `${J.cancel(sku(d.sku) || T.now.batch(r.code || `B${r.bn ?? ''}`), whenText(start, d.notBefore))}${goalText(d.due, d.for, r, start)}`;
     case 'po':
       return J.po(party(d.supplier), (r.po?.lines ?? []).map(l => `${material(l.material)}, ${qty(l.material, l.qty)}`).join('; '));
     case 'step':
@@ -153,6 +162,8 @@ export function cmdText(c: Command, r: JournalRef, start: Ymd): string {
       return C.order(sku(c.sku) || named(db?.recipes[c.recipe]?.name, c.recipe), c.notBefore !== undefined ? whenText(start, c.notBefore) : '—');
     case 'shift':
       return C.shift(T.now.batch(batchCode(r) || c.batch), whenText(start, c.notBefore));
+    case 'cancel':
+      return C.cancel(T.now.batch(batchCode(r) || c.batch));
     case 'pack':
       return C.pack(T.now.batch(batchCode(r) || c.batch), sku(c.sku));
     case 'maintain':
@@ -238,7 +249,10 @@ export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): stri
       const others = below.length > 0 ? J.order.others(below.map(x => J.order.other(sku(x.sku), Math.round(pos(x) * 10) / 10)).join('; ')) : J.order.alone;
       // навык руководителя сократил горизонт (Б5в): запас — его, политика — какой была бы
       const limited = w.policy !== undefined && w.cover !== undefined ? J.order.limited(w.cover, w.policy) : '';
-      return [[head, J.order.threshold(Number.isInteger(ahead) ? ahead : Math.round(ahead * 10) / 10, w.cover), rule].filter(Boolean).join('; '), others, ...(limited ? [limited] : [])];
+      // срок (Б6а): когда кончится запас позиции; отменённое на запас — до его «не раньше» позицию не ставят
+      const due = d.due !== undefined && d.for?.kind !== 'order' ? J.order.due(whenText(start, d.due)) : '';
+      const held = w.items.filter(x => x.held).map(x => J.order.held(sku(x.sku), whenText(start, x.held!.t), whenText(start, x.held!.until)));
+      return [[head, J.order.threshold(Number.isInteger(ahead) ? ahead : Math.round(ahead * 10) / 10, w.cover), rule].filter(Boolean).join('; '), ...(due ? [due] : []), others, ...held, ...(limited ? [limited] : [])];
     }
     case 'po': {
       const out = (d.why ?? []).map(w => {

@@ -13,6 +13,7 @@ import { memoAt } from '../engine/memos';
 import { cleanBatch, closedAt, closedShifts, kpiCtx, type KpiPeriod, kpiPick, oeeOf, rejectedAt, sincePeriod } from '../engine/kpi';
 import { AREA, type Oee, oee, rhythm, shiftsOfDay, type Switches, switchesOf } from '../engine/lean';
 import { orderRisks, type OrderRisk } from '../engine/market';
+import { forecast } from '../engine/plan/schedule';
 import { planOf } from '../engine/plant';
 import { devsOf, openDevs } from '../engine/qa';
 import { unitsOfLot } from '../engine/stock';
@@ -22,6 +23,7 @@ import { type CapaRow, capaRow } from './devs';
 import { type PeopleMeeting, peopleMeeting } from './hire';
 import { type LeaveMeeting, leaveMeeting } from './leave';
 import { type HoursMeeting, hoursMeeting } from './hours';
+import { jobsOf } from './jobs';
 import { type HeadDay, headDays, type JournalRow, memoDays, openAsks } from './journal';
 import { type MonthClose, monthClose } from './kpi';
 import { type PartnerSum, partnerSum } from './partners';
@@ -226,6 +228,11 @@ export interface MorningView {
   short: ShortRow[];
   broken: BrokenRow[];
   risk: RiskRow[];
+  /**
+   * заказы без покрытия (Б6а): сколько открытых заказов покупателей к сроку не покроет ГП — свободная и та, что по
+   * прогону расписания выйдет в оборот, — и сколько ящиков не хватит (src/sim/jobs.ts); все покрыты — нет
+   */
+  uncovered?: { orders: number; cases: number };
   /** что ждёт решения (Б1г): неоценённые отклонения и удержанные серии */
   pending: PendingDev[];
   held: HeldRow[];
@@ -464,6 +471,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
   const next = s.cash.dues.filter(d => d.sum < 0).sort((a, b) => a.due - b.due)[0];
   const rejects = rejectSum(db, s, from, at);
   const month = monthClose(s, at);
+  const unc = jobsOf(db, s, forecast(db, s)).uncovered;
   return {
     view: 'morning',
     day: q.day,
@@ -481,6 +489,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     short,
     broken,
     risk: orderRisks(db, s),
+    ...(unc.length > 0 ? { uncovered: { orders: new Set(unc.map(u => u.order)).size, cases: unc.reduce((a, u) => a + u.short, 0) } } : {}),
     ...pendingOf(db, s),
     policy: { ...s.policy },
     training: trainSum(db, s),

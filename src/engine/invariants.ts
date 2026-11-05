@@ -182,7 +182,7 @@ export function check(db: ContentDb, s: PlantState): string[] {
   const short = new Map<string, string>();
   for (const b of Object.values(s.batches)) {
     const c = b.code;
-    if (b.status !== 'waiting' && b.status !== 'reserved' && c.n === 0) bad.push(`серия ${b.id}: досье выдано без номера`);
+    if (b.status !== 'waiting' && b.status !== 'reserved' && b.status !== 'cancelled' && c.n === 0) bad.push(`серия ${b.id}: досье выдано без номера`);
     if (c.n === 0) continue;
     if (c.pp !== db.products[b.product].code) bad.push(`серия ${b.id}: код ${c.pp} — не код продукта`);
     const mix = db.recipes[b.recipe].stages.findIndex(st => st.mix);
@@ -339,8 +339,11 @@ function assets(db: ContentDb, s: PlantState, bad: string[]) {
  */
 function lean(s: PlantState, bad: string[]) {
   for (const b of Object.values(s.batches)) {
-    if (b.status === 'released' || b.status === 'rejected') {
+    if (b.status === 'released' || b.status === 'rejected' || b.status === 'cancelled') {
       if (b.phase) bad.push(`серия ${b.id}: ${b.status}, а время ещё идёт (${b.phase})`);
+      // отменённое задание (Б6а): время разложено до отмены
+      const spent = Object.values(b.spent).reduce((n, x) => n + x, 0);
+      if (b.status === 'cancelled' && spent !== (b.cancelled ?? s.t) - b.ordered) bad.push(`задание ${b.id}: по состояниям ${spent} с, а до отмены ${(b.cancelled ?? s.t) - b.ordered}`);
       continue;
     }
     const sum = Object.values(b.spent).reduce((n, x) => n + x, 0) + (b.phase ? s.t - b.phaseAt : 0);

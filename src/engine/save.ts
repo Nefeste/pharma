@@ -525,6 +525,8 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     s.capas = {};
     return raw;
   },
+  // Б6а: срок, «под что» и отмена задания на серию — необязательные поля; у прежних заданий срока нет
+  38: raw => raw,
 };
 
 export function toSave(s: PlantState): string {

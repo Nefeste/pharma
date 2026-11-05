@@ -38,6 +38,12 @@ function words(l: Exclude<Lever, { k: 'later' }>): [string, string] {
       return [T.levers.journal, T.levers.journalWhat];
     case 'jobs':
       return [T.levers.jobs, T.levers.jobsWhat];
+    case 'launch':
+      return [T.levers.launch, T.levers.launchWhat];
+    case 'stock':
+      return [T.levers.stock, T.levers.stockWhat];
+    case 'thing':
+      return [T.levers.thing, T.levers.thingWhat];
     case 'kpi':
       return [T.levers.kpi, T.levers.kpiWhat];
     case 'waste':
@@ -91,6 +97,17 @@ function run(l: Lever, hud: Hud, actions: Actions) {
       // вкладка «Задания» (Б6а): сначала вкладка, потом окно — оно откроется на ней
       actions.ganttTab('jobs');
       if (!hud.gantt.open) actions.toggleGantt();
+      return;
+    case 'launch':
+      // вкладка «План запуска» (Б6б): сначала вкладка, потом окно — оно откроется на ней
+      actions.ganttTab('launch');
+      if (!hud.gantt.open) actions.toggleGantt();
+      return;
+    case 'stock':
+      if (!hud.stock.open) actions.toggleStock();
+      return;
+    case 'thing':
+      actions.show(l.thing);
       return;
     case 'kpi':
       actions.openKpi(l.month);

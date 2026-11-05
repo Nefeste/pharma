@@ -18,6 +18,7 @@ import type { Thing } from '../sim/views';
 import { assetClass, assetName, unfitText, workName } from './assets';
 import { db } from './db';
 import { Jobs } from './Jobs';
+import { Launch } from './Launch';
 import { draftKey } from './draft';
 import { actLabel, actOf, actOn } from './memo';
 import { type Actions, type GanttDays, type Hud, PLAN_RUN, type PlanRun } from './store';
@@ -87,9 +88,10 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
   // срочное задание (Б1г) — по позициям плана выпуска сценария этого завода
   const items = Object.values(db?.scenarios ?? {}).find(sc => sc.plant === plant)?.plan?.items ?? [];
 
-  /** Строка срочного задания черновика: позиция, а под заказ покупателя (Б6а) — и чей заказ. */
-  const urgentText = (u: { sku: Id; for?: string }) => {
+  /** Строка срочного задания черновика: позиция, а под заказ покупателя (Б6а) — и чей заказ; из плана запуска (Б6б) — день. */
+  const urgentText = (u: { sku: Id; for?: string; at?: number }) => {
     const sku = named(db?.skus[u.sku]?.name, u.sku);
+    if (u.at !== undefined && !u.for) return T.urgent.itemOn(sku, dayText(day(u.at)));
     if (!u.for) return T.urgent.item(sku);
     const c = v.jobs.uncovered.find(x => x.order === u.for)?.customer;
     return T.urgent.itemFor(sku, c ? named(db?.customers[c]?.name, c) : u.for);
@@ -165,6 +167,17 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
     }
   };
 
+  /** Строка задания на сутки этой полосы — последняя из заданий, где она была (Б6б). */
+  const markOf = (b: Bar) => {
+    if (!b.batch || (b.kind !== 'kit' && b.kind !== 'stage' && b.kind !== 'pack')) return undefined;
+    let out: GanttView['daily'][number] | undefined;
+    for (const m of v.daily) {
+      if (m.batch !== b.batch || m.kind !== b.kind || (b.kind === 'stage' && m.stage !== b.stage) || (b.kind === 'kit' && !!m.pack !== !!b.pack)) continue;
+      if (!out || m.from > out.from) out = m;
+    }
+    return out;
+  };
+
   const titleOf = (b: Bar): string => {
     const lines = [barText(b), `${T.gantt.span(whenText(start, b.from), whenText(start, b.to))} · ${T.gantt.when[b.when]}`];
     if ((b.kind === 'clean' || b.kind === 'roomClean') && b.batch) lines[0] = `${lines[0]} · ${who(labels, b.batch)}`;
@@ -176,6 +189,12 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
       lines.push(T.gantt.visit);
     }
     if (b.batch && b.when === 'plan' && moved.has(b.batch)) lines.push(T.gantt.inDraft);
+    // задание на сутки (Б6б): полоса — строка задания; когда сутки кончились — итог
+    const mark = markOf(b);
+    if (mark) {
+      const res = mark.res ? [T.daily.res[mark.res] ?? mark.res, ...(mark.res !== 'ok' && mark.why ? [T.daily.why(T.daily.what[mark.why] ?? mark.why)] : []), ...(mark.after !== undefined ? [T.daily.after(whenText(start, mark.after))] : [])] : [];
+      lines.push([T.daily.inTask(dayText(day(mark.from))), ...res].join(' · '));
+    }
     lines.push(...whyOf(b, v.why[b.batch ?? '']).map(whyText));
     if (b.batch && movable.has(b.batch)) lines.push(T.gantt.hintDrag);
     return lines.join('\n');
@@ -276,8 +295,11 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
           <button type="button" className={g.tab === 'jobs' ? 'on' : ''} onClick={() => actions.ganttTab('jobs')} data-test="gantt-tab-jobs">
             {T.jobs.tab}
           </button>
+          <button type="button" className={g.tab === 'launch' ? 'on' : ''} onClick={() => actions.ganttTab('launch')} data-test="gantt-tab-launch">
+            {T.launch.tab}
+          </button>
         </span>
-        <span className="muted">{g.tab === 'jobs' ? T.jobs.question : T.gantt.question}</span>
+        <span className="muted">{g.tab === 'jobs' ? T.jobs.question : g.tab === 'launch' ? T.launch.question : T.gantt.question}</span>
         <span className="filters grow">
           {DAYS.map(d => (
             <button type="button" key={d} className={g.days === d ? 'on' : ''} onClick={() => actions.setGanttDays(d)} data-test={`gantt-days-${d}`}>
@@ -356,6 +378,12 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
       </div>
       {g.tab === 'jobs' ? (
         <Jobs hud={hud} actions={actions} jobs={v.jobs} mine={mine} items={items} />
+      ) : g.tab === 'launch' ? (
+        v.launch ? (
+          <Launch hud={hud} actions={actions} v={v.launch} labels={labels} assets={v.assets} mine={mine} title={act.title} />
+        ) : (
+          <div className="muted">{T.app.loading}</div>
+        )
       ) : (
         <>
       <div className="grow-row gaxis">

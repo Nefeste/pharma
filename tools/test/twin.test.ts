@@ -118,7 +118,9 @@ describe('прогон', () => {
     const run = runSeed(db, s, [], { days: 14, seeds: 1, twin: false }, 0);
     const life: PlantState = structuredClone(s);
     apply(db, life, { kind: 'advance', seconds: 14 * DAY });
-    expect(fingerprint(run)).toBe(fingerprint(life));
+    // сменно-суточные задания (Б6б) копия прогона не ставит: правила их не читают, жизнь завода та же
+    const { daily: _, ...rest } = life;
+    expect(fingerprint(run)).toBe(fingerprint(rest));
   });
 
   test('тот же вызов — тот же итог; разные зёрна — разные исходы', () => {

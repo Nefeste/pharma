@@ -31,6 +31,7 @@ import { type InvQuery, type InvView, invView } from './inv';
 import { type BossLimit, type BossRow, bossOfPerson } from './bosses';
 import { type JournalQuery, type JournalView, journalView, whoAsset, whoBatch, whoDecided, whoLot, whoMachine, whoPerson, type WhoRow } from './journal';
 import { type PoliciesQuery, type PoliciesView, policiesView } from './policies';
+import { type DailyRowView, dailyOf } from './daily';
 import { type PoQuery, type PoView, poView } from './po';
 import { type ChartQuery, type ChartView, chartView, type LabQuery, type LabView, labView } from './lab';
 import { type EqState, eqStateOf } from './pack';
@@ -204,9 +205,10 @@ export interface SpeedView {
  */
 export type CardData =
   | { kind: 'unit'; unit: number; tag: Tag; containers: number; holds?: Holds; where: PlaceRef; lot?: LotInfo; release?: ReleaseView; why: Why[]; history: Hist[]; who?: WhoRow[] }
-  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; clean?: RoomClean; batch?: string; bn?: number; recipe?: Id; stage?: string; inside?: Inside; regimes?: Regimes; knobs?: Knobs[]; waste?: WasteRoom; why: Why[] }
-  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; bn?: number; recipe?: Id; inside?: Inside; parts: PartInfo[]; asset?: AssetInfo; regimes?: Regimes; knobs?: Knobs[]; why: Why[]; history: Hist[]; who?: WhoRow[] }
-  | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; bn?: number; sku?: Id; materials?: LineMaterial[]; speed?: SpeedView; parts: PartInfo[]; asset?: AssetInfo; why: Why[]; history: Hist[]; who?: WhoRow[] }
+  /** у помещения, оборудования и машины линии с Б6б — строки сегодняшнего задания на сутки (`daily`) */
+  | { kind: 'room'; room: number; type: string; grade: 'D' | 'cnc'; status: 'clean' | 'busy' | 'dirty'; since: number; clean?: RoomClean; batch?: string; bn?: number; recipe?: Id; stage?: string; inside?: Inside; regimes?: Regimes; knobs?: Knobs[]; waste?: WasteRoom; daily?: DailyRowView[]; why: Why[] }
+  | { kind: 'equipment'; eq: number; type: Id; room: number; state: EqState; batch?: string; bn?: number; recipe?: Id; inside?: Inside; parts: PartInfo[]; asset?: AssetInfo; regimes?: Regimes; knobs?: Knobs[]; daily?: DailyRowView[]; why: Why[]; history: Hist[]; who?: WhoRow[] }
+  | { kind: 'machine'; line: number; k: number; type: Id; state: MachineState; batch?: string; bn?: number; sku?: Id; materials?: LineMaterial[]; speed?: SpeedView; parts: PartInfo[]; asset?: AssetInfo; daily?: DailyRowView[]; why: Why[]; history: Hist[]; who?: WhoRow[] }
   /** человек (Б3б): табельный номер, навык, допуск сегодня, обучение по матрице его роли, что изучает сейчас; табель месяца (Б4а) */
   /** с Б4б — ждущий перевод на другой график и учётный период сменного по циклу */
   /** с Б4в — оклад, день приёма, последний день испытания, увольнение; ушёл с завода — `gone` с днём и основанием */
@@ -601,6 +603,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       const knobs = knobsAt(db, s, def.id);
       const inside = insideOf(db, s, def.id);
       const tidy = cleanOf(db, s, r);
+      const daily = dailyOf(db, s, { room: def.id });
       return {
         kind: 'room',
         room: thing.i,
@@ -616,6 +619,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(knobs.length > 0 ? { knobs } : {}),
         // помещение отклонённого (Б1з): места зоны, ждущие места, вывоз и журнал отходов
         ...(def.type === 'rejected' ? { waste: wasteRoom(db, s) } : {}),
+        ...(daily.length > 0 ? { daily } : {}),
         why: [...clean.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.room === def.id)],
       };
     }
@@ -629,6 +633,8 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       // уставки (Б1ж): стадии на этом оборудовании
       const knobs = knobsAt(db, s, def.room).filter(k => db.recipes[k.recipe].stages.find(st => st.id === k.stage)!.equipment.includes(def.type));
       const inside = b ? insideOf(db, s, def.room) : undefined;
+      // задание на сутки (Б6б): стадии в его помещении, у которых оно в карте
+      const daily = dailyOf(db, s, { room: def.room }).filter(r => r.kind === 'stage' && !!r.stage && Object.values(db.recipes).some(rc => rc.stages.some(st => st.id === r.stage && st.equipment.includes(def.type))));
       return {
         kind: 'equipment',
         eq: thing.i,
@@ -641,6 +647,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
         ...(s.assets[def.id] ? { asset: assetInfo(db, s, def.id)! } : {}),
         ...(regimes ? { regimes } : {}),
         ...(knobs.length > 0 ? { knobs } : {}),
+        ...(daily.length > 0 ? { daily } : {}),
         why: [...repairs.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.asset === def.id)],
         history: maintHistory(s, def.id),
         ...whoOf(thingWho(db, s, def.id)),
@@ -661,6 +668,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
       // скорость блистерной (Б1ж): задание на линии и уставки всех позиций — в инструкциях в силе
       const day = momentOf(s.start, s.t).day;
       const skus = db.machines[def.type].fast ? [...new Set(Object.keys(db.skus).map(id => inForce(db, 'skus', id, day)))].map(id => db.skus[id]) : [];
+      const daily = dailyOf(db, s, { line: ln.id });
       return {
         kind: 'machine',
         line: thing.line,
@@ -681,6 +689,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
           : {}),
         parts: partsOfMachine(db, s, def.id),
         ...(s.assets[def.id] ? { asset: assetInfo(db, s, def.id)! } : {}),
+        ...(daily.length > 0 ? { daily } : {}),
         why: [...repairs.map(t => taskWhy(db, s, t)), ...held, ...cleans.map(t => taskWhy(db, s, t)), ...waitsOf(db, s, w => w.asset === def.id)],
         history: maintHistory(s, def.id),
         ...whoOf(thingWho(db, s, def.id)),

@@ -7,6 +7,7 @@
 // видит извещения, уже данные этим доживанием: так поток расчёта встаёт ровно на событии автопаузы (Б2а).
 import type { ContentDb, Id } from '../content/types';
 import { alertsHour } from './alerts';
+import { dailyHour, dailyMorning } from './daily';
 import { assetDone, assetHour, assetStep, seedAssets, visitCommand, visitDone } from './assets';
 import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
@@ -114,6 +115,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     former: {},
     leave: {},
     journal: [],
+    daily: [],
     heads: newHeads(),
     waste: { log: [] },
     kpi: newKpi(sc.start.hour * HOUR),
@@ -452,6 +454,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
   switch (ev.kind) {
     case 'morning':
       s.day++;
+      // сменно-суточное задание (Б6б): итог вчерашнего и строки на сутки — до планёрки, которую это событие открывает
+      dailyMorning(db, s);
       notices.push({ kind: 'morning', day: s.day });
       schedule(s.agenda, s.t + DAY, { kind: 'morning' });
       return;
@@ -503,6 +507,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       qaStep(db, s);
       marketStep(db, s, notices);
       settle(db, s, notices);
+      // сменно-суточное задание (Б6б): что начато и чего ждали; итог и новое задание — в событие 08:00
+      dailyHour(db, s);
       // тревоги часа (Б2а) — по заводу, каким его оставил час; сверхурочные года на исходе (Б4а)
       alertsHour(db, s, notices);
       hoursHour(db, s, notices);

@@ -23,6 +23,7 @@ import { type CapaRow, capaRow } from './devs';
 import { type PeopleMeeting, peopleMeeting } from './hire';
 import { type LeaveMeeting, leaveMeeting } from './leave';
 import { type HoursMeeting, hoursMeeting } from './hours';
+import { type DailyMeeting, dailyMeeting } from './daily';
 import { jobsOf } from './jobs';
 import { type HeadDay, headDays, type JournalRow, memoDays, openAsks } from './journal';
 import { type MonthClose, monthClose } from './kpi';
@@ -233,6 +234,11 @@ export interface MorningView {
    * прогону расписания выйдет в оборот, — и сколько ящиков не хватит (src/sim/jobs.ts); все покрыты — нет
    */
   uncovered?: { orders: number; cases: number };
+  /**
+   * сменно-суточные задания (Б6б): вчерашнее, закрытое в 08:00 дня планёрки, — по отделам с итогом и тем, кого ждали, —
+   * и поставленное тогда же (src/sim/daily.ts)
+   */
+  daily: DailyMeeting;
   /** что ждёт решения (Б1г): неоценённые отклонения и удержанные серии */
   pending: PendingDev[];
   held: HeldRow[];
@@ -490,6 +496,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     broken,
     risk: orderRisks(db, s),
     ...(unc.length > 0 ? { uncovered: { orders: new Set(unc.map(u => u.order)).size, cases: unc.reduce((a, u) => a + u.short, 0) } } : {}),
+    daily: dailyMeeting(db, s, at),
     ...pendingOf(db, s),
     policy: { ...s.policy },
     training: trainSum(db, s),

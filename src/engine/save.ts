@@ -527,6 +527,8 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   },
   // Б6а: срок, «под что» и отмена задания на серию — необязательные поля; у прежних заданий срока нет
   38: raw => raw,
+  // Б6б: сменно-суточные задания — с первых 08:00 после загрузки
+  39: raw => ({ ...raw, daily: [] }),
 };
 
 export function toSave(s: PlantState): string {

@@ -136,12 +136,12 @@ export function runHeads(s: PlantState): HeadsState {
 
 /** Зерно `k` варианта: копия состояния, двойник (если не выключен), команды варианта по порядку, ход времени на горизонт. */
 export function runSeed(db: ContentDb, s: PlantState, variant: Command[], o: RunOpts, k: number): PlantState {
-  // копия — без журнала решений (Б5а) и закрытых месяцев показателей (Б5ж): будущему они не нужны, правила их не читают;
-  // режимы отделов — «советует» как «сам» (Б5б). Записки без ответа (Б5д) остаются — руководитель ответит на них в свой
-  // час; на вопросы «Просят решить» в копии никто не ответит — руководитель решит, как сейчас; «Веду сам» — ведёт ООК, как
-  // «советует» — как «сам»
+  // копия — без журнала решений (Б5а), закрытых месяцев показателей (Б5ж) и сменно-суточных заданий (Б6б): будущему
+  // они не нужны, правила их не читают; режимы отделов — «советует» как «сам» (Б5б). Записки без ответа (Б5д)
+  // остаются: руководитель ответит на них в свой час; на вопросы «Просят решить» в копии никто не ответит —
+  // руководитель решит, как сейчас; «Веду сам» — ведёт ООК, как «советует» — как «сам»
   const memos = s.journal.filter(r => r.memo && !r.memo.end);
-  const c: PlantState = structuredClone({ ...s, journal: memos, heads: runHeads(s), kpi: { ...s.kpi, months: [] } });
+  const c: PlantState = structuredClone({ ...s, journal: memos, heads: runHeads(s), kpi: { ...s.kpi, months: [] }, daily: undefined });
   for (const inv of Object.values(c.investigations)) delete inv.lead;
   if (o.twin !== false) blind(db, c, k);
   for (const cmd of variant) apply(db, c, cmd);

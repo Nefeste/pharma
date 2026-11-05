@@ -5,6 +5,7 @@
 import type { Dept, Id, OvertimeMode, Scenario, SeatId } from '../content/types';
 import { DEPT_SEAT } from '../engine/seats';
 import type { HeldRow, MainLoss, PendingDev, RiskRow } from '../sim/report';
+import type { Thing } from '../sim/views';
 
 /** Что будет: стройка (Б7), политики продаж (Б5), план под спрос — S&OP (Б6); часть и слова — в src/i18n/. */
 export const LATERS = ['build', 'sales', 'sop'] as const;
@@ -33,6 +34,12 @@ export type Lever =
   | { k: 'journal'; n?: number }
   /** вкладка «Задания» окна расписания (Б6а): заказы без покрытия планёрки */
   | { k: 'jobs' }
+  /** вкладка «План запуска» окна расписания (Б6б): задания на сутки производства */
+  | { k: 'launch' }
+  /** панель склада (Б6б): задания на сутки склада */
+  | { k: 'stock' }
+  /** карточка вещи на полу (Б6б): оборудование или машина строки техслужбы */
+  | { k: 'thing'; thing: Thing }
   /** окно «Показатели» (Б5ж) на закрытом месяце: «Итоги месяца» планёрки */
   | { k: 'kpi'; month?: number }
   /** заказать вывоз отклонённого (Б1з): команда поста «Снабжение и склад» */
@@ -109,6 +116,28 @@ export function resignLevers(r: { person: number; tab: number; role: Id }, dept:
 
 /** Заказы без покрытия (Б6а): вкладка «Задания» расписания — там они построчно со «Срочным заданием под заказ». */
 export const uncoveredLevers = (): Lever[] => [{ k: 'jobs' }];
+
+/**
+ * Задание на сутки отдела (Б6б): окно отдела — у производства расписание и «План запуска», у упаковки расписание, у
+ * склада панель склада, у лаборатории и ООК окно лаборатории, у техслужбы — карточка оборудования его строки.
+ */
+export function dailyLevers(dept: Dept, thing?: Thing): Lever[] {
+  switch (dept) {
+    case 'mes':
+      return [{ k: 'gantt', seat: 'production' }, { k: 'launch' }];
+    case 'line':
+      return [{ k: 'gantt', seat: 'production' }];
+    case 'wms':
+      return [{ k: 'stock' }];
+    case 'qc':
+    case 'qa':
+      return [{ k: 'lab', seat: 'quality' }];
+    case 'maint':
+      return thing ? [{ k: 'thing', thing }] : [];
+    default:
+      return [];
+  }
+}
 
 /** Удержанная серия: решение по ней — в карточке её ГП. */
 export function heldLevers(h: HeldRow): Lever[] {

@@ -20,6 +20,7 @@ import { LeaveBlock } from './Leave';
 import { AndonRows, BottleBlock, LoadBlock } from './Layers';
 import { StatusIcon, TaskIcon } from './icons';
 import { BossBlock } from './Bosses';
+import { DailyCard } from './Daily';
 import { WhoList } from './Journal';
 import { placeText, supplierText } from './Stock';
 import { actLabel, actOf, actOn } from './memo';
@@ -636,6 +637,7 @@ export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v
           {c.waste ? <WasteBlock w={c.waste} start={start} /> : null}
           <DossierButton n={c.bn} actions={actions} />
           <Why list={c.why} start={start} />
+          {c.daily ? <DailyCard rows={c.daily} plant={plant} start={start} /> : null}
           {hud.selected ? <LoadBlock key={JSON.stringify(hud.selected)} hud={hud} thing={hud.selected} plant={plant} actions={actions} /> : null}
           {hud.selected ? <BottleBlock hud={hud} thing={hud.selected} actions={actions} /> : null}
         </>
@@ -677,6 +679,7 @@ export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v
           {c.kind === 'equipment' && c.knobs ? <KnobsBlock list={c.knobs} hud={hud} actions={actions} /> : null}
           <DossierButton n={c.bn} actions={actions} />
           <Why list={c.why} start={start} />
+          {c.daily ? <DailyCard rows={c.daily} plant={plant} start={start} /> : null}
           <WhoList rows={c.who} start={start} actions={actions} />
           <History list={c.history} start={start} parts={rec?.parts} asset={c.asset} />
         </>

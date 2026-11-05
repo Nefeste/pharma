@@ -100,6 +100,8 @@ export interface Fresh {
   recipe: Id;
   sku?: Id;
   for?: string;
+  /** «не раньше» (Б6б): «Поставить сейчас» плана запуска — на день пунктирной клетки; нет — сейчас */
+  notBefore?: number;
 }
 
 /**
@@ -112,7 +114,7 @@ export function freshBatches(db: ContentDb, s: PlantState, fresh: readonly Fresh
   let taken = new Map<string, number>();
   for (const f of fresh) {
     if (!db.recipes[f.recipe]) continue;
-    const b = newBatch(db, s, `B${(s.next.B ?? 0) + out.length + 1}`, f.recipe, s.t, 'player', f.sku);
+    const b = newBatch(db, s, `B${(s.next.B ?? 0) + out.length + 1}`, f.recipe, f.notBefore ?? s.t, 'player', f.sku);
     // под что и срок (Б6а) — как поставит команда `order`
     const o = f.for !== undefined ? s.orders[f.for] : undefined;
     const window = numOf(db, s, POL.window);
@@ -230,9 +232,11 @@ interface Proj {
  * перекладки). Стадия — когда кончилась прошлая, помещение свободно, убрано и готово (`readyFor`) и в смене есть люди
  * её роли. Ушла серия из помещения — уборка, как только аппаратчик в смене; генеральная — если грязно дольше суток.
  * `fresh` — новые задания черновика (0.0.39): прогон ставит их после существующих, как поставят команды. `drop` — задания,
- * которые черновик отменяет (Б6а): прогон считает без них.
+ * которые черновик отменяет (Б6а): прогон считает без них. `until` — горизонт (Б6б): комплектовки и стадии не раньше него
+ * прогон не ставит — их стадии и всё, что дальше по очереди, начнётся позже, а помещение такой стадии держит её серия;
+ * у сменно-суточного задания он — конец суток. Полосы до горизонта — те же, что у прогона без него.
  */
-export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[] = [], fresh: readonly Fresh[] = [], drop: readonly string[] = []): Forecast {
+export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[] = [], fresh: readonly Fresh[] = [], drop: readonly string[] = [], until?: number): Forecast {
   const asked = new Map(changes.map(c => [c.batch, c.notBefore]));
   const plan = planOf(db, s.plant);
   const now = s.t;
@@ -403,6 +407,15 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
       const st = r.stages[k];
       const roomId = plan.roomOf[st.room];
       const p = rooms.get(roomId)!;
+      // горизонт (Б6б): стадия не раньше него — дальше не нужно; помещение держит серия, как держала бы в полном прогоне:
+      // кто встанет в него за ней, встанет тоже позже горизонта
+      if (until !== undefined && t >= until) {
+        if (p.room.batch === undefined) {
+          p.room.status = 'busy';
+          p.room.batch = b.id;
+        }
+        return;
+      }
       if (p.room.batch !== b.id) {
         // в помещении серия, которая в прогоне из него не уходит, — дальше не предсказать
         if (p.room.batch || p.free === Number.POSITIVE_INFINITY) return;
@@ -456,6 +469,8 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
         if (!c) return;
       }
       if (c.t > t && !(out.why[b.id] ?? []).some(w => w.why === 'visit' && w.bar === st.id)) note(b.id, { why: c.hours ? 'hours' : 'shift', bar: st.id, role: st.staff.role, at: c.t });
+      // горизонт (Б6б): стадия начнётся не раньше него — помещение уже за серией
+      if (until !== undefined && c.t >= until) return;
       out.bars.push({ row: roomId, kind: 'stage', batch: b.id, stage: st.id, from: c.t, to: c.t + work, when: 'plan', ...flags, ...(repair ? { repair: true as const } : {}) });
       // визит, чей час ещё не настал: подрядчик — после этой стадии
       for (const id of mine) {
@@ -589,6 +604,8 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     }
     const c = queue.splice(i, 1)[0];
     const from = Math.max(slot, c.at);
+    // горизонт (Б6б): комплектовка не раньше него — и её стадии, и все дальше по очереди начнутся позже
+    if (until !== undefined && from >= until) break;
     if (holder && slot > c.at && !c.pack) note(c.b.id, { why: 'kitting', bar: 'kit', batch: holder.batch, pack: holder.pack, until: slot });
     const end = kitWork(c.pack ? undefined : c.b.id, c.pallets, from);
     if (end === undefined) {

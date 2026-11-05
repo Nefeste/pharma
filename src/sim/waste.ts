@@ -91,7 +91,7 @@ function orderOf(s: PlantState, o: WasteOrder | undefined): WasteOrderView | und
 
 /** Паллеты, которые ждут места в зоне отклонённого или выноса из промежуточного склада: где они сейчас — по видам мест. */
 export function waitingRows(db: ContentDb, s: PlantState): WaitRow[] {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const by = new Map<string, number>();
   for (const t of Object.values(s.tasks)) {
     if (t.state !== 'open' || !t.unit || !(t.toKind === 'rejected' || t.kind === 'bulkOut')) continue;
@@ -143,7 +143,7 @@ export function wasteRow(s: PlantState, e: WasteEntry): WasteRow {
 
 /** Помещение отклонённого в карточке (Б1з): места зоны по порядку плана, ждущие места, вывоз, журнал — от новых к старым. */
 export function wasteRoom(db: ContentDb, s: PlantState): WasteRoom {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const places = (plan.byKind.rejected ?? []).map(sl => {
     const slot = plan.slots.findIndex(x => x.id === sl.id);
     const uid = s.slots[sl.id]?.unit;

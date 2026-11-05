@@ -130,7 +130,7 @@ describe('срез суток', () => {
 describe('множители OEE', () => {
   test('только определённые: линия налаживалась — доступность 0, а эффективности и качества нет; без выпуска нет качества', () => {
     const p = newPlant(db, { scenario: SC });
-    const line = planOf(db, p.plant).plant.lines[0].id;
+    const line = planOf(db, p.plan).plant.lines[0].id;
     const n = p.lines[line].machines.length;
     const day = (ideal: number, run: number, out: number, good: number) =>
       ({ day: 0, lines: { [line]: { times: Array.from({ length: n }, () => ({ out })), ideal: Array(n).fill(ideal), run: Array(n).fill(run), good } } }) as unknown as DayLoss;

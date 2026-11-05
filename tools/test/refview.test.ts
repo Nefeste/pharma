@@ -242,8 +242,8 @@ describe('справочник: номенклатура и документы (
   test('карточки: серия в помещении и на оборудовании — с редакцией карты; своя продукция — с картой и инструкцией по упаковке', async () => {
     // образец схемы 17 — посреди работы: стадии идут, балк и ГП уже есть
     const w = fromSave(db, await Bun.file(new URL('./fixtures/save-v17.json', import.meta.url)).text());
-    const rooms = db.plants[w.plant].rooms.map((_, i) => cardView(db, w, { kind: 'room', i }).card).filter(c => c.kind === 'room' && c.batch);
-    const eqs = db.plants[w.plant].equipment.map((_, i) => cardView(db, w, { kind: 'equipment', i }).card).filter(c => c.kind === 'equipment' && c.batch);
+    const rooms = w.plan.rooms.map((_, i) => cardView(db, w, { kind: 'room', i }).card).filter(c => c.kind === 'room' && c.batch);
+    const eqs = w.plan.equipment.map((_, i) => cardView(db, w, { kind: 'equipment', i }).card).filter(c => c.kind === 'equipment' && c.batch);
     expect(rooms.length + eqs.length).toBeGreaterThan(0);
     for (const c of [...rooms, ...eqs]) if (c.kind === 'room' || c.kind === 'equipment') expect(db.recipes[c.recipe!]?.doc.code).toMatch(/^MF-/);
     let own = 0;

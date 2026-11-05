@@ -55,9 +55,11 @@ export interface PlantPlan {
 
 const cache = new WeakMap<Plant, PlantPlan>();
 
-export function planOf(db: ContentDb, plantId: string): PlantPlan {
-  const plant = db.plants[plantId];
-  if (!plant) throw new Error(`no plant ${plantId}`);
+/**
+ * План завода из записи плана: с Б7а — из плана в состоянии (`s.plan`), запись базы — образец старта. Кэш — по объекту
+ * плана: план не правят на месте, у копии состояния и после загрузки — свой объект и свой кэш.
+ */
+export function planOf(db: ContentDb, plant: Plant): PlantPlan {
   const hit = cache.get(plant);
   if (hit) return hit;
   const slots: Slot[] = [];
@@ -118,7 +120,7 @@ export function planOf(db: ContentDb, plantId: string): PlantPlan {
   const roomOf: Record<string, string> = {};
   for (const r of plant.rooms) roomOf[r.type] = r.id;
   const lab = Object.values(room).find(r => r.type === 'lab');
-  if (!lab) throw new Error(`plant ${plantId}: no lab`);
+  if (!lab) throw new Error(`plant ${plant.id}: no lab`);
   const nav = buildNav(db, plant);
   // клетка доступа места: на полу — своя, на стеллаже — клетка прохода перед ним (с его стороны); у ярусов — одна
   for (const sl of slots) {

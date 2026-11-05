@@ -697,6 +697,9 @@ const placeCode = z.string().regex(/^[A-Z]{2}-\d{2}\.\d{2}$/, 'код места
 /** прибор вне лаборатории: прибор МОК или датчик условий хранения — вид, помещение, код места */
 const meter = z.strictObject({ id: z.string(), type: id, room: z.string(), place: placeCode });
 
+/** Этаж (Б7а, решение по #82): в 1.0 этаж один — первый; запись его может не писать. */
+const floor = z.number().int().refine(f => f === 1, { message: 'в 1.0 этаж один — первый (Б7а)' }).default(1);
+
 /** План завода: метры участка. */
 export const plant = z.strictObject({
   id: z.string(),
@@ -728,7 +731,7 @@ export const plant = z.strictObject({
     .min(1),
   /** здание — прямоугольник клеток со стенами по краю */
   building: cells,
-  docks: z.array(z.strictObject({ id: z.string(), kind: z.enum(['in', 'out']), x: z.number(), z: z.number() })).min(1),
+  docks: z.array(z.strictObject({ id: z.string(), kind: z.enum(['in', 'out']), x: z.number(), z: z.number(), floor })).min(1),
   zones: z.array(
     z.strictObject({
       id: z.string(),
@@ -749,7 +752,7 @@ export const plant = z.strictObject({
     }),
   ),
   /** помещение — прямоугольник клеток со стенами по краю; соседние делят стену; технике туда можно; рабочая точка */
-  rooms: z.array(z.strictObject({ id: z.string(), type: z.string(), rect: cells, grade: z.enum(['D', 'cnc']), vehicles: z.boolean().default(false), at: point.optional() })),
+  rooms: z.array(z.strictObject({ id: z.string(), type: z.string(), rect: cells, grade: z.enum(['D', 'cnc']), vehicles: z.boolean().default(false), at: point.optional(), floor })),
   /** двери на стенах: первая клетка, сколько клеток, вдоль какой оси идёт стена, вид */
   doors: z.array(
     z.strictObject({
@@ -782,7 +785,8 @@ export const plant = z.strictObject({
       }),
     )
     .default([]),
-  points: z.strictObject({ park: point, entrance: point }),
+  /** стоянка техники и вход; этаж — их и постов ролей */
+  points: z.strictObject({ park: point, entrance: point, floor }),
   /** посты ожидания: роль → точка, где человек ждёт задачи (docs/specs/2026-10-panels.md, 3а) */
   posts: z.record(id, point).default({}),
   /** вентиляция круглые сутки — Вт на м² помещения по классу; постоянная база (свет, офис, склад) — кВт */

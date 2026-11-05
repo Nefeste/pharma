@@ -13,7 +13,7 @@ import type { Notice } from '../../src/engine/types';
 import { truckArrives } from '../../src/engine/wms';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 
 describe('план завода', () => {
   test('места зон и стеллажей: число, уникальные адреса, ярусы', () => {

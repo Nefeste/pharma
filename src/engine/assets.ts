@@ -5,7 +5,7 @@
 // работ не берёт, идущая работа доходит до конца, подрядчик работает в свои часы, а не успевает в этот день — приходит на
 // следующий рабочий; завод платит в день визита. Работу принимает начальник ОКК (калибровку) или специалист ООК
 // (квалификацию) — запись появляется с днём приёмки. Записи — знание завода, а не истина: их видят окно и двойник.
-import type { ContentDb, RecipeStage, Scenario } from '../content/types';
+import type { ContentDb, Plant, RecipeStage, Scenario } from '../content/types';
 import { dueRule, type Who } from './bosses';
 import { part, post } from './cash';
 import { schedule } from './core/agenda';
@@ -50,8 +50,8 @@ export function valid(a: Asset, work: Work, day: number): boolean {
  * а не по зерну, как у записей обучения (Б3б): жизнь до начала партии одна. Срок — не раньше, чем через срок предупреждения:
  * коллега успевает назначить визит, и на старте всё в сроке.
  */
-export function seedAssets(db: ContentDb, sc: Scenario, s: Pick<PlantState, 'plant' | 'vehicles' | 'assets'>, day: number) {
-  const plant = planOf(db, s.plant).plant;
+export function seedAssets(db: ContentDb, sc: Scenario, plan: Plant, s: Pick<PlantState, 'vehicles' | 'assets'>, day: number) {
+  const plant = planOf(db, plan).plant;
   const P = placesOf(plant);
   let inv = sc.assets.inv;
   const add = (a: Omit<Asset, 'inv' | 'recs'>) => {
@@ -104,14 +104,14 @@ function busy(db: ContentDb, s: PlantState, a: Asset): boolean {
     case 'equipment':
       return !!s.equipment[a.id]?.batch;
     case 'machine': {
-      const line = placesOf(planOf(db, s.plant).plant).thing[a.id]?.line;
+      const line = placesOf(planOf(db, s.plan).plant).thing[a.id]?.line;
       const ln = line ? s.lines[line] : undefined;
       return !!ln?.batch && s.batches[ln.batch]?.pack?.state === 'running';
     }
     case 'lab':
       return !!s.instruments[a.id]?.test;
     case 'ipc': {
-      const plan = planOf(db, s.plant);
+      const plan = planOf(db, s.plan);
       const room = placesOf(plan.plant).thing[a.id]?.room;
       for (const t of Object.values(s.tasks)) {
         if (t.kind !== 'stage' || !t.batch) continue;
@@ -265,7 +265,7 @@ export function visitDone(db: ContentDb, s: PlantState, id: string, v: number) {
   const vat = part(w.price, db.profiles[sc.profile].vat.general);
   post(s, -(w.price + vat), 'calqual', a.id);
   s.cash.vat.in += vat;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const room = placesOf(plan.plant).thing[a.id]?.room;
   const at = room ? plan.room[room] : plan.entrance;
   const t = addTask(s, { kind: 'accept', roles: [ACCEPT[vis.work]], from: { kind: 'point', x: at.x, z: at.z }, work: sc.assets.accept, prio: ACCEPT_PRIO, asset: a.id });
@@ -321,7 +321,7 @@ export function slotFit(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, 
  */
 export function stageMeters(db: ContentDb, s: PlantState, st: RecipeStage, roomId: string): string[] {
   const out: string[] = [];
-  const meters = placesOf(planOf(db, s.plant).plant).ipcIn[roomId];
+  const meters = placesOf(planOf(db, s.plan).plant).ipcIn[roomId];
   if (!meters) return out;
   for (const c of st.ipc) {
     const inst = db.tests[c.test].inst;
@@ -345,7 +345,7 @@ export function stageMeters(db: ContentDb, s: PlantState, st: RecipeStage, roomI
  * калибровки, или у него подрядчик. Первое такое — с причиной; всё пригодно — `undefined`.
  */
 export function stageUnfit(db: ContentDb, s: PlantState, st: RecipeStage, roomId: string): { asset: string; why: 'qual' | 'cal' | 'visit' } | undefined {
-  const plant = planOf(db, s.plant).plant;
+  const plant = planOf(db, s.plan).plant;
   for (const type of st.equipment) {
     for (const e of plant.equipment) {
       if (e.room !== roomId || e.type !== type) continue;

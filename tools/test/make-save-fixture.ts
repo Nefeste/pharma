@@ -137,7 +137,7 @@ const recorded = () => {
 };
 // посреди уборки помещения упаковки (Б1е): машину линии моют, а задание следующей серии уже на линии и ждёт, когда
 // помещение будет чисто
-const lineRoom = planOf(db, s.plant).plant.lines[0].room;
+const lineRoom = planOf(db, s.plan).plant.lines[0].room;
 const lineCleaning = () =>
   Object.values(s.tasks).some(t => t.kind === 'clean' && t.room === lineRoom && t.state === 'busy') &&
   Object.values(s.lines).some(l => l.batch !== undefined && s.batches[l.batch].pack?.state !== 'running');

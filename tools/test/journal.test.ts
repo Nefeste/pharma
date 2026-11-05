@@ -348,6 +348,6 @@ describe('срок и устройство журнала', () => {
       { n: s.journal.at(-2)!.n, t: s.t, by: 'hr', d: { kind: 'leaveDraft', y: 2028, why: { people: 3, miss: 0 } } },
       { n: s.journal.at(-2)!.n + 1, t: s.t, by: 'player', seat: 'quality', d: { kind: 'setpoint', key: 'k', value: 1, target: 1 } },
     ]);
-    expect(planOf(db, s.plant)).toBeDefined();
+    expect(planOf(db, s.plan)).toBeDefined();
   });
 });

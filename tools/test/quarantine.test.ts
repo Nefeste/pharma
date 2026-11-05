@@ -14,7 +14,7 @@ const SC = 'scn.proto';
 describe('карантин и пробоотборная не ждут друг друга', () => {
   test('зерно 2, 300 суток: задачи пробоотборной и размещения в карантин открыты недели, а не месяцы; места паллетам из пробоотборной есть', () => {
     const s = newPlant(db, { scenario: SC, seed: 2 });
-    const plan = planOf(db, s.plant);
+    const plan = planOf(db, s.plan);
     // как долго открыта задача — раз в сутки: до 0.0.57 они висели по 78–95 суток
     const open = { fromSampling: 0, toSampling: 0, putaway: 0 };
     let reserve = Infinity;

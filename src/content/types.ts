@@ -769,14 +769,17 @@ export interface Plant {
   site: { code: string; name: Text };
   areas: Area[];
   building: [number, number, number, number];
-  /** рампа — точка на клетке ворот рампы в стене здания */
-  docks: { id: string; kind: 'in' | 'out'; x: number; z: number }[];
+  /**
+   * рампа — точка на клетке ворот рампы в стене здания; этаж (Б7а, решение по #82) — в 1.0 один, первый: у помещения и
+   * точек плана — рамп, стоянки, входа и постов; дверь, зона, стеллаж и вещи помещения — на этаже своего помещения
+   */
+  docks: { id: string; kind: 'in' | 'out'; x: number; z: number; floor: number }[];
   /** зона на полу: прямоугольник [x, z, ширина, глубина] и места сеткой [столбцов, рядов] */
   zones: { id: string; kind: ZoneKind; rect: [number, number, number, number]; grid: [number, number] }[];
   /** ряды стеллажей: начало ряда, секций, ярусов; проход — с севера (`n`, меньше z) или с юга (`s`) */
   racks: { id: string; x: number; z: number; bays: number; levels: number; face: 'n' | 's' }[];
   /** помещение: прямоугольник со стенами, класс, можно ли туда технике, рабочая точка (нет — середина) */
-  rooms: { id: string; type: string; rect: [number, number, number, number]; grade: 'D' | 'cnc'; vehicles: boolean; at?: [number, number] }[];
+  rooms: { id: string; type: string; rect: [number, number, number, number]; grade: 'D' | 'cnc'; vehicles: boolean; at?: [number, number]; floor: number }[];
   /**
    * двери — клетки на стене: первая клетка (номера клеток), сколько клеток, вдоль какой оси идёт стена, вид; дверь только
    * для материалов (внутренняя дверь шлюза для материалов) — люди через неё не ходят
@@ -794,8 +797,8 @@ export interface Plant {
    * `buffer` её штук (у последней — нет)
    */
   lines: { id: string; room: string; out: string; machines: { id: string; type: Id; buffer?: number; at: [number, number]; turn: number; place: string }[] }[];
-  /** точки: стоянка техники, вход персонала */
-  points: { park: [number, number]; entrance: [number, number] };
+  /** точки: стоянка техники, вход персонала; этаж стоянки, входа и постов (Б7а) */
+  points: { park: [number, number]; entrance: [number, number]; floor: number };
   /** посты ожидания по ролям: где человек ждёт задачи — после прихода на смену и после каждой задачи */
   posts: Record<Id, [number, number]>;
   /** вентиляция — Вт на м² помещения по классу, круглые сутки; постоянная база — Вт */

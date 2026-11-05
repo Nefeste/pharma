@@ -6,6 +6,7 @@ import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { ContentDb, Scenario } from '../content/types';
 import { DAY, momentOf } from '../engine/core/calendar';
+import { stableJson } from '../engine/core/hash';
 import { MORNING } from '../engine/engine';
 import { planOf } from '../engine/plant';
 import type { Command, DeptMode, Head, Notice } from '../engine/types';
@@ -36,7 +37,7 @@ import { keepFirsts, keptFirsts } from './firsts';
 import { andonBoxes, andonMarks, barBoxes, DATA_LAYERS, midSpot, nextLayer, plateBoxes, platesOf } from './floor';
 import { fillsOf, Flows, lineArrows, moveArrows, movesOf, peopleMoves } from './flows';
 import { type Movers, moversAt, taskIcons } from './movers';
-import { stopKey } from '../sim/protocol';
+import { stopKey, type World } from '../sim/protocol';
 import { EVENT_CAP, type Go, goOf, keepOff, keptOff, stopKinds } from './pauses';
 import { keep, windowKeep } from './preset';
 import { type Box, machineBoxes, nearest, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
@@ -45,7 +46,6 @@ import { type TruckPose, Yard } from './yard';
 
 /** Сценарий части 0 (content/scenarios/proto.yaml) и его план. */
 export const SCENARIO = 'scn.proto';
-export const PLANT = 'plant.proto';
 
 /** Игровых секунд в секунду на каждой скорости (геймдизайн, §2). */
 export const RATE: Record<Speed, number> = { 0: 0, 1: 60, 2: 300, 3: 1200, 4: 7200, 5: 1 };
@@ -112,6 +112,10 @@ export class Game {
   /** идущий прогон политик: снимок и считают ли с ним «как сейчас» */
   private policyRun?: { json: string; withBase: boolean };
   scenario!: Scenario;
+  /** план здания от потока расчёта (Б7а), по которому построена сцена, и номер его правки */
+  private world!: World;
+  /** поток прислал другой план: срезы не разбирать — номера вещей в них — номера другого плана; перестройка сцены — с Б7б */
+  private alien = false;
   layout!: Layout;
   /** что видно на полу: паллеты, фуры, помещения — из срезов */
   readonly view = new SceneState();
@@ -188,7 +192,17 @@ export class Game {
     const sc = db.scenarios[SCENARIO];
     if (!sc) throw new Error(`no scenario ${SCENARIO}`);
     g.scenario = sc;
-    g.layout = layoutOf(planOf(db, sc.plant));
+    // план здания — от потока расчёта (Б7а): поток запускается первым, сцена строится по плану первого среза
+    g.client = new SimClient('./sim.js');
+    g.client.onError = m => store.set({ error: m });
+    const first = await new Promise<Slice>(done => {
+      g.client.onSlice = done;
+      g.client.start({ kind: 'start', scenario: SCENARIO });
+    });
+    if (!first.world) throw new Error('slice: no plan');
+    g.world = first.world;
+    store.set({ world: first.world.plan });
+    g.layout = layoutOf(planOf(db, g.world.plan));
     g.machineBoxes = machineBoxes(db, g.layout);
     g.models = (await (await fetch(`${MODELS}/index.json`)).json()) as ModelIndex;
     const models = art === 'blender' ? await loadArt(loader, MODELS, g.models) : undefined;
@@ -197,10 +211,8 @@ export class Game {
     g.stage = new Stage({ host, layout: g.layout, db, quality, capacity: g.layout.plan.slots.length + 256, art: models });
     const crowd = await loadPeople(g.models);
     g.stage.setPeople(crowd.people, crowd.names);
-    g.client = new SimClient('./sim.js');
     g.client.onSlice = s => g.receive(s);
-    g.client.onError = m => store.set({ error: m });
-    g.client.start({ kind: 'start', scenario: SCENARIO });
+    g.receive(first);
     // один поток прогона на два окна: расписание (часть 5) и политики (Б5г) — чей прогон идёт, тому и итог
     g.planner.onVariant = m => {
       if (g.planFor === 'policies') return g.policyVariant(m.index, m.at, m.sum);
@@ -234,7 +246,19 @@ export class Game {
   }
 
   private receive(s: Slice) {
+    if (s.world) {
+      // план здания (Б7а): после старта и загрузки — тот же план, сцена та же; другой план (номер правки или сам план)
+      // сцена примет с Б7б, а пока окно о нём говорит и его срезов не разбирает
+      this.alien = s.world.rev !== this.world.rev || stableJson(s.world.plan) !== stableJson(this.world.plan);
+      if (this.alien) this.store.set({ error: `plan ${s.world.plan.id} rev ${s.world.rev}: not the plan of the scene` });
+      else {
+        this.world = s.world;
+        this.store.set({ world: s.world.plan });
+      }
+    }
     const sl = unpack(s.buf);
+    // срез другой правки плана окно не разбирает: номера вещей в нём — номера другого плана
+    if (this.alien || sl.rev !== this.world.rev) return;
     // перевозки — по прежним местам паллет окна, до того как срез их перепишет
     this.flows.step(sl.t, movesOf(this.layout.plan, this.view.units, this.view.trucks, sl));
     this.peopleFlows.step(sl.t, peopleMoves(this.layout, this.peopleAt, sl.people));
@@ -378,7 +402,7 @@ export class Game {
     if (this.view.version === this.shownVersion && key === this.moving) return;
     this.shownVersion = this.view.version;
     this.moving = key;
-    const list = palletsOf(this.db, this.scenario.plant, this.view, new Set(moving));
+    const list = palletsOf(this.db, this.world.plan, this.view, new Set(moving));
     this.pallets = list;
     this.stage.setPallets(this.extra.length ? [...list, ...this.extra] : list);
   }

@@ -117,7 +117,7 @@ describe('правило задачи', () => {
   const quiet: ContentDb = structuredClone(legacy);
   quiet.scenarios[SC] = { ...quiet.scenarios[SC], batches: [], orders: [] };
   for (const c of Object.values(quiet.customers)) c.demand = {};
-  const plan = planOf(quiet, sc.plant);
+  const plan = planOf(quiet, quiet.plants[sc.plant]);
   const room = plan.plant.rooms.find(r => r.type === 'granulation')!.id;
   const clean = (s: PlantState) => addTask(s, { kind: 'clean', roles: ['role.operator'], from: { kind: 'point', ...plan.room[room] }, work: 3 * HOUR, prio: 0, room });
 

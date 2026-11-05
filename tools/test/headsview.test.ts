@@ -21,7 +21,7 @@ import { morningView } from '../../src/sim/report';
 import { cardView, type PartInfo } from '../../src/sim/views';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const fresh = (): PlantState => newPlant(db, { scenario: SC });
 const refusals = (n: Notice[]) => n.flatMap(x => (x.kind === 'refused' ? [[x.why, x.detail]] : []));
 const open = (s: PlantState) => s.journal.filter(r => r.ask && !r.ask.end);

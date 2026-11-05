@@ -8,7 +8,7 @@
 import type { ContentDb } from '../content/types';
 import { apply, catchUp, type More, newPlant } from '../engine/engine';
 import { fromSave, toSave } from '../engine/save';
-import type { Command, Notice, PlantState } from '../engine/types';
+import { type Command, type Notice, type PlantState, planRev } from '../engine/types';
 import { Packer } from './pack';
 import type { FromSim, ToSim } from './protocol';
 import { stopKey } from './protocol';
@@ -32,14 +32,19 @@ export function createSim(db: ContentDb): SimHost {
   const packer = new Packer(db);
   /** виды панелей (3б): что окно уже получило */
   const desk = new ViewDesk(db);
+  /** план, который окно уже знает (Б7а): другой объект — план едет со срезом */
+  let sent: PlantState['plan'] | undefined;
   const slice = (notices: Notice[], tick = false, stopped = false): FromSim => {
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const views = desk.out(s!, performance.now());
+    const world = s!.plan !== sent ? { plan: s!.plan, rev: planRev(s!.plan) } : undefined;
+    sent = s!.plan;
     return {
       kind: 'slice',
       buf: packer.pack(s!, lag),
       notices,
       lag,
+      ...(world ? { world } : {}),
       ...(views ? { views } : {}),
       ...(tick ? { tick: true as const } : {}),
       ...(stopped ? { stopped: true as const } : {}),
@@ -59,12 +64,14 @@ export function createSim(db: ContentDb): SimHost {
           case 'start':
             s = newPlant(db, { scenario: msg.scenario, seed: msg.seed });
             owed = 0;
+            sent = undefined;
             packer.reset();
             desk.reset();
             return slice([]);
           case 'load':
             s = fromSave(db, msg.json);
             owed = 0;
+            sent = undefined;
             packer.reset();
             desk.reset();
             return slice([]);

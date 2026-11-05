@@ -296,7 +296,7 @@ function modeOf(db: ContentDb, key: string): JournalRef['mode'] {
  * У предложения заказа поставщику (Б5б) строк заказа ещё нет — строки команды до целой тары, срока нет.
  */
 export function refOf(db: ContentDb, s: PlantState, d: Decided, ask?: Ask): JournalRef {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   if (d.kind === 'po' && !d.po && ask?.cmd.kind === 'po') {
     const q = quotePo(db, s, ask.cmd.supplier, ask.cmd.lines);
     return { po: { lines: ('why' in q ? ask.cmd.lines : q.lines).map(l => ({ material: l.material, qty: l.qty })) } };

@@ -17,7 +17,7 @@ import { ANDON, type AndonItem, type AndonKind, andonView, WEIGHT } from '../../
 import type { Thing } from '../../src/sim/views';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const room = (id: string): Thing => ({ kind: 'room', i: plan.plant.rooms.findIndex(r => r.id === id) });
 
 /** Завод после 40 суток и ещё 10 часов. */

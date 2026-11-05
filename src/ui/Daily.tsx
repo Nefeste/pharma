@@ -4,7 +4,7 @@
 // потоке расчёта (src/sim/daily.ts) — истины в нём нет; здесь — слова.
 import { useState } from 'react';
 import { dailyLevers } from '../app/levers';
-import type { Dept } from '../content/types';
+import type { Dept, Plant } from '../content/types';
 import { momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
 import { clock, hText, named, T, whenText } from '../i18n';
@@ -14,7 +14,7 @@ import { Levers } from './Levers';
 import type { Actions, Hud } from './store';
 
 /** Что за строка: вещь и место словами. */
-export function rowText(r: DailyRowView, plant: string): string {
+export function rowText(r: DailyRowView, plant: Plant): string {
   const plan = db ? planOf(db, plant) : undefined;
   const code = r.code ?? (r.batch ? T.jobs.order(Number(r.batch.slice(1))) : '');
   const room = (id?: string) => {
@@ -71,7 +71,7 @@ export function sumText(x: DailyDeptSum): string {
 }
 
 /** Строки отдела списком. */
-function Rows({ rows, plant, start }: { rows: DailyRowView[]; plant: string; start: Ymd }) {
+function Rows({ rows, plant, start }: { rows: DailyRowView[]; plant: Plant; start: Ymd }) {
   return (
     <ul className="mlist daily-rows" data-test="daily-rows">
       {rows.map((r, i) => (
@@ -84,7 +84,7 @@ function Rows({ rows, plant, start }: { rows: DailyRowView[]; plant: string; sta
 }
 
 /** Блок планёрки «Сменно-суточные задания». */
-export function DailyMeet({ d, plant, start, hud, actions, close }: { d: DailyMeeting; plant: string; start: Ymd; hud: Hud; actions: Actions; close: () => void }) {
+export function DailyMeet({ d, plant, start, hud, actions, close }: { d: DailyMeeting; plant: Plant; start: Ymd; hud: Hud; actions: Actions; close: () => void }) {
   const [open, setOpen] = useState<string | null>(null);
   const dept = (x: Dept) => T.morning.depts[x] ?? x;
   // мгновение строки сегодня: в день планёрки — часы, после полуночи — и дата
@@ -149,7 +149,7 @@ export function DailyMeet({ d, plant, start, hud, actions, close }: { d: DailyMe
 }
 
 /** Строки задания на сутки у вещи карточки: помещения, линии, прибора. */
-export function DailyCard({ rows, plant, start }: { rows: DailyRowView[]; plant: string; start: Ymd }) {
+export function DailyCard({ rows, plant, start }: { rows: DailyRowView[]; plant: Plant; start: Ymd }) {
   if (rows.length === 0) return null;
   return (
     <div className="csec" data-test="card-daily">

@@ -8,7 +8,7 @@
 // Счёт — в шестидесятых долях таблетки: позиция машины — сколько таблеток прошло через неё за задание, скорость —
 // таблеток в минуту, то есть долей в секунду. Накопитель после машины — разность позиций соседей. Блистеры, пачки и
 // ящики — формулы от позиций; брак — счётом: из первых n штук годных n − ⌊n × доля⌋.
-import type { ContentDb, Id, Sku } from '../content/types';
+import type { ContentDb, Id, Plant, Sku } from '../content/types';
 import { lineUnfit } from './assets';
 import { batchNo } from './batchno';
 import { addEnergy } from './cash';
@@ -88,7 +88,7 @@ export interface Geo {
 }
 
 export function geo(db: ContentDb, s: PlantState, line: Line, job: Pick<PackJob, 'sku' | 'speed'>): Geo {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const def = plan.plant.lines.find(l => l.id === line.id)!;
   const sku = db.skus[job.sku];
   const types = def.machines.map(m => db.machines[m.type]);
@@ -122,9 +122,9 @@ const goodCartonsAt = (g: Geo, pos: number) => good(cartonsAt(g, pos), g.rej[1])
 const posForGood = (g: Geo, n: number) => need(need(n, g.rej[1]) * g.sku.blisters, g.rej[0]) * g.unit[0] * SIXTY;
 
 /** Линии по плану: свободны, не налажены, не очищены — очистка перед каждым заданием, первым тоже (Б1е; п. 5.50). */
-export function newLines(db: ContentDb, plantId: string, t: number): Record<string, Line> {
+export function newLines(db: ContentDb, plant: Plant, t: number): Record<string, Line> {
   const out: Record<string, Line> = {};
-  for (const l of planOf(db, plantId).plant.lines) {
+  for (const l of planOf(db, plant).plant.lines) {
     out[l.id] = {
       id: l.id,
       clear: false,
@@ -143,7 +143,7 @@ export function newLines(db: ContentDb, plantId: string, t: number): Record<stri
 const tasksOf = (s: PlantState, line: Line, kind: Task['kind']) => Object.values(s.tasks).filter(t => t.kind === kind && t.line === line.id);
 
 /** Помещение линии по плану. */
-const roomOfLine = (db: ContentDb, s: PlantState, line: Line) => planOf(db, s.plant).plant.lines.find(l => l.id === line.id)!.room;
+const roomOfLine = (db: ContentDb, s: PlantState, line: Line) => planOf(db, s.plan).plant.lines.find(l => l.id === line.id)!.room;
 
 /**
  * Помещение линии — чистое для продукта задания (Б1е; геймдизайн, §5.5): иначе уборка — по правилу помещений
@@ -171,7 +171,7 @@ function crews(db: ContentDb, line: Line): { role: Id; n: number; machines: numb
 
 /** Где стоит смена роли: у первой её машины (docs/specs/2026-10-view.md, 2а) — середина следа машины по плану. */
 function crewPoint(db: ContentDb, s: PlantState, line: Line, role: Id): Point {
-  const def = planOf(db, s.plant).plant.lines.find(l => l.id === line.id)!;
+  const def = planOf(db, s.plan).plant.lines.find(l => l.id === line.id)!;
   const i = crews(db, line).find(r => r.role === role)!.machines[0];
   return { x: def.machines[i].at[0], z: def.machines[i].at[1] };
 }
@@ -274,7 +274,7 @@ function advance(db: ContentDb, s: PlantState, line: Line, to: number) {
  * не ниже нуля и не выше ёмкости. Состояние не меняется.
  */
 function project(db: ContentDb, s: PlantState, line: Line, job: PackJob, g: Geo, dt: number): number[] {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const m = line.machines;
   const n = m.length;
   const next = m.map(mc => mc.pos + mc.rate * dt);
@@ -330,7 +330,7 @@ function makeCase(db: ContentDb, s: PlantState, line: Line, g: Geo, b: Batch, fi
   const lot = s.lots[job.fg!];
   let u = line.pallet ? s.units[line.pallet] : undefined;
   if (!u) {
-    const slot = palletSlots(planOf(db, s.plant), s, g)[0];
+    const slot = palletSlots(planOf(db, s.plan), s, g)[0];
     if (!slot) throw new Error(`line ${line.id}: no palletizing slot`);
     u = { id: nextId(s, 'U'), type: 'unit.pallet.euro', where: { kind: 'slot', id: slot }, items: [], tag: 'quarantine' };
     s.units[u.id] = u;
@@ -370,7 +370,7 @@ function solve(db: ContentDb, s: PlantState, line: Line) {
     return;
   }
   const g = geo(db, s, line, job);
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const n = m.length;
   m.forEach((mc, i) => {
     const role = db.machines[mc.type].crew.role;
@@ -404,7 +404,7 @@ function nextBoundary(db: ContentDb, s: PlantState, line: Line): number | undefi
   const job = b?.pack;
   if (!job || job.state !== 'running') return undefined;
   const g = geo(db, s, line, job);
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const m = line.machines;
   const n = m.length;
   const up = (rem: number, rate: number) => Math.max(1, Math.ceil(rem / rate));
@@ -608,7 +608,7 @@ export function lineStep(db: ContentDb, s: PlantState, notices: Notice[]) {
       }
       continue;
     }
-    const plan = planOf(db, s.plant);
+    const plan = planOf(db, s.plan);
     const room = roomOfLine(db, s, line);
     const bulk = [...new Set((containersByLot(s).get(b.bulk!) ?? []).map(c => c.unit))].map(id => s.units[id]);
     for (const u of bulk) {
@@ -694,7 +694,7 @@ function finish(db: ContentDb, s: PlantState, line: Line, g: Geo, b: Batch, noti
   const job = b.pack!;
   const all = job.tablets * SIXTY;
   if (!line.machines.every(mc => mc.pos === all)) return;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const goodCartons = goodCartonsAt(g, all);
   const left = goodCartons - line.cases * g.perCase;
   if (left > 0) {
@@ -848,7 +848,7 @@ export function lineDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[
       return true;
     }
     case 'feed': {
-      const room = planOf(db, s.plant).plant.lines.find(l => l.id === t.line)!.room;
+      const room = planOf(db, s.plan).plant.lines.find(l => l.id === t.line)!.room;
       s.units[t.unit!].where = { kind: 'room', id: room };
       const job = t.batch ? s.batches[t.batch]?.pack : undefined;
       if (job) worked(job, t.people);

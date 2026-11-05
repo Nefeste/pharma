@@ -143,7 +143,7 @@ const key = (t: Thing) => JSON.stringify(t);
 
 /** Вид «Андон»: что не работает сейчас — по вещам, в порядке плана: помещения, оборудование, машины, фуры, паллеты. */
 export function andonView(db: ContentDb, s: PlantState): AndonView {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const byThing = new Map<string, { thing: Thing; why: AndonWhy[] }>();
   const add = (thing: Thing | undefined, why: AndonWhy) => {
     if (!thing) return;

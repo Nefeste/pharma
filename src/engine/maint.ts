@@ -78,7 +78,7 @@ const budgetOf = (s: PlantState, id: string) => roll(s, `maint/${id}`, r => expo
 
 /** Узлы машин плана — износ на старте из сценария; на складе ЗИП — начальный уровень каждой их запчасти. */
 export function newParts(db: ContentDb, s: PlantState) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const wear = db.scenarios[s.scenario].wear;
   const add = (machine: string, of: Id, t: PartType, line?: string) => {
     const id = `${machine}/${t.id}`;
@@ -173,7 +173,7 @@ export function maintStep(db: ContentDb, s: PlantState, notices: Notice[]) {
  * ремонт после отказа — от и до из ветви узла. Запчасть — в резерв.
  */
 function repairTask(db: ContentDb, s: PlantState, pt: Part, planned: boolean) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const t = partType(db, pt);
   const shop = plan.room[plan.roomOf.workshop];
   const room = pt.line ? plan.plant.lines.find(l => l.id === pt.line)!.room : s.equipment[pt.machine].room;

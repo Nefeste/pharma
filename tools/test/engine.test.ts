@@ -92,7 +92,7 @@ describe('сохранение', () => {
     const json = await Bun.file(new URL('./fixtures/save-v2.json', import.meta.url)).text();
     const s = fromSave(db, json);
     for (const lot of Object.values(s.lots)) expect([lot.truth, lot.coa].every(p => Object.keys(p).length > 0)).toBe(true);
-    expect(Object.keys(s.instruments)).toEqual(db.plants[s.plant].instruments.map(i => i.id));
+    expect(Object.keys(s.instruments)).toEqual(s.plan.instruments.map(i => i.id));
     expect(check(db, s)).toEqual([]);
     const end = s.t + 90 * DAY;
     while (s.t < end) {

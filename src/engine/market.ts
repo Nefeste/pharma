@@ -58,7 +58,7 @@ export function newCustomers(sc: Scenario, t: number): PlantState['customers'] {
 export function seedFg(db: ContentDb, sc: Scenario, s: PlantState, startDay: number) {
   const fg = sc.fg;
   if (!fg) return;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const cal = calOf(db, s);
   const near = plan.byKind.shipping?.[0] ?? plan.byKind.storage[0];
   const at = momentOf(s.start, s.t).date;
@@ -115,7 +115,7 @@ export function seedFg(db: ContentDb, sc: Scenario, s: PlantState, startDay: num
       // ящики — последние по номерам серии: прежние уже отгружены; коды пачек — по порядку ящиков
       const first = x.per - x.cases;
       for (let c = 0; c < x.cases; c += x.sku.pallet.cases) {
-        const sl = findSlot(s, plan, coldOf(db, sc.plant, x.sku.fg) ? 'cold' : 'storage', near, 99);
+        const sl = findSlot(s, plan, coldOf(db, s.plan, x.sku.fg) ? 'cold' : 'storage', near, 99);
         if (!sl) throw new Error(`scenario ${sc.id}: no slot for start finished goods ${x.sku.fg}`);
         const u: Unit = { id: nextId(s, 'U'), type: 'unit.pallet.euro', where: { kind: 'slot', id: sl.id }, items: [], tag: 'released' };
         s.units[u.id] = u;
@@ -228,7 +228,7 @@ export function marketStep(db: ContentDb, s: PlantState, notices: Notice[]) {
  * ящики кладут на паллету заказа уже в кузове — задачи, ещё не начатые и ждущие места, едут к фуре.
  */
 function crossDock(db: ContentDb, s: PlantState, tr: Truck) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const dock = plan.dock[outDock(db, s)];
   if (findSlot(s, plan, 'shipping', dock, 0)) return;
   const mine = new Set(truckOrders(s, tr).map(o => o.id));
@@ -252,7 +252,7 @@ function crossDock(db: ContentDb, s: PlantState, tr: Truck) {
  */
 function allocate(db: ContentDb, s: PlantState, o: Order) {
   o.checked = s.next.stock ?? 0;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const day = today(s);
   const byLot = containersByLot(s);
   const picks = new Map<string, string[]>();
@@ -291,7 +291,7 @@ function allocate(db: ContentDb, s: PlantState, o: Order) {
   }
 }
 
-const outDock = (db: ContentDb, s: PlantState) => db.plants[s.plant].docks.find(d => d.kind === 'out')!.id;
+const outDock = (db: ContentDb, s: PlantState) => s.plan.docks.find(d => d.kind === 'out')!.id;
 
 /** Сколько ящиков влезает на паллету заказа: по самой мелкой укладке позиций заказа. */
 const capacity = (db: ContentDb, o: Order) => Math.min(...o.lines.map(l => db.skus[l.sku].pallet.cases));
@@ -363,7 +363,7 @@ export function marketDone(db: ContentDb, s: PlantState, t: Task, notices: Notic
  * освободится. Паллета на стеллаже остаётся на месте.
  */
 function pickTask(db: ContentDb, s: PlantState, o: Order, u: Unit, cases: string[]) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const cap = capacity(db, o);
   const coming = (uid: string) =>
     s.units[uid].items.length + Object.values(s.tasks).reduce((n, t) => n + (t.kind === 'casePick' && t.dest === uid ? t.cases!.length : 0), 0);

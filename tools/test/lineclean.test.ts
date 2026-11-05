@@ -28,7 +28,7 @@ const SC = 'scn.proto';
 const RCP = 'rcp.paracetamol500.wet.v1';
 const N20 = 'sku.paracetamol500.n20';
 const PRD = 'prd.paracetamol500';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const LINE = plan.plant.lines[0];
 const ROOM = LINE.room;
 
@@ -86,8 +86,8 @@ function order(s: PlantState, notBefore = s.t): Batch {
 describe('кто моет и сколько', () => {
   test('блистерную машину моет оператор линии: 30 минут малой, 3 часа генеральной; помещение — уборщик', () => {
     const s = newPlant(bare, { scenario: SC });
-    expect(washRoles(db, s.plant, ROOM)).toEqual([db.machines['mach.blister'].crew.role]);
-    expect(washRoles(db, s.plant, plan.roomOf.granulation)).toEqual(MES.operators);
+    expect(washRoles(db, s.plan, ROOM)).toEqual([db.machines['mach.blister'].crew.role]);
+    expect(washRoles(db, s.plan, plan.roomOf.granulation)).toEqual(MES.operators);
     expect(washWork(db, s, ROOM, false)).toBe(30 * 60);
     expect(washWork(db, s, ROOM, true)).toBe(180 * 60);
   });
@@ -175,7 +175,7 @@ describe('уборка линии и очистка перед каждым за
     const t = Object.values(s.tasks).find(x => x.kind === 'clean' && x.room === ROOM)!;
     expect(s.rooms[ROOM].major).toBe(true);
     expect(t.work).toBe(washWork(db, s, ROOM, true));
-    expect(t.roles).toEqual([...washRoles(db, s.plant, ROOM)]);
+    expect(t.roles).toEqual([...washRoles(db, s.plan, ROOM)]);
     expect(check(bare, s)).toEqual([]);
   });
 

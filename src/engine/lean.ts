@@ -225,7 +225,7 @@ export function leanHour(db: ContentDb, s: PlantState) {
     }
     dayOf(s, now.day);
   }
-  for (const id of roomsOf(planOf(db, s.plant)).rooms) roomSpan(s, s.rooms[id]);
+  for (const id of roomsOf(planOf(db, s.plan)).rooms) roomSpan(s, s.rooms[id]);
   // отрезки серий у мест (Б1к) — тоже каждый час: через полночь их нет
   for (const b of Object.values(s.batches)) if (b.place) placeSpan(s, b);
   // годные пачки часа — у каждого открытого задания с часами (доска «План — факт», Б1и): до конца смены, чтобы их сумма
@@ -370,7 +370,7 @@ export function phaseOf(db: ContentDb, s: PlantState, b: Batch): BatchPhase | un
       if (task) return task.state === 'busy' ? 'work' : 'people';
       if (b.run?.rest !== undefined) return 'repair';
       const st = db.recipes[b.recipe].stages[b.stage];
-      const roomId = planOf(db, s.plant).roomOf[st.room];
+      const roomId = planOf(db, s.plan).roomOf[st.room];
       const room = s.rooms[roomId];
       if (room.batch && room.batch !== b.id) return 'room';
       const eqs = Object.values(s.equipment).filter(e => e.room === roomId && st.equipment.includes(e.type));
@@ -448,7 +448,7 @@ function spotsOf(plan: PlantPlan): Spots {
  */
 export function placeOf(db: ContentDb, s: PlantState, b: Batch, ph: BatchPhase): string | undefined {
   if (ph === 'plan' || ph === 'before') return undefined;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   switch (b.status) {
     case 'process':
       return plan.roomOf[db.recipes[b.recipe].stages[b.stage].room];
@@ -505,7 +505,7 @@ export const NO_ROOM: RoomTimes = { work: 0, clean: 0, held: 0, dirty: 0, free: 
  * в прошлое состояние.
  */
 function roomsStep(db: ContentDb, s: PlantState) {
-  const of = roomsOf(planOf(db, s.plant));
+  const of = roomsOf(planOf(db, s.plan));
   const staged = new Set<string>();
   const prep = new Set<string>();
   for (const t of Object.values(s.tasks)) {

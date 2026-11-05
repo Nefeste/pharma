@@ -318,7 +318,7 @@ export function supplyPlan(db: ContentDb, s: PlantState): SupplyOrder[] {
   const safety = numOf(db, s, POL.safety)!;
   const every = numOf(db, s, POL.every)!;
   const { qc } = sc.supply;
-  const room = Math.max(1, Math.floor((planOf(db, s.plant).byKind.quarantine?.length ?? 2) / 2));
+  const room = Math.max(1, Math.floor((planOf(db, s.plan).byKind.quarantine?.length ?? 2) / 2));
   // тара по партиям — один проход на весь расчёт
   const byLot = containersByLot(s);
   const per = planUse(db, s, 1000, byLot);
@@ -369,7 +369,7 @@ export function needPlan(db: ContentDb, s: PlantState): SupplyOrder[] {
   const sc = db.scenarios[s.scenario];
   if (!sc.supply || !sc.plan) return [];
   const r = mrpPlan(db, s);
-  const room = Math.max(1, Math.floor((planOf(db, s.plant).byKind.quarantine?.length ?? 2) / 2));
+  const room = Math.max(1, Math.floor((planOf(db, s.plan).byKind.quarantine?.length ?? 2) / 2));
   const lines = new Map<Id, PoLine[]>();
   const whys = new Map<Id, PoWhy[]>();
   const taken = new Map<Id, number>();

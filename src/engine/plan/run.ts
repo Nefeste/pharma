@@ -75,7 +75,7 @@ function share(spans: [number, number][], from: number, to: number): number {
  * снимка; `before` — уборки и переналадки суток снимка до него: их в горизонт не считать.
  */
 function measure(db: ContentDb, c: PlantState, from: number, to: number, seed: number, open: string[], known: Set<string>, before: Switches): SeedOut {
-  const plan = planOf(db, c.plant);
+  const plan = planOf(db, c.plan);
   const orders = Object.values(c.orders)
     .filter(o => o.due >= from && o.due < to)
     .map(o => ({ order: o.id, customer: o.customer, due: o.due, ok: o.status === 'shipped', missing: o.lines.reduce((n, l) => n + l.cases - l.shipped, 0), known: known.has(o.id) }));
@@ -141,7 +141,11 @@ export function runSeed(db: ContentDb, s: PlantState, variant: Command[], o: Run
   // остаются: руководитель ответит на них в свой час; на вопросы «Просят решить» в копии никто не ответит —
   // руководитель решит, как сейчас; «Веду сам» — ведёт ООК, как «советует» — как «сам»
   const memos = s.journal.filter(r => r.memo && !r.memo.end);
-  const c: PlantState = structuredClone({ ...s, journal: memos, heads: runHeads(s), kpi: { ...s.kpi, months: [] }, daily: undefined });
+  // план здания на месте не меняется (Б7а): копия делит его с заводом, и разбор плана (`planOf`) не считается на каждое зерно
+  const c: PlantState = {
+    ...structuredClone({ ...s, plan: undefined, journal: memos, heads: runHeads(s), kpi: { ...s.kpi, months: [] }, daily: undefined }),
+    plan: s.plan,
+  };
   for (const inv of Object.values(c.investigations)) delete inv.lead;
   if (o.twin !== false) blind(db, c, k);
   for (const cmd of variant) apply(db, c, cmd);

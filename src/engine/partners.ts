@@ -320,7 +320,7 @@ export function bookEval(db: ContentDb, s: PlantState, p: Pair, today: number) {
 
 /** Задача специалисту ООК — рассмотреть отчёт или документы пары — у его поста. */
 function review(db: ContentDb, s: PlantState, pair: string, work: number): string {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const at = plan.posts[REVIEWERS[0]] ?? plan.entrance;
   return addTask(s, { kind: 'vendorReview', roles: [...REVIEWERS], from: { kind: 'point', x: at.x, z: at.z }, work, prio: REVIEW_PRIO, pair }).id;
 }

@@ -4,7 +4,7 @@
 // line.ts). Стадия с узлами под износом (1е) останавливается на отказе узла и продолжается после ремонта (maint.ts). Стадия
 // начинается только на пригодном оборудовании и с пригодными приборами своих МОК (Б3в, assets.ts).
 // Задачи раздаёт раздатчик (tasks.ts); здесь — когда их заводить и что они делают, когда кончаются.
-import { ATTRS, type Attr, type CauseDriver, type ContentDb, type Id, type PartType, type RecipeStage } from '../content/types';
+import { ATTRS, type Attr, type CauseDriver, type ContentDb, type Id, type PartType, type Plant, type RecipeStage } from '../content/types';
 import { stageUnfit } from './assets';
 import { batchNo, issueNo } from './batchno';
 import { addEnergy } from './cash';
@@ -328,7 +328,7 @@ export function packOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, { 
  * запасом на брак (docs/specs/2026-10-engine.md, 1г).
  */
 function startPacking(db: ContentDb, s: PlantState, b: Batch) {
-  const line = planOf(db, s.plant).plant.lines[0];
+  const line = planOf(db, s.plan).plant.lines[0];
   if (!line) return;
   const tablets = (containersByLot(s).get(b.bulk!) ?? []).reduce((n, c) => n + c.qty, 0);
   const job: PackJob = { sku: b.sku!, line: line.id, state: 'waiting', created: s.t, kit: [], used: [], tablets, checked: 0, rejected: [], retained: [], people: [] };
@@ -394,7 +394,7 @@ function reservePack(db: ContentDb, s: PlantState, b: Batch) {
 /** Комплект упаковочных материалов — к шлюзу и на пластиковую паллету в помещении линии. */
 function startPackKitting(db: ContentDb, s: PlantState, b: Batch) {
   const job = b.pack!;
-  const room = planOf(db, s.plant).plant.lines.find(l => l.id === job.line)!.room;
+  const room = planOf(db, s.plan).plant.lines.find(l => l.id === job.line)!.room;
   const u: Unit = { id: nextId(s, 'U'), type: 'unit.pallet.plastic', where: { kind: 'room', id: room }, items: [], tag: 'released' };
   s.units[u.id] = u;
   job.kitUnit = u.id;
@@ -431,7 +431,7 @@ export function mesHour(db: ContentDb, s: PlantState) {
  */
 function startKitting(db: ContentDb, s: PlantState, b: Batch): boolean {
   if (!issueNo(db, s, b)) return false;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const room = plan.roomOf[db.recipes[b.recipe].stages[0].room];
   const u: Unit = { id: nextId(s, 'U'), type: 'unit.pallet.plastic', where: { kind: 'room', id: room }, items: [], tag: 'released' };
   s.units[u.id] = u;
@@ -448,7 +448,7 @@ function startKitting(db: ContentDb, s: PlantState, b: Batch): boolean {
  * задания, которое ждёт линию, а линию взяло другое, — без этого они ждали бы друг друга до конца года.
  */
 function kitStep(db: ContentDb, s: PlantState, b: Batch) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const h = holderOf(b);
   const at = b.status === 'packing' ? s.units[h.kitUnit!]?.where : undefined;
   let pending = false;
@@ -509,7 +509,7 @@ function tryStart(db: ContentDb, s: PlantState, b: Batch) {
   const r = db.recipes[b.recipe];
   if (b.status !== 'process' || b.stage >= r.stages.length) return;
   if (Object.values(s.tasks).some(t => t.kind === 'stage' && t.batch === b.id)) return;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const st = r.stages[b.stage];
   const roomId = plan.roomOf[st.room];
   const room = s.rooms[roomId];
@@ -744,9 +744,9 @@ function duration(db: ContentDb, s: PlantState, b: Batch, st: RecipeStage, roomI
 function ensureCleaning(db: ContentDb, s: PlantState, room: Room) {
   if (room.status !== 'dirty' || Object.values(s.tasks).some(t => (t.kind === 'clean' || t.kind === 'roomClean') && t.room === room.id)) return;
   if (!room.washed && s.t - room.since > DIRTY_HOLD) room.major = true;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const wash = !room.washed && washTime(db, s, room) > 0;
-  if (wash) addTask(s, { kind: 'clean', roles: [...washRoles(db, s.plant, room.id)], from: roomPlace(plan, room.id), work: washTime(db, s, room), prio: MES_PRIO.clean, room: room.id });
+  if (wash) addTask(s, { kind: 'clean', roles: [...washRoles(db, s.plan, room.id)], from: roomPlace(plan, room.id), work: washTime(db, s, room), prio: MES_PRIO.clean, room: room.id });
   else if (roomTime(db, s, room) > 0) addTask(s, { kind: 'roomClean', roles: [...MES.cleaners], from: roomPlace(plan, room.id), work: roomTime(db, s, room), prio: MES_PRIO.roomClean, room: room.id });
   else cleanDone(s, room);
 }
@@ -761,13 +761,13 @@ const roomTime = (db: ContentDb, s: PlantState, room: Room) => roomWork(db, s, r
 export function washWork(db: ContentDb, s: PlantState, roomId: string, major: boolean): number {
   let sec = 0;
   for (const e of Object.values(s.equipment)) if (e.room === roomId) sec += db.equipment[e.type].cleaning[major ? 'major' : 'minor'];
-  for (const m of lineMachinesIn(db, s.plant, roomId)) sec += db.machines[m.type].cleaning?.[major ? 'major' : 'minor'] ?? 0;
+  for (const m of lineMachinesIn(db, s.plan, roomId)) sec += db.machines[m.type].cleaning?.[major ? 'major' : 'minor'] ?? 0;
   return sec;
 }
 
 /** Машины линий помещения по плану. */
-function lineMachinesIn(db: ContentDb, plantId: string, roomId: string) {
-  return planOf(db, plantId).plant.lines.flatMap(l => (l.room === roomId ? l.machines : []));
+function lineMachinesIn(db: ContentDb, plant: Plant, roomId: string) {
+  return planOf(db, plant).plant.lines.flatMap(l => (l.room === roomId ? l.machines : []));
 }
 
 /**
@@ -775,14 +775,14 @@ function lineMachinesIn(db: ContentDb, plantId: string, roomId: string) {
  * линии, которые касаются таблеток, — их смена у линии (Б1е). Одна функция для движка, прогона расписания и сборщика
  * базы.
  */
-export function washRoles(db: ContentDb, plantId: string, roomId: string): readonly Id[] {
-  const crew = [...new Set(lineMachinesIn(db, plantId, roomId).flatMap(m => (db.machines[m.type].cleaning ? [db.machines[m.type].crew.role] : [])))];
+export function washRoles(db: ContentDb, plant: Plant, roomId: string): readonly Id[] {
+  const crew = [...new Set(lineMachinesIn(db, plant, roomId).flatMap(m => (db.machines[m.type].cleaning ? [db.machines[m.type].crew.role] : [])))];
   return crew.length > 0 ? crew : MES.operators;
 }
 
 /** Уборка помещения уборщиком (Б4в): площадь пола помещения × секунды на м² его класса чистоты (запись плана), с. */
 export function roomWork(db: ContentDb, s: PlantState, roomId: string, major: boolean): number {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const r = plan.plant.rooms.find(x => x.id === roomId);
   const rate = r && plan.plant.cleaning[r.grade];
   if (!r || !rate) return 0;
@@ -817,7 +817,7 @@ export function deviate(s: PlantState, notices: Notice[], d: Omit<Deviation, 'id
 
 /** Что сделала задача производства, когда кончилась. Не задача производства — `false`. */
 export function mesDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]): boolean {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   switch (t.kind) {
     case 'pick': {
       const u = s.units[t.unit!];
@@ -904,7 +904,7 @@ export function mesDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
 /** Деревянная паллета после перекладки: пустая — из учёта, иначе — на стеллаж ближе к шлюзу. */
 function afterUnload(db: ContentDb, s: PlantState, u: Unit) {
   if (u.where.kind !== 'slot') return;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   if (u.items.length === 0) {
     delete s.slots[u.where.id].unit;
     delete s.units[u.id];
@@ -919,7 +919,7 @@ function afterUnload(db: ContentDb, s: PlantState, u: Unit) {
  * на деревянную паллету; оттуда его везут в зону отклонённого. Паллета балка, у которой уже есть задача, — не вторая.
  */
 export function bulkOut(db: ContentDb, s: PlantState, lot: Lot) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const seen = new Set<string>();
   for (const c of Object.values(s.containers)) {
     if (c.lot !== lot.id || seen.has(c.unit)) continue;
@@ -931,7 +931,7 @@ export function bulkOut(db: ContentDb, s: PlantState, lot: Lot) {
 }
 
 export function returnTask(db: ContentDb, s: PlantState, kit: Unit, batch: string) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const room = (kit.where as { id: string }).id;
   addTask(s, { kind: 'return', roles: [...WMS.keepers], unit: kit.id, from: roomPlace(plan, room), toKind: 'staging', work: TRANSFER_WORK, prio: MES_PRIO.return, batch });
 }
@@ -1050,7 +1050,7 @@ export function leaveRoom(db: ContentDb, s: PlantState, roomId: string, product:
  * линии — серия, чья упаковка ещё не идёт, производству — у которой впереди стадия в нём.
  */
 function nextIn(db: ContentDb, s: PlantState, roomId: string, cur: string): Batch | undefined {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const lineRoom = plan.plant.lines.some(l => l.room === roomId);
   let best: Batch | undefined;
   for (const x of Object.values(s.batches)) {

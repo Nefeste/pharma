@@ -106,7 +106,7 @@ export function startSampling(db: ContentDb, s: PlantState) {
   // готовую продукцию не испытывают в лаборатории — её проверяет ООК (qa.ts)
   const todo = Object.values(s.lots).filter(l => l.status === 'quarantine' && !l.sample && db.materials[l.material].kind !== 'fg');
   if (todo.length === 0) return;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const byLot = containersByLot(s);
   for (const lot of todo) {
     const cs = byLot.get(lot.id) ?? [];
@@ -143,7 +143,7 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       const sm = sampleOf(s, t.lot!);
       const n = u.items.filter(c => sm.plan.includes(c)).length;
       // паллета ждёт в шлюзе пробоотборной, пробы берут под ламинаром в самой пробоотборной (docs/specs/2026-10-view.md, 2а)
-      const at = planOf(db, s.plant).room[planOf(db, s.plant).roomOf.sampling];
+      const at = planOf(db, s.plan).room[planOf(db, s.plan).roomOf.sampling];
       addTask(s, { kind: 'sample', roles: [...QC.samplers], unit: u.id, from: { kind: 'point', x: at.x, z: at.z }, work: n * SAMPLE_WORK, prio: prioOf(s, 'sample', t), lot: t.lot });
       return true;
     }
@@ -164,11 +164,11 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
       }
       sm.left = sm.left.filter(id => id !== u.id);
       // из пробоотборной — обратно в карантин; балк, отобранный на месте, остаётся где стоит
-      if (u.where.kind === 'slot') addTask(s, { kind: 'fromSampling', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from: t.from, toKind: coldOf(db, s.plant, m.id) ? 'cold' : 'quarantine', work: 0, prio: prioOf(s, 'fromSampling', { lot: lot.id }), lot: lot.id });
+      if (u.where.kind === 'slot') addTask(s, { kind: 'fromSampling', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from: t.from, toKind: coldOf(db, s.plan, m.id) ? 'cold' : 'quarantine', work: 0, prio: prioOf(s, 'fromSampling', { lot: lot.id }), lot: lot.id });
       if (sm.left.length === 0) {
         sm.taken = s.t;
         setLotStatus(s, lot, 'sampled');
-        addTask(s, { kind: 'handover', roles: [...QC.samplers], from: labPlace(planOf(db, s.plant)), work: HANDOVER_WORK, prio: prioOf(s, 'handover', { lot: lot.id }), lot: lot.id });
+        addTask(s, { kind: 'handover', roles: [...QC.samplers], from: labPlace(planOf(db, s.plan)), work: HANDOVER_WORK, prio: prioOf(s, 'handover', { lot: lot.id }), lot: lot.id });
       }
       return true;
     }
@@ -290,7 +290,7 @@ function measured(db: ContentDb, s: PlantState, q: LabTest) {
   incidentMeasured(db, s, q);
   if (q.inst) delete s.instruments[q.inst].test;
   q.state = 'review';
-  addTask(s, { kind: 'review', roles: [...QC.reviewers], not: q.by ? [q.by] : [], from: labPlace(planOf(db, s.plant)), work: REVIEW_WORK, prio: prioOf(s, 'review', { test: q.id }), test: q.id });
+  addTask(s, { kind: 'review', roles: [...QC.reviewers], not: q.by ? [q.by] : [], from: labPlace(planOf(db, s.plan)), work: REVIEW_WORK, prio: prioOf(s, 'review', { test: q.id }), test: q.id });
 }
 
 /**
@@ -300,12 +300,12 @@ function measured(db: ContentDb, s: PlantState, q: LabTest) {
 export function settleLot(db: ContentDb, s: PlantState, lot: Lot, u: Unit) {
   if (lot.status !== 'released' && lot.status !== 'rejected' && lot.status !== 'blocked') return;
   if (u.where.kind !== 'slot' || Object.values(s.tasks).some(x => x.unit === u.id)) return;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const at = plan.slot[u.where.id];
   const from: Place = { kind: 'slot', id: at.id };
   // заблокированная пробная партия (Б6ж) ждёт решения по досье на стеллаже, как разрешённая
   if (lot.status === 'released' || lot.status === 'blocked') {
-    if (at.kind === 'storage' || coldOf(db, s.plant, lot.material)) return;
+    if (at.kind === 'storage' || coldOf(db, s.plan, lot.material)) return;
     const gate = plan.byKind.staging[0];
     addTask(s, { kind: 'putaway', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from, toKind: 'storage', near: { x: gate.x, z: gate.z }, work: 0, prio: PRIO.putaway, lot: lot.id });
   } else if (at.kind !== 'rejected') {

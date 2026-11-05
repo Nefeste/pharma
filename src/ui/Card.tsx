@@ -2,7 +2,7 @@
 // → почему так → что можно сделать → история. Снизу экрана, как карточка выбранного в «Больнице» (её src/ui/App.tsx,
 // `card`). Вид приходит из потока расчёта (src/sim/views.ts) без истины и без слов; слова — отсюда, из src/i18n/.
 import { type ReactNode, useState } from 'react';
-import type { PartType } from '../content/types';
+import type { PartType, Plant } from '../content/types';
 import { civilFromDays, momentOf, weekday, type Ymd } from '../engine/core/calendar';
 import { clock, dayText, durText, hText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import { DEPT_SEAT } from '../engine/seats';
@@ -442,8 +442,8 @@ function InsideBlock({ x }: { x: Inside }) {
 
 /** Материалы машины линии (Б1д): партия, выдано, израсходовано по счёту машины и на наладку, осталось у линии. */
 /** Машина карточки по имени плана: оборудование участка или машина линии. */
-function machineId(plant: string, c: { kind: 'equipment'; eq: number } | { kind: 'machine'; line: number; k: number }): string | undefined {
-  const p = db?.plants[plant];
+function machineId(plant: Plant, c: { kind: 'equipment'; eq: number } | { kind: 'machine'; line: number; k: number }): string | undefined {
+  const p = plant;
   return c.kind === 'equipment' ? p?.equipment[c.eq]?.id : p?.lines[c.line]?.machines[c.k]?.id;
 }
 
@@ -514,7 +514,7 @@ function LineMaterials({ list }: { list: readonly LineMaterial[] }) {
  * справочник, расследование): карточка поверх него непрозрачна, строки окна под ней не просвечивают (Б5ж); `watch` —
  * работа вещи в «Сейчас» (Б1б); `hud` — чьи посты у игрока и какие пояснения он уже понял (Б1г).
  */
-export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v: CardView; start: Ymd; plant: string; actions: Actions; hud: Hud; beside?: boolean; over?: boolean; watch?: NowRow }) {
+export function Card({ v, start, plant, actions, hud, beside, over, watch }: { v: CardView; start: Ymd; plant: Plant; actions: Actions; hud: Hud; beside?: boolean; over?: boolean; watch?: NowRow }) {
   const c = v.card;
   let title: ReactNode = '';
   let body: ReactNode = null;

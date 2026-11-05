@@ -216,7 +216,7 @@ function hireCandidate(db: ContentDb, s: PlantState, lab: Labor, id: string, tri
 function start(db: ContentDb, s: PlantState, h: Hire, notices: Notice[]) {
   const sc = db.scenarios[s.scenario];
   const n = (s.next.E = (s.next.E ?? 0) + 1);
-  const e = planOf(db, s.plant).entrance;
+  const e = planOf(db, s.plan).entrance;
   const p: Person = {
     id: `E${n}`,
     role: h.role,

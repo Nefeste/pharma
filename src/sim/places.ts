@@ -80,7 +80,7 @@ const num = (id: string) => Number(id.slice(1));
 export function assetInfo(db: ContentDb, s: PlantState, id: string): AssetInfo | undefined {
   const a = s.assets[id];
   if (!a) return undefined;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const cls = classOf(db, a);
   const needs = WORKS.filter(w => cls[w]);
   const qual = recOf(a, 'qual');
@@ -118,7 +118,7 @@ export function movable(db: ContentDb, s: PlantState, a: Asset): { move?: number
 }
 
 /** Вещь на полу актива: машина линии, оборудование, техника; прибор — его помещение. */
-export function thingOf(db: ContentDb, s: PlantState, id: string, plan = planOf(db, s.plant)): Thing | undefined {
+export function thingOf(db: ContentDb, s: PlantState, id: string, plan = planOf(db, s.plan)): Thing | undefined {
   for (const [line, l] of plan.plant.lines.entries()) {
     const k = l.machines.findIndex(m => m.id === id);
     if (k >= 0) return { kind: 'machine', line, k };
@@ -133,7 +133,7 @@ export function thingOf(db: ContentDb, s: PlantState, id: string, plan = planOf(
 
 /** Вкладка «Места»: участки по порядку плана, рабочие места и их активы по порядку кода места, техника участка. */
 export function placesView(db: ContentDb, s: PlantState): PlacesView {
-  const plant = planOf(db, s.plant).plant;
+  const plant = planOf(db, s.plan).plant;
   const P = placesOf(plant);
   const typeOf = (room: string) => plant.rooms.find(r => r.id === room)?.type ?? room;
   const inAreas = new Set(plant.areas.flatMap(a => a.rooms));
@@ -218,7 +218,7 @@ export interface AssetWait {
 
 /** Кого из серий держит непригодный актив: стадия без задачи, у которой актив не годен, и упаковка с комплектом у линии. */
 export function assetWaits(db: ContentDb, s: PlantState): AssetWait[] {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const out: AssetWait[] = [];
   for (const b of Object.values(s.batches)) {
     if (b.status === 'process') {

@@ -38,7 +38,7 @@ const busy = (s: PlantState, uid: string) => Object.values(s.tasks).some(t => t.
 
 /** Упакованные серии, все паллеты которых стоят в карантине ГП, — на проверку ООК. Зовётся после каждого события. */
 export function qaStep(db: ContentDb, s: PlantState) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   for (const b of Object.values(s.batches)) {
     if (b.status !== 'fg' || b.checked !== undefined) continue;
     if (Object.values(s.tasks).some(t => t.batch === b.id && (t.kind === 'fgCheck' || t.kind === 'qpDecide'))) continue;
@@ -73,7 +73,7 @@ export function qaDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[])
 }
 
 function decideTask(db: ContentDb, s: PlantState, b: Batch) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   addTask(s, { kind: 'qpDecide', roles: [...QA.qps], from: { kind: 'point', x: plan.lab.x, z: plan.lab.z }, work: QP_WORK, prio: QA_PRIO.qpDecide, batch: b.id, lot: b.pack!.fg });
 }
 
@@ -189,7 +189,7 @@ function codesFee(db: ContentDb, s: PlantState, b: Batch) {
  */
 export function settle(db: ContentDb, s: PlantState, lot: Lot, u: Unit) {
   if (u.where.kind !== 'slot' || busy(s, u.id)) return;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const at = plan.slot[u.where.id];
   const from = { kind: 'slot' as const, id: at.id };
   if ((lot.status === 'released' || lot.status === 'blocked') && at.kind !== 'storage') {
@@ -335,7 +335,7 @@ export function assessCommand(db: ContentDb, s: PlantState, cmd: Extract<Command
 }
 
 function startAssess(db: ContentDb, s: PlantState, d: Deviation, verdict: 'none' | 'reject', by: string, cause: string) {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const t = addTask(s, { kind: 'devAssess', roles: [...QA.specialists], from: { kind: 'point', x: plan.lab.x, z: plan.lab.z }, work: DEV_WORK, prio: QA_PRIO.devAssess, dev: d.id, batch: d.batch });
   d.assess = { verdict, by, t: s.t, task: t.id, cause };
 }

@@ -28,7 +28,7 @@ import { buildDb } from '../content/load';
 const SC = 'scn.proto';
 const sc = db.scenarios[SC];
 const start = daysFromCivil(sc.start.date);
-const plan = planOf(db, sc.plant);
+const plan = planOf(db, db.plants[sc.plant]);
 const R1 = 'sop.cleaning';
 const R2 = 'sop.cleaning-r2';
 const CLEAN = 'SOP-0015';

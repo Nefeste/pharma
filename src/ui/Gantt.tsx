@@ -7,7 +7,7 @@
 // Щелчок по полосе — камера к помещению или линии. Виды собирает поток расчёта (src/sim/plan.ts), итог прогона — поток
 // прогона (src/sim/planHost.ts); здесь — слова, рисунок и мышь.
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
-import type { Id } from '../content/types';
+import type { Id, Plant } from '../content/types';
 import { HOUR, momentOf, type Ymd } from '../engine/core/calendar';
 import type { Range, RunSum } from '../engine/plan/run';
 import type { Bar, Why } from '../engine/plan/schedule';
@@ -54,7 +54,7 @@ const short = (l: Labels, id: string | undefined) => {
   return b?.code ?? (b ? T.gantt.order(b.n) : '');
 };
 
-export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; plant: string }) {
+export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; plant: Plant }) {
   const g = hud.gantt;
   const v = g.view;
   const start = hud.start;
@@ -90,7 +90,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
   // черновик: полосы сдвинутых им серий — в белой рамке; прежние — бледнее
   const moved = new Set(v.moved);
   // срочное задание (Б1г) — по позициям плана выпуска сценария этого завода
-  const scen = Object.values(db?.scenarios ?? {}).find(sc => sc.plant === plant);
+  const scen = Object.values(db?.scenarios ?? {}).find(sc => sc.plant === plant.id);
   const items = scen?.plan?.items ?? [];
   // вкладка «Прогноз» (Б6в) — у сценария с прогнозом
   const fcOn = !!scen?.forecast;

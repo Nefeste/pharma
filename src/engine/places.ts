@@ -110,8 +110,7 @@ export function rackStore(plant: Plant): string | undefined {
  * Куда материал кладут на хранение (Б3в): на стеллажи, если их зона принимает его режим, иначе — в холодную камеру
  * (зона вида `cold`). Материалы прототипа хранятся при контролируемой комнатной температуре — им стеллажи.
  */
-export function coldOf(db: ContentDb, plantId: string, material: Id): boolean {
-  const plant = db.plants[plantId];
+export function coldOf(db: ContentDb, plant: Plant, material: Id): boolean {
   const rack = rackStore(plant);
   const c = rack ? placesOf(plant).center[rack] : undefined;
   return !c || !accepts(db, c, material);

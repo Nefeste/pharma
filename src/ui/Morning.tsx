@@ -3,7 +3,7 @@
 // вопросом в заголовке. Вид собирает поток расчёта (src/sim/report.ts) без слов и без истины; слова — отсюда.
 import type { ReactNode } from 'react';
 import { devLevers, heldLevers, mainLevers, resignLevers, riskLevers, uncoveredLevers, wasteLevers } from '../app/levers';
-import type { Id, PartType, Scenario } from '../content/types';
+import type { Id, PartType, Plant, Scenario } from '../content/types';
 import { civilFromDays, DAY, HOUR, momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
 import { DEPT_SEAT } from '../engine/seats';
@@ -55,12 +55,12 @@ const partName = (parts: readonly PartType[], id: string) => named(parts.find(p 
 const pairName = (supplier: string, maker: string) => T.ref.pair(named(db?.suppliers[supplier]?.name, supplier), named(db?.makers[maker]?.name, maker));
 
 /** Вид машины линии по плану. */
-function lineMachine(plant: string, line: number, k: number): { thing: Thing; name: string } {
+function lineMachine(plant: Plant, line: number, k: number): { thing: Thing; name: string } {
   const type = db ? (planOf(db, plant).plant.lines[line]?.machines[k]?.type ?? '') : '';
   return { thing: { kind: 'machine', line, k }, name: named(db?.machines[type]?.name, type) };
 }
 
-function lineLossText(plant: string, l: LineSum): string {
+function lineLossText(plant: Plant, l: LineSum): string {
   if (!l.loss || l.key === undefined) return '';
   const key = lineMachine(plant, l.line, l.key).name;
   const text = T.morning.lineLoss[l.loss.what](key, durText(l.loss.sec));
@@ -69,7 +69,7 @@ function lineLossText(plant: string, l: LineSum): string {
   return `${text} — ${T.morning.neighbour[l.neighbour.what](nb, durText(l.neighbour.sec))}`;
 }
 
-function mainText(plant: string, m: MainLoss): string {
+function mainText(plant: Plant, m: MainLoss): string {
   switch (m.k) {
     case 'wait':
       return T.morning.main.wait(T.morning.depts[m.dept], T.wait[m.cause], durText(m.sec));
@@ -522,7 +522,7 @@ function CapaMeet({ c, start, go }: { c: CapaMeeting; start: Ymd; go: (t: Thing 
  * «Показатели»; выше 100 % — 100 %. */
 const part = (x?: number) => (x === undefined ? T.floor.none : pctText(Math.min(x, 10000)));
 
-export function Morning({ v, day, start, plant, pause, actions, hud, scenario }: { v?: MorningView; day: number; start: Ymd; plant: string; pause: boolean; actions: Actions; hud: Hud; scenario?: Scenario }) {
+export function Morning({ v, day, start, plant, pause, actions, hud, scenario }: { v?: MorningView; day: number; start: Ymd; plant: Plant; pause: boolean; actions: Actions; hud: Hud; scenario?: Scenario }) {
   const d = civilFromDays(day);
   const at = momentOf(d, 0);
   const yest = civilFromDays(day - 1);

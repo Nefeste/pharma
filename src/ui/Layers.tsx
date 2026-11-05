@@ -3,6 +3,7 @@
 // помещения и машины — те же часы, у линии — OEE с множителями, «Почему?» — минуты остановок по машинам и видам. С Б1к —
 // подсказка у таблички «Узких мест» и у значка андона, блок «Узкие места» в карточке помещения, «держит линию» в блоке
 // «Загрузка» машины. Виды — «Пол» и «Андон» из потока расчёта (src/sim/floor.ts, src/sim/andon.ts), слова — из src/i18n/.
+import type { Plant } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
 import { useState } from 'react';
 import { colorOf, LAYERS, type Part } from '../app/floor';
@@ -86,7 +87,7 @@ interface Rows {
 }
 
 /** Помещение или машина вида — строками; вещи в виде нет — `undefined`. */
-function rowsOf(v: FloorView, t: Thing, plant: string): Rows | undefined {
+function rowsOf(v: FloorView, t: Thing, plant: Plant): Rows | undefined {
   const plan = db ? planOf(db, plant) : undefined;
   if (t.kind === 'room') {
     const r = v.rooms.find(x => x.i === t.i);
@@ -111,7 +112,7 @@ const rowText = (part: Rows['rows'][number]['part'], sec: number, span: number) 
  * Подсказка у метки слоя под курсором: у столбика — часы каждой части за окно, тех, что есть в столбике и вне его; у
  * таблички «Узких мест» и у значка андона — свои (Б1к).
  */
-export function FloorTip({ hud, plant }: { hud: Hud; plant: string }) {
+export function FloorTip({ hud, plant }: { hud: Hud; plant: Plant }) {
   const h = hud.floor.hover;
   const v = hud.floor.view;
   if (h && hud.layer === 'bottle') return <BottleTip hud={hud} plant={plant} />;
@@ -139,7 +140,7 @@ export function FloorTip({ hud, plant }: { hud: Hud; plant: string }) {
  * Блок «Загрузка» в карточке помещения или машины (Б1и): часы по состояниям за окно слоя; у помещения — серия, которая его
  * держала; у машины линии — OEE линии с множителями по ключевой машине и «Почему?»: минуты остановок по машинам и видам.
  */
-export function LoadBlock({ hud, thing, plant, actions }: { hud: Hud; thing: Thing; plant: string; actions: Actions }) {
+export function LoadBlock({ hud, thing, plant, actions }: { hud: Hud; thing: Thing; plant: Plant; actions: Actions }) {
   const [why, setWhy] = useState(false);
   const v = hud.floor.view;
   if (!v) return null;
@@ -211,7 +212,7 @@ export function LoadBlock({ hud, thing, plant, actions }: { hud: Hud; thing: Thi
 // ---------------------------------------------------------------- узкие места и проблемы (Б1к)
 
 /** Название вещи на полу: помещение — по типу, оборудование и машина — по виду, фура, паллета, техника. */
-function thingName(t: Thing, plant: string): string {
+function thingName(t: Thing, plant: Plant): string {
   const plan = db ? planOf(db, plant) : undefined;
   switch (t.kind) {
     case 'room': {
@@ -245,7 +246,7 @@ function waitRows(w: FloorView['waits'][number]): { what: (typeof WAIT_WHAT)[num
 }
 
 /** Подсказка у таблички «Узких мест»: место по порядку, часы по словам и серии, которые ждут сейчас; у машины — «держит линию». */
-function BottleTip({ hud, plant }: { hud: Hud; plant: string }) {
+function BottleTip({ hud, plant }: { hud: Hud; plant: Plant }) {
   const h = hud.floor.hover;
   const v = hud.floor.view;
   if (!h || !v || !db) return null;
@@ -303,7 +304,7 @@ function WaitList({ v, i, rank, actions }: { v: FloorView; i: number; rank?: num
 }
 
 /** «Держит линию» у машины: её главная потеря за окно; ключевая машина ждала её остановок — какая. */
-function HoldsRows({ v, line, k, plant }: { v: FloorView; line: number; k: number; plant: string }) {
+function HoldsRows({ v, line, k, plant }: { v: FloorView; line: number; k: number; plant: Plant }) {
   const h = v.lines.find(l => l.n === line)?.holds;
   if (!h || h.k !== k) return null;
   const name = (m: number) => thingName({ kind: 'machine', line, k: m }, plant);
@@ -328,7 +329,7 @@ export function AndonIcon({ kind }: { kind: AndonKind }) {
 }
 
 /** Что именно не работает: подробность словами — узел, актив, задача и документ, серия и материалы, заказ, фура. */
-export function whyText(why: AndonWhy, thing: Thing, plant: string, start: Ymd): string {
+export function whyText(why: AndonWhy, thing: Thing, plant: Plant, start: Ymd): string {
   const plan = db ? planOf(db, plant) : undefined;
   const parts: string[] = [];
   if (why.part) {
@@ -350,7 +351,7 @@ export function whyText(why: AndonWhy, thing: Thing, plant: string, start: Ymd):
 }
 
 /** Строки проблем вещи: значок, слово и что именно — по тяжести. */
-export function AndonRows({ item, plant, start }: { item: AndonItem; plant: string; start: Ymd }) {
+export function AndonRows({ item, plant, start }: { item: AndonItem; plant: Plant; start: Ymd }) {
   return (
     <ul className="loadrows">
       {item.why.map((w, n) => (
@@ -370,7 +371,7 @@ export function AndonRows({ item, plant, start }: { item: AndonItem; plant: stri
 }
 
 /** Подсказка у значка андона: вещь и все её проблемы — что именно и с какого мгновения. */
-function AndonTip({ hud, plant }: { hud: Hud; plant: string }) {
+function AndonTip({ hud, plant }: { hud: Hud; plant: Plant }) {
   const h = hud.floor.hover;
   const v = hud.andon.view;
   if (!h || !v) return null;

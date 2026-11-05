@@ -70,7 +70,7 @@ const openStudies = (db: ContentDb, s: PlantState) => new Set(Object.values(s.ta
 /** Кому пора учиться в день `day` — задача изучить документ на своём посту, если такой ещё нет. */
 function study(db: ContentDb, s: PlantState, p: Person, day: number, open: ReadonlySet<string>) {
   const sc = db.scenarios[s.scenario];
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   for (const code of rowsOf(db, p)) {
     if (open.has(`${p.id}/${code}`)) continue;
     const rev = dueRev(db, p, code, day, sc.training.ahead);
@@ -87,7 +87,7 @@ function study(db: ContentDb, s: PlantState, p: Person, day: number, open: Reado
  */
 export function retrain(db: ContentDb, s: PlantState, codes: readonly string[], people?: readonly string[]): number {
   const day = momentOf(s.start, s.t).day;
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const open = openStudies(db, s);
   let n = 0;
   const who = people ? people.flatMap(id => (s.people[id] ? [s.people[id]] : [])) : Object.values(s.people);
@@ -145,7 +145,7 @@ export function alsoCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
 export function trainDone(db: ContentDb, s: PlantState, t: Task): boolean {
   if (t.kind === 'train') {
     const sc = db.scenarios[s.scenario];
-    const at = postOf(planOf(db, s.plant), CHECKERS[0]);
+    const at = postOf(planOf(db, s.plan), CHECKERS[0]);
     addTask(s, { kind: 'trainCheck', roles: [...CHECKERS], not: [t.trainee!], from: point(at), work: sc.training.check, prio: TRAIN_PRIO.trainCheck, trainee: t.trainee, doc: t.doc });
     return true;
   }

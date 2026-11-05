@@ -17,7 +17,7 @@ import { dossierView } from '../../src/sim/dossier';
 import { momentOf } from '../../src/engine/core/calendar';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const q = (o: Partial<JournalQuery> = {}): JournalQuery => ({ view: 'journal', page: 0, ...o });
 
 /** Завод после 90 суток: задания, заказы, партии, выпуски, визиты, замена узла, найм и расследование уже были. */

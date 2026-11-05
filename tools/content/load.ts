@@ -691,14 +691,14 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       docks: p.docks.map(d => ({ ...d, x: cm(d.x), z: cm(d.z) })),
       zones: p.zones.map(zn => ({ ...zn, rect: r4(zn.rect) })),
       racks: p.racks.map(r => ({ ...r, x: cm(r.x), z: cm(r.z) })),
-      rooms: p.rooms.map(r => ({ id: r.id, type: r.type, rect: r4(r.rect), grade: r.grade, vehicles: r.vehicles, ...(r.at ? { at: at2(r.at) } : {}) })),
+      rooms: p.rooms.map(r => ({ id: r.id, type: r.type, rect: r4(r.rect), grade: r.grade, vehicles: r.vehicles, ...(r.at ? { at: at2(r.at) } : {}), floor: r.floor })),
       doors: p.doors.map(d => ({ cell: d.at, len: d.len, along: d.along, kind: d.kind, ...(d.materials ? { materials: true } : {}) })),
       instruments: p.instruments,
       ipc: p.ipc,
       sensors: p.sensors,
       equipment: p.equipment.map(e => ({ ...e, at: at2(e.at) })),
       lines: p.lines.map(ln => ({ ...ln, machines: ln.machines.map(m => ({ ...m, at: at2(m.at) })) })),
-      points: { park: [cm(p.points.park[0]), cm(p.points.park[1])], entrance: [cm(p.points.entrance[0]), cm(p.points.entrance[1])] },
+      points: { park: [cm(p.points.park[0]), cm(p.points.park[1])], entrance: [cm(p.points.entrance[0]), cm(p.points.entrance[1])], floor: p.points.floor },
       posts: Object.fromEntries(Object.entries(p.posts).map(([role, at]) => [role, at2(at)])),
       energy: { hvac: p.energy.hvac, base: watt(p.energy.base) },
       cleaning: p.cleaning,
@@ -985,7 +985,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         if (!regimes[m.storage]) continue;
         // путь материала по зонам хранения: балк — промежуточный склад; холод — камера; остальное — карантин или ГП, стеллажи;
         // отклонённое — зона отклонённого. Зона вне зон хранения режима не держит — её не спрашивают
-        const cold = coldOf(part, s.plant, m.id);
+        const cold = coldOf(part, part.plants[s.plant], m.id);
         const path = m.kind === 'bulk' ? [] : cold ? ['cold', 'rejected'] : [m.kind === 'fg' ? 'fgQuarantine' : 'quarantine', 'storage', 'rejected'];
         const stores = m.kind === 'bulk' ? [bulkRoom ? P.storeOf[bulkRoom] : undefined] : path.map(k => storeOfKind(plant, k));
         const ok = (m.kind === 'bulk' || !cold || coldStore(plant) !== undefined) && stores.every((st, i) => (st === undefined ? m.kind !== 'bulk' && path[i] !== 'storage' : accepts(part, P.center[st], m.id)));

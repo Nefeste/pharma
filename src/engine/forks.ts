@@ -80,7 +80,7 @@ function end(s: PlantState, r: Decision, how: NonNullable<NonNullable<Decision['
 function holdOf(db: ContentDb, s: PlantState, b: Batch): { asset: string; why: string } | undefined {
   if (b.status === 'process') {
     const st = db.recipes[b.recipe].stages[b.stage];
-    return st ? stageUnfit(db, s, st, planOf(db, s.plant).roomOf[st.room]) : undefined;
+    return st ? stageUnfit(db, s, st, planOf(db, s.plan).roomOf[st.room]) : undefined;
   }
   return b.status === 'packing' && b.pack?.state === 'ready' ? lineUnfit(db, s, b.pack.line) : undefined;
 }
@@ -98,7 +98,7 @@ export function freeAt(db: ContentDb, s: PlantState, asset: string): number {
     return b && st ? Math.max(s.t, (b.run?.start ?? s.t) + nominal(db, b.recipe, st, stageMass(db, b, b.stage), b.sp)) : s.t;
   }
   if (a?.family === 'machine') {
-    const plan = planOf(db, s.plant);
+    const plan = planOf(db, s.plan);
     const def = plan.plant.lines.find(l => l.machines.some(m => m.id === a.id));
     const line = def ? s.lines[def.id] : undefined;
     const b = line?.batch ? s.batches[line.batch] : undefined;
@@ -222,7 +222,7 @@ function nextWork(db: ContentDb, s: PlantState, pt: Part, live: Batch[]): { batc
   if (!pt.line) {
     const eq = s.equipment[pt.machine];
     if (!eq || eq.batch) return undefined;
-    const plan = planOf(db, s.plant);
+    const plan = planOf(db, s.plan);
     for (const b of live) {
       if (b.status !== 'process') continue;
       const st = db.recipes[b.recipe].stages[b.stage];

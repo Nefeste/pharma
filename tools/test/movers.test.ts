@@ -13,7 +13,7 @@ import { here } from '../../src/engine/staff';
 import type { PlantState } from '../../src/engine/types';
 import { Packer, unpack } from '../../src/sim/pack';
 
-const plan = planOf(db, 'plant.proto');
+const plan = planOf(db, db.plants['plant.proto']);
 const nav = plan.nav;
 const at = (x: number, z: number) => cellOf(nav, { x: x * 100, z: z * 100 });
 

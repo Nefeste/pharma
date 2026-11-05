@@ -13,7 +13,7 @@ import { createSim } from '../../src/sim/host';
 import { cardView, type Hist, PAGE, type StockQuery, type StockSort, stockView, type Thing, VIEW_EVERY, type ViewQuery, ViewDesk } from '../../src/sim/views';
 
 const SC = 'scn.proto';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 const stock = (o: Partial<StockQuery> = {}): StockQuery => ({ view: 'stock', status: [], kinds: [], sort: 'code', desc: false, page: 0, lang: 'ru', ...o });
 
 /** Завод после трёх недель: партии поставщиков пришли и решены, серии идут, ГП отгружается. */

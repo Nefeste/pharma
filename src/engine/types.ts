@@ -1,13 +1,13 @@
 // Состояние завода и обмен с движком (docs/02-architecture.md, §1, §3, §7; docs/specs/2026-10-engine.md). Состояние —
 // обычный сериализуемый объект: сохранение — его снимок со схемой и миграциями (ADR студии 0004). Сущности — словари с
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
-import type { Attr, Dept, DevClass, FcMethod, HeadId, Id, IncidentRoot, OvertimeMode, SeatId, TaskKind, ZoneKind } from '../content/types';
+import type { Attr, Dept, DevClass, FcMethod, HeadId, Id, IncidentRoot, OvertimeMode, Plant, SeatId, TaskKind, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 45;
+export const SCHEMA = 46;
 
 // ---------------------------------------------------------------- склад
 
@@ -1950,12 +1950,27 @@ export interface HeadsState {
   asked?: Record<string, string>;
 }
 
+/**
+ * План здания в состоянии (Б7а): запись плана и номер его правки `rev` — у записи базы номера нет, это правка 0; правка
+ * стройки (Б7б) даёт новый объект с номером на один больше. Номер — у плана, а не полем состояния: у объекта с 65 и
+ * больше полями JavaScriptCore и V8 читают их в 4–5 раз медленнее, а у состояния их и так до 67
+ * (docs/02-architecture.md, §1).
+ */
+export type SitePlan = Plant & { rev?: number };
+
+/** Номер правки плана здания (Б7а): у записи базы его нет — 0. */
+export const planRev = (plan: SitePlan): number => plan.rev ?? 0;
+
 export interface PlantState {
   schema: number;
   /** отпечаток базы, с которой начата партия */
   content: string;
   scenario: Id;
-  plant: Id;
+  /**
+   * план здания (Б7а): на старте — запись плана сценария, она же образец; движок, прогон плана, виды и сохранение берут
+   * план отсюда, его номер записи — `plan.id`. Его не правят на месте: правка стройки (Б7б) даёт новый объект
+   */
+  plan: SitePlan;
   seed: number;
   /** ветви зерна по именам (src/engine/random.ts): своя ветвь у подсистемы и у вещи */
   rng: Record<string, RngState>;

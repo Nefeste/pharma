@@ -208,7 +208,7 @@ export function openInvestigation(db: ContentDb, s: PlantState, m: InvModel, lot
 
 /** Где работа шага: у оборудования — его помещение; лабораторный — лаборатория; иначе — пост роли. */
 function placeOf(db: ContentDb, s: PlantState, st: InvStep): Place {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   if (st.at) {
     const e = Object.values(s.equipment).find(x => x.type === st.at);
     if (e) return { kind: 'point', x: plan.room[e.room].x, z: plan.room[e.room].z };
@@ -240,7 +240,7 @@ function startStep(db: ContentDb, s: PlantState, inv: Investigation, st: InvStep
       ...(st.retest && first.spec ? { spec: first.spec } : {}),
     };
     s.tests[q.id] = q;
-    const plan = planOf(db, s.plant);
+    const plan = planOf(db, s.plan);
     addTask(s, {
       kind: 'prep',
       roles: [...QC.analysts],
@@ -442,7 +442,7 @@ function close(db: ContentDb, s: PlantState, inv: Investigation, cause: string, 
   if (isScreenCause(db, m, cause) && s.incident?.screen) {
     const mill = millOf(db, s, s.batches[inv.batch]);
     const e = mill ? s.equipment[mill] : undefined;
-    const plan = planOf(db, s.plant);
+    const plan = planOf(db, s.plan);
     if (e) addTask(s, { kind: 'invFix', roles: ['role.mechanic'], from: { kind: 'point', x: plan.room[e.room].x, z: plan.room[e.room].z }, work: FIX_WORK, prio: INV_PRIO, inv: inv.id, part: e.id });
   }
   notices.push({ kind: 'concluded', id: inv.id, cause, fate });

@@ -125,13 +125,19 @@ first, or copy the working code of Bolnitsa on the same versions.
 
 - `src/engine/` — the engine (pure TypeScript; see «Hard rules»): `core/` (seeded branches, hashes, own `log2` — copies;
   the event agenda as a heap in plain arrays and the calendar without `Date` with the production calendar — holidays,
-  transfers, short days, the month's norm — ours), `types.ts` (state, commands,
-  notices, `SCHEMA`), `engine.ts` (`newPlant`, `apply`, `catchUp`, events), `random.ts` (named branches in the state,
-  the integer normal draw), `save.ts` (snapshot and migrations), `nav.ts` (the plan's 1 m grid: walls, doors and
+  transfers, short days, the month's norm — ours), `types.ts` (state — with Б7а the building plan and its revision —,
+  commands, notices, `SCHEMA`), `engine.ts` (`newPlant`, `apply`, `catchUp`, events), `random.ts` (named branches in the
+  state, the integer normal draw), `save.ts` (snapshot and migrations), `nav.ts` (the plan's 1 m grid: walls, doors and
   footprints, where people may walk and vehicles may drive, access cells, distance fields cached per plan, route length
-  and the route polyline shared with the window, a point along it in whole centimetres), `plant.ts` (slots, docks, rooms,
-  the lab, work points, posts of roles and distances along the plan's routes), `stock.ts` (lots, containers, pallets,
-  slots, the lot status table; with 0.0.57 the places of quarantine and the cold room held for pallets at sampling —
+  and the route polyline shared with the window, a point along it in whole centimetres), `plant.ts` (slots, docks,
+  rooms, the lab, work points, posts of roles and distances along the plan's routes; with Б7а from the plan in the
+  state, kept per plan object — `planOf`), `site/checks.ts` (with Б7а, the layout checks as engine functions — doors on
+  walls between two rooms or a room and the street, docks in an outer wall and on dock gates, class D only through an
+  airlock and vehicles no further than it, amenities not opening into production or storage, zones, equipment and
+  machines on the floor of their room, reachability on foot and by vehicle, posts on walkable floor, the first floor; an
+  error is a code and a thing, the words are the caller's — the content builder's, with Б7б the building's), `stock.ts`
+  (lots, containers, pallets, slots, the lot status table; with 0.0.57 the places of quarantine and the cold room held
+  for pallets at sampling —
   a putaway from receiving takes only those above them, `heldForSampled`), `supply.ts` (purchase orders; the supply
   colleague — at 09:00 on a workday, every material below its reorder point: plan use over the longest lead time,
   incoming control and safety stock, through the first
@@ -443,9 +449,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`; a `tick` carries the notice kinds of the player's
   autopauses, and the thread stops right after such an event — the plant's clock on its minute, the rest of the game
-  clock dropped), packed slice (`pack.ts`, format 7: rooms, trucks with their open body, changed pallets, tasks in
-  progress, people with their walk to a post, vehicles, lines with their machines, equipment, and whether a machine or
-  equipment is in calibration or qualification; no truth fields — not the next micro-stop, not a part's budget), views
+  clock dropped; with Б7а the plan and its revision — `world` — with the first slice after a start and a load), packed
+  slice (`pack.ts`, format 8: the plan's revision in the header, rooms, trucks with their open body, changed pallets,
+  tasks in progress, people with their walk to a post, vehicles, lines with their machines, equipment, and whether a
+  machine or equipment is in calibration or qualification; no truth fields — not the next micro-stop, not a part's
+  budget), views
   for panels — the warehouse and the card of a thing with what a pallet holds, with Б1е a room's cleanliness — clean
   for which product and until when, or dirty after which product and which cleaning it needs, only for a room of a
   stage or a line — and a line machine's job
@@ -549,8 +557,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   client in the window (`planClient.ts`; a stop terminates the thread). The window never runs the engine. Saves cross
   the thread boundary as a string: the window never parses the state with the true lot properties — the plan run gets
   the same string.
-- `src/app/` — the game in the window: content, stage, clock and speeds with live time 1:1, input, panels (`game.ts`,
-  `main.tsx`); what the slice puts on the floor — pallets, trucks, rooms, pallets on forks (`scene.ts`); where people
+- `src/app/` — the game in the window: content, stage, clock and speeds with live time 1:1, input, panels — with Б7а
+  the stage from the plan the calculation thread sends, the slices of another plan not parsed (`game.ts`, `main.tsx`);
+  what the slice puts on the floor — pallets, trucks, rooms, pallets on forks (`scene.ts`); where people
   and vehicles are now — a pure function of the tasks in the slice and the clock, on the plan's routes and with the
   engine's travel times, free people on their way to a post too, and the work icon of each busy person (`movers.ts`);
   the start preset — the frame measured on medium at first run, low if slower than 33 ms, the result and the player's
@@ -668,7 +677,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   events `commerce`; with Б6ж — a supplier's lateness `late`, a spec's candidate pairs `candidates`, a recipe line's
   analog `alt`, the second makers of the APIs with their suppliers and agreements, maize starch, the supply head's
   policy «кому заказывать» and the scenario's `supply.who`, the offer weights `supply.rfq` and the dossier variation
-  terms `partners.variation`);
+  terms `partners.variation`; with Б7а — the floor of a plan's rooms, docks and points, in 1.0 the first, set by the
+  builder);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
@@ -682,11 +692,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   dispensing, the API and another component on the first mixing; with Б1ж a parameter's target inside its range and a
   whole number of steps from both edges, a part's load by a parameter of a stage run on its equipment, a cause's scatter
   only from a parameter, a SKU's blister speed within the machine's rated one; with Б1з the contractor's hours within
-  the day and his prices above zero; plan rules in
-  `plan.ts`: doors on walls, docks on outer walls, class D only through
-  airlocks, reachability, posts on
-  walkable floor; models in
-  code — parts inside the footprint, round cylinders, upright hoppers, items only on belts: `modelErrors` in `load.ts`;
+  the day and his prices above zero; plan rules — with Б7а the engine's (`src/engine/site/checks.ts`) in the builder's
+  words (`plan.ts`): doors on walls, docks on outer walls, class D only through airlocks, reachability, posts on
+  walkable floor, the first floor; models in code — parts inside the footprint, round cylinders, upright hoppers, items
+  only on belts: `modelErrors` in `load.ts`;
   places — codes by format and unique, a room in one area, a thing on a work center of its kind in its room's area, one
   verified sensor per storage zone, an IPC instrument for each stage test in the stage room, a zone for every material by
   its regime, contractor works within his day, the warning period shorter than the shortest interval: `placeErrors`;

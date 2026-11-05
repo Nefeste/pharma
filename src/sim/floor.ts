@@ -208,7 +208,7 @@ function holderOf(s: PlantState, roomId: string, from: number): string | undefin
 
 /** Вид «Пол» за окно: помещения учёта, машины линий, ключевая машина и OEE, доски «План — факт». */
 export function floorView(db: ContentDb, s: PlantState, q: FloorQuery): FloorView {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const days = winDays(s, q.win);
   const list = lossesOf(s, days);
   const today = momentOf(s.start, s.t).day;

@@ -22,7 +22,7 @@ import type { Batch, DayLoss, Notice, PlantState, ShiftTask } from '../../src/en
 const SC = 'scn.proto';
 const RCP = 'rcp.paracetamol500.wet.v1';
 const N20 = 'sku.paracetamol500.n20';
-const plan = planOf(db, db.scenarios[SC].plant);
+const plan = planOf(db, db.plants[db.scenarios[SC].plant]);
 
 /** Завод без заданий сценария; узлы без отказов. */
 const variant = (sc: Partial<ContentDb['scenarios'][string]> = {}): ContentDb => ({

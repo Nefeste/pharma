@@ -120,7 +120,7 @@ export interface GhostView {
 
 /** Строки: комплектовка; помещения плана, где идут стадии карт, — по порядку плана; линии плана. */
 export function rowsOf(db: ContentDb, s: PlantState): GanttRow[] {
-  const plan = planOf(db, s.plant);
+  const plan = planOf(db, s.plan);
   const used = new Set(Object.values(db.recipes).flatMap(r => r.stages.map(st => st.room)));
   return [
     { id: 'kit', kind: 'kit' },
@@ -144,7 +144,7 @@ export function pastBars(db: ContentDb, s: PlantState): Bar[] {
     if (job.start !== undefined) bars.push({ row: job.line, kind: 'pack', batch: b.id, from: job.start, to: job.end ?? s.t, when: job.end !== undefined ? 'past' : 'now' });
   }
   // уборка помещения линии — на строке линии (Б1е)
-  const lines = planOf(db, s.plant).plant.lines;
+  const lines = planOf(db, s.plan).plant.lines;
   const rowOf = (roomId: string) => lines.find(l => l.room === roomId)?.id ?? roomId;
   for (const r of Object.values(s.rooms)) {
     if ((r.status !== 'clean' && r.status !== 'busy') || r.product === undefined) continue;

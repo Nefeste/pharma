@@ -25,7 +25,7 @@ const N10 = 'sku.paracetamol500.n10';
 const L10 = 'sku.loratadine10.n10';
 const RCP = 'rcp.paracetamol500.wet.v1';
 const sc = db.scenarios[SC];
-const plan = planOf(db, sc.plant);
+const plan = planOf(db, db.plants[sc.plant]);
 const dayOf = (s: PlantState, t = s.t) => momentOf(s.start, t).day;
 
 /** Дожить до `sec` часов суток `day` от начала партии. */

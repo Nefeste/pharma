@@ -27,6 +27,8 @@ import { leanHour, leanStep, newLoss } from './lean';
 import { leaveCommand, leaveHour } from './leave';
 import { lineDone, lineEvent, lineHour, lineStep, lineUpdate, newLines } from './line';
 import { maintainCommand, maintDone, maintStep, newParts, spareArrives } from './maint';
+import { commerceHour } from './commerce';
+import { editInFrozen, editPrice } from './plan/price';
 import { forecastCommand, forecastHour, newForecast, replan, runForecast } from './forecast';
 import { sopCommand, sopHour } from './sop';
 import { marketDone, marketHour, marketStep, newCustomers, rznPublished, seedFg } from './market';
@@ -229,7 +231,10 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
     }
     case 'order': {
       const notices: Notice[] = [];
-      placeOrder(db, s, cmd, notices);
+      // правка в замороженном горизонте (Б6е): цена — до команды, по прогону расписания с ней и без
+      const fresh = { recipe: cmd.recipe, ...(cmd.sku ? { sku: cmd.sku } : {}), ...(cmd.for ? { for: cmd.for } : {}), notBefore: Math.max(s.t, cmd.notBefore ?? s.t) };
+      const frozen = db.recipes[cmd.recipe] && editInFrozen(db, s, { fresh: [fresh] }) ? editPrice(db, s, { fresh: [fresh] }) : undefined;
+      placeOrder(db, s, cmd, notices, undefined, frozen);
       settle(db, s, notices);
       return notices;
     }
@@ -259,13 +264,18 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
     }
     case 'shift': {
       const notices: Notice[] = [];
-      shiftCommand(s, cmd, notices);
+      const b = s.batches[cmd.batch];
+      const change = { batch: cmd.batch, notBefore: Math.max(s.t, Math.floor(cmd.notBefore)) };
+      const frozen = b && (b.status === 'waiting' || b.status === 'reserved') && editInFrozen(db, s, { changes: [change] }) ? editPrice(db, s, { changes: [change] }) : undefined;
+      shiftCommand(s, cmd, notices, frozen);
       steps(db, s, notices);
       return notices;
     }
     case 'cancel': {
       const notices: Notice[] = [];
-      cancelOrder(s, cmd, notices);
+      const b = s.batches[cmd.batch];
+      const frozen = b && (b.status === 'waiting' || b.status === 'reserved') && editInFrozen(db, s, { drop: [cmd.batch] }) ? editPrice(db, s, { drop: [cmd.batch] }) : undefined;
+      cancelOrder(s, cmd, notices, frozen);
       steps(db, s, notices);
       return notices;
     }
@@ -527,6 +537,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       // вывоз отклонённого (Б1з): коллега склада в 09:00, фура подрядчика в его час — к рампе её поставит шаг отгрузки
       wasteHour(db, s, notices);
       marketHour(db, s, notices);
+      // события коммерции (Б6е): в 12:00 рабочего дня события — крупный заказ или снятый спрос; после заказов покупателей
+      commerceHour(db, s, notices);
       // коллеги планирования и снабжения (Б2в): задание через две недели, заказы поставщикам по расходу плана
       planHour(db, s, notices);
       supplyDay(db, s, notices);

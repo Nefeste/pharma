@@ -416,6 +416,9 @@ export class Game {
       // ускорение и отмена заказа поставщику (Б6д)
       : n.kind === 'poFast' ? T.notices.poFast(whenText(this.store.get().start, n.eta))
       : n.kind === 'poCancelled' ? T.notices.poCancelled
+      // события коммерции (Б6е)
+      : n.kind === 'bigOrder' ? T.notices.bigOrder(named(this.db.customers[n.customer]?.name, n.customer), named(this.db.skus[n.sku]?.name, n.sku), n.cases, whenText(this.store.get().start, n.due))
+      : n.kind === 'demandCut' ? T.notices.demandCut(named(this.db.customers[n.customer]?.name, n.customer), named(this.db.skus[n.sku]?.name, n.sku), n.cases)
       : n.kind === 'truck' ? T.notices.truck
       : n.kind === 'lotReleased' ? T.notices.lotReleased
       : n.kind === 'lotRejected' ? T.notices.lotRejected

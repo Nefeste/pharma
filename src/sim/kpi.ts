@@ -327,7 +327,7 @@ function moreOf(db: ContentDb, s: PlantState, c: KpiCtx, id: string): Record<str
  * Сдвиг, который окно ещё показывает, в единицах показателя: половина последнего знака числа — рубль, десятая процента,
  * часа, суток, случая на 1000 и кВт·ч. Меньше — «так же»: на экране числа равны.
  */
-export const SAME: Readonly<Record<KpiUnit, number>> = { kop: 50, share: 5, sec: 180, day: 5, per: 5, wh: 50 };
+export const SAME: Readonly<Record<KpiUnit, number>> = { kop: 50, share: 5, sec: 180, day: 5, per: 5, wh: 50, n: 1 };
 
 /** Лучше (1), хуже (−1) или так же (0) — по знаку изменения, направлению показателя и сдвигу, который видно. */
 const trendOf = (delta: number, k: Pick<KpiDef, 'dir' | 'unit'>) => (Math.abs(delta) < SAME[k.unit] ? 0 : (Math.sign(delta * k.dir) as 1 | -1 | 0));

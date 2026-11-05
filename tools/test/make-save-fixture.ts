@@ -69,7 +69,10 @@
 // есть, но их держит образец схемы 38. С схемы 40 — ещё и посреди сменно-суточных заданий: в закрытых есть строки «позже»
 // и «не сделано» с тем, чего ждали, а у сегодняшнего одни строки начаты, другие ещё нет. С схемы 42 — ещё и посреди S&OP:
 // на совещании сентября пост «Производство» утвердил свой план — запас парацетамола 28 суток, — а совещание октября
-// открыто и ждёт «Утвердить».
+// открыто и ждёт «Утвердить». С схемы 43 — ещё и посреди потребности: директор в первые сутки ускорил заказ поставщику,
+// что придёт позже всех, и отменил следующий, а правило снабжения заказывало по потребности. С схемы 44 — ещё и посреди
+// правок плана: у срочного задания поста «Производство» и у сдвига задания начальника в замороженном горизонте — цена в
+// журнале, а события коммерции месяца уже были.
 import { writeFileSync } from 'node:fs';
 import { db } from '../../src/content';
 import { visitLast } from '../../src/engine/assets';
@@ -78,6 +81,7 @@ import { apply, newPlant } from '../../src/engine/engine';
 import { planOf } from '../../src/engine/plant';
 import { assessBlock, linkedTests } from '../../src/engine/qa';
 import { toSave } from '../../src/engine/save';
+import { frozenEdge } from '../../src/engine/plan/price';
 import { pendingOf } from '../../src/engine/shifts';
 import { SCHEMA } from '../../src/engine/types';
 import { calOf } from '../../src/engine/workdays';
@@ -201,8 +205,11 @@ const sopped = () => !!s.sop?.open && s.sop.plans.some(p => p.by === 'player');
 // посреди потребности (Б6д): заказ поставщику ускорен, другой отменён; правило заказывало по потребности
 const supplied = () =>
   Object.values(s.pos).some(p => p.fast) && Object.values(s.pos).some(p => p.status === 'cancelled') && s.journal.some(r => r.d.kind === 'po' && (r.d.why ?? []).some(w => w.rule === 'need'));
+// посреди правок плана (Б6е): у задания игрока и его сдвига в замороженном горизонте — цена, события коммерции уже были
+const priced = (kind: string) => s.journal.some(r => r.by === 'player' && r.d.kind === kind && 'frozen' in r.d && r.d.frozen !== undefined);
+const edited = () => priced('order') && priced('shift') && s.journal.some(r => r.by === 'sales');
 const busy = () =>
-  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : SCHEMA < 34 ? seated() && kpied() : SCHEMA < 35 ? seated() && asked() : SCHEMA < 36 ? seated() && policied() : SCHEMA < 37 ? seated() && bossed() : SCHEMA < 38 ? seated() && memoed() : SCHEMA < 39 ? seated() && capaed() : SCHEMA < 40 ? seated() && jobbed() : SCHEMA < 41 ? seated() && jobbed() && dailied() : SCHEMA < 42 ? seated() && dailied() && forecasted() : SCHEMA < 43 ? seated() && dailied() && forecasted() && sopped() : seated() && dailied() && forecasted() && sopped() && supplied();
+  SCHEMA < 5 ? running() && stage() : SCHEMA < 6 ? packing() && (running() || stage()) : SCHEMA < 7 ? loading() : SCHEMA < 8 ? repairing() : SCHEMA < 9 ? planned() : SCHEMA < 10 ? checking() : SCHEMA < 11 ? midLab() : SCHEMA < 12 ? lineDays() : SCHEMA < 13 ? rushed() : SCHEMA < 14 ? rushed() && seated() : SCHEMA < 15 ? seated() && investigating() : SCHEMA < 20 ? seated() && numbered() && opened() && (SCHEMA < 16 || switched()) && (SCHEMA < 17 || specced()) && (SCHEMA < 18 || (SCHEMA < 19 ? training() : visiting())) : SCHEMA < 21 ? seated() && numbered() && switched() && evaluating() : SCHEMA < 22 ? seated() && numbered() && switched() && overtime() : SCHEMA < 23 ? seated() && numbered() && assessing() : SCHEMA < 24 ? seated() && numbered() && rostered() : SCHEMA < 25 ? seated() && hiring() : SCHEMA < 26 ? seated() && vacation() : SCHEMA < 27 ? seated() && recorded() : SCHEMA < 28 ? seated() && lineCleaning() : SCHEMA < 29 ? seated() && moded() : SCHEMA < 30 ? seated() && journaled() : SCHEMA < 31 ? seated() && floored() : SCHEMA < 32 ? seated() && wasting() : SCHEMA < 33 ? seated() && waited() : SCHEMA < 34 ? seated() && kpied() : SCHEMA < 35 ? seated() && asked() : SCHEMA < 36 ? seated() && policied() : SCHEMA < 37 ? seated() && bossed() : SCHEMA < 38 ? seated() && memoed() : SCHEMA < 39 ? seated() && capaed() : SCHEMA < 40 ? seated() && jobbed() : SCHEMA < 41 ? seated() && jobbed() && dailied() : SCHEMA < 42 ? seated() && dailied() && forecasted() : SCHEMA < 43 ? seated() && dailied() && forecasted() && sopped() : SCHEMA < 44 ? seated() && dailied() && forecasted() && sopped() && supplied() : seated() && dailied() && forecasted() && sopped() && supplied() && edited();
 // с схемы 13 — директор с начала партии, через сутки — производство и качество
 const t0 = s.t;
 const refused = new Set<string>();
@@ -331,6 +338,12 @@ while (s.t < end && !busy()) {
       const it = o && items.find(i => o.lines.some(l => l.sku === i.sku));
       if (o && it) apply(db, s, { kind: 'order', recipe: it.recipe, sku: it.sku, for: o.id, notBefore: s.t + 3 * DAY, by: 'player' });
     }
+  }
+  // с схемы 44 — пост «Производство»: задание начальника в замороженном горизонте — на сутки позже, один раз
+  if (SCHEMA >= 44 && s.seats?.some(x => x.seat === 'production' && x.to === undefined) && !priced('shift')) {
+    const edge = frozenEdge(db, s);
+    const b = Object.values(s.batches).find(x => x.by === 'head:plan' && x.status === 'waiting' && x.notBefore > s.t + DAY && momentOf(s.start, x.notBefore).day < edge);
+    if (b) apply(db, s, { kind: 'shift', batch: b.id, notBefore: b.notBefore + DAY, by: 'player' });
   }
   // с схемы 41 — пост «Производство»: спрос правила задания — по прогнозу; правка прогноза парацетамола № 20 через месяц —
   // на десятую часть выше, один раз

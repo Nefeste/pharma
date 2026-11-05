@@ -8,9 +8,10 @@ import type { ContentDb, Id, ParamUnit } from '../content/types';
 import { batchNo } from '../engine/batchno';
 import { RECON_LIMIT, usedByCount } from '../engine/line';
 import { stageMass } from '../engine/mes';
+import { editInFrozen, editPrice } from '../engine/plan/price';
 import { planOf } from '../engine/plant';
 import { unitsOfLot } from '../engine/stock';
-import type { Batch, BatchStatus, Deviation, KitLine, LotStatus, PackJob, PlantState, Recon } from '../engine/types';
+import type { Batch, BatchStatus, Deviation, EditPrice, KitLine, LotStatus, PackJob, PlantState, Recon } from '../engine/types';
 import { whoBatch, type WhoRow } from './journal';
 import { wastedAt } from './waste';
 
@@ -137,6 +138,8 @@ export interface DossierView {
   due?: number;
   goal?: { kind: 'stock' } | { kind: 'order'; order: string; customer?: Id };
   open?: true;
+  /** снять задание в замороженном горизонте (Б6е): цена правки — до команды */
+  cancelPrice?: EditPrice;
   /** размер серии по карте: масса и таблеток */
   mass?: number;
   units?: number;
@@ -272,7 +275,7 @@ export function dossierView(db: ContentDb, s: PlantState, q: DossierQuery): Doss
     status: b.status,
     ...(b.due !== undefined ? { due: b.due } : {}),
     ...(b.for ? { goal: b.for.kind === 'order' ? { kind: 'order' as const, order: b.for.order, ...(s.orders[b.for.order] ? { customer: s.orders[b.for.order].customer } : {}) } : { kind: 'stock' as const } } : {}),
-    ...(b.status === 'waiting' || b.status === 'reserved' ? { open: true as const } : {}),
+    ...(b.status === 'waiting' || b.status === 'reserved' ? { open: true as const, ...(editInFrozen(db, s, { drop: [b.id] }) ? { cancelPrice: editPrice(db, s, { drop: [b.id] }) } : {}) } : {}),
     mass: r.batch.mass,
     units: r.batch.units,
     ...(b.issued !== undefined ? { issued: b.issued } : {}),

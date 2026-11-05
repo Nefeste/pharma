@@ -21,11 +21,13 @@ const label = (labels: Record<string, BatchLabel>, j: LaunchJob) => labels[j.bat
 /** Подпись в узкой клетке: короткий номер серии — продукт и номер, без месяца и года, — или номер задания. */
 const short = (labels: Record<string, BatchLabel>, j: LaunchJob) => labels[j.batch]?.code?.slice(0, 5) ?? T.launch.jobShort(Number(j.batch.slice(1)));
 
-export function Launch({ hud, actions, v, labels, assets, mine, title }: { hud: Hud; actions: Actions; v: LaunchView; labels: Record<string, BatchLabel>; assets: Record<string, AssetInfo>; mine: boolean; title?: string }) {
+export function Launch({ hud, actions, v, labels, assets, mine, title, edge }: { hud: Hud; actions: Actions; v: LaunchView; labels: Record<string, BatchLabel>; assets: Record<string, AssetInfo>; mine: boolean; title?: string; edge?: number }) {
   const [sel, setSel] = useState<{ sku?: Id; day: number } | null>(null);
   const start = hud.start;
   const days = Array.from({ length: v.days }, (_, i) => v.from + i);
   const off = new Set(v.off);
+  // замороженный горизонт (Б6е): дни до края — штриховка, у края — черта с подписью
+  const fz = (d: number) => (edge !== undefined && d < edge ? ' frozen' : edge === d ? ' edge' : '');
   const skuName = (id: Id) => named(db?.skus[id]?.name, id);
   const goal = (j: LaunchJob) => (!j.goal ? '' : j.goal.kind === 'stock' ? T.jobs.stock : T.jobs.forOrder(j.goal.customer ? named(db?.customers[j.goal.customer]?.name, j.goal.customer) : j.goal.order));
   const draft = (j: LaunchJob) => (j.fresh ? T.launch.fresh : j.drop ? T.launch.drop : j.moved ? T.launch.moved : '');
@@ -52,7 +54,7 @@ export function Launch({ hud, actions, v, labels, assets, mine, title }: { hud: 
               {days.map(d => {
                 const [wd, dm] = head(d);
                 return (
-                  <th key={d} className={off.has(d) ? 'off' : undefined} data-day={d}>
+                  <th key={d} className={`${off.has(d) ? 'off' : ''}${fz(d)}`.trim() || undefined} data-day={d} title={edge === d ? T.price.edge(dayText(d)) : undefined} data-frozen={edge !== undefined && d < edge ? '1' : undefined}>
                     {wd}
                     <br />
                     {dm}
@@ -70,7 +72,7 @@ export function Launch({ hud, actions, v, labels, assets, mine, title }: { hud: 
                   const rule = cellRule(row.sku, d);
                   const on = sel?.sku === row.sku && sel.day === d;
                   return (
-                    <td key={d} className={`${off.has(d) ? 'off' : ''}${on ? ' sel' : ''}`.trim() || undefined}>
+                    <td key={d} className={`${off.has(d) ? 'off' : ''}${fz(d)}${on ? ' sel' : ''}`.trim() || undefined}>
                       {jobs.map(j => (
                         <button
                           type="button"

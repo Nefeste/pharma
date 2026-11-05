@@ -17,6 +17,7 @@ export const POL = {
   method: 'pol.plan.method',
   demand: 'pol.plan.demand',
   reserve: 'pol.plan.reserve',
+  frozen: 'pol.plan.frozen',
   safety: 'pol.supply.safety',
   every: 'pol.supply.every',
   arrive: 'pol.supply.arrive',
@@ -51,7 +52,7 @@ export const policyHead = (policy: Id): PolicyHead | undefined => {
  * снабжения; порог замены узла (нет — после отказа) и уровень ЗИП запчасти; срок визита подрядчика; уборка после серии;
  * порог вывоза отклонённого; уставки при уходе с поста; с Б5е — CAPA по повтору и срок оценки пары у начальника ООК;
  * с Б6в — способ прогноза и откуда спрос правила задания, если у сценария есть прогноз; с Б6д — срок завоза и как
- * заказывать, у сценария с прогнозом.
+ * заказывать, у сценария с прогнозом; с Б6е — замороженный горизонт, если сценарий его задаёт.
  * Сценарий правила не задаёт — `undefined`: политики нет.
  */
 export function policyDefault(db: ContentDb, sc: Scenario, policy: Id, of?: string): PolicyValue | undefined {
@@ -70,6 +71,9 @@ export function policyDefault(db: ContentDb, sc: Scenario, policy: Id, of?: stri
     // резерв мощности (Б6г): только у сценария с прогнозом — совещание S&OP идёт по нему
     case POL.reserve:
       return sc.forecast ? sc.plan?.reserve : undefined;
+    // замороженный горизонт (Б6е): без записи сценария — две пятидневки правила, как до Б6е (planner.ts)
+    case POL.frozen:
+      return sc.plan?.frozen;
     case POL.safety:
       return sc.supply?.safety;
     case POL.every:
@@ -131,6 +135,7 @@ export function fits(p: Policy, v: PolicyValue): boolean {
     case 'wear':
     case 'count':
     case 'mday':
+    case 'workdays':
       if (v === OFF) return !!p.off;
       return typeof v === 'number' && Number.isInteger(v) && v >= p.min! && v <= p.max! && (v - p.min!) % p.step! === 0;
     case 'level':
@@ -192,6 +197,7 @@ const SHAPE: Record<string, Pick<Policy, 'kind' | 'each' | 'off' | 'options'>> =
   [POL.method]: { kind: 'choice', options: ['best', 'last-year', 'ma', 'ses', 'holt', 'group'] },
   [POL.demand]: { kind: 'choice', options: ['orders', 'forecast'] },
   [POL.reserve]: { kind: 'share' },
+  [POL.frozen]: { kind: 'workdays' },
   [POL.safety]: { kind: 'days' },
   [POL.every]: { kind: 'days' },
   [POL.arrive]: { kind: 'mday' },
@@ -227,6 +233,12 @@ export function policyErrors(db: ContentDb): string[] {
   }
   // резерв мощности (Б6г; §9.2): план оставляет свободной долю мощности от 0 до половины
   for (const [a, b] of db.policies[POL.reserve]?.shares ?? []) if (a * 2 > b) out.push(`политика ${POL.reserve}: доля ${a}/${b} — больше половины мощности`);
+  // замороженный горизонт (Б6е): цену правки считают не короче наибольшего горизонта — иначе правка у края без цены
+  const fz = db.policies[POL.frozen];
+  for (const sc of Object.values(db.scenarios)) {
+    const price = sc.plan?.price;
+    if (fz?.max !== undefined && price !== undefined && price < Math.floor((fz.max * 7) / 5)) out.push(`сценарий ${sc.id}: горизонт цены правки ${price} суток — короче замороженного горизонта ${fz.max} рабочих дней`);
+  }
   if (out.length > 0) return out;
   for (const sc of Object.values(db.scenarios))
     for (const p of Object.values(db.policies)) {

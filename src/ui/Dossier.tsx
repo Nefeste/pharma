@@ -10,6 +10,7 @@ import { dayText, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { DispRow, DossierView, LotQty, PackDossier, StageRow, Who } from '../sim/dossier';
 import { db, docText } from './db';
 import { WhoList } from './Journal';
+import { priceLine } from './price';
 import { type Actions, holds, type Hud } from './store';
 import { paramNum, paramText } from './units';
 
@@ -419,6 +420,13 @@ export function Dossier({ hud, actions }: { hud: Hud; actions: Actions }) {
                 >
                   {T.jobs.cancel}
                 </button>
+                {/* снять задание в замороженном горизонте (Б6е): цена — до команды */}
+                {v.cancelPrice ? (
+                  <span className="gprice" data-test="dossier-cancel-price">
+                    {' '}
+                    {priceLine(v.cancelPrice, id => T.jobs.order(Number(id.slice(1))))}
+                  </span>
+                ) : null}
               </div>
             ) : null}
             {v.issued !== undefined ? head(T.dossier.issued, whenText(start, v.issued)) : null}

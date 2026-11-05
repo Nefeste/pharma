@@ -84,3 +84,5 @@ sc.training = { ...sc.training, spread: 0 };
 delete legacy.sops['sop.cleaning-r2'];
 // прогноза и сезона спроса в прежней жизни завода нет (Б6в): спрос ровный, механику прогноза проверяют свои тесты
 delete sc.forecast;
+// событий коммерции (Б6е) до Б2в не было
+delete sc.commerce;

@@ -35,7 +35,7 @@ function Control({ p, v, mine, set }: { p: Policy; v: PolicyValue; mine: boolean
       {test.endsWith('less') ? '−' : '+'}
     </button>
   );
-  if (p.kind === 'days' || p.kind === 'months' || p.kind === 'wear' || p.kind === 'count' || p.kind === 'mday')
+  if (p.kind === 'days' || p.kind === 'months' || p.kind === 'wear' || p.kind === 'count' || p.kind === 'mday' || p.kind === 'workdays')
     return (
       <span className="pctl">
         {btn(T.policies.less, step(-1), 'policy-less')} <b data-test="policy-value">{policyText(p, v)}</b> {btn(T.policies.more, step(1), 'policy-more')}

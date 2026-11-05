@@ -22,9 +22,21 @@ import { containersByLot } from './stock';
 import type { Notice, OrderWhy, PlantState } from './types';
 import { calOf } from './workdays';
 
-/** Замороженные две недели (геймдизайн, §9.3): спрос — на столько суток; задание — через столько рабочих дней (Б4а). */
+/**
+ * Замороженные две недели (геймдизайн, §9.3): спрос — на столько суток; задание — через столько рабочих дней (Б4а). С Б6е
+ * — горизонт без политики: у сценария без записи `plan.frozen`.
+ */
 export const AHEAD = 14;
 export const AHEAD_WORK = 10;
+
+/**
+ * Замороженный горизонт (Б6е; геймдизайн, §9.3): через сколько рабочих дней начальник отдела планирования ставит задание
+ * — политика; у сценария без неё — две пятидневки, как до Б6е.
+ */
+export const frozenOf = (db: ContentDb, s: PlantState): number => numOf(db, s, POL.frozen) ?? AHEAD_WORK;
+
+/** Сутки горизонта по пятидневке (Б4а): 5 рабочих дней — 7 суток, 10 — 14, 15 — 21. */
+export const frozenDays = (work: number): number => Math.floor((work * 7) / 5);
 
 /** Пока заказы покупателей идут меньше стольких суток, спроса ещё не видно — позиции по очереди. */
 export const SEEN = 7;
@@ -141,7 +153,8 @@ export function planHour(db: ContentDb, s: PlantState, notices: Notice[]) {
   // руководитель — человек (Б5в): с начала смены аппаратчиков, в первый час, когда есть кому решить
   const who = dueRule(db, s, 'plan', 'plan', BATCH_HOUR, notices);
   if (!who) return;
-  const day = addWorkdays(cal, now.day, AHEAD_WORK);
+  // замороженный горизонт (Б6е): у края — политика планирования
+  const day = addWorkdays(cal, now.day, frozenOf(db, s));
   // к началу смены аппаратчиков того дня — и когда за руководителя решили позже его часа (Б5в)
   const at = (day - daysFromCivil(s.start)) * DAY + BATCH_HOUR;
   // горизонт — политика, а навык руководителя ниже 4 его сокращает (геймдизайн, §8.5)
@@ -174,7 +187,7 @@ export interface Cand {
  * `urgent` — кампании (Б2г, геймдизайн, §9.4): продукт последнего задания `prev` идёт дальше, пока его позициям нужна
  * серия, а ни одной позиции другого продукта не хватит меньше чем на две недели и ещё `urgent` суток.
  */
-export function choose(db: ContentDb, pos: readonly Cand[], ahead: number | ((it: Cand['it']) => number), urgent: number | undefined, prev: Id | undefined, last: (sku: Id) => number): { it: Cand['it']; rule: OrderWhy['rule']; soon?: number } | undefined {
+export function choose(db: ContentDb, pos: readonly Cand[], ahead: number | ((it: Cand['it']) => number), urgent: number | undefined, prev: Id | undefined, last: (sku: Id) => number, horizon = AHEAD): { it: Cand['it']; rule: OrderWhy['rule']; soon?: number } | undefined {
   // запас позиций — один на все позиции или, с планом S&OP (Б6г), у продукта свой
   const aheadOf = typeof ahead === 'number' ? () => ahead : ahead;
   const free = pos.filter(x => !x.held);
@@ -188,7 +201,7 @@ export function choose(db: ContentDb, pos: readonly Cand[], ahead: number | ((it
   if (urgent === undefined) return { it: neediest(need), rule: 'need' };
   const product = (x: Cand) => db.recipes[x.it.recipe].product;
   const mine = need.filter(x => product(x) === prev);
-  const soon = aheadMilli(AHEAD + urgent);
+  const soon = aheadMilli(horizon + urgent);
   const hurry = need.some(x => product(x) !== prev && x.p.cases * x.p.work * 1000 < x.p.ordered * soon);
   if (mine.length > 0 && !hurry) return { it: neediest(mine), rule: 'campaign', soon };
   return { it: neediest(need), rule: mine.length > 0 ? 'urgent' : 'need', soon };
@@ -209,20 +222,21 @@ function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], co
   const byLot = containersByLot(s);
   // отменённое на запас (Б6а): позицию не ставят до «не раньше» отменённого
   const pos = items.map(it => ({ it, p: positionOf(db, s, it.sku, window, byLot), held: heldOf(s, it.sku) }));
-  // запас < заказано за рабочий день окна × рабочих дней пятидневки в AHEAD + cover суток (Б4а)
-  const ahead = aheadMilli(AHEAD + cover);
+  // запас < заказано за рабочий день окна × рабочих дней пятидневки в горизонте и cover суток (Б4а, Б6е)
+  const horizon = frozenDays(frozenOf(db, s));
+  const ahead = aheadMilli(horizon + cover);
   // спрос по прогнозу (Б6в) — в причине: положение позиций считали по нему
   const fc = !!s.forecast && policyOf(db, s, POL.demand) === 'forecast';
   // с планом S&OP (Б6г) — запас позиций у продукта свой; в причине — у продукта выбранной позиции
   const productOf = (it: { recipe: Id }) => db.recipes[it.recipe].product;
-  const aheadOf = coverOf ? (it: { recipe: Id }) => aheadMilli(AHEAD + coverOf(productOf(it))) : ahead;
+  const aheadOf = coverOf ? (it: { recipe: Id }) => aheadMilli(horizon + coverOf(productOf(it))) : ahead;
   const why = (rule: OrderWhy['rule'], extra: Partial<OrderWhy> = {}, it?: { recipe: Id }): OrderWhy => {
     const c = it && coverOf ? coverOf(productOf(it)) : cover;
     const goal = it ? ofSop?.(productOf(it)) : undefined;
     const sop = goal !== undefined;
     // навык сократил запас (Б5в): «вместо» — цель плана S&OP, без плана — политика
     const full = sop ? (goal > c ? goal : undefined) : policy;
-    return { rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work, ...(x.held ? { held: x.held } : {}) })), ahead: aheadMilli(AHEAD + c), cover: c, ...(full !== undefined ? { policy: full } : {}), ...(fc ? { fc: true as const } : {}), ...(sop ? { sop: true as const } : {}), ...extra };
+    return { rule, items: pos.map(x => ({ sku: x.it.sku, cases: x.p.cases, ordered: x.p.ordered, work: x.p.work, ...(x.held ? { held: x.held } : {}) })), ahead: aheadMilli(horizon + c), cover: c, ...(full !== undefined ? { policy: full } : {}), ...(fc ? { fc: true as const } : {}), ...(sop ? { sop: true as const } : {}), ...extra };
   };
   const last = (sku: Id) => Math.max(-1, ...Object.values(s.batches).filter(b => b.sku === sku).map(b => idNum(b.id)));
   const prev = urgent === undefined ? undefined : prevBefore(Object.values(s.batches), at);
@@ -233,6 +247,7 @@ function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], co
     urgent,
     prev,
     last,
+    horizon,
   );
   if (!c) return undefined;
   if (c.rule === 'turn') return { it: c.it, why: why('turn', { seen: SEEN }, c.it) };
@@ -276,7 +291,10 @@ export function launchPlan(db: ContentDb, s: PlantState, until: number, draft: L
   const skill = skillOf(s, whoDecides(db, s, 'plan'));
   const policy = numOf(db, s, POL.cover)!;
   // план S&OP (Б6г): запас позиций продукта — цель плана на месяц дня задания
-  const aheadAt = (day: number) => (it: { recipe: Id }) => aheadMilli(AHEAD + coverBy(skill, sopCover(s, db.recipes[it.recipe].product, day) ?? policy));
+  // замороженный горизонт (Б6е): день правила и спрос впереди — по политике
+  const frozen = frozenOf(db, s);
+  const horizon = frozenDays(frozen);
+  const aheadAt = (day: number) => (it: { recipe: Id }) => aheadMilli(horizon + coverBy(skill, sopCover(s, db.recipes[it.recipe].product, day) ?? policy));
   const urgent = numOf(db, s, POL.urgent);
   const byLot = containersByLot(s);
   // запас в «ящико-днях»: ящики × рабочие дни окна — так спрос рабочего дня убавляет его на заказанное, в целых
@@ -314,7 +332,7 @@ export function launchPlan(db: ContentDb, s: PlantState, until: number, draft: L
   let on = isWorkday(cal, now.day) && now.sec < BATCH_HOUR ? now.day : addWorkdays(cal, now.day, 1);
   let z = now.day;
   for (;;) {
-    const day = addWorkdays(cal, on, AHEAD_WORK);
+    const day = addWorkdays(cal, on, frozen);
     const at = (day - zero) * DAY + BATCH_HOUR;
     if (at >= until) break;
     for (; z < on; z++) if (isWorkday(cal, z)) for (const x of pos) x.p.cases -= x.p.ordered;
@@ -331,6 +349,7 @@ export function launchPlan(db: ContentDb, s: PlantState, until: number, draft: L
         urgent,
         urgent === undefined ? undefined : prevBefore(runs, at),
         sku => lastId.get(sku) ?? -1,
+        horizon,
       );
       if (c) {
         out.push({ on, day, at, recipe: c.it.recipe, sku: c.it.sku });

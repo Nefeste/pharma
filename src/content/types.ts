@@ -203,7 +203,7 @@ export interface Policy {
   id: Id;
   name: Text;
   head: PolicyHead;
-  kind: 'days' | 'months' | 'wear' | 'level' | 'choice' | 'share' | 'count' | 'mday';
+  kind: 'days' | 'months' | 'wear' | 'level' | 'choice' | 'share' | 'count' | 'mday' | 'workdays';
   each?: 'part' | 'spare';
   min?: number;
   max?: number;
@@ -331,6 +331,8 @@ export interface Scenario {
    * прогноза. Нет — спрос покупателей ровный, прогноза нет
    */
   forecast?: { optimism: number };
+  /** события коммерции (Б6е): нет — спрос только по заказам покупателей */
+  commerce?: ScenarioCommerce;
   /**
    * руководители — люди (Б5в; src/engine/bosses.ts): у руководителя отдела — роль заместителя по умолчанию (первый по
    * табельному номеру человек этой роли) и роли, из которых игрок может его назначить; нет строки — заместителя нет
@@ -407,6 +409,20 @@ export interface ScenarioPlan {
   demand: 'orders' | 'forecast';
   /** резерв мощности (Б6г): доля, которую план S&OP оставляет свободной, — числитель и знаменатель */
   reserve?: [number, number];
+  /** замороженный горизонт (Б6е): рабочих дней — с чего начинает политика; горизонт цены правки — суток */
+  frozen?: number;
+  price?: number;
+}
+
+/**
+ * События коммерции (Б6е; геймдизайн, §9.2): в месяц — от и до; событие — серия позиции ± `size` %; крупный заказ — со
+ * сроком через `due` суток, от и до, его доля событий — `big` %; остальные — снятый спрос.
+ */
+export interface ScenarioCommerce {
+  perMonth: [number, number];
+  size: number;
+  due: [number, number];
+  big: number;
 }
 
 /**

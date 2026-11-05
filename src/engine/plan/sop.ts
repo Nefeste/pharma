@@ -12,7 +12,7 @@ import { inForce } from '../docs';
 import { daysIn, firstDay, lagError, monthAt, monthOfDay, planCases, shares, ymOf } from '../forecast';
 import { BATCH_HOUR, cleanWork, nominal, packNeeds, roomWork, washRoles, washWork } from '../mes';
 import { contractOf, costOf, listPrice } from '../partners';
-import { AHEAD, AHEAD_WORK, aheadMilli, casesOf, choose, idNum, positionOf, prevBefore } from '../planner';
+import { aheadMilli, casesOf, choose, frozenDays, frozenOf, idNum, positionOf, prevBefore } from '../planner';
 import { planOf } from '../plant';
 import { numOf, POL, policyOf } from '../policies';
 import { QP_WORK } from '../qa';
@@ -368,6 +368,8 @@ export interface SopCtx {
   urgent?: number;
   skill: number;
   policy: number;
+  /** замороженный горизонт (Б6е): рабочих дней до дня правила */
+  frozen: number;
   work: boolean[];
   /** рабочих дней до дня — сумма с z0 */
   workSum: number[];
@@ -396,7 +398,7 @@ export interface SopCtx {
   err: number;
   /** день, до которого считают продажи: месяц после горизонта — запас на его конец не пропадает даром */
   sell: number;
-  /** месяц прогноза дня прогона; день правила — через десять рабочих дней, номер дня прогона, или −1 */
+  /** месяц прогноза дня прогона; день правила — через горизонт рабочих дней (Б6е), номер дня прогона, или −1 */
   mon: number[];
   rule: number[];
   /** задания, которые уже стоят, — по «не раньше», при равных — по номеру: для продукта последнего задания */
@@ -421,13 +423,14 @@ export function sopCtx(db: ContentDb, s: PlantState, from: number, months = SOP_
     work.push(isWorkday(cal, z0 + k));
     workSum.push(workSum[k] + (work[k] ? 1 : 0));
   }
-  // месяц каждого дня и день правила через десять рабочих дней — один раз на заготовку
+  // месяц каждого дня и день правила через горизонт рабочих дней (Б6е) — один раз на заготовку
+  const frozen = frozenOf(db, s);
   const mon: number[] = [];
   for (let k = 0; k <= span; k++) mon.push(monthOfDay(z0 + k));
   const rule: number[] = [];
   for (let k = 0; k < span; k++) {
     let q = k;
-    let left = work[k] ? AHEAD_WORK : -1;
+    let left = work[k] ? frozen : -1;
     while (left > 0 && q + 1 < span) {
       q++;
       if (work[q]) left--;
@@ -498,6 +501,7 @@ export function sopCtx(db: ContentDb, s: PlantState, from: number, months = SOP_
     urgent: numOf(db, s, POL.urgent),
     skill: skillOf(s, whoDecides(db, s, 'plan')),
     policy: numOf(db, s, POL.cover)!,
+    frozen,
     work,
     workSum,
     rate,
@@ -585,7 +589,8 @@ export function sopRun(ctx: SopCtx, plan: Record<Id, number[]>, k = 0, trace?: S
   // запас позиций продукта на месяц правила: тысячные рабочего дня — один раз на прогон
   const M = ctx.months;
   // за горизонтом плана (потребность в материалах, Б6д, — 12 месяцев) — цель политики
-  const aheadOf = new Map(ctx.products.map(p => [p, Array.from({ length: M }, (_, i) => aheadMilli(AHEAD + coverBy(ctx.skill, plan[p]?.[i] ?? ctx.policy)))]));
+  const horizon = frozenDays(ctx.frozen);
+  const aheadOf = new Map(ctx.products.map(p => [p, Array.from({ length: M }, (_, i) => aheadMilli(horizon + coverBy(ctx.skill, plan[p]?.[i] ?? ctx.policy)))]));
   const months: SopMonth[] = [];
   const dem: number[][] = [];
   const sh: number[][] = [];
@@ -646,7 +651,7 @@ export function sopRun(ctx: SopCtx, plan: Record<Id, number[]>, k = 0, trace?: S
     const work = Math.max(1, ctx.workSum[k + w] - ctx.workSum[k]);
     const cand = items.map((it, i) => ({ it, p: { cases: Math.floor(pos[i] / 1000), ordered: Math.floor((rsum[i][k + w] - rsum[i][k]) / 1000), work, span: ctx.window * DAY } }));
     const qi = Math.max(0, Math.min(M - 1, ctx.mon[q] - from));
-    const c = choose(db, cand, x => aheadOf.get(db.recipes[x.recipe].product)![qi], ctx.urgent, ctx.urgent === undefined ? undefined : prevAt(at), x => lastId.get(x) ?? -1);
+    const c = choose(db, cand, x => aheadOf.get(db.recipes[x.recipe].product)![qi], ctx.urgent, ctx.urgent === undefined ? undefined : prevAt(at), x => lastId.get(x) ?? -1, horizon);
     if (!c) continue;
     const i = index.get(c.it.sku)!;
     const product = prod[i];

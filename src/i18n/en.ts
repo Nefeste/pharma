@@ -84,6 +84,9 @@ export const en: Strings = {
     /** expediting and cancelling a purchase order (Б6д) */
     poFast: (when: string) => `Purchase order expedited: arrives ${when}`,
     poCancelled: 'Purchase order cancelled: the fee comes out of the prepayment, the rest is refunded',
+    /** commercial events (Б6е) */
+    bigOrder: (customer: string, sku: string, cases: number, due: string) => `Large order: ${customer} — ${sku}, ${groupEn(cases)} ${pl(cases, 'case', 'cases')} by ${due}`,
+    demandCut: (customer: string, sku: string, cases: number) => `${customer} cut demand: ${sku} — ${groupEn(cases)} ${pl(cases, 'case', 'cases')} fewer in the next orders`,
     truck: 'A truck is at the receiving dock',
     lotReleased: 'Lot released: all tests within specification',
     lotRejected: 'Lot rejected: out-of-specification result',
@@ -1803,6 +1806,8 @@ export const en: Strings = {
     span: (min: string, max: string) => `from ${min} to ${max}`,
     orOff: (off: string) => `or «${off}»`,
     count: (n: number) => `${n} or more`,
+    /** the frozen horizon (Б6е): working days */
+    workdays: (n: number) => `${groupEn(n)} ${pl(n, 'working day', 'working days')}`,
     /** the arrival deadline (Б6д): a day of the previous month, 0 — by the batch day; the range */
     mday: (n: number) => (n === 0 ? 'by the batch day' : `by the ${ordEn(n)}`),
     mdays: (min: number, max: number, batch: boolean) => `from the ${ordEn(min)} to the ${ordEn(max)}${batch ? ' or “by the batch day”' : ''}`,
@@ -1913,6 +1918,10 @@ export const en: Strings = {
       /** expediting and cancelling a purchase order (Б6д) */
       expedite: (po: string, supplier: string, eta: string, was: string) => `Purchase order ${po} expedited: ${supplier} — arrives ${eta} instead of ${was}`,
       cancelPo: (po: string, supplier: string) => `Purchase order ${po} cancelled: ${supplier}`,
+      /** an edit inside the frozen horizon and commercial events (Б6е) */
+      shift: (what: string, nb: string, was: string) => `Batch order moved: ${what}, not before ${nb} instead of ${was}`,
+      bigOrder: (customer: string, sku: string, cases: number, due: string) => `Large order: ${customer} — ${sku}, ${groupEn(cases)} ${pl(cases, 'case', 'cases')} by ${due}`,
+      demandCut: (customer: string, sku: string, cases: number) => `Demand cut: ${customer} — ${sku}, ${groupEn(cases)} ${pl(cases, 'case', 'cases')} fewer in the next orders`,
       step: (step: string) => `Investigation step: ${step}`,
       conclude: (cause: string, release: boolean) => `Investigation conclusion: ${cause} — ${release ? 'release the batch' : 'reject the batch'}`,
       assess: (dev: string, none: boolean) => `Impact assessment: ${dev} — ${none ? 'no impact on quality' : 'reject the batch'}`,
@@ -2496,6 +2505,8 @@ export const en: Strings = {
     /** indicator units: days, per 1000, kWh per 1000 good tablets */
     days: (x: string) => `${x}\u00a0days`,
     per: (x: string) => `${x} per 1000`,
+    /** a count — edits in the month (Б6е) */
+    n: (x: string) => x,
     kwh: (x: string) => `${x}\u00a0kWh`,
     /** a factor that is not defined: performance without run time, quality without output */
     dash: '—',
@@ -2549,6 +2560,7 @@ export const en: Strings = {
       onDay: 'Batches started on their not-before day',
       fgDays: 'FG stock in days of demand',
       switchH: 'General cleanings and changeovers',
+      frozenEdits: 'Edits inside the frozen horizon',
       oee: 'Line OEE',
       setup: 'Setup ratio',
       shift: 'Shift tasks met',
@@ -2601,6 +2613,7 @@ export const en: Strings = {
       onDay: 'Batches whose dispensing began on their not-before day, over all batches started in the month',
       fgDays: 'Average released FG stock, packs, at midnights, over demand per day — orders shipping this month',
       switchH: 'Work hours of general room cleanings and line changeovers ended in the month',
+      frozenEdits: 'Plan edits inside the frozen horizon in the month: new, moved and cancelled batch orders with their price — decision journal records',
       oee: 'Availability × performance × quality of the line’s key machine: good output over rated output for the loading time',
       setup: 'Cleaning and setup of production and packaging rooms over their work plus cleaning and setup — AUST/AUPT',
       shift: 'Good packs over the plan of the shift tasks closed in the month',
@@ -2648,6 +2661,26 @@ export const en: Strings = {
     } as Record<string, string>,
   },
   /** material requirements (Б6д): the schedule's “Materials” tab and the meeting block */
+  /** the meeting's «Правки плана» block (Б6е) */
+  edits: {
+    meeting: 'Plan edits',
+    events: 'Commercial events',
+    title: 'Edits inside the frozen horizon',
+    kind: { order: 'New batch order', shift: 'Batch order moved', cancel: 'Batch order cancelled' } as Record<string, string>,
+    line: (kind: string, what: string, price: string) => `${kind}: ${what} — ${price}`,
+  },
+  /** the price of a plan edit inside the frozen horizon (Б6е): cleanings, changeovers, later batch orders */
+  price: {
+    line: (parts: string) => `Edit inside the frozen horizon: ${parts}`,
+    major: (n: number, h: string) => `${n > 0 ? '+' : '−'}${groupEn(Math.abs(n))} ${pl(Math.abs(n), 'general cleaning', 'general cleanings')}, ${h}`,
+    minor: (n: number, h: string) => `${n > 0 ? '+' : '−'}${groupEn(Math.abs(n))} ${pl(Math.abs(n), 'minor cleaning', 'minor cleanings')}, ${h}`,
+    formats: (n: number) => `${n > 0 ? '+' : '−'}${groupEn(Math.abs(n))} ${pl(Math.abs(n), 'line changeover', 'line changeovers')}`,
+    later: (what: string, h: string) => `${what} — ${h} later`,
+    more: (n: number) => `${groupEn(n)} more ${pl(n, 'batch order', 'batch orders')} later`,
+    none: 'adds no cleanings, changeovers or delays',
+    edge: (day: string) => `frozen until ${day}`,
+    edgeHint: (n: string) => `Frozen horizon — ${n}: here only a person edits the plan, and an edit has its price`,
+  },
   mrp: {
     tab: 'Materials',
     question: 'What will run short under the plan for the year, and what to order',

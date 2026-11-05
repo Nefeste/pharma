@@ -17,6 +17,7 @@ import { assetClass, workName } from './assets';
 import { capaName, causeText } from './capa';
 import { db } from './db';
 import { policyName, policyText } from './policy';
+import { priceLine } from './price';
 import type { Actions, Hud } from './store';
 import { attrNum, attrText, paramText } from './units';
 
@@ -95,6 +96,13 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
       return J.expedite(d.po, party(d.supplier), whenText(start, d.eta), whenText(start, d.was));
     case 'cancelPo':
       return J.cancelPo(d.po, party(d.supplier));
+    // правка в замороженном горизонте и события коммерции (Б6е)
+    case 'shift':
+      return J.shift(sku(d.sku) || T.now.batch(r.code || `B${r.bn ?? ''}`), whenText(start, d.notBefore), whenText(start, d.from));
+    case 'bigOrder':
+      return J.bigOrder(party(d.customer), sku(d.sku), d.cases, whenText(start, d.due));
+    case 'demandCut':
+      return J.demandCut(party(d.customer), sku(d.sku), d.cases);
     case 'step':
       return `${J.step(named(model(r)?.steps.find(s => s.id === d.step)?.name, d.step))}${batchCode(r) ? ` · ${T.now.batch(batchCode(r))}` : ''}`;
     case 'conclude':
@@ -245,6 +253,13 @@ export function forkPrices(d: Extract<Decided, { kind: 'fork' }>, t: number, sta
 
 /** Причина — строки с числами завода; у решения игрока её нет (кроме предоплаты заказа). */
 export function whyLines(d: Decided, r: JournalRef, t: number, start: Ymd): string[] {
+  const out = ruleLines(d, r, t, start);
+  // правка в замороженном горизонте (Б6е): цена — первой строкой; задания позже — номером серии, если выдан, как в расписании
+  return (d.kind === 'order' || d.kind === 'cancel' || d.kind === 'shift') && d.frozen ? [priceLine(d.frozen, x => (r.codes?.[x] ? T.gantt.batch(r.codes[x]) : T.gantt.order(Number(x.slice(1))))), ...out] : out;
+}
+
+/** Причина решения по правилу — строки «Почему?». */
+function ruleLines(d: Decided, r: JournalRef, t: number, start: Ymd): string[] {
   const J = T.journal;
   const day = momentOf(start, t).day;
   switch (d.kind) {

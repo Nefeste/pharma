@@ -100,8 +100,10 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # jobs.png), then the launch plan and the daily lists (e2e-launch.mjs, launch.png),
                                    # then the forecast to the meeting of 1 November (e2e-forecast.mjs, forecast.png),
                                    # then the S&OP meeting of 3 September (e2e-sop.mjs, sop.png), then the materials of
-                                   # 2 September (e2e-mrp.mjs, mrp.png);
-                                   # `-- --only main|week|memo|capa|jobs|launch|forecast|sop|mrp` for one
+                                   # 2 September (e2e-mrp.mjs, mrp.png), then the plan edits — a commerce event at the
+                                   # meeting, a priced edit in the frozen horizon, the horizon policy (e2e-edits.mjs,
+                                   # edits.png);
+                                   # `-- --only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -147,7 +149,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   product is urgent; with Б6а the due of a stock order — the truck hour of the workday the SKU runs out by the same
   position, `stockDue` — and a cancelled stock order holding its SKU until its not-before, `heldOf`; with Б6б the same
   choice shared with the launch plan — `choose` — and the launch plan without writing, with the schedule draft —
-  `launchPlan`; with Б6в the demand of the rule from the planning forecast by the policy «спрос», named in the reason),
+  `launchPlan`; with Б6в the demand of the rule from the planning forecast by the policy «спрос», named in the reason;
+  with Б6е the batch order on the workday at the edge of the frozen horizon by the planning head's policy, `frozenOf`,
+  and the demand window over its calendar days, `frozenDays`),
   `forecast.ts` (with Б6в, the sales forecast: the season of a product group in customer demand — `seasonSec`; demand
   history for 24 months before the start by the same rule on its own branch, then cases ordered by the order's month;
   at 00:00 on the 1st, after the month's indicators, 18 months by five methods on the rate per calendar day — same as
@@ -170,6 +174,14 @@ first, or copy the working code of Bolnitsa on the same versions.
   of use more, whole containers, no less than the smallest lot — beyond the horizon of a new order with the upper lead
   time to a workday, the order date the last workday whose order still makes it; messages «заказать до», «опаздывает»,
   «опоздает», «лишний» — `mrpPlan`),
+  `plan/price.ts` (with Б6е, the price of a plan edit, a pure function: the schedule run over the price horizon with
+  the edit and without it — general and minor room cleanings with their hours, line format changes by the order of the
+  batches' last stage ends from the line's format now, batch orders that end later and by how much; the edge of the
+  frozen horizon — the policy's workday from today — and whether an edit is inside it — `frozenEdge`, `editInFrozen`;
+  the player's order, shift or cancel inside it — a journal record with its price, the colleagues never edit inside),
+  `commerce.ts` (with Б6е, commerce events between S&OP meetings: one to four a month on random workdays at 12:00 by
+  their own branch — a big order of a customer, a SKU's batch ± a share, with its due, or a demand cut the market
+  takes from the customer's next orders of the SKU (`cutOrder`); the sales head's journal record and the notice),
   `daily.ts` (with Б6б, the daily dispatch lists: at 08:00 each department's rows for the
   day — stages and kits by the schedule run cut at the day's end, packing by the line master's norm in the shifts of the
   line's people, the lab by the finite capacity of analysts on shift and instruments, shipments, supplier trucks,
@@ -361,7 +373,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   after every event, but the batches are scanned for a machine's next work only when one work could bring the part to
   the threshold — a bound from the recipes),
   `kpi.ts` (with Б5ж, the heads'
-  indicators: 48 definitions — the head, unit, direction, month or rolling 12 months, source keys, the counterweight —,
+  indicators: 51 definitions with Б6е — the head, unit, direction, month or rolling 12 months, source keys, the
+  counterweight —,
   each a pure function of plant
   records over a period and never of truth; the midnight snapshot of what records do not keep — stock at lot price, FG
   packs, receivables and payables, taken places, people without full admission — summed per month; at 00:00 on the 1st
@@ -470,7 +483,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   rebuilt on the same moment (`VIEW_SLOW` of `views.ts`); with Б6д, the materials — the «Материалы» tab: the
   requirements as they are, the POs in transit by arrival with what «Ускорить» and «Отменить» would give or why not, and
   the meeting's block — planned orders due today or earlier and POs in transit that will be late; a costly view too
-  (`mrp.ts`); people and admissions — a
+  (`mrp.ts`); with Б6е, the plan edits — the meeting's «Правки плана»: commerce events and the edits in the frozen
+  horizon of the 24 hours before it with their price — records of the plant (`edits.ts`); people and admissions — a
   person's admission
   today and what they are losing within the warning period, training rows of the card, the training matrix of the
   reference with how many people of a role are admitted, and of other roles by the related profession, the meeting's
@@ -507,7 +521,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   the schedule run
   with the player's draft —
   new not-before times and new urgent batch orders, the old bars of what the draft moves, and the ghost of a dragged
-  batch order (`plan.ts`), Web Worker (`worker.ts`) and its client in the window (`client.ts`; how far the window's
+  batch order, with Б6е the edge of the frozen horizon and the draft's price (`plan.ts`), Web Worker (`worker.ts`) and
+  its client in the window (`client.ts`; how far the window's
   clock ran ahead of the last slice; at most one `tick` in flight); the plan run's own thread — a second Web Worker over
   the same engine (`planHost.ts`, `planWorker.ts` → `dist/plan.js`; with Б5г the progress after each seed) and its
   client in the window (`planClient.ts`; a stop terminates the thread). The window never runs the engine. Saves cross
@@ -575,16 +590,19 @@ first, or copy the working code of Bolnitsa on the same versions.
   values in words (`units.ts`), what is going on now with «Смотреть»
   (`Now.tsx`, N), the 08:00 meeting (`Morning.tsx`), the cash
   panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), the schedule window with dragging, the draft, «Прогнать
-  план» and the run's outcome per variant (`Gantt.tsx`), with Б6а its «Задания» tab — filters, rows, «Отменить» into
+  план» and the run's outcome per variant, with Б6е the frozen band, its edge and the draft's price (`Gantt.tsx`), with
+  Б6а its «Задания» tab — filters, rows, «Отменить» into
   the draft, «Полосы», the uncovered orders with «Срочное задание под заказ» (`Jobs.tsx`), with Б6б its «План запуска»
-  tab — the grid of SKUs by days, the dashed rule, a cell's contents, «Поставить сейчас» (`Launch.tsx`), with Б6в its
+  tab — the grid of SKUs by days, the dashed rule, a cell's contents, «Поставить сейчас», with Б6е the frozen days
+  (`Launch.tsx`), with Б6в its
   «Прогноз» tab — the method and demand policies, the grid, a cell's edit and its removal, «прогноз против факта» with
   the error table and «Таблицей» (`Forecast.tsx`) and the chart's pure rules — colours, ticks, places (`fcchart.ts`),
   with Б6г the S&OP window — O, the plan grid with a choice per cell, «Утвердить», «Сбросить», demand, capacity, stock,
   cash and people under the plan (`Sop.tsx`), with Б6д its «Материалы» tab — the grid of materials by kind and 12
   months with the net in red, a cell's tooltip, planned orders by supplier with «Заказать» — the «Заказ поставщику»
   window with the lines due within a week —, POs in transit with their messages, «Ускорить» and «Отменить»
-  (`Materials.tsx`), the meeting's
+  (`Materials.tsx`), with Б6е an edit's price in words — cleanings with hours, changeovers, batch orders later
+  (`price.ts`), the meeting's
   «Сменно-суточные задания» block and a card's rows of the day (`Daily.tsx`), the draft's pure rules — a row per batch
   order, gone once kitting starts, `shift` commands on approval, with Б6а the cancels, with Б6б an urgent order on a
   day (`draft.ts`), the
@@ -622,7 +640,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   terms by class, the sign threshold of wear, the check's days and the repeats before a CAPA; with Б6в — `seasons/`: a
   product group's index of each month, and the scenario's `forecast` — the sales department's optimism; with Б6г — the
   planning head's policy «резерв мощности» and the scenario's `plan.reserve`; with Б6д — the supply head's policies
-  «срок завоза» and «как заказывать» and the scenario's `supply.arrive` and `supply.how`);
+  «срок завоза» and «как заказывать» and the scenario's `supply.arrive` and `supply.how`; with Б6е — the planning
+  head's policy «замороженный горизонт», the scenario's `plan.frozen`, the price horizon `plan.price` and the commerce
+  events `commerce`);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
@@ -646,7 +666,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   its regime, contractor works within his day, the warning period shorter than the shortest interval: `placeErrors`;
   pairs — every revision of a starting or packaging material spec has a pair its supplier sells from that maker, every
   pair of the start has a quality agreement in force: `pairErrors`; with Б5е the CAPA catalog — one action per work
-  the engine does, a head for all but training, the QA head's rule order unique among the actions of one cause class).
+  the engine does, a head for all but training, the QA head's rule order unique among the actions of one cause class;
+  with Б6е the price horizon no shorter than the largest frozen horizon in calendar days, the commerce ranges' «from»
+  no more than «to»).
 - `blender/` — Python scripts for Blender in the background (#109; by the owner's decision #112 — a mix: silhouettes
   of every class in code, a detailed model from Blender for the machines seen up close, AO only on static parts, room
   light not baked): `lib.py` (scene, axes of the window, finishes shared by all machines, parts with bevels in one
@@ -670,6 +692,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   «прогноз против факта» (`e2e-forecast.mjs`), the S&OP meeting — opened by itself on 3 September, a cell's target,
   «Утвердить», the journal and the rule's batch order by the plan (`e2e-sop.mjs`), the materials — the meeting's block
   on 2 September, the «Материалы» tab, «Заказать» and «Отправить», «Ускорить» and the journal (`e2e-mrp.mjs`), the
+  plan edits — a commerce event at the meeting, a batch order dragged inside the frozen horizon with its price,
+  «Утвердить» and the journal, the horizon policy and its edge (`e2e-edits.mjs`), the
   «code —
   Blender» sheet
   of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench

@@ -153,6 +153,9 @@ export const scenario = z.strictObject({
       demand: z.enum(['orders', 'forecast']).default('orders'),
       /** резерв мощности (Б6г): доля, которую план S&OP оставляет свободной, — числитель и знаменатель */
       reserve: z.tuple([z.number().int().min(0), z.number().int().positive()]).refine(([a, b]) => a <= b, { message: 'доля больше целого' }).optional(),
+      /** замороженный горизонт (Б6е): рабочих дней; горизонт цены правки — суток */
+      frozen: z.number().int().min(1).max(20).optional(),
+      price: z.number().int().min(1).max(90).optional(),
     })
     .optional(),
   /**
@@ -160,6 +163,22 @@ export const scenario = z.strictObject({
    * покупателей ровный, прогноза нет
    */
   forecast: z.strictObject({ optimism: percent }).optional(),
+  /**
+   * события коммерции (Б6е): в месяц — от и до; событие — серия позиции ± `size` %; крупный заказ — срок через столько
+   * суток, от и до, его доля событий — `big` %; остальные — снятый спрос
+   */
+  commerce: z
+    .strictObject({
+      perMonth: z.tuple([z.number().int().min(0).max(20), z.number().int().min(1).max(20)]),
+      size: percent.int(),
+      due: z.tuple([z.number().int().min(1).max(365), z.number().int().min(1).max(365)]),
+      big: percent.int(),
+    })
+    .superRefine((c, ctx) => {
+      if (c.perMonth[0] > c.perMonth[1]) ctx.addIssue({ code: 'custom', message: 'событий в месяц: «от» больше «до»' });
+      if (c.due[0] > c.due[1]) ctx.addIssue({ code: 'custom', message: 'срок крупного заказа: «от» больше «до»' });
+    })
+    .optional(),
   /** снабжение (Б2в): страховой запас и заказ — в сутках расхода, входной контроль — в сутках */
   supply: z
     .strictObject({
@@ -1142,7 +1161,7 @@ export const policy = z
     id: z.string(),
     name: text,
     head: z.enum(['plan', 'supply', 'maint', 'mes', 'wms', 'tech', 'qa']),
-    kind: z.enum(['days', 'months', 'wear', 'level', 'choice', 'share', 'count', 'mday']),
+    kind: z.enum(['days', 'months', 'wear', 'level', 'choice', 'share', 'count', 'mday', 'workdays']),
     each: z.enum(['part', 'spare']).optional(),
     min: z.number().int().min(0).optional(),
     max: z.number().int().positive().optional(),
@@ -1154,7 +1173,7 @@ export const policy = z
     review,
   })
   .superRefine((p, ctx) => {
-    const numeric = p.kind === 'days' || p.kind === 'months' || p.kind === 'wear' || p.kind === 'count' || p.kind === 'mday';
+    const numeric = p.kind === 'days' || p.kind === 'months' || p.kind === 'wear' || p.kind === 'count' || p.kind === 'mday' || p.kind === 'workdays';
     if (numeric || p.kind === 'level') {
       if (p.min === undefined || p.max === undefined || p.min >= p.max) ctx.addIssue({ code: 'custom', message: 'нужны min и max, min меньше max' });
       if (numeric && (p.step === undefined || (p.max! - p.min!) % p.step !== 0)) ctx.addIssue({ code: 'custom', message: 'от min до max — целое число шагов step' });
@@ -1163,6 +1182,8 @@ export const policy = z
     if (p.kind === 'share' && !p.shares) ctx.addIssue({ code: 'custom', message: 'у доли мест нужны shares' });
     if (p.kind === 'wear' && p.max! > 100) ctx.addIssue({ code: 'custom', message: 'износ — не больше 100 % ресурса' });
     if (p.kind === 'mday' && p.max! > 28) ctx.addIssue({ code: 'custom', message: 'число месяца — до 28-го: оно есть в каждом месяце; 0 — к дню серии' });
+    // замороженный горизонт (Б6е): от одного рабочего дня до четырёх пятидневок
+    if (p.kind === 'workdays' && (p.min! < 1 || p.max! > 20)) ctx.addIssue({ code: 'custom', message: 'горизонт — от 1 до 20 рабочих дней' });
   });
 
 /**

@@ -297,7 +297,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   without work, dirty and free, spans closed every hour, a full day 86 400 s — and the good packs of each hour of a
   shift task; with Б1к a batch's time by state at its place — the room of its stage or line, the lab, the QA room where
   the qualified person's post is, the warehouse; its own «не раньше» has no place — by days, spans closed every hour,
-  `placeOf`), `modes.ts`
+  `placeOf`; with Б1л the losses of a day at places — a room, `zone:` of a zone or a rack, `line:`, `dock:` — by kind:
+  waits by department and cause, «нет смены» among them, transport where it was taken from, walks, cleanings and
+  changeovers, recleanings after an expired cleanliness with their hours, defects in hours — camera rejects at the
+  rated speed, a rejected batch's stage and packing hours on the decision day —, and up to five things a kind for eight
+  days (`lossAt`, `taskSpot`, `batchLost`)), `modes.ts`
   (with Б1ж, setpoints: of a stage parameter by the recipe code, stage and parameter, of the blister machine speed by
   the packaging instruction code; within the range of the revision in force and a whole number of steps from the target,
   otherwise the `setpoint` command is refused; none — the target; the turret speed scales the recipe's rate
@@ -540,7 +544,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   rooms and line machines over today, yesterday or
   seven days, the key machine and OEE by the meeting's `lineSum`, the plan-vs-actual board of the shift by hours, the
   batch a held room leads to — records of the plant, and with Б1к the hours batches waited at each place over the
-  window with its main word, the batches waiting now and «держит линию» (`floor.ts`); with Б1к, the andon — what is
+  window with its main word, the batches waiting now and «держит линию», and with Б1л the losses of places over the
+  window by kind and cause with their things and the things' names — records of the plant (`floor.ts`); with Б1к, the
+  andon — what is
   not working now by thing: a failed part, an asset without a record in force or with the contractor, a cleaning a batch
   waits for with the stage operators on shift and no cleaners, a task waiting for an admission, hours or the end of a
   leave, a supplier truck not unloaded for 2 hours, a batch without material at its not-before, an order at risk — with
@@ -575,8 +581,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   rooms for the «Потоки — люди» layer (`flows.ts`); with Б1и the layers on the left and L, where the load columns and
   the boards stand, part heights as shares of the window, the number over each column, the board rows, the palette,
   and with Б1к the bottleneck plates over the three places and the machine that holds the line, the point over a room,
-  the andon icons over things and the boxes of all these marks for clicks (`floor.ts`); the scene bench, a copy of
-  Bolnitsa's, with `--layer load` also with the layer on (`bench.ts`,
+  the andon icons over things and the boxes of all these marks for clicks (`floor.ts`); with Б1л the «Потери» layer —
+  where the column of each place stands, on its room's floor, off equipment and pallet places and apart from the others,
+  the kind of loss picked, parts and heights against the largest place, the palette, the boxes, the places of a card
+  and their names (`losses.ts`); the scene bench, a copy of Bolnitsa's, with `--layer load` also with the layer on
+  (`bench.ts`,
   `stats.ts`).
 - `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa); the plant
   from the plan (`layout.ts` — rooms, walls, doors and spots from `planOf`), floors, zone markings, ground and yard,
@@ -592,8 +601,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   level by speed and camera height with its soft change (`detail.ts`), the site layer — arrows above the walls and the
   fill of places (`overlay.ts`), colour checks — colour-blindness simulation, ΔE and icon contrast (`color.ts`), the
   outline of the selected thing (`select.ts`), the work icons — paths shared by SVG and canvas (`taskicons.ts`) and the
-  icons above heads, one instanced draw call (`badges.ts`), the «Загрузка и OEE» layer — column parts, full-height
-  frames, numbers and plan-vs-actual boards in four draw calls (`floor.ts`), the «Узкие места» plates in one draw call
+  icons above heads, one instanced draw call (`badges.ts`), the columns on the floor shared by two layers — parts,
+  full-height frames, numbers (`columns.ts`), the «Загрузка и OEE» layer — columns with frames and plan-vs-actual
+  boards in four draw calls (`floor.ts`), the «Потери» layer — columns without frames in two (`losses.ts`), the «Узкие
+  места» plates in one draw call
   (`plates.ts`), the andon — icons and words in two draw calls (`andon.ts`) with the pictograms and weight colours
   shared by SVG and canvas (`andonicons.ts`), people
   — Bolnitsa's crowd on the GPU (`bake.ts`, `people.ts`, copies) with looks and clothes by role (`cast.ts`), the
@@ -611,12 +622,13 @@ first, or copy the working code of Bolnitsa on the same versions.
   (`Journal.tsx`), the «Заказ поставщику» window from the warehouse panel — supplier, lines, «Предложить», «Отправить»
   (`Po.tsx`), the indicators window — K, tabs, tiles with 12 bars, the formula and source on hover, «Почему?», the
   month arrows, with Б5г the dashed day of a policy change (`Kpi.tsx`), the «Политики» window — P, tabs of the heads,
-  rows with «−» and «+» or options, the draft, «Прогнать» on 13 weeks and 5 seeds with the progress by seeds and
-  «Стоп», «Применить», «Сбросить» (`Policies.tsx`), with Б5в the head's block of the card — the skill limit in words,
-  who decides today, the deputy with «Назначить» and «Снять», the department's indicators — and the meeting's
-  «Руководители» (`Bosses.tsx`) and its pure rules — a value in words, the next one by a step, the
-  draft's commands (`policy.ts`), the layers menu on the left with the window and the legend, the column tooltip and the
-  card's «Загрузка» block (`Layers.tsx`), quality attribute and
+  rows with «−» and «+» or options, the draft, «Прогнать» on 13 weeks and 5 seeds with the progress by seeds and «Стоп»,
+  «Применить», «Сбросить» (`Policies.tsx`), with Б5в the head's block of the card — the skill limit in words, who
+  decides today, the deputy with «Назначить» and «Снять», the department's indicators — and the meeting's «Руководители»
+  (`Bosses.tsx`) and its pure rules — a value in words, the next one by a step, the draft's commands (`policy.ts`), the
+  layers menu on the left with the window and the legend, the column tooltip and the card's «Загрузка» block
+  (`Layers.tsx`), the «Потери» menu with the kind of loss, its tooltip and the card's «Потери» block — the card's
+  places, the open one by kind and cause with its things (`Losses.tsx`), quality attribute and
   process parameter
   values in words (`units.ts`), what is going on now with «Смотреть»
   (`Now.tsx`, N), the 08:00 meeting (`Morning.tsx`), the cash

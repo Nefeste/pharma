@@ -6,7 +6,8 @@
 import type { ContentDb } from '../content/types';
 import { schedule } from './core/agenda';
 import { DAY, daysFromCivil, HOUR, MIN } from './core/calendar';
-import { walked } from './lean';
+import { lossAt, walked, YARD } from './lean';
+import { roomAt } from './places';
 import { pointAlong, route } from './nav';
 import { dist, type PlantPlan, planOf, type Point, travel } from './plant';
 import { awayOn } from './leave';
@@ -136,6 +137,8 @@ export function stopWalk(db: ContentDb, s: PlantState, p: Person) {
   const d = progress(plan, p, s.t);
   const at = d.cm >= d.len ? { x: p.x, z: p.z } : pointAlong(route(plan.nav, w, p, 'walk'), d.cm);
   walked(s, db.roles[p.role].dept, d.cm, d.sec);
+  // переход к посту или к выходу — у помещения, куда шёл (Б1л)
+  lossAt(s, roomAt(plan.plant, p.x, p.z) ?? YARD, 'walk', d.sec, `p:${p.id}`);
   p.x = at.x;
   p.z = at.z;
   delete p.walk;

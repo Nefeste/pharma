@@ -907,11 +907,38 @@ async function mainPart() {
   // предложения (Б5б): на планёрках до 6 сентября — первое задание на серию «Отклонить» (задания нет), прочие — «Принять»
   const asked = [];
   let declined;
+  // главная потеря с местом (Б1л): на первой из этих планёрок, где главная потеря — ожидание, в строке — место, где его
+  // было больше всего; щелчок — карточка места с блоком «Потери» за вчера, раскрыто это место
+  let placed = false;
   while ((await page.evaluate(() => window.__game.day)) < 6) {
     await untilMorning(true);
     await page.waitForFunction(() => window.__game.store.get().morning.view?.day === window.__game.store.get().morning.day, null, { timeout: 20_000 });
     const before = await page.evaluate(() => window.__game.store.get().morning.view?.asks.length ?? 0);
     if (before > 0) asked.push(...(await answerAsks(r => r.kind === 'order' && !declined && (declined = r.n) > 0)));
+    const mm = placed
+      ? undefined
+      : await page.evaluate(() => {
+          const v = window.__game.store.get().morning.view;
+          return window.__game.store.get().morning.open && v?.main?.k === 'wait' && v.main.spot ? { spot: v.main.spot, text: document.querySelector('[data-test=morning-main-go]')?.textContent ?? '' } : undefined;
+        });
+    if (mm) {
+      placed = true;
+      await page.click('[data-test=morning-main-go]');
+      await page.waitForSelector('[data-test=card-loss-open]', { timeout: 20_000 }).catch(() => {});
+      const at = await page.evaluate(() => ({
+        morning: window.__game.store.get().morning.open,
+        win: window.__game.store.get().floor.win,
+        sel: window.__game.selected,
+        open: document.querySelector('[data-test=card-loss-open]')?.getAttribute('data-spot') ?? '',
+        wait: Number(document.querySelector('[data-test=card-loss-open] [data-test=card-loss-row][data-kind=wait]')?.getAttribute('data-sec') ?? 0),
+      }));
+      if (!/больше всего — /.test(mm.text) || at.morning || at.win !== 'yesterday' || !at.sel || at.open !== mm.spot || !(at.wait > 0)) fail(`планёрка → место главной потери: «${mm.text}», ${JSON.stringify(at)}, место ${mm.spot}`);
+      else ok(`планёрка: «${mm.text}» — щелчок: карточка ${at.sel.kind} ${at.sel.i ?? at.sel.k ?? ''}, «Потери» за вчера — ${mm.spot}, ожидание ${Math.round(at.wait / 60)} мин`);
+      await page.evaluate(() => {
+        window.__game.actions.setFloorWin('today');
+        window.__game.actions.select(undefined);
+      });
+    }
     if (await page.evaluate(() => window.__game.store.get().morning.open)) await page.keyboard.press('Escape');
     if (rushed) continue;
     await page.waitForFunction(() => !!window.__game.store.get().lab.view, null, { timeout: 20_000 });
@@ -941,6 +968,7 @@ async function mainPart() {
       .then(() => true, () => false);
     rushed = up ? lot : 'нет';
   }
+  if (!placed) fail('планёрки до 6 сентября: главной потерей ни разу не было ожидание с местом');
   if (!rushed || rushed === 'нет') fail(`лаборатория: «Поднять» ${rushed ? 'не дошло до движка' : 'не проверено — в очереди ни разу не было партии'}`);
   else ok(`лаборатория: партия ${rushed} поднята — команда дошла до движка и вернулась в вид`);
   await page.keyboard.press('Escape');
@@ -1100,6 +1128,7 @@ async function mainPart() {
   // светильники снова видны. Снимок — в контактный лист
   let floorShot;
   let bottleShot;
+  let lossShot;
   {
     await page.evaluate(() => window.__game.actions.select(undefined));
     await camAt({ x: 39, z: 9, half: 10 });
@@ -1262,11 +1291,114 @@ async function mainPart() {
     });
     if (av.marks > av.items || av.plates || av.legend !== 3 || av.calls - off > 4) fail(`слой «Проблемы»: ${JSON.stringify(av)}, вызовов без слоя ${off}`);
     else ok(`слой «Проблемы»: не работает ${av.items} вещей — значков ${av.marks}; табличек нет; вызовов отрисовки ${av.calls - off >= 0 ? '+' : ''}${av.calls - off}`);
+    // потери (Б1л): L — «Потери», окно — 7 суток: столбик у каждого места с потерями за окно — у лаборатории и у склада
+    // тоже, над каждым — часы; табличек, значков, столбиков «Загрузки» и светильников нет; слой — не больше четырёх
+    // вызовов отрисовки; «перевозки» — столбик у зоны комплектации; наведение на столбик лаборатории — подсказка с часами
+    // частей; щелчок по столбику зоны комплектации — карточка склада с блоком «Потери» этой зоны, те же часы, и вещи;
+    // щелчок по вещи — её карточка. Снимок — в контактный лист
+    await page.keyboard.press('KeyL');
+    await page.waitForFunction(() => window.__game.store.get().layer === 'losses' && !!window.__game.store.get().floor.view, null, { timeout: 20_000 });
+    await frames(4);
+    const lossOf = () =>
+      page.evaluate(() => {
+        const g = window.__game;
+        const v = g.store.get().floor.view;
+        const pick = g.store.get().floor.pick;
+        const known = new Set(g.stage.losses.spots.map(x => x.spot));
+        const sec = x => (pick === 'all' ? x.total : (x.sec[pick] ?? 0));
+        return {
+          pick,
+          calls: g.stage.calls,
+          spots: g.stage.losses.bars.map(b => b.spot),
+          want: v.losses.filter(x => sec(x) > 0 && known.has(x.spot)).map(x => x.spot),
+          labels: g.stage.losses.group.children.find(c => c.name === 'losses labels')?.count ?? -1,
+          shown: g.stage.losses.group.visible,
+          plates: g.stage.plates.mesh.visible,
+          andon: g.stage.andon.group.visible,
+          load: g.stage.floor.group.visible,
+          lamps: g.stage.lamps.mesh.visible,
+          legend: document.querySelectorAll('[data-test=loss-legend] li').length,
+          picks: document.querySelectorAll('[data-test=loss-picks] button').length,
+        };
+      });
+    const lv = await lossOf();
+    const inStore = lv.spots.filter(x => x.startsWith('zone:') || x.startsWith('dock:') || x === 'warehouse');
+    if (lv.pick !== 'all' || lv.spots.join() !== lv.want.join() || !lv.spots.includes('lab') || inStore.length < 1 || lv.labels !== lv.spots.length || !lv.shown || lv.plates || lv.andon || lv.load || lv.lamps || lv.legend < 7 || lv.picks !== 8 || lv.calls - off > 4)
+      fail(`слой «Потери»: ${JSON.stringify(lv)}, вызовов без слоя ${off}`);
+    else ok(`слой «Потери» за 7 суток: столбиков ${lv.spots.length}, первые — ${lv.spots.slice(0, 4).join(', ')}; у склада — ${inStore.length}; над каждым — часы; вызовов отрисовки ${lv.calls - off >= 0 ? '+' : ''}${lv.calls - off}`);
+    await page.click('[data-test=loss-pick-move]');
+    await frames(2);
+    const mv = await lossOf();
+    if (mv.pick !== 'move' || mv.spots.join() !== mv.want.join() || !mv.spots.includes('zone:stage')) fail(`«Потери» — перевозки: ${JSON.stringify(mv)}`);
+    else ok(`«Потери» — перевозки: столбиков ${mv.spots.length}, у зоны комплектации — есть; первые — ${mv.spots.slice(0, 3).join(', ')}`);
+    await page.click('[data-test=loss-pick-all]');
+    await camAt(null);
+    await settle(3);
+    await frames(4);
+    await page.screenshot({ path: join(out, 'e2e-losses.png') });
+    lossShot = { file: join(out, 'e2e-losses.png'), label: `Б1л · «Потери» · 7 суток · участок · ${(await lossOf()).calls} вызовов` };
+    const barAt = spot =>
+      page.evaluate(spot => {
+        const g = window.__game;
+        const b = g.stage.losses.bars.find(x => x.spot === spot);
+        if (!b) return undefined;
+        const h = b.parts.reduce((n, p) => n + p.h, 0);
+        return { sp: g.stage.screen(b.x, h / 2, b.z), thing: b.thing };
+      }, spot);
+    const lab = await barAt('lab');
+    if (!lab?.sp) fail('столбик лаборатории не на экране');
+    else {
+      await page.mouse.move(lab.sp.x, lab.sp.y);
+      await page.waitForSelector('[data-test=loss-tip]', { timeout: 10_000 }).catch(() => {});
+      const tip = await page.evaluate(() => {
+        const x = window.__game.store.get().floor.view.losses.find(r => r.spot === 'lab');
+        return { rows: document.querySelectorAll('[data-test=loss-tip] [data-test=loss-tip-row]').length, want: ['wait', 'move', 'walk', 'setup', 'again', 'defect'].filter(k => (x.sec[k] ?? 0) > 0).length, text: document.querySelector('[data-test=loss-tip]')?.textContent ?? '' };
+      });
+      if (tip.rows < 1 || tip.rows !== tip.want || !/^Лаборатория/.test(tip.text)) fail(`подсказка у столбика лаборатории: ${JSON.stringify(tip)}`);
+      else ok(`подсказка у столбика лаборатории: ${tip.text}`);
+      await page.mouse.move(5, 400);
+    }
+    const stage = await barAt('zone:stage');
+    if (!stage?.sp) fail('столбик зоны комплектации не на экране');
+    else {
+      await page.mouse.click(stage.sp.x, stage.sp.y);
+      await page.waitForSelector('[data-test=card-loss-open] [data-test=card-loss-row]', { timeout: 20_000 }).catch(() => {});
+      const card = await page.evaluate(() => {
+        const g = window.__game;
+        const x = g.store.get().floor.view.losses.find(r => r.spot === 'zone:stage');
+        return {
+          sel: g.selected,
+          open: document.querySelector('[data-test=card-loss-open]')?.getAttribute('data-spot') ?? '',
+          rows: [...document.querySelectorAll('[data-test=card-loss-open] [data-test=card-loss-row]')].map(r => [r.getAttribute('data-kind'), Number(r.getAttribute('data-sec'))]),
+          sec: x.sec,
+          spots: document.querySelectorAll('[data-test=card-loss-spot]').length,
+          things: document.querySelectorAll('[data-test=card-loss-open] [data-test=loss-thing]').length,
+          go: document.querySelectorAll('[data-test=card-loss-open] [data-test=loss-thing-go]').length,
+          wh: g.layout.rooms.findIndex(r => r.id === 'warehouse'),
+        };
+      });
+      const same = card.rows.length > 0 && card.rows.every(([k, sec]) => card.sec[k] === sec) && card.rows.length === Object.values(card.sec).filter(v => v > 0).length;
+      if (card.sel?.kind !== 'room' || card.sel.i !== card.wh || card.open !== 'zone:stage' || !same || card.spots < 2 || card.things < 1) fail(`карточка склада, «Потери»: ${JSON.stringify(card)}`);
+      else ok(`карточка склада: блок «Потери» — зона комплектации, ${card.rows.map(([k, sec]) => `${k} ${Math.round(sec / 60)} мин`).join(', ')}; мест в блоке ${card.spots}, вещей ${card.things}`);
+      if (card.go < 1) fail('блок «Потери»: ни одна вещь не ведёт к своей карточке');
+      else {
+        const before = JSON.stringify(card.sel);
+        await page.click('[data-test=card-loss-open] [data-test=loss-thing-go]');
+        await page.waitForFunction(b => JSON.stringify(window.__game.selected) !== b || window.__game.store.get().dossier.open, before, { timeout: 20_000 }).catch(() => {});
+        const went = await page.evaluate(() => ({ sel: window.__game.selected, dossier: window.__game.store.get().dossier.open }));
+        if (JSON.stringify(went.sel) === before && !went.dossier) fail(`вещь блока «Потери»: ${JSON.stringify(went)}`);
+        else ok(`вещь блока «Потери» — к ней: ${went.dossier ? 'досье серии' : `карточка ${went.sel.kind} ${went.sel.n ?? went.sel.i ?? ''}`}`);
+        if (went.dossier) await page.keyboard.press('Escape');
+      }
+      await page.keyboard.press('Escape');
+    }
+    await camAt({ x: 39, z: 9, half: 10 });
+    await settle(1);
     // L — «Потоки — люди», L — «Обычный вид»: столбиков нет
     await page.keyboard.press('KeyL');
     await page.keyboard.press('KeyL');
     await frames(2);
-    const plain = await page.evaluate(() => ({ layer: window.__game.store.get().layer, shown: window.__game.stage.floor.group.visible, lamps: window.__game.stage.lamps.mesh.visible }));
+    const plain = await page.evaluate(() => ({ layer: window.__game.store.get().layer, shown: window.__game.stage.floor.group.visible || window.__game.stage.losses.group.visible, lamps: window.__game.stage.lamps.mesh.visible }));
     if (plain.layer !== 'plain' || plain.shown || !plain.lamps) fail(`«Обычный вид»: ${JSON.stringify(plain)}`);
     else ok('«Обычный вид»: столбиков и досок нет, светильники снова видны');
   }
@@ -1317,6 +1449,7 @@ async function mainPart() {
   // части, когда что-то не работает: лист пишется ещё раз
   if (floorShot) sheet.push(floorShot);
   if (bottleShot) sheet.push(bottleShot);
+  if (lossShot) sheet.push(lossShot);
   await writeSheet(sheet);
 
   // автопаузы (Б2а): у производства и качества восемнадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
@@ -1383,10 +1516,12 @@ async function mainPart() {
     const stop = await page.evaluate(() => ({ inv: window.__game.store.get().top?.inv ?? 0, speed: window.__game.speed, ff: window.__game.ff, notice: document.querySelector('[data-test=notice-inv]')?.textContent ?? '' }));
     if (stop.inv < 1 || stop.speed !== 0 || stop.ff || !/вне спецификации/.test(stop.notice)) fail(`расследование: идёт ${stop.inv}, скорость ${stop.speed}, промотка ${stop.ff}, извещение «${stop.notice}»`);
     else ok(`расследование: «${stop.notice}» — мир на паузе`);
-    // что делать (Б1г): последняя планёрка — у потери «людей нет в смене» кнопки решений, с Б4в и «Найм и графики»; ждут
-    // решения отклонения серии с происшествием. Карточка отклонения опудривания: время по досье, цель и диапазон по
-    // карте, связанные испытания; после результата растворения его решает расследование — «без влияния» и «отклонить»
-    // погашены, есть кнопка доски. В первый раз — пояснение; «Понятно» его убирает, окно помнит
+    // что делать (Б1г): последняя планёрка — главная потеря суток, с Б1л без «нет смены»: у ожидания — место, где его было
+    // больше всего, щелчок — карточка места с блоком «Потери» за вчера, раскрыто это место; кнопки решений — по причине,
+    // у людей — и «Найм и графики» (Б4в); ждут решения отклонения серии с происшествием. Карточка отклонения опудривания:
+    // время по досье, цель и диапазон по карте, связанные испытания; после результата растворения его решает
+    // расследование — «без влияния» и «отклонить» погашены, есть кнопка доски. В первый раз — пояснение; «Понятно» его
+    // убирает, окно помнит
     {
       await page.evaluate(() => window.__game.actions.openMorning());
       await page.waitForFunction(() => !!window.__game.store.get().morning.view, null, { timeout: 20_000 });
@@ -1396,15 +1531,34 @@ async function mainPart() {
         const v = window.__game.store.get().morning.view;
         return {
           main: v.main ? `${v.main.k}/${v.main.cause ?? ''}` : '',
+          spot: v.main?.spot,
+          text: main?.querySelector('[data-test=morning-main-go]')?.textContent ?? '',
           buttons: [...(main?.querySelectorAll('[data-test=levers] .lever button') ?? [])].map(b => b.textContent ?? ''),
           later: [...(main?.querySelectorAll('[data-test=lever-later]') ?? [])].map(x => x.textContent ?? ''),
           pending: document.querySelectorAll('[data-test=morning-pending]').length,
           param: v.pending.find(p => p.kind === 'param')?.dev,
         };
       });
-      if (m.main !== 'wait/shift' || m.buttons.length < 3 || !m.buttons.includes('Найм и графики') || m.later.some(x => /Б4/.test(x)) || m.param === undefined)
-        fail(`планёрка: потеря «${m.main}», кнопки «${m.buttons.join(', ')}», «${m.later.join('; ')}», ждут решения ${m.pending}`);
-      else ok(`планёрка: у потери «людей нет в смене» — ${m.buttons.join(', ')}; ждут решения — ${m.pending}`);
+      const wait = m.main.startsWith('wait/');
+      const people = ['wait/people', 'wait/hours', 'wait/leave'].includes(m.main);
+      if (!m.main || m.main === 'wait/shift' || (wait && (!m.spot || !/больше всего — /.test(m.text))) || (people && !m.buttons.includes('Найм и графики')) || m.later.some(x => /Б4/.test(x)) || m.param === undefined)
+        fail(`планёрка: потеря «${m.main}» у «${m.spot}» — «${m.text}», кнопки «${m.buttons.join(', ')}», «${m.later.join('; ')}», ждут решения ${m.pending}`);
+      else ok(`планёрка: главная потеря — «${m.text}»; кнопки ${m.buttons.join(', ') || 'нет'}; ждут решения — ${m.pending}`);
+      if (wait && m.spot) {
+        // щелчок по месту — карточка его вещи с блоком «Потери» за вчера, раскрыто это место
+        await page.click('[data-test=morning-main-go]');
+        await page.waitForSelector('[data-test=card-loss-open]', { timeout: 20_000 }).catch(() => {});
+        const at = await page.evaluate(() => ({
+          morning: window.__game.store.get().morning.open,
+          win: window.__game.store.get().floor.win,
+          sel: window.__game.selected,
+          open: document.querySelector('[data-test=card-loss-open]')?.getAttribute('data-spot') ?? '',
+          wait: document.querySelector('[data-test=card-loss-open] [data-test=card-loss-row][data-kind=wait]')?.getAttribute('data-sec') ?? '',
+        }));
+        if (at.morning || at.win !== 'yesterday' || !at.sel || at.open !== m.spot || !at.wait) fail(`планёрка → место главной потери: ${JSON.stringify(at)}, место ${m.spot}`);
+        else ok(`планёрка → место главной потери: карточка ${at.sel.kind} ${at.sel.i ?? at.sel.k ?? ''}, блок «Потери» за вчера — ${m.spot}, ожидание ${Math.round(Number(at.wait) / 60)} мин`);
+        await page.evaluate(() => window.__game.actions.setFloorWin('today'));
+      }
       await page.keyboard.press('Escape');
       await page.evaluate(n => window.__game.actions.select({ kind: 'dev', n }), m.param);
       await page.waitForFunction(n => window.__game.store.get().card?.card?.kind === 'dev' && window.__game.store.get().card.card.dev === n, m.param, { timeout: 20_000 });

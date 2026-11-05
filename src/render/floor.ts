@@ -1,26 +1,17 @@
 // Слой «Загрузка и OEE» (Б1и; docs/specs/2026-10-vertical-slice.md, «Б1и»; docs/13-art.md, §11): столбики загрузки в
-// помещениях и у машин линии, число над каждым и доска «План — факт» в конце линии. Части столбиков — экземпляры одного
-// короба, рамка полной высоты — одна сетка линий, числа — экземпляры квадрата из одной текстуры, повёрнутые к камере в
-// шейдере (как значки работ, badges.ts), доски — по одной на линию, лицом к камере: сверху вертикальную доску не
-// прочесть. Тени не отбрасывают; неосвещённые — цвет части тот же днём и ночью, какой проверен в четырёх видах зрения.
-// Текстуры перерисовываются, только когда вид изменился. Где стоят столбики и что на них — src/app/floor.ts.
+// помещениях и у машин линии с рамкой полной высоты, число над каждым (columns.ts) и доска «План — факт» в конце линии,
+// по одной на линию, лицом к камере: сверху вертикальную доску не прочесть. Тени не отбрасывают; неосвещённые — цвет
+// части тот же днём и ночью, какой проверен в четырёх видах зрения. Текстуры перерисовываются, только когда вид
+// изменился. Где стоят столбики и что на них — src/app/floor.ts.
 import * as THREE from 'three';
 import { type Bar, barsOf, boardRows, colorOf, FLOOR, type Label, type Spots, spotsOf } from '../app/floor';
 import type { ContentDb } from '../content/types';
 import { HOUR } from '../engine/core/calendar';
 import { clock, named, num, pctText, T } from '../i18n';
 import type { FloorBoard, FloorView } from '../sim/floor';
+import { canvasTex, Columns } from './columns';
 import type { Layout } from './layout';
 
-/**
- * Клетка числа в текстуре, точек; кегль числа — `BIG` точек, высота его цифр — доля `DIGIT` кегля: она и есть
- * `FLOOR.digits` м на полу. Строка, которая не влезает в клетку, — мельче.
- */
-const CELL_W = 400;
-const CELL_H = 140;
-const BIG = 64;
-const SMALL = 34;
-const DIGIT = 0.72;
 /** Над столбиком, м. */
 const LABEL_GAP = 0.12;
 /** Доска: точек на метр. */
@@ -29,38 +20,6 @@ const BOARD_PX = 320;
 const PARTS = 6;
 /** Доска перерисовывается не чаще, мс: годные пачки часа меняются с каждым срезом; смена и час — сразу. */
 const BOARD_MS = 500;
-/** Рамка полной высоты — светлая, полупрозрачная: видно, сколько окна не занято. */
-const FRAME = 0xe8edf0;
-
-const VERTEX = /* glsl */ `
-attribute float aCell;
-uniform vec2 uSize;
-uniform float uCount;
-varying vec2 vUv;
-void main() {
-  vUv = vec2(uv.x, (uv.y + (uCount - 1.0 - aCell)) / uCount);
-  vec4 mv = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-  mv.xy += position.xy * uSize;
-  gl_Position = projectionMatrix * mv;
-}`;
-
-const FRAGMENT = /* glsl */ `
-uniform sampler2D uMap;
-varying vec2 vUv;
-void main() {
-  vec4 c = texture2D(uMap, vUv);
-  if (c.a < 0.04) discard;
-  gl_FragColor = c;
-  #include <colorspace_fragment>
-}`;
-
-const canvasTex = (c: HTMLCanvasElement) => {
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.generateMipmaps = false;
-  t.minFilter = THREE.LinearFilter;
-  return t;
-};
 
 /** Число над столбиком словами: крупно — доля или OEE, мелко — что это. */
 export function labelLines(l: Label): [string, string] {
@@ -86,20 +45,9 @@ interface BoardMesh {
 export class FloorLayer {
   readonly group = new THREE.Group();
   readonly spots: Spots;
-  private parts: THREE.InstancedMesh;
-  private labels: THREE.InstancedMesh;
-  private cell: THREE.InstancedBufferAttribute;
-  private atlas: CanvasRenderingContext2D;
-  private atlasTex: THREE.CanvasTexture;
-  private uniforms: { uMap: { value: THREE.Texture | null }; uSize: { value: THREE.Vector2 }; uCount: { value: number } };
+  private cols: Columns;
   private boards: BoardMesh[] = [];
-  private keys: string[] = [];
   private shown: Bar[] = [];
-  private m = new THREE.Matrix4();
-  private q = new THREE.Quaternion();
-  private p = new THREE.Vector3();
-  private s = new THREE.Vector3();
-  private c = new THREE.Color();
 
   constructor(
     private db: ContentDb,
@@ -108,46 +56,8 @@ export class FloorLayer {
     private lineName: (n: number) => string,
   ) {
     this.spots = spotsOf(db, l, rooms);
-    const n = this.spots.bars.length;
-    this.parts = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ toneMapped: false }), Math.max(1, n * PARTS));
-    // цвет экземпляров — с первого кадра: программа шейдера сразу с ним
-    this.parts.setColorAt(0, this.c.setHex(0xffffff));
-    this.parts.count = 0;
-    this.parts.frustumCulled = false;
-    this.parts.name = 'floor bars';
-    this.group.add(this.parts);
-    // рамка полной высоты: двенадцать рёбер короба у каждого столбика
-    const pos: number[] = [];
-    for (const b of this.spots.bars) {
-      const h = b.side / 2 + 0.01;
-      const xs = [b.x - h, b.x + h];
-      const zs = [b.z - h, b.z + h];
-      const ys = [0, FLOOR.full];
-      for (const y of ys) for (const x of xs) pos.push(x, y, zs[0], x, y, zs[1]);
-      for (const y of ys) for (const z of zs) pos.push(xs[0], y, z, xs[1], y, z);
-      for (const x of xs) for (const z of zs) pos.push(x, 0, z, x, FLOOR.full, z);
-    }
-    const frame = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)), new THREE.LineBasicMaterial({ color: FRAME, transparent: true, opacity: 0.55, toneMapped: false }));
-    frame.name = 'floor frames';
-    this.group.add(frame);
-    // числа: клетка на столбик, по порядку мест
-    const c = document.createElement('canvas');
-    c.width = CELL_W;
-    c.height = CELL_H * Math.max(1, n);
-    this.atlas = c.getContext('2d')!;
-    this.atlasTex = canvasTex(c);
-    this.uniforms = { uMap: { value: this.atlasTex }, uSize: { value: new THREE.Vector2(1, 1) }, uCount: { value: Math.max(1, n) } };
-    const geo = new THREE.PlaneGeometry(1, 1);
-    this.cell = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, n)), 1);
-    geo.setAttribute('aCell', this.cell);
-    const mat = new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: VERTEX, fragmentShader: FRAGMENT, transparent: true, depthWrite: false });
-    this.labels = new THREE.InstancedMesh(geo, mat, Math.max(1, n));
-    this.labels.count = 0;
-    this.labels.frustumCulled = false;
-    this.labels.renderOrder = 12;
-    this.labels.name = 'floor labels';
-    this.group.add(this.labels);
-    this.keys = Array(n).fill('');
+    this.cols = new Columns(this.spots.bars.length, PARTS, 'floor', FLOOR.digits, { spots: this.spots.bars, full: FLOOR.full });
+    this.group.add(this.cols.group);
     for (const sp of this.spots.boards) {
       const bc = document.createElement('canvas');
       bc.width = FLOOR.board.w * BOARD_PX;
@@ -167,37 +77,7 @@ export class FloorLayer {
   set(v: FloorView | undefined) {
     const bars = v ? barsOf(this.spots, v) : [];
     this.shown = bars;
-    let k = 0;
-    for (const b of bars) {
-      for (const part of b.parts) {
-        if (k >= this.parts.instanceMatrix.count) break;
-        this.m.compose(this.p.set(b.x, part.y0, b.z), this.q, this.s.set(b.side, Math.max(0.005, part.h), b.side));
-        this.parts.setMatrixAt(k, this.m);
-        this.parts.setColorAt(k, this.c.setHex(colorOf(part.part)));
-        k++;
-      }
-    }
-    this.parts.count = k;
-    this.parts.instanceMatrix.needsUpdate = true;
-    if (this.parts.instanceColor) this.parts.instanceColor.needsUpdate = true;
-    // числа: перерисовать клетку, только если её строки сменились
-    let drawn = false;
-    bars.forEach((b, i) => {
-      const lines = labelLines(b.label);
-      const key = lines.join('|');
-      if (this.keys[b.n] !== key) {
-        this.keys[b.n] = key;
-        this.drawLabel(b.n, lines);
-        drawn = true;
-      }
-      this.m.makeTranslation(b.x, FLOOR.full + LABEL_GAP, b.z);
-      this.labels.setMatrixAt(i, this.m);
-      this.cell.setX(i, b.n);
-    });
-    this.labels.count = bars.length;
-    this.labels.instanceMatrix.needsUpdate = true;
-    this.cell.needsUpdate = true;
-    if (drawn) this.atlasTex.needsUpdate = true;
+    this.cols.set(bars.map(b => ({ n: b.n, x: b.x, z: b.z, side: b.side, parts: b.parts.map(p => ({ color: colorOf(p.part), y0: p.y0, h: p.h })), label: FLOOR.full + LABEL_GAP, lines: labelLines(b.label) })));
     for (const bm of this.boards) {
       const b = v?.lines.find(x => x.n === bm.line)?.board;
       bm.mesh.visible = !!b;
@@ -239,39 +119,12 @@ export class FloorLayer {
     this.group.visible = on;
   }
 
-  /**
-   * Каждый кадр: доски — лицом к камере; числа — цифрами высотой `FLOOR.digits`, с высоты участка (`site` — вес этого
-   * уровня показа, detail.ts) — вдвое крупнее.
-   */
+  /** Каждый кадр: доски — лицом к камере; числа — цифрами высотой `FLOOR.digits`, с высоты участка — вдвое крупнее. */
   update(cam: THREE.Camera, site: number) {
     if (!this.group.visible) return;
     this.drawBoards();
     for (const bm of this.boards) bm.mesh.quaternion.copy(cam.quaternion);
-    const h = ((FLOOR.digits * CELL_H) / (BIG * DIGIT)) * (1 + Math.min(1, Math.max(0, site)));
-    this.uniforms.uSize.value.set((h * CELL_W) / CELL_H, h);
-    this.labels.position.y = h / 2;
-  }
-
-  private drawLabel(i: number, [big, small]: [string, string]) {
-    const g = this.atlas;
-    const y = i * CELL_H;
-    g.clearRect(0, y, CELL_W, CELL_H);
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.lineJoin = 'round';
-    g.strokeStyle = 'rgba(20, 26, 30, 0.9)';
-    const line = (text: string, px: number, weight: number, at: number, color: string, stroke: number) => {
-      g.font = `${weight} ${px}px system-ui, sans-serif`;
-      const w = g.measureText(text).width;
-      const fit = w > CELL_W - 2 * stroke ? Math.floor((px * (CELL_W - 2 * stroke)) / w) : px;
-      g.font = `${weight} ${fit}px system-ui, sans-serif`;
-      g.lineWidth = stroke;
-      g.strokeText(text, CELL_W / 2, y + CELL_H * at);
-      g.fillStyle = color;
-      g.fillText(text, CELL_W / 2, y + CELL_H * at);
-    };
-    line(big, BIG, 700, 0.34, '#ffffff', 10);
-    line(small, SMALL, 600, 0.8, '#e4ecef', 7);
+    this.cols.update(site);
   }
 
   /** Доска «План — факт»: смена, по часам — план и годные; час ниже плана — выделен и отмечен; итог и ритмичность. */

@@ -15,7 +15,7 @@ import { openClass, reclass } from './devclass';
 import { inForce } from './docs';
 import { incidentParams, incidentScreen } from './investigation';
 import { noteCmd } from './journal';
-import { cleaned, defect, recleaned } from './lean';
+import { cleaned, defect, lossAt, recleaned } from './lean';
 import { blocked, consume, failPart, partsOf, partType, untilFail, wearAt } from './maint';
 import { stageSetpoints, unitsPerHour } from './modes';
 import { type PlantPlan, planOf } from './plant';
@@ -493,7 +493,11 @@ export function roomFor(db: ContentDb, s: PlantState, room: Room, product: Id, b
     return false;
   }
   if (readyFor(room, product, s.t)) return true;
-  if (s.t - room.since > CLEAN_HOLD) recleaned(s);
+  if (s.t - room.since > CLEAN_HOLD) {
+    recleaned(s);
+    // часы этой уборки — повторная уборка у помещения, вещь — серия, для которой убирают (Б1л)
+    room.again = batch;
+  }
   room.status = 'dirty';
   if (room.cleanFor !== undefined && room.cleanFor !== product) room.major = true;
   room.since = s.t;
@@ -804,6 +808,17 @@ function cleanDone(s: PlantState, room: Room) {
   else if (room.product) room.cleanFor = room.product;
   delete room.major;
   delete room.washed;
+  delete room.after;
+  delete room.again;
+}
+
+/**
+ * Уборка помещения кончилась (Б1л): её работа — у помещения; после просроченной чистоты — повторная уборка, вещь —
+ * серия, для которой убирали, иначе — уборка, вещь — серия, после которой.
+ */
+function cleanAt(s: PlantState, room: Room, sec: number) {
+  if (room.again) lossAt(s, room.id, 'again', sec, `b:${room.again}`);
+  else lossAt(s, room.id, 'setup', sec, room.after ? `b:${room.after}` : `r:${room.id}`);
 }
 
 export function deviate(s: PlantState, notices: Notice[], d: Omit<Deviation, 'id' | 'opened' | 'status' | 'cls'>) {
@@ -882,6 +897,7 @@ export function mesDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
         ensureCleaning(db, s, room);
       } else {
         cleaned(s, !!room.major, t.work);
+        cleanAt(s, room, t.work);
         cleanDone(s, room);
       }
       return true;
@@ -889,7 +905,9 @@ export function mesDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
     case 'roomClean': {
       // уборка помещения кончилась: в итоги суток — вся уборка, мойка и уборка помещения
       const room = s.rooms[t.room!];
-      cleaned(s, !!room.major, (room.washed ? washTime(db, s, room) : 0) + t.work);
+      const sec = (room.washed ? washTime(db, s, room) : 0) + t.work;
+      cleaned(s, !!room.major, sec);
+      cleanAt(s, room, sec);
       cleanDone(s, room);
       return true;
     }
@@ -1035,6 +1053,7 @@ function dispense(s: PlantState, b: Batch, rec: StageRecord) {
 export function leaveRoom(db: ContentDb, s: PlantState, roomId: string, product: Id, cur: string) {
   const room = s.rooms[roomId];
   room.status = 'dirty';
+  if (room.batch) room.after = room.batch;
   delete room.batch;
   room.since = s.t;
   room.product = product;

@@ -15,13 +15,17 @@ import { type FloorView, type FloorWin, MACHINE_PARTS, ROOM_PHASES, WAIT_WHAT } 
 import type { Thing } from '../sim/views';
 import { assetName, unfitText } from './assets';
 import { db } from './db';
+import { LossMenu, LossTip } from './Losses';
 import type { Actions, Hud } from './store';
 
 const WINS: readonly FloorWin[] = ['today', 'yesterday', 'week'];
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const share = (sec: number, span: number) => (span > 0 ? Math.round((sec * 10000) / span) : 0);
 
-/** Слои слева: обычный вид, «Загрузка и OEE», «Потоки — люди»; у слоя данных — окно и цвета частей словами. */
+/**
+ * Слои слева: обычный вид, «Загрузка и OEE», «Узкие места», «Проблемы», «Потери», «Потоки — люди»; у слоя данных — окно и
+ * цвета частей словами, у «Потерь» — и вид потерь.
+ */
 export function Layers({ hud, actions }: { hud: Hud; actions: Actions }) {
   return (
     <div className="layers panel" data-test="layers" title={T.floor.hint}>
@@ -50,6 +54,7 @@ export function Layers({ hud, actions }: { hud: Hud; actions: Actions }) {
           <li className="muted">{T.andon.legend}</li>
         </ul>
       ) : null}
+      {hud.layer === 'losses' ? <LossMenu hud={hud} actions={actions} /> : null}
       {hud.layer === 'load' ? (
         <>
           <WinPick win={hud.floor.win} actions={actions} />
@@ -67,7 +72,7 @@ export function Layers({ hud, actions }: { hud: Hud; actions: Actions }) {
   );
 }
 
-function WinPick({ win, actions }: { win: FloorWin; actions: Actions }) {
+export function WinPick({ win, actions }: { win: FloorWin; actions: Actions }) {
   return (
     <span className="lwin">
       {WINS.map(w => (
@@ -117,6 +122,7 @@ export function FloorTip({ hud, plant }: { hud: Hud; plant: Plant }) {
   const v = hud.floor.view;
   if (h && hud.layer === 'bottle') return <BottleTip hud={hud} plant={plant} />;
   if (h && hud.layer === 'andon') return <AndonTip hud={hud} plant={plant} />;
+  if (h && hud.layer === 'losses') return <LossTip hud={hud} plant={plant} />;
   if (!h || !v || hud.layer !== 'load') return null;
   const x = rowsOf(v, h.thing, plant);
   if (!x) return null;

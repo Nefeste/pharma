@@ -15,7 +15,7 @@ import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
 import { civilFromDays, daysFromCivil, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
-import { changedOver, defect, lineDay, NO_TIMES } from './lean';
+import { changedOver, defect, lineDay, lossAt, NO_TIMES } from './lean';
 import { coversOn } from './leave';
 import { blocked, consume, failPart, partsOf, partType, pending, untilFail, wearAt } from './maint';
 import { deviate, leaveRoom, returnTask, roomFor } from './mes';
@@ -715,6 +715,9 @@ function finish(db: ContentDb, s: PlantState, line: Line, g: Geo, b: Batch, noti
   job.scrap = job.blisterRejects * sku.perBlister + job.cartonRejects * sku.blisters * sku.perBlister;
   defect(s, 'blisters', job.blisterRejects);
   defect(s, 'cartons', job.cartonRejects);
+  // брак камер у линии (Б1л) — время, за которое машины на номинале сделали бы отбракованное
+  const lost = [job.blisterRejects, job.cartonRejects].reduce((n, x, i) => n + Math.floor((x * g.unit[i] * SIXTY) / g.nominal[i]), 0);
+  lossAt(s, `line:${line.id}`, 'defect', lost, `b:${b.id}`);
   job.remainder = job.tablets - blisters * sku.perBlister + (goodBlisters - cartons * sku.blisters) * sku.perBlister;
   book(db, s, b, line, g, notices);
   job.state = 'done';
@@ -828,6 +831,7 @@ export function lineDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[
       const job = s.batches[t.batch!].pack!;
       line!.format = db.skus[job.sku].format;
       changedOver(s, t.work);
+      lossAt(s, `line:${t.line}`, 'setup', t.work, `b:${t.batch}`);
       worked(job, t.people);
       return true;
     }
@@ -835,10 +839,12 @@ export function lineDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[
       // очистка линии перед заданием (п. 5.50) — в запись по упаковке: кто очищал и когда
       const job = t.batch ? s.batches[t.batch]?.pack : undefined;
       if (job) job.clear = { by: [...t.people], from: t.times?.[1] ?? t.created, to: s.t };
+      lossAt(s, `line:${t.line}`, 'setup', t.work, t.batch ? `b:${t.batch}` : undefined);
       addTask(s, { kind: 'clearCheck', roles: [...LINE.checkers], from: t.from, work: CHECK_WORK, prio: LINE_PRIO.clearCheck, batch: t.batch, line: t.line });
       return true;
     }
     case 'clearCheck': {
+      lossAt(s, `line:${t.line}`, 'setup', t.work, t.batch ? `b:${t.batch}` : undefined);
       line!.clear = true;
       const c = t.batch ? s.batches[t.batch]?.pack?.clear : undefined;
       if (c && t.people[0]) {

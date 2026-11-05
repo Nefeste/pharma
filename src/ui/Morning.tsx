@@ -3,11 +3,13 @@
 // вопросом в заголовке. Вид собирает поток расчёта (src/sim/report.ts) без слов и без истины; слова — отсюда.
 import type { ReactNode } from 'react';
 import { devLevers, heldLevers, mainLevers, resignLevers, riskLevers, uncoveredLevers, wasteLevers } from '../app/levers';
+import { spotName } from '../app/losses';
 import type { Id, PartType, Plant, Scenario } from '../content/types';
 import { civilFromDays, DAY, HOUR, momentOf, type Ymd } from '../engine/core/calendar';
 import { planOf } from '../engine/plant';
 import { DEPT_SEAT } from '../engine/seats';
 import { clock, dateText, daysText, dayText, durText, hText, kmText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
+import { layoutOf } from '../render/layout';
 import type { FcMeeting } from '../sim/forecast';
 import type { EditsMeeting } from '../sim/edits';
 import type { MrpMeeting } from '../sim/mrp';
@@ -71,8 +73,11 @@ function lineLossText(plant: Plant, l: LineSum): string {
 
 function mainText(plant: Plant, m: MainLoss): string {
   switch (m.k) {
-    case 'wait':
-      return T.morning.main.wait(T.morning.depts[m.dept], T.wait[m.cause], durText(m.sec));
+    case 'wait': {
+      // у ожидания — место, где его было больше всего (Б1л)
+      const text = T.morning.main.wait(T.morning.depts[m.dept], T.wait[m.cause], durText(m.sec));
+      return m.spot && db ? T.morning.main.at(text, spotName(layoutOf(planOf(db, plant)), m.spot)) : text;
+    }
     case 'line':
       return `${T.morning.line(m.line + 1)}: ${lineLossText(plant, m)}`;
     case 'move':
@@ -531,6 +536,8 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
     actions.closeMorning(false);
     actions.show(t);
   } : undefined);
+  // место главной потери (Б1л) — карточка его вещи с блоком «Потери» за вчера; планёрка закрывается
+  const goSpot = (spot: string) => () => actions.showSpot(spot);
   const when = (t: number) => whenText(start, t);
   // строка отклонения с расследованием — к его доске; планёрка закрывается, пауза остаётся
   const goInv = (id: string) => {
@@ -671,7 +678,11 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                   <div className="mhead">{T.morning.mainTitle}</div>
                   {v.main ? (
                     <>
-                      <div className={v.main.k === 'line' ? 'go' : ''} onClick={v.main.k === 'line' ? go(lineMachine(plant, v.main.line, v.main.key).thing) : undefined}>
+                      <div
+                        className={v.main.k === 'line' || (v.main.k === 'wait' && v.main.spot) ? 'go' : ''}
+                        onClick={v.main.k === 'line' ? go(lineMachine(plant, v.main.line, v.main.key).thing) : v.main.k === 'wait' && v.main.spot ? goSpot(v.main.spot) : undefined}
+                        data-test="morning-main-go"
+                      >
                         <b>{mainText(plant, v.main)}</b>
                       </div>
                       <div className="hint">

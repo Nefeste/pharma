@@ -13,7 +13,7 @@ import { inForce } from './docs';
 import { decider } from './bosses';
 import { modeOf, round } from './heads';
 import { note, noteCmd } from './journal';
-import { defect } from './lean';
+import { batchLost, defect } from './lean';
 import { fgExpiry, prodDay } from './line';
 import { toRzn } from './market';
 import { planOf } from './plant';
@@ -164,6 +164,7 @@ function decide(db: ContentDb, s: PlantState, b: Batch, notices: Notice[], by?: 
     setLotStatus(s, lot, 'rejected', FG_FLOW);
     b.status = 'rejected';
     defect(s, 'batches');
+    batchLost(s, b);
     notices.push({ kind: 'batchRejected', batch: b.id, lot: lot.id });
   }
   for (const u of unitsOfLot(s, lot.id)) settle(db, s, lot, u);

@@ -200,6 +200,79 @@ describe('узкие места (Б1к)', () => {
   });
 });
 
+describe('потери у мест (Б1л)', () => {
+  const today = momentOf(s.start, s.t).day;
+  /** Потери мест в сутках `days` прямо из учёта: `место/вид` → секунды; ожидание — без «нет смены», она — свой вид. */
+  const fromLog = (days: number[]) => {
+    const out = new Map<string, number>();
+    const add = (k: string, v: number) => v > 0 && out.set(k, (out.get(k) ?? 0) + v);
+    for (const d of s.losses.filter(x => days.includes(x.day)))
+      for (const [spot, x] of Object.entries(d.spots)) {
+        for (const w of Object.values(x.wait ?? {})) for (const [c, v] of Object.entries(w ?? {})) add(`${spot}/${c === 'shift' ? 'shift' : 'wait'}`, v ?? 0);
+        for (const k of ['move', 'walk', 'setup', 'again', 'defect'] as const) add(`${spot}/${k}`, x[k] ?? 0);
+      }
+    return out;
+  };
+  const ofView = (losses: ReturnType<typeof floorView>['losses']) => {
+    const out = new Map<string, number>();
+    for (const l of losses) for (const [k, v] of Object.entries(l.sec)) if ((v ?? 0) > 0) out.set(`${l.spot}/${k}`, v!);
+    return out;
+  };
+
+  test('вчера — учёт суток как есть, 7 суток — ещё и ожидание, которое идёт; всего — без «нет смены»; по убыванию всего', () => {
+    for (const win of ['yesterday', 'week'] as const) {
+      const v = floorView(db, s, { view: 'floor', win });
+      const sorted = (m: Map<string, number>) => Object.fromEntries([...m].sort((a, b) => (a[0] < b[0] ? -1 : 1)));
+      const log = fromLog(winDays(s, win));
+      if (win === 'yesterday') expect(sorted(ofView(v.losses))).toEqual(sorted(log));
+      else for (const [k, sec] of ofView(v.losses)) expect(k.endsWith('/wait') || k.endsWith('/shift') ? sec >= (log.get(k) ?? 0) : sec === log.get(k)).toBe(true);
+      for (const l of v.losses) {
+        expect(l.total).toBe(Object.entries(l.sec).reduce((n, [k, x]) => n + (k === 'shift' ? 0 : (x ?? 0)), 0));
+        expect(Object.values(l.wait).reduce((n, x) => n + (x ?? 0), 0)).toBe(l.sec.wait ?? 0);
+        expect(Object.values(l.depts).reduce((n, x) => n + (x ?? 0), 0)).toBe(l.sec.wait ?? 0);
+      }
+      for (let i = 1; i < v.losses.length; i++) expect(v.losses[i].total).toBeLessThanOrEqual(v.losses[i - 1].total);
+    }
+  });
+
+  test('сегодня — с ожиданием задач, которое ещё идёт, у места задачи', () => {
+    const v = floorView(db, s, { view: 'floor', win: 'today' });
+    const log = fromLog([today]);
+    const got = ofView(v.losses);
+    let open = 0;
+    for (const [k, sec] of got) {
+      const was = log.get(k) ?? 0;
+      expect(sec).toBeGreaterThanOrEqual(was);
+      if (k.endsWith('/wait') || k.endsWith('/shift')) open += sec - was;
+      else expect(sec).toBe(was);
+    }
+    // в 10 часов утра что-то ждёт всегда
+    expect(open).toBeGreaterThan(0);
+  });
+
+  test('вещи — до пяти у вида, по убыванию часов; у серии — номер задания, у человека — табельный номер', () => {
+    const v = floorView(db, s, { view: 'floor', win: 'week' });
+    let batches = 0;
+    let people = 0;
+    for (const l of v.losses)
+      for (const list of Object.values(l.things)) {
+        expect(list!.length).toBeLessThanOrEqual(5);
+        for (let i = 1; i < list!.length; i++) expect(list![i].sec).toBeLessThanOrEqual(list![i - 1].sec);
+        for (const t of list!) {
+          if (t.ref.bn !== undefined) batches++;
+          if (t.ref.person) people++;
+        }
+      }
+    expect(batches).toBeGreaterThan(0);
+    expect(people).toBeGreaterThan(0);
+    // места — помещения, зоны и стеллажи склада, линия: у лаборатории и у склада потери есть
+    const spots = new Set(v.losses.map(l => l.spot));
+    expect(spots.has('lab')).toBe(true);
+    expect([...spots].some(x => x.startsWith('zone:'))).toBe(true);
+    expect([...spots].some(x => x.startsWith('line:'))).toBe(true);
+  });
+});
+
 describe('без истины', () => {
   test('два завода с разными истинными свойствами партий и серий и запасом узлов — один и тот же вид', () => {
     const b: PlantState = structuredClone(s);

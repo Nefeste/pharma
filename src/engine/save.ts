@@ -570,6 +570,12 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     delete raw.plant;
     return raw;
   },
+  // 46 → 47 (Б1л): потери у мест — с мгновения загрузки, у прошлых суток их нет; у грязного помещения нет серии, после
+  // которой убирать, — вещь уборки — само помещение
+  46: raw => {
+    for (const d of (raw as unknown as PlantState).losses) d.spots ??= {};
+    return raw;
+  },
 };
 
 export function toSave(s: PlantState): string {

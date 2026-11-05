@@ -97,6 +97,9 @@ export const KPIS: readonly KpiDef[] = [
   { id: 'matWait', head: 'supply', unit: 'sec', dir: -1, win: 'm', src: [], pair: 'matDays', acc: true },
   { id: 'matDays', head: 'supply', unit: 'day', dir: -1, win: 'm', src: ['gks-fhd-2002'], pair: 'matWait' },
   { id: 'framework', head: 'supply', unit: 'share', dir: 1, win: 'm', src: ['ghsc-fy2019'] },
+  // поставки вовремя (Б6ж; §8.6): заказы поставщикам, пришедшие за месяц не позже обещанного дня; противовес — часы
+  // ожидания материала
+  { id: 'onTime', head: 'supply', unit: 'share', dir: 1, win: 'm', src: ['scor-ds-web'], pair: 'matWait' },
   // склад
   { id: 'dockToStock', head: 'wms', unit: 'sec', dir: -1, win: 'm', src: [] },
   { id: 'dockWait', head: 'wms', unit: 'sec', dir: -1, win: 'm', src: [], pair: 'occupancy', acc: true },
@@ -623,6 +626,16 @@ const CALC: Record<string, Calc> = {
       }
     }
     return share(deal, all);
+  },
+  onTime: c => {
+    let n = 0;
+    let ok = 0;
+    for (const po of Object.values(c.s.pos)) {
+      if (!inside(po.came, c.p.from, c.p.to)) continue;
+      n++;
+      if (momentOf(c.s.start, po.came).day <= momentOf(c.s.start, po.eta).day) ok++;
+    }
+    return share(ok, n);
   },
   dockToStock: c => median(dockTimes(c).map(x => x.sec)),
   dockWait: c => c.days.reduce((n, d) => n + Object.values(d.wait).reduce((x, w) => x + (w?.dock ?? 0), 0), 0),

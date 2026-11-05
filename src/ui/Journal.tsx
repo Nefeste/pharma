@@ -10,7 +10,7 @@ import { momentOf, type Ymd } from '../engine/core/calendar';
 import { KEEP } from '../engine/journal';
 import { FORK_OPTS } from '../engine/forks';
 import { ONE_FAILURE } from '../engine/maint';
-import type { BatchFor, Command, Decided, DeptMode, Head } from '../engine/types';
+import type { BatchFor, Command, Decided, DeptMode, Head, PoPick } from '../engine/types';
 import { dayText, durText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { AskInfo, JournalAs, JournalRef, JournalRow, ModeInfo, WhoRow } from '../sim/journal';
 import { assetClass, workName } from './assets';
@@ -41,7 +41,7 @@ const party = (id: string) => named(db?.suppliers[id]?.name ?? db?.customers[id]
 /** Пара `поставщик|изготовитель` — словами. */
 const pairName = (key: string) => {
   const [s, m] = key.split('|');
-  return `${party(s)} — ${named(db?.makers[m]?.name, m)}`;
+  return T.ref.pair(party(s), named(db?.makers[m]?.name, m));
 };
 const batchCode = (r: JournalRef) => r.code ?? (r.bn !== undefined ? `B${r.bn}` : '');
 const model = (r: JournalRef) => (r.model ? db?.investigations[r.model] : undefined);
@@ -81,6 +81,14 @@ function goalText(due: number | undefined, goal: BatchFor | undefined, r: Journa
   return `${when}${goal?.kind === 'order' ? J.forOrder(r.customer ? named(db?.customers[r.customer]?.name, r.customer) : goal.order) : ''}`;
 }
 
+/** Почему этот поставщик при двух одобренных (Б6ж): у основного опоздает — этот быстрее; баллы предложений. */
+function pickLine(w: { pick?: PoPick }): string[] {
+  const k = w.pick;
+  if (!k) return [];
+  if (k.by === 'fast') return [T.mrp.pickFast(party(k.main), k.late)];
+  return [`${T.mrp.pickRfq}: ${k.offers.map(o => `${party(o.supplier)} — ${num(o.score / 100, 1)}`).join(', ')}`];
+}
+
 /** Что решено и о чём — одной строкой. */
 export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
   const J = T.journal.what;
@@ -90,7 +98,7 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
     case 'cancel':
       return `${J.cancel(sku(d.sku) || T.now.batch(r.code || `B${r.bn ?? ''}`), whenText(start, d.notBefore))}${goalText(d.due, d.for, r, start)}`;
     case 'po':
-      return J.po(party(d.supplier), (r.po?.lines ?? []).map(l => `${material(l.material)}, ${qty(l.material, l.qty)}`).join('; '));
+      return `${J.po(party(d.supplier), (r.po?.lines ?? []).map(l => `${material(l.material)}, ${qty(l.material, l.qty)}`).join('; '))}${d.trial ? J.trial : ''}`;
     // ускорение и отмена заказа поставщику (Б6д)
     case 'expedite':
       return J.expedite(d.po, party(d.supplier), whenText(start, d.eta), whenText(start, d.was));
@@ -120,6 +128,11 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
       return J.capaCheck(r.dev !== undefined ? T.dev.no(r.dev) : '', d.ok);
     case 'pairEval':
       return J.pairEval(pairName(d.pair), d.how === 'audit');
+    // одобрение пары-кандидата (Б6ж): начало и шаги
+    case 'pairApprove':
+      return J.pairApprove(pairName(d.pair), material(d.material));
+    case 'pairStep':
+      return J.pairStep(pairName(d.pair), T.pairApp.steps[d.step] ?? d.step);
     case 'visit': {
       const a = r.asset;
       const what = a ? `${assetClass(a)}, ${T.assets.inv(a.inv)}` : d.asset;
@@ -307,8 +320,9 @@ function ruleLines(d: Decided, r: JournalRef, t: number, start: Ymd): string[] {
             ...(w.late > 0 ? [J.po.late(w.late)] : []),
             moq ?? J.po.more(w.every, qty(w.material, w.want)),
             ...tail,
+            ...pickLine(w),
           ].join('; ');
-        return [J.po.line(material(w.material), qty(w.material, w.have), qty(w.material, w.point), qtyText(w.per / 1000, unitOf(w.material)), w.lead, w.qc, w.safety), moq ?? J.po.qty(w.every, qty(w.material, w.want)), ...tail].join('; ');
+        return [J.po.line(material(w.material), qty(w.material, w.have), qty(w.material, w.point), qtyText(w.per / 1000, unitOf(w.material)), w.lead, w.qc, w.safety), moq ?? J.po.qty(w.every, qty(w.material, w.want)), ...tail, ...pickLine(w)].join('; ');
       });
       return d.prepaid > 0 ? [...out, J.po.prepaid(money(d.prepaid))] : out;
     }

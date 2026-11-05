@@ -102,8 +102,9 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # then the S&OP meeting of 3 September (e2e-sop.mjs, sop.png), then the materials of
                                    # 2 September (e2e-mrp.mjs, mrp.png), then the plan edits — a commerce event at the
                                    # meeting, a priced edit in the frozen horizon, the horizon policy (e2e-edits.mjs,
-                                   # edits.png);
-                                   # `-- --only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits` for one
+                                   # edits.png), then the sources — a pair approval to its trial lot, the offers of a
+                                   # planned order (e2e-sources.mjs, sources.png; `--long 1` — on to the dossier filing);
+                                   # `-- --only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits|sources` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -141,7 +142,13 @@ first, or copy the working code of Bolnitsa on the same versions.
   order date came, the same quarantine limit — `needPlan`, either rule by the supply head's policy «как заказывать» —
   `supplyOrders`; a PO in transit expedited — the arrival at 09:00 of the workday a week on, no later than its own, the
   surcharge with VAT paid at once — or cancelled before arrival — the fee from the prepayment, the rest refunded, the
-  contract's volume free again —, the quotes without writing — `fastQuote`, `cancelQuote`), `planner.ts` (the planning
+  contract's volume free again —, the quotes without writing — `fastQuote`, `cancelQuote`; with Б6ж a supplier is late
+  by its own branch — a share of orders by so many days of its record (`lateOf`), the plant knows the promised arrival
+  (`eta`) and only the engine the real one (`truth`, `arriveAt`), a PO not come by the end of the promised day's arrival
+  window late — the alert, an expedited PO no longer late, the twin's redraw by the run seed (`redrawLate`); the trial
+  lot of a pair approval ordered through its candidate pair, neither its PO nor its lot supply for the plan until the
+  dossier decision releases it (`trialPo`, `trialLot`), its PO not to be cancelled; either rule's supplier by the policy
+  «кому заказывать»), `planner.ts` (the planning
   colleague — at 07:00 on a
   workday, a batch order for the workday two working weeks on, for the SKU that runs out first by FG and work in
   progress against demand per working day seen in customer orders, over five-day weeks ahead; SKUs in turn until demand
@@ -173,7 +180,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   previous month and incoming control, passed or 0 — the batch day; planned orders — the shortage and the policy's days
   of use more, whole containers, no less than the smallest lot — beyond the horizon of a new order with the upper lead
   time to a workday, the order date the last workday whose order still makes it; messages «заказать до», «опаздывает»,
-  «опоздает», «лишний» — `mrpPlan`),
+  «опоздает», «лишний» — `mrpPlan`; with Б6ж the arrival of a PO in transit — the promised one, a PO past it «не
+  пришёл» and available no earlier than today with incoming control, a planned order's supplier by the policy
+  «кому заказывать» with why it is not the main one, the stock of a recipe line's analog — the main's availability by
+  the factor, no planned order for an analog),
   `plan/price.ts` (with Б6е, the price of a plan edit, a pure function: the schedule run over the price horizon with
   the edit and without it — general and minor room cleanings with their hours, line format changes by the order of the
   batches' last stage ends from the line's format now, batch orders that end later and by how much; the edge of the
@@ -201,7 +211,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   retest of the same sample by another analyst; findings read from the plant's state; the conclusion — cause and fate,
   release only with a proven lab error; the quality colleague — lab first, then gain per hour — while the player does
   not hold the quality post; the debrief after the decision — `debrief`), `mes.ts` (batch orders on the recipe revision
-  in force at their not-before, FEFO reservation with potency — tried without writing by `kitPlan`, shared with the
+  in force at their not-before, FEFO reservation with potency — tried without writing by `kitPlan`, with Б6ж a line with
+  an analog taken whole from the analog by its factor when the main falls short for the line, shared with the
   schedule run, kitting through the airlock, stages in rooms with equipment and people, cleaning in two works — the
   equipment washed by those who work on it, operators, and with Б1е the machines of a line that touch tablets by the
   line's crew (`washRoles`), then the room by a cleaner by its floor area —, a room for a batch's work — a stage or,
@@ -224,7 +235,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   `plan/twin.ts` (the plan run's twin: on a copy, forget what the plant does not know —
   true lot and batch properties, causes, part budgets, unrecorded jams, results before review, the incident not yet
   seen, marks no step has looked for — and redraw it from what was measured, the root of an open investigation from its
-  versions; branches anew from the run seed), `plan/run.ts` (the plan run — a pure function: per seed a copy, the
+  versions; with Б6ж the real arrival of POs in transit and the dossier days not yet come; branches anew from the run
+  seed), `plan/run.ts` (the plan run — a pure function: per seed a copy, the
   twin, the variant's commands, the horizon, the outcome — orders, batches, cash, OEE, load, general cleanings and line
   changeovers with their hours; per variant — lowest, median and highest over seeds), `line.ts` (the packaging line as
   flow between events: machines, buffers, micro-stops, camera rejects by count, codes in cases, FG pallets, changeover
@@ -373,7 +385,7 @@ first, or copy the working code of Bolnitsa on the same versions.
   after every event, but the batches are scanned for a machine's next work only when one work could bring the part to
   the threshold — a bound from the recipes),
   `kpi.ts` (with Б5ж, the heads'
-  indicators: 51 definitions with Б6е — the head, unit, direction, month or rolling 12 months, source keys, the
+  indicators: 52 definitions with Б6ж — the head, unit, direction, month or rolling 12 months, source keys, the
   counterweight —,
   each a pure function of plant
   records over a period and never of truth; the midnight snapshot of what records do not keep — stock at lot price, FG
@@ -418,7 +430,15 @@ first, or copy the working code of Bolnitsa on the same versions.
   documents review — and the QA specialist reviews it; a pair whose approval lapsed is suspended, nothing is ordered
   through it; the quality agreement in force; framework contracts — the contract price up to the promised volume, the
   list price beyond, at the end a clawback for a pair bought below the promised share by value, and a new contract;
-  supply contracts of customers extended), `invariants.ts`.
+  supply contracts of customers extended; with Б6ж a candidate pair of an API spec — the second maker not in the
+  dossier — and the `pairApprove` command of the quality post or the director: the documents review by the QA
+  specialist, the trial lot — the smallest lot through the candidate pair, released by QC and blocked until the dossier
+  decision —, the maker audit, the type II dossier variation filed on the review day with its expert request, answer and
+  decision by the scenario's terms on its own branch, the pair in the spec from the decision day (`livePairs`), the
+  trial lot released; no framework contract with it — the list price; the on-time share of a pair by its POs over 12
+  months (`onTimeOf`), the offers of the approved suppliers with their weighted score (`offersFor`) and the supplier
+  of an order by the policy «кому заказывать» — the main, faster when the main would be late, or by the offers
+  (`choosePair`)), `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`; a `tick` carries the notice kinds of the player's
@@ -457,7 +477,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   which asset —
   records and visits are the plant's knowledge (`places.ts`); the partners — makers, pairs with their approval and
   evaluation, agreements and contracts in force for the «Контрагенты» tab, the meeting's suppliers, a lot's maker and
-  contract (`partners.ts`); the lab queue and the X–Rm control chart of the in-process
+  contract, with Б6ж candidate pairs with their approval step and the days come, a pair's on-time share (`partners.ts`);
+  the lab queue and the X–Rm control chart of the in-process
   average tablet mass with its limits and special-cause signs, a lot under investigation and its steps' tests
   (`lab.ts`); the investigation board — what happened, participants, steps, findings, versions from the findings only,
   whether release is proven, the debrief only once concluded, with Б5е the CAPA of its deviation (`inv.ts`); working
@@ -573,7 +594,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   warehouse (`Stock.tsx`), a guard around each panel and the top bar — an error stays in its place
   (`Guard.tsx`), the card of a
   thing — what it is, state, why, what can be done, history; a person's dismissal (`Card.tsx`), the plant reference with
-  its tabs, sortable columns and search, hiring in «Люди» (`Ref.tsx`, F1), the vacation schedule in «Люди» and the
+  its tabs, sortable columns and search, hiring in «Люди», with Б6ж «Одобрить пару» of a candidate pair in «Контрагенты»
+  and a recipe line's analog (`Ref.tsx`, F1), the vacation schedule in «Люди» and the
   vacation block of a person's card — parts, deputies, the related profession (`Leave.tsx`), the decision journal —
   the right panel, J, a row with its reason in words, filters and pages, and the «Кто решил» rows with «Почему?», with
   Б5б the proposals with «Принять» and «Отклонить» — in the journal, the meeting and the card — and the mode bar
@@ -600,7 +622,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   with Б6г the S&OP window — O, the plan grid with a choice per cell, «Утвердить», «Сбросить», demand, capacity, stock,
   cash and people under the plan (`Sop.tsx`), with Б6д its «Материалы» tab — the grid of materials by kind and 12
   months with the net in red, a cell's tooltip, planned orders by supplier with «Заказать» — the «Заказ поставщику»
-  window with the lines due within a week —, POs in transit with their messages, «Ускорить» and «Отменить»
+  window with the lines due within a week —, POs in transit with their messages, «Ускорить» and «Отменить», with Б6ж a
+  planned order's «Предложения» with «Заказать», «не пришёл» and why a supplier was picked
   (`Materials.tsx`), with Б6е an edit's price in words — cleanings with hours, changeovers, batch orders later
   (`price.ts`), the meeting's
   «Сменно-суточные задания» block and a card's rows of the day (`Daily.tsx`), the draft's pure rules — a row per batch
@@ -642,7 +665,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   planning head's policy «резерв мощности» and the scenario's `plan.reserve`; with Б6д — the supply head's policies
   «срок завоза» and «как заказывать» and the scenario's `supply.arrive` and `supply.how`; with Б6е — the planning
   head's policy «замороженный горизонт», the scenario's `plan.frozen`, the price horizon `plan.price` and the commerce
-  events `commerce`);
+  events `commerce`; with Б6ж — a supplier's lateness `late`, a spec's candidate pairs `candidates`, a recipe line's
+  analog `alt`, the second makers of the APIs with their suppliers and agreements, maize starch, the supply head's
+  policy «кому заказывать» and the scenario's `supply.who`, the offer weights `supply.rfq` and the dossier variation
+  terms `partners.variation`);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
@@ -668,7 +694,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   pair of the start has a quality agreement in force: `pairErrors`; with Б5е the CAPA catalog — one action per work
   the engine does, a head for all but training, the QA head's rule order unique among the actions of one cause class;
   with Б6е the price horizon no shorter than the largest frozen horizon in calendar days, the commerce ranges' «from»
-  no more than «to»).
+  no more than «to»; with Б6ж a lateness share of 0–100 % and its «from» no more than «to», an analog — an excipient
+  of the same unit, not the main itself and not another line, none on a potency or «до массы» line, a candidate pair
+  only of an API, sold by its supplier from its maker, not an approved pair, with a quality agreement in force at the
+  start, the offer weights adding up to 100).
 - `blender/` — Python scripts for Blender in the background (#109; by the owner's decision #112 — a mix: silhouettes
   of every class in code, a detailed model from Blender for the machines seen up close, AO only on static parts, room
   light not baked): `lib.py` (scene, axes of the window, finishes shared by all machines, parts with bevels in one
@@ -693,7 +722,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   «Утвердить», the journal and the rule's batch order by the plan (`e2e-sop.mjs`), the materials — the meeting's block
   on 2 September, the «Материалы» tab, «Заказать» and «Отправить», «Ускорить» and the journal (`e2e-mrp.mjs`), the
   plan edits — a commerce event at the meeting, a batch order dragged inside the frozen horizon with its price,
-  «Утвердить» and the journal, the horizon policy and its edge (`e2e-edits.mjs`), the
+  «Утвердить» and the journal, the horizon policy and its edge (`e2e-edits.mjs`), the sources — candidate pairs and
+  «Одобрить пару» to the trial lot with its promised day, the trial PO in the «Материалы» tab, a planned order's
+  «Предложения» and «Заказать», with `--long 1` on to the dossier filing (`e2e-sources.mjs`), the
   «code —
   Blender» sheet
   of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench

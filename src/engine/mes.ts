@@ -167,7 +167,9 @@ export interface KitPlan {
 
 /**
  * Примерка резерва по FEFO, ничего не записывая: резерв задания и прогон расписания с новыми заданиями черновика (0.0.39)
- * берут тару одним правилом. `before` — сколько из тары уже взяли задания той же примерки.
+ * берут тару одним правилом. `before` — сколько из тары уже взяли задания той же примерки. С Б6ж у строки с аналогом:
+ * основного не хватает на строку — строку берут аналогом целиком, по коэффициенту (`sap-alt`, «проверка на 100 %»);
+ * не хватает и аналога — строка ждёт основного.
  */
 export function kitPlan(db: ContentDb, s: PlantState, recipe: Id, before?: ReadonlyMap<string, number>): KitPlan {
   const r = db.recipes[recipe];
@@ -179,27 +181,55 @@ export function kitPlan(db: ContentDb, s: PlantState, recipe: Id, before?: Reado
   const byLot = containersByLot(s);
   // сколько навеска с пересчётом тяжелее нормы — на столько меньше строки «до массы»
   let extra = 0;
-  for (const line of lines) {
-    let left = line.qs ? Math.max(0, line.qty - extra) : line.qty;
+  // взять строку материалом `material` в количестве `need`: в `into` и `got` — тара, сколько осталось не взятым
+  const takeLine = (material: Id, need: number, potency: boolean, into: KitLine[], got: Map<string, number>) => {
+    let left = need;
     let gross = 0;
-    for (const { lot, cs } of fefo(s, line.material, today, byLot)) {
+    for (const { lot, cs } of fefo(s, material, today, byLot)) {
       if (left <= 0) break;
-      const assay = line.potency ? knownAssay(db, s, lot) : P_ONE;
+      const assay = potency ? knownAssay(db, s, lot) : P_ONE;
       for (const c of cs) {
         if (left <= 0) break;
-        const avail = free(c) - (taken.get(c.id) ?? 0);
+        const avail = free(c) - (got.get(c.id) ?? 0);
         if (avail <= 0) continue;
         // у АФС `left` — действующее вещество, мг: тары нужно больше, если содержание меньше 100 %
-        const want = line.potency ? Math.ceil((left * P_ONE) / assay) : left;
+        const want = potency ? Math.ceil((left * P_ONE) / assay) : left;
         const q = Math.min(avail, want);
-        left = q === want ? 0 : left - (line.potency ? Math.floor((q * assay) / P_ONE) : q);
+        left = q === want ? 0 : left - (potency ? Math.floor((q * assay) / P_ONE) : q);
         gross += q;
-        taken.set(c.id, (taken.get(c.id) ?? 0) + q);
-        kit.push({ container: c.id, lot: lot.id, material: line.material, qty: q, ...(line.potency ? { assay } : {}) });
+        got.set(c.id, (got.get(c.id) ?? 0) + q);
+        into.push({ container: c.id, lot: lot.id, material, qty: q, ...(potency ? { assay } : {}) });
       }
     }
-    if (left > 0) short.push({ material: line.material, qty: left });
-    if (line.potency) extra += gross - line.qty;
+    return { left, gross };
+  };
+  for (const line of lines) {
+    const need = line.qs ? Math.max(0, line.qty - extra) : line.qty;
+    if (!line.alt) {
+      const res = takeLine(line.material, need, !!line.potency, kit, taken);
+      if (res.left > 0) short.push({ material: line.material, qty: res.left });
+      if (line.potency) extra += res.gross - line.qty;
+      continue;
+    }
+    // аналог (Б6ж; у строки с пересчётом и «до массы» его нет — сборщик базы): основного не хватило на строку — строка
+    // аналогом целиком; не хватает и его — строка ждёт основного, как без аналога
+    const mine: KitLine[] = [];
+    let got = new Map(taken);
+    let res = takeLine(line.material, need, false, mine, got);
+    if (res.left > 0) {
+      const alt: KitLine[] = [];
+      const gotAlt = new Map(taken);
+      const r2 = takeLine(line.alt.material, Math.ceil((need * line.alt.factor) / 10_000), false, alt, gotAlt);
+      if (r2.left === 0) {
+        mine.length = 0;
+        mine.push(...alt);
+        got = gotAlt;
+        res = r2;
+      }
+    }
+    for (const [k, v] of got) taken.set(k, v);
+    kit.push(...mine);
+    if (res.left > 0) short.push({ material: line.material, qty: res.left });
   }
   return { kit, short, taken };
 }
@@ -668,7 +698,8 @@ export function pressFail(db: ContentDb, s: PlantState, ev: Extract<PlantEvent, 
  */
 export function stageMass(db: ContentDb, b: Pick<Batch, 'recipe' | 'mass' | 'dispensed'>, k: number): number {
   const r = db.recipes[b.recipe];
-  const later = new Set(r.bom.filter(l => r.stages.findIndex(st => st.id === l.stage) > k).map(l => l.material));
+  // аналог строки (Б6ж) грузят на стадии её основного
+  const later = new Set(r.bom.filter(l => r.stages.findIndex(st => st.id === l.stage) > k).flatMap(l => (l.alt ? [l.material, l.alt.material] : [l.material])));
   if (b.dispensed.length === 0) return r.bom.reduce((n, l) => (later.has(l.material) ? n : n + l.qty), 0);
   return b.dispensed.reduce((n, x) => (later.has(x.material) ? n - x.qty : n), b.mass);
 }

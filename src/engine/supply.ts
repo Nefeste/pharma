@@ -3,7 +3,8 @@
 // рабочий день с 09:00 до 15:00. Коллега снабжения (этап Б, Б2в; геймдизайн, §9.3, §29.3) — `supplyDay`: каждый рабочий
 // день заказывает то, чего не хватит на срок поставки, входной контроль и страховой запас при расходе по плану выпуска.
 // С Б3г заказывают только по одобренной паре «поставщик — изготовитель» действующей спецификации, по цене рамочного
-// договора, а сверх обещанного — по прайсу (partners.ts).
+// договора, а сверх обещанного — по прайсу (partners.ts). С Б6ж поставщик опаздывает: доля заказов и на сколько суток —
+// в его записи, по своей ветви; завод знает обещанный приход (`eta`), настоящий (`truth`) — только движок.
 import type { ContentDb, Id } from '../content/types';
 import { schedule } from './core/agenda';
 import { DAY, HOUR, isWorkday, MIN, momentOf, workdayOnOrAfter } from './core/calendar';
@@ -13,14 +14,14 @@ import { dueRule } from './bosses';
 import { modeOf, round } from './heads';
 import { asWho, noteCmd } from './journal';
 import { packNeeds } from './mes';
-import { approved, linePrice, pairsFor, priceLine } from './partners';
+import { approved, choosePair, linePrice, pairKey, priceLine } from './partners';
 import { aheadMilli, casesOf, positionOf } from './planner';
 import { planOf } from './plant';
 import { mrpPlan } from './plan/mrp';
 import { numOf, POL, policyOf } from './policies';
 import { roll } from './random';
 import { containersByLot, containersFor, free, nextId } from './stock';
-import type { Command, Notice, PackJob, PlantState, Po, PoLine, PoWhy, Refusal } from './types';
+import type { Command, Lot, Notice, PackJob, PlantState, Po, PoLine, PoWhy, Refusal } from './types';
 import { calOf } from './workdays';
 
 /** Окно прихода фур: рабочий день, с 09:00, плюс до шести часов. */
@@ -34,7 +35,7 @@ const ARRIVE_SPREAD = 6 * HOUR;
  */
 export type PoQuote = { lines: PoLine[]; costs: number[]; net: number; vat: number; prepaid: number } | { why: Refusal; detail?: string };
 
-export function quotePo(db: ContentDb, s: PlantState, supplier: Id, want: readonly PoLine[]): PoQuote {
+export function quotePo(db: ContentDb, s: PlantState, supplier: Id, want: readonly PoLine[], trial?: string): PoQuote {
   const sup = db.suppliers[supplier];
   if (!sup) return { why: 'noSupplier', detail: supplier };
   if (want.length === 0) return { why: 'empty' };
@@ -44,9 +45,11 @@ export function quotePo(db: ContentDb, s: PlantState, supplier: Id, want: readon
     const item = sup.items[l.material];
     if (!item) return { why: 'notSold', detail: l.material };
     if (l.qty < item.moq) return { why: 'belowMoq', detail: l.material };
-    // только по одобренной паре действующей спецификации (Б3г): изготовитель — из записи поставщика
+    // только по одобренной паре действующей спецификации (Б3г): изготовитель — из записи поставщика; пробная партия
+    // одобрения пары-кандидата (Б6ж) — по этой паре, пока одобрение на шаге пробной партии
     const maker = item.maker;
-    if ((l.maker !== undefined && l.maker !== maker) || !approved(db, s, sup.id, maker, l.material, today)) return { why: 'pair', detail: l.material };
+    const trialOk = trial !== undefined && trial === pairKey(sup.id, maker) && s.pairs[trial]?.app?.step === 'trial';
+    if ((l.maker !== undefined && l.maker !== maker) || (!trialOk && !approved(db, s, sup.id, maker, l.material, today))) return { why: 'pair', detail: l.material };
     const cap = db.containers[db.materials[l.material].container].capacity;
     lines.push({ material: l.material, qty: containersFor(db, l.material, l.qty) * cap, maker });
   }
@@ -65,8 +68,8 @@ export function quotePo(db: ContentDb, s: PlantState, supplier: Id, want: readon
   return { lines, costs, net, vat, prepaid: part(net + vat, sup.prepay) };
 }
 
-export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'po' }>, notices: Notice[], why?: PoWhy[]): Po | undefined {
-  const q = quotePo(db, s, cmd.supplier, cmd.lines);
+export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'po' }>, notices: Notice[], why?: PoWhy[], trial?: string): Po | undefined {
+  const q = quotePo(db, s, cmd.supplier, cmd.lines, trial);
   if ('why' in q) {
     notices.push({ kind: 'refused', cmd: 'po', why: q.why, ...(q.detail ? { detail: q.detail } : {}) });
     return undefined;
@@ -74,6 +77,8 @@ export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { ki
   const sup = db.suppliers[cmd.supplier];
   const lines = q.lines;
   const eta = etaOf(db, s, sup.id, sup.lead);
+  // опоздание (Б6ж): по своей ветви поставщика; завод знает обещанный приход, фура придёт к настоящему
+  const truth = lateOf(db, s, sup.id, eta);
   // сумма с НДС: АФС — по ставке лекарственных средств, остальное — по общей; предоплата — сейчас, остаток — после прихода
   let net = 0;
   let vat = 0;
@@ -83,15 +88,53 @@ export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { ki
     net += cost;
     vat += part(cost, vatRate(db, s, l.material));
   }
-  const po: Po = { id: nextId(s, 'P'), supplier: sup.id, lines, ordered: s.t, eta, status: 'ordered', by: cmd.by ?? 'player', sum: net + vat, vat, prepaid: part(net + vat, sup.prepay) };
+  const po: Po = { id: nextId(s, 'P'), supplier: sup.id, lines, ordered: s.t, eta, ...(truth !== undefined ? { truth } : {}), ...(trial ? { trial } : {}), status: 'ordered', by: cmd.by ?? 'player', sum: net + vat, vat, prepaid: part(net + vat, sup.prepay) };
   s.pos[po.id] = po;
   post(s, -po.prepaid!, 'prepay', po.id);
-  schedule(s.agenda, eta, { kind: 'truck', po: po.id });
+  schedule(s.agenda, arriveAt(po), { kind: 'truck', po: po.id });
   notices.push({ kind: 'ordered', po: po.id, eta });
-  // журнал решений (Б5а): игрок или начальник отдела снабжения — с положением материалов
-  noteCmd(s, cmd, { kind: 'po', po: po.id, supplier: po.supplier, prepaid: po.prepaid ?? 0, ...(why ? { why } : {}) });
+  // журнал решений (Б5а): игрок или начальник отдела снабжения — с положением материалов; пробная партия (Б6ж) — с парой
+  noteCmd(s, cmd, { kind: 'po', po: po.id, supplier: po.supplier, prepaid: po.prepaid ?? 0, ...(why ? { why } : {}), ...(trial ? { trial } : {}) });
   return po;
 }
+
+/** Когда фура заказа в самом деле придёт (Б6ж): к настоящему приходу опаздывающего, иначе к обещанному. Только движок. */
+export const arriveAt = (po: Po): number => po.truth ?? po.eta;
+
+/**
+ * Опоздание заказа (Б6ж; геймдизайн, §11): по ветви `late/<поставщик>` — доля заказов поставщика опаздывает на столько
+ * суток от и до; приход — в то же время дня рабочего дня. Не опоздает или у поставщика нет записи — `undefined`.
+ */
+export function lateOf(db: ContentDb, s: PlantState, supplier: Id, eta: number): number | undefined {
+  const late = db.suppliers[supplier]?.late;
+  if (!late || late.share <= 0) return undefined;
+  return roll(s, `late/${supplier}`, r => {
+    if (r.int(10_000) >= late.share) return undefined;
+    const days = r.range(late.days[0], late.days[1]);
+    return arrival(db, s, eta + days * DAY, momentOf(s.start, eta).sec - ARRIVE_FROM);
+  });
+}
+
+/**
+ * Двойник прогона плана (Б6ж; src/engine/plan/twin.ts): настоящий приход заказа в пути — заново по записи поставщика от
+ * зерна прогона. Заказ, что не пришёл к обещанному, опаздывает на столько суток по записи, но придёт не раньше окна
+ * прихода завтрашнего рабочего дня. Фура — к новому приходу; прежнее событие ничего не найдёт.
+ */
+export function redrawLate(db: ContentDb, s: PlantState, po: Po) {
+  delete po.truth;
+  const late = db.suppliers[po.supplier]?.late;
+  let t: number | undefined;
+  if (s.t < windowEnd(s, po.eta)) t = lateOf(db, s, po.supplier, po.eta);
+  else {
+    const days = late ? roll(s, `late/${po.supplier}`, r => r.range(late.days[0], late.days[1])) : 1;
+    t = Math.max(arrival(db, s, po.eta + days * DAY, momentOf(s.start, po.eta).sec - ARRIVE_FROM), arrival(db, s, s.t + DAY, 0));
+  }
+  if (t !== undefined && t !== po.eta) po.truth = t;
+  schedule(s.agenda, arriveAt(po), { kind: 'truck', po: po.id });
+}
+
+/** Конец окна прихода фур в обещанный день заказа (Б6ж): не пришла к нему — заказ опаздывает. */
+export const windowEnd = (s: PlantState, eta: number): number => eta - momentOf(s.start, eta).sec + ARRIVE_FROM + ARRIVE_SPREAD;
 
 /** Срок прихода заказа поставщику из его ветви: через `lead` дней, рабочим днём в окне прихода. */
 export function etaOf(db: ContentDb, s: PlantState, supplier: Id, lead: [number, number]): number {
@@ -102,7 +145,7 @@ export function etaOf(db: ContentDb, s: PlantState, supplier: Id, lead: [number,
 }
 
 /** Ближайший рабочий день не раньше `t` по производственному календарю (Б4а) — в 09:00 плюс `extra` секунд. */
-function arrival(db: ContentDb, s: PlantState, t: number, extra: number): number {
+export function arrival(db: ContentDb, s: PlantState, t: number, extra: number): number {
   const m = momentOf(s.start, t);
   return t - m.sec + (workdayOnOrAfter(calOf(db, s), m.day) - m.day) * DAY + ARRIVE_FROM + extra;
 }
@@ -117,7 +160,7 @@ export const CANCEL_SHARE = 1000;
 /**
  * Ускорение без записи (Б6д; окно — «Ускорить»): новый приход — в 09:00 первого рабочего дня через `FAST_DAYS` суток,
  * доплата без НДС и НДС к ней. Отказ: такого заказа нет; он уже пришёл или отменён; уже ускорен; ускоренный придёт не
- * раньше нынешнего.
+ * раньше обещанного — с Б6ж только до обещанного дня: заказ, что не пришёл к нему, ускорить можно.
  */
 export function fastQuote(db: ContentDb, s: PlantState, poId: string): { eta: number; net: number; vat: number } | { why: Refusal } {
   const po = s.pos[poId];
@@ -125,13 +168,14 @@ export function fastQuote(db: ContentDb, s: PlantState, poId: string): { eta: nu
   if (po.status !== 'ordered') return { why: 'poDone' };
   if (po.fast) return { why: 'fastAgain' };
   const eta = arrival(db, s, s.t + FAST_DAYS * DAY, 0);
-  if (eta >= po.eta) return { why: 'notFaster' };
+  if (eta >= po.eta && s.t < windowEnd(s, po.eta)) return { why: 'notFaster' };
   return { eta, net: part((po.sum ?? 0) - (po.vat ?? 0), FAST_SHARE), vat: part(po.vat ?? 0, FAST_SHARE) };
 }
 
 /**
  * Команда «ускорить заказ поставщику» (Б6д): доплата с НДС — сразу, в сумме заказа и в его предоплате, НДС к ней — к
- * вычету с приходом; фура — к новому сроку, прежнее событие прихода уже ничего не найдёт: заказ пришёл.
+ * вычету с приходом; фура — к новому сроку, прежнее событие прихода уже ничего не найдёт: заказ пришёл. С Б6ж ускоренный
+ * заказ не опаздывает: обещан новый приход; опаздывающий, что пришёл бы раньше него, придёт к своему.
  */
 export function expediteCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'expedite' }>, notices: Notice[]) {
   const q = fastQuote(db, s, cmd.po);
@@ -143,7 +187,10 @@ export function expediteCommand(db: ContentDb, s: PlantState, cmd: Extract<Comma
   const was = po.eta;
   const fee = q.net + q.vat;
   po.fast = { t: s.t, was, net: q.net, vat: q.vat };
+  const real = arriveAt(po);
   po.eta = q.eta;
+  if (real < q.eta) po.truth = real;
+  else delete po.truth;
   po.sum = (po.sum ?? 0) + fee;
   po.vat = (po.vat ?? 0) + q.vat;
   po.prepaid = (po.prepaid ?? 0) + fee;
@@ -162,6 +209,8 @@ export function cancelQuote(s: PlantState, poId: string): { fee: number; back: n
   const po = s.pos[poId];
   if (!po) return { why: 'noPo' };
   if (po.status !== 'ordered') return { why: 'poDone' };
+  // пробная партия одобрения пары (Б6ж) — шаг одобрения: без неё одобрение не кончится
+  if (trialPo(po)) return { why: 'poTrial' };
   const fast = po.fast ? po.fast.net + po.fast.vat : 0;
   const fee = part((po.sum ?? 0) - (po.vat ?? 0) - (po.fast?.net ?? 0), CANCEL_SHARE);
   return { fee, back: (po.prepaid ?? 0) - fast - fee };
@@ -222,13 +271,23 @@ export function planUse(db: ContentDb, s: PlantState, days: number, byLot = cont
 }
 
 /**
+ * Пробная партия одобрения пары (Б6ж) — не запас под план: в производство её не берут до решения по досье (`reg-eaeu`,
+ * п. 4.2.1), а отклонят на входном контроле — не возьмут вовсе. Её заказ в пути — не приход, её партия — не запас, пока
+ * её не разрешили по решению.
+ */
+export const trialPo = (po: Po) => po.trial !== undefined;
+export const trialLot = (s: PlantState, l: Lot) => l.status !== 'released' && l.po !== undefined && s.pos[l.po]?.trial !== undefined;
+
+/**
  * Что у завода есть и будет по материалу: свободное в таре всех партий, кроме отклонённых (карантин и испытания тоже —
- * их ждут), и заказанное в пути, минус то, чего ждут задания на серию и на упаковку без резерва.
+ * их ждут), и заказанное в пути, минус то, чего ждут задания на серию и на упаковку без резерва. Пробной партии
+ * одобрения (Б6ж) — ни в пути, ни в партиях.
  */
 export function supplyPosition(db: ContentDb, s: PlantState, material: Id, byLot = containersByLot(s)): number {
   let n = 0;
-  for (const l of Object.values(s.lots)) if (l.material === material && l.status !== 'rejected') for (const c of byLot.get(l.id) ?? []) n += free(c);
-  for (const po of Object.values(s.pos)) if (po.status === 'ordered') for (const l of po.lines) if (l.material === material) n += l.qty;
+  // заблокированная партия (Б6ж: пробная партия до решения по досье) в производство не идёт
+  for (const l of Object.values(s.lots)) if (l.material === material && l.status !== 'rejected' && l.status !== 'blocked' && !trialLot(s, l)) for (const c of byLot.get(l.id) ?? []) n += free(c);
+  for (const po of Object.values(s.pos)) if (po.status === 'ordered' && !trialPo(po)) for (const l of po.lines) if (l.material === material) n += l.qty;
   for (const b of Object.values(s.batches)) {
     if (b.status === 'waiting') for (const l of db.recipes[b.recipe].bom) if (l.material === material) n -= l.qty;
     if (b.pack?.state === 'waiting') for (const x of packNeeds(db, b.pack)) if (x.material === material) n -= x.qty;
@@ -272,13 +331,17 @@ export function supplyPlan(db: ContentDb, s: PlantState): SupplyOrder[] {
     return Math.ceil(qty / (k.perPallet * k.capacity));
   };
   for (const material of per.keys()) {
-    const pair = pairsFor(db, s, material, now.day)[0];
-    if (!pair) continue;
-    const sup = db.suppliers[pair.supplier];
     // расход на `d` суток из расхода на 1000 суток — вверх
     const use = (d: number) => Math.ceil((per.get(material)! * d) / 1000);
-    const point = use(sup.lead[1] + qc + safety);
     const have = supplyPosition(db, s, material, byLot);
+    // кому заказывать при двух поставщиках (Б6ж): заказ поставщика опоздает, если запаса с заказанным не хватит до его
+    // прихода с верхом срока и входным контролем, — на столько суток
+    const lasts = per.get(material)! > 0 ? Math.floor((Math.max(0, have) * 1000) / per.get(material)!) : Number.POSITIVE_INFINITY;
+    const ch = choosePair(db, s, material, now.day, sup => Math.max(0, db.suppliers[sup].lead[1] + qc - lasts));
+    if (!ch) continue;
+    const pair = ch.pair;
+    const sup = db.suppliers[pair.supplier];
+    const point = use(sup.lead[1] + qc + safety);
     if (have >= point) continue;
     // паллет в заказе этого поставщика — не больше половины зоны карантина на весь заказ
     const c = db.containers[db.materials[material].container];
@@ -289,7 +352,7 @@ export function supplyPlan(db: ContentDb, s: PlantState): SupplyOrder[] {
     const qty = Math.min(want, (room - taken) * pallet);
     if (qty < moq) continue;
     lines.set(sup.id, [...(lines.get(sup.id) ?? []), { material, qty, maker: pair.maker }]);
-    const why: PoWhy = { material, maker: pair.maker, have, per: per.get(material)!, point, lead: sup.lead[1], qc, safety, every, moq, want, ...(qty < want ? { cut: true as const } : {}) };
+    const why: PoWhy = { material, maker: pair.maker, have, per: per.get(material)!, point, lead: sup.lead[1], qc, safety, every, moq, want, ...(qty < want ? { cut: true as const } : {}), ...(ch.pick ? { pick: ch.pick } : {}) };
     whys.set(sup.id, [...(whys.get(sup.id) ?? []), why]);
   }
   return [...lines].map(([supplier, l]) => ({ supplier, lines: l, why: whys.get(supplier)! }));

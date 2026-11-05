@@ -353,7 +353,9 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       if (mk) need(makers[mk]?.makes.includes(mid), `${where}: ${mk} не выпускает ${mid}`);
       items[mid] = { price: kop(it.price), moq: amount(mid, it.moq, where), maker: mk };
     }
-    suppliers[s.id] = { ...s, prepay: share(s.prepay), defects: share(s.defects), items };
+    // опоздания (Б6ж): доля — в доли 1/10 000; дни «от — до» проверила схема
+    const { late, ...rest } = s;
+    suppliers[s.id] = { ...rest, prepay: share(s.prepay), defects: share(s.defects), ...(late ? { late: { share: share(late.share), days: [late.days[0], late.days[1]] as [number, number] } } : {}), items };
   }
   const roles: Record<string, Role> = {};
   for (const r of Object.values(raw.roles)) roles[r.id] = { ...r, salary: kop(r.salary) };
@@ -465,6 +467,17 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       const m = raw.materials[l.material];
       need(m && (m.kind === 'api' || m.kind === 'excipient'), `${where}: в составе ${l.material} — не АФС и не вспомогательное вещество`);
       if (l.potency) need(m?.kind === 'api', `${where}: пересчёт на содержание — только у АФС`);
+      // аналог (Б6ж): вспомогательное вещество той же единицы учёта, не сам основной; у АФС, «до массы» и пересчёта аналогов
+      // нет — их количество зависит от партии
+      if (l.alt) {
+        const a = raw.materials[l.alt.material];
+        need(a, `${where}: аналога ${l.alt.material} нет в базе`);
+        need(l.alt.material !== l.material, `${where}: аналог ${l.material} — сам основной материал`);
+        need(a?.kind === 'excipient' && m?.kind === 'excipient', `${where}: аналог — только у вспомогательного вещества и сам вспомогательное вещество`);
+        need(a?.unit === m?.unit, `${where}: у аналога ${l.alt.material} другая единица учёта, чем у ${l.material}`);
+        need(!l.potency && !l.qs, `${where}: у строки ${l.material} с пересчётом или «до массы» аналога нет`);
+        need(!r.bom.some(x => x.material === l.alt!.material), `${where}: аналог ${l.alt.material} — уже строка состава`);
+      }
     }
     need(r.bom.filter(l => l.qs).length <= 1, `${where}: «до массы» — не больше одной строки`);
     need(Math.abs(r.bom.reduce((n, l) => n + l.kg, 0) - r.batch.kg) < 0.0005, `${where}: состав не сходится с массой серии`);
@@ -549,7 +562,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       doc: headDoc(r.doc, where),
       product: r.product,
       batch: { mass: mg(r.batch.kg), units: r.batch.units },
-      bom: r.bom.map(l => ({ material: l.material, qty: mg(l.kg), ...(l.potency ? { potency: true } : {}), ...(l.qs ? { qs: true } : {}), stage: l.stage })),
+      bom: r.bom.map(l => ({ material: l.material, qty: mg(l.kg), ...(l.potency ? { potency: true } : {}), ...(l.qs ? { qs: true } : {}), stage: l.stage, ...(l.alt ? { alt: { material: l.alt.material, factor: Math.round(l.alt.factor * 10_000) } } : {}) })),
       stages,
       bulk: r.bulk,
       quality,
@@ -1004,6 +1017,11 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     const every = Math.min(s.partners.every.api, s.partners.every.excipient, s.partners.every.packaging);
     need(s.partners.ahead + 3 < every * 28, `${where}: partners.ahead — срок предупреждения не короче самого короткого интервала оценки, ${every} мес.`);
     need(s.partners.audit.days + 2 < s.partners.ahead, `${where}: partners — аудит в ${s.partners.audit.days} рабочих дней не уложится в срок предупреждения`);
+    // веса оценки предложений (Б6ж) — в сумме 100: балл предложения — от 0 до 100
+    if (s.supply?.rfq) {
+      const w = s.supply.rfq;
+      need(w.price + w.lead + w.rel + w.terms === 100, `${where}: supply.rfq — веса в сумме не 100`);
+    }
     // отклонения (Б5е): у класса строже — срок не длиннее; порог признака — доли 1/10 000 ресурса, как у порога замены
     const term = s.deviations.term;
     need(term.critical <= term.major && term.major <= term.minor, `${where}: deviations.term — у критического срок не длиннее, чем у существенного, у существенного — чем у незначительного`);
@@ -1028,6 +1046,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         docs: { review: sec(s.partners.docs.review * 60) },
         markup: share(s.partners.markup),
         share: share(s.partners.share),
+        ...(s.partners.variation ? { variation: { ...s.partners.variation, ask: share(s.partners.variation.ask), answer: [s.partners.variation.answer[0], s.partners.variation.answer[1]] as [number, number] } } : {}),
       },
       ...(s.incident ? { incident: incidentOf(s.incident, s.batches.length, where) } : {}),
       ...(s.labor ? { labor: laborOf(s.labor, s, where) } : {}),
@@ -1163,6 +1182,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     for (const m of Object.values(materials)) {
       const sp = specs[m.spec] && specs[inForce(docDb, 'specs', m.spec, day)];
       for (const pr of sp?.pairs ?? []) need(agreementFor(docDb, pr.supplier, pr.maker, m.id, day), `${where}: у пары ${pr.supplier} — ${pr.maker} для ${m.id} на ${date} нет действующего соглашения по качеству`);
+      // пара-кандидат (Б6ж): одобрить её можно с первого дня — соглашение по качеству подписано заранее
+      for (const pr of sp?.candidates ?? []) need(agreementFor(docDb, pr.supplier, pr.maker, m.id, day), `${where}: у пары-кандидата ${pr.supplier} — ${pr.maker} для ${m.id} на ${date} нет действующего соглашения по качеству`);
     }
   }
   return {
@@ -1307,6 +1328,15 @@ function pairErrors(materials: Record<string, Material>, specs: Record<string, S
         const it = suppliers[pr.supplier]?.items[m.id];
         need(suppliers[pr.supplier], `${where}: нет поставщика ${pr.supplier}`);
         if (suppliers[pr.supplier]) need(it?.maker === pr.maker, `${where}: у ${pr.supplier} нет ${m.id} от ${pr.maker}`);
+      }
+      // пары-кандидаты (Б6ж): только у АФС — изменение досье под нового изготовителя АФС (reg-eaeu, прил. 19, Б.I.а.1);
+      // поставщик продаёт материал от этого изготовителя; кандидат — не одобренная пара той же редакции
+      const cands = specs[id].candidates ?? [];
+      if (cands.length > 0) need(m.kind === 'api', `${where}: пары-кандидаты — только у АФС`);
+      for (const pr of cands) {
+        need(makers[pr.maker], `${where}: нет изготовителя ${pr.maker}`);
+        need(suppliers[pr.supplier]?.items[m.id]?.maker === pr.maker, `${where}: у кандидата ${pr.supplier} нет ${m.id} от ${pr.maker}`);
+        need(!pairs.some(x => x.supplier === pr.supplier && x.maker === pr.maker), `${where}: кандидат ${pr.supplier} — ${pr.maker} уже одобренная пара`);
       }
     }
   }

@@ -38,6 +38,7 @@ export function truckArrives(db: ContentDb, s: PlantState, poId: string, notices
   const po = s.pos[poId];
   if (!po || po.status !== 'ordered') return;
   po.status = 'arrived';
+  po.came = s.t;
   if (po.sum !== undefined) {
     s.cash.vat.in += po.vat!;
     owe(s, 'supplier', -(po.sum - po.prepaid!), dueIn(db, s, db.suppliers[po.supplier].payDays), po.id);

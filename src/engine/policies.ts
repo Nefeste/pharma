@@ -22,6 +22,7 @@ export const POL = {
   every: 'pol.supply.every',
   arrive: 'pol.supply.arrive',
   how: 'pol.supply.how',
+  who: 'pol.supply.who',
   replace: 'pol.maint.replace',
   spare: 'pol.maint.spare',
   ahead: 'pol.maint.ahead',
@@ -52,7 +53,8 @@ export const policyHead = (policy: Id): PolicyHead | undefined => {
  * снабжения; порог замены узла (нет — после отказа) и уровень ЗИП запчасти; срок визита подрядчика; уборка после серии;
  * порог вывоза отклонённого; уставки при уходе с поста; с Б5е — CAPA по повтору и срок оценки пары у начальника ООК;
  * с Б6в — способ прогноза и откуда спрос правила задания, если у сценария есть прогноз; с Б6д — срок завоза и как
- * заказывать, у сценария с прогнозом; с Б6е — замороженный горизонт, если сценарий его задаёт.
+ * заказывать, у сценария с прогнозом; с Б6е — замороженный горизонт, если сценарий его задаёт; с Б6ж — кому заказывать
+ * при двух поставщиках, у сценария со снабжением.
  * Сценарий правила не задаёт — `undefined`: политики нет.
  */
 export function policyDefault(db: ContentDb, sc: Scenario, policy: Id, of?: string): PolicyValue | undefined {
@@ -83,6 +85,9 @@ export function policyDefault(db: ContentDb, sc: Scenario, policy: Id, of?: stri
       return sc.forecast ? sc.supply?.arrive : undefined;
     case POL.how:
       return sc.forecast ? sc.supply?.how : undefined;
+    // кому заказывать при двух поставщиках (Б6ж): без записи сценария — основному, как до Б6ж
+    case POL.who:
+      return sc.supply ? (sc.supply.who ?? 'main') : undefined;
     case POL.replace:
       return of === undefined ? undefined : (sc.maint[of] ?? OFF);
     case POL.spare: {
@@ -202,6 +207,7 @@ const SHAPE: Record<string, Pick<Policy, 'kind' | 'each' | 'off' | 'options'>> =
   [POL.every]: { kind: 'days' },
   [POL.arrive]: { kind: 'mday' },
   [POL.how]: { kind: 'choice', options: ['need', 'point'] },
+  [POL.who]: { kind: 'choice', options: ['main', 'fast', 'rfq'] },
   [POL.replace]: { kind: 'wear', each: 'part', off: true },
   [POL.spare]: { kind: 'level', each: 'spare' },
   [POL.ahead]: { kind: 'days' },

@@ -93,6 +93,7 @@ const actions: Actions = {
   roster: later('roster'),
   vacancy: later('vacancy'),
   closeVacancy: later('closeVacancy'),
+  approvePair: later('approvePair'),
   hire: later('hire'),
   dismiss: later('dismiss'),
   leaveAdd: later('leaveAdd'),

@@ -4,10 +4,14 @@
 // хватит с …»; подсказка клетки — есть, в пути с днями, когда будет разрешено, и плановый заказ. Ниже — плановые заказы по
 // поставщикам на два месяца вперёд с датой заказа и «Заказать» — окно «Заказ поставщику» со строками тех, чья дата заказа —
 // в пределах недели, по материалу, — и заказы в пути с сообщениями, «Ускорить» и «Отменить». Вид собран в потоке расчёта
-// (src/sim/mrp.ts) — истины в нём нет.
+// (src/sim/mrp.ts) — истины в нём нет. С Б6ж у планового заказа — «Предложения»: одобренные поставщики материала со
+// стоимостью, сроком, долей поставок вовремя, условиями оплаты и баллом, «Заказать» — окно «Заказ поставщику» с этим
+// поставщиком; у заказа в пути приход — обещанный, «не пришёл» — когда обещанный день прошёл.
+import { useState } from 'react';
 import type { Id } from '../content/types';
 import { MRP_SOON, type MrpMsg, type MrpOrder, type MrpRow } from '../engine/plan/mrp';
-import { dayText, money, named, num, T, whenText } from '../i18n';
+import { dayText, money, named, num, pctText, T, whenText } from '../i18n';
+import type { Offer } from '../engine/partners';
 import type { MrpPoRow, MrpView } from '../sim/mrp';
 import { db } from './db';
 import { actLabel, actOf, actOn } from './memo';
@@ -45,8 +49,17 @@ function poMsgs(p: MrpPoRow, msgs: MrpMsg[]): string[] {
   for (const m of msgs) {
     if (m.kind === 'late' && m.po === p.po) out.push(T.mrp.late(material(m.material), m.days));
     if (m.kind === 'extra' && m.po === p.po) out.push(T.mrp.extra(material(m.material)));
+    // не пришёл к обещанному (Б6ж): по материалу — одной строкой на заказ
+    if (m.kind === 'behind' && m.po === p.po && !out.includes(T.mrp.behind(m.days))) out.push(T.mrp.behind(m.days));
   }
   return out;
+}
+
+/** Почему этот поставщик (Б6ж): у основного опоздает — этот быстрее; по оценке предложений. */
+function pickText(o: MrpOrder): string {
+  const k = o.pick;
+  if (!k) return '';
+  return k.by === 'fast' ? T.mrp.pickFast(party(k.main), k.late) : T.mrp.pickRfq;
 }
 
 export function Materials({ hud, actions, v }: { hud: Hud; actions: Actions; v: MrpView }) {
@@ -57,6 +70,8 @@ export function Materials({ hud, actions, v }: { hud: Hud; actions: Actions; v: 
   const drop = actOf(hud, 'supply', { kind: 'cancelPo', po: '' });
   const months = Array.from({ length: v.rows[0]?.months.length ?? 0 }, (_, i) => v.from + i);
   const msgOf = (i: number) => v.msgs.find(m => (m.kind === 'overdue' || m.kind === 'soon') && m.order === i);
+  // «Предложения» (Б6ж): у какого планового заказа раскрыты
+  const [open, setOpen] = useState<number | undefined>();
   const bySupplier = new Map<Id, { o: MrpOrder; i: number }[]>();
   v.planned.forEach((o, i) => bySupplier.set(o.supplier, [...(bySupplier.get(o.supplier) ?? []), { o, i }]));
   return (
@@ -140,6 +155,11 @@ export function Materials({ hud, actions, v }: { hud: Hud; actions: Actions; v: 
                     {T.mrp.plannedLine(material(o.material), qty(o.material, o.qty), day(o.need))}
                     {' · '}
                     <span className={m?.kind === 'overdue' ? 'bad' : m?.kind === 'soon' ? 'warn' : 'muted'}>{m?.kind === 'overdue' ? T.mrp.overdue(m.days) : T.mrp.orderBy(day(o.orderBy))}</span>
+                    {o.pick ? <small className="muted" data-test="mrp-pick"> · {pickText(o)}</small> : null}{' '}
+                    <button type="button" className="link" title={T.mrp.offersHint} onClick={() => setOpen(open === i ? undefined : i)} data-test="mrp-offers-open" data-i={i}>
+                      {T.mrp.offers}
+                    </button>
+                    {open === i ? <Offers o={o} offers={v.offers[i] ?? []} order={order} actions={actions} /> : null}
                   </li>
                 );
               })}
@@ -179,7 +199,15 @@ export function Materials({ hud, actions, v }: { hud: Hud; actions: Actions; v: 
                   <tr key={p.po} data-test="mrp-po" data-po={p.po}>
                     <td>{p.po}</td>
                     <td>{party(p.supplier)}</td>
-                    <td>{p.lines.map(l => `${material(l.material)} — ${qty(l.material, l.qty)}`).join('; ')}</td>
+                    <td>
+                      {p.lines.map(l => `${material(l.material)} — ${qty(l.material, l.qty)}`).join('; ')}
+                      {p.trial ? (
+                        <small className="muted" title={T.mrp.trialHint} data-test="mrp-po-trial">
+                          {' '}
+                          · {T.mrp.trial}
+                        </small>
+                      ) : null}
+                    </td>
                     <td>
                       {whenText(hud.start, p.eta)}
                       {p.fast ? <small className="muted"> · {T.mrp.fast}</small> : null}
@@ -203,5 +231,47 @@ export function Materials({ hud, actions, v }: { hud: Hud; actions: Actions; v: 
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * Предложения планового заказа (Б6ж): одобренные поставщики материала по порядку спецификации — стоимость количества без
+ * НДС, не позже какого дня придёт заказ сегодня, доля поставок вовремя по записям завода, предоплата и отсрочка, балл по
+ * весам; «Заказать» — окно «Заказ поставщику» с этим поставщиком и строкой планового заказа.
+ */
+function Offers({ o, offers, order, actions }: { o: MrpOrder; offers: Offer[]; order: ReturnType<typeof actOf>; actions: Actions }) {
+  const c = T.mrp.offerCols;
+  const best = offers.reduce((b, x) => Math.max(b, x.score), 0);
+  return (
+    <table className="grid mrp-offers" data-test="mrp-offers">
+      <thead>
+        <tr>
+          <th>{c.supplier}</th>
+          <th>{c.cost}</th>
+          <th>{c.by}</th>
+          <th>{c.onTime}</th>
+          <th>{c.terms}</th>
+          <th>{c.score}</th>
+          <th />
+        </tr>
+      </thead>
+      <tbody>
+        {offers.map(x => (
+          <tr key={`${x.supplier}|${x.maker}`} data-test="mrp-offer" data-supplier={x.supplier} data-score={x.score}>
+            <td>{party(x.supplier)}</td>
+            <td>{money(x.cost)}</td>
+            <td>{day(x.by)}</td>
+            <td>{T.mrp.onTime(pctText(x.onTime), x.n, x.all)}</td>
+            <td>{T.mrp.terms(pctText(x.prepay), x.payDays)}</td>
+            <td className={x.score === best ? 'ok' : undefined}>{num(x.score / 100, 1)}</td>
+            <td>
+              <button type="button" disabled={!actOn(order)} title={order.mine ? T.mrp.offerHint : order.title} onClick={() => actions.mrpOrder(x.supplier, [{ material: o.material, qty: o.qty }])} data-test="mrp-offer-order" data-memo={order.memo ?? undefined}>
+                {actLabel(order, T.mrp.offerOrder)}
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

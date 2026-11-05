@@ -35,7 +35,7 @@ import { marketDone, marketHour, marketStep, newCustomers, rznPublished, seedFg 
 import { memoCommand, memoDue, memoHour, withdrawCommand } from './memos';
 import { BATCH_HOUR, cancelOrder, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
 import { setpointCommand } from './modes';
-import { auditDone, partnersDone, partnersHour, seedContracts, seedPairs, specPairs } from './partners';
+import { auditDone, pairApproveCommand, partnersDone, partnersHour, seedContracts, seedPairs, specPairs } from './partners';
 import { coldOf } from './places';
 import { planHour } from './planner';
 import { planOf } from './plant';
@@ -44,7 +44,7 @@ import { assessCommand, devHour, qaDone, qaStep, releaseCommand } from './qa';
 import { foreign, seatCommand } from './seats';
 import { goHome, LAST_CALL, postArrive, toPosts } from './staff';
 import { createLot, findSlot } from './stock';
-import { cancelPoCommand, expediteCommand, placePo, supplyDay } from './supply';
+import { arriveAt, cancelPoCommand, expediteCommand, placePo, supplyDay } from './supply';
 import { dispatch, release } from './tasks';
 import { alsoCommand, seedTraining, trainDay, trainDone } from './train';
 import { type Command, type Notice, type PlantEvent, type PlantState, SCHEMA } from './types';
@@ -439,6 +439,13 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       steps(db, s, notices);
       return notices;
     }
+    case 'pairApprove': {
+      // одобрить пару-кандидата (Б6ж): оценка документов — задача специалисту ООК
+      const notices: Notice[] = [];
+      pairApproveCommand(db, s, cmd, notices);
+      settle(db, s, notices);
+      return notices;
+    }
   }
 }
 
@@ -561,15 +568,19 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       alertsHour(db, s, notices);
       hoursHour(db, s, notices);
       return;
-    case 'truck':
+    case 'truck': {
+      // с Б6ж фура приходит к настоящему приходу: событие раньше него — прежнее, его уже ничто не ждёт
+      const po = s.pos[ev.po];
+      if (po && s.t < arriveAt(po)) return;
       truckArrives(db, s, ev.po, notices);
       settle(db, s, notices);
       return;
+    }
     case 'task': {
       const t = s.tasks[ev.id];
       if (!t || t.v !== ev.v || t.state !== 'busy') return;
       release(db, s, t);
-      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices) && !maintDone(db, s, t, notices) && !invDone(db, s, t, notices) && !trainDone(db, s, t) && !assetDone(db, s, t) && !partnersDone(db, s, t) && !wasteDone(db, s, t, notices)) wmsDone(db, s, t, notices);
+      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices) && !maintDone(db, s, t, notices) && !invDone(db, s, t, notices) && !trainDone(db, s, t) && !assetDone(db, s, t) && !partnersDone(db, s, t, notices) && !wasteDone(db, s, t, notices)) wmsDone(db, s, t, notices);
       // паллета ГП уехала с места паллетирования — у линии освободилось место; машину линии починили — она снова в работе
       if ((t.kind === 'putaway' || t.kind === 'repair') && t.line) lineUpdate(db, s, s.lines[t.line], notices);
       if (t.kind === 'putaway' || t.kind === 'stage') startSampling(db, s);

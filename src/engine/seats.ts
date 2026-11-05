@@ -34,6 +34,8 @@ export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
   visit: 'production',
   classify: 'quality',
   capa: 'quality',
+  // одобрить пару-кандидата (Б6ж) — пост «Качество» или директор
+  pairApprove: 'quality',
 };
 
 /** Пост отдела (Б4а): производство, линию и техслужбу ведёт «Производство», ОКК и ООК — «Качество», склад — «Снабжение и склад». */

@@ -1,0 +1,12 @@
+# Соглашение по качеству (Б3г; GMP ЕАЭС, ч. I, п. 5.28) со вторым изготовителем парацетамола (Б6ж): подписано заранее —
+# пара в спецификации кандидатом, одобрить её можно в любой день. Поставщик и изготовитель вымышленные; дата редакции —
+# выбор геймдизайна для прототипа
+id: qag.api-par2
+name: { ru: Соглашение по качеству со вторым изготовителем парацетамола, en: Quality agreement with the second paracetamol maker }
+doc: { code: QAG-0005, rev: 1, from: 2027-06-01, approved: role.qa-head }
+supplier: sup.api-par2
+makers: [mkr.api-par2]
+materials: [mat.api.paracetamol]
+terms: [handling, labelling, packaging, shipping, complaints, recall]
+source: [gmp-eaeu]
+review: draft

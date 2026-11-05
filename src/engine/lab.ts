@@ -12,7 +12,7 @@ import { inForce } from './docs';
 import { incidentMeasured, invTestDone, modelFor, openInvestigation } from './investigation';
 import { note } from './journal';
 import { defect } from './lean';
-import { approved, pairKey } from './partners';
+import { approved, pairKey, trialDecided } from './partners';
 import { coldOf } from './places';
 import { type PlantPlan, planOf } from './plant';
 import { openDevs } from './qa';
@@ -242,6 +242,8 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
         stockChanged(s);
         note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'release', why: { tests } }, undefined, undefined, who);
         notices.push({ kind: 'lotReleased', lot: lot.id });
+        // пробная партия одобрения пары (Б6ж): заблокирована до решения по досье, дальше — аудит
+        trialDecided(db, s, lot, true, notices);
       } else if (model) {
         // результат вне спецификации у своей продукции — расследование (часть 4): партия ждёт его решения
         const inv = openInvestigation(db, s, model, lot, out, notices);
@@ -261,6 +263,8 @@ export function labDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
         defect(s, lot.batch ? 'batches' : 'lots');
         note(s, 'qc', { kind: 'lot', lot: lot.id, verdict: 'reject', dev: d.id, why: { tests } }, undefined, undefined, who);
         notices.push({ kind: 'lotRejected', lot: lot.id, deviation: d.id });
+        // пробная партия одобрения пары (Б6ж): отклонили — одобрение кончилось
+        trialDecided(db, s, lot, false, notices);
       }
       for (const u of unitsOfLot(s, lot.id)) settleLot(db, s, lot, u);
       return true;
@@ -294,12 +298,13 @@ function measured(db: ContentDb, s: PlantState, q: LabTest) {
  * холоде — остаётся в холоде; отклонённое — в зону отклонённого. Паллету, которую уже везут, — когда довезут.
  */
 export function settleLot(db: ContentDb, s: PlantState, lot: Lot, u: Unit) {
-  if (lot.status !== 'released' && lot.status !== 'rejected') return;
+  if (lot.status !== 'released' && lot.status !== 'rejected' && lot.status !== 'blocked') return;
   if (u.where.kind !== 'slot' || Object.values(s.tasks).some(x => x.unit === u.id)) return;
   const plan = planOf(db, s.plant);
   const at = plan.slot[u.where.id];
   const from: Place = { kind: 'slot', id: at.id };
-  if (lot.status === 'released') {
+  // заблокированная пробная партия (Б6ж) ждёт решения по досье на стеллаже, как разрешённая
+  if (lot.status === 'released' || lot.status === 'blocked') {
     if (at.kind === 'storage' || coldOf(db, s.plant, lot.material)) return;
     const gate = plan.byKind.staging[0];
     addTask(s, { kind: 'putaway', roles: [...WMS.movers], veh: [...WMS.floor], unit: u.id, from, toKind: 'storage', near: { x: gate.x, z: gate.z }, work: 0, prio: PRIO.putaway, lot: lot.id });

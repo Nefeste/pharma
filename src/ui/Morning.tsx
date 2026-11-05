@@ -327,7 +327,8 @@ function EditsBlock({ x, hud, actions, close }: { x: EditsMeeting; hud: Hud; act
 
 /**
  * Материалы (Б6д): плановые заказы с датой сегодня и раньше — у поставщика, сколько, к какому дню, на сколько опоздают, —
- * и заказы в пути, которые опоздают. Рычаг — вкладка «Материалы» расписания.
+ * и заказы в пути, которые опоздают; с Б6ж — заказы, что не пришли к обещанному дню, и одобрения пар в работе. Рычаг —
+ * вкладка «Материалы» расписания.
  */
 function MrpBlock({ x, hud, actions, close }: { x: MrpMeeting; hud: Hud; actions: Actions; close: () => void }) {
   const unitOf = (m: Id) => db?.materials[m]?.unit ?? 'mass';
@@ -354,6 +355,30 @@ function MrpBlock({ x, hud, actions, close }: { x: MrpMeeting; hud: Hud; actions
             {x.late.map(l => (
               <li key={`${l.po}/${l.material}`} data-test="morning-materials-late" data-po={l.po}>
                 {T.mrp.lateLine(l.po, mat(l.material), l.days)}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {x.behind.length > 0 ? (
+        <>
+          <div>{T.mrp.behindTitle}</div>
+          <ul className="mlist">
+            {x.behind.map(l => (
+              <li key={`${l.po}/${l.material}`} className="warn" data-test="morning-materials-behind" data-po={l.po}>
+                {T.mrp.behindLine(l.po, sup(l.supplier), mat(l.material), l.days)}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {x.apps.length > 0 ? (
+        <>
+          <div>{T.mrp.appsTitle}</div>
+          <ul className="mlist">
+            {x.apps.map(a => (
+              <li key={a.pair} data-test="morning-materials-app" data-pair={a.pair} data-step={a.step}>
+                {T.mrp.appLine(`${pairName(a.supplier, a.maker)}, ${mat(a.material)}`, [T.pairApp.steps[a.step] ?? a.step, ...(a.filed !== undefined ? [T.pairApp.filed(dayText(a.filed))] : []), ...(a.asked !== undefined ? [T.pairApp.asked(dayText(a.asked))] : []), ...(a.answered !== undefined ? [T.pairApp.answered(dayText(a.answered))] : [])].join(' · '))}
               </li>
             ))}
           </ul>

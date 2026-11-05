@@ -133,12 +133,19 @@ describe('потребность', () => {
     const r = mrpPlan(db, d1);
     const rows = r.rows.filter(x => x.transit.length === 0 && x.quarantine === 0);
     expect(rows.length).toBeGreaterThan(5);
+    // с Б6ж запас аналога строки карты — доступное основного по коэффициенту
+    const altFree = (material: string) => {
+      const l = Object.values(db.recipes).flatMap(x => x.bom).find(x => x.material === material && x.alt);
+      const a = l?.alt && r.rows.find(x => x.material === l.alt!.material);
+      return a ? Math.floor((a.free * 10_000) / l!.alt!.factor) : 0;
+    };
     for (const row of rows) {
       let cum = 0;
       let before = 0;
+      const free = row.free + altFree(row.material);
       for (const m of row.months) {
         cum += m.gross;
-        const short = m.gross > 0 ? Math.max(0, cum + row.safety - row.free) : before;
+        const short = m.gross > 0 ? Math.max(0, cum + row.safety - free) : before;
         expect(m.net).toBe(Math.max(0, short - before));
         before = Math.max(before, short);
       }

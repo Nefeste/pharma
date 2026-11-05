@@ -5,7 +5,7 @@ name: { ru: Соглашение по качеству с изготовител
 doc: { code: QAG-0002, rev: 1, from: 2026-02-02, approved: role.qa-head }
 supplier: sup.exc
 makers: [mkr.exc]
-materials: [mat.exc.starch, mat.exc.povidone, mat.exc.mcc, mat.exc.mgst]
+materials: [mat.exc.starch, mat.exc.starch-maize, mat.exc.povidone, mat.exc.mcc, mat.exc.mgst]
 terms: [handling, labelling, packaging, shipping, complaints, recall]
 source: [gmp-eaeu]
 review: draft

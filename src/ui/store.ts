@@ -348,6 +348,8 @@ export interface Actions {
    */
   vacancy(role: Id, shift: Id, via: Via, memo?: boolean): void;
   closeVacancy(id: string, memo?: boolean): void;
+  /** «Одобрить пару» (Б6ж): пара-кандидат — документы, пробная партия, аудит, изменение досье */
+  approvePair(pair: string): void;
   hire(candidate: string, trial: number, memo?: boolean): void;
   dismiss(person: number, why: 'agree' | 'trial' | 'early'): void;
   /**

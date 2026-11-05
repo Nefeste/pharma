@@ -22,6 +22,7 @@ import { numOf, POL } from '../policies';
 import { admitted, needFor } from '../quals';
 import { LAST_CALL, shiftEndAt } from '../staff';
 import type { Batch, KitLine, Person, PlantState, Room, Task } from '../types';
+import { trialLot, trialPo } from '../supply';
 import { WMS } from '../wms';
 import { calOf } from '../workdays';
 
@@ -561,15 +562,19 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
   const materialAt = (b: Batch): number | undefined => {
     let at: number | undefined = now;
     for (const sh of b.short ?? []) {
+      // пробная партия одобрения (Б6ж) — не запас под план: ни у рампы, ни в лаборатории, ни в пути
       const lab =
-        Object.values(s.lots).some(l => l.material === sh.material && (l.status === 'quarantine' || l.status === 'sampled' || l.status === 'testing')) ||
-        Object.values(s.trucks).some(tr => tr.po && s.pos[tr.po]?.lines.some(l => l.material === sh.material));
+        Object.values(s.lots).some(l => l.material === sh.material && (l.status === 'quarantine' || l.status === 'sampled' || l.status === 'testing') && !trialLot(s, l)) ||
+        Object.values(s.trucks).some(tr => {
+          const po = tr.po ? s.pos[tr.po] : undefined;
+          return !!po && !trialPo(po) && po.lines.some(l => l.material === sh.material);
+        });
       if (lab) {
         note(b.id, { why: 'material', bar: 'kit', material: sh.material, qty: sh.qty, lab: true });
         continue;
       }
       const po = Object.values(s.pos)
-        .filter(p => p.status === 'ordered' && p.lines.some(l => l.material === sh.material))
+        .filter(p => p.status === 'ordered' && !trialPo(p) && p.lines.some(l => l.material === sh.material))
         .sort((x, y) => x.eta - y.eta || idNum(x.id) - idNum(y.id))[0];
       note(b.id, { why: 'material', bar: 'kit', material: sh.material, qty: sh.qty, ...(po ? { po: po.id, eta: po.eta } : {}) });
       at = po && at !== undefined ? Math.max(at, po.eta) : undefined;

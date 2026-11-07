@@ -55,6 +55,7 @@ import {
   type RecipeStage,
   type Regime,
   type Role,
+  type RoomType,
   type Scenario,
   type Shift,
   type Sku,
@@ -680,6 +681,12 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       ...(k.regPrice !== undefined ? { regPrice: kop(k.regPrice) } : {}),
     };
   }
+  // типы помещений (Б7б): ключ — тип, как его зовёт план, — идентификатор без приставки
+  const rooms: Record<string, RoomType> = {};
+  for (const r of Object.values(raw.rooms)) {
+    const type = r.id.slice('room.'.length);
+    rooms[type] = { ...r, type };
+  }
   const plants: Record<string, Plant> = {};
   for (const p of Object.values(raw.plants)) {
     const r4 = (r: [number, number, number, number]): [number, number, number, number] => [cm(r[0]), cm(r[1]), cm(r[2]), cm(r[3])];
@@ -687,7 +694,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       id: p.id,
       site: p.site,
       areas: p.areas.map(a => ({ code: a.code, name: a.name, rooms: a.rooms, centers: a.centers.map(c => ({ ...c })) })),
-      building: r4(p.building),
+      lot: { kind: p.lot.kind, size: [cm(p.lot.size[0]), cm(p.lot.size[1])] },
+      hull: p.hull.map(r4),
       docks: p.docks.map(d => ({ ...d, x: cm(d.x), z: cm(d.z) })),
       zones: p.zones.map(zn => ({ ...zn, rect: r4(zn.rect) })),
       racks: p.racks.map(r => ({ ...r, x: cm(r.x), z: cm(r.z) })),
@@ -730,7 +738,6 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         if (mt) need((i === 0) === (mt.item === 'blister'), `план ${p.id}: линия ${ln.id} — первая машина делает блистеры, остальные работают с пачками`);
       });
     }
-    need(new Set(p.rooms.map(r => r.type)).size === p.rooms.length, `план ${p.id}: тип помещения повторяется — стадия не знает, куда идти`);
     for (const e of p.equipment) {
       need(raw.equipment[e.type], `план ${p.id}: оборудование ${e.id} — нет вида ${e.type}`);
       need(p.rooms.some(r => r.id === e.room), `план ${p.id}: оборудование ${e.id} — нет помещения ${e.room}`);
@@ -1215,6 +1222,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     agreements,
     policies,
     capa,
+    rooms,
     seasons: raw.seasons,
   };
 }

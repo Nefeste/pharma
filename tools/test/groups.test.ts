@@ -59,7 +59,13 @@ describe('поля состояния — группами', () => {
     expect(heads).toEqual(raw.heads as typeof heads);
     const out = s as unknown as Box;
     const moved = new Set(MOVED.map(([k]) => k));
-    for (const k of Object.keys(raw)) if (!moved.has(k) && k !== 'schema' && k !== 'heads') expect(out[k]).toEqual(raw[k]);
+    for (const k of Object.keys(raw)) if (!moved.has(k) && k !== 'schema' && k !== 'heads' && k !== 'plan') expect(out[k]).toEqual(raw[k]);
+    // план — тот же, только здание стало участком и корпусом: внутренность без стен здания, участок «Завод»
+    const { building, ...rest } = raw.plan as Box & { building: [number, number, number, number] };
+    const { hull, lot, ...plan } = s.plan;
+    expect(plan).toEqual(rest as typeof plan);
+    expect(hull).toEqual([[building[0] + 100, building[1] + 100, building[2] - 200, building[3] - 200]]);
+    expect(lot).toEqual({ kind: 'plant', size: [12000, 8000] });
     expect(Object.keys(s).length).toBe(Object.keys(raw).length - 5 + 1);
   });
 

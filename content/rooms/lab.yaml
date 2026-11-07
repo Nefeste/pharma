@@ -1,0 +1,10 @@
+# лаборатория ОКК — отдельно от производства. Наименьший размер со стенами — гипотеза: источника нет
+id: room.lab
+role: lab
+grades: [cnc]
+vehicles: false
+area: QC
+min: [6, 6]
+build: false
+source: [gmp-eaeu]
+review: draft

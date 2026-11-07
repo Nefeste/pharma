@@ -127,15 +127,18 @@ first, or copy the working code of Bolnitsa on the same versions.
   the event agenda as a heap in plain arrays and the calendar without `Date` with the production calendar — holidays,
   transfers, short days, the month's norm — ours), `types.ts` (state — with Б7а the building plan and its revision —,
   commands, notices, `SCHEMA`), `engine.ts` (`newPlant`, `apply`, `catchUp`, events), `random.ts` (named branches in the
-  state, the integer normal draw), `save.ts` (snapshot and migrations), `nav.ts` (the plan's 1 m grid: walls, doors and
-  footprints, where people may walk and vehicles may drive, access cells, distance fields cached per plan, route length
+  state, the integer normal draw), `save.ts` (snapshot and migrations), `nav.ts` (the plan's 1 m grid — with Б7б up to the hull's walls, a hull cell
+  without a room unbuilt —: walls, doors and footprints, where people may walk and vehicles may drive, access cells, distance fields cached per plan, route length
   and the route polyline shared with the window, a point along it in whole centimetres), `plant.ts` (slots, docks,
   rooms, the lab, work points, posts of roles and distances along the plan's routes; with Б7а from the plan in the
   state, kept per plan object — `planOf`), `site/checks.ts` (with Б7а, the layout checks as engine functions — doors on
   walls between two rooms or a room and the street, docks in an outer wall and on dock gates, class D only through an
   airlock and vehicles no further than it, amenities not opening into production or storage, zones, equipment and
   machines on the floor of their room, reachability on foot and by vehicle, posts on walkable floor, the first floor; an
-  error is a code and a thing, the words are the caller's — the content builder's, with Б7б the building's), `stock.ts`
+  error is a code and a thing, the words are the caller's — the content builder's, with Б7б the building's; with Б7б the
+  hull on the lot and in one piece, rooms in the hull, of a catalog type, with its classes, vehicles and smallest size,
+  a type not built twice, racks on their room's floor, the role of a room from the catalog, and each error's level —
+  no, red (the room does not work) or yellow (a remark), `levelOf`), `stock.ts`
   (lots, containers, pallets, slots, the lot status table; with 0.0.57 the places of quarantine and the cold room held
   for pallets at sampling —
   a putaway from receiving takes only those above them, `heldForSampled`), `supply.ts` (purchase orders; the supply
@@ -690,7 +693,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   analog `alt`, the second makers of the APIs with their suppliers and agreements, maize starch, the supply head's
   policy «кому заказывать» and the scenario's `supply.who`, the offer weights `supply.rfq` and the dossier variation
   terms `partners.variation`; with Б7а — the floor of a plan's rooms, docks and points, in 1.0 the first, set by the
-  builder);
+  builder; with Б7б — `rooms/`: room types — the role in the layout checks, classes, vehicles, the ISA-95 area of a new
+  room, the smallest size, built in Б7б or not, a washing room's two doorways —, and a plan's lot and hull);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a

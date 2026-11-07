@@ -1,0 +1,10 @@
+# шлюз для материалов: перекладка с деревянной паллеты, обработка тары. Наименьший размер со стенами — гипотеза: источника нет
+id: room.airlock.material
+role: airlockMaterial
+grades: [D]
+vehicles: true
+area: TB
+min: [4, 4]
+build: true
+source: [gmp-eaeu]
+review: draft

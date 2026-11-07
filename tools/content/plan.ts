@@ -9,6 +9,30 @@ const thingText = (t: SiteThing) => (t.kind === 'room' ? `помещение ${t
 /** Ошибка планировки словами сборщика. */
 export function siteErrorText(e: SiteError): string {
   switch (e.code) {
+    case 'lot':
+      return `корпус ${e.hull + 1} со стенами — не на участке`;
+    case 'hullJoin':
+      return 'внутренность корпуса — не один кусок';
+    case 'roomType':
+      return `помещение ${e.room}: типа ${e.type} нет в каталоге content/rooms/`;
+    case 'outsideHull':
+      return `помещение ${e.room} — не в корпусе`;
+    case 'small':
+      return `помещение ${e.room} меньше наименьшего размера типа — ${e.min[0]} × ${e.min[1]}`;
+    case 'grade':
+      return `помещение ${e.room}: класс, которого типу нельзя`;
+    case 'vehicles':
+      return `помещение ${e.room}: тип технику не пускает`;
+    case 'twice':
+      return `тип помещения ${e.type} повторяется — стадия не знает, куда идти`;
+    case 'rackFloor':
+      return `стеллаж ${e.rack}: клетка (${e.x}, ${e.z}) — не на полу своего помещения`;
+    case 'rejectedShared':
+      return `зона отклонённого ${e.zone} — не в отдельном помещении`;
+    case 'washDoors':
+      return `у мойки ${e.room} один проём на вход грязного и выход чистого`;
+    case 'oneAirlock':
+      return `сырьё и готовая продукция идут через один шлюз ${e.room}`;
     case 'doorWall':
       return `дверь ${e.door + 1} (${e.x}, ${e.z}) — не на стене`;
     case 'doorSides':

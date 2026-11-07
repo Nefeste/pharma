@@ -598,6 +598,24 @@ export const regime = z.strictObject({
 });
 
 /**
+ * Тип помещения (Б7б; геймдизайн, §3.2, §3.4): роль в проверках планировки, классы, которые ему можно, пускают ли технику,
+ * участок ISA-95 нового помещения, наименьший размер со стенами — меньшая и большая сторона, клеток, — строится ли в Б7б,
+ * у мойки — свой проём на вход грязного и на выход чистого. Тип плана — идентификатор без приставки `room.`.
+ */
+export const roomType = z.strictObject({
+  id: z.string(),
+  role: z.enum(['production', 'storage', 'airlockPeople', 'airlockMaterial', 'sampling', 'corridor', 'lab', 'workshop', 'amenity', 'changing', 'office']),
+  grades: z.array(z.enum(['D', 'cnc'])).min(1),
+  vehicles: z.boolean(),
+  area: z.string().regex(/^[A-Z]{2}$/, 'код участка — две латинские буквы').optional(),
+  min: z.tuple([z.number().int().min(3), z.number().int().min(3)]).refine(([a, b]) => a <= b, { message: 'наименьший размер — сначала меньшая сторона' }),
+  build: z.boolean(),
+  twoWay: z.literal(true).optional(),
+  source: sources.optional(),
+  review,
+});
+
+/**
  * Сезон спроса группы товаров (Б6в; геймдизайн, §10.1): индекс каждого месяца с января по декабрь, % среднего месяца —
  * целые больше нуля, вместе 1200. Когда пик — по источникам, сколько — гипотеза.
  */
@@ -729,8 +747,12 @@ export const plant = z.strictObject({
       }),
     )
     .min(1),
-  /** здание — прямоугольник клеток со стенами по краю */
-  building: cells,
+  /**
+   * участок (Б7б; геймдизайн, §3.1): «Цех», «Завод» или «Большой завод», клеток — на восток и на юг от начала координат;
+   * корпус — прямоугольники внутренности, клеток: стены корпуса — клетки вокруг них
+   */
+  lot: z.strictObject({ kind: z.enum(['shop', 'plant', 'big']), size: z.tuple([z.number().int().positive(), z.number().int().positive()]) }),
+  hull: z.array(cells).min(1),
   docks: z.array(z.strictObject({ id: z.string(), kind: z.enum(['in', 'out']), x: z.number(), z: z.number(), floor })).min(1),
   zones: z.array(
     z.strictObject({
@@ -1276,6 +1298,7 @@ export const KINDS = {
   seasons: { prefix: 'sea', schema: season },
   policies: { prefix: 'pol', schema: policy },
   capa: { prefix: 'capa', schema: capa },
+  rooms: { prefix: 'room', schema: roomType },
 } as const;
 
 export type Kind = keyof typeof KINDS;

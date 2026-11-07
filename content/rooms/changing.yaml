@@ -1,0 +1,9 @@
+# гардероб у входа. Наименьший размер со стенами — гипотеза: источника нет
+id: room.changing
+role: changing
+grades: [cnc]
+vehicles: false
+min: [5, 5]
+build: true
+source: [gmp-eaeu]
+review: draft

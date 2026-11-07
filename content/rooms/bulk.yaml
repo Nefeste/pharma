@@ -1,0 +1,10 @@
+# промежуточный склад полупродукта в чистой зоне. Наименьший размер со стенами — гипотеза: источника нет
+id: room.bulk
+role: storage
+grades: [D]
+vehicles: true
+area: TB
+min: [5, 5]
+build: false
+source: [gmp-eaeu]
+review: draft

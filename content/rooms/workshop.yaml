@@ -1,0 +1,10 @@
+# мастерская техслужбы со складом ЗИП — вне производственных зон. Наименьший размер со стенами — гипотеза: источника нет
+id: room.workshop
+role: workshop
+grades: [cnc]
+vehicles: true
+area: MT
+min: [5, 5]
+build: false
+source: [gmp-eaeu]
+review: draft

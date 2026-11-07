@@ -1,0 +1,10 @@
+# пробоотборная с ламинаром, классом не ниже отвешивания. Наименьший размер со стенами — гипотеза: источника нет
+id: room.sampling
+role: sampling
+grades: [D]
+vehicles: false
+area: WH
+min: [5, 5]
+build: false
+source: [gmp-eaeu]
+review: draft

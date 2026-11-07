@@ -1,0 +1,9 @@
+# комната мастера и ООК. Наименьший размер со стенами — гипотеза: источника нет
+id: room.office
+role: office
+grades: [cnc]
+vehicles: false
+min: [4, 5]
+build: true
+source: [gmp-eaeu]
+review: draft

@@ -1,0 +1,9 @@
+# шлюз для людей с переодеванием. Наименьший размер со стенами — гипотеза: источника нет
+id: room.airlock.people
+role: airlockPeople
+grades: [D]
+vehicles: false
+min: [4, 4]
+build: true
+source: [gmp-eaeu]
+review: draft

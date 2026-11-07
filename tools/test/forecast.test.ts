@@ -31,7 +31,7 @@ const SKUS = [...new Set(sc.plan!.items.map(i => i.sku))];
 const N20 = 'sku.paracetamol500.n20';
 const LOR = 'sku.loratadine10.n10';
 const refusals = (n: Notice[]) => n.filter(x => x.kind === 'refused').map(x => [(x as Extract<Notice, { kind: 'refused' }>).why, (x as Extract<Notice, { kind: 'refused' }>).detail]);
-const fc = (s: PlantState) => s.forecast!;
+const fc = (s: PlantState) => s.planning.forecast!;
 const COLD = db.seasons['sea.cold'].months;
 
 /** Завод игры на старте и он же 1 ноября 2027 года в 01:00 — после двух закрытых месяцев. */
@@ -65,7 +65,7 @@ describe('сезон спроса', () => {
     expect(F.seasonSec(db, s0, N20, at(2028, 1, 31), at(2028, 2, 2))).toBe((DAY * 125) / 100 + (DAY * 125) / 100);
     expect(F.seasonSec(db, s0, LOR, at(2028, 4, 30, 12), at(2028, 5, 1, 12))).toBe((12 * HOUR * 110) / 100 + (12 * HOUR * 135) / 100);
     const l = newPlant(legacy, { scenario: SC });
-    expect(l.forecast).toBeUndefined();
+    expect(l.planning.forecast).toBeUndefined();
     expect(F.seasonSec(legacy, l, N20, a, b)).toBe(b - a);
   });
 });

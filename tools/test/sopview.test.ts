@@ -36,9 +36,9 @@ describe('окно S&OP', () => {
     expect(v.products).toEqual([PARA, LOR]);
     expect(v.covers).toEqual(SOP_COVERS);
     expect(v.shown).toBe('best');
-    expect(v.open).toEqual({ at: at(2027, 9, 3, 10), best: s.sop!.open!.best, value: s.sop!.open!.value });
-    expect(v.cover).toEqual(s.sop!.open!.best);
-    expect(v.value).toBe(s.sop!.open!.value);
+    expect(v.open).toEqual({ at: at(2027, 9, 3, 10), best: s.planning.sop!.open!.best, value: s.planning.sop!.open!.value });
+    expect(v.cover).toEqual(s.planning.sop!.open!.best);
+    expect(v.value).toBe(s.planning.sop!.open!.value);
     expect(v.gap).toBe(0);
     // следующее совещание — в октябре
     expect(v.next).toBe(at(2027, 10, 5, 10));
@@ -76,14 +76,14 @@ describe('окно S&OP', () => {
     const v = sopView(db, s, { view: 'sop', draft });
     expect(v.shown).toBe('draft');
     expect(v.cover).toEqual(draft);
-    expect(v.gap).toBe(Math.max(0, s.sop!.open!.value - v.value));
-    expect(v.value).not.toBe(s.sop!.open!.value);
+    expect(v.gap).toBe(Math.max(0, s.planning.sop!.open!.value - v.value));
+    expect(v.value).not.toBe(s.planning.sop!.open!.value);
     expect(v.over).toBeUndefined();
     // запас 28 суток ровно — цель выше лучшего: лучший не берёт резерв мощности, а этот план — берёт
     const flat28 = { [PARA]: Array(6).fill(28), [LOR]: Array(6).fill(28) };
     const w = sopView(db, s, { view: 'sop', draft: flat28 });
-    expect(w.value).toBeGreaterThan(s.sop!.open!.value);
-    expect(w.over).toBe(w.value - s.sop!.open!.value);
+    expect(w.value).toBeGreaterThan(s.planning.sop!.open!.value);
+    expect(w.over).toBe(w.value - s.planning.sop!.open!.value);
     expect(w.gap).toBe(0);
     const hplc = w.res.find(r => r.res === 'hplc')!;
     expect(hplc.load.some((x, i) => x > hplc.line[i])).toBe(true);
@@ -108,7 +108,7 @@ describe('окно S&OP', () => {
     expect(v.shown).toBe('policy');
     expect(v.cover[PARA]).toEqual(Array(6).fill(v.policy));
     expect(v.next).toBe(at(2027, 9, 3, 10));
-    delete p.forecast;
+    delete p.planning.forecast;
     expect(sopView(db, p, { view: 'sop' }).none).toBe(true);
   });
 
@@ -134,7 +134,7 @@ describe('планёрка', () => {
     // без мест — план утверждает коллега; на планёрке 4 сентября — итог
     apply(db, p, { kind: 'advance', seconds: at(2027, 9, 4, 8) - p.t });
     const x = sopMeeting(db, p, at(2027, 9, 4, 8))!;
-    const plan = p.sop!.plans[0];
+    const plan = p.planning.sop!.plans[0];
     expect(x.today).toBeUndefined();
     expect(x.plan).toEqual({ at: plan.at, from: SEP, to: SEP + 5, by: 'head:plan', cover: [PARA, LOR].map(product => ({ product, days: plan.cover[product][0] })), gap: 0 });
     // через сутки — блока нет

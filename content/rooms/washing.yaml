@@ -1,0 +1,11 @@
+# мойка: свой вход грязного и выход чистого оборудования. Наименьший размер со стенами — гипотеза: источника нет
+id: room.washing
+role: production
+grades: [D]
+vehicles: true
+area: TB
+min: [4, 6]
+build: false
+twoWay: true
+source: [gmp-eaeu]
+review: draft

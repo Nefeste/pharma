@@ -495,6 +495,16 @@ function production(db: ContentDb, s: PlantState, bad: string[]) {
     const room = b?.room ? s.rooms[b.room] : undefined;
     if (!room || room.batch !== b.id || room.status !== 'busy') bad.push(`задача ${t.id}: стадия серии ${t.batch} не в её помещении`);
   }
+  // стройка (Б7б): учёт помещений — у каждого помещения плана и только у них; перестраиваемое и сносимое — в плане
+  const ids = new Set(s.plan.rooms.map(r => r.id));
+  for (const id of Object.keys(s.rooms)) if (!ids.has(id)) bad.push(`учёт помещения ${id}: его нет в плане`);
+  for (const id of ids) if (!s.rooms[id]) bad.push(`помещение ${id}: нет учёта`);
+  const st = s.build;
+  if (st?.editing !== undefined && !ids.has(st.editing)) bad.push(`стройка: перестраиваемого ${st.editing} нет в плане`);
+  for (const l of st?.leaving ?? []) {
+    const list: readonly { id: string }[] = l.what === 'room' ? s.plan.rooms : l.what === 'zone' ? s.plan.zones : s.plan.racks;
+    if (!list.some(x => x.id === l.id)) bad.push(`стройка: сносимого ${l.id} нет в плане`);
+  }
 }
 
 /**

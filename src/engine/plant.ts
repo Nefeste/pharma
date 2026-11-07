@@ -41,7 +41,10 @@ export interface PlantPlan {
   dock: Record<string, Point & { kind: 'in' | 'out' }>;
   /** рабочие точки помещений: своя точка записи или середина */
   room: Record<string, Point & { type: string }>;
-  /** помещение по типу: в плане тип помещения не повторяется (проверяет сборка базы) */
+  /**
+   * помещение по типу: тип, который не строят, в плане один (siteErrors, `twice`); у типа, который строят (Б7б), —
+   * первое по порядку плана: новое помещение того же типа не меняет, куда идут прежние работы
+   */
   roomOf: Record<string, string>;
   /** центр лаборатории: там работают аналитики и начальник ОКК */
   lab: Point;
@@ -118,7 +121,7 @@ export function planOf(db: ContentDb, plant: Plant): PlantPlan {
   const room: PlantPlan['room'] = {};
   for (const r of plant.rooms) room[r.id] = r.at ? { x: r.at[0], z: r.at[1], type: r.type } : { x: r.rect[0] + Math.floor(r.rect[2] / 2), z: r.rect[1] + Math.floor(r.rect[3] / 2), type: r.type };
   const roomOf: Record<string, string> = {};
-  for (const r of plant.rooms) roomOf[r.type] = r.id;
+  for (const r of plant.rooms) roomOf[r.type] ??= r.id;
   const lab = Object.values(room).find(r => r.type === 'lab');
   if (!lab) throw new Error(`plant ${plant.id}: no lab`);
   const nav = buildNav(db, plant);

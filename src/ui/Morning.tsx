@@ -955,6 +955,11 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
             <div className="mblock">
               <div className="mhead">{T.morning.cashTitle}</div>
               <div>{T.morning.cash(money(v.cash.balance), money(v.cash.day, true))}</div>
+              {v.cash.build !== undefined ? (
+                <div className="muted" data-test="morning-build">
+                  {T.morning.build(money(v.cash.build))}
+                </div>
+              ) : null}
               {v.cash.next ? (
                 <div className="muted">{T.morning.next(dayText(momentOf(start, v.cash.next.due).day), T.cash.items[v.cash.next.item], money(v.cash.next.sum))}</div>
               ) : null}

@@ -129,7 +129,6 @@ describe('сохранение и база', () => {
       plant: base.plant,
       start: { date: '2027-09-01', hour: 7 },
       seed: 1,
-      site: { w: 60, h: 40 },
       cash: 1,
       credit: { limit: 0, spread: 0 },
       energy: { price: 1 },

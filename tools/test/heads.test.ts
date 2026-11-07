@@ -46,7 +46,7 @@ function liveAccepting(s: PlantState, end: number) {
       expect(refusals(apply(db, s, { kind: 'accept', n: a.n }))).toEqual([]);
       accepted++;
     }
-    if (meet) expect(refusals(apply(db, s, { kind: 'sop', cover: s.sop!.open!.best, by: 'player' }))).toEqual([]);
+    if (meet) expect(refusals(apply(db, s, { kind: 'sop', cover: s.planning.sop!.open!.best, by: 'player' }))).toEqual([]);
     if (rest !== undefined) s.until = rest;
   }
   return accepted;
@@ -65,7 +65,7 @@ const life = (s: PlantState) => ({
   // мгновения, руководители и причины, по порядку (номера записей сдвинуты развилками); план S&OP (Б6г) утверждает пост —
   // запись «вы», а не начальника, — а планы те же
   journal: s.journal.filter(r => r.d.kind !== 'fork' && r.d.kind !== 'sop').map(({ t, by, d }) => ({ t, by, d })),
-  sop: (s.sop?.plans ?? []).map(p => [p.at, p.from, p.cover, p.value, p.best]),
+  sop: (s.planning.sop?.plans ?? []).map(p => [p.at, p.from, p.cover, p.value, p.best]),
 });
 
 describe('режим по умолчанию', () => {
@@ -287,7 +287,9 @@ describe('сохранение и прогон плана', () => {
 
   test('образец схемы 33 читается: выбора нет — режимы по местам, предложений нет; советуют с первого часа', async () => {
     const s = fromSave(db, await Bun.file(new URL('./fixtures/save-v33.json', import.meta.url)).text());
-    expect(s.heads).toEqual({ mode: {}, open: {}, no: {} });
+    // с Б7б в `heads` — и заместители, «Некому решить» и отработанные правила: их ставят шаги с 35 → 36
+    const { deputies: _d, noOne: _n, ruled: _r, ...heads } = s.heads;
+    expect(heads).toEqual({ mode: {}, open: {}, no: {} });
     // в образце взяты посты производства и качества: их отделы советуют, снабжение и склад — «сам»
     expect(Object.fromEntries(MODED.map(h => [h, modeOf(s, h)]))).toEqual({ plan: 'advise', mes: 'advise', maint: 'advise', qa: 'advise', qc: 'advise', supply: 'auto', wms: 'auto' });
     expect(s.journal.some(r => r.ask)).toBe(false);
@@ -300,7 +302,8 @@ describe('сохранение и прогон плана', () => {
     const json = await Bun.file(new URL('./fixtures/save-v34.json', import.meta.url)).text();
     const s = fromSave(db, json);
     const raw = JSON.parse(json) as PlantState;
-    expect(s.heads).toEqual(raw.heads);
+    const { deputies: _d, noOne: _n, ruled: _r, ...heads } = s.heads;
+    expect(heads).toEqual(raw.heads);
     expect(s.heads.mode.maint).toBe('manual');
     expect(new Set(asks(s).flatMap(r => (r.ask!.end ? [r.ask!.end.how] : [])))).toEqual(new Set(['ok', 'no', 'stale', ...asks(s).flatMap(r => (r.ask!.end?.how === 'moot' ? ['moot' as const] : []))]));
     const r = open(s)[0];

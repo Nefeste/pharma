@@ -1,0 +1,10 @@
+# холодная камера — помещение хранения со своим режимом. Наименьший размер со стенами — гипотеза: источника нет
+id: room.cold
+role: storage
+grades: [cnc]
+vehicles: true
+area: WH
+min: [5, 5]
+build: false
+source: [gmp-eaeu]
+review: draft

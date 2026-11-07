@@ -3,11 +3,12 @@
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
 import type { Attr, Dept, DevClass, FcMethod, HeadId, Id, IncidentRoot, OvertimeMode, Plant, SeatId, TaskKind, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
+import type { BuildError, BuildOp } from './site/edit';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 47;
+export const SCHEMA = 48;
 
 // ---------------------------------------------------------------- склад
 
@@ -950,7 +951,7 @@ export type { TaskKind } from '../content/types';
  * ролей, которые были бы в смене, в отпуске, а заместителя в смене нет (Б4г). В потерях
  * суток есть ещё ожидание фуры: рампа занята (3а) — это ждёт не задача, а фура во дворе.
  */
-export type WaitCause = 'people' | 'shift' | 'vehicle' | 'instrument' | 'place' | 'dock' | 'qual' | 'asset' | 'hours' | 'leave';
+export type WaitCause = 'people' | 'shift' | 'vehicle' | 'instrument' | 'place' | 'dock' | 'qual' | 'asset' | 'hours' | 'leave' | 'down';
 
 /** Место задачи: место паллеты, рампа с фурой или точка. */
 export type Place = { kind: 'slot'; id: string } | { kind: 'truck'; id: string } | { kind: 'point'; x: number; z: number };
@@ -1005,7 +1006,10 @@ export interface Task {
   since?: number;
   /** ждёт «нет допуска» (Б3б): код документа, которого не хватает */
   lack?: string;
-  /** ждёт актив (Б3в): прибор или датчик зоны, который не пригоден; у приёмки работы подрядчика — чей актив */
+  /**
+   * ждёт актив (Б3в): прибор или датчик зоны, который не пригоден; у приёмки работы подрядчика — чей актив; ждёт «помещение
+   * не работает» (Б7б) — помещение или сносимая зона, ряд стеллажа
+   */
   unfit?: string;
   asset?: string;
   /** оценка пары «поставщик — изготовитель» (Б3г): рассмотрение отчёта аудитора или документов — какой пары */
@@ -1070,7 +1074,9 @@ export type PlantEvent =
   /** час ответа на служебную записку `n` (Б5д): руководитель отвечает, если он в своём рабочем времени */
   | { kind: 'memo'; n: number; v: number }
   /** срок ответа на вопрос «Просят решить» `n` (Б5д): не ответили — руководитель решает сам, как сейчас */
-  | { kind: 'ask'; n: number; v: number };
+  | { kind: 'ask'; n: number; v: number }
+  /** стройка (Б7б): снести то, что освободилось; что-то ещё ждёт — проверить снова через шаг проверки сценария */
+  | { kind: 'siteFree' };
 
 // ---------------------------------------------------------------- рынок и касса
 
@@ -1149,7 +1155,7 @@ export interface Shipment {
   vat: number;
 }
 
-export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle' | 'vacation' | 'waste' | 'poFast' | 'poCancel';
+export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle' | 'vacation' | 'waste' | 'poFast' | 'poCancel' | 'build';
 
 // ---------------------------------------------------------------- техслужба
 
@@ -1981,6 +1987,35 @@ export interface HeadsState {
   /** открытые вопросы «Просят решить» по вещи (Б5д) и о чём уже спрашивали — вещь и её случай, чтобы не спросить дважды */
   qs?: Record<string, number>;
   asked?: Record<string, string>;
+  /**
+   * заместители руководителей (Б5в, src/engine/bosses.ts): назначенный игроком человек; '' — заместителя сняли; нет
+   * записи — первый по табельному номеру человек роли заместителя из записи сценария. С Б7б — здесь, а не полем
+   * состояния
+   */
+  deputies?: Partial<Record<HeadId, string>>;
+  /** у кого из руководителей уже сказано «Некому решить» (Б5в): до часа, когда снова есть кому */
+  noOne?: Partial<Record<Head, true>>;
+  /** правила руководителей в свой час (Б5в): день, когда правило отработало, — оно ждёт смены того, кто решает */
+  ruled?: Record<string, number>;
+}
+
+/**
+ * Планирование (с Б7б — одним полем состояния: у объекта с 65 и больше полями JavaScriptCore и V8 читают их в 4–5 раз
+ * медленнее, docs/02-architecture.md, §1).
+ */
+export interface PlanningState {
+  /**
+   * сменно-суточные задания (Б6б; src/engine/daily.ts) за срок геймдизайна (§9.4), последнее — сутки, которые идут;
+   * правила их не читают. Нет — заданий не ставят: так у копии прогона плана; сохранения до схемы 40 начинают их
+   * пустыми
+   */
+  daily?: DailyTask[];
+  /** прогноз продаж (Б6в; src/engine/forecast.ts): у сценария без прогноза — нет */
+  forecast?: ForecastState;
+  /** совещание S&OP (Б6г): утверждённые планы и открытое совещание; нет — плана нет, правило берёт политику */
+  sop?: SopState;
+  /** события коммерции (Б6е): нет — у сценария без записи `commerce` или до первого часа событий */
+  commerce?: CommerceState;
 }
 
 /**
@@ -2087,30 +2122,30 @@ export interface PlantState {
   journal: Decision[];
   /** режимы отделов (Б5б; src/engine/heads.ts): выбор игрока, указатели открытых и отклонённых сегодня предложений */
   heads: HeadsState;
-  /**
-   * заместители руководителей (Б5в, src/engine/bosses.ts): назначенный игроком человек; '' — заместителя сняли; нет
-   * записи — первый по табельному номеру человек роли заместителя из записи сценария
-   */
-  deputies?: Partial<Record<HeadId, string>>;
-  /** у кого из руководителей уже сказано «Некому решить» (Б5в): до часа, когда снова есть кому */
-  noOne?: Partial<Record<Head, true>>;
-  /** правила руководителей в свой час (Б5в): день, когда правило отработало, — оно ждёт смены того, кто решает */
-  ruled?: Record<string, number>;
-  /**
-   * сменно-суточные задания (Б6б; src/engine/daily.ts) за срок геймдизайна (§9.4), последнее — сутки, которые идут;
-   * правила их не читают. Нет — заданий не ставят: так у копии прогона плана; сохранения до схемы 40 начинают их пустыми
-   */
-  daily?: DailyTask[];
-  /** прогноз продаж (Б6в; src/engine/forecast.ts): у сценария без прогноза — нет */
-  forecast?: ForecastState;
-  /** совещание S&OP (Б6г): утверждённые планы и открытое совещание; нет — плана нет, правило берёт политику */
-  sop?: SopState;
-  /** события коммерции (Б6е): нет — у сценария без записи `commerce` или до первого часа событий */
-  commerce?: CommerceState;
+  /** планирование (с Б7б): сменно-суточные задания, прогноз продаж, S&OP и события коммерции */
+  planning: PlanningState;
   /** вывоз отклонённого (Б1з; src/engine/waste.ts): заказанный вывоз — один, пока подрядчик не уехал; журнал отходов */
   waste: WasteState;
   /** показатели руководителей (Б5ж; src/engine/kpi.ts): срезы суток этого месяца и закрытые месяцы */
   kpi: KpiState;
+  /** стройка (Б7б; src/engine/build.ts): шаги отмены, перестраиваемое, сносимое, счётчики имён, потрачено; не строили — нет */
+  build?: BuildState;
+}
+
+/**
+ * Стройка (Б7б): шаги отмены — последний в конце: номер шага, прежний план, что шаг заплатил с НДС (минус — вернул) и
+ * его НДС, перестраиваемое помещение до шага; перестраиваемое помещение — закрыто, пока игрок не нажал «Готово» или не
+ * взялся за другое; что сносится, когда освободится, — и шаг, в который записать возврат; счётчики имён новых вещей;
+ * потрачено на стройку с НДС, со сносом и отменой.
+ */
+export interface BuildState {
+  undo: { n: number; plan: SitePlan; paid: number; vat: number; editing?: string }[];
+  /** номер следующего шага отмены */
+  step: number;
+  editing?: string;
+  leaving: { what: 'room' | 'zone' | 'rack'; id: string; step: number }[];
+  next: Record<string, number>;
+  spent: number;
 }
 
 /**
@@ -2335,7 +2370,18 @@ export type Command =
    * одобрить пару-кандидата (Б6ж): ключ пары «поставщик — изготовитель» из кандидатов спецификации в силе — пост
    * «Качество» или директор
    */
-  | { kind: 'pairApprove'; pair: string; by?: string };
+  | { kind: 'pairApprove'; pair: string; by?: string }
+  /**
+   * стройка (Б7б; src/engine/build.ts): правка плана — помещение, корпус, дверь, зона, ряд стеллажа, проезд, снос — или
+   * «Готово» и отмена. Место директора: коллеги не строят
+   */
+  | { kind: 'site'; op: BuildOp | { op: 'done' } | { op: 'undo' } };
+
+/**
+ * Почему стройку не приняли, кроме ошибок правки плана (Б7б): не хватит денег — сколько; отменять нечего; отмена уберёт
+ * то, на что уже ссылаются серия, паллета или задача, — что; правка трогает сносимое — что; у сценария нет стройки.
+ */
+export type SiteRefusal = { code: 'money'; need: number } | { code: 'nothing' } | { code: 'inUse'; thing: string } | { code: 'leaving'; thing: string } | { code: 'noBuild' };
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
@@ -2499,6 +2545,14 @@ export type Refusal =
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
+  /**
+   * стройка (Б7б): правка принята — цена с НДС (у сноса — возврат минусом), имя вещи, снос занятого — «когда
+   * освободится»; не принята — почему; отложенный снос прошёл или больше не годится
+   */
+  | { kind: 'site'; op: string; ok: true; cost: number; thing?: string; later?: true }
+  | { kind: 'site'; op: string; ok: false; error: BuildError | SiteRefusal }
+  | { kind: 'siteGone'; what: 'room' | 'zone' | 'rack'; id: string; refund: number }
+  | { kind: 'siteKept'; what: 'room' | 'zone' | 'rack'; id: string; error: BuildError }
   /** совещание S&OP (Б6г): план начальника отдела планирования ждёт утверждения — или утверждён коллегой */
   | { kind: 'sop'; m: number; open: boolean }
   /**

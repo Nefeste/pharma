@@ -124,7 +124,7 @@ export function mrpPlan(db: ContentDb, s: PlantState): MrpResult {
   let nextDay = today + 1;
   while (!isWorkday(cal, nextDay)) nextDay++;
   const out: MrpResult = { from, today, arrive, rows: [], planned: [], msgs: [] };
-  if (!sc.plan || !sc.supply || !s.forecast) return out;
+  if (!sc.plan || !sc.supply || !s.planning.forecast) return out;
   const ctx = sopCtx(db, s, from, MRP_MONTHS, false);
   const plan: Record<Id, number[]> = {};
   for (const p of ctx.products) plan[p] = Array.from({ length: MRP_MONTHS }, (_, i) => sopCover(s, p, firstDay(from + i)) ?? ctx.policy);

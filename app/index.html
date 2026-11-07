@@ -47,6 +47,22 @@
     /* слои слева (Б1и; геймдизайн, §18): обычный вид, «Загрузка и OEE», «Потоки — люди»; окно и цвета частей словами */
     .layers { position: absolute; left: 8px; top: calc(var(--top-h, 48px) + 8px); width: 176px; padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; }
     .layers .lhead { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+    /* стройка (Б7б): панель инструментов на месте слоёв, строки призрака и ответа, подписи помещений поверх вида */
+    .layers.build { width: 236px; max-height: calc(100% - var(--top-h, 48px) - 24px); overflow-y: auto; }
+    .layers.build .row { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+    .layers.build .row button { padding: 2px 6px; font-size: 12px; }
+    .layers.build select, .layers.build input[type=number] { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
+    .layers.build input[type=number] { width: 52px; }
+    .layers.build .ghost { padding: 4px 6px; border-left: 3px solid var(--green); background: var(--panel-2); border-radius: 3px; }
+    .layers.build .ghost.warn { border-left-color: var(--yellow); }
+    .layers.build .ghost.bad { border-left-color: var(--red); }
+    .layers.build .keys { color: var(--muted); font-size: 11px; }
+    .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+    .rlabel { position: absolute; left: 0; top: 0; padding: 2px 7px; border-radius: 4px; background: rgba(22,30,34,.84); border-left: 3px solid var(--green); font-size: 11px; line-height: 1.25; white-space: nowrap; color: var(--text); }
+    .rlabel.bad { border-left-color: var(--red); }
+    .rlabel b { display: block; font-size: 12px; }
+    .rlabel span { color: var(--muted); }
+    .rlabel.bad span { color: #ffb4a6; }
     .layers > button { text-align: left; }
     .lwin { display: inline-flex; flex-wrap: wrap; gap: 2px; margin: 2px 0; }
     .lwin button { padding: 1px 6px; font-size: 11px; }

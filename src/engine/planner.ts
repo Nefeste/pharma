@@ -95,7 +95,7 @@ export function positionOf(db: ContentDb, s: PlantState, sku: Id, window: number
   }
   for (const o of Object.values(s.orders)) if (o.status === 'open') for (const l of o.lines) if (l.sku === sku) cases -= l.cases - l.shipped;
   // спрос по прогнозу планирования (Б6в): ящики прогноза на окно вперёд и рабочие дни в нём — тем же счётом, что окно заказов
-  if (s.forecast && policyOf(db, s, POL.demand) === 'forecast') {
+  if (s.planning.forecast && policyOf(db, s, POL.demand) === 'forecast') {
     const a = forecastAhead(db, s, sku, window);
     return { sku, cases, ordered: a.ordered, span: window * DAY, work: a.work };
   }
@@ -226,7 +226,7 @@ function pick(db: ContentDb, s: PlantState, items: { recipe: Id; sku: Id }[], co
   const horizon = frozenDays(frozenOf(db, s));
   const ahead = aheadMilli(horizon + cover);
   // спрос по прогнозу (Б6в) — в причине: положение позиций считали по нему
-  const fc = !!s.forecast && policyOf(db, s, POL.demand) === 'forecast';
+  const fc = !!s.planning.forecast && policyOf(db, s, POL.demand) === 'forecast';
   // с планом S&OP (Б6г) — запас позиций у продукта свой; в причине — у продукта выбранной позиции
   const productOf = (it: { recipe: Id }) => db.recipes[it.recipe].product;
   const aheadOf = coverOf ? (it: { recipe: Id }) => aheadMilli(horizon + coverOf(productOf(it))) : ahead;

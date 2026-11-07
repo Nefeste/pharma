@@ -1,0 +1,10 @@
+# отклонённое — отдельное запираемое помещение хранения. Наименьший размер со стенами — гипотеза: источника нет
+id: room.rejected
+role: storage
+grades: [cnc]
+vehicles: true
+area: WH
+min: [5, 5]
+build: false
+source: [gmp-eaeu]
+review: draft

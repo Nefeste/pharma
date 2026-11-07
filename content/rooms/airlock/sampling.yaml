@@ -1,0 +1,10 @@
+# шлюз пробоотборной: техника ставит паллету в шлюз, дальше шлюза не въезжает. Наименьший размер со стенами — гипотеза: источника нет
+id: room.airlock.sampling
+role: airlockMaterial
+grades: [D]
+vehicles: true
+area: WH
+min: [4, 4]
+build: false
+source: [gmp-eaeu]
+review: draft

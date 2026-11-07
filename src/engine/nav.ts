@@ -6,8 +6,11 @@
 // результат кэш не влияет.
 import type { ContentDb, Plant } from '../content/types';
 
-/** Вид клетки (как сетка «Больницы»): улица, пол помещения, коридор, стена, дверь. */
-export const CELL = { outside: 0, floor: 1, corridor: 2, wall: 3, door: 4 } as const;
+/**
+ * Вид клетки (как сетка «Больницы»): улица, пол помещения, коридор, стена, дверь; с Б7б — корпус без помещения, «не
+ * застроено»: не пол и не коридор, по нему не ходят и не ездят, дверь в него не ставят.
+ */
+export const CELL = { outside: 0, floor: 1, corridor: 2, wall: 3, door: 4, unbuilt: 5 } as const;
 export type CellKind = (typeof CELL)[keyof typeof CELL];
 
 /** Кто идёт: человек пешком или техника. */
@@ -28,6 +31,8 @@ export interface Nav {
   w: number;
   h: number;
   cells: Uint8Array;
+  /** корпус (Б7б): 1 — внутренность, 2 — стена корпуса, 0 — вне корпуса */
+  hull: Uint8Array;
   /** номер помещения клетки в `plant.rooms` (пол и стены — последнего, кто их поставил); −1 — нет */
   room: Int16Array;
   /** номер двери клетки в `plant.doors`; −1 — нет */
@@ -78,10 +83,48 @@ export function footprints(db: ContentDb, plant: Plant): [number, number, number
 }
 
 
+/**
+ * Размер сетки, клеток: до дальней от начала координат стены корпуса или помещения. Сетка — не весь участок, а корпус:
+ * поля расстояний не растут с участком, пока корпус тот же.
+ */
+export function gridOf(plant: Plant): [number, number] {
+  let w = 0;
+  let h = 0;
+  for (const [x, z, rw, rd] of plant.hull) {
+    w = Math.max(w, (x + rw) / CELL_CM + 1);
+    h = Math.max(h, (z + rd) / CELL_CM + 1);
+  }
+  for (const r of plant.rooms) {
+    w = Math.max(w, (r.rect[0] + r.rect[2]) / CELL_CM);
+    h = Math.max(h, (r.rect[1] + r.rect[3]) / CELL_CM);
+  }
+  return [w, h];
+}
+
+/** Корпус на сетке (Б7б): внутренность — 1, стены корпуса — клетки вокруг неё, с углами, — 2, остальное — 0. */
+function hullOf(plant: Plant, w: number, h: number): Uint8Array {
+  const hull = new Uint8Array(w * h);
+  for (const r of plant.hull) {
+    const [x0, z0, x1, z1] = cellsOf(r);
+    for (let z = Math.max(0, z0); z <= z1 && z < h; z++) for (let x = Math.max(0, x0); x <= x1 && x < w; x++) hull[z * w + x] = 1;
+  }
+  for (let z = 0; z < h; z++) {
+    for (let x = 0; x < w; x++) {
+      if (hull[z * w + x] === 1) continue;
+      let wall = false;
+      for (let dz = -1; dz <= 1 && !wall; dz++) for (let dx = -1; dx <= 1 && !wall; dx++) {
+        const nx = x + dx;
+        const nz = z + dz;
+        wall = nx >= 0 && nz >= 0 && nx < w && nz < h && hull[nz * w + nx] === 1;
+      }
+      if (wall) hull[z * w + x] = 2;
+    }
+  }
+  return hull;
+}
+
 export function buildNav(db: ContentDb, plant: Plant): Nav {
-  const [bx, bz, bw, bd] = plant.building;
-  const w = (bx + bw) / CELL_CM;
-  const h = (bz + bd) / CELL_CM;
+  const [w, h] = gridOf(plant);
   const n = w * h;
   const cells = new Uint8Array(n);
   const room = new Int16Array(n).fill(-1);
@@ -90,22 +133,26 @@ export function buildNav(db: ContentDb, plant: Plant): Nav {
   const walk = new Uint8Array(n);
   const drive = new Uint8Array(n);
   const at = (x: number, z: number) => z * w + x;
-  // здание, затем помещения по порядку записи: стены — край прямоугольника, внутри — пол или коридор
+  // корпус (Б7б): внутренность — «не застроено», стены корпуса — вокруг неё; затем помещения по порядку записи: стены —
+  // край прямоугольника, внутри — пол или коридор (роль типа из каталога)
+  const hull = hullOf(plant, w, h);
+  for (let i = 0; i < n; i++) cells[i] = hull[i] === 1 ? CELL.unbuilt : hull[i] === 2 ? CELL.wall : CELL.outside;
   const ring = (r: readonly [number, number, number, number], inner: CellKind, idx: number) => {
     const [x0, z0, x1, z1] = cellsOf(r);
-    for (let z = z0; z <= z1; z++) {
-      for (let x = x0; x <= x1; x++) {
+    for (let z = Math.max(0, z0); z <= z1 && z < h; z++) {
+      for (let x = Math.max(0, x0); x <= x1 && x < w; x++) {
         const edge = x === x0 || x === x1 || z === z0 || z === z1;
         cells[at(x, z)] = edge ? CELL.wall : inner;
         room[at(x, z)] = idx;
       }
     }
   };
-  ring(plant.building, CELL.floor, -1);
-  plant.rooms.forEach((r, i) => ring(r.rect, r.type.startsWith('corridor') ? CELL.corridor : CELL.floor, i));
+  plant.rooms.forEach((r, i) => ring(r.rect, db.rooms[r.type]?.role === 'corridor' ? CELL.corridor : CELL.floor, i));
   plant.doors.forEach((d, i) => {
     for (let k = 0; k < d.len; k++) {
       const [x, z] = d.along === 'x' ? [d.cell[0] + k, d.cell[1]] : [d.cell[0], d.cell[1] + k];
+      // дверь за краем сетки — ошибка плана (siteErrors, `doorWall`), а не клетка соседнего ряда
+      if (x < 0 || z < 0 || x >= w || z >= h) continue;
       cells[at(x, z)] = CELL.door;
       door[at(x, z)] = i;
     }
@@ -132,7 +179,7 @@ export function buildNav(db: ContentDb, plant: Plant): Nav {
       drive[i] = room[i] >= 0 && plant.rooms[room[i]].vehicles ? 1 : 0;
     }
   }
-  return { w, h, cells, room, door, blocked, walk, drive, known: new Map(), access: { walk: new Map(), drive: new Map() }, fields: { walk: new Map(), drive: new Map() } };
+  return { w, h, cells, hull, room, door, blocked, walk, drive, known: new Map(), access: { walk: new Map(), drive: new Map() }, fields: { walk: new Map(), drive: new Map() } };
 }
 
 /** Номер клетки точки, см. */
@@ -187,7 +234,7 @@ function searchAccess(nav: Nav, p: Point, ok: Uint8Array): number {
     if (ok[c]) return c;
     neighbours(nav, c, nb);
     for (const m of nb) {
-      if (m < 0 || seen[m] || nav.cells[m] === CELL.wall || nav.cells[m] === CELL.outside) continue;
+      if (m < 0 || seen[m] || nav.cells[m] === CELL.wall || nav.cells[m] === CELL.outside || nav.cells[m] === CELL.unbuilt) continue;
       seen[m] = 1;
       queue.push(m);
     }

@@ -88,7 +88,7 @@ describe('отпуск и свободная должность', () => {
     // вернулся заместитель — снова есть кому, и «некому» снято
     d.away = [];
     expect(decider(db, s, 'plan', out)).toEqual({ p: d.id, io: true });
-    expect(s.noOne?.plan).toBeUndefined();
+    expect(s.heads.noOne?.plan).toBeUndefined();
   });
 
   test('задание на серию в отпуске начальника планирования — запись «и. о.»; некому — заданий нет, пока не вернутся', () => {
@@ -243,8 +243,8 @@ describe('сохранения', () => {
       expect(Object.keys(p.train).length).toBeGreaterThan(0);
     }
     // сохранение — в 09:01: задание на серию и заказы поставщикам этого дня уже есть
-    expect(s.ruled?.plan).toBe(z);
-    expect(s.ruled?.supply).toBe(z);
+    expect(s.heads.ruled?.plan).toBe(z);
+    expect(s.heads.ruled?.supply).toBe(z);
     const before = s.journal.filter(r => r.by === 'plan' && momentOf(s.start, r.t).day === z).length;
     until(s, s.t + 12 * HOUR);
     expect(s.journal.filter(r => r.by === 'plan' && momentOf(s.start, r.t).day === z).length).toBe(before);

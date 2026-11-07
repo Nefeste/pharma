@@ -29,7 +29,7 @@ export function sopDay(db: ContentDb, s: PlantState, n: number): number {
 
 /** Цель запаса продукта на день `z` по последнему утверждённому плану, что его покрывает; нет — `undefined`. */
 export function sopCover(s: PlantState, product: Id, z: number): number | undefined {
-  const plans = s.sop?.plans;
+  const plans = s.planning.sop?.plans;
   if (!plans) return undefined;
   const n = monthOfDay(z);
   for (let i = plans.length - 1; i >= 0; i--) {
@@ -43,7 +43,7 @@ export function sopCover(s: PlantState, product: Id, z: number): number | undefi
 const playerMeets = (s: PlantState) => !!held(s)?.some(x => x === 'director' || x === 'production');
 
 function approve(s: PlantState, from: number, cover: Record<Id, number[]>, by: string, value: number, best: number) {
-  const sop = (s.sop ??= { plans: [] });
+  const sop = (s.planning.sop ??= { plans: [] });
   sop.plans.push({ at: s.t, from, cover, by, value, best });
   if (sop.plans.length > KEEP) sop.plans.splice(0, sop.plans.length - KEEP);
   delete sop.open;
@@ -54,14 +54,14 @@ function approve(s: PlantState, from: number, cover: Record<Id, number[]>, by: s
  * его «Утвердить»; нет — план утверждает директор-коллега, запись журнала начальника отдела планирования.
  */
 export function sopHour(db: ContentDb, s: PlantState, notices: Notice[]) {
-  if (!s.forecast || !db.scenarios[s.scenario].plan) return;
+  if (!s.planning.forecast || !db.scenarios[s.scenario].plan) return;
   const now = momentOf(s.start, s.t);
   if (now.sec !== SOP_HOUR) return;
   const n = monthAt(s, s.t);
-  if (s.sop?.held === n || now.day !== sopDay(db, s, n)) return;
+  if (s.planning.sop?.held === n || now.day !== sopDay(db, s, n)) return;
   const ctx = sopCtx(db, s, n);
   const best = sopBest(db, s, n, ctx);
-  const sop = (s.sop ??= { plans: [] });
+  const sop = (s.planning.sop ??= { plans: [] });
   sop.held = n;
   if (playerMeets(s)) {
     sop.open = { at: s.t, from: n, best: best.cover, value: best.result.mean };
@@ -78,7 +78,7 @@ export function sopHour(db: ContentDb, s: PlantState, notices: Notice[]) {
  * политики «запас позиций». Совещания нет — отказ.
  */
 export function sopCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'sop' }>, notices: Notice[]) {
-  const open = s.sop?.open;
+  const open = s.planning.sop?.open;
   if (!open) return notices.push({ kind: 'refused', cmd: 'sop', why: 'noMeeting' });
   const products = [...new Set(db.scenarios[s.scenario].plan!.items.map(i => db.skus[i.sku].product))];
   const ok = products.every(p => cmd.cover[p]?.length === SOP_MONTHS && cmd.cover[p].every(c => (SOP_COVERS as readonly number[]).includes(c)));

@@ -59,7 +59,7 @@
 // «Вывоз отходов». Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png. Первая неделя
 // (docs/specs/2026-10-vertical-slice.md): путь новичка от «Кем вы будете» до «За эту игру» на планёрке 8 сентября в
 // чистом окне — tools/app/e2e-week.mjs.
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits|sources] [--long 1]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits|build|sources] [--long 1]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -68,6 +68,7 @@ import { capaPart } from './e2e-capa.mjs';
 import { forecastPart } from './e2e-forecast.mjs';
 import { sopPart } from './e2e-sop.mjs';
 import { mrpPart } from './e2e-mrp.mjs';
+import { buildPart } from './e2e-build.mjs';
 import { editsPart } from './e2e-edits.mjs';
 import { sourcesPart } from './e2e-sources.mjs';
 import { jobsPart } from './e2e-jobs.mjs';
@@ -283,9 +284,10 @@ const answerAsks = async (no = () => false) => {
 // ноября (tools/app/e2e-forecast.mjs); «S&OP» (Б6г) — тоже, до совещания 3 сентября (tools/app/e2e-sop.mjs);
 // «Материалы» (Б6д) — чистое окно места «Директор» 2 сентября (tools/app/e2e-mrp.mjs); «Правки» (Б6е) — чистое окно
 // поста «Производство», до планёрки с событием коммерции (tools/app/e2e-edits.mjs); «Источники» (Б6ж) — чистое окно
-// места «Директор», до пробной партии, с `--long 1` — до подачи изменения досье (tools/app/e2e-sources.mjs).
-// `--only main`, `week`, `memo`, `capa`, `jobs`, `launch`, `forecast`, `sop`, `mrp`, `edits` или `sources` — одна из
-// них
+// места «Директор», до пробной партии, с `--long 1` — до подачи изменения досье (tools/app/e2e-sources.mjs); «Стройка»
+// (Б7б) — чистое окно места «Директор»: корпус, помещения, двери, зона и ряд, ступени проверок, снос и отмена
+// (tools/app/e2e-build.mjs). `--only main`, `week`, `memo`, `capa`, `jobs`, `launch`, `forecast`, `sop`, `mrp`, `edits`,
+// `build` или `sources` — одна из них
 const only = arg('only', '');
 try {
   // основная часть кончилась — её страницу закрыть: она рисует кадры и отняла бы у других частей процессор
@@ -302,6 +304,7 @@ try {
   if (only === '' || only === 'sop') await sopPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'mrp') await mrpPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'edits') await editsPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'build') await buildPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'sources') await sourcesPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');

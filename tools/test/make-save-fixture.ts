@@ -174,7 +174,7 @@ const kpied = () => s.kpi.months.length >= 2 && s.kpi.snap.n >= 3 && Object.valu
 const how = (h: string) => s.journal.some(r => r.ask?.end?.how === h);
 const asked = () => s.heads.mode.maint === 'manual' && how('ok') && how('no') && how('stale') && Object.keys(s.heads.open).length > 0;
 // посреди замещения (Б5в): задание на серию от и. о., заместитель назначен игроком, у техслужбы некому решить
-const bossed = () => s.journal.some(r => r.by === 'plan' && r.d.kind === 'order' && r.io) && !!s.deputies?.qc && !!s.noOne?.maint;
+const bossed = () => s.journal.some(r => r.by === 'plan' && r.d.kind === 'order' && r.io) && !!s.heads.deputies?.qc && !!s.heads.noOne?.maint;
 // посреди записки и вопроса (Б5д): на одну записку ответили, другая ждёт, вопрос «Просят решить» открыт
 const memoed = () => s.journal.some(r => r.memo?.end?.res) && s.journal.some(r => r.memo && !r.memo.end) && !!s.heads.qs;
 // посреди политик (Б5г): две политики игрока, задание на серию по новому запасу, перенесённый визит ещё впереди
@@ -193,7 +193,7 @@ const jobbed = () =>
   heldRec();
 // посреди заданий на сутки (Б6б): закрытые — «позже» и «не сделано» с причиной; у сегодняшнего начатые и ещё нет
 const dailied = () => {
-  const d = s.daily ?? [];
+  const d = s.planning.daily ?? [];
   const rows = d.filter(x => x.closed).flatMap(x => x.rows);
   const cur = d.at(-1);
   return rows.some(r => r.res === 'late' && r.why) && rows.some(r => r.res === 'no' && r.why) && !!cur && !cur.closed && cur.rows.some(r => r.done !== undefined) && cur.rows.some(r => r.done === undefined);
@@ -201,9 +201,9 @@ const dailied = () => {
 // посреди прогноза (Б6в): у показателя отдела продаж — значение закрытого месяца, у планирования — правка игрока в силе, а
 // спрос правила задания — по прогнозу
 const forecasted = () =>
-  s.kpi.months.some(m => m.v.fcErr !== undefined) && Object.keys(s.forecast?.edits ?? {}).length > 0 && s.policies.log.some(x => x.policy === 'pol.plan.demand');
+  s.kpi.months.some(m => m.v.fcErr !== undefined) && Object.keys(s.planning.forecast?.edits ?? {}).length > 0 && s.policies.log.some(x => x.policy === 'pol.plan.demand');
 // посреди S&OP (Б6г): план игрока утверждён, а следующее совещание открыто
-const sopped = () => !!s.sop?.open && s.sop.plans.some(p => p.by === 'player');
+const sopped = () => !!s.planning.sop?.open && s.planning.sop.plans.some(p => p.by === 'player');
 // посреди потребности (Б6д): заказ поставщику ускорен, другой отменён; правило заказывало по потребности
 const supplied = () =>
   Object.values(s.pos).some(p => p.fast) && Object.values(s.pos).some(p => p.status === 'cancelled') && s.journal.some(r => r.d.kind === 'po' && (r.d.why ?? []).some(w => w.rule === 'need'));
@@ -362,10 +362,10 @@ while (s.t < end && !busy()) {
   }
   // с схемы 41 — пост «Производство»: спрос правила задания — по прогнозу; правка прогноза парацетамола № 20 через месяц —
   // на десятую часть выше, один раз
-  if (SCHEMA >= 41 && s.forecast && s.seats?.some(x => x.seat === 'production' && x.to === undefined) && !s.journal.some(r => r.d.kind === 'fcEdit')) {
+  if (SCHEMA >= 41 && s.planning.forecast && s.seats?.some(x => x.seat === 'production' && x.to === undefined) && !s.journal.some(r => r.d.kind === 'fcEdit')) {
     apply(db, s, { kind: 'policy', policy: 'pol.plan.demand', value: 'forecast', by: 'player' });
     const sku = 'sku.paracetamol500.n20';
-    apply(db, s, { kind: 'forecast', sku, m: s.forecast.at + 2, cases: Math.round((s.forecast.plan[sku][2] * 11) / 10), by: 'player' });
+    apply(db, s, { kind: 'forecast', sku, m: s.planning.forecast.at + 2, cases: Math.round((s.planning.forecast.plan[sku][2] * 11) / 10), by: 'player' });
   }
   // с схемы 43 — директор в первые сутки: заказ поставщику, что придёт позже всех, — ускорить, следующий — отменить
   if (SCHEMA >= 43 && s.seats?.some(x => x.seat === 'director' && x.to === undefined)) {
@@ -376,7 +376,7 @@ while (s.t < end && !busy()) {
     if (!Object.values(s.pos).some(p => p.status === 'cancelled') && open[1]) apply(db, s, { kind: 'cancelPo', po: open[1].id, by: 'player' });
   }
   // с схемы 42 — совещание S&OP сентября: свой план поста «Производство», следующие совещания ждут
-  if (SCHEMA >= 42 && s.sop?.open && s.sop.plans.length === 0)
+  if (SCHEMA >= 42 && s.planning.sop?.open && s.planning.sop.plans.length === 0)
     apply(db, s, { kind: 'sop', cover: { 'prd.paracetamol500': [28, 28, 28, 28, 28, 28], 'prd.loratadine10': [21, 21, 21, 21, 21, 21] }, by: 'player' });
   // схема 37 — вопрос открыт: вторая записка начальнику снабжения, тот же заказ
   if ((SCHEMA as number) === 37 && s.heads.qs && !s.journal.some(r => r.memo && !r.memo.end))

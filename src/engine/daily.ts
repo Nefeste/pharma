@@ -28,20 +28,20 @@ export const DAILY_KEEP = 31;
 
 /**
  * Событие 08:00 (src/engine/engine.ts, `morning`): закрыть вчерашнее задание и поставить сегодняшнее — до планёрки,
- * которую это событие открывает, и до раздачи задач часа 08:00. Заданий нет (`s.daily` не задан) — ничего: так у копии
- * прогона плана.
+ * которую это событие открывает, и до раздачи задач часа 08:00. Заданий нет (`s.planning.daily` не задан) — ничего:
+ * так у копии прогона плана.
  */
 export function dailyMorning(db: ContentDb, s: PlantState) {
-  if (!s.daily) return;
-  const cur = s.daily[s.daily.length - 1];
+  if (!s.planning.daily) return;
+  const cur = s.planning.daily[s.planning.daily.length - 1];
   if (cur && !cur.closed) close(db, s, cur);
-  s.daily.push(open(db, s));
-  while (s.daily.length > DAILY_KEEP) s.daily.shift();
+  s.planning.daily.push(open(db, s));
+  while (s.planning.daily.length > DAILY_KEEP) s.planning.daily.shift();
 }
 
 /** Каждый час (событие часа): у строк сегодняшнего задания — что начато и чего ждали. */
 export function dailyHour(db: ContentDb, s: PlantState) {
-  const cur = s.daily?.[s.daily.length - 1];
+  const cur = s.planning.daily?.[s.planning.daily.length - 1];
   if (cur && !cur.closed) watch(db, s, cur);
 }
 

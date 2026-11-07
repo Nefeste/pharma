@@ -11,7 +11,8 @@
 // запасом на разброс помещается в остаток смены и в сверхурочные, которые ему ещё можно (Б4а, hours.ts): свободные
 // допущенные люди в смене есть, но ни у кого не помещается, — задача ждёт «нет часов». Работу роли того, кто в отпуске,
 // берёт и его заместитель — в свои смены, по своим допускам (Б4г, leave.ts); людей роли в смене нет, а кто-то из них в
-// отпуске и был бы в смене, — задача ждёт «в отпуске».
+// отпуске и был бы в смене, — задача ждёт «в отпуске». В помещении, которое не работает (Б7б, site/down.ts), новые задачи
+// не начинаются, место паллеты в нём не выбирают — задача ждёт «помещение не работает» и называет его.
 import type { ContentDb, Id, ZoneKind } from '../content/types';
 import { slotFit, unfit } from './assets';
 import { mixStart } from './batchno';
@@ -21,10 +22,11 @@ import { endTask, fits, startTask } from './hours';
 import { awayOn, coversOn } from './leave';
 import { lossAt, moved, moveThing, taskSpot, waitEnd, waitNote } from './lean';
 import { placesOf } from './places';
-import { dist, type PlantPlan, planOf, type Point, straight, travel } from './plant';
+import { dist, type PlantPlan, planOf, type Point, type Slot, straight, travel } from './plant';
 import { admitted, lacking, needOf, vehicleNeed } from './quals';
 import { goHome, here, LAST_CALL, shiftEnd, shiftEndAt, stopWalk, WALK } from './staff';
 import { findSlot, freeSlots, heldForSampled, nextId } from './stock';
+import { type Down, dockRoom, downOf, floorRoomAt, slotOk } from './site/down';
 import type { Instrument, Person, Place, PlantState, Task, TaskKind, Vehicle, WaitCause } from './types';
 
 export { WALK };
@@ -128,6 +130,8 @@ interface Pass {
   where: (p: Person) => Point;
   /** зоны хранения, которые не принимают новых паллет (Б3в): зона → её датчик; `closedOf` */
   closed?: ReadonlyMap<string, string>;
+  /** что не работает (Б7б): помещения и места паллет */
+  down: Down;
   /** кого замещают сегодня (Б4г): заместитель → роли ушедших в отпуск */
   cover: ReadonlyMap<string, readonly Id[]>;
   /** люди ролей задачи — по набору ролей (`crewOf`) */
@@ -293,14 +297,14 @@ export function dispatch(db: ContentDb, s: PlantState) {
   const day = momentOf(s.start, s.t).day;
   const people = Object.values(s.people);
   const cover = coversOn(s, day, people);
-  const x: Pass = { plan, day, people, where, cover, crews: new Map(), lists: listsFor(s, people, cover), ends: new Map() };
+  const x: Pass = { plan, day, people, where, cover, crews: new Map(), lists: listsFor(s, people, cover), ends: new Map(), down: downOf(db, s) };
   for (const id of [...s.open]) {
     const t = s.tasks[id];
     const why = assign(db, s, x, t);
     if (why === undefined) s.open.splice(s.open.indexOf(id), 1);
     else {
       if (why !== 'qual') delete t.lack;
-      if (why !== 'asset') delete t.unfit;
+      if (why !== 'asset' && why !== 'down') delete t.unfit;
       waitNote(db, s, t, why);
     }
   }
@@ -383,9 +387,54 @@ function nearestFirst(x: Pass, free: Vehicle[], from: Point): Vehicle[] {
   return free.sort((a, b) => d.get(a)! - d.get(b)! || idNum(a.id) - idNum(b.id));
 }
 
+/**
+ * Помещения, где работа задачи (Б7б): её помещение и линия, место работы — место паллеты, фура у рампы, точка, —
+ * выбранное место назначения и куда она несёт без своего места. В неработающем из них задача не начинается
+ * (`assign`); занятое ею помещение сносится, когда освободится (src/engine/build.ts).
+ */
+export function taskRooms(db: ContentDb, plan: PlantPlan, s: PlantState, t: Task): string[] {
+  const out: string[] = [];
+  const add = (r: string | undefined) => {
+    if (r !== undefined && !out.includes(r)) out.push(r);
+  };
+  if (t.room) add(t.room);
+  if (t.line) add(plan.plant.lines.find(l => l.id === t.line)?.room);
+  const f = t.from;
+  if (f.kind === 'truck') add(s.trucks[f.id] ? dockRoom(db, plan.plant, s.trucks[f.id].dock) : undefined);
+  else if (f.kind === 'point' || plan.slot[f.id]) add(floorRoomAt(plan, pointOf(plan, s, f)));
+  if (t.to && plan.slot[t.to]) add(floorRoomAt(plan, plan.slot[t.to]));
+  if (t.truck) add(s.trucks[t.truck] ? dockRoom(db, plan.plant, s.trucks[t.truck].dock) : undefined);
+  else {
+    const d = destOf(plan, s, t);
+    if (d) add(floorRoomAt(plan, d));
+  }
+  return out;
+}
+
+/**
+ * Места назначения нет, а без неработающих оно нашлось бы (Б7б): задача ждёт «помещение не работает» и называет то, что
+ * не работает, у ближайшего такого места; не работает ничего или места нет и так — `false`.
+ */
+function downBy(s: PlantState, x: Pass, t: Task, from: Point, level: number, mover: 'walk' | 'drive', ok?: (sl: Slot) => boolean): boolean {
+  if (x.down.slots.size === 0 || !t.toKind) return false;
+  const sl = findSlot(s, x.plan, t.toKind, t.near ?? from, Math.max(level, 0), mover, ok);
+  const by = sl && x.down.slots.get(sl.id);
+  if (!by) return false;
+  t.unfit = by;
+  return true;
+}
+
 /** Назначить задачу; не вышло — причина: прибор, техника, место назначения, люди, допуск, актив. */
 function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | undefined {
   const plan = x.plan;
+  // помещение работы не работает (Б7б): задача ждёт, пока оно снова работает, и называет его
+  if (x.down.rooms.size > 0) {
+    const r = taskRooms(db, plan, s, t).find(id => x.down.rooms.has(id));
+    if (r !== undefined) {
+      t.unfit = r;
+      return 'down';
+    }
+  }
   // обучение — только того, кто учится: ни техники, ни прибора, ни допуска; ждёт, пока он свободен и в смене
   if (t.kind === 'train') {
     const p = s.people[t.trainee!];
@@ -435,6 +484,8 @@ function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | und
     if (t.kind === 'putaway' && (t.toKind === 'quarantine' || t.toKind === 'cold') && freeSlots(s, plan, t.toKind) <= heldForSampled(db, s, plan, t.toKind)) return 'place';
     // место хранения (Б3в): зона принимает режим материала и открыта; не нашлось только из-за закрытой зоны — ждёт её датчик
     const fit = t.toKind ? slotFit(db, s, plan, t, closedOf(db, s, x)) : undefined;
+    // места в неработающих помещениях и у сносимых зон и рядов не выбирают (Б7б)
+    const ok = slotOk(x.down, fit?.ok);
     let place = false;
     let short = false;
     let closedBy: string | undefined;
@@ -448,9 +499,9 @@ function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | und
       if (!near) continue;
       let to: string | undefined;
       if (t.toKind) {
-        const sl = findSlot(s, plan, t.toKind, t.near ?? from, vt.levels, 'drive', fit?.ok);
+        const sl = findSlot(s, plan, t.toKind, t.near ?? from, vt.levels, 'drive', ok);
         if (!sl) {
-          if (!place && fit) closedBy = findSlot(s, plan, t.toKind, t.near ?? from, vt.levels, 'drive', fit.open)?.store;
+          if (!place && fit) closedBy = findSlot(s, plan, t.toKind, t.near ?? from, vt.levels, 'drive', slotOk(x.down, fit.open))?.store;
           place = true;
           none = vt.levels;
           continue;
@@ -470,6 +521,7 @@ function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | und
       t.unfit = closedOf(db, s, x).get(closedBy);
       return 'asset';
     }
+    if (place && downBy(s, x, t, from, none, 'drive', fit?.ok)) return 'down';
     return place ? 'place' : short ? 'hours' : driverWait(db, s, x, t, crew, need, order);
   }
   if (off && t.count > 0) return offWait(db, s, x, crew);
@@ -478,7 +530,7 @@ function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | und
   // пешком, но с местом назначения на полу (возврат остатков в шлюз): место — ближе к началу задачи; его нет — задача
   // ждёт место, но сначала — людей
   const fit = t.toKind ? slotFit(db, s, plan, t, closedOf(db, s, x)) : undefined;
-  const sl = t.toKind ? findSlot(s, plan, t.toKind, t.near ?? from, 0, 'walk', fit?.ok) : undefined;
+  const sl = t.toKind ? findSlot(s, plan, t.toKind, t.near ?? from, 0, 'walk', slotOk(x.down, fit?.ok)) : undefined;
   const people: Person[] = [];
   const skip = new Set<string>();
   const noPlace = !!t.toKind && !sl;
@@ -492,8 +544,8 @@ function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | und
     skip.add(p.id);
   }
   if (noPlace) {
-    const by = fit ? findSlot(s, plan, t.toKind!, t.near ?? from, 0, 'walk', fit.open)?.store : undefined;
-    if (!by) return 'place';
+    const by = fit ? findSlot(s, plan, t.toKind!, t.near ?? from, 0, 'walk', slotOk(x.down, fit.open))?.store : undefined;
+    if (!by) return downBy(s, x, t, from, 0, 'walk', fit?.ok) ? 'down' : 'place';
     t.unfit = closedOf(db, s, x).get(by);
     return 'asset';
   }

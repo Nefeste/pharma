@@ -1,0 +1,10 @@
+# зал склада: приёмка, карантин, хранение, экспедиция. Наименьший размер со стенами — гипотеза: источника нет
+id: room.warehouse
+role: storage
+grades: [cnc]
+vehicles: true
+area: WH
+min: [10, 10]
+build: false
+source: [gmp-eaeu]
+review: draft

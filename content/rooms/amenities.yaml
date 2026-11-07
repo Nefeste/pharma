@@ -1,0 +1,9 @@
+# комната отдыха: отделена от других зон, не открывается в производство и склад. Наименьший размер со стенами — гипотеза: источника нет
+id: room.amenities
+role: amenity
+grades: [cnc]
+vehicles: false
+min: [4, 4]
+build: true
+source: [gmp-eaeu]
+review: draft

@@ -1,0 +1,9 @@
+# коридор вне классов. Наименьший размер со стенами — гипотеза: источника нет
+id: room.corridor
+role: corridor
+grades: [cnc]
+vehicles: true
+min: [4, 4]
+build: true
+source: [gmp-eaeu]
+review: draft

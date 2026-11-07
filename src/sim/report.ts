@@ -263,7 +263,11 @@ export interface MorningView {
   people: PeopleMeeting;
   /** отпуска (Б4г): кто в отпуске, уходит и выходит; черновик графика до утверждения; у сценария без отпусков — нет */
   leave?: LeaveMeeting;
-  cash: { balance: number; day: number; next?: { due: number; item: CashItem; sum: number } };
+  /**
+   * касса: остаток, за сутки до планёрки, ближайший счёт; стройка (Б7б) — потрачено на неё за те же сутки с НДС, со
+   * сносом и отменой; не строили — нет
+   */
+  cash: { balance: number; day: number; next?: { due: number; item: CashItem; sum: number }; build?: number };
   /** ваше место (3е): итог каждого взятого места за время на нём */
   seats: SeatSum[];
   /** уставки не по цели (Б1ж): какие и с какого мгновения */
@@ -414,11 +418,18 @@ export function mainLoss(d: DayLoss | undefined, lines: LineSum[]): MainLoss | u
 }
 
 /** Изменение кассы за 24 часа до `t`: проводки идут по времени — с конца, пока не старше суток. */
-function dayChange(s: PlantState, t: number): number {
+function dayChange(s: PlantState, t: number, item?: CashItem): number {
   const l = s.cash.ledger;
   let n = 0;
-  for (let i = l.length - 1; i >= 0 && l[i].t > t - DAY; i--) if (l[i].t <= t) n += l[i].sum;
+  for (let i = l.length - 1; i >= 0 && l[i].t > t - DAY; i--) if (l[i].t <= t && (item === undefined || l[i].item === item)) n += l[i].sum;
   return n;
+}
+
+/** Стройка за сутки до планёрки (Б7б): потрачено с НДС, со сносом и отменой; стройки за сутки не было — ничего. */
+function buildDay(s: PlantState): { build?: number } {
+  if (!s.build) return {};
+  const n = -dayChange(s, s.t, 'build');
+  return s.cash.ledger.some(e => e.item === 'build' && e.t > s.t - DAY && e.t <= s.t) ? { build: n } : {};
 }
 
 /** Планёрка суток `day`: вчера — календарные сутки; события — за 24 часа до 08:00; сейчас — эта минута. */
@@ -541,7 +552,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     hours: hoursMeeting(db, s),
     people: peopleMeeting(s),
     ...leaveOf(db, s),
-    cash: { balance: s.cash.balance, day: dayChange(s, s.t), ...(next ? { next: { due: next.due, item: next.item, sum: next.sum } } : {}) },
+    cash: { balance: s.cash.balance, day: dayChange(s, s.t), ...(next ? { next: { due: next.due, item: next.item, sum: next.sum } } : {}), ...buildDay(s) },
     seats: seatSums(db, s),
     modes: modeRows(db, s),
     heads: headDays(s, from, at),

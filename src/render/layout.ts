@@ -74,21 +74,27 @@ export function isOutside(l: Layout, x: number, z: number): boolean {
   return x < 0 || z < 0 || x >= l.w || z >= l.h || l.nav.cells[z * l.w + x] === CELL.outside;
 }
 
-/** Наружу от клетки стены — к краю здания (нет — 0, 0). У нас здание — весь участок: наружу — за его край. */
+/**
+ * Наружу от клетки стены — к улице рядом с ней (нет — 0, 0). С Б7б корпус растёт стройкой: улица — не только за краем
+ * сетки, но и в её клетках вне корпуса; у прямоугольного корпуса это тот же край.
+ */
 export function outward(l: Layout, x: number, z: number): [number, number] {
   let ox = 0;
   let oz = 0;
-  if (x === 0) ox -= 1;
-  if (x === l.w - 1) ox += 1;
-  if (z === 0) oz -= 1;
-  if (z === l.h - 1) oz += 1;
+  if (isOutside(l, x - 1, z)) ox -= 1;
+  if (isOutside(l, x + 1, z)) ox += 1;
+  if (isOutside(l, x, z - 1)) oz -= 1;
+  if (isOutside(l, x, z + 1)) oz += 1;
   const len = Math.hypot(ox, oz) || 1;
   return [ox / len, oz / len];
 }
 
+/** Наружная ли клетка стены: рядом с ней улица. */
+const outer = (l: Layout, x: number, z: number) => isOutside(l, x - 1, z) || isOutside(l, x + 1, z) || isOutside(l, x, z - 1) || isOutside(l, x, z + 1);
+
 /** Высота стены в клетке: наружная стена зала склада — высокая, остальные — как у помещений. */
 export function wallHeight(l: Layout, x: number, z: number): number {
-  if (x !== 0 && z !== 0 && x !== l.w - 1 && z !== l.h - 1) return WALL_LOW_ROOM;
+  if (!outer(l, x, z)) return WALL_LOW_ROOM;
   let tall = false;
   for (const [dx, dz] of [
     [0, 0],

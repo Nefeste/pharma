@@ -1,0 +1,9 @@
+# чистый коридор: давление выше, чем в помещениях и шлюзах. Наименьший размер со стенами — гипотеза: источника нет
+id: room.corridor.clean
+role: corridor
+grades: [D]
+vehicles: true
+min: [4, 4]
+build: true
+source: [gmp-eaeu]
+review: draft

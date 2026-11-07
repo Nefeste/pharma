@@ -1,0 +1,10 @@
+# упаковка: первичная — в классе D. Наименьший размер со стенами — гипотеза: источника нет
+id: room.packaging
+role: production
+grades: [D]
+vehicles: true
+area: PK
+min: [8, 10]
+build: false
+source: [gmp-eaeu]
+review: draft

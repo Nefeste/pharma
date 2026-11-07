@@ -13,6 +13,7 @@ import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
 import { deputyCommand } from './bosses';
+import { siteCommand, siteFree } from './build';
 import { capaCommand, capaHour, capaRunCommand, classifyCommand } from './capa';
 import { answerFork, askDue, forksStep } from './forks';
 import { answerCommand, headsDay, modeCommand, newHeads } from './heads';
@@ -123,7 +124,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     former: {},
     leave: {},
     journal: [],
-    daily: [],
+    planning: { daily: [] },
     heads: newHeads(),
     waste: { log: [] },
     kpi: newKpi(sc.start.hour * HOUR),
@@ -176,9 +177,9 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   // склад ГП на старте (Б1г): завод уже работает — выпущенная ГП в обороте, ближе к экспедиции
   seedFg(db, sc, s, startDay);
   // прогноз продаж (Б6в): история спроса до старта и первый прогноз — в начале игры, без записи журнала
-  s.forecast = newForecast(db, s);
-  if (s.forecast) runForecast(db, s, s.forecast.at, { lag: true, journal: false });
-  else delete s.forecast;
+  s.planning.forecast = newForecast(db, s);
+  if (s.planning.forecast) runForecast(db, s, s.planning.forecast.at, { lag: true, journal: false });
+  else delete s.planning.forecast;
   // первая планёрка — ближайшие 08:00; часы — с ближайшего целого часа
   const today = Math.floor(s.t / DAY) * DAY;
   schedule(s.agenda, s.t < today + MORNING ? today + MORNING : today + DAY + MORNING, { kind: 'morning' });
@@ -450,6 +451,13 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       settle(db, s, notices);
       return notices;
     }
+    case 'site': {
+      // стройка (Б7б): новый план — стадии, линии и раздача задач по нему, как после события
+      const notices: Notice[] = [];
+      siteCommand(db, s, cmd, notices);
+      steps(db, s, notices);
+      return notices;
+    }
   }
 }
 
@@ -643,6 +651,11 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
     case 'ask':
       // срок ответа на «Просят решить» (Б5д): руководитель решает сам, как сейчас, — завод не меняется
       askDue(s, ev.n, ev.v);
+      return;
+    case 'siteFree':
+      // стройка (Б7б): освободившееся из сносимого — снести
+      siteFree(db, s, notices);
+      steps(db, s, notices);
       return;
   }
 }

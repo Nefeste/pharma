@@ -119,8 +119,8 @@ describe('прогон', () => {
     const life: PlantState = structuredClone(s);
     apply(db, life, { kind: 'advance', seconds: 14 * DAY });
     // сменно-суточные задания (Б6б) копия прогона не ставит: правила их не читают, жизнь завода та же
-    const { daily: _, ...rest } = life;
-    expect(fingerprint(run)).toBe(fingerprint(rest));
+    const { daily: _, ...planning } = life.planning;
+    expect(fingerprint(run)).toBe(fingerprint({ ...life, planning }));
   });
 
   test('тот же вызов — тот же итог; разные зёрна — разные исходы', () => {

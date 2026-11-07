@@ -152,7 +152,7 @@ describe('правило читает политику с ближайшего �
     const before = orders.filter(r => r.d.kind === 'order' && !r.d.why?.sop);
     expect(before.length).toBeGreaterThan(0);
     for (const r of before) if (r.d.kind === 'order') expect(r.d.why).toMatchObject({ cover: 35, ahead: aheadMilli(AHEAD + 35) });
-    for (const r of orders) if (r.d.kind === 'order' && r.d.why?.sop) expect(r.t).toBeGreaterThan(s.sop!.plans[0].at);
+    for (const r of orders) if (r.d.kind === 'order' && r.d.why?.sop) expect(r.t).toBeGreaterThan(s.planning.sop!.plans[0].at);
     for (const r of pos) if (r.d.kind === 'po') for (const w of r.d.why ?? []) expect(w).toMatchObject({ safety: 14, every: 42 });
     expect(check(db, s)).toEqual([]);
   });

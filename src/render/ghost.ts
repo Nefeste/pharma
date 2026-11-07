@@ -1,6 +1,8 @@
 // из bolnitsa: src/render/ghost.ts @ e804637 — изменено: без моделей предметов и обстановки готовых помещений (их на
 // заводе в Б7б нет); прямоугольник — и у помещения, и у корпуса; дверь — клетки вдоль стены по оси; клетки зоны, ряда
-// стеллажа и того, что снесут, — подсветкой на полу.
+// стеллажа и того, что снесут, — подсветкой на полу; материалы — по цвету и прозрачности, одни на всё время, освобождается
+// только сетка: освобождённый последний материал отдаёт программу отрисовщика, и у следующего призрака она собиралась бы
+// заново на каждое движение мыши.
 // Призраки стройки (Б7б; docs/specs/2026-10-vertical-slice.md, «Окно»): прямоугольник со стенами, дверь, подсветка клеток —
 // полупрозрачно, зелёным (можно), жёлтым (с замечанием или не будет работать) или красным (нельзя, снос). Отдельные
 // небольшие сетки поверх сцены: пересобираются, только когда меняется, что показывать.
@@ -12,19 +14,24 @@ export const GHOST_OK = 0x3fbf7f;
 export const GHOST_WARN = 0xe0b23f;
 export const GHOST_BAD = 0xe0533f;
 
-const ghostMat = (color: number, opacity: number) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide });
+const mats = new Map<string, THREE.MeshBasicMaterial>();
+const ghostMat = (color: number, opacity: number) => {
+  const key = `${color}/${opacity}`;
+  let m = mats.get(key);
+  if (!m) mats.set(key, (m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide })));
+  return m;
+};
 
 /** Высота призрака стены: стены в стройке опущены, призрак — чуть выше них. */
 const WALL = 0.6;
 /** Клеток подсветки самое большее: корпус 40 × 40 — с запасом. */
 const MARKS = 2048;
 
+/** Сетки призрака — освободить; материалы — общие (`ghostMat`), остаются. */
 function dispose(g: THREE.Object3D) {
   g.traverse(o => {
     const m = o as THREE.Mesh;
-    if (!m.isMesh) return;
-    m.geometry.dispose();
-    for (const mat of Array.isArray(m.material) ? m.material : [m.material]) mat.dispose();
+    if (m.isMesh) m.geometry.dispose();
   });
 }
 

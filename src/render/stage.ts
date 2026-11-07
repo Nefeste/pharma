@@ -123,6 +123,8 @@ export class Stage {
   private host: HTMLElement;
   /** что сцена строит из плана (Б7б: новый план — заново, `setLayout`) */
   private layout: Layout;
+  /** прежняя сцена после `setLayout`: освободить после кадра новой */
+  private trash: (() => void)[] = [];
   private art?: Art;
   private aniso: number;
   private ground: THREE.Mesh[];
@@ -198,25 +200,33 @@ export class Stage {
    */
   setLayout(layout: Layout) {
     const db = this.init.db;
-    // текстуры полов — общие для всех раскладок (`floorTex`); у остального — свои, с ним и уходят
+    // Старое уходит со сцены сразу, а освобождается после кадра новой (`draw`): освобождённый материал отдаёт программу
+    // отрисовщика, последний — удаляет её, и та же программа у нового материала собиралась бы заново — в программной
+    // отрисовке это секунда на каждую правку. Текстуры полов — общие для всех раскладок (`floorTex`); у остального — свои
     const drop = (o: THREE.Object3D, maps = true) => {
       this.scene.remove(o);
-      o.traverse(x => {
-        const m = x as THREE.Mesh;
-        if (!m.isMesh && !(x as THREE.Sprite).isSprite) return;
-        m.geometry?.dispose();
-        for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
-          if (maps) (mat as THREE.MeshBasicMaterial).map?.dispose();
-          mat.dispose();
-        }
-      });
+      this.trash.push(() =>
+        o.traverse(x => {
+          const m = x as THREE.Mesh;
+          if (!m.isMesh && !(x as THREE.Sprite).isSprite) return;
+          m.geometry?.dispose();
+          for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
+            if (maps) (mat as THREE.MeshBasicMaterial).map?.dispose();
+            mat.dispose();
+          }
+        }),
+      );
     };
     for (const m of this.floors) drop(m, false);
     for (const m of [...this.ground, this.markings, this.walls.mesh, this.doors.mesh, this.lamps.mesh, this.racks]) drop(m);
-    this.lamps.lightMap.dispose();
+    const light = this.lamps.lightMap;
     for (const g of [this.overlay.group, this.floor.group, this.losses.group, this.signs.group]) drop(g);
     this.scene.remove(this.machines.group);
-    this.machines.dispose();
+    const machines = this.machines;
+    this.trash.push(
+      () => light.dispose(),
+      () => machines.dispose(),
+    );
     this.layout = layout;
     this.ground = buildGround(layout, this.aniso);
     for (const m of this.ground) this.scene.add(m);
@@ -249,6 +259,12 @@ export class Stage {
     this.light.fit(layout.w, layout.h);
     this.lamps.mesh.visible = !this.dataOn;
     this.hourShown = -1;
+    // программы — и тем новым материалам, которых первый кадр не нарисует (вне камеры, скрыты до `update`), пока старые
+    // их держат; цель — та же, что у кадра: с затенением или сглаживанием сцена рисуется в буфер `Post`
+    const r = this.renderer;
+    r.setRenderTarget(this.post ? this.post.target : null);
+    r.compile(this.scene, this.cam.camera);
+    r.setRenderTarget(null);
   }
 
   setPallets(list: readonly PalletView[]) {
@@ -510,5 +526,7 @@ export class Stage {
     this.gpu.end();
     this.calls = r.info.render.calls;
     this.tris = r.info.render.triangles;
+    // прежняя сцена (`setLayout`) — после кадра новой: её программы уже у новых материалов
+    if (this.trash.length > 0) for (const f of this.trash.splice(0)) f();
   }
 }

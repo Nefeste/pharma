@@ -5,8 +5,8 @@
 // коридора в упаковку мимо шлюза, отмена; жёлтая — у мойки один проём, отмена; снос занятого ряда стеллажа — «когда
 // освободится», отмена. Паллета едет в новое место: зона карантина ГП у паллетирования — первая паллета готовой продукции
 // ложится в неё. Сцена после
-// каждой правки — заново по новому плану, срезы разбираются. Отклик — в кадрах (геймдизайн, §21). Снимки —
-// tools/app/out/build-*.png, лист — tools/app/out/build.png.
+// каждой правки — заново по новому плану, срезы разбираются; программы отрисовщика — те же: шейдеры заново не
+// собираются. Отклик — в кадрах (геймдизайн, §21). Снимки — tools/app/out/build-*.png, лист — tools/app/out/build.png.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -207,15 +207,21 @@ async function director(x) {
     if (!/^Общий коридор 12 × 5 м — [\d\s]+\s₽ — не будет работать: от входа не дойти: Общий коридор 1$/.test(corrGhost) || !/^не работает: от входа не дойти/.test(corrLabel)) fail(`коридор: призрак «${corrGhost}», подпись «${corrLabel}»`);
     else ok(`коридор: «${corrGhost}» · «${corrLabel}»`);
 
-    // дверь из «Общего коридора»: коридор закрыт на перестройку
+    // дверь из «Общего коридора»: коридор закрыт на перестройку; сцена заново — теми же программами отрисовщика, шейдеры
+    // заново не собираются (Stage.setLayout освобождает прежнюю сцену после кадра новой)
     await page.click('[data-test=tool-door]');
     const doorGhost = await s.hover(59, 22);
     rev = await s.rev();
+    const progs = () => page.evaluate(() => window.__game.stage.renderer.info.programs.map(p => p.id).sort((a, b) => a - b).join());
+    const before = await progs();
     await s.measure('Дверь — новый план, сцена заново', () => page.mouse.down().then(() => page.mouse.up()), 'rev', rev + 1);
     await page.waitForFunction(() => /закрыто на перестройку/.test(document.querySelector('[data-test=labels] [data-room="corridor-1"] span')?.textContent ?? ''), null, { timeout: 20_000 }).catch(() => {});
+    await s.frames(3);
+    const after = await progs();
     const doorLabel = await label('corridor-1');
     if (!/^Дверь — [\d\s]+\s₽$/.test(doorGhost) || doorLabel !== 'закрыто на перестройку') fail(`дверь: призрак «${doorGhost}», подпись «${doorLabel}»`);
-    else ok(`дверь: «${doorGhost}» · коридор «${doorLabel}»`);
+    else if (after !== before) fail(`дверь: программы отрисовщика собраны заново — было ${before}, стало ${after}`);
+    else ok(`дверь: «${doorGhost}» · коридор «${doorLabel}» · программ отрисовщика те же ${before.split(',').length}`);
 
     // шлюз для людей класса D из нового коридора
     await page.click('[data-test=tool-room]');

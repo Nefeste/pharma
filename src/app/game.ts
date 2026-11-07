@@ -14,7 +14,7 @@ import type { RunSum } from '../engine/plan/run';
 import { dayText, durText, hText, money, named, qtyText, T, whenText } from '../i18n';
 import { bakeLook, lodOf, packPeople } from '../render/bake';
 import type { ArtIndex } from '../render/blender';
-import { AT, camDetail, type Detail, ease, speedDetail, type Weights } from '../render/detail';
+import { AT, camDetail, type Detail, speedDetail, stepDetail, type Weights } from '../render/detail';
 import { type Layout, layoutOf, levelY } from '../render/layout';
 import type { PalletView } from '../render/loads';
 import { Ghosts } from '../render/ghost';
@@ -43,6 +43,7 @@ import { fillsOf, Flows, lineArrows, moveArrows, movesOf, peopleMoves } from './
 import { type Movers, moversAt, taskIcons } from './movers';
 import { stopKey, type World } from '../sim/protocol';
 import { EVENT_CAP, type Go, goOf, keepOff, keptOff, stopKinds } from './pauses';
+import { keepLess, keptLess, systemLess } from './motion';
 import { keep, windowKeep } from './preset';
 import { type Box, machineBoxes, nearest, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
 import { carriedOf, dockFront, palletsOf, SceneState } from './scene';
@@ -257,7 +258,10 @@ export class Game {
     await g.firstSlice;
     new ResizeObserver(() => g.stage.resize()).observe(host);
     g.bindInput();
-    store.set({ ready: true, start: sc.start.date, quality, walls: g.stage.wallMode, pauses: { open: false, off: keptOff(windowKeep()) }, firsts: keptFirsts(windowKeep()) });
+    // «меньше движения» (правило 6 ADR 0023 устава): выбор игрока или, пока не выбирал, — как просит система
+    const less = keptLess(windowKeep(), systemLess());
+    g.applyLess(less);
+    store.set({ ready: true, start: sc.start.date, quality, walls: g.stage.wallMode, less, pauses: { open: false, off: keptOff(windowKeep()) }, firsts: keptFirsts(windowKeep()) });
     // игра начинается с экрана «Кем вы будете» (3е): мир стоит, пока место не выбрано; «Взять» пустит его на ×1
     g.speed = 0;
     g.resume = 1;
@@ -626,10 +630,10 @@ export class Game {
     this.labels.visible = this.builder.on;
     if (this.builder.on) this.labels.set(this.builder.labels());
     this.labels.frame();
-    // крупность показа — по скорости и высоте камеры; веса доходят до нового уровня за 0,4 с
+    // крупность показа — по скорости и высоте камеры; веса доходят до нового уровня за 0,4 с, при «меньше движения» — сразу
     this.camLevel = camDetail(this.stage.cam.half, this.camLevel);
     this.detailTarget = Math.max(this.camLevel, speedDetail(this.speed, this.ff)) as Detail;
-    this.detail = ease(this.detail, this.detailTarget, dt);
+    this.detail = stepDetail(this.detail, this.detailTarget, dt, this.stage.cam.less);
     this.stage.setDetail(this.detail);
     const a = performance.now();
     this.showMovers(ts);
@@ -762,6 +766,12 @@ export class Game {
     setWalls: (m: WallMode) => {
       this.stage.setWalls(m);
       this.store.set({ walls: m });
+    },
+    setLess: (on: boolean) => {
+      // выбор игрока — запоминается и дальше не следует за системой (src/app/motion.ts)
+      this.applyLess(on);
+      this.store.set({ less: on });
+      keepLess(windowKeep(), on);
     },
     toggleDebug: () => this.store.set({ debug: !this.store.get().debug }),
     bench: uncapped => {
@@ -1346,6 +1356,12 @@ export class Game {
       ...(keep !== 'journal' ? { journal: { ...h.journal, open: false } } : {}),
       ...(keep && h.gantt.open ? { gantt: { ...ganttKept(h.gantt), open: false } } : {}),
     };
+  }
+
+  /** «Меньше движения»: камера поворачивает без доворота, крупность меняется сразу, переходы страницы мгновенны. */
+  private applyLess(on: boolean) {
+    this.stage.cam.less = on;
+    document.documentElement.dataset.motion = on ? 'less' : 'full';
   }
 
   /** Перестали смотреть работу: строка «Сейчас» больше не нужна, пока не открыта панель или карточка. */

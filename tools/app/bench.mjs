@@ -78,11 +78,11 @@ for (const s of shotList) {
 res.headless = { browser: version, args, capped, wallMs: Date.now() - tStart, consoleErrors: errors };
 writeFileSync(`${base}.json`, `${JSON.stringify(res, null, 2)}\n`);
 console.log(`\nChromium ${version}${capped ? ', vsync' : ', без vsync'}`);
-console.log('качество  план      паллет людей техн.  к/с    кадр ср/p95, мс    CPU ср/p95, мс   GPU ср, мс  вызовов  треуг.');
+console.log('качество  план      паллет людей техн.  к/с    кадр мед/p95, мс   >25 мс  CPU ср/p95, мс   GPU ср, мс  вызовов  треуг.');
 for (const r of res.runs) {
   const gpu = r.gpuMs ? String(r.gpuMs.mean) : '—';
   console.log(
-    `${r.quality.padEnd(8)}  ${r.camera.padEnd(8)} ${String(r.pallets).padStart(6)} ${String(r.people).padStart(5)} ${String(r.vehicles).padStart(5)} ${String(r.fps).padStart(6)}   ${`${r.frameMs.mean} / ${r.frameMs.p95}`.padEnd(18)} ${`${r.drawCpuMs.mean} / ${r.drawCpuMs.p95}`.padEnd(16)} ${gpu.padStart(10)}  ${String(r.drawCalls).padStart(6)}  ${r.triangles}`,
+    `${r.quality.padEnd(8)}  ${r.camera.padEnd(8)} ${String(r.pallets).padStart(6)} ${String(r.people).padStart(5)} ${String(r.vehicles).padStart(5)} ${String(r.fps).padStart(6)}   ${`${r.frameMs.median} / ${r.frameMs.p95}`.padEnd(18)} ${`${r.over25pct} %`.padStart(6)}  ${`${r.drawCpuMs.mean} / ${r.drawCpuMs.p95}`.padEnd(16)} ${gpu.padStart(10)}  ${String(r.drawCalls).padStart(6)}  ${r.triangles}`,
   );
 }
 console.log(`→ ${base}.json`);

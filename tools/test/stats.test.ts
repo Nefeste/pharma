@@ -3,7 +3,7 @@
 // прогонов бенча получает ровно свои замеры при обоих правилах обрезки; с отметкой длиной массива — нет (замер владельца
 // 19.10.2026: время видеокарты пропало с третьего прогона, время потока — со второго).
 import { describe, expect, test } from 'bun:test';
-import { since } from '../../src/app/stats';
+import { LONG_FRAME_MS, longShare, since, summarize } from '../../src/app/stats';
 
 /** Память замеров с правилом обрезки и счётом всех пришедших. */
 function tally(trim: (list: number[]) => void) {
@@ -61,5 +61,17 @@ describe('выборка с отметки', () => {
     for (let i = 0; i < 2500; i++) t.push(i);
     expect(since(t.list, t.total, mark)).toEqual(t.list);
     expect(since(t.list, t.total, t.total)).toEqual([]);
+  });
+});
+
+// Правило 1 ADR 0023 устава (геймдизайн, §21): бенч пишет медиану кадра и долю кадров дольше 25 мс.
+describe('сводка кадра по правилу 1 ADR 0023', () => {
+  test('медиана — нечётное и чётное число; доля долгих кадров — строго дольше 25 мс', () => {
+    expect(summarize([5, 1, 3]).median).toBe(3);
+    expect(summarize([1, 2, 3, 4]).median).toBe(2.5);
+    expect(summarize([]).median).toBe(0);
+    const frames = [...Array.from({ length: 198 }, () => 16.7), LONG_FRAME_MS, 40];
+    expect(longShare(frames)).toBe(0.5);
+    expect(longShare([])).toBe(0);
   });
 });

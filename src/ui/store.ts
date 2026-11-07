@@ -66,6 +66,8 @@ export interface Hud {
   art: 'blender' | 'code';
   /** стены: целые, срез у камеры, вниз */
   walls: WallMode;
+  /** «меньше движения» (правило 6 ADR 0023 устава; src/app/motion.ts) */
+  less: boolean;
   fps: number;
   cpuMs: number;
   gpuMs: number | null;
@@ -242,6 +244,7 @@ export const initial: Hud = {
   quality: 'medium',
   art: 'code',
   walls: 'cut',
+  less: false,
   fps: 0,
   cpuMs: 0,
   gpuMs: null,
@@ -284,6 +287,8 @@ export interface Actions {
   /** пресет, выбранный игроком: применить и запомнить (src/app/preset.ts) */
   pickQuality(q: Quality): void;
   setWalls(m: WallMode): void;
+  /** «меньше движения»: включить или выключить — запоминается в окне (src/app/motion.ts) */
+  setLess(on: boolean): void;
   /** модели: детальные из Blender или простые кодом — машины и пол пересобираются */
   setArt(a: 'blender' | 'code'): void;
   toggleDebug(): void;

@@ -100,6 +100,11 @@ export function App({ store, actions, scenario }: { store: Store; actions: Actio
             ))}
           </span>
           <span className="group">
+            <button type="button" className={s.less ? 'on' : ''} aria-pressed={s.less} onClick={() => actions.setLess(!s.less)} title={T.view.lessHint} data-test="less-motion">
+              {T.view.less}
+            </button>
+          </span>
+          <span className="group">
             <button type="button" className={`seatbtn${s.seats.open ? ' on' : ''}`} onClick={() => actions.openSeats()} title={`${T.seats.hint}${mine ? ` · ${mine}` : ''}`} data-test="seats-open">
               {mine ? `${T.seats.button}: ${mine}` : T.seats.button}
             </button>

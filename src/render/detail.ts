@@ -38,6 +38,11 @@ export function ease(w: Weights, target: Detail, dt: number): Weights {
   return [out[0] / sum, out[1] / sum, out[2] / sum];
 }
 
+/** Шаг показа за кадр: обычно — переход `ease`; при «меньше движения» (src/app/motion.ts) — сразу новый уровень. */
+export function stepDetail(w: Weights, target: Detail, dt: number, less: boolean): Weights {
+  return less ? AT[target] : ease(w, target, dt);
+}
+
 /**
  * Что из этого следует на экране: люди и техника (1 — в полный рост, 0 — скрыты), штуки на лентах, полосы на лентах машин и
  * накопителях, слой стрелок и загрузки.

@@ -27,6 +27,8 @@
     button { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 3px 9px; cursor: pointer; }
     button:hover:not(:disabled) { border-color: var(--accent); }
     button.on { background: var(--accent); color: #0b1a1e; border-color: var(--accent); }
+    /* «меньше движения» (src/app/motion.ts): переходы и анимации страницы — мгновенны */
+    :root[data-motion='less'] *, :root[data-motion='less'] *::before, :root[data-motion='less'] *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
     button:disabled { opacity: .45; cursor: default; }
     .top { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 10px; }
     .top .clock { font-size: 16px; font-weight: 600; min-width: 52px; }

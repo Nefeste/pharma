@@ -251,6 +251,8 @@ export const en: Strings = {
     wallsFull: 'Full',
     wallsCut: 'Cut',
     wallsDown: 'Down',
+    less: 'Reduce motion',
+    lessHint: 'The camera turns without gliding, the level of detail changes at once; machines, people and trucks move as before',
   },
   zones: {
     receiving: 'Receiving',

@@ -15,7 +15,7 @@ import type { Quality } from '../render/view';
 import { PRESETS, QUALITIES } from '../render/view';
 import { YARD_Y } from '../render/world';
 import type { Game } from './game';
-import { since, summarize } from './stats';
+import { longShare, since, summarize } from './stats';
 
 export interface BenchOpts {
   secs?: number;
@@ -195,6 +195,8 @@ export async function runBench(g: Game, opts: BenchOpts) {
           frames: interval.length,
           fps: Math.round((interval.length / secs) * 10) / 10,
           frameMs: iv,
+          // правило 1 ADR 0023 устава: кадров дольше 25 мс — не больше 1 % (геймдизайн, §21)
+          over25pct: longShare(interval),
           over33ms: interval.filter(v => v > 33.4).length,
           over100ms: interval.filter(v => v > 100).length,
           drawCpuMs: summarize(draw),

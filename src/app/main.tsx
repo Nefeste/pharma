@@ -38,6 +38,7 @@ const actions: Actions = {
   setQuality: later('setQuality'),
   pickQuality: later('pickQuality'),
   setWalls: later('setWalls'),
+  setLess: later('setLess'),
   setArt: later('setArt'),
   toggleDebug: later('toggleDebug'),
   bench: later('bench'),

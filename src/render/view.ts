@@ -3,7 +3,8 @@
 // (контактный лист, docs/specs/2026-10-view.md, 2г; исправление — перенести в «Больницу»); ночью заливка теплеет и
 // крепнет, а не гаснет: внутри горят светильники, и на низком пресете машины не уходят в черноту (проход по снимкам,
 // docs/reports/2026-10-slice-checks.md); с Б7б — `fit` у камеры и солнца: план растёт стройкой, а отрисовщик, свет и камера
-// остаются те же.
+// остаются те же; с правилом 6 ADR 0023 устава — `less` у камеры: при «меньше движения» поворот без доворота
+// (src/app/motion.ts).
 // Отрисовщик, свет и камера. Пресеты качества меняют тени, сглаживание, затенение и разрешение кадра; сглаживание
 // задаётся при создании контекста WebGL, поэтому смена пресета пересоздаёт WebGLRenderer — геометрия и текстуры
 // загружаются в видеокарту заново сами.
@@ -193,6 +194,8 @@ export class IsoCamera {
   readonly ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 500);
   readonly persp = new THREE.PerspectiveCamera(20, 1, 1, 700);
   aspect = 16 / 9;
+  /** «меньше движения» (src/app/motion.ts): поворот — сразу, без доворота */
+  less = false;
 
   constructor(
     private w: number,
@@ -246,7 +249,7 @@ export class IsoCamera {
 
   update(dt: number) {
     const d = this.yawTo - this.yaw;
-    this.yaw += Math.abs(d) < 1e-3 ? d : d * Math.min(1, dt * 10);
+    this.yaw += this.less || Math.abs(d) < 1e-3 ? d : d * Math.min(1, dt * 10);
     const dir = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch));
     const a = this.aspect;
     const o = this.ortho;

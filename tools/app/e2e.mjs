@@ -810,6 +810,26 @@ async function mainPart() {
     else ok('стены: «вниз» и «срез»');
   }
 
+  // «меньше движения» (правило 6 ADR 0023 устава): включили — поворот камеры за один кадр, выбор запомнен; выключили — как было
+  {
+    const less = async () => {
+      await page.click('[data-test=less-motion]');
+      return page.evaluate(() => ({ cam: window.__game.stage.cam.less, page: document.documentElement.dataset.motion, kept: localStorage.getItem('pharma.lessMotion') }));
+    };
+    const on = await less();
+    const frames = () => page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+    const yaw0 = await page.evaluate(() => window.__game.stage.cam.yaw);
+    await page.keyboard.press('KeyE');
+    await frames();
+    const yaw1 = await page.evaluate(() => window.__game.stage.cam.yaw);
+    await page.keyboard.press('KeyQ');
+    await frames();
+    const off = await less();
+    const turned = Math.abs(yaw1 - yaw0 - Math.PI / 2) < 1e-6;
+    if (!on.cam || on.page !== 'less' || on.kept !== '1' || !turned || off.cam || off.page !== 'full' || off.kept !== '0') fail(`меньше движения: ${JSON.stringify({ on, off, turn: yaw1 - yaw0 })}`);
+    else ok('«Меньше движения»: камера поворачивает сразу, выбор запомнен; выключили — как было');
+  }
+
   // что в серии (Б1д): 2 сентября, когда первую серию отвесили и кладовщик выносит остатки, — в «Сейчас» возврат остатка
   // с материалом, партией и своим значком «обратно на склад»; в карточке помещения грануляции — что в грануляторе
   // по партиям; «Досье» из неё — пять строк «Отвешено» с партиями, кто взвешивал и кто проверял; на грануляции загружены

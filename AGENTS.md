@@ -584,7 +584,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   and vehicles are now — a pure function of the tasks in the slice and the clock, on the plan's routes and with the
   engine's travel times, free people on their way to a post too, and the work icon of each busy person (`movers.ts`);
   the start preset — the frame measured on medium at first run, low if slower than 33 ms, the result and the player's
-  choice kept in the window (`preset.ts`); the autopauses — which notices stop the world, whose post each is, the ones
+  choice kept in the window (`preset.ts`); «Меньше движения» by rule 6 of the charter's ADR 0023 — the player's choice
+  kept in the window, otherwise `prefers-reduced-motion`; on, the camera turns without gliding and the detail level
+  changes at once (`motion.ts`); the autopauses — which notices stop the world, whose post each is, the ones
   switched off kept in the window, where a click on a notice leads, with Б5б a head's proposal before the meeting
   waiting for it (`pauses.ts`); which «Сейчас» row is the work of a thing in the card (`watch.ts`); the levers of
   meeting rows — decisions, whose post, «будет в …» (`levers.ts`); the

@@ -127,10 +127,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   the event agenda as a heap in plain arrays and the calendar without `Date` with the production calendar — holidays,
   transfers, short days, the month's norm — ours), `types.ts` (state — with Б7а the building plan and its revision —,
   commands, notices, `SCHEMA`), `engine.ts` (`newPlant`, `apply`, `catchUp`, events), `random.ts` (named branches in the
-  state, the integer normal draw), `save.ts` (snapshot and migrations), `nav.ts` (the plan's 1 m grid — with Б7б up to the hull's walls, a hull cell
-  without a room unbuilt —: walls, doors and footprints, where people may walk and vehicles may drive, access cells, distance fields cached per plan, route length
-  and the route polyline shared with the window, a point along it in whole centimetres), `plant.ts` (slots, docks,
-  rooms, the lab, work points, posts of roles and distances along the plan's routes; with Б7а from the plan in the
+  state, the integer normal draw), `save.ts` (snapshot and migrations), `nav.ts` (the plan's 1 m grid — with Б7б up to
+  the hull's walls, a hull cell without a room unbuilt —: walls, doors and footprints, where people may walk and
+  vehicles may drive, access cells, distance fields cached per plan, route length and the route polyline shared with
+  the window, a point along it in whole centimetres), `plant.ts` (slots, docks, rooms, the lab, work points, posts of
+  roles and distances along the plan's routes; with Б7а from the plan in the
   state, kept per plan object — `planOf`), `site/checks.ts` (with Б7а, the layout checks as engine functions — doors on
   walls between two rooms or a room and the street, docks in an outer wall and on dock gates, class D only through an
   airlock and vehicles no further than it, amenities not opening into production or storage, zones, equipment and
@@ -143,10 +144,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   demolition: a new plan with its revision one higher, the price without VAT, the room it closes for rebuilding — or why
   not; the same function for the window's ghost), `site/down.ts` (with Б7б, what does not work: red rooms of the plan,
   the room being rebuilt and things being demolished — no new task, stage, packing or test starts there and no pallet
-  place there is chosen, the task waits «помещение не работает» with it), `build.ts` (with Б7б, the `site` command of the
-  director's seat: an edit, «Готово» and the undo of 50 steps — the old plan, what the step paid and the room being
-  rebuilt; money from the cash with VAT and the credit line check, a refund for a demolition; a busy room, zone or rack is
-  demolished when it frees — the `siteFree` event, the refund then and into its undo step; name counters are never
+  place there is chosen, the task waits «помещение не работает» with it), `build.ts` (with Б7б, the `site` command of
+  the director's seat: an edit, «Готово» and the undo of 50 steps — the old plan, what the step paid and the room being
+  rebuilt; money from the cash with VAT and the credit line check, a refund for a demolition; a busy room, zone or rack
+  is demolished when it frees — the `siteFree` event, the refund then and into its undo step; name counters are never
   undone), `stock.ts`
   (lots, containers, pallets, slots, the lot status table; with 0.0.57 the places of quarantine and the cold room held
   for pallets at sampling —
@@ -568,7 +569,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   the schedule run
   with the player's draft —
   new not-before times and new urgent batch orders, the old bars of what the draft moves, and the ghost of a dragged
-  batch order, with Б6е the edge of the frozen horizon and the draft's price (`plan.ts`), Web Worker (`worker.ts`) and
+  batch order, with Б6е the edge of the frozen horizon and the draft's price (`plan.ts`); with Б7б the build — undo
+  steps, the room being rebuilt, things being demolished, what is busy and the cash with the credit edge (`build.ts`),
+  Web Worker (`worker.ts`) and
   its client in the window (`client.ts`; how far the window's
   clock ran ahead of the last slice; at most one `tick` in flight); the plan run's own thread — a second Web Worker over
   the same engine (`planHost.ts`, `planWorker.ts` → `dist/plan.js`; with Б5г the progress after each seed) and its
@@ -596,7 +599,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   the andon icons over things and the boxes of all these marks for clicks (`floor.ts`); with Б1л the «Потери» layer —
   where the column of each place stands, on its room's floor, off equipment and pallet places and apart from the others,
   the kind of loss picked, parts and heights against the largest place, the palette, the boxes, the places of a card
-  and their names (`losses.ts`); the scene bench, a copy of Bolnitsa's, with `--layer load` also with the layer on
+  and their names (`losses.ts`); with Б7б the build tool — a copy of Bolnitsa's: tools, the edit under the cursor, the
+  ghost checked by the same edit function as the command, its line, the room labels' rows and the engine's answer in
+  words (`build.ts`, the panel's choices — `buildpick.ts`), the room labels over the view, a copy of Bolnitsa's
+  (`labels.ts`); the scene bench, a copy of Bolnitsa's, with `--layer load` also with the layer on
   (`bench.ts`,
   `stats.ts`).
 - `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa); the plant
@@ -612,8 +618,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   pallet truck and the reach truck in code (`vehicles.ts`), the detail
   level by speed and camera height with its soft change (`detail.ts`), the site layer — arrows above the walls and the
   fill of places (`overlay.ts`), colour checks — colour-blindness simulation, ΔE and icon contrast (`color.ts`), the
-  outline of the selected thing (`select.ts`), the work icons — paths shared by SVG and canvas (`taskicons.ts`) and the
-  icons above heads, one instanced draw call (`badges.ts`), the columns on the floor shared by two layers — parts,
+  outline of the selected thing (`select.ts`), with Б7б the build ghosts, a copy of Bolnitsa's (`ghost.ts`), and
+  the whole scene anew from a new plan (`Stage.setLayout`), the work icons — paths shared by SVG and canvas
+  (`taskicons.ts`) and the icons above heads, one instanced draw call (`badges.ts`), the columns on the floor shared
+  by two layers — parts,
   full-height frames, numbers (`columns.ts`), the «Загрузка и OEE» layer — columns with frames and plan-vs-actual
   boards in four draw calls (`floor.ts`), the «Потери» layer — columns without frames in two (`losses.ts`), the «Узкие
   места» plates in one draw call
@@ -667,7 +675,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   batch record over the other windows — opened from a
   card, «Сейчас», the meeting and a click
   on a batch bar of the schedule (`Dossier.tsx`), the rejected room's block of the card — the zone's places, the
-  removal, the waste log (`Waste.tsx`), the levers of a row (`Levers.tsx`), the deviation card, the batch
+  removal, the waste log (`Waste.tsx`), with Б7б the build panel in place of the layers (`Build.tsx`), the levers of a
+  row (`Levers.tsx`), the deviation card, the batch
   decision, stage parameters, with Б1ж the setpoints with «−» and «+» and a blister machine's speed, and
   the first-event explanation in the card, with Б5е the class with «Сменить класс», the cause, the signs and the cause
   chosen at the assessment, the CAPA rows with «Выполнить» for a held post's department and the catalog's actions with

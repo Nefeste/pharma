@@ -16,6 +16,7 @@ import { coldOf } from './places';
 import { casesOf } from './planner';
 import { planOf } from './plant';
 import { expo, roll } from './random';
+import { downOf, slotOk } from './site/down';
 import { containersByLot, findSlot, nextId, putUnit, stockChanged } from './stock';
 import { addTask } from './tasks';
 import type { Container, Lot, Notice, Order, PlantState, Shipment, Task, Truck, Unit } from './types';
@@ -230,7 +231,7 @@ export function marketStep(db: ContentDb, s: PlantState, notices: Notice[]) {
 function crossDock(db: ContentDb, s: PlantState, tr: Truck) {
   const plan = planOf(db, s.plan);
   const dock = plan.dock[outDock(db, s)];
-  if (findSlot(s, plan, 'shipping', dock, 0)) return;
+  if (findSlot(s, plan, 'shipping', dock, 0, 'drive', slotOk(downOf(db, s)))) return;
   const mine = new Set(truckOrders(s, tr).map(o => o.id));
   for (const t of Object.values(s.tasks)) {
     if (t.state !== 'open' || !t.order || !mine.has(t.order) || t.toKind !== 'shipping') continue;
@@ -370,7 +371,8 @@ function pickTask(db: ContentDb, s: PlantState, o: Order, u: Unit, cases: string
   let dest = o.units.find(uid => s.units[uid].where.kind === 'slot' && coming(uid) + cases.length <= cap);
   const dock = plan.dock[outDock(db, s)];
   if (!dest) {
-    const sl = findSlot(s, plan, 'shipping', dock, 0);
+    // место в неработающем помещении не выбирают (Б7б)
+    const sl = findSlot(s, plan, 'shipping', dock, 0, 'drive', slotOk(downOf(db, s)));
     if (sl) {
       const out: Unit = { id: nextId(s, 'U'), type: 'unit.pallet.euro', where: { kind: 'slot', id: sl.id }, items: [], tag: 'released', order: o.id };
       s.units[out.id] = out;

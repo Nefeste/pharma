@@ -3,6 +3,7 @@
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
 import type { Attr, Dept, DevClass, FcMethod, HeadId, Id, IncidentRoot, OvertimeMode, Plant, SeatId, TaskKind, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
+import type { BuildError, BuildOp } from './site/edit';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
@@ -950,7 +951,7 @@ export type { TaskKind } from '../content/types';
  * ролей, которые были бы в смене, в отпуске, а заместителя в смене нет (Б4г). В потерях
  * суток есть ещё ожидание фуры: рампа занята (3а) — это ждёт не задача, а фура во дворе.
  */
-export type WaitCause = 'people' | 'shift' | 'vehicle' | 'instrument' | 'place' | 'dock' | 'qual' | 'asset' | 'hours' | 'leave';
+export type WaitCause = 'people' | 'shift' | 'vehicle' | 'instrument' | 'place' | 'dock' | 'qual' | 'asset' | 'hours' | 'leave' | 'down';
 
 /** Место задачи: место паллеты, рампа с фурой или точка. */
 export type Place = { kind: 'slot'; id: string } | { kind: 'truck'; id: string } | { kind: 'point'; x: number; z: number };
@@ -1005,7 +1006,10 @@ export interface Task {
   since?: number;
   /** ждёт «нет допуска» (Б3б): код документа, которого не хватает */
   lack?: string;
-  /** ждёт актив (Б3в): прибор или датчик зоны, который не пригоден; у приёмки работы подрядчика — чей актив */
+  /**
+   * ждёт актив (Б3в): прибор или датчик зоны, который не пригоден; у приёмки работы подрядчика — чей актив; ждёт «помещение
+   * не работает» (Б7б) — помещение или сносимая зона, ряд стеллажа
+   */
   unfit?: string;
   asset?: string;
   /** оценка пары «поставщик — изготовитель» (Б3г): рассмотрение отчёта аудитора или документов — какой пары */
@@ -1070,7 +1074,9 @@ export type PlantEvent =
   /** час ответа на служебную записку `n` (Б5д): руководитель отвечает, если он в своём рабочем времени */
   | { kind: 'memo'; n: number; v: number }
   /** срок ответа на вопрос «Просят решить» `n` (Б5д): не ответили — руководитель решает сам, как сейчас */
-  | { kind: 'ask'; n: number; v: number };
+  | { kind: 'ask'; n: number; v: number }
+  /** стройка (Б7б): снести то, что освободилось; что-то ещё ждёт — проверить снова через шаг проверки сценария */
+  | { kind: 'siteFree' };
 
 // ---------------------------------------------------------------- рынок и касса
 
@@ -1149,7 +1155,7 @@ export interface Shipment {
   vat: number;
 }
 
-export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle' | 'vacation' | 'waste' | 'poFast' | 'poCancel';
+export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle' | 'vacation' | 'waste' | 'poFast' | 'poCancel' | 'build';
 
 // ---------------------------------------------------------------- техслужба
 
@@ -2122,6 +2128,24 @@ export interface PlantState {
   waste: WasteState;
   /** показатели руководителей (Б5ж; src/engine/kpi.ts): срезы суток этого месяца и закрытые месяцы */
   kpi: KpiState;
+  /** стройка (Б7б; src/engine/build.ts): шаги отмены, перестраиваемое, сносимое, счётчики имён, потрачено; не строили — нет */
+  build?: BuildState;
+}
+
+/**
+ * Стройка (Б7б): шаги отмены — последний в конце: номер шага, прежний план, что шаг заплатил с НДС (минус — вернул) и
+ * его НДС, перестраиваемое помещение до шага; перестраиваемое помещение — закрыто, пока игрок не нажал «Готово» или не
+ * взялся за другое; что сносится, когда освободится, — и шаг, в который записать возврат; счётчики имён новых вещей;
+ * потрачено на стройку с НДС, со сносом и отменой.
+ */
+export interface BuildState {
+  undo: { n: number; plan: SitePlan; paid: number; vat: number; editing?: string }[];
+  /** номер следующего шага отмены */
+  step: number;
+  editing?: string;
+  leaving: { what: 'room' | 'zone' | 'rack'; id: string; step: number }[];
+  next: Record<string, number>;
+  spent: number;
 }
 
 /**
@@ -2346,7 +2370,18 @@ export type Command =
    * одобрить пару-кандидата (Б6ж): ключ пары «поставщик — изготовитель» из кандидатов спецификации в силе — пост
    * «Качество» или директор
    */
-  | { kind: 'pairApprove'; pair: string; by?: string };
+  | { kind: 'pairApprove'; pair: string; by?: string }
+  /**
+   * стройка (Б7б; src/engine/build.ts): правка плана — помещение, корпус, дверь, зона, ряд стеллажа, проезд, снос — или
+   * «Готово» и отмена. Место директора: коллеги не строят
+   */
+  | { kind: 'site'; op: BuildOp | { op: 'done' } | { op: 'undo' } };
+
+/**
+ * Почему стройку не приняли, кроме ошибок правки плана (Б7б): не хватит денег — сколько; отменять нечего; отмена уберёт
+ * то, на что уже ссылаются серия, паллета или задача, — что; правка трогает сносимое — что; у сценария нет стройки.
+ */
+export type SiteRefusal = { code: 'money'; need: number } | { code: 'nothing' } | { code: 'inUse'; thing: string } | { code: 'leaving'; thing: string } | { code: 'noBuild' };
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
@@ -2510,6 +2545,14 @@ export type Refusal =
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
+  /**
+   * стройка (Б7б): правка принята — цена с НДС (у сноса — возврат минусом), имя вещи, снос занятого — «когда
+   * освободится»; не принята — почему; отложенный снос прошёл или больше не годится
+   */
+  | { kind: 'site'; op: string; ok: true; cost: number; thing?: string; later?: true }
+  | { kind: 'site'; op: string; ok: false; error: BuildError | SiteRefusal }
+  | { kind: 'siteGone'; what: 'room' | 'zone' | 'rack'; id: string; refund: number }
+  | { kind: 'siteKept'; what: 'room' | 'zone' | 'rack'; id: string; error: BuildError }
   /** совещание S&OP (Б6г): план начальника отдела планирования ждёт утверждения — или утверждён коллегой */
   | { kind: 'sop'; m: number; open: boolean }
   /**

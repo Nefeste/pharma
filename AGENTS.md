@@ -138,7 +138,16 @@ first, or copy the working code of Bolnitsa on the same versions.
   error is a code and a thing, the words are the caller's — the content builder's, with Б7б the building's; with Б7б the
   hull on the lot and in one piece, rooms in the hull, of a catalog type, with its classes, vehicles and smallest size,
   a type not built twice, racks on their room's floor, the role of a room from the catalog, and each error's level —
-  no, red (the room does not work) or yellow (a remark), `levelOf`), `stock.ts`
+  no, red (the room does not work) or yellow (a remark), `levelOf`), `site/edit.ts` (with Б7б, a building edit as a pure
+  function of the plan — a room of a catalog type and class, a hull rectangle, a door, a zone, a rack, vehicles, a
+  demolition: a new plan with its revision one higher, the price without VAT, the room it closes for rebuilding — or why
+  not; the same function for the window's ghost), `site/down.ts` (with Б7б, what does not work: red rooms of the plan,
+  the room being rebuilt and things being demolished — no new task, stage, packing or test starts there and no pallet
+  place there is chosen, the task waits «помещение не работает» with it), `build.ts` (with Б7б, the `site` command of the
+  director's seat: an edit, «Готово» and the undo of 50 steps — the old plan, what the step paid and the room being
+  rebuilt; money from the cash with VAT and the credit line check, a refund for a demolition; a busy room, zone or rack is
+  demolished when it frees — the `siteFree` event, the refund then and into its undo step; name counters are never
+  undone), `stock.ts`
   (lots, containers, pallets, slots, the lot status table; with 0.0.57 the places of quarantine and the cold room held
   for pallets at sampling —
   a putaway from receiving takes only those above them, `heldForSampled`), `supply.ts` (purchase orders; the supply

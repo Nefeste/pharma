@@ -124,13 +124,32 @@ export const scenario = z.strictObject({
   plant: id,
   start: z.strictObject({ date, hour: z.number().int().min(0).max(23) }),
   seed: z.number().int().min(0).max(0xffffffff),
-  site: z.strictObject({ w: z.number().int().min(20).max(300), h: z.number().int().min(20).max(300) }),
   /** ₽ */
   cash: z.number().int(),
   /** кредитная линия: предел минуса кассы, ₽, и надбавка к ключевой ставке, п. п. */
   credit: z.strictObject({ limit: z.number().int().min(0), spread: z.number().min(0).max(50) }),
   /** цена электроэнергии, ₽ за кВт·ч без НДС */
   energy: z.strictObject({ price: z.number().positive() }),
+  /**
+   * стройка (Б7б; геймдизайн, §3.3): цены без НДС, ₽ — метр корпуса, метр помещения по классу, одинарная дверь по классу
+   * (у двери в класс D — чистого помещения), во сколько раз дороже двойная, ворота, передаточное окно, блокировка дверей
+   * шлюза, место паллеты в ряду стеллажа; шаг мест зоны, м; шагов отмены; проверка отложенного сноса, мин
+   */
+  build: z
+    .strictObject({
+      hull: z.number().positive(),
+      room: z.strictObject({ cnc: z.number().positive(), D: z.number().positive() }),
+      door: z.strictObject({ cnc: z.number().positive(), D: z.number().positive() }),
+      double: z.number().int().min(1).max(4),
+      gate: z.number().positive(),
+      hatch: z.number().positive(),
+      interlock: z.number().positive(),
+      rack: z.number().positive(),
+      step: z.number().min(1).max(10),
+      undo: z.number().int().min(1).max(200),
+      check: z.number().int().min(1).max(60),
+    })
+    .optional(),
   /** покупатели сценария */
   customers: z.array(id).default([]),
   staff: z.array(z.strictObject({ role: id, shift: id, skill: z.number().int().min(1).max(5), n: z.number().int().min(1).max(50), also: z.array(id).min(1).optional() })).min(1),

@@ -1040,6 +1040,23 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       cash: kop(s.cash),
       credit: { limit: kop(s.credit.limit), spread: share(s.credit.spread) },
       energy: { price: kop(s.energy.price) },
+      ...(s.build
+        ? {
+            build: {
+              hull: kop(s.build.hull),
+              room: { cnc: kop(s.build.room.cnc), D: kop(s.build.room.D) },
+              door: { cnc: kop(s.build.door.cnc), D: kop(s.build.door.D) },
+              double: s.build.double,
+              gate: kop(s.build.gate),
+              hatch: kop(s.build.hatch),
+              interlock: kop(s.build.interlock),
+              rack: kop(s.build.rack),
+              step: cm(s.build.step),
+              undo: s.build.undo,
+              check: s.build.check * 60,
+            },
+          }
+        : {}),
       orders: s.orders.map(o => ({ supplier: o.supplier, lines: o.lines.map(l => ({ material: l.material, qty: amount(l.material, l.qty, where) })) })),
       stock: s.stock.map(x => ({ material: x.material, qty: amount(x.material, x.qty, where) })),
       wear: Object.fromEntries(Object.entries(s.wear).map(([k, v]) => [k, share(v)])),

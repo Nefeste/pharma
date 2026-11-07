@@ -263,14 +263,14 @@ export interface Scenario {
   start: { date: Ymd; hour: number };
   /** зерно по умолчанию; песочница даёт своё */
   seed: number;
-  /** участок в клетках 1 × 1 м */
-  site: { w: number; h: number };
   /** касса на старте, копейки */
   cash: number;
   /** кредитная линия: предел минуса кассы, копейки; надбавка к ключевой ставке, доли 1/10 000 */
   credit: { limit: number; spread: number };
   /** цена электроэнергии, копейки за кВт·ч без НДС */
   energy: { price: number };
+  /** стройка (Б7б): цены — копейки без НДС, шаг мест зоны — см, проверка отложенного сноса — с; нет — стройки нет */
+  build?: BuildPrices;
   /** покупатели сценария */
   customers: Id[];
   staff: StaffRow[];
@@ -782,6 +782,26 @@ export interface RoomType {
   twoWay?: true;
   source?: string[];
   review?: Review;
+}
+
+/**
+ * Цены и пределы стройки сценария (Б7б; геймдизайн, §3.3): копейки без НДС — метр корпуса, метр помещения по классу
+ * (шлюз — как класс D), одинарная дверь по классу (дверь в класс D — чистого помещения), во сколько раз дороже двойная,
+ * ворота, передаточное окно, блокировка дверей шлюза, место паллеты в ряду стеллажа; шаг мест зоны, см; шагов отмены;
+ * проверка отложенного сноса, с.
+ */
+export interface BuildPrices {
+  hull: number;
+  room: { cnc: number; D: number };
+  door: { cnc: number; D: number };
+  double: number;
+  gate: number;
+  hatch: number;
+  interlock: number;
+  rack: number;
+  step: number;
+  undo: number;
+  check: number;
 }
 
 /** Участок завода (геймдизайн, §3.1): «Цех», «Завод», «Большой завод». */

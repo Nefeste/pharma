@@ -359,13 +359,13 @@ function rackErrors(db: ContentDb, plant: Plant, nav: Nav, out: SiteError[]): vo
         room = nav.room[i];
       }
     }
-    // проход — клетки перед рядом с его стороны: пол того же помещения
+    // проход — клетки перед рядом с его стороны: свободный пол того же помещения (Б7б: не след другой вещи)
     const first = Math.ceil((r.z - CELL_CM / 2) / CELL_CM);
     const last = Math.ceil((r.z + RACK.depth - CELL_CM / 2) / CELL_CM) - 1;
     const row = r.face === 'n' ? first - 1 : last + 1;
     for (let x = Math.floor(x0 / CELL_CM); x <= Math.floor((x1 - 1) / CELL_CM); x++) {
       const i = row >= 0 && x >= 0 && x < nav.w && row < nav.h ? row * nav.w + x : -1;
-      if (i < 0 || nav.cells[i] !== CELL.floor || nav.room[i] !== room) {
+      if (i < 0 || nav.cells[i] !== CELL.floor || nav.room[i] !== room || nav.blocked[i]) {
         out.push({ code: 'rackFloor', rack: r.id, x, z: row });
         return;
       }

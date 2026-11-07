@@ -154,8 +154,10 @@ export function runSeed(db: ContentDb, s: PlantState, variant: Command[], o: Run
   const memos = s.journal.filter(r => r.memo && !r.memo.end);
   // план здания на месте не меняется (Б7а): копия делит его с заводом, и разбор плана (`planOf`) не считается на каждое зерно
   const { daily: _daily, ...planning } = s.planning;
+  // стройку прогон не повторяет (Б7б): шаги отмены — без копии, перестраиваемое и сносимое — как у завода
+  const build = s.build ? { build: { ...s.build, undo: [] } } : {};
   const c: PlantState = {
-    ...structuredClone({ ...s, plan: undefined, journal: memos, heads: runHeads(s), kpi: { ...s.kpi, months: [] }, planning }),
+    ...structuredClone({ ...s, plan: undefined, journal: memos, heads: runHeads(s), kpi: { ...s.kpi, months: [] }, planning, ...build }),
     plan: s.plan,
   };
   for (const inv of Object.values(c.investigations)) delete inv.lead;

@@ -24,6 +24,7 @@ import { type PlantPlan, planOf, type Point } from './plant';
 import { expo, roll } from './random';
 import { shiftEnd } from './staff';
 import { containersByLot, emptyLot, nextId, slotFree, stockChanged } from './stock';
+import { roomDown } from './site/down';
 import { addTask, dropTask } from './tasks';
 import type { Batch, Container, Line, LineMachine, MachineTimes, Notice, PackJob, Part, PlantState, Task, Unit } from './types';
 import { PRIO, WMS } from './wms';
@@ -620,6 +621,8 @@ export function lineStep(db: ContentDb, s: PlantState, notices: Notice[]) {
     // машина в ремонте или вот-вот уйдёт в замену узла — задание ждёт (maint.ts); машина без действующей квалификации или
     // с подрядчиком — тоже (Б3в)
     if (line.machines.some(mc => blocked(s, mc.id) || pending(db, s, mc.id)) || lineUnfit(db, s, line.id)) continue;
+    // помещение линии не работает (Б7б) — упаковка не начинается
+    if (roomDown(db, s, room)) continue;
     startRun(db, s, line, b, g);
     lineUpdate(db, s, line, notices);
   }

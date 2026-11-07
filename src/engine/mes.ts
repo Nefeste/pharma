@@ -24,6 +24,7 @@ import { numOf, POL, policyOf } from './policies';
 import { measure, within } from './quality';
 import { normal, roll, spread } from './random';
 import { containersByLot, createLot, free, knownAssay, nextId, putUnit, stockChanged } from './stock';
+import { roomDown } from './site/down';
 import { addTask, release } from './tasks';
 import type { Batch, BatchFor, Command, Container, Deviation, EditPrice, Equipment, KitLine, Lot, Notice, OrderWhy, PackJob, Part, Place, PlantEvent, PlantState, Room, StageRecord, StageRun, Task, Unit } from './types';
 import { PRIO, WMS } from './wms';
@@ -506,8 +507,9 @@ export function roomFor(db: ContentDb, s: PlantState, room: Room, product: Id, b
 }
 
 /**
- * Следующая стадия серии: помещение её типа — чистое для продукта (или серия уже в нём), оборудование стадии в нём —
- * свободно и пригодно, приборы МОК — пригодны (Б3в). Иначе стадия ждёт; грязное или просроченное помещение уходит в уборку.
+ * Следующая стадия серии: помещение её типа работает (Б7б) и чистое для продукта (или серия уже в нём), оборудование
+ * стадии в нём — свободно и пригодно, приборы МОК — пригодны (Б3в). Иначе стадия ждёт; грязное или просроченное помещение
+ * уходит в уборку.
  */
 function tryStart(db: ContentDb, s: PlantState, b: Batch) {
   const r = db.recipes[b.recipe];
@@ -517,6 +519,8 @@ function tryStart(db: ContentDb, s: PlantState, b: Batch) {
   const st = r.stages[b.stage];
   const roomId = plan.roomOf[st.room];
   const room = s.rooms[roomId];
+  // помещение не работает (Б7б) — стадия ждёт и уборку там не начинают
+  if (roomDown(db, s, roomId)) return;
   if (!roomFor(db, s, room, b.product, b.id)) return;
   const eqs = st.equipment.map(type => Object.values(s.equipment).find(e => e.room === roomId && e.type === type && (!e.batch || e.batch === b.id)));
   // неисправное оборудование выведено из работы до устранения (GMP ЕАЭС, ч. I, п. 3.44): стадия ждёт ремонта; без

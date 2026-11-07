@@ -394,7 +394,7 @@ export const en: Strings = {
     wasteLoad: 'Loading for removal',
     wasteSign: 'Signing the handover for removal',
   },
-  wait: { people: 'people busy', shift: 'nobody on shift', vehicle: 'vehicle busy', instrument: 'instrument busy', place: 'no free place', dock: 'dock busy', qual: 'nobody qualified', asset: 'calibration or qualification', hours: 'no hours left', leave: 'on leave' },
+  wait: { people: 'people busy', shift: 'nobody on shift', vehicle: 'vehicle busy', instrument: 'instrument busy', place: 'no free place', dock: 'dock busy', qual: 'nobody qualified', asset: 'calibration or qualification', hours: 'no hours left', leave: 'on leave', down: 'room not working' },
   machine: { run: 'Running', slow: 'Running slow', micro: 'Micro-stop', fail: 'Breakdown', wait: 'Waiting', setup: 'Changeover', off: 'Off', idle: 'Idle' },
   equipment: { idle: 'Free', run: 'Running', clean: 'Cleaning', fail: 'Breakdown', check: 'Calibration or qualification' },
   card: {
@@ -608,6 +608,7 @@ export const en: Strings = {
       instrument: 'The instrument is the bottleneck of the lab: tests wait until it is free.',
       place: 'The warehouse or a zone is full: pallets have nowhere to go.',
       dock: 'Trucks came at the same time and waited for the dock in the yard.',
+      down: 'The room of the work was not working — being rebuilt, being demolished or unfit by the plan — so the work waited. Why — in build mode, above the room.',
       fail: 'A part failed in the middle of work. Part wear is on the machine’s card.',
       setup: 'Every format change means setup and line clearance. Fewer changes — fewer stops.',
       micro: 'Frequent short stops are a sign of part wear. Wear is on the machine’s card.',
@@ -770,6 +771,7 @@ export const en: Strings = {
       waste: 'Waste removal',
       poFast: 'Order expedited',
       poCancel: 'Order cancelled',
+      build: 'Construction',
     },
     why: {
       po: (supplier: string, po: string) => `${supplier}, order ${po}`,

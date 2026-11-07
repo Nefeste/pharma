@@ -13,6 +13,7 @@ import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
 import { deputyCommand } from './bosses';
+import { siteCommand, siteFree } from './build';
 import { capaCommand, capaHour, capaRunCommand, classifyCommand } from './capa';
 import { answerFork, askDue, forksStep } from './forks';
 import { answerCommand, headsDay, modeCommand, newHeads } from './heads';
@@ -450,6 +451,13 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       settle(db, s, notices);
       return notices;
     }
+    case 'site': {
+      // стройка (Б7б): новый план — стадии, линии и раздача задач по нему, как после события
+      const notices: Notice[] = [];
+      siteCommand(db, s, cmd, notices);
+      steps(db, s, notices);
+      return notices;
+    }
   }
 }
 
@@ -643,6 +651,11 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
     case 'ask':
       // срок ответа на «Просят решить» (Б5д): руководитель решает сам, как сейчас, — завод не меняется
       askDue(s, ev.n, ev.v);
+      return;
+    case 'siteFree':
+      // стройка (Б7б): освободившееся из сносимого — снести
+      siteFree(db, s, notices);
+      steps(db, s, notices);
       return;
   }
 }

@@ -26,7 +26,7 @@ import { dist, type PlantPlan, planOf, type Point, type Slot, straight, travel }
 import { admitted, lacking, needOf, vehicleNeed } from './quals';
 import { goHome, here, LAST_CALL, shiftEnd, shiftEndAt, stopWalk, WALK } from './staff';
 import { findSlot, freeSlots, heldForSampled, nextId } from './stock';
-import { type Down, dockRoom, downOf, roomAt, slotOk } from './site/down';
+import { type Down, dockRoom, downOf, floorRoomAt, slotOk } from './site/down';
 import type { Instrument, Person, Place, PlantState, Task, TaskKind, Vehicle, WaitCause } from './types';
 
 export { WALK };
@@ -401,12 +401,12 @@ export function taskRooms(db: ContentDb, plan: PlantPlan, s: PlantState, t: Task
   if (t.line) add(plan.plant.lines.find(l => l.id === t.line)?.room);
   const f = t.from;
   if (f.kind === 'truck') add(s.trucks[f.id] ? dockRoom(db, plan.plant, s.trucks[f.id].dock) : undefined);
-  else if (f.kind === 'point' || plan.slot[f.id]) add(roomAt(plan, pointOf(plan, s, f)));
-  if (t.to && plan.slot[t.to]) add(roomAt(plan, plan.slot[t.to]));
+  else if (f.kind === 'point' || plan.slot[f.id]) add(floorRoomAt(plan, pointOf(plan, s, f)));
+  if (t.to && plan.slot[t.to]) add(floorRoomAt(plan, plan.slot[t.to]));
   if (t.truck) add(s.trucks[t.truck] ? dockRoom(db, plan.plant, s.trucks[t.truck].dock) : undefined);
   else {
     const d = destOf(plan, s, t);
-    if (d) add(roomAt(plan, d));
+    if (d) add(floorRoomAt(plan, d));
   }
   return out;
 }

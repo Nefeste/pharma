@@ -34,13 +34,17 @@ function floorOf(type: string, grade: 'D' | 'cnc'): FloorKind {
   return 'linoleum';
 }
 
-/** Материал пола каждой клетки: пол и коридор — по помещению, дверь — по одной из сторон; стены и улица — null. */
+/**
+ * Материал пола каждой клетки: пол и коридор — по помещению, дверь — по одной из сторон; клетка корпуса без помещения
+ * (Б7б) — голая плита; стены и улица — null.
+ */
 function floorKinds(l: Layout): (FloorKind | null)[] {
   const { w, h, nav } = l;
   const k: (FloorKind | null)[] = new Array(w * h).fill(null);
   for (let i = 0; i < w * h; i++) {
     const c = nav.cells[i];
     if ((c === CELL.floor || c === CELL.corridor) && nav.room[i] >= 0) k[i] = floorOf(l.rooms[nav.room[i]].type, l.rooms[nav.room[i]].grade);
+    else if (c === CELL.unbuilt) k[i] = 'concrete';
   }
   for (const d of l.doors) {
     const side = d.rooms.find(r => r >= 0);
@@ -239,7 +243,23 @@ export function buildGround(l: Layout, anisotropy: number): THREE.Mesh[] {
     m.name = name;
     out.push(m);
   };
-  // отмостка — плитка в 2 м у стен, дальше — газон
+  // отмостка — плитка в 2 м у стен, дальше — газон; клетки сетки вне корпуса (Б7б: корпус растёт стройкой) — тоже плитка
+  const lot: [number, number][] = [];
+  for (let z = 0; z < h; z++) for (let x = 0; x < w; x++) if (l.nav.cells[z * w + x] === CELL.outside) lot.push([x, z]);
+  if (lot.length) {
+    const tiles = mergeGeometries(
+      lot.map(([x, z]) => {
+        const g = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+        const u = g.attributes.uv as THREE.BufferAttribute;
+        for (let k = 0; k < u.count; k++) u.setXY(k, (x + u.getX(k)) / paving.meters, (z + 1 - u.getY(k)) / paving.meters);
+        return g.translate(x + 0.5, -0.006, z + 0.5);
+      }),
+    );
+    const m = new THREE.Mesh(tiles, new THREE.MeshStandardMaterial({ map: paving.texture, roughness: 0.95 }));
+    m.receiveShadow = true;
+    m.name = 'paving lot';
+    out.push(m);
+  }
   strip(0, -2, w + 2, 2, paving, -0.006, 'paving n');
   strip(0, h, w + 2, 2, paving, -0.006, 'paving s');
   strip(w, 0, 2, h, paving, -0.006, 'paving e');

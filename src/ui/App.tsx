@@ -21,6 +21,7 @@ import { Journal } from './Journal';
 import { Kpi } from './Kpi';
 import { Policies } from './Policies';
 import { Sop } from './Sop';
+import { Build } from './Build';
 import { FloorTip, Layers } from './Layers';
 import { Lab } from './Lab';
 import { Morning } from './Morning';
@@ -163,7 +164,7 @@ export function App({ store, actions, scenario }: { store: Store; actions: Actio
       {/* слои слева (Б1и; геймдизайн, §18) и подсказка у столбика под курсором; пока выбирают место, слоёв нет — из-под
           экрана «Кем вы будете» они выглядывали обрезком (второй проход по снимкам) */}
       <Guard name={T.floor.layers}>
-        {s.seats.open ? null : <Layers hud={s} actions={actions} />}
+        {s.seats.open ? null : s.build.on ? <Build hud={s} actions={actions} /> : <Layers hud={s} actions={actions} />}
         {plant ? <FloorTip hud={s} plant={plant} /> : null}
       </Guard>
       {/* ограда — и вокруг закрытой панели: ошибку уборки при снятии панели React отдаёт той, что осталась на экране */}

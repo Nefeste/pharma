@@ -11,12 +11,13 @@ import { MORNING } from '../engine/engine';
 import { planOf } from '../engine/plant';
 import type { Command, DeptMode, Head, Notice } from '../engine/types';
 import type { RunSum } from '../engine/plan/run';
-import { dayText, durText, hText, named, qtyText, T, whenText } from '../i18n';
+import { dayText, durText, hText, money, named, qtyText, T, whenText } from '../i18n';
 import { bakeLook, lodOf, packPeople } from '../render/bake';
 import type { ArtIndex } from '../render/blender';
 import { AT, camDetail, type Detail, ease, speedDetail, type Weights } from '../render/detail';
 import { type Layout, layoutOf, levelY } from '../render/layout';
 import type { PalletView } from '../render/loads';
+import { Ghosts } from '../render/ghost';
 import { Stage } from '../render/stage';
 import { forkY } from '../render/vehicles';
 import type { Quality } from '../render/view';
@@ -33,6 +34,8 @@ import { cancelsOf, commandsOf, draftKey, freshOf, ordersOf, prune, pruneDrop, t
 import { draftCommands, draftKey as policyKey, sameValue } from '../ui/policy';
 import { type Actions, holds, type Hud, LIVE, NO_POLICY_RUN, NO_RUN, PLAN_RUN, POLICY_RUN, type Speed, type Store } from '../ui/store';
 import { type ArtMode, loadArt } from './art';
+import { Builder, type Cell, resultText, thingName, whyText } from './build';
+import { Labels } from './labels';
 import { keepFirsts, keptFirsts } from './firsts';
 import { andonBoxes, andonMarks, barBoxes, DATA_LAYERS, midSpot, nextLayer, plateBoxes, platesOf } from './floor';
 import { lossBoxes } from './losses';
@@ -115,9 +118,11 @@ export class Game {
   scenario!: Scenario;
   /** план здания от потока расчёта (Б7а), по которому построена сцена, и номер его правки */
   private world!: World;
-  /** поток прислал другой план: срезы не разбирать — номера вещей в них — номера другого плана; перестройка сцены — с Б7б */
-  private alien = false;
   layout!: Layout;
+  /** стройка (Б7б): инструмент, его призраки и подписи помещений */
+  builder!: Builder;
+  private ghosts!: Ghosts;
+  private labels!: Labels;
   /** что видно на полу: паллеты, фуры, помещения — из срезов */
   readonly view = new SceneState();
   private shownVersion = -1;
@@ -212,6 +217,22 @@ export class Game {
     g.stage = new Stage({ host, layout: g.layout, db, quality, capacity: g.layout.plan.slots.length + 256, art: models });
     const crowd = await loadPeople(g.models);
     g.stage.setPeople(crowd.people, crowd.names);
+    // стройка (Б7б): призраки — в сцене, подписи — слоем страницы; команды — от игрока, на месте директора
+    g.ghosts = new Ghosts();
+    g.stage.scene.add(g.ghosts.group);
+    g.labels = new Labels(g.stage);
+    g.builder = new Builder({
+      db,
+      plan: () => g.world.plan,
+      prices: () => sc.build,
+      vat: () => db.profiles[sc.profile].vat.general,
+      ghosts: () => g.ghosts,
+      walls: m => {
+        if (m) g.actions.setWalls(m);
+        return g.stage.wallMode;
+      },
+      send: op => g.send({ kind: 'site', op }),
+    });
     g.client.onSlice = s => g.receive(s);
     g.receive(first);
     // один поток прогона на два окна: расписание (часть 5) и политики (Б5г) — чей прогон идёт, тому и итог
@@ -246,23 +267,50 @@ export class Game {
     return g;
   }
 
-  private receive(s: Slice) {
-    if (s.world) {
-      // план здания (Б7а): после старта и загрузки — тот же план, сцена та же; другой план (номер правки или сам план)
-      // сцена примет с Б7б, а пока окно о нём говорит и его срезов не разбирает
-      this.alien = s.world.rev !== this.world.rev || stableJson(s.world.plan) !== stableJson(this.world.plan);
-      if (this.alien) this.store.set({ error: `plan ${s.world.plan.id} rev ${s.world.rev}: not the plan of the scene` });
-      else {
-        this.world = s.world;
-        this.store.set({ world: s.world.plan });
-      }
+  /**
+   * Новый план от потока (стройка, Б7б): раскладка, сцена и щелчки по вещам — по нему; вид «Пол» — на новые столбики;
+   * призрак стройки проверяется заново.
+   */
+  private relayout(world: World) {
+    this.world = world;
+    this.store.set({ world: world.plan });
+    this.layout = layoutOf(planOf(this.db, world.plan));
+    this.machineBoxes = machineBoxes(this.db, this.layout);
+    this.stage.setLayout(this.layout);
+    const f = this.store.get().floor;
+    if (f.view) {
+      this.stage.setFloor(f.view, f.pick);
+      this.stage.plates.set(platesOf(this.layout, f.view));
     }
+    this.builder.refresh();
+    this.buildHud();
+  }
+
+  /** Панель стройки — из инструмента. */
+  private buildHud() {
+    this.store.set({ build: this.builder.hud() });
+  }
+
+  /** Клетка пола под точкой экрана: луч камеры — до пола (y = 0); за краем сетки — тоже клетка: корпус растёт туда. */
+  private cellAt(clientX: number, clientY: number): Cell | undefined {
+    const r = this.stage.ray(clientX, clientY);
+    if (r.d[1] >= 0) return undefined;
+    const t = -r.o[1] / r.d[1];
+    return [Math.floor(r.o[0] + t * r.d[0]), Math.floor(r.o[2] + t * r.d[2])];
+  }
+
+  private receive(s: Slice) {
+    // план здания (Б7а): после старта и загрузки — тот же план, сцена та же; другой план — номер правки или сам план
+    // (стройка, Б7б) — сцена заново по нему, до разбора среза: номера вещей в срезе — номера его плана
+    const relaid = !!s.world && (s.world.rev !== this.world.rev || stableJson(s.world.plan) !== stableJson(this.world.plan));
+    if (s.world && relaid) this.relayout(s.world);
     const sl = unpack(s.buf);
-    // срез другой правки плана окно не разбирает: номера вещей в нём — номера другого плана
-    if (this.alien || sl.rev !== this.world.rev) return;
-    // перевозки — по прежним местам паллет окна, до того как срез их перепишет
-    this.flows.step(sl.t, movesOf(this.layout.plan, this.view.units, this.view.trucks, sl));
-    this.peopleFlows.step(sl.t, peopleMoves(this.layout, this.peopleAt, sl.people));
+    // срез другой правки плана окно не разбирает
+    if (sl.rev !== this.world.rev) return;
+    // перевозки — по прежним местам паллет окна, до того как срез их перепишет; места нового плана — другие: срез стройки
+    // перевозок не даёт
+    this.flows.step(sl.t, relaid ? [] : movesOf(this.layout.plan, this.view.units, this.view.trucks, sl));
+    this.peopleFlows.step(sl.t, relaid ? [] : peopleMoves(this.layout, this.peopleAt, sl.people));
     this.t = sl.t;
     this.day = sl.day;
     this.lag = s.lag;
@@ -334,10 +382,17 @@ export class Game {
         // призрак того, что тянут сейчас; прежний запрос — не показываем
         const g = this.store.get().gantt;
         if (g.drag?.batch === d.batch && g.drag.notBefore === d.notBefore) this.store.set({ gantt: { ...g, ghost: d } });
+      } else if (d.view === 'build') {
+        // стройка (Б7б): шаги отмены, перестраиваемое, сносимое, занятое и касса — призраку и подписям
+        this.builder.setView(d);
+        this.buildHud();
       } else this.store.set({ top: d });
     }
     // извещения автопауз игрока — вес «стоп» (13-art.md, §11): на таком поток встал; в полосе — оно, а не то, что пришло с
     // ним позже. Предложение руководителя (Б5б) в ту же минуту — под тем, что случилось: сначала событие, потом совет
+    // стройка (Б7б): ответ движка — строкой под инструментами
+    for (const n of s.notices) if (n.kind === 'site') this.builder.onResult(n);
+    if (s.notices.some(n => n.kind === 'site')) this.buildHud();
     const stops = new Set(this.stops());
     const stop = (n: Notice) => stops.has(stopKey(n));
     for (const n of s.notices) if (!stop(n)) this.notice(n, false);
@@ -503,6 +558,10 @@ export class Game {
       : n.kind === 'memo' ? T.notices.memo(T.journal.namesTo[n.head] ?? n.head, n.at !== undefined ? whenText(this.store.get().start, n.at) : undefined)
       : n.kind === 'memoDone' ? T.notices.memoDone(T.journal.names[n.head] ?? n.head, n.ok, n.of)
       : n.kind === 'ask' ? T.notices.ask(T.journal.names[n.head] ?? n.head, T.journal.what.fork[n.fork] ?? n.fork)
+      // стройка (Б7б): ответ на правку, отложенный снос прошёл или больше не годится
+      : n.kind === 'site' ? resultText(this.db, this.world.plan, n).text
+      : n.kind === 'siteGone' ? T.build.notice.gone(thingName(this.world.plan, n.id), money(n.refund))
+      : n.kind === 'siteKept' ? T.build.notice.kept(n.id, whyText(this.db, this.world.plan, n.error))
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;
@@ -555,6 +614,18 @@ export class Game {
     if (!this.manual) this.client.frame(game, this.ff ? 14 : 8, this.stops());
     this.onFrame?.(ts);
     this.edgePan(dt);
+    // стройка: клетка под курсором — и когда камера едет, а мышь стоит; подписи помещений — над ними
+    if (this.builder.on && this.mouse.inside) {
+      const cell = this.cellAt(this.mouse.x, this.mouse.y);
+      const h = this.builder.hover;
+      if (cell?.[0] !== h?.[0] || cell?.[1] !== h?.[1]) {
+        this.builder.move(cell);
+        this.buildHud();
+      }
+    }
+    this.labels.visible = this.builder.on;
+    if (this.builder.on) this.labels.set(this.builder.labels());
+    this.labels.frame();
     // крупность показа — по скорости и высоте камеры; веса доходят до нового уровня за 0,4 с
     this.camLevel = camDetail(this.stage.cam.half, this.camLevel);
     this.detailTarget = Math.max(this.camLevel, speedDetail(this.speed, this.ff)) as Detail;
@@ -1125,6 +1196,20 @@ export class Game {
       const p = this.store.get().policies;
       if (Object.keys(p.draft).length > 0) this.store.set({ policies: { ...p, draft: {} } });
     },
+    toggleBuild: () => {
+      // стройка (Б7б) — место директора: без него инструмента нет, движок не примет
+      if (!this.builder.on && !holds(this.store.get(), 'director')) return;
+      this.builder.toggle();
+      this.buildHud();
+      this.sendViews();
+    },
+    buildPick: patch => {
+      this.builder.set(patch);
+      this.buildHud();
+      this.sendViews();
+    },
+    buildUndo: () => this.send({ kind: 'site', op: { op: 'undo' } }),
+    buildDone: () => this.send({ kind: 'site', op: { op: 'done' } }),
     toggleSop: () => {
       // окно совещания S&OP (Б6г) — большое, как политики: панели справа и другие большие окна закрываются
       const p = this.store.get().sop;
@@ -1350,6 +1435,7 @@ export class Game {
     // или машины: в ней блоки «Загрузка», «Узкие места» и «Потери»; «Андон» (Б1к) — пока включён слой «Проблемы»
     if (h.layer === 'load' || h.layer === 'bottle' || h.layer === 'losses' || this.selected?.kind === 'room' || this.selected?.kind === 'machine') list.push({ id: 'floor', view: 'floor', win: h.floor.win });
     if (h.layer === 'andon') list.push({ id: 'andon', view: 'andon' });
+    if (h.build.on) list.push({ id: 'build', view: 'build' });
     const key = JSON.stringify(list);
     if (key === this.viewsSent) return;
     this.viewsSent = key;
@@ -1514,6 +1600,13 @@ export class Game {
         this.mouse.drag = { x: e.clientX, y: e.clientY, moved: 0, button: e.button };
         el.setPointerCapture(e.pointerId);
       } else if (e.button === 0) {
+        // стройка (Б7б): поставить, протянуть, снести
+        if (this.builder.on) {
+          el.setPointerCapture(e.pointerId);
+          this.builder.down(this.cellAt(e.clientX, e.clientY));
+          this.buildHud();
+          return;
+        }
         // ЛКМ — выбрать вещь под курсором; мимо — снять выбор (как в «Больнице»); у столбика «Потерь» (Б1л) — и его место:
         // блок «Потери» карточки раскроет его
         const spot = this.markAt(e.clientX, e.clientY)?.spot;
@@ -1533,8 +1626,15 @@ export class Game {
       this.mouse.drag = { x: e.clientX, y: e.clientY, moved: this.mouse.drag.moved + Math.abs(dx) + Math.abs(dy), button: this.mouse.drag.button };
     });
     el.addEventListener('pointerup', e => {
-      // ПКМ без протяжки — снять выбор
-      if (e.button === 2 && this.mouse.drag && this.mouse.drag.moved < 4) this.actions.select(undefined);
+      if (e.button === 0 && this.builder.on) {
+        this.builder.up(this.cellAt(e.clientX, e.clientY));
+        this.buildHud();
+      }
+      // ПКМ без протяжки — в стройке снять призрак, инструмент, стройку; иначе — снять выбор
+      if (e.button === 2 && this.mouse.drag && this.mouse.drag.moved < 4) {
+        if (this.builder.cancel()) this.buildHud();
+        else this.actions.select(undefined);
+      }
       if (this.mouse.drag?.button === e.button) this.mouse.drag = null;
     });
     el.addEventListener('pointerleave', () => {
@@ -1578,7 +1678,15 @@ export class Game {
       else if (k === 'KeyP') this.actions.togglePolicies();
       else if (k === 'KeyO') this.actions.toggleSop();
       else if (k === 'KeyL') this.actions.nextLayer();
-      else if (k === 'F1') {
+      // стройка (Б7б; геймдизайн, §12): B — стройка, R — повернуть, Ctrl+Z — отменить шаг
+      else if (k === 'KeyB') this.actions.toggleBuild();
+      else if (k === 'KeyR' && this.builder.on) {
+        this.builder.rotate();
+        this.buildHud();
+      } else if (k === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        if (this.builder.on) this.actions.buildUndo();
+      } else if (k === 'F1') {
         e.preventDefault();
         this.actions.toggleRef();
       } else if (k === 'F2') {
@@ -1588,7 +1696,8 @@ export class Game {
         // Esc: сначала то, что тянут в расписании, потом досье серии (оно поверх всего) и окно «Заказ поставщику» (поверх
         // склада, Б5б), меню автопауз, выбор, верхнее окно — расписание (оно поверх планёрки), планёрка, затем панель справа
         const h = this.store.get();
-        if (h.gantt.drag) this.actions.cancelDrag();
+        if (this.builder.cancel()) this.buildHud();
+        else if (h.gantt.drag) this.actions.cancelDrag();
         else if (h.dossier.open) this.actions.closeDossier();
         else if (h.po.open) this.actions.togglePo();
         else if (h.pauses.open) this.actions.togglePauses();

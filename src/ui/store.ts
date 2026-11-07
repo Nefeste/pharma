@@ -2,6 +2,7 @@
 // Хранилище панелей: игра пишет сюда не чаще 10 раз в секунду, панели читают через `useSyncExternalStore`. Снимок
 // неизменяемый: каждое `set` — новый объект.
 import { useSyncExternalStore } from 'react';
+import { type BuildHud, type BuildPick, NO_BUILD } from '../app/buildpick';
 import type { Layer } from '../app/floor';
 import type { Go, Pause } from '../app/pauses';
 import type { Dept, HeadId, Id, OvertimeMode, Plant, SeatId } from '../content/types';
@@ -162,6 +163,8 @@ export interface Hud {
   andon: { view?: AndonView };
   /** пояснения при первом событии (Б1г): виды, которые игрок уже понял, — запоминаются в окне (src/app/firsts.ts) */
   firsts: readonly string[];
+  /** стройка (Б7б): включена ли, выбор в панели, строки призрака и ответа, шаги отмены, потрачено, перестраиваемое */
+  build: BuildHud;
 }
 
 /** Вкладки справочника завода: продукты, карты, оборудование, лаборатория, люди, контрагенты. */
@@ -264,6 +267,7 @@ export const initial: Hud = {
   floor: { win: 'today', pick: 'all' },
   andon: {},
   firsts: [],
+  build: NO_BUILD,
 };
 
 export interface Actions {
@@ -415,6 +419,14 @@ export interface Actions {
    * сбросить черновик; «Утвердить» — команда `sop` с показанным планом
    */
   toggleSop(): void;
+  /**
+   * стройка (Б7б): включить или выйти (B; выход — «Готово»); выбор в панели — инструмент, тип и класс, дверь, зона, ряд
+   * стеллажа; отменить шаг (Ctrl+Z); «Готово» — перестраиваемое помещение снова работает
+   */
+  toggleBuild(): void;
+  buildPick(patch: Partial<BuildPick>): void;
+  buildUndo(): void;
+  buildDone(): void;
   setSopCell(product: Id, i: number, days: number): void;
   resetSop(): void;
   approveSop(): void;

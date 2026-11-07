@@ -25,7 +25,7 @@ export interface Down {
 const NONE: Down = { rooms: new Map(), slots: new Map() };
 
 /** Помещение под точкой — пол или коридор; стена, дверь, «не застроено» и улица — `undefined`. */
-export function roomAt(plan: PlantPlan, p: Point): string | undefined {
+export function floorRoomAt(plan: PlantPlan, p: Point): string | undefined {
   const nav = plan.nav;
   const x = Math.floor(p.x / CELL_CM);
   const z = Math.floor(p.z / CELL_CM);
@@ -79,7 +79,7 @@ export function downOf(db: ContentDb, s: PlantState): Down {
     for (const sl of plan.slots) {
       if (gone.has(sl.group)) slots.set(sl.id, sl.group);
       else {
-        const r = roomAt(plan, sl);
+        const r = floorRoomAt(plan, sl);
         if (r !== undefined && rooms.has(r)) slots.set(sl.id, r);
       }
     }

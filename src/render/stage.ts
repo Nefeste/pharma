@@ -72,18 +72,18 @@ export class Stage {
   readonly light: Daylight;
   renderer: THREE.WebGLRenderer;
   loads: Loads;
-  readonly walls: Walls;
-  readonly doors: Doors;
-  readonly lamps: Lamps;
+  walls: Walls;
+  doors: Doors;
+  lamps: Lamps;
   readonly trucks = new Trucks();
   readonly fleet: Fleet;
   machines: Machines;
   /** слой участка: стрелки и загрузка мест (2г) */
-  readonly overlay: Overlay;
+  overlay: Overlay;
   /** слой «Загрузка и OEE» (Б1и): столбики, числа, доски «План — факт» */
-  readonly floor: FloorLayer;
+  floor: FloorLayer;
   /** слой «Потери» (Б1л) */
-  readonly losses: LossLayer;
+  losses: LossLayer;
   /** слой «Узкие места» (Б1к): таблички над тремя местами и над машиной, которая держит линию */
   readonly plates = new PlateLayer();
   /** слой «Проблемы» (Б1к): значки андона над вещами, которые не работают */
@@ -95,7 +95,7 @@ export class Stage {
   private gameRate = 0;
   /** паллеты, которые везут: на вилах и только что поставленные */
   readonly carried = new Loads(16);
-  readonly signs: Signs;
+  signs: Signs;
   /** значки работ над головами (Б1б) */
   readonly badges = new Badges(MAX_PEOPLE);
   private badgeList: Badge[] = [];
@@ -121,10 +121,19 @@ export class Stage {
   readonly selection = new Selection();
   private hourShown = -1;
   private host: HTMLElement;
+  /** что сцена строит из плана (Б7б: новый план — заново, `setLayout`) */
+  private layout: Layout;
+  private art?: Art;
+  private aniso: number;
+  private ground: THREE.Mesh[];
+  private markings: THREE.Mesh;
+  private racks: THREE.Object3D;
 
   constructor(readonly init: StageInit) {
     const { layout, host } = init;
     this.host = host;
+    this.layout = layout;
+    this.art = init.art;
     this.quality = init.quality;
     this.cam = new IsoCamera(layout.w, layout.h);
     this.cam.overview();
@@ -133,17 +142,21 @@ export class Stage {
     this.gpu = new GpuTimer(this.renderer.getContext() as WebGL2RenderingContext);
     this.gpuName = gpuString(this.renderer);
     const aniso = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
-    for (const m of buildGround(layout, aniso)) this.scene.add(m);
+    this.aniso = aniso;
+    this.ground = buildGround(layout, aniso);
+    for (const m of this.ground) this.scene.add(m);
     this.lamps = buildLamps(layout);
     this.floors = buildFloors(layout, aniso, this.lamps.lightMap, this.floorTex);
     for (const m of this.floors) this.scene.add(m);
-    this.scene.add(buildMarkings(layout, aniso));
+    this.markings = buildMarkings(layout, aniso);
+    this.scene.add(this.markings);
     this.walls = buildWalls(layout);
     this.scene.add(this.walls.mesh);
     this.doors = buildDoors(layout);
     this.scene.add(this.doors.mesh);
     this.scene.add(this.lamps.mesh);
-    this.scene.add(buildRacks(layout.plan.plant.racks.map(r => ({ x: r.x / 100, z: r.z / 100, bays: r.bays, levels: r.levels }))));
+    this.racks = buildRacks(layout.plan.plant.racks.map(r => ({ x: r.x / 100, z: r.z / 100, bays: r.bays, levels: r.levels })));
+    this.scene.add(this.racks);
     this.machines = new Machines(layout, init.db, init.art?.machines);
     this.scene.add(this.machines.group);
     this.overlay = new Overlay(layout);
@@ -171,10 +184,71 @@ export class Stage {
 
   /** Модели из Blender или кодом (панель отладки, «Модели»): машины — заново. */
   setArt(art: Art | undefined) {
+    this.art = art;
     this.scene.remove(this.machines.group);
     this.machines.dispose();
-    this.machines = new Machines(this.init.layout, this.init.db, art?.machines);
+    this.machines = new Machines(this.layout, this.init.db, art?.machines);
     this.scene.add(this.machines.group);
+  }
+
+  /**
+   * Новый план после стройки (Б7б; как `setLayout` «Больницы», её src/render/stage.ts): земля, полы, разметка, стены,
+   * двери, светильники, стеллажи, машины, слои и таблички — заново по новой раскладке; отрисовщик, свет, камера, люди,
+   * техника, фуры и паллеты — те же. Камера и карта теней — по размеру нового плана, свет пола — по часу заново.
+   */
+  setLayout(layout: Layout) {
+    const db = this.init.db;
+    // текстуры полов — общие для всех раскладок (`floorTex`); у остального — свои, с ним и уходят
+    const drop = (o: THREE.Object3D, maps = true) => {
+      this.scene.remove(o);
+      o.traverse(x => {
+        const m = x as THREE.Mesh;
+        if (!m.isMesh && !(x as THREE.Sprite).isSprite) return;
+        m.geometry?.dispose();
+        for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
+          if (maps) (mat as THREE.MeshBasicMaterial).map?.dispose();
+          mat.dispose();
+        }
+      });
+    };
+    for (const m of this.floors) drop(m, false);
+    for (const m of [...this.ground, this.markings, this.walls.mesh, this.doors.mesh, this.lamps.mesh, this.racks]) drop(m);
+    this.lamps.lightMap.dispose();
+    for (const g of [this.overlay.group, this.floor.group, this.losses.group, this.signs.group]) drop(g);
+    this.scene.remove(this.machines.group);
+    this.machines.dispose();
+    this.layout = layout;
+    this.ground = buildGround(layout, this.aniso);
+    for (const m of this.ground) this.scene.add(m);
+    this.lamps = buildLamps(layout);
+    this.floors = buildFloors(layout, this.aniso, this.lamps.lightMap, this.floorTex);
+    for (const m of this.floors) this.scene.add(m);
+    this.markings = buildMarkings(layout, this.aniso);
+    this.scene.add(this.markings);
+    this.walls = buildWalls(layout);
+    this.walls.setMode(this.wallMode);
+    this.scene.add(this.walls.mesh);
+    this.doors = buildDoors(layout);
+    this.scene.add(this.doors.mesh);
+    this.scene.add(this.lamps.mesh);
+    this.racks = buildRacks(layout.plan.plant.racks.map(r => ({ x: r.x / 100, z: r.z / 100, bays: r.bays, levels: r.levels })));
+    this.scene.add(this.racks);
+    this.machines = new Machines(layout, db, this.art?.machines);
+    this.scene.add(this.machines.group);
+    this.overlay = new Overlay(layout);
+    this.overlay.setShown(this.layerOn ? 1 : this.shownD.layer);
+    this.scene.add(this.overlay.group);
+    this.floor = new FloorLayer(db, layout, roomsOf(layout.plan).rooms, n => T.morning.line(n + 1));
+    this.scene.add(this.floor.group);
+    this.losses = new LossLayer(db, layout);
+    this.scene.add(this.losses.group);
+    this.signs = new Signs(layout, db);
+    this.scene.add(this.signs.group);
+    this.reserve(layout.plan.slots.length + 256);
+    this.cam.fit(layout.w, layout.h);
+    this.light.fit(layout.w, layout.h);
+    this.lamps.mesh.visible = !this.dataOn;
+    this.hourShown = -1;
   }
 
   setPallets(list: readonly PalletView[]) {

@@ -10,7 +10,7 @@ import { part, post } from './cash';
 import { schedule } from './core/agenda';
 import { CELL_CM } from './nav';
 import { planOf } from './plant';
-import { forgetDown, roomAt } from './site/down';
+import { floorRoomAt, forgetDown } from './site/down';
 import { type BuildError, type BuildOp, doorId, doorSides, editPlan, without } from './site/edit';
 import { slotFree } from './stock';
 import { taskRooms } from './tasks';
@@ -35,7 +35,7 @@ export function busyWith(db: ContentDb, s: PlantState, what: Thing, id: string):
     for (const u of Object.values(s.units)) {
       if (u.where.kind === 'room' && u.where.id === id) return u.id;
       const sl = u.where.kind === 'slot' ? plan.slot[u.where.id] : undefined;
-      if (sl && roomAt(plan, sl) === id) return u.id;
+      if (sl && floorRoomAt(plan, sl) === id) return u.id;
     }
     for (const t of Object.values(s.tasks)) if (taskRooms(db, plan, s, t).includes(id)) return t.id;
     return undefined;
@@ -79,7 +79,7 @@ function leavingOf(db: ContentDb, s: PlantState, op: BuildOp): string | undefine
     case 'zone':
     case 'rack': {
       const [x, z] = op.op === 'zone' ? op.rect : [op.x, op.z];
-      const r = roomAt(plan, { x: x * CELL_CM + CELL_CM / 2, z: z * CELL_CM + CELL_CM / 2 });
+      const r = floorRoomAt(plan, { x: x * CELL_CM + CELL_CM / 2, z: z * CELL_CM + CELL_CM / 2 });
       return has('room', r) ? r : undefined;
     }
     default:

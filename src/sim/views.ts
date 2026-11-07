@@ -22,6 +22,7 @@ import { shiftEnd } from '../engine/staff';
 import { TAG } from '../engine/stock';
 import type { AssetRec, KitLine, Lot, LotStatus, MachineState, Person, PlantState, Quit, Room, Tag, Task, TaskKind, Unit, WaitCause } from '../engine/types';
 import { type AndonQuery, type AndonView, andonView } from './andon';
+import { type BuildQuery, type BuildView, buildView } from './build';
 import { type KpiQuery, type KpiView, kpiView } from './kpi';
 import { type DevCard, devCard, type Knobs, knobsAt, type Regimes, regimesAt, type ReleaseView, releaseOf } from './devs';
 import { type DossierQuery, type DossierView, dossierView, type Inside, insideOf, type LineMaterial, lineMaterials } from './dossier';
@@ -80,7 +81,7 @@ export interface CardQuery {
   thing: Thing;
 }
 
-export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery | PoQuery | PoliciesQuery | SopQuery | MrpQuery);
+export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery | PoQuery | PoliciesQuery | SopQuery | MrpQuery | BuildQuery);
 
 /** Место паллеты: место плана (номер по порядку), помещение (номер по порядку), фура. */
 export type PlaceRef = { k: 'slot'; i: number } | { k: 'room'; i: number } | { k: 'truck'; n: number; customer: boolean; waste?: true };
@@ -321,7 +322,7 @@ export interface CardView {
   card: CardData;
 }
 
-export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView | PoView | PoliciesView | SopView | MrpView;
+export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView | PoView | PoliciesView | SopView | MrpView | BuildView;
 
 const num = (id: string) => Number(id.slice(1));
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
@@ -821,6 +822,9 @@ export function viewOf(db: ContentDb, s: PlantState, q: ViewQuery): ViewData {
       return sopView(db, s, q);
     case 'mrp':
       return mrpView(db, s);
+    // стройка (Б7б): шаги отмены, перестраиваемое, сносимое, занятое, касса
+    case 'build':
+      return buildView(db, s);
   }
 }
 

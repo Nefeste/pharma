@@ -15,8 +15,9 @@ import { type FloorView, type FloorWin, MACHINE_PARTS, ROOM_PHASES, WAIT_WHAT } 
 import type { Thing } from '../sim/views';
 import { assetName, unfitText } from './assets';
 import { db } from './db';
+import { BuildButton } from './Build';
 import { LossMenu, LossTip } from './Losses';
-import type { Actions, Hud } from './store';
+import { type Actions, holds, type Hud } from './store';
 
 const WINS: readonly FloorWin[] = ['today', 'yesterday', 'week'];
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
@@ -29,6 +30,7 @@ const share = (sec: number, span: number) => (span > 0 ? Math.round((sec * 10000
 export function Layers({ hud, actions }: { hud: Hud; actions: Actions }) {
   return (
     <div className="layers panel" data-test="layers" title={T.floor.hint}>
+      <BuildButton hud={hud} actions={actions} can={holds(hud, 'director')} />
       <div className="lhead">{T.floor.layers}</div>
       {LAYERS.map(l => (
         <button key={l} type="button" className={hud.layer === l ? 'on' : ''} onClick={() => actions.setLayer(l)} data-test={`layer-${l}`}>

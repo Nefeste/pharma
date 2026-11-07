@@ -240,4 +240,17 @@ describe('сборщик базы: каталог и участок на исп�
     const lot = broken('plants/proto.yaml', [['lot: { kind: plant, size: [120, 80] }', 'lot: { kind: plant, size: [59, 40] }']]);
     expect(lot.errors).toContain(`план ${PLANT}: корпус 1 со стенами — не на участке`);
   });
+
+  test('цена и пределы стройки в записи сценария — больше нуля: ноль — ошибка сборщика', () => {
+    for (const [a, b, key] of [
+      ['  hull: 69100', '  hull: 0', 'hull'],
+      ['  rack: 3000', '  rack: 0', 'rack'],
+      ['  undo: 50', '  undo: 0', 'undo'],
+      ['  check: 5', '  check: 0', 'check'],
+    ] as const) {
+      const r = broken('scenarios/proto.yaml', [[a, b]]);
+      expect([key, r.errors.some(e => e.includes('scenarios/proto.yaml') && e.includes(`build.${key}`))]).toEqual([key, true]);
+    }
+    expect(db.scenarios['scn.proto'].build).toBeDefined();
+  });
 });

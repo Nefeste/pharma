@@ -1,6 +1,7 @@
 // Часть Б7б, шаг 4: стройка в окне (docs/specs/2026-10-vertical-slice.md, «Проверки Б7б», «Окно»). Призрак и команда — одна
 // функция: что призрак пустил, команда принимает, и наоборот, на всех инструментах, и цена у них одна; подписи помещений в
-// стройке; срез нового плана разбирается по новому плану; наружные стены пристройки — по улице рядом, а не по краю сетки.
+// стройке; новый план поток шлёт с первым срезом его правки, и срез разбирается по новому плану; наружные стены
+// пристройки — по улице рядом, а не по краю сетки.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { type BuildPick, ghostOf, labelRows, opAt, PICK, targetAt } from '../../src/app/build';
@@ -10,6 +11,7 @@ import type { BuildOp } from '../../src/engine/site/edit';
 import type { Notice, PlantState } from '../../src/engine/types';
 import { layoutOf, outward, wallHeight, WALL_LOW_ROOM } from '../../src/render/layout';
 import { buildView } from '../../src/sim/build';
+import { createSim } from '../../src/sim/host';
 import { Packer, unpack } from '../../src/sim/pack';
 
 const SC = 'scn.proto';
@@ -112,6 +114,26 @@ describe('подписи помещений', () => {
 });
 
 describe('новый план в окне', () => {
+  test('поток шлёт новый план тем же сообщением, что и первый срез его правки; «нельзя» и ход времени плана не шлют', () => {
+    const sim = createSim(db);
+    const first = sim.handle({ kind: 'start', scenario: SC });
+    if (first.kind !== 'slice') throw new Error(first.kind);
+    expect(first.world?.rev).toBe(0);
+    const no = sim.handle({ kind: 'command', cmd: { kind: 'site', op: OPS[0] } });
+    if (no.kind !== 'slice') throw new Error(no.kind);
+    expect(no.notices).toContainEqual(expect.objectContaining({ kind: 'site', ok: false }));
+    expect(no.world).toBeUndefined();
+    const hull = sim.handle({ kind: 'command', cmd: { kind: 'site', op: OPS[1] } });
+    if (hull.kind !== 'slice') throw new Error(hull.kind);
+    expect(hull.world?.rev).toBe(1);
+    expect(unpack(hull.buf).rev).toBe(1);
+    expect(layoutOf(planOf(db, hull.world!.plan)).w).toBe(71);
+    const tick = sim.handle({ kind: 'tick', seconds: 60, budgetMs: 60_000 });
+    if (tick.kind !== 'slice') throw new Error(tick.kind);
+    expect(tick.world).toBeUndefined();
+    expect(unpack(tick.buf).rev).toBe(1);
+  });
+
   test('срез нового плана разбирается по новому плану: места паллет — по номерам нового плана', () => {
     const s = newPlant(db, { scenario: SC });
     const packer = new Packer(db);

@@ -183,8 +183,9 @@ function undo(db: ContentDb, s: PlantState, notices: Notice[]) {
   if (step.editing !== undefined && step.plan.rooms.some(r => r.id === step.editing)) st.editing = step.editing;
   else delete st.editing;
   forgetDown(st);
-  // прежний план — новым объектом с номером правки на один больше: номер правки только растёт
-  if (step.plan !== s.plan) commit(db, s, { ...step.plan, rev: planRev(s.plan) + 1 });
+  // прежний план — новым объектом с номером правки на один больше: номер правки только растёт; план не менялся с шага
+  // (отложенный снос ещё ждёт) — тот же номер: сравнение — по номеру, у загруженного сохранения объекты другие
+  if (planRev(step.plan) !== planRev(s.plan)) commit(db, s, { ...step.plan, rev: planRev(s.plan) + 1 });
   pay(s, st, -step.paid, -step.vat, 'undo');
   notices.push({ kind: 'site', op: 'undo', ok: true, cost: -step.paid || 0 });
 }

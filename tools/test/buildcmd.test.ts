@@ -13,6 +13,7 @@ import { fingerprint } from '../../src/engine/core/hash';
 import { apply, newPlant } from '../../src/engine/engine';
 import { check } from '../../src/engine/invariants';
 import { runSeed } from '../../src/engine/plan/run';
+import { fromSave, toSave } from '../../src/engine/save';
 import { planOf } from '../../src/engine/plant';
 import { levelOf, siteErrors } from '../../src/engine/site/checks';
 import { downOf } from '../../src/engine/site/down';
@@ -120,6 +121,7 @@ describe('правка плана', () => {
       [{ op: 'door', cell: [10, 10], len: 1, along: 'x', kind: 'door' }, 'site'],
       [{ op: 'door', cell: [30, 39], len: 1, along: 'x', kind: 'door' }, 'street'],
       [{ op: 'door', cell: [33, 24], len: 3, along: 'x', kind: 'door' }, 'doorLen'],
+      [{ op: 'door', cell: [40, 21], len: 1, along: 'x', kind: 'door', materials: true }, 'materials'],
       [{ op: 'demolish', what: 'door', id: '27,22' }, 'cutsOff'],
       [{ op: 'demolish', what: 'door', id: '0,4' }, 'outerDoor'],
       [{ op: 'demolish', what: 'room', id: 'lab' }, 'hasThings'],
@@ -148,6 +150,14 @@ describe('правка плана', () => {
     // ошибка планировки — со своим кодом: класс, которого типу нельзя; дверь не на стене
     const grade = site(s, { op: 'room', type: 'airlock.people', grade: 'cnc', rect: [59, 18, 4, 4] })[0];
     expect(grade).toMatchObject({ ok: false, error: { code: 'site', error: { code: 'grade' } } });
+    // букв рядов — 26: счётчик за «Z» — нельзя, план и касса те же
+    const next = s.build!.next;
+    s.build!.next = { ...next, rack: 26 };
+    const plan = s.plan;
+    const cash = s.cash.balance;
+    expect(site(s, RACK)).toEqual([{ kind: 'site', op: 'rack', ok: false, error: { code: 'rackNames' } }]);
+    expect([s.plan === plan, s.cash.balance]).toEqual([true, cash]);
+    s.build!.next = next;
     // денег не хватит: касса не уйдёт ниже предела кредитной линии
     const limit = db.scenarios[SC].credit.limit;
     s.cash.balance = -limit + 1000;
@@ -385,6 +395,29 @@ describe('снос занятого', () => {
     expect(s.plan.rooms.some(r => r.id === 'corridor-1')).toBe(true);
     expect(s.cash.balance).toBe(before - refund);
     expect(check(db, s)).toEqual([]);
+  });
+});
+
+describe('сохранение', () => {
+  test('завод со стройкой — перестраиваемым, сносимым и шагами отмены — сохраняется и загружается с той же жизнью', () => {
+    const s = newPlant(db, { scenario: SC });
+    for (const op of [HULL, CORRIDOR, DOOR, ZONE]) site(s, op);
+    site(s, RACK);
+    site(s, { op: 'done' });
+    occupy(s, 'E-01-1-1');
+    site(s, { op: 'demolish', what: 'rack', id: 'E' });
+    advance(s, HOUR);
+    const t = fromSave(db, toSave(s));
+    expect(t.build).toEqual(s.build);
+    expect(t.plan).toEqual(s.plan);
+    advance(s, 2 * HOUR);
+    advance(t, 2 * HOUR);
+    expect(fingerprint(t)).toBe(fingerprint(s));
+    // отмена после загрузки — тот же план, что и без неё
+    site(s, { op: 'undo' });
+    site(t, { op: 'undo' });
+    expect(t.plan).toEqual(s.plan);
+    expect(t.cash.balance).toBe(s.cash.balance);
   });
 });
 

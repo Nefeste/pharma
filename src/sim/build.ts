@@ -27,6 +27,8 @@ export interface BuildView {
   next: Names;
   /** помещения, зоны и ряды стеллажа, которые сейчас заняты: их снос — когда освободятся */
   busy: string[];
+  /** единицы на пути, заменяемые и сносимые (Б7в): их не сносят, не переносят и не заменяют */
+  held: string[];
   /** помещения на монтаже единицы (Б7в): помещение → единица */
   mount: Record<string, string>;
   /** касса и её нижний край — минус предел кредитной линии: дороже их разницы стройка не принимается */
@@ -53,6 +55,10 @@ export function buildView(db: ContentDb, s: PlantState): BuildView {
     next: st?.next ?? {},
     busy,
     mount: Object.fromEntries(mounting(db, s)),
+    held: [
+      ...Object.values(s.assets).flatMap(a => (a.path ? [a.id, ...(a.path.replaces ? [a.path.replaces] : [])] : [])),
+      ...(st?.leaving ?? []).filter(l => l.what === 'unit').map(l => l.id),
+    ],
     cash: s.cash.balance,
     floor: -db.scenarios[s.scenario].credit.limit,
   };

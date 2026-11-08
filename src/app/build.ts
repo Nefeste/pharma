@@ -330,6 +330,8 @@ export function ghostOf(db: ContentDb, b: BuildPrices, vat: number, plan: SitePl
     const red = errorsOf(db, r.plan).find(e => levelOf(e) === 'red' && !had.has(JSON.stringify(e)));
     return red ? { ok: true, warn: true, text: g.red(line, siteText(db, r.plan, red)), cost: pay } : { ok: true, warn: false, text: line, cost: pay };
   }
+  // как у команды (Б7в): единица на пути, заменяемая или уже сносимая — нельзя
+  if ((op.op === 'unitDrop' || op.op === 'unitMove') && view?.held?.includes(op.id)) return { ok: false, warn: false, text: g.no(what, T.build.why.unitState(unitName(db, plan, op.id))), cost: 0 };
   if ((op.op === 'unitDrop' || op.op === 'unitMove') && view?.busy.includes(op.id)) return { ok: true, warn: true, text: op.op === 'unitMove' ? `${what} — ${T.equip.result.later.toLowerCase()}` : g.later(what), cost: 0 };
   const cost = r.cost + part(r.cost, vat) - r.refund - part(r.refund, vat);
   if (view && cost > 0 && view.cash - cost < view.floor) return { ok: false, warn: false, text: g.no(what, T.build.why.money(money(cost - (view.cash - view.floor)))), cost };

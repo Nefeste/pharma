@@ -1221,7 +1221,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   // поставщики оборудования (Б7в): копейки дня инженера; у вещи плана — поставщик из базы; классы типа помещения — из
   // базы, и каждая вещь плана — в помещении типа, где её класс ставят
   const vendors: Record<string, Vendor> = {};
-  for (const v of Object.values(raw.vendors)) vendors[v.id] = { ...v, engineer: kop(v.engineer) };
+  for (const v of Object.values(raw.vendors)) vendors[v.id] = { ...v, prepay: share(v.prepay), late: { share: share(v.late.share), days: [v.late.days[0], v.late.days[1]] }, engineer: kop(v.engineer) };
   for (const t of Object.values(rooms)) {
     for (const c of t.things ?? []) need(raw.equipment[c] ?? raw.machines[c] ?? raw.instruments[c], `тип помещения ${t.id}: класса ${c} нет`);
     if (t.regime) need(raw.regimes[t.regime], `тип помещения ${t.id}: режима ${t.regime} нет`);

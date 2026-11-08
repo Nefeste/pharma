@@ -769,12 +769,13 @@ const roomTime = (db: ContentDb, s: PlantState, room: Room) => roomWork(db, s, r
 
 /**
  * Мойка оборудования помещения малой или генеральной уборкой (геймдизайн, §5.5): сумма времён его оборудования и машин
- * линий в нём, которые касаются таблеток (Б1е), с.
+ * линий в нём, которые касаются таблеток (Б1е), кроме единиц на пути (Б7в), с.
  */
 export function washWork(db: ContentDb, s: PlantState, roomId: string, major: boolean): number {
   let sec = 0;
-  for (const e of Object.values(s.equipment)) if (e.room === roomId) sec += db.equipment[e.type].cleaning[major ? 'major' : 'minor'];
-  for (const m of lineMachinesIn(db, s.plan, roomId)) sec += db.machines[m.type].cleaning?.[major ? 'major' : 'minor'] ?? 0;
+  // единица на пути (Б7в) в работе не была — её не моют
+  for (const e of Object.values(s.equipment)) if (e.room === roomId && !s.assets?.[e.id]?.path) sec += db.equipment[e.type].cleaning[major ? 'major' : 'minor'];
+  for (const m of lineMachinesIn(db, s.plan, roomId)) if (!s.assets?.[m.id]?.path) sec += db.machines[m.type].cleaning?.[major ? 'major' : 'minor'] ?? 0;
   return sec;
 }
 

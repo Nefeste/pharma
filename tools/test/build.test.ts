@@ -79,8 +79,9 @@ describe('каталог типов помещений', () => {
       expect(ru.roomTypes[type]?.length).toBeGreaterThan(0);
       expect(en.roomTypes[type]?.length).toBeGreaterThan(0);
     }
-    // строят в Б7б помещения без оборудования: коридоры, шлюзы, офис, бытовое и гардероб
-    expect(Object.values(db.rooms).filter(t => t.build).map(t => t.type).sort()).toEqual(['airlock.material', 'airlock.people', 'amenities', 'changing', 'corridor', 'corridor.clean', 'office']);
+    // с Б7в строят все типы: помещения с вещами — тоже; второго такого нет у всех, кроме зала склада и помещений без вещей
+    expect(Object.values(db.rooms).filter(t => !t.build)).toEqual([]);
+    expect(Object.values(db.rooms).filter(t => !t.once).map(t => t.type).sort()).toEqual(['airlock.material', 'airlock.people', 'amenities', 'changing', 'corridor', 'corridor.clean', 'office', 'warehouse']);
   });
 
   test('роль — из каталога, а не из имени типа: коридор — клетки коридора, шлюз — проход в класс D', () => {

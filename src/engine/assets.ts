@@ -16,6 +16,7 @@ import { accepts, classOf, placesOf, roomAt } from './places';
 import { type PlantPlan, planOf, type Slot } from './plant';
 import { numOf, POL } from './policies';
 import { addTask } from './tasks';
+import { VALIDATOR } from './equip';
 import type { Asset, AssetRec, Command, Notice, PlantState, Task } from './types';
 import { calOf } from './workdays';
 
@@ -97,7 +98,7 @@ export function unfit(db: ContentDb, s: PlantState, id: string, day = daysFromCi
 }
 
 /** Работает ли подрядчик у актива сейчас. */
-export const contractor = (a: Asset, t: number) => !!a.visit && a.visit.from !== undefined && a.visit.task === undefined && t < a.visit.to!;
+export const contractor = (a: Asset, t: number) => !!a.visit && a.visit.from !== undefined && a.visit.own === undefined && a.visit.task === undefined && t < a.visit.to!;
 
 /**
  * Идёт ли у актива работа (Б3в): серия держит оборудование стадией; линия упаковывает; прибор лаборатории занят
@@ -146,6 +147,16 @@ export function assetStep(db: ContentDb, s: PlantState) {
     const [from, to] = db.scenarios[s.scenario].assets.hours;
     const w = classOf(db, a)[v.work];
     if (!w || now.sec < from || now.sec + w.work > to || busy(db, s, a)) continue;
+    // свой инженер по валидации (Б7в) — повторная квалификация его задачей на часы класса, подрядчика нет
+    if (v.work === 'qual' && Object.values(s.people).some(p => p.role === VALIDATOR)) {
+      const plan = planOf(db, s.plan);
+      const room = placesOf(plan.plant).thing[a.id]?.room;
+      const at = room ? plan.room[room] : plan.entrance;
+      v.from = s.t;
+      v.to = s.t + w.work;
+      v.own = addTask(s, { kind: 'qualify', roles: [VALIDATOR], from: { kind: 'point', x: at.x, z: at.z }, work: w.work, prio: ACCEPT_PRIO - 1, asset: a.id }).id;
+      continue;
+    }
     v.from = s.t;
     v.to = s.t + w.work;
     v.v++;
@@ -267,11 +278,14 @@ export function visitDone(db: ContentDb, s: PlantState, id: string, v: number) {
   const a = s.assets[id];
   const vis = a?.visit;
   if (!vis || vis.v !== v || vis.task !== undefined) return;
-  const w = classOf(db, a)[vis.work]!;
   const sc = db.scenarios[s.scenario];
-  const vat = part(w.price, db.profiles[sc.profile].vat.general);
-  post(s, -(w.price + vat), 'calqual', a.id);
-  s.cash.vat.in += vat;
+  // свой инженер по валидации (Б7в) — без счёта
+  if (vis.own === undefined) {
+    const w = classOf(db, a)[vis.work]!;
+    const vat = part(w.price, db.profiles[sc.profile].vat.general);
+    post(s, -(w.price + vat), 'calqual', a.id);
+    s.cash.vat.in += vat;
+  }
   const plan = planOf(db, s.plan);
   const room = placesOf(plan.plant).thing[a.id]?.room;
   const at = room ? plan.room[room] : plan.entrance;

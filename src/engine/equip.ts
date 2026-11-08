@@ -7,7 +7,7 @@
 // заказе, остаток — в день поставки с отсрочкой поставщика, дни инженеров — счётом после PQ; снос и снятие при замене —
 // половина цены поставщика единицы. Настоящий день поставки — у движка (`arrive`), завод знает обещанный (`due`).
 import type { ContentDb, Id } from '../content/types';
-import { ACCEPT, ACCEPT_PRIO } from './assets';
+import { ACCEPT, ACCEPT_PRIO, visitDone } from './assets';
 import { owe, dueIn, part, post } from './cash';
 import { schedule } from './core/agenda';
 import { addMonths, DAY, daysFromCivil, isWorkday, momentOf, workdayOnOrAfter } from './core/calendar';
@@ -69,7 +69,7 @@ export function deliveryOf(db: ContentDb, s: PlantState, vendor: Id): { due: num
   const cal = calOf(db, s);
   const d0 = today(s);
   const due = workdayOnOrAfter(cal, roll(s, `equip/${vendor}`, r => addMonths(d0, r.range(v.lead[0], v.lead[1]))));
-  const late = roll(s, `equip-late/${vendor}`, r => (r.int(100) < v.late.share ? r.range(v.late.days[0], v.late.days[1]) : 0));
+  const late = roll(s, `equip-late/${vendor}`, r => (r.int(10_000) < v.late.share ? r.range(v.late.days[0], v.late.days[1]) : 0));
   const day = workdayOnOrAfter(cal, due + late);
   return { due, arrive: (day - daysFromCivil(s.start)) * DAY + db.scenarios[s.scenario].assets.hours[0] };
 }
@@ -409,6 +409,11 @@ export function unitDay(db: ContentDb, s: PlantState, id: string, v: number) {
 export function pathDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]): boolean {
   if (t.kind !== 'qualify' && t.kind !== 'mount' && t.kind !== 'accept') return false;
   const a = t.asset ? s.assets[t.asset] : undefined;
+  // повторная квалификация своим инженером (Б7в): его работа кончилась — дальше как у подрядчика, приёмка
+  if (t.kind === 'qualify' && a?.visit?.own === t.id) {
+    visitDone(db, s, a.id, a.visit.v);
+    return true;
+  }
   const p = a?.path;
   if (!a || !p || p.task !== t.id) return t.kind !== 'accept';
   delete p.task;
@@ -476,7 +481,7 @@ export function redrawArrive(db: ContentDb, s: PlantState) {
     if (p?.step !== 'ordered' || !p.vendor || p.due === undefined) continue;
     const v = db.vendors[p.vendor];
     const d = today(s);
-    const late = roll(s, `equip-late/${p.vendor}`, r => (r.int(100) < v.late.share || p.due! < d ? r.range(v.late.days[0], v.late.days[1]) : 0));
+    const late = roll(s, `equip-late/${p.vendor}`, r => (r.int(10_000) < v.late.share || p.due! < d ? r.range(v.late.days[0], v.late.days[1]) : 0));
     const day = workdayOnOrAfter(cal, Math.max(p.due + late, p.due < d ? d + 1 : p.due));
     p.arrive = (day - daysFromCivil(s.start)) * DAY + from;
     p.v++;

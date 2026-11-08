@@ -21,6 +21,8 @@ import { levelOf, siteErrors } from '../../src/engine/site/checks';
 import { downOf } from '../../src/engine/site/down';
 import { type BuildOp, editPlan, half } from '../../src/engine/site/edit';
 import { footError, unitOf, unitPrice, unitsOf } from '../../src/engine/site/units';
+import { seedTraining } from '../../src/engine/train';
+import { momentOf } from '../../src/engine/core/calendar';
 import { type Notice, type PlantState, planRev } from '../../src/engine/types';
 
 const SC = 'scn.proto';
@@ -74,7 +76,7 @@ describe('запись базы', () => {
     for (const v of Object.values(db.vendors)) {
       expect(v.lead[0]).toBeLessThanOrEqual(v.lead[1]);
       expect(v.late.share).toBeGreaterThanOrEqual(0);
-      expect(v.late.share).toBeLessThanOrEqual(100);
+      expect(v.late.share).toBeLessThanOrEqual(10_000);
     }
     const plant = db.plants['plant.proto'];
     for (const u of unitsOf(plant)) {
@@ -83,7 +85,7 @@ describe('запись базы', () => {
       expect(t.things).toContain(u.type);
     }
     expect(db.roles['role.validation'].dept).toBe('qa');
-    expect(db.scenarios[SC].labor.roles['role.validation']).toBeDefined();
+    expect(db.scenarios[SC].labor!.roles['role.validation']).toBeDefined();
     expect(siteErrors(db, plant)).toEqual([]);
   });
   test('сумма оборудования прототипа по ценам классов — 273,2 млн ₽', () => {
@@ -104,7 +106,7 @@ describe('покупка', () => {
       [{ op: 'buy', type: 'eq.press', vendor: 'ven.asia', room: 'compression', at: [s.plan.rooms.find(r => r.id === 'compression')!.rect[0] + 50, at[1]], turn: 0 }, 'footprint'],
       [{ op: 'buy', type: 'eq.press', vendor: 'ven.eu', room: 'compression', at, turn: 0 }, 'money'],
     ];
-    s.cash.balance = 0;
+    s.cash.balance = -15_000_000_00;
     for (const [op, code] of no) {
       const was = s.plan;
       const n = eq(equip(s, op));
@@ -118,7 +120,7 @@ describe('покупка', () => {
     const price = unitPrice(db, 'eq.press', 'ven.asia');
     expect(price).toBe(30_000_000_00);
     const pre = part(price, db.vendors['ven.asia'].prepay);
-    expect(n).toEqual([{ kind: 'equip', op: 'buy', ok: true, cost: gross(pre), thing: 'press-1' === n[0].thing ? 'press-1' : 'press-2' }]);
+    expect(n).toEqual([{ kind: 'equip', op: 'buy', ok: true, cost: gross(pre), thing: 'press-2' }]);
     expect(planRev(s.plan)).toBe(planRev(was) + 1);
     const id = (n[0] as EqN & { ok: true }).thing;
     const u = unitOf(s.plan, id)!;
@@ -180,6 +182,35 @@ describe('путь единицы', () => {
     const bill = days * db.vendors['ven.ru'].engineer + iqpq * B.validator;
     expect(s.cash.ledger.some(e => e.item === 'equip' && e.ref === id && e.sum === -gross(bill))).toBe(true);
     expect(cash - s.cash.balance).toBeGreaterThanOrEqual(gross(bill));
+    expect(check(db, s)).toEqual([]);
+  });
+
+  test('свой инженер по валидации: дни IQ, OQ и PQ — его задачи, счёта подрядчика нет; повторную квалификацию ведёт он', () => {
+    const s = newPlant(db, { scenario: SC });
+    // инженер в дневной смене, как специалист ООК, с допусками на начало партии (руками теста — вместо найма)
+    const qa = Object.values(s.people).find(p => p.role === 'role.qa')!;
+    const p = { ...structuredClone(qa), id: 'E99', role: 'role.validation', tab: 9999, train: {} };
+    delete (p as { also?: string[] }).also;
+    s.people[p.id] = p;
+    seedTraining(db, db.scenarios[SC], p, momentOf(s.start, s.t).day);
+    const id = (eq(equip(s, { op: 'buy', type: 'eq.deduster', vendor: 'ven.ru', room: 'compression', at: spot(s, 'eq.deduster', 'compression'), turn: 0 }))[0] as EqN & { ok: true }).thing;
+    deliverNow(s, id);
+    until(s, () => s.assets[id].path?.step === 'iq', 20);
+    until(s, () => Object.values(s.tasks).some(t => t.kind === 'qualify' && t.asset === id && t.people.includes('E99')), 5);
+    until(s, () => !s.assets[id].path, 40);
+    const steps = stepsOf(db, 'eq.deduster', false);
+    const days = steps.reduce((x, st) => x + st.days, 0);
+    // счёт — только дни инженера поставщика: инженера по валидации подрядчика нет
+    expect(s.cash.ledger.some(e => e.item === 'equip' && e.ref === id && e.sum === -gross(days * db.vendors['ven.ru'].engineer))).toBe(true);
+    // повторная квалификация пресса — его задачей: запись кончается, визит — без счёта подрядчика
+    const a = s.assets['press-1'];
+    const rec = a.recs.find(r => r.work === 'qual')!;
+    rec.until = momentOf(s.start, s.t).day + 3;
+    const before = s.cash.ledger.filter(e => e.item === 'calqual').length;
+    until(s, () => Object.values(s.tasks).some(t => t.kind === 'qualify' && t.asset === 'press-1'), 5);
+    until(s, () => (a.recs.filter(r => r.work === 'qual').at(-1)?.until ?? 0) > rec.until, 10);
+    expect(s.cash.ledger.filter(e => e.item === 'calqual' && e.ref === 'press-1').length).toBe(0);
+    expect(s.cash.ledger.filter(e => e.item === 'calqual').length).toBeGreaterThanOrEqual(before);
     expect(check(db, s)).toEqual([]);
   });
 
@@ -273,7 +304,7 @@ describe('замена, перенос, снос, отмена', () => {
     expect(unitOf(s.plan, id2)).toBeUndefined();
     expect(s.assets[id2]).toBeUndefined();
     expect(s.cash.balance).toBe(before);
-    expect(paid).toBe(gross(part(unitPrice(db, 'eq.press', 'ven.asia'), 30)));
+    expect(paid).toBe(gross(part(unitPrice(db, 'eq.press', 'ven.asia'), db.vendors['ven.asia'].prepay)));
     expect(check(db, s)).toEqual([]);
   });
 

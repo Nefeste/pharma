@@ -594,15 +594,13 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     }
     return raw;
   },
-  // 48 → 49 (Б7в): у вещи плана — поставщик: у вещей плана сценария — его поставщик из записи плана, у прочих — нет;
-  // шаги пути единиц и заказы оборудования — пустые: до Б7в оборудование не покупали
+  // 48 → 49 (Б7в): у вещи плана — поставщик: до Б7в оборудование не покупали, и вещи плана — оборудование старта, у
+  // прототипа — отечественного поставщика базы; путей единиц нет. Запись плана в базе шаг не читает (Б7а)
   48: (raw, db) => {
     const plan = raw.plan as unknown as Plant | undefined;
-    const rec = plan ? db.plants[plan.id] : undefined;
-    if (plan && rec) {
-      const vendors = new Map<string, string>();
-      for (const u of [...rec.equipment, ...rec.instruments, ...rec.ipc, ...rec.sensors, ...rec.lines.flatMap(l => l.machines)]) if (u.vendor) vendors.set(u.id, u.vendor);
-      const put = <T extends { id: string; vendor?: string }>(xs: T[]) => xs.map(x => (x.vendor || !vendors.has(x.id) ? x : { ...x, vendor: vendors.get(x.id) }));
+    const home = Object.values(db.vendors ?? {}).find(v => v.region === 'ru')?.id;
+    if (plan && home) {
+      const put = <T extends { id: string; vendor?: string }>(xs: T[]) => xs.map(x => (x.vendor ? x : { ...x, vendor: home }));
       raw.plan = { ...plan, equipment: put(plan.equipment), instruments: put(plan.instruments), ipc: put(plan.ipc), sensors: put(plan.sensors), lines: plan.lines.map(l => ({ ...l, machines: put(l.machines) })) } as unknown as Raw;
     }
     return raw;

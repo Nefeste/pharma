@@ -69,6 +69,11 @@ describe('призрак и команда — одна функция', () => {
     }
     expect(seen.ok).toBeGreaterThan(2);
     expect(seen.no).toBeGreaterThan(2);
+    // R — поворот следа на четверть
+    const at: [number, number] = [r[0] + 3, r[1] + 5];
+    const a = opAt(db, s.plan, { ...pick, cls: 'eq.press' }, at);
+    const b = opAt(db, s.plan, { ...pick, cls: 'eq.press', turn: true }, at);
+    expect([a?.op === 'unit' && a.turn, b?.op === 'unit' && b.turn]).toEqual([0, 1]);
   });
 
   test('на всех инструментах: что призрак пустил, команда принимает, и наоборот; цена — та же', () => {

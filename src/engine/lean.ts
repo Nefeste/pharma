@@ -51,6 +51,8 @@ export const AREA: Record<TaskKind, Dept> = {
   trainCheck: 'qa',
   // приёмка работы подрядчика (Б3в) — ООК или ОКК; путь к активу — на участок того, кто принимает (`moved`)
   accept: 'qa',
+  qualify: 'qa',
+  mount: 'maint',
   vendorReview: 'qa',
   devAssess: 'qa',
   // вывоз отклонённого (Б1з): вынос балка и погрузка — склад, подпись передачи — ОКК

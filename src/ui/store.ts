@@ -3,6 +3,7 @@
 // неизменяемый: каждое `set` — новый объект.
 import { useSyncExternalStore } from 'react';
 import { type BuildHud, type BuildPick, NO_BUILD } from '../app/buildpick';
+import type { EquipOp } from '../engine/equip';
 import type { Layer } from '../app/floor';
 import type { Go, Pause } from '../app/pauses';
 import type { Dept, HeadId, Id, OvertimeMode, Plant, SeatId } from '../content/types';
@@ -437,6 +438,8 @@ export interface Actions {
   approveSop(): void;
   /** перенести визит подрядчика к активу на день (Б5г) — команда `visit` */
   moveVisit(asset: string, day: number): void;
+  /** оборудование (Б7в) — команда `equip` места директора */
+  equip(op: EquipOp): void;
   setKpiTab(tab: SeatId): void;
   kpiWhy(id: string): void;
   setKpiMonth(month?: number): void;

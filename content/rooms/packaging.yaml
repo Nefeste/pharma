@@ -5,6 +5,8 @@ grades: [D]
 vehicles: true
 area: PK
 min: [8, 10]
-build: false
+build: true
+things: [mach.blister, mach.cartoner, mach.casepack]
+once: true
 source: [gmp-eaeu]
 review: draft

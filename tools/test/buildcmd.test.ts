@@ -114,7 +114,8 @@ describe('правка плана', () => {
     const s = newPlant(db, { scenario: SC });
     site(s, HULL);
     const cases: [BuildOp, (BuildError | SiteRefusal)['code']][] = [
-      [{ op: 'room', type: 'lab', grade: 'cnc', rect: [59, 24, 12, 5] }, 'notBuilt'],
+      // вторая лаборатория (Б7в): тип один на план — ошибка планировки «второе такое»
+      [{ op: 'room', type: 'lab', grade: 'cnc', rect: [59, 24, 12, 5] }, 'site'],
       [{ op: 'room', type: 'corridor', grade: 'cnc', rect: [27, 21, 5, 5] }, 'overlap'],
       [{ op: 'room', type: 'corridor', grade: 'cnc', rect: [80, 10, 5, 5] }, 'site'],
       [{ op: 'room', type: 'airlock.people', grade: 'cnc', rect: [59, 18, 4, 4] }, 'site'],

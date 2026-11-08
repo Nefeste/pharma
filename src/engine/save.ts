@@ -594,6 +594,17 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     }
     return raw;
   },
+  // 48 → 49 (Б7в): у вещи плана — поставщик: до Б7в оборудование не покупали, и вещи плана — оборудование старта, у
+  // прототипа — отечественного поставщика базы; путей единиц нет. Запись плана в базе шаг не читает (Б7а)
+  48: (raw, db) => {
+    const plan = raw.plan as unknown as Plant | undefined;
+    const home = Object.values(db.vendors ?? {}).find(v => v.region === 'ru')?.id;
+    if (plan && home) {
+      const put = <T extends { id: string; vendor?: string }>(xs: T[]) => xs.map(x => (x.vendor ? x : { ...x, vendor: home }));
+      raw.plan = { ...plan, equipment: put(plan.equipment), instruments: put(plan.instruments), ipc: put(plan.ipc), sensors: put(plan.sensors), lines: plan.lines.map(l => ({ ...l, machines: put(l.machines) })) } as unknown as Raw;
+    }
+    return raw;
+  },
 };
 
 /** Поля состояния, сгруппированные с Б7б (схема 48): куда переехало прежнее поле верхнего уровня. */

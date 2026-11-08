@@ -6,6 +6,7 @@ import type { PartType, Plant } from '../content/types';
 import { civilFromDays, momentOf, weekday, type Ymd } from '../engine/core/calendar';
 import { clock, dayText, durText, hText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import { DEPT_SEAT } from '../engine/seats';
+import { classRec } from '../engine/site/units';
 import type { SaView, SheetView } from '../sim/hours';
 import type { NowRow } from '../sim/now';
 import type { Admission, DocNow } from '../sim/people';
@@ -25,7 +26,7 @@ import { DailyCard } from './Daily';
 import { WhoList } from './Journal';
 import { placeText, supplierText } from './Stock';
 import { actLabel, actOf, actOn } from './memo';
-import type { Actions, Hud } from './store';
+import { type Actions, holds, type Hud } from './store';
 import { WasteBlock } from './Waste';
 
 /**
@@ -314,6 +315,77 @@ function AssetRows({ a, start, hud, actions }: { a: AssetInfo; start: Ymd; hud: 
           <b data-test="card-stopped">
             {T.assets.stopped} — {unfitText(a)}
           </b>
+        </Row>
+      ) : null}
+      <UnitRows a={a} hud={hud} actions={actions} />
+    </>
+  );
+}
+
+/**
+ * Оборудование (Б7в): поставщик, путь единицы — шаг, день из скольких, обещанный день поставки, кого заменит — и кнопки
+ * места директора: «Заменить» у поставщика, «Перенести» — инструмент стройки, «Снести», у заказанной — «Отменить заказ».
+ */
+function UnitRows({ a, hud, actions }: { a: AssetInfo; hud: Hud; actions: Actions }) {
+  const [vendor, setVendor] = useState(a.vendor ?? 'ven.ru');
+  if (a.family === 'vehicle') return null;
+  const E = T.equip;
+  const p = a.path;
+  const mine = holds(hud, 'director');
+  const vendors = Object.values(db?.vendors ?? {});
+  const cls = db ? classRec(db, a.type) : undefined;
+  const v = db?.vendors[vendor];
+  return (
+    <>
+      <div className="csec">{E.block}</div>
+      {a.vendor ? (
+        <Row k="">
+          <span data-test="card-vendor">{E.vendorOf(named(db?.vendors[a.vendor]?.name, a.vendor))}</span>
+        </Row>
+      ) : null}
+      {p ? (
+        <Row k="">
+          <span data-test="card-path">
+            {p.step === 'ordered' || p.step === 'swap' || p.step === 'accept' ? E.steps[p.step] : E.day(E.steps[p.step] ?? p.step, p.day, p.days)}
+            {p.due !== undefined && p.step === 'ordered' ? ` · ${E.due(dayText(p.due))}` : ''}
+            {p.replaces ? ` · ${E.replaces(p.replaces)}` : ''}
+            {p.move ? ` · ${E.moved}` : ''}
+            {p.working ? ` · ${E.now}` : ''}
+          </span>
+        </Row>
+      ) : null}
+      {mine ? (
+        <Row k="">
+          <span data-test="card-equip">
+            {p?.step === 'ordered' ? (
+              <button type="button" className="small" data-test="card-equip-cancel" onClick={() => actions.equip({ op: 'cancel', unit: a.id })}>
+                {E.cancel}
+              </button>
+            ) : !p ? (
+              <>
+                <select value={vendor} onChange={e => setVendor(e.target.value)} aria-label={E.vendor} data-test="card-equip-vendor">
+                  {vendors.map(x => (
+                    <option key={x.id} value={x.id}>
+                      {named(x.name, x.id)}
+                    </option>
+                  ))}
+                </select>{' '}
+                <button type="button" className="small" data-test="card-equip-replace" onClick={() => actions.equip({ op: 'replace', unit: a.id, vendor })}>
+                  {cls && v ? E.replaceAt(named(v.name, v.id), money(Math.floor((cls.price * v.price) / 100))) : E.replace}
+                </button>{' '}
+                {a.family !== 'machine' ? (
+                  <>
+                    <button type="button" className="small" data-test="card-equip-move" onClick={() => actions.buildPick({ tool: 'unit', moving: a.id })}>
+                      {E.moveIt}
+                    </button>{' '}
+                    <button type="button" className="small" data-test="card-equip-remove" onClick={() => actions.equip({ op: 'remove', unit: a.id })}>
+                      {E.remove}
+                    </button>
+                  </>
+                ) : null}
+              </>
+            ) : null}
+          </span>
         </Row>
       ) : null}
     </>

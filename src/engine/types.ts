@@ -3,12 +3,13 @@
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
 import type { Attr, Dept, DevClass, FcMethod, HeadId, Id, IncidentRoot, OvertimeMode, Plant, SeatId, TaskKind, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
+import type { EquipOp } from './equip';
 import type { BuildError, BuildOp } from './site/edit';
 import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 48;
+export const SCHEMA = 49;
 
 // ---------------------------------------------------------------- склад
 
@@ -1076,7 +1077,9 @@ export type PlantEvent =
   /** срок ответа на вопрос «Просят решить» `n` (Б5д): не ответили — руководитель решает сам, как сейчас */
   | { kind: 'ask'; n: number; v: number }
   /** стройка (Б7б): снести то, что освободилось; что-то ещё ждёт — проверить снова через шаг проверки сценария */
-  | { kind: 'siteFree' };
+  | { kind: 'siteFree' }
+  | { kind: 'unitArrive'; asset: string; v: number }
+  | { kind: 'unitDay'; asset: string; v: number };
 
 // ---------------------------------------------------------------- рынок и касса
 
@@ -1155,7 +1158,7 @@ export interface Shipment {
   vat: number;
 }
 
-export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle' | 'vacation' | 'waste' | 'poFast' | 'poCancel' | 'build';
+export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle' | 'vacation' | 'waste' | 'poFast' | 'poCancel' | 'build' | 'equip';
 
 // ---------------------------------------------------------------- техслужба
 
@@ -1237,6 +1240,8 @@ export interface Visit {
   to?: number;
   task?: string;
   v: number;
+  /** повторную квалификацию ведёт свой инженер по валидации (Б7в): его задача — без подрядчика и без счёта */
+  own?: string;
 }
 
 /**
@@ -1251,6 +1256,47 @@ export interface Asset {
   place: string;
   recs: AssetRec[];
   visit?: Visit;
+  /** куплена в игре (Б7в): поставщик — по нему отказы узлов и срок ЗИП; у вещей старта — нет */
+  vendor?: Id;
+  /** путь до записи квалификации (Б7в): новая, заменяющая или перенесённая единица */
+  path?: UnitPath;
+}
+
+/** Шаг пути единицы (Б7в): заказана, ждёт снятия заменяемой, монтаж, IQ, OQ, PQ, ждёт принятия отчёта. */
+export type PathStep = 'ordered' | 'swap' | 'install' | 'iq' | 'oq' | 'pq' | 'accept';
+
+/** Единица плана, которую поставят на место заменяемой (Б7в): в плане её ещё нет. */
+export interface PlanUnit {
+  type: Id;
+  room: string;
+  at?: [number, number];
+  turn?: number;
+  vendor: Id;
+}
+
+/**
+ * Путь единицы до записи квалификации (Б7в; геймдизайн, §7.2): поставщик (перенос — нет), шаг, мгновение заказа,
+ * обещанный день поставки — его знает завод — и настоящее мгновение поставки — его знает только движок (двойник
+ * разыгрывает заново); сделано дней шага; идёт день — до мгновения (люди подрядчика) или задача своего человека; заменяет
+ * единицу — и какую единицу поставят; перенос — новое место; дней инженера поставщика и инженера по валидации
+ * подрядчика — к счёту; цена без НДС; версия событий.
+ */
+export interface UnitPath {
+  vendor?: Id;
+  step: PathStep;
+  ordered: number;
+  due?: number;
+  arrive?: number;
+  day: number;
+  until?: number;
+  task?: string;
+  replaces?: string;
+  unit?: PlanUnit;
+  move?: { room: string; at?: [number, number]; turn?: number };
+  eng: number;
+  val: number;
+  price: number;
+  v: number;
 }
 
 // ---------------------------------------------------------------- контрагенты и договоры (Б3г)
@@ -1754,6 +1800,8 @@ export interface TestWhy {
  * только с командой, — задания, заказа, вакансии, вывоза — нет, пока его не приняли.
  */
 export type Decided =
+  /** оборудование (Б7в): что сделано с какой единицей — класс, поставщик, обещанный день поставки, кого заменяет */
+  | { kind: 'equip'; op: 'buy' | 'replace' | 'move' | 'remove' | 'cancel'; unit: string; type: Id; vendor?: Id; due?: number; of?: string }
   /** задание на серию: позиция, карта и «не раньше»; в замороженном горизонте (Б6е) — цена правки */
   | { kind: 'order'; batch?: string; recipe: Id; sku?: Id; notBefore: number; due?: number; for?: BatchFor; why?: OrderWhy; frozen?: EditPrice }
   /** отмена задания на серию до комплектовки (Б6а): позиция, «не раньше», срок и под что; в горизонте — цена (Б6е) */
@@ -2139,11 +2187,13 @@ export interface PlantState {
  * потрачено на стройку с НДС, со сносом и отменой.
  */
 export interface BuildState {
-  undo: { n: number; plan: SitePlan; paid: number; vat: number; editing?: string }[];
+  /** у шага с единицей (Б7в) — какая и в какой день заказана: отменить покупку можно до полуночи */
+  undo: { n: number; plan: SitePlan; paid: number; vat: number; editing?: string; unit?: { id: string; day: number } }[];
   /** номер следующего шага отмены */
   step: number;
   editing?: string;
-  leaving: { what: 'room' | 'zone' | 'rack'; id: string; step: number }[];
+  /** сносится, когда освободится; единица (Б7в) — снос, снятие при замене или перенос */
+  leaving: { what: 'room' | 'zone' | 'rack' | 'unit'; id: string; step: number; act?: 'swap' | 'move'; to?: { room: string; at?: [number, number]; turn?: number } }[];
   next: Record<string, number>;
   spent: number;
 }
@@ -2375,13 +2425,23 @@ export type Command =
    * стройка (Б7б; src/engine/build.ts): правка плана — помещение, корпус, дверь, зона, ряд стеллажа, проезд, снос — или
    * «Готово» и отмена. Место директора: коллеги не строят
    */
-  | { kind: 'site'; op: BuildOp | { op: 'done' } | { op: 'undo' } };
+  | { kind: 'site'; op: BuildOp | { op: 'done' } | { op: 'undo' } }
+  /** оборудование (Б7в; src/engine/equip.ts): купить, заменить, перенести, снести, отменить заказ. Место директора */
+  | { kind: 'equip'; op: EquipOp };
 
 /**
  * Почему стройку не приняли, кроме ошибок правки плана (Б7б): не хватит денег — сколько; отменять нечего; отмена уберёт
  * то, на что уже ссылаются серия, паллета или задача, — что; правка трогает сносимое — что; у сценария нет стройки.
  */
-export type SiteRefusal = { code: 'money'; need: number } | { code: 'nothing' } | { code: 'inUse'; thing: string } | { code: 'leaving'; thing: string } | { code: 'noBuild' };
+export type SiteRefusal =
+  | { code: 'money'; need: number }
+  | { code: 'nothing' }
+  | { code: 'inUse'; thing: string }
+  | { code: 'leaving'; thing: string }
+  | { code: 'noBuild' }
+  /** единица (Б7в): уже в пути, сносится или заменяется; заказ подтверждён — отмена стройки не вернёт его */
+  | { code: 'unitState'; thing: string }
+  | { code: 'confirmed'; thing: string };
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
@@ -2551,8 +2611,14 @@ export type Notice =
    */
   | { kind: 'site'; op: string; ok: true; cost: number; thing?: string; later?: true }
   | { kind: 'site'; op: string; ok: false; error: BuildError | SiteRefusal }
-  | { kind: 'siteGone'; what: 'room' | 'zone' | 'rack'; id: string; refund: number }
-  | { kind: 'siteKept'; what: 'room' | 'zone' | 'rack'; id: string; error: BuildError }
+  | { kind: 'siteGone'; what: 'room' | 'zone' | 'rack' | 'unit'; id: string; refund: number }
+  | { kind: 'siteKept'; what: 'room' | 'zone' | 'rack' | 'unit'; id: string; error: BuildError }
+  /** оборудование (Б7в): команда — итог или отказ; поставка (опоздала на столько суток); квалификация принята; опаздывает */
+  | { kind: 'equip'; op: string; ok: true; cost: number; thing: string; later?: true }
+  | { kind: 'equip'; op: string; ok: false; error: BuildError | SiteRefusal }
+  | { kind: 'unitArrived'; asset: string; type: Id; family: AssetFamily; late?: number }
+  | { kind: 'unitReady'; asset: string; type: Id; family: AssetFamily }
+  | { kind: 'unitLate'; asset: string; type: Id; family: AssetFamily }
   /** совещание S&OP (Б6г): план начальника отдела планирования ждёт утверждения — или утверждён коллегой */
   | { kind: 'sop'; m: number; open: boolean }
   /**

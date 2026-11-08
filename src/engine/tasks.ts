@@ -427,8 +427,9 @@ function downBy(s: PlantState, x: Pass, t: Task, from: Point, level: number, mov
 /** Назначить задачу; не вышло — причина: прибор, техника, место назначения, люди, допуск, актив. */
 function assign(db: ContentDb, s: PlantState, x: Pass, t: Task): WaitCause | undefined {
   const plan = x.plan;
-  // помещение работы не работает (Б7б): задача ждёт, пока оно снова работает, и называет его
-  if (x.down.rooms.size > 0) {
+  // помещение работы не работает (Б7б): задача ждёт, пока оно снова работает, и называет его; монтаж и квалификация
+  // единицы (Б7в) идут и в закрытом помещении — его закрыли ради них
+  if (x.down.rooms.size > 0 && t.kind !== 'mount' && t.kind !== 'qualify') {
     const r = taskRooms(db, plan, s, t).find(id => x.down.rooms.has(id));
     if (r !== undefined) {
       t.unfit = r;

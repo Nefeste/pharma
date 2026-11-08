@@ -4,6 +4,8 @@
 // отложится) и касса с краем кредитной линии — проверка денег у призрака. Истины здесь нет: занятость — по учёту завода.
 import type { ContentDb } from '../content/types';
 import { busyWith } from '../engine/build';
+import { mounting, unitBusy } from '../engine/equip';
+import { unitsOf } from '../engine/site/units';
 import type { Names } from '../engine/site/edit';
 import type { BuildState, PlantState } from '../engine/types';
 
@@ -25,6 +27,10 @@ export interface BuildView {
   next: Names;
   /** помещения, зоны и ряды стеллажа, которые сейчас заняты: их снос — когда освободятся */
   busy: string[];
+  /** единицы на пути, заменяемые и сносимые (Б7в): их не сносят, не переносят и не заменяют */
+  held: string[];
+  /** помещения на монтаже единицы (Б7в): помещение → единица */
+  mount: Record<string, string>;
   /** касса и её нижний край — минус предел кредитной линии: дороже их разницы стройка не принимается */
   cash: number;
   floor: number;
@@ -37,6 +43,8 @@ export function buildView(db: ContentDb, s: PlantState): BuildView {
     ...plan.rooms.filter(r => busyWith(db, s, 'room', r.id)).map(r => r.id),
     ...plan.zones.filter(z => busyWith(db, s, 'zone', z.id)).map(z => z.id),
     ...plan.racks.filter(r => busyWith(db, s, 'rack', r.id)).map(r => r.id),
+    // единицы (Б7в): занятые серией, испытанием или упаковкой — их снос и перенос отложатся
+    ...unitsOf(plan).filter(u => unitBusy(db, s, u.id)).map(u => u.id),
   ];
   return {
     view: 'build',
@@ -46,6 +54,11 @@ export function buildView(db: ContentDb, s: PlantState): BuildView {
     spent: st?.spent ?? 0,
     next: st?.next ?? {},
     busy,
+    mount: Object.fromEntries(mounting(db, s)),
+    held: [
+      ...Object.values(s.assets).flatMap(a => (a.path ? [a.id, ...(a.path.replaces ? [a.path.replaces] : [])] : [])),
+      ...(st?.leaving ?? []).filter(l => l.what === 'unit').map(l => l.id),
+    ],
     cash: s.cash.balance,
     floor: -db.scenarios[s.scenario].credit.limit,
   };

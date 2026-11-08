@@ -140,15 +140,15 @@ describe('сборщик базы — на испорченной копии con
   test('код участка, рабочего места или места не по формату; код повторён; помещение в двух участках', () => {
     has(broken({ [PLANT]: [['  - code: MT\n', '  - code: M1\n']] }), 'код участка — две заглавные латинские буквы');
     has(broken({ [PLANT]: [['code: WH-03, kind: storage', 'code: WH-3, kind: storage']] }), 'код рабочего места — участок, дефис и две цифры');
-    has(broken({ [PLANT]: [['place: TB-01.07 }', 'place: TB-01.7 }']] }), 'код места — рабочее место, точка и две цифры');
-    has(broken({ [PLANT]: [['place: TB-01.02 }', 'place: TB-01.01 }']] }), 'план plant.proto: код TB-01.01 повторяется (hsm-1)');
+    has(broken({ [PLANT]: [['place: TB-01.07, vendor', 'place: TB-01.7, vendor']] }), 'код места — рабочее место, точка и две цифры');
+    has(broken({ [PLANT]: [['place: TB-01.02, vendor', 'place: TB-01.01, vendor']] }), 'план plant.proto: код TB-01.01 повторяется (hsm-1)');
     has(broken({ [PLANT]: [['rooms: [packaging]', 'rooms: [packaging, lab]']] }), 'план plant.proto: помещение lab — в участках PK и QC');
   });
 
   test('вещь вне рабочего места или на рабочем месте другого вида; у зоны хранения — не один датчик или датчик без поверки', () => {
-    has(broken({ [PLANT]: [['place: TB-01.07 }', 'place: TB-03.07 }']] }), 'план plant.proto: press-1 — нет рабочего места TB-03');
-    has(broken({ [PLANT]: [['place: PK-01.01 }', 'place: TB-01.13 }']] }), 'план plant.proto: blister-1 — на рабочем месте TB-01 вида cell, а нужно line');
-    has(broken({ [PLANT]: [['room: coldroom, place: WH-02.01 }', 'room: coldroom, place: WH-01.02 }']] }), 'план plant.proto: у зоны хранения WH-01 — не один датчик');
+    has(broken({ [PLANT]: [['place: TB-01.07, vendor', 'place: TB-03.07, vendor']] }), 'план plant.proto: press-1 — нет рабочего места TB-03');
+    has(broken({ [PLANT]: [['place: PK-01.01, vendor', 'place: TB-01.13, vendor']] }), 'план plant.proto: blister-1 — на рабочем месте TB-01 вида cell, а нужно line');
+    has(broken({ [PLANT]: [['room: coldroom, place: WH-02.01, vendor', 'room: coldroom, place: WH-01.02, vendor']] }), 'план plant.proto: у зоны хранения WH-01 — не один датчик');
     has(broken({ 'instruments/thermohygrometer.yaml': [[', verify: true }', ' }']] }), 'план plant.proto: датчик th-1 — у вида inst.thermohygrometer нет поверки');
   });
 

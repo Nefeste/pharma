@@ -8,7 +8,10 @@ import type { BuildPrices, ContentDb, Plant } from '../content/types';
 import { part } from '../engine/cash';
 import { CELL, CELL_CM } from '../engine/nav';
 import { planOf, RACK } from '../engine/plant';
+import type { EquipOp } from '../engine/equip';
 import { levelOf, redRoom, type SiteError, type SiteThing } from '../engine/site/checks';
+import { classRec, familyOf, sizeOf, unitOf, unitsOf } from '../engine/site/units';
+import { boxOf } from '../engine/nav';
 import { type BuildDoor, type BuildError, type BuildOp, DOOR_LEN, doorId, editPlan, errorsOf, thingRoom } from '../engine/site/edit';
 import type { Notice, SitePlan, SiteRefusal } from '../engine/types';
 import { money, named, T } from '../i18n';
@@ -59,9 +62,20 @@ export function siteText(db: ContentDb, plan: Plant, e: SiteError): string {
       return `${t.walk}: ${reachText(db, plan, e.what)}`;
     case 'drive':
       return `${t.drive}: ${reachText(db, plan, e.what)}`;
+    case 'need':
+      return t.need(clsName(db, e.type));
     default:
       return t[e.code];
   }
+}
+
+/** Класс единицы словами — имя записи базы. */
+export const clsName = (db: ContentDb, type: string) => named(classRec(db, type)?.name, type);
+
+/** Единица плана словами: класс и имя — «Таблеточный пресс press-2». */
+export function unitName(db: ContentDb, plan: Plant, id: string): string {
+  const u = unitOf(plan, id);
+  return u ? `${clsName(db, u.type)} ${id}` : id;
 }
 
 /** Почему правку не приняли — словами. */
@@ -82,6 +96,12 @@ export function whyText(db: ContentDb, plan: Plant, e: BuildError | SiteRefusal)
       return w.inUse(thingName(plan, e.thing));
     case 'leaving':
       return w.leaving(thingName(plan, e.thing));
+    case 'notHere':
+      return w.notHere(clsName(db, e.type), roomName(plan, e.room));
+    case 'unitState':
+      return w.unitState(unitName(db, plan, e.thing));
+    case 'confirmed':
+      return w.confirmed(unitName(db, plan, e.thing));
     default:
       return w[e.code];
   }
@@ -89,8 +109,30 @@ export function whyText(db: ContentDb, plan: Plant, e: BuildError | SiteRefusal)
 
 const isOpen = (c: number) => c === CELL.floor || c === CELL.corridor;
 
+/** Единица со следом под клеткой — оборудование или машина линии (Б7в). */
+export function unitAt(db: ContentDb, plan: Plant, cell: Cell): string | undefined {
+  const cx = cell[0] * CELL_CM + CELL_CM / 2;
+  const cz = cell[1] * CELL_CM + CELL_CM / 2;
+  for (const u of unitsOf(plan)) {
+    const size = sizeOf(db, u.type);
+    if (!size || !u.at) continue;
+    const [x0, z0, x1, z1] = boxOf(u.at, u.turn ?? 0, size);
+    if (cx >= x0 && cx < x1 && cz >= z0 && cz < z1) return u.id;
+  }
+  return undefined;
+}
+
+/** Помещение под клеткой: пол или коридор. */
+function roomAtCell(db: ContentDb, plan: Plant, cell: Cell): string | undefined {
+  const nav = planOf(db, plan).nav;
+  const [x, z] = cell;
+  if (x < 0 || z < 0 || x >= nav.w || z >= nav.h) return undefined;
+  const r = nav.room[z * nav.w + x];
+  return r >= 0 && isOpen(nav.cells[z * nav.w + x]) ? plan.rooms[r].id : undefined;
+}
+
 /** Что снести под клеткой: дверь, ряд стеллажа, зона, помещение — по порядку; ничего — `undefined`. */
-export function targetAt(db: ContentDb, plan: Plant, cell: Cell): Extract<BuildOp, { op: 'demolish' }> | undefined {
+export function targetAt(db: ContentDb, plan: Plant, cell: Cell): Extract<BuildOp, { op: 'demolish' } | { op: 'unitDrop' }> | undefined {
   const nav = planOf(db, plan).nav;
   const [x, z] = cell;
   if (x < 0 || z < 0 || x >= nav.w || z >= nav.h) return undefined;
@@ -98,6 +140,9 @@ export function targetAt(db: ContentDb, plan: Plant, cell: Cell): Extract<BuildO
   if (nav.door[i] >= 0) return { op: 'demolish', what: 'door', id: doorId(plan.doors[nav.door[i]]) };
   const cx = x * CELL_CM + CELL_CM / 2;
   const cz = z * CELL_CM + CELL_CM / 2;
+  // оборудование и машины (Б7в) — по следу
+  const u = unitAt(db, plan, cell);
+  if (u) return { op: 'unitDrop', id: u };
   const rack = plan.racks.find(r => cx >= r.x && cx < r.x + r.bays * RACK.bay && cz >= r.z && cz < r.z + RACK.depth);
   if (rack) return { op: 'demolish', what: 'rack', id: rack.id };
   const zone = plan.zones.find(q => cx >= q.rect[0] && cx < q.rect[0] + q.rect[2] && cz >= q.rect[1] && cz < q.rect[1] + q.rect[3]);
@@ -136,14 +181,35 @@ export function opAt(db: ContentDb, plan: Plant, pick: BuildPick, cell: Cell, dr
       return { op: 'rack', x: cell[0], z: cell[1], bays: pick.bays, levels: pick.levels, face: pick.face };
     case 'vehicles': {
       const t = targetAt(db, plan, cell);
-      const room = t?.what === 'room' ? plan.rooms.find(r => r.id === t.id) : undefined;
+      const room = t?.op === 'demolish' && t.what === 'room' ? plan.rooms.find(r => r.id === t.id) : undefined;
       return room ? { op: 'vehicles', room: room.id, on: !room.vehicles } : undefined;
     }
     case 'demolish':
       return targetAt(db, plan, cell);
+    case 'unit': {
+      // оборудование (Б7в): середина следа — середина клетки; прибор и датчик — помещение под курсором
+      const room = roomAtCell(db, plan, cell);
+      const at: [number, number] = [cell[0] * CELL_CM + CELL_CM / 2, cell[1] * CELL_CM + CELL_CM / 2];
+      const turn = pick.turn ? 1 : 0;
+      if (pick.moving) {
+        const u = unitOf(plan, pick.moving);
+        if (!u || !room) return undefined;
+        return { op: 'unitMove', id: u.id, room, ...(u.family === 'equipment' ? { at, turn } : {}) };
+      }
+      if (!pick.cls || !room) return undefined;
+      return { op: 'unit', type: pick.cls, room, vendor: pick.vendor, ...(familyOf(db, plan, pick.cls, room) === 'equipment' ? { at, turn } : {}) };
+    }
     default:
       return undefined;
   }
+}
+
+/** Команда «Оборудование» (Б7в) для правки единицы — или `undefined`, если правка — стройки. */
+export function equipOf(op: BuildOp): EquipOp | undefined {
+  if (op.op === 'unit') return { op: 'buy', type: op.type, vendor: op.vendor, room: op.room, ...(op.at ? { at: op.at, turn: op.turn ?? 0 } : {}) };
+  if (op.op === 'unitMove') return { op: 'move', unit: op.id, room: op.room, ...(op.at ? { at: op.at, turn: op.turn ?? 0 } : {}) };
+  if (op.op === 'unitDrop') return { op: 'remove', unit: op.id };
+  return undefined;
 }
 
 /** Клетки прямоугольника записи плана (см). */
@@ -156,7 +222,7 @@ const cellsOf = (r: readonly [number, number, number, number]): Cell[] => cellsO
 const doorCells = (d: { cell: [number, number]; len: number; along: 'x' | 'z' }): Cell[] => Array.from({ length: d.len }, (_, k) => (d.along === 'x' ? [d.cell[0] + k, d.cell[1]] : [d.cell[0], d.cell[1] + k]));
 
 /** Что правка показывает призраком: прямоугольник со стенами, дверь или клетки на полу. */
-export function shapeOf(plan: Plant, op: BuildOp): { rect?: GhostRect; door?: { cells: Cell[]; along: 'x' | 'z' }; cells?: Cell[] } {
+export function shapeOf(db: ContentDb, plan: Plant, op: BuildOp): { rect?: GhostRect; door?: { cells: Cell[]; along: 'x' | 'z' }; cells?: Cell[] } {
   switch (op.op) {
     case 'room':
     case 'hull':
@@ -169,6 +235,22 @@ export function shapeOf(plan: Plant, op: BuildOp): { rect?: GhostRect; door?: { 
       return { cells: cellsOfCm([op.x * CELL_CM, op.z * CELL_CM, op.bays * RACK.bay, RACK.depth]) };
     case 'vehicles': {
       const r = plan.rooms.find(x => x.id === op.room);
+      return { cells: r ? cellsOfCm(r.rect) : [] };
+    }
+    case 'unit':
+    case 'unitMove':
+    case 'unitDrop':
+    case 'unitSwap': {
+      const type = op.op === 'unit' ? op.type : unitOf(plan, op.id)?.type;
+      const at = op.op === 'unit' || op.op === 'unitMove' ? op.at : unitOf(plan, op.id)?.at;
+      const turn = op.op === 'unit' || op.op === 'unitMove' ? (op.turn ?? 0) : (unitOf(plan, op.id)?.turn ?? 0);
+      const size = type ? sizeOf(db, type) : undefined;
+      if (size && at) {
+        const [x0, z0, x1, z1] = boxOf(at, turn, size);
+        return { cells: cellsOfCm([x0, z0, x1 - x0, z1 - z0]) };
+      }
+      const room = op.op === 'unit' || op.op === 'unitMove' ? op.room : unitOf(plan, op.id)?.room;
+      const r = plan.rooms.find(x => x.id === room);
       return { cells: r ? cellsOfCm(r.rect) : [] };
     }
     case 'demolish': {
@@ -208,6 +290,13 @@ function whatOf(db: ContentDb, plan: Plant, op: BuildOp): string {
       return g.vehicles(roomName(plan, op.room), op.on);
     case 'demolish':
       return op.what === 'door' ? T.build.doors[(plan.doors.find(d => doorId(d) === op.id)?.kind ?? 'door') as BuildDoor] ?? op.id : thingName(plan, op.id);
+    case 'unit':
+      return clsName(db, op.type);
+    case 'unitMove':
+      return T.equip.move(unitName(db, plan, op.id));
+    case 'unitDrop':
+    case 'unitSwap':
+      return unitName(db, plan, op.id);
   }
 }
 
@@ -230,10 +319,24 @@ export function ghostOf(db: ContentDb, b: BuildPrices, vat: number, plan: SitePl
   const what = whatOf(db, plan, op);
   const r = editPlan(db, b, plan, op, view?.next ?? {});
   if (!r.ok) return { ok: false, warn: false, text: g.no(what, whyText(db, plan, r.error)), cost: 0 };
+  // покупка (Б7в): платят предоплату — с НДС; строка — цена с НДС, предоплата и срок поставки
+  if (op.op === 'unit') {
+    const v = db.vendors[op.vendor];
+    const pre = part(r.cost, v.prepay);
+    const pay = pre + part(pre, vat);
+    const line = T.equip.ghost(what, named(v.name, v.id), money(r.cost + part(r.cost, vat)), money(pay), T.equip.lead(v.lead[0], v.lead[1]));
+    if (view && view.cash - pay < view.floor) return { ok: false, warn: false, text: g.no(what, T.build.why.money(money(pay - (view.cash - view.floor)))), cost: pay };
+    const had = new Set(errorsOf(db, plan).map(e => JSON.stringify(e)));
+    const red = errorsOf(db, r.plan).find(e => levelOf(e) === 'red' && !had.has(JSON.stringify(e)));
+    return red ? { ok: true, warn: true, text: g.red(line, siteText(db, r.plan, red)), cost: pay } : { ok: true, warn: false, text: line, cost: pay };
+  }
+  // как у команды (Б7в): единица на пути, заменяемая или уже сносимая — нельзя
+  if ((op.op === 'unitDrop' || op.op === 'unitMove') && view?.held?.includes(op.id)) return { ok: false, warn: false, text: g.no(what, T.build.why.unitState(unitName(db, plan, op.id))), cost: 0 };
+  if ((op.op === 'unitDrop' || op.op === 'unitMove') && view?.busy.includes(op.id)) return { ok: true, warn: true, text: op.op === 'unitMove' ? `${what} — ${T.equip.result.later.toLowerCase()}` : g.later(what), cost: 0 };
   const cost = r.cost + part(r.cost, vat) - r.refund - part(r.refund, vat);
   if (view && cost > 0 && view.cash - cost < view.floor) return { ok: false, warn: false, text: g.no(what, T.build.why.money(money(cost - (view.cash - view.floor)))), cost };
   if (op.op === 'demolish' && op.what !== 'door' && view?.busy.includes(op.id)) return { ok: true, warn: true, text: g.later(what), cost: 0 };
-  const priced = op.op === 'demolish' ? g.demolish(what, money(-cost)) : op.op === 'zone' ? g.zone(what, r.plan.zones.at(-1)!.grid[0] * r.plan.zones.at(-1)!.grid[1]) : op.op === 'vehicles' ? what : g.priced(what, money(cost));
+  const priced = op.op === 'demolish' || op.op === 'unitDrop' ? g.demolish(what, money(-cost)) : op.op === 'unitMove' ? what : op.op === 'zone' ? g.zone(what, r.plan.zones.at(-1)!.grid[0] * r.plan.zones.at(-1)!.grid[1]) : op.op === 'vehicles' ? what : g.priced(what, money(cost));
   const had = new Set(errorsOf(db, plan).map(e => JSON.stringify(e)));
   const fresh = errorsOf(db, r.plan).filter(e => !had.has(JSON.stringify(e)));
   const red = fresh.find(e => levelOf(e) === 'red');
@@ -276,8 +379,9 @@ export function labelRows(db: ContentDb, plan: Plant, view: BuildView | undefine
   return plan.rooms.map(r => {
     const e = red.get(r.id);
     const y = yellow.get(r.id);
-    const state = e ? s.down(siteText(db, plan, e)) : view?.editing === r.id ? s.editing : leaving.has(r.id) ? s.leaving : y ? s.remark(siteText(db, plan, y)) : s.works;
-    return { id: r.id, x: (r.rect[0] + r.rect[2] / 2) / CELL_CM, z: (r.rect[1] + r.rect[3] / 2) / CELL_CM, name: roomName(plan, r.id), state, ok: !e && view?.editing !== r.id && !leaving.has(r.id) };
+    const mount = view?.mount?.[r.id];
+    const state = e ? s.down(siteText(db, plan, e)) : view?.editing === r.id ? s.editing : leaving.has(r.id) ? s.leaving : mount ? s.down(s.mount(unitName(db, plan, mount))) : y ? s.remark(siteText(db, plan, y)) : s.works;
+    return { id: r.id, x: (r.rect[0] + r.rect[2] / 2) / CELL_CM, z: (r.rect[1] + r.rect[3] / 2) / CELL_CM, name: roomName(plan, r.id), state, ok: !e && view?.editing !== r.id && !leaving.has(r.id) && !mount };
   });
 }
 
@@ -300,6 +404,8 @@ export interface BuildHost {
   ghosts(): Ghosts;
   walls(mode?: WallMode): WallMode;
   send(op: BuildOp | { op: 'done' } | { op: 'undo' }): void;
+  /** команда «Оборудование» (Б7в) */
+  equip(op: EquipOp): void;
 }
 
 export class Builder {
@@ -405,7 +511,20 @@ export class Builder {
     if (!op) return;
     // что призрак не пустил, движок не примет: команда — только с правкой, которую пускает та же функция; денег не хватит —
     // ответит движок
-    if (editPlan(this.g.db, b, plan, op, this.view?.next ?? {}).ok) this.g.send(op);
+    if (!editPlan(this.g.db, b, plan, op, this.view?.next ?? {}).ok) return;
+    const eq = equipOf(op);
+    if (eq) {
+      this.g.equip(eq);
+      // перенесли — инструмент снова ставит выбранный класс
+      if (this.pick.moving) this.pick = { ...this.pick, moving: undefined };
+    } else this.g.send(op);
+  }
+
+  /** Ответ движка на команду «Оборудование». */
+  onEquip(n: Extract<Notice, { kind: 'equip' }>) {
+    const r = T.equip.result;
+    if (!n.ok) this.result = { ok: false, text: r.no(whyText(this.g.db, this.g.plan(), n.error)) };
+    else this.result = { ok: true, text: n.later ? r.later : n.op === 'cancel' ? r.cancel : r.buy(money(n.cost)) };
   }
 
   /** Ответ движка на правку. */
@@ -449,7 +568,7 @@ export class Builder {
     const g = ghostOf(this.g.db, b, this.g.vat(), plan, this.view, op);
     this.ghost = g;
     const color = !g.ok ? GHOST_BAD : op.op === 'demolish' ? GHOST_BAD : g.warn ? GHOST_WARN : GHOST_OK;
-    const shape = shapeOf(plan, op);
+    const shape = shapeOf(this.g.db, plan, op);
     if (shape.rect) gh.rect(shape.rect, color);
     if (shape.door) gh.door(shape.door.cells, shape.door.along, color);
     if (shape.cells) gh.cells(shape.cells, color);

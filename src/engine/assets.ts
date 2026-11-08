@@ -16,6 +16,7 @@ import { accepts, classOf, placesOf, roomAt } from './places';
 import { type PlantPlan, planOf, type Slot } from './plant';
 import { numOf, POL } from './policies';
 import { addTask } from './tasks';
+import { VALIDATOR } from './equip';
 import type { Asset, AssetRec, Command, Notice, PlantState, Task } from './types';
 import { calOf } from './workdays';
 
@@ -73,8 +74,11 @@ export function seedAssets(db: ContentDb, sc: Scenario, plan: Plant, s: Pick<Pla
   for (const v of Object.values(s.vehicles)) add({ id: v.id, family: 'vehicle', type: v.type, place: area });
 }
 
-/** Почему актив не годен к новой работе: квалификация, калибровка (поверка) — нет действующей записи; визит подрядчика. */
-export type Unfit = Work | 'visit';
+/**
+ * Почему актив не годен к новой работе: квалификация, калибровка (поверка) — нет действующей записи; визит подрядчика;
+ * путь новой или перенесённой единицы до записи квалификации (Б7в).
+ */
+export type Unfit = Work | 'visit' | 'path';
 
 /**
  * Почему актив не берёт новую работу сейчас (Б3в): нет действующей записи квалификации или калибровки; с назначенного часа
@@ -84,6 +88,8 @@ export function unfit(db: ContentDb, s: PlantState, id: string, day = daysFromCi
   // в цепочке миграций шаги до схемы 19 видят завод без активов (save.ts): там всё пригодно
   const a = s.assets?.[id];
   if (!a) return undefined;
+  // новая, заменяющая или перенесённая единица (Б7в) — до записи квалификации не работает
+  if (a.path) return 'path';
   const cls = classOf(db, a);
   if (cls.qual && !valid(a, 'qual', day)) return 'qual';
   if (cls.cal && !valid(a, 'cal', day)) return 'cal';
@@ -92,7 +98,7 @@ export function unfit(db: ContentDb, s: PlantState, id: string, day = daysFromCi
 }
 
 /** Работает ли подрядчик у актива сейчас. */
-export const contractor = (a: Asset, t: number) => !!a.visit && a.visit.from !== undefined && a.visit.task === undefined && t < a.visit.to!;
+export const contractor = (a: Asset, t: number) => !!a.visit && a.visit.from !== undefined && a.visit.own === undefined && a.visit.task === undefined && t < a.visit.to!;
 
 /**
  * Идёт ли у актива работа (Б3в): серия держит оборудование стадией; линия упаковывает; прибор лаборатории занят
@@ -141,6 +147,16 @@ export function assetStep(db: ContentDb, s: PlantState) {
     const [from, to] = db.scenarios[s.scenario].assets.hours;
     const w = classOf(db, a)[v.work];
     if (!w || now.sec < from || now.sec + w.work > to || busy(db, s, a)) continue;
+    // свой инженер по валидации (Б7в) — повторная квалификация его задачей на часы класса, подрядчика нет
+    if (v.work === 'qual' && Object.values(s.people).some(p => p.role === VALIDATOR)) {
+      const plan = planOf(db, s.plan);
+      const room = placesOf(plan.plant).thing[a.id]?.room;
+      const at = room ? plan.room[room] : plan.entrance;
+      v.from = s.t;
+      v.to = s.t + w.work;
+      v.own = addTask(s, { kind: 'qualify', roles: [VALIDATOR], from: { kind: 'point', x: at.x, z: at.z }, work: w.work, prio: ACCEPT_PRIO - 1, asset: a.id }).id;
+      continue;
+    }
     v.from = s.t;
     v.to = s.t + w.work;
     v.v++;
@@ -175,7 +191,8 @@ function book(db: ContentDb, s: PlantState, today: number, who: Who) {
   const ahead = numOf(db, s, POL.ahead)!;
   const at = visitAt(db, s, today);
   for (const a of Object.values(s.assets)) {
-    if (a.visit) continue;
+    // на пути (Б7в) визита нет: квалификацию и калибровку дают IQ и приёмка
+    if (a.visit || a.path) continue;
     const due = dueWork(db, a);
     if (!due || due.until - today > ahead) continue;
     a.visit = { work: due.work, at, booked: s.t, v: 0 };
@@ -212,6 +229,7 @@ export function visitPlan(db: ContentDb, s: PlantState, until: number): { asset:
       if (a.visit.at < until) out.push({ asset: a.id, work: a.visit.work, at: a.visit.at });
       continue;
     }
+    if (a.path) continue;
     const due = dueWork(db, a);
     if (!due) continue;
     let day = Math.max(first, Number.isFinite(due.until) ? due.until - ahead : first);
@@ -260,11 +278,14 @@ export function visitDone(db: ContentDb, s: PlantState, id: string, v: number) {
   const a = s.assets[id];
   const vis = a?.visit;
   if (!vis || vis.v !== v || vis.task !== undefined) return;
-  const w = classOf(db, a)[vis.work]!;
   const sc = db.scenarios[s.scenario];
-  const vat = part(w.price, db.profiles[sc.profile].vat.general);
-  post(s, -(w.price + vat), 'calqual', a.id);
-  s.cash.vat.in += vat;
+  // свой инженер по валидации (Б7в) — без счёта
+  if (vis.own === undefined) {
+    const w = classOf(db, a)[vis.work]!;
+    const vat = part(w.price, db.profiles[sc.profile].vat.general);
+    post(s, -(w.price + vat), 'calqual', a.id);
+    s.cash.vat.in += vat;
+  }
   const plan = planOf(db, s.plan);
   const room = placesOf(plan.plant).thing[a.id]?.room;
   const at = room ? plan.room[room] : plan.entrance;
@@ -342,16 +363,25 @@ export function stageMeters(db: ContentDb, s: PlantState, st: RecipeStage, roomI
 
 /**
  * Что держит стадию серии (Б3в): оборудование стадии или прибор её МОК не пригоден — нет действующей квалификации или
- * калибровки, или у него подрядчик. Первое такое — с причиной; всё пригодно — `undefined`.
+ * калибровки, у него подрядчик, единица на пути (Б7в). У класса держит, только когда в помещении нет ни одной годной его
+ * единицы (Б7в). Первое такое — с причиной; всё пригодно — `undefined`.
  */
-export function stageUnfit(db: ContentDb, s: PlantState, st: RecipeStage, roomId: string): { asset: string; why: 'qual' | 'cal' | 'visit' } | undefined {
+export function stageUnfit(db: ContentDb, s: PlantState, st: RecipeStage, roomId: string): { asset: string; why: Unfit } | undefined {
   const plant = planOf(db, s.plan).plant;
+  // единица класса годна — стадия на ней (Б7в); нет годной — первая негодная по плану с причиной
   for (const type of st.equipment) {
+    let first: { asset: string; why: Unfit } | undefined;
+    let fit = false;
     for (const e of plant.equipment) {
       if (e.room !== roomId || e.type !== type) continue;
       const why = unfit(db, s, e.id);
-      if (why) return { asset: e.id, why };
+      if (!why) {
+        fit = true;
+        break;
+      }
+      first ??= { asset: e.id, why };
     }
+    if (!fit && first) return first;
   }
   for (const id of stageMeters(db, s, st, roomId)) {
     const why = unfit(db, s, id);

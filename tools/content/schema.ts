@@ -148,6 +148,9 @@ export const scenario = z.strictObject({
       step: z.number().min(1).max(10),
       undo: z.number().int().min(1).max(200),
       check: z.number().int().min(1).max(60),
+      /** зал склада, м² (Б7в), и день инженера по валидации подрядчика */
+      store: z.number().positive(),
+      validator: z.number().positive(),
     })
     .optional(),
   /** покупатели сценария */
@@ -493,6 +496,27 @@ export const supplier = z.strictObject({
   items: z.record(id, z.strictObject({ price: z.number().positive(), moq: qty, maker: id.optional() })),
 });
 
+/**
+ * Поставщик оборудования (Б7в; геймдизайн, §5.2): вымышленный — европейский, азиатский или отечественный; цена — доля цены
+ * класса, %; срок поставки — месяцы, от и до; опоздания — доля заказов и суток; отказы узлов его единиц — доля таблицы
+ * класса, %; ЗИП к его единицам — суток (нет — по записи ЗИП); предоплата, %, отсрочка остатка, суток; день инженера, ₽.
+ */
+export const vendor = z.strictObject({
+  id: z.string(),
+  name: text,
+  region: z.enum(['eu', 'asia', 'ru']),
+  price: z.number().int().min(10).max(300),
+  lead: z.tuple([z.number().int().min(1).max(36), z.number().int().min(1).max(36)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }),
+  late: z.strictObject({ share: percent, days: z.tuple([z.number().int().min(1), z.number().int().min(1)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }) }),
+  hazard: z.number().int().min(10).max(1000),
+  spares: z.tuple([z.number().int().min(1), z.number().int().min(1)]).refine(([a, b]) => a <= b, { message: '«от» не больше «до»' }).optional(),
+  prepay: percent,
+  payDays: z.number().int().min(0).max(365),
+  engineer: z.number().positive(),
+  source: sources,
+  review,
+});
+
 /** Изготовитель (Б3г): вымышленный — название и площадка; страна — настоящая; что выпускает. */
 export const maker = z.strictObject({
   id: z.string(),
@@ -589,6 +613,15 @@ const qualWork = z.strictObject({
 const calWork = qualWork.extend({ verify: z.literal(true).optional() });
 /** класс критический — для перечня основного оборудования в досье площадки (GMP ЕАЭС, ч. III, прил. 8) */
 const critical = z.literal(true).optional();
+/**
+ * Покупка класса (Б7в; геймдизайн, §5.2): цена европейского поставщика, ₽ без НДС; дни монтажа и, у класса с
+ * квалификацией, IQ, OQ и PQ — рабочие дни.
+ */
+const price = z.number().positive();
+const install = z.strictObject({ days: z.number().int().min(0).max(60), iq: z.number().int().min(1).max(60).optional(), oq: z.number().int().min(1).max(60).optional(), pq: z.number().int().min(1).max(60).optional() });
+/** IQ, OQ и PQ — у класса с квалификацией, и все три; без неё — ни одного. */
+const steps = (o: { qual?: unknown; install: z.infer<typeof install> }) => (o.qual !== undefined) === (o.install.iq !== undefined && o.install.oq !== undefined && o.install.pq !== undefined) && (o.install.iq === undefined) === (o.install.pq === undefined);
+const stepsMsg = { message: 'IQ, OQ и PQ — у класса с квалификацией, и все три' };
 
 /** Прибор: вид — лаборатории, МОК или датчик; экземпляры с местом — в плане завода. Средство измерений: калибровка — всегда. */
 export const instrument = z
@@ -598,10 +631,13 @@ export const instrument = z
     cal: calWork,
     qual: qualWork.optional(),
     critical,
+    price,
+    install,
     source: sources.optional(),
     review: review.optional(),
   })
-  .refine(paired, pairedMsg);
+  .refine(paired, pairedMsg)
+  .refine(steps, stepsMsg);
 
 /**
  * Режим хранения ГФ XV (Б3в; ОФС.1.1.0010): слова этикетки; диапазон температуры, °C, — от и до; наибольшая средняя
@@ -629,6 +665,12 @@ export const roomType = z.strictObject({
   area: z.string().regex(/^[A-Z]{2}$/, 'код участка — две латинские буквы').optional(),
   min: z.tuple([z.number().int().min(3), z.number().int().min(3)]).refine(([a, b]) => a <= b, { message: 'наименьший размер — сначала меньшая сторона' }),
   build: z.boolean(),
+  /** что в нём ставят (Б7в): классы оборудования, машин и приборов */
+  things: z.array(id).min(1).optional(),
+  /** второго такого помещения нет (Б7в): движок ищет его по типу — выбор помещения с Б7г */
+  once: z.literal(true).optional(),
+  /** режим зоны хранения нового помещения хранения (Б7в) */
+  regime: id.optional(),
   twoWay: z.literal(true).optional(),
   source: sources.optional(),
   review,
@@ -732,7 +774,7 @@ const areaCode = z.string().regex(/^[A-Z]{2}$/, 'код участка — дв�
 const centerCode = z.string().regex(/^[A-Z]{2}-\d{2}$/, 'код рабочего места — участок, дефис и две цифры');
 const placeCode = z.string().regex(/^[A-Z]{2}-\d{2}\.\d{2}$/, 'код места — рабочее место, точка и две цифры');
 /** прибор вне лаборатории: прибор МОК или датчик условий хранения — вид, помещение, код места */
-const meter = z.strictObject({ id: z.string(), type: id, room: z.string(), place: placeCode });
+const meter = z.strictObject({ id: z.string(), type: id, room: z.string(), place: placeCode, vendor: id.optional() });
 
 /** Этаж (Б7а, решение по #82): в 1.0 этаж один — первый; запись его может не писать. */
 const floor = z.number().int().refine(f => f === 1, { message: 'в 1.0 этаж один — первый (Б7а)' }).default(1);
@@ -806,12 +848,12 @@ export const plant = z.strictObject({
     }),
   ),
   /** приборы лаборатории: вид, помещение и код места */
-  instruments: z.array(z.strictObject({ id: z.string(), type: id, room: z.string(), place: placeCode })).default([]),
+  instruments: z.array(z.strictObject({ id: z.string(), type: id, room: z.string(), place: placeCode, vendor: id.optional() })).default([]),
   /** приборы МОК у оборудования стадий и датчики системы мониторинга условий хранения (Б3в) */
   ipc: z.array(meter).default([]),
   sensors: z.array(meter).default([]),
   /** оборудование производства: вид, помещение и код места */
-  equipment: z.array(z.strictObject({ id: z.string(), type: id, room: z.string(), at: point, turn, place: placeCode })).default([]),
+  equipment: z.array(z.strictObject({ id: z.string(), type: id, room: z.string(), at: point, turn, place: placeCode, vendor: id.optional() })).default([]),
   /**
    * упаковочные линии: помещение, зона паллетирования на выходе и машины по порядку; после каждой машины, кроме
    * последней, — накопитель: сколько её штук (блистеров, пачек) он держит
@@ -822,7 +864,7 @@ export const plant = z.strictObject({
         id: z.string(),
         room: z.string(),
         out: z.string(),
-        machines: z.array(z.strictObject({ id: z.string(), type: id, buffer: z.number().int().positive().optional(), at: point, turn, place: placeCode })).min(2),
+        machines: z.array(z.strictObject({ id: z.string(), type: id, buffer: z.number().int().positive().optional(), at: point, turn, place: placeCode, vendor: id.optional() })).min(2),
       }),
     )
     .default([]),
@@ -932,10 +974,13 @@ export const equipment = z
     qual: qualWork.optional(),
     cal: calWork.optional(),
     critical,
+    price,
+    install,
     source: sources.optional(),
     review: review.optional(),
   })
-  .refine(paired, pairedMsg);
+  .refine(paired, pairedMsg)
+  .refine(steps, stepsMsg);
 
 /**
  * Технологическая карта (docs/04-data-model.md, §4–5): состав на серию, стадии, показатели балка, выход. Количества,
@@ -1091,10 +1136,13 @@ export const machine = z
     qual: qualWork.optional(),
     cal: calWork.optional(),
     critical,
+    price,
+    install,
     source: sources.optional(),
     review: review.optional(),
   })
-  .refine(paired, pairedMsg);
+  .refine(paired, pairedMsg)
+  .refine(steps, stepsMsg);
 
 /**
  * Товарная позиция (docs/04-data-model.md, §4): готовая продукция, формат линии, таблеток в блистере и блистеров в
@@ -1318,6 +1366,7 @@ export const KINDS = {
   policies: { prefix: 'pol', schema: policy },
   capa: { prefix: 'capa', schema: capa },
   rooms: { prefix: 'room', schema: roomType },
+  vendors: { prefix: 'ven', schema: vendor },
 } as const;
 
 export type Kind = keyof typeof KINDS;

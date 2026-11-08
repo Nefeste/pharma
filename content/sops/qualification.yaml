@@ -1,0 +1,12 @@
+# Квалификация оборудования (Б7в): квалификацию и валидацию проводит только обученный персонал по утверждённым
+# процедурам (GMP ЕАЭС, прил. 15, п. 1.2); процедура валидации и квалификации — письменная (ч. I, п. 4.29). Стадии — IQ,
+# OQ, PQ (прил. 15, пп. 3.1–3.14). Часы и срок — гипотезы, как у других процедур
+id: sop.qualification
+name: { ru: Квалификация оборудования, en: Equipment qualification }
+doc: { code: SOP-0024, rev: 1, from: 2026-01-19, approved: role.qa-head }
+roles: [role.validation]
+for: { tasks: [qualify] }
+hours: 4
+every: 12
+source: [gmp-eaeu]
+review: draft

@@ -2,6 +2,7 @@
 // (views.ts). Планёрка говорит о вчерашних календарных сутках — потери, смены и OEE движок ведёт по ним, — о событиях за
 // 24 часа до неё и о том, что ждёт сейчас. Данные — без слов и без истины: время машин, счётчики линии, ожидания задач,
 // записи отклонений, журнал оборудования, решения, заказы и проводки — то, что завод мог узнать.
+import { stepsOf } from '../engine/equip';
 import type { ContentDb, Dept, DevClass, Id, OvertimeMode, ParamUnit, SeatId } from '../content/types';
 import { batchNo } from '../engine/batchno';
 import { DAY, momentOf } from '../engine/core/calendar';
@@ -17,7 +18,7 @@ import { forecast } from '../engine/plan/schedule';
 import { planOf } from '../engine/plant';
 import { devsOf, openDevs } from '../engine/qa';
 import { unitsOfLot } from '../engine/stock';
-import type { AssetFamily, Batch, CashItem, DayLoss, DeptMode, Deviation, Head, LineDay, MachineTimes, PlantState, TaskKind, WageParts, WaitCause } from '../engine/types';
+import type { AssetFamily, Batch, CashItem, DayLoss, DeptMode, Deviation, Head, LineDay, MachineTimes, PathStep, PlantState, TaskKind, WageParts, WaitCause } from '../engine/types';
 import { type BossRow, bossMeeting } from './bosses';
 import { type CapaRow, capaRow } from './devs';
 import { type PeopleMeeting, peopleMeeting } from './hire';
@@ -268,6 +269,8 @@ export interface MorningView {
    * сносом и отменой; не строили — нет
    */
   cash: { balance: number; day: number; next?: { due: number; item: CashItem; sum: number }; build?: number };
+  /** оборудование (Б7в): единицы на пути — класс, шаг, день из скольких, обещанный день поставки; нет — пусто */
+  units: { id: string; type: Id; step: PathStep; day: number; days: number; due?: number }[];
   /** ваше место (3е): итог каждого взятого места за время на нём */
   seats: SeatSum[];
   /** уставки не по цели (Б1ж): какие и с какого мгновения */
@@ -553,6 +556,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     people: peopleMeeting(s),
     ...leaveOf(db, s),
     cash: { balance: s.cash.balance, day: dayChange(s, s.t), ...(next ? { next: { due: next.due, item: next.item, sum: next.sum } } : {}), ...buildDay(s) },
+    units: Object.values(s.assets).flatMap(a => (a.path ? [{ id: a.id, type: a.type, step: a.path.step, day: a.path.day, days: stepsOf(db, a.type, !!a.path.move).find(x => x.step === a.path!.step)?.days ?? 0, ...(a.path.due !== undefined ? { due: a.path.due } : {}) }] : [])),
     seats: seatSums(db, s),
     modes: modeRows(db, s),
     heads: headDays(s, from, at),

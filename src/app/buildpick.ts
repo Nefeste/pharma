@@ -3,8 +3,8 @@
 import type { ZoneKind } from '../content/types';
 import type { BuildDoor } from '../engine/site/edit';
 
-export type BuildTool = 'room' | 'hull' | 'door' | 'zone' | 'rack' | 'vehicles' | 'demolish';
-export const BUILD_TOOLS: readonly BuildTool[] = ['room', 'hull', 'door', 'zone', 'rack', 'vehicles', 'demolish'];
+export type BuildTool = 'room' | 'hull' | 'door' | 'zone' | 'rack' | 'vehicles' | 'unit' | 'demolish';
+export const BUILD_TOOLS: readonly BuildTool[] = ['room', 'hull', 'door', 'zone', 'rack', 'vehicles', 'unit', 'demolish'];
 export const BUILD_DOORS: readonly BuildDoor[] = ['door', 'double', 'gate', 'hatch'];
 
 /** Что выбрано в панели стройки: инструмент, тип и класс помещения, вид двери, зона, ряд стеллажа; R — поворот. */
@@ -20,11 +20,15 @@ export interface BuildPick {
   bays: number;
   levels: number;
   face: 'n' | 's';
-  /** R у двери: поперёк оси, которую нашла стена */
+  /** R у двери: поперёк оси, которую нашла стена; у оборудования (Б7в) — поворот следа на четверть */
   turn: boolean;
+  /** оборудование (Б7в): класс, поставщик; переносимая единица — щелчок ставит её на новое место */
+  cls?: string;
+  vendor: string;
+  moving?: string;
 }
 
-export const PICK: BuildPick = { grade: 'cnc', vehicles: false, door: 'door', materials: false, gate: 2, zone: 'quarantine', bays: 6, levels: 4, face: 'n', turn: false };
+export const PICK: BuildPick = { grade: 'cnc', vehicles: false, door: 'door', materials: false, gate: 2, zone: 'quarantine', bays: 6, levels: 4, face: 'n', turn: false, vendor: 'ven.ru' };
 
 /** Для панели: стройка, выбор, строки призрака и ответа, шаги отмены, потрачено, перестраиваемое. */
 export interface BuildHud {

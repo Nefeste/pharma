@@ -76,13 +76,23 @@ export function untilFail(t: PartType, done: number, budget: number): number {
 /** Запас до отказа нового узла — из ветви узла. */
 const budgetOf = (s: PlantState, id: string) => roll(s, `maint/${id}`, r => expo(r, ONE_FAILURE));
 
+/** Запас до отказа узла: у купленной единицы (Б7в) — по доле таблицы отказов её поставщика, у прочих — как есть. */
+function partBudget(db: ContentDb, s: PlantState, id: string, machine: string): number {
+  const vendor = s.assets?.[machine]?.vendor;
+  const hz = vendor ? db.vendors[vendor].hazard : 100;
+  return hz === 100 ? budgetOf(s, id) : Math.floor((budgetOf(s, id) * 100) / hz);
+}
+
 /** Узлы машин плана — износ на старте из сценария; на складе ЗИП — начальный уровень каждой их запчасти. */
 export function newParts(db: ContentDb, s: PlantState) {
   const plan = planOf(db, s.plan);
   const wear = db.scenarios[s.scenario].wear;
   const add = (machine: string, of: Id, t: PartType, line?: string) => {
     const id = `${machine}/${t.id}`;
-    s.parts[id] = { id, machine, of, type: t.id, ...(line ? { line } : {}), done: Math.floor((t.life * (wear[id] ?? 0)) / P_ONE), budget: budgetOf(s, id), state: 'ok', installed: s.t, mark: 0, v: 0 };
+    // узел уже есть — его не трогают: новый план (Б7в) добавляет только узлы новых единиц
+    if (s.parts[id]) return;
+    const budget = partBudget(db, s, id, machine);
+    s.parts[id] = { id, machine, of, type: t.id, ...(line ? { line } : {}), done: Math.floor((t.life * (wear[id] ?? 0)) / P_ONE), budget, state: 'ok', installed: s.t, mark: 0, v: 0 };
     s.spares[t.spare] ??= { qty: db.spares[t.spare].stock.max, reserved: 0 };
   };
   for (const e of plan.plant.equipment) for (const t of db.equipment[e.type].parts) add(e.id, e.type, t);
@@ -198,13 +208,28 @@ function replenish(db: ContentDb, s: PlantState, spare: Id) {
   note(s, 'maint', { kind: 'spare', order: id, spare, qty: max - level, why: { level, min, max } }, undefined, undefined, whoDecides(db, s, 'maint'));
 }
 
+/**
+ * Срок поставки запчасти (Б7в): у узлов купленных единиц — срок ЗИП их поставщика, если он есть, у прочих — запись ЗИП;
+ * у единиц разных поставщиков — самый короткий.
+ */
+function spareLead(db: ContentDb, s: PlantState, spare: Id): [number, number] {
+  let best: [number, number] | undefined;
+  for (const pt of Object.values(s.parts)) {
+    if (partType(db, pt).spare !== spare) continue;
+    const v = s.assets?.[pt.machine]?.vendor;
+    const lead = (v && db.vendors[v].spares) || db.spares[spare].lead;
+    if (!best || lead[1] < best[1]) best = lead;
+  }
+  return best ?? db.spares[spare].lead;
+}
+
 /** Заказ запчасти — как заказ поставщику (1д): предоплата сейчас, остаток с НДС — через `payDays` после поставки. */
 function orderSpare(db: ContentDb, s: PlantState, spare: Id, qty: number): string {
   const rec = db.spares[spare];
   const sup = db.suppliers[rec.supplier];
   const net = rec.price * qty;
   const vat = part(net, db.profiles[db.scenarios[s.scenario].profile].vat.general);
-  const eta = etaOf(db, s, sup.id, rec.lead);
+  const eta = etaOf(db, s, sup.id, spareLead(db, s, spare));
   const id = nextId(s, 'Z');
   s.spareOrders[id] = { id, spare, qty, ordered: s.t, eta, sum: net + vat, vat, prepaid: part(net + vat, sup.prepay), status: 'ordered', by: 'head:maint' };
   post(s, -s.spareOrders[id].prepaid, 'prepay', id);
@@ -238,7 +263,7 @@ export function maintDone(db: ContentDb, s: PlantState, t: Task, notices: Notice
   s.maintLog.push({ t: s.t, machine: pt.machine, part: pt.type, what: t.planned ? 'replace' : 'repair', wear: wearAt(ty, pt.done), people: [...t.people], ...(from !== undefined ? { from } : {}), ...(pt.nospare ? { spare: true as const } : {}) });
   delete pt.nospare;
   pt.done = 0;
-  pt.budget = budgetOf(s, pt.id);
+  pt.budget = partBudget(db, s, pt.id, pt.machine);
   pt.state = 'ok';
   pt.installed = s.t;
   pt.v++;

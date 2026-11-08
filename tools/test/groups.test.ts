@@ -46,7 +46,7 @@ describe('поля состояния — группами', () => {
     const raw = JSON.parse(fixture(47)) as Box;
     const s = fromSave(db, fixture(47));
     expect(s.schema).toBe(SCHEMA);
-    expect(SCHEMA).toBe(48);
+    expect(SCHEMA).toBe(49);
     for (const [k, to] of MOVED) {
       expect(k in s).toBe(false);
       if (raw[k] === undefined) expect(k in box(s, to)).toBe(false);
@@ -62,7 +62,9 @@ describe('поля состояния — группами', () => {
     for (const k of Object.keys(raw)) if (!moved.has(k) && k !== 'schema' && k !== 'heads' && k !== 'plan') expect(out[k]).toEqual(raw[k]);
     // план — тот же, только здание стало участком и корпусом: внутренность без стен здания, участок «Завод»
     const { building, ...rest } = raw.plan as Box & { building: [number, number, number, number] };
-    const { hull, lot, ...plan } = s.plan;
+    // и у вещей плана — поставщик (Б7в, шаг 48 → 49): без него — тот же
+    const bare = JSON.parse(JSON.stringify(s.plan, (k, v) => (k === 'vendor' ? undefined : v))) as typeof s.plan;
+    const { hull, lot, ...plan } = bare;
     expect(plan).toEqual(rest as typeof plan);
     expect(hull).toEqual([[building[0] + 100, building[1] + 100, building[2] - 200, building[3] - 200]]);
     expect(lot).toEqual({ kind: 'plant', size: [12000, 8000] });

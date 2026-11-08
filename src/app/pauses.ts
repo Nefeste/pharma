@@ -27,7 +27,7 @@ const MEMO_SEATS: readonly SeatId[] = ['production', 'quality', 'supply', 'comme
  * (Б3г); черновик графика отпусков (Б4г); некому решить за руководителя (Б5в); предложение руководителя (Б5б); совещание
  * S&OP (Б6г); жалоб и инспекций в прототипе нет.
  */
-export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'leaveDraft', 'noOne', 'proposal', 'ask', 'memoDone', 'sop', 'morning'] as const;
+export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'unit', 'leaveDraft', 'noOne', 'proposal', 'ask', 'memoDone', 'sop', 'morning'] as const;
 export type Pause = (typeof PAUSES)[number];
 
 /**
@@ -48,6 +48,8 @@ export const PAUSE_NOTICES: Record<Pause, readonly string[]> = {
   resign: ['resign/mes', 'resign/line', 'resign/maint', 'resign/qc', 'resign/qa', 'resign/wms'],
   assetExpired: ['assetExpired/equipment', 'assetExpired/machine', 'assetExpired/ipc', 'assetExpired/lab', 'assetExpired/sensor'],
   pairSuspended: ['pairSuspended'],
+  // оборудование (Б7в): поставщик опаздывает; квалификация принята — единица работает
+  unit: ['unitLate', 'unitReady'],
   leaveDraft: ['leaveDraft'],
   // некому решить за руководителя (Б5в): у поста его отдела
   noOne: HEAD_SEATS.map(x => `noOne/${x}`),
@@ -82,6 +84,8 @@ export const PAUSE_SEATS: Record<Pause, readonly SeatId[] | 'all'> = {
   assetExpired: ['production', 'quality', 'supply'],
   // пара поставщика (Б3г): оценку ведёт качество, заказывает снабжение
   pairSuspended: ['quality', 'supply'],
+  // оборудование (Б7в) покупает директор
+  unit: ['director'],
   // черновик графика отпусков (Б4г): строки своих постов правит каждый пост
   leaveDraft: 'all',
   // некому решить (Б5в) — у поста отдела руководителя (`KEY_SEATS`)
@@ -239,6 +243,13 @@ export function goOf(plant: Plant, n: Notice): Go | undefined {
     }
     case 'pairSuspended':
       return { panel: 'ref', tab: 'partners' };
+    case 'unitArrived':
+    case 'unitReady':
+    case 'unitLate': {
+      // оборудование (Б7в): машина и оборудование — к ним; прибор и датчик — к справочнику, вкладке «Места»
+      const thing = machineThing(plant, n.asset);
+      return thing ? { thing } : { panel: 'ref', tab: 'places' };
+    }
     case 'proposal':
       // предложение руководителя (Б5б) — к журналу на его записи: причина, «Принять» и «Отклонить»
       return { journal: n.n };

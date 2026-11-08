@@ -29,7 +29,7 @@ export async function buildPart({ browser, port, out, ok, fail, errors, requests
 }
 
 /** Чистое окно игры: прокрутка с Promise, счёт кадров и миг ввода, проверки ответа по имени (страница запрещает `eval`). */
-async function openGame({ browser, port, errors, requests, q }) {
+export async function openGame({ browser, port, errors, requests, q }) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await ctx.newPage();
   await page.addInitScript(() => {
@@ -90,7 +90,7 @@ async function openGame({ browser, port, errors, requests, q }) {
 }
 
 /** Общие шаги окна: кадры, часы, отклик, снимок, места, клетка на экране, протяжка. */
-function steps(page, { out, fail, shots, feel }) {
+export function steps(page, { out, fail, shots, feel, prefix = 'build' }) {
   const frames = n => page.evaluate(k => new Promise(r => { const step = () => (k-- > 0 ? requestAnimationFrame(step) : r()); step(); }), n);
   const clock = () => page.evaluate(() => `${document.querySelector('[data-test=date]')?.textContent ?? ''} ${document.querySelector('[data-test=clock]')?.textContent ?? ''}`);
   /** Середина клетки плана на экране: камеру — над ней, если клетка у края кадра. */
@@ -127,7 +127,7 @@ function steps(page, { out, fail, shots, feel }) {
     },
     shot: async what => {
       await frames(2);
-      const file = join(out, `build-${String(shots.length + 1).padStart(2, '0')}.png`);
+      const file = join(out, `${prefix}-${String(shots.length + 1).padStart(2, '0')}.png`);
       await page.screenshot({ path: file });
       shots.push({ file, label: `${shots.length + 1}. ${what} · ${await clock()}` });
     },

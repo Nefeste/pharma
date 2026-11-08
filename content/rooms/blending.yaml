@@ -5,6 +5,8 @@ grades: [D]
 vehicles: true
 area: TB
 min: [6, 6]
-build: false
+build: true
+things: [eq.mill, eq.blender]
+once: true
 source: [gmp-eaeu]
 review: draft

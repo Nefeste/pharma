@@ -5,7 +5,7 @@
 // начинается только на пригодном оборудовании и с пригодными приборами своих МОК (Б3в, assets.ts).
 // Задачи раздаёт раздатчик (tasks.ts); здесь — когда их заводить и что они делают, когда кончаются.
 import { ATTRS, type Attr, type CauseDriver, type ContentDb, type Id, type PartType, type Plant, type RecipeStage } from '../content/types';
-import { stageUnfit } from './assets';
+import { stageUnfit, unfit } from './assets';
 import { batchNo, issueNo } from './batchno';
 import { addEnergy } from './cash';
 import { schedule } from './core/agenda';
@@ -522,7 +522,12 @@ function tryStart(db: ContentDb, s: PlantState, b: Batch) {
   // помещение не работает (Б7б) — стадия ждёт и уборку там не начинают
   if (roomDown(db, s, roomId)) return;
   if (!roomFor(db, s, room, b.product, b.id)) return;
-  const eqs = st.equipment.map(type => Object.values(s.equipment).find(e => e.room === roomId && e.type === type && (!e.batch || e.batch === b.id)));
+  // первая свободная и годная единица класса (Б7в); нет такой — первая свободная: она и держит стадию
+  const free = (type: string) => Object.values(s.equipment).filter(e => e.room === roomId && e.type === type && (!e.batch || e.batch === b.id));
+  const eqs = st.equipment.map(type => {
+    const all = free(type);
+    return all.length > 1 ? (all.find(e => !blocked(s, e.id) && !unfit(db, s, e.id)) ?? all[0]) : all[0];
+  });
   // неисправное оборудование выведено из работы до устранения (GMP ЕАЭС, ч. I, п. 3.44): стадия ждёт ремонта; без
   // действующей квалификации или калибровки, с подрядчиком — ждёт, пока актив снова пригоден (Б3в)
   if (eqs.some(e => !e || blocked(s, e.id))) return;
@@ -764,12 +769,13 @@ const roomTime = (db: ContentDb, s: PlantState, room: Room) => roomWork(db, s, r
 
 /**
  * Мойка оборудования помещения малой или генеральной уборкой (геймдизайн, §5.5): сумма времён его оборудования и машин
- * линий в нём, которые касаются таблеток (Б1е), с.
+ * линий в нём, которые касаются таблеток (Б1е), кроме единиц на пути (Б7в), с.
  */
 export function washWork(db: ContentDb, s: PlantState, roomId: string, major: boolean): number {
   let sec = 0;
-  for (const e of Object.values(s.equipment)) if (e.room === roomId) sec += db.equipment[e.type].cleaning[major ? 'major' : 'minor'];
-  for (const m of lineMachinesIn(db, s.plan, roomId)) sec += db.machines[m.type].cleaning?.[major ? 'major' : 'minor'] ?? 0;
+  // единица на пути (Б7в) в работе не была — её не моют
+  for (const e of Object.values(s.equipment)) if (e.room === roomId && !s.assets?.[e.id]?.path) sec += db.equipment[e.type].cleaning[major ? 'major' : 'minor'];
+  for (const m of lineMachinesIn(db, s.plan, roomId)) if (!s.assets?.[m.id]?.path) sec += db.machines[m.type].cleaning?.[major ? 'major' : 'minor'] ?? 0;
   return sec;
 }
 

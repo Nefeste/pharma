@@ -12,11 +12,13 @@ import { CELL_CM } from './nav';
 import { planOf } from './plant';
 import { floorRoomAt, forgetDown } from './site/down';
 import { type BuildError, type BuildOp, doorId, doorSides, editPlan, without } from './site/edit';
+import { syncUnits, undoUnit, undoUnitApply, unitFree } from './equip';
+import { newParts } from './maint';
 import { slotFree } from './stock';
 import { taskRooms } from './tasks';
 import { type BuildState, type Command, type Notice, type PlantState, planRev, type SitePlan, type SiteRefusal } from './types';
 
-type Thing = BuildState['leaving'][number]['what'];
+type Thing = Exclude<BuildState['leaving'][number]['what'], 'unit'>;
 
 const no = (op: string, error: BuildError | SiteRefusal): Notice => ({ kind: 'site', op, ok: false, error });
 
@@ -88,7 +90,7 @@ function leavingOf(db: ContentDb, s: PlantState, op: BuildOp): string | undefine
 }
 
 /** Проверить отложенный снос через шаг проверки сценария — одно событие в очереди. */
-function checkLater(s: PlantState, b: BuildPrices) {
+export function checkLater(s: PlantState, b: BuildPrices) {
   if (!s.agenda.heap.some(d => d.e.kind === 'siteFree')) schedule(s.agenda, s.t + b.check, { kind: 'siteFree' });
 }
 
@@ -102,13 +104,14 @@ function remember(st: BuildState, b: BuildPrices, plan: SitePlan, paid: number, 
  * Новый план в состоянии: учёт помещений — новое чисто с этого мгновения, снесённого нет; записей мест снесённых зон и
  * рядов нет (снесённое свободно).
  */
-function commit(db: ContentDb, s: PlantState, plan: SitePlan) {
+export function commit(db: ContentDb, s: PlantState, plan: SitePlan) {
   s.plan = plan;
   const ids = new Set(plan.rooms.map(r => r.id));
   for (const r of plan.rooms) if (!s.rooms[r.id]) s.rooms[r.id] = { id: r.id, type: r.type, status: 'clean', since: s.t };
   for (const id of Object.keys(s.rooms)) if (!ids.has(id)) delete s.rooms[id];
   const slot = planOf(db, plan).slot;
-  for (const id of Object.keys(s.slots)) if (!slot[id] && slotFree(s, id)) delete s.slots[id];
+  for (const id of Object.keys(s.slots)) if (!slot[id] && slotFree(s, id)) delete s.slots[id];  // оборудование, линии, узлы и активы (Б7в) — по плану
+  syncUnits(db, s, newParts);
 }
 
 /** Деньги шага: из кассы статьёй «Стройка» (возврат — в кассу), НДС — к вычету, потрачено на стройку. */
@@ -178,7 +181,11 @@ function undo(db: ContentDb, s: PlantState, notices: Notice[]) {
   if (!st || !step) return void notices.push(no('undo', { code: 'nothing' }));
   const busy = lostBusy(db, s, s.plan, step.plan);
   if (busy) return void notices.push(no('undo', { code: 'inUse', thing: busy }));
+  // шаг с единицей (Б7в): заказ — до полуночи дня заказа, снос и перенос — пока не случились
+  const sure = undoUnit(s, step);
+  if (sure) return void notices.push(no('undo', { code: 'confirmed', thing: sure }));
   st.undo.pop();
+  undoUnitApply(s, step);
   st.leaving = st.leaving.filter(l => l.step !== step.n);
   if (step.editing !== undefined && step.plan.rooms.some(r => r.id === step.editing)) st.editing = step.editing;
   else delete st.editing;
@@ -202,6 +209,10 @@ export function siteFree(db: ContentDb, s: PlantState, notices: Notice[]) {
   const rest: BuildState['leaving'] = [];
   const rate = rateOf(db, s);
   for (const l of st.leaving) {
+    if (l.what === 'unit') {
+      rest.push(l);
+      continue;
+    }
     if (busyWith(db, s, l.what, l.id)) {
       rest.push(l);
       continue;
@@ -225,6 +236,8 @@ export function siteFree(db: ContentDb, s: PlantState, notices: Notice[]) {
     notices.push({ kind: 'siteGone', what: l.what, id: l.id, refund: -paid });
   }
   st.leaving = rest;
+  // единицы (Б7в): снос, снятие при замене и перенос — когда освободятся
+  unitFree(db, s, notices, plan => commit(db, s, plan));
   forgetDown(st);
-  if (rest.length > 0) checkLater(s, b);
+  if (st.leaving.length > 0) checkLater(s, b);
 }

@@ -5,6 +5,9 @@ grades: [D]
 vehicles: true
 area: TB
 min: [5, 5]
-build: false
+build: true
+things: [inst.thermohygrometer]
+once: true
+regime: reg.ccrt
 source: [gmp-eaeu]
 review: draft

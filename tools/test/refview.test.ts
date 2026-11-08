@@ -114,7 +114,9 @@ const ALLOWED = new Set(
     'movable move road arrive bosses head seat limit full hire replace byWear threshold ' +
     // Б6ж: аналог строки карты с коэффициентом — по карте; пара-кандидат с шагом одобрения и наступившими днями, доля
     // поставок вовремя пары — записи завода; настоящего прихода и дней решения наперёд нет
-    'alt factor cand onTime step po eta lot filed asked answered decided'
+    'alt factor cand onTime step po eta lot filed asked answered decided ' +
+    // Б7в: поставщик вещи плана — запись плана
+    'vendor'
   ).split(' '),
 );
 

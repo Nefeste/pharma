@@ -377,8 +377,9 @@ export function labelRows(db: ContentDb, plan: Plant, view: BuildView | undefine
   return plan.rooms.map(r => {
     const e = red.get(r.id);
     const y = yellow.get(r.id);
-    const state = e ? s.down(siteText(db, plan, e)) : view?.editing === r.id ? s.editing : leaving.has(r.id) ? s.leaving : y ? s.remark(siteText(db, plan, y)) : s.works;
-    return { id: r.id, x: (r.rect[0] + r.rect[2] / 2) / CELL_CM, z: (r.rect[1] + r.rect[3] / 2) / CELL_CM, name: roomName(plan, r.id), state, ok: !e && view?.editing !== r.id && !leaving.has(r.id) };
+    const mount = view?.mount?.[r.id];
+    const state = e ? s.down(siteText(db, plan, e)) : view?.editing === r.id ? s.editing : leaving.has(r.id) ? s.leaving : mount ? s.down(s.mount(unitName(db, plan, mount))) : y ? s.remark(siteText(db, plan, y)) : s.works;
+    return { id: r.id, x: (r.rect[0] + r.rect[2] / 2) / CELL_CM, z: (r.rect[1] + r.rect[3] / 2) / CELL_CM, name: roomName(plan, r.id), state, ok: !e && view?.editing !== r.id && !leaving.has(r.id) && !mount };
   });
 }
 

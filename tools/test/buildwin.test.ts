@@ -4,7 +4,7 @@
 // пристройки — по улице рядом, а не по краю сетки.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
-import { type BuildPick, ghostOf, labelRows, opAt, PICK, targetAt } from '../../src/app/build';
+import { type BuildPick, equipOf, ghostOf, labelRows, opAt, PICK, targetAt } from '../../src/app/build';
 import { apply, newPlant } from '../../src/engine/engine';
 import { planOf } from '../../src/engine/plant';
 import type { BuildOp } from '../../src/engine/site/edit';
@@ -41,6 +41,36 @@ const OPS: BuildOp[] = [
 ];
 
 describe('призрак и команда — одна функция', () => {
+  test('оборудование (Б7в): что призрак пустил, команда «Оборудование» принимает, и наоборот; призрак — предоплата', () => {
+    const s = newPlant(db, { scenario: SC });
+    const pick: BuildPick = { ...PICK, tool: 'unit', vendor: 'ven.asia' };
+    const cells: [number, number][] = [];
+    const r = s.plan.rooms.find(x => x.id === 'compression')!.rect.map(v => v / 100);
+    for (let z = r[1]; z < r[1] + r[3]; z++) for (let x = r[0]; x < r[0] + r[2]; x++) cells.push([x, z]);
+    const lab = s.plan.rooms.find(x => x.id === 'lab')!.rect.map(v => v / 100);
+    const seen = { ok: 0, no: 0 };
+    const tries: [BuildPick, [number, number]][] = [
+      ...cells.slice(0, 40).map(c => [{ ...pick, cls: 'eq.deduster' }, c] as [BuildPick, [number, number]]),
+      [{ ...pick, cls: 'eq.press' }, [lab[0] + 2, lab[1] + 2]],
+      [{ ...pick, cls: 'inst.hplc' }, [lab[0] + 2, lab[1] + 2]],
+      [{ ...pick, tool: 'demolish' }, [Math.floor(5300 / 100), Math.floor(400 / 100)]],
+    ];
+    for (const [p, c] of tries) {
+      const op = opAt(db, s.plan, p, c);
+      if (!op) continue;
+      const g = ghostOf(db, B, VAT, s.plan, buildView(db, s), op);
+      const eq = equipOf(op);
+      const n = eq ? apply(db, s, { kind: 'equip', op: eq }).filter(x => x.kind === 'equip') : site(s, op);
+      expect([op, n.length]).toEqual([op, 1]);
+      expect([op, n[0].ok]).toEqual([op, g.ok]);
+      if (n[0].ok && n[0].kind === 'equip' && !n[0].later) expect([op, n[0].cost]).toEqual([op, g.cost]);
+      if (n[0].ok) seen.ok++;
+      else seen.no++;
+    }
+    expect(seen.ok).toBeGreaterThan(2);
+    expect(seen.no).toBeGreaterThan(2);
+  });
+
   test('на всех инструментах: что призрак пустил, команда принимает, и наоборот; цена — та же', () => {
     const s = newPlant(db, { scenario: SC });
     const seen = { ok: 0, no: 0, later: 0 };

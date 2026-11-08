@@ -4,7 +4,7 @@
 // отложится) и касса с краем кредитной линии — проверка денег у призрака. Истины здесь нет: занятость — по учёту завода.
 import type { ContentDb } from '../content/types';
 import { busyWith } from '../engine/build';
-import { unitBusy } from '../engine/equip';
+import { mounting, unitBusy } from '../engine/equip';
 import { unitsOf } from '../engine/site/units';
 import type { Names } from '../engine/site/edit';
 import type { BuildState, PlantState } from '../engine/types';
@@ -27,6 +27,8 @@ export interface BuildView {
   next: Names;
   /** помещения, зоны и ряды стеллажа, которые сейчас заняты: их снос — когда освободятся */
   busy: string[];
+  /** помещения на монтаже единицы (Б7в): помещение → единица */
+  mount: Record<string, string>;
   /** касса и её нижний край — минус предел кредитной линии: дороже их разницы стройка не принимается */
   cash: number;
   floor: number;
@@ -50,6 +52,7 @@ export function buildView(db: ContentDb, s: PlantState): BuildView {
     spent: st?.spent ?? 0,
     next: st?.next ?? {},
     busy,
+    mount: Object.fromEntries(mounting(db, s)),
     cash: s.cash.balance,
     floor: -db.scenarios[s.scenario].credit.limit,
   };

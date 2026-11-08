@@ -59,7 +59,7 @@
 // «Вывоз отходов». Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png. Первая неделя
 // (docs/specs/2026-10-vertical-slice.md): путь новичка от «Кем вы будете» до «За эту игру» на планёрке 8 сентября в
 // чистом окне — tools/app/e2e-week.mjs.
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits|build|sources] [--long 1]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits|build|equip|sources] [--long 1]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -69,6 +69,7 @@ import { forecastPart } from './e2e-forecast.mjs';
 import { sopPart } from './e2e-sop.mjs';
 import { mrpPart } from './e2e-mrp.mjs';
 import { buildPart } from './e2e-build.mjs';
+import { equipPart } from './e2e-equip.mjs';
 import { editsPart } from './e2e-edits.mjs';
 import { sourcesPart } from './e2e-sources.mjs';
 import { jobsPart } from './e2e-jobs.mjs';
@@ -286,8 +287,9 @@ const answerAsks = async (no = () => false) => {
 // поста «Производство», до планёрки с событием коммерции (tools/app/e2e-edits.mjs); «Источники» (Б6ж) — чистое окно
 // места «Директор», до пробной партии, с `--long 1` — до подачи изменения досье (tools/app/e2e-sources.mjs); «Стройка»
 // (Б7б) — чистое окно места «Директор»: корпус, помещения, двери, зона и ряд, ступени проверок, снос и отмена
-// (tools/app/e2e-build.mjs). `--only main`, `week`, `memo`, `capa`, `jobs`, `launch`, `forecast`, `sop`, `mrp`, `edits`,
-// `build` или `sources` — одна из них
+// (tools/app/e2e-build.mjs); «Оборудование» (Б7в) — чистое окно места «Директор»: заказ, отмена, «нельзя», замена,
+// заказ из карточки и его отмена, с `--long 1` — до монтажа и записи квалификации (tools/app/e2e-equip.mjs). `--only main`, `week`, `memo`, `capa`, `jobs`, `launch`, `forecast`, `sop`, `mrp`, `edits`,
+// `build`, `equip` или `sources` — одна из них
 const only = arg('only', '');
 try {
   // основная часть кончилась — её страницу закрыть: она рисует кадры и отняла бы у других частей процессор
@@ -305,6 +307,7 @@ try {
   if (only === '' || only === 'mrp') await mrpPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'edits') await editsPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'build') await buildPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'equip') await equipPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
   if (only === '' || only === 'sources') await sourcesPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');

@@ -103,8 +103,11 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # 2 September (e2e-mrp.mjs, mrp.png), then the plan edits — a commerce event at the
                                    # meeting, a priced edit in the frozen horizon, the horizon policy (e2e-edits.mjs,
                                    # edits.png), then the sources — a pair approval to its trial lot, the offers of a
-                                   # planned order (e2e-sources.mjs, sources.png; `--long 1` — on to the dossier filing);
-                                   # `-- --only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits|sources` for one
+                                   # planned order (e2e-sources.mjs, sources.png; `--long 1` — on to the dossier filing),
+                                   # the build (e2e-build.mjs, build.png), the equipment — an order, its undo, a
+                                   # replacement, a cancel from the card (e2e-equip.mjs, equip.png; `--long 1` — on
+                                   # to the installation and the qualification record); `-- --only main|week|memo|
+                                   # capa|jobs|launch|forecast|sop|mrp|edits|build|equip|sources` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -142,7 +145,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   no, red (the room does not work) or yellow (a remark), `levelOf`), `site/edit.ts` (with Б7б, a building edit as a pure
   function of the plan — a room of a catalog type and class, a hull rectangle, a door, a zone, a rack, vehicles, a
   demolition: a new plan with its revision one higher, the price without VAT, the room it closes for rebuilding — or why
-  not; the same function for the window's ghost), `site/down.ts` (with Б7б, what does not work: red rooms of the plan,
+  not; the same function for the window's ghost; with Б7в the units —
+  buy, move, drop, swap in place), `site/units.ts` (with Б7в, the units of the plan as pure functions: the family by
+  class and room, the price by vendor, the footprint on the floor of its room — not on another's, a rack, a zone or a
+  doorway —, the next place code on its work center, a name never repeated, a plan with or without a unit, the units of
+  a room), `site/down.ts` (with Б7б, what does not work: red rooms of the plan,
   the room being rebuilt and things being demolished — no new task, stage, packing or test starts there and no pallet
   place there is chosen, the task waits «помещение не работает» with it), `build.ts` (with Б7б, the `site` command of
   the director's seat: an edit, «Готово» and the undo of 50 steps — the old plan, what the step paid and the room being
@@ -461,7 +468,15 @@ first, or copy the working code of Bolnitsa on the same versions.
   trial lot released; no framework contract with it — the list price; the on-time share of a pair by its POs over 12
   months (`onTimeOf`), the offers of the approved suppliers with their weighted score (`offersFor`) and the supplier
   of an order by the policy «кому заказывать» — the main, faster when the main would be late, or by the offers
-  (`choosePair`)), `invariants.ts`.
+  (`choosePair`)), `equip.ts` (with Б7в, the equipment: the
+  `equip` command of the director's seat — buy, replace, move, remove, cancel an order —; the unit's path — ordered,
+  the promised day known to the plant and the true one only to the engine (`deliveryOf`, `redrawArrive` for the twin),
+  delivered to its place, the old one taken out when free, installation closing its room (`mounting`), IQ, OQ and PQ —
+  the vendor's engineer with the plant's validation engineer or a contractor's, the report accepted by the QA
+  specialist —, the bills; a unit on its path does not work (`unfit` — `path`), a stage takes the first fit unit of a
+  class; the undo of an order until midnight; the parts of a bought unit fail by its vendor's share, its spares come in
+  its vendor's term; the plant's own validation engineer also requalifies without a contractor's bill),
+  `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`; a `tick` carries the notice kinds of the player's
@@ -601,7 +616,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   the andon icons over things and the boxes of all these marks for clicks (`floor.ts`); with Б1л the «Потери» layer —
   where the column of each place stands, on its room's floor, off equipment and pallet places and apart from the others,
   the kind of loss picked, parts and heights against the largest place, the palette, the boxes, the places of a card
-  and their names (`losses.ts`); with Б7б the build tool — a copy of Bolnitsa's: tools, the edit under the cursor, the
+  and their names (`losses.ts`); with Б7б the build tool — a copy of Bolnitsa's: tools, the edit under the
+  cursor (with Б7в a unit — its footprint, R turns it, the prepayment and the delivery in the ghost's line), the
   ghost checked by the same edit function as the command, its line, the room labels' rows and the engine's answer in
   words (`build.ts`, the panel's choices — `buildpick.ts`), the room labels over the view, a copy of Bolnitsa's
   (`labels.ts`); the scene bench, a copy of Bolnitsa's, with `--layer load` also with the layer on
@@ -677,7 +693,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   batch record over the other windows — opened from a
   card, «Сейчас», the meeting and a click
   on a batch bar of the schedule (`Dossier.tsx`), the rejected room's block of the card — the zone's places, the
-  removal, the waste log (`Waste.tsx`), with Б7б the build panel in place of the layers (`Build.tsx`), the levers of a
+  removal, the waste log (`Waste.tsx`), with Б7б the build panel in place of the layers
+  (`Build.tsx`; with Б7в its «Оборудование» — the class and the vendors with price, delivery, failures and the
+  engineer's day; a unit's block of the card — the vendor, the path with its days and the director's «Заменить»,
+  «Перенести», «Снести», «Отменить заказ», `Card.tsx`), the levers of a
   row (`Levers.tsx`), the deviation card, the batch
   decision, stage parameters, with Б1ж the setpoints with «−» and «+» and a blister machine's speed, and
   the first-event explanation in the card, with Б5е the class with «Сменить класс», the cause, the signs and the cause

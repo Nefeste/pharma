@@ -1478,7 +1478,7 @@ async function mainPart() {
   if (lossShot) sheet.push(lossShot);
   await writeSheet(sheet);
 
-  // автопаузы (Б2а): у производства и качества восемнадцать автопауз в меню (с Б3б — «потерял допуск», с Б3в — «срок
+  // автопаузы (Б2а): у производства и качества девятнадцать автопауз в меню (с Б7в — «оборудование», она у директора) (с Б3б — «потерял допуск», с Б3в — «срок
   // вышел», с Б3г — «пара приостановлена», с Б4а — «сверхурочные года на исходе», с Б4в — «заявление об увольнении»,
   // с Б4г — «черновик графика отпусков», с Б5б — «предложение руководителя», с Б5в — «некому решить», с Б5д — «просят
   // решить» и «ответ на служебную записку», с Б6г — «совещание S&OP»),
@@ -1498,7 +1498,7 @@ async function mainPart() {
     await page.screenshot({ path: join(out, 'e2e-pauses.png') });
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('Escape');
-    if (menu.all !== 18 || menu.on !== 18 || menu.notYours.join() !== 'truckWait,orderRisk' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
+    if (menu.all !== 19 || menu.on !== 19 || menu.notYours.join() !== 'truckWait,orderRisk,unit' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
       fail(`автопаузы: в меню ${menu.all}, включено ${menu.on}, не ваши ${menu.notYours.join(', ')}, в окне «${kept}»`);
     else ok(`автопаузы: в меню ${menu.all}, не ваши — ${menu.notYours.join(', ')}; планёрку отключили — в окне ${kept}; Esc закрыл меню`);
     const t0 = await gameT();

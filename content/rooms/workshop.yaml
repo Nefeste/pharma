@@ -5,6 +5,7 @@ grades: [cnc]
 vehicles: true
 area: MT
 min: [5, 5]
-build: false
+build: true
+once: true
 source: [gmp-eaeu]
 review: draft

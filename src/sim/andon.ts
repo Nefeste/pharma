@@ -160,7 +160,8 @@ export function andonView(db: ContentDb, s: PlantState): AndonView {
   // актив без записи в силе или с подрядчиком (Б3в) — над его вещью, прибор и датчик — над их помещением
   for (const id of Object.keys(s.assets)) {
     const why: Unfit | undefined = unfit(db, s, id);
-    if (!why) continue;
+    // единица на пути (Б7в) — не беда, а работа: её видно в карточке
+    if (!why || why === 'path') continue;
     const asset = assetInfo(db, s, id);
     add(thingOf(db, s, id, plan), { kind: why, ...(asset ? { asset } : {}) });
   }

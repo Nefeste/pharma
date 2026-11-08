@@ -5,6 +5,8 @@ grades: [cnc]
 vehicles: true
 area: WH
 min: [10, 10]
-build: false
+build: true
+things: [inst.thermohygrometer]
+regime: reg.ccrt
 source: [gmp-eaeu]
 review: draft

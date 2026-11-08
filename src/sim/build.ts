@@ -4,6 +4,8 @@
 // отложится) и касса с краем кредитной линии — проверка денег у призрака. Истины здесь нет: занятость — по учёту завода.
 import type { ContentDb } from '../content/types';
 import { busyWith } from '../engine/build';
+import { unitBusy } from '../engine/equip';
+import { unitsOf } from '../engine/site/units';
 import type { Names } from '../engine/site/edit';
 import type { BuildState, PlantState } from '../engine/types';
 
@@ -37,6 +39,8 @@ export function buildView(db: ContentDb, s: PlantState): BuildView {
     ...plan.rooms.filter(r => busyWith(db, s, 'room', r.id)).map(r => r.id),
     ...plan.zones.filter(z => busyWith(db, s, 'zone', z.id)).map(z => z.id),
     ...plan.racks.filter(r => busyWith(db, s, 'rack', r.id)).map(r => r.id),
+    // единицы (Б7в): занятые серией, испытанием или упаковкой — их снос и перенос отложатся
+    ...unitsOf(plan).filter(u => unitBusy(db, s, u.id)).map(u => u.id),
   ];
   return {
     view: 'build',

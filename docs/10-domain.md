@@ -455,18 +455,6 @@ GQ — годное, SQ — брак, CM — израсходованный ма
 | Распашная дверь чистого помещения — от 51 000 ₽, автоматическая — от 184 116 ₽; пассивный передаточный бокс — от 198 855 ₽, из нержавеющей стали с электромеханической блокировкой и УФ-лампой — от 528 000 ₽ (каталог производителя панелей чистых помещений) | `cleanroom-catalog` | 04.11.2026 |
 | Пассивное передаточное окно с корпусом из оцинкованной стали — от 109 000 ₽ (каталог) | `passbox-catalog` | 04.11.2026 |
 | Блок управления шлюзом для чистых помещений — от 12 835 ₽ (каталог; страница не открылась, цена — по тексту поиска) | `airlock-unit` | 04.11.2026, по тексту поиска |
-| `unspsc-23151813` | «Market Analysis – 23151813 – Tabletting machines», 03.09.2025 | издатель не назван | https://storage.googleapis.com/unspsc_code/reports/23151813.html |
-| `mic-press` | Листинг: автоматический роторный таблеточный пресс | торговая площадка, 11.2026 | https://china.org.ru/product/60841732983 |
-| `mic-blister` | Листинг: блистерная машина малой производительности | торговая площадка, 11.2026 | https://china.org.ru/product/1600217502389 |
-| `mic-cartoner` | Листинги: картонажные машины | торговые площадки, 11.2026 | https://china.org.ru/product/268729121 · https://www.goldsupplier.com/provide/p109853345.html |
-| `mic-fbd` | Листинги: сушилки-грануляторы с псевдоожиженным слоем | торговые площадки, 11.2026 | https://ivenpharmatech.en.made-in-china.com/product/nJfUClWGubVA/ · https://china.org.ru/product/1600250649171 |
-| `mic-press-terms` | Листинги: условия поставки роторных прессов — срок и оплата | торговая площадка, 11.2026 | https://www.goldsupplier.com/provide/p115020563.html · https://www.goldsupplier.com/provide/p125860951.html |
-| `hplc-ru-catalog` | Каталог: хроматографы | коммерческий, 11.2026 | https://christmas-plus.ru/catalog/analiticheskie_pribory/khromatografy |
-| `hplc-dealers` | Дилер: системы ВЭЖХ | коммерческий, 11.2026 | https://marshallscientific.com/HPLC-Systems-s/11290.htm |
-| `eu-833-2025-1494` | Регламент Совета (ЕС) 2025/1494, изменяющий Регламент (ЕС) № 833/2014 | Совет ЕС, 2025; CELEX 32025R1494 | https://lawplayer.com/eu/act/32025R1494 — копия |
-| `who-trs-1019-a3` | WHO Technical Report Series 1019 (2019), annex 3, appendix 6 «Guidelines on qualification» | ВОЗ, 2019 | https://www.gmp-compliance.org/files/guidemgr/trs1019-annex3-gmp-validation.pdf — копия |
-| `comecer-fat` | Страница производителя изоляторов о FAT и SAT | коммерческий, 11.2026 | https://www.comecer.com/fat-factory-acceptance-test/ |
-| `festo-service-2025` | «Gestellung von Technikern und Ingenieuren im Inland ab 01.01.2025» | производитель автоматики, 2025 | https://images.www2.festo.com/Web/Festo/{78c4bee6-d02f-4c9d-81f6-e6186afddbac}_Gestellung_von_Technikern_und_Ingenieuren_im_Inland_ab_01.01.2025.pdf |
 | Паллетные фронтальные стеллажи — от 2 200 ₽ за паллетоместо; по ценам секций каталога (секция 2,7 м, 3 паллеты на ярус) — 3 444–4 147 ₽ за место у начальной секции и около 2 871 ₽ у дополнительной: у неё одна рама (вывод) | `pallet-racks` | 04.11.2026 |
 | Для сравнения: в США чистое помещение ISO 8 (класс D) для нестерильных твёрдых форм и упаковки — 150–250 $ за кв. фут под ключ (2026, архитектурно-инженерная фирма) | `gmp-cost-us` | 04.11.2026 |
 
@@ -762,6 +750,18 @@ GQ — годное, SQ — брак, CM — израсходованный ма
 | `cleanroom-catalog` | Каталог: двери для чистых помещений, передаточные боксы | коммерческий, производитель панелей чистых помещений, 11.2026 | https://gmlpanel.ru/catalog/dveri_dlya_chistih_pomesheniy · https://gmlpanel.ru/item/passivnye_peredatochnye_boksy_gml_pba-p |
 | `passbox-catalog` | Каталог: пассивные передаточные окна | коммерческий, 11.2026 | https://proflineco.ru/products/peredatochnye-okna/passivnye |
 | `airlock-unit` | Каталог: блок управления шлюзом для чистых помещений | коммерческий, 11.2026 | https://elektroautomatika.ru/catalog/blok-upravleniya-shlyuzom-dlya-chistyh-pomeshhenij |
+| `unspsc-23151813` | «Market Analysis – 23151813 – Tabletting machines», 03.09.2025 | издатель не назван | https://storage.googleapis.com/unspsc_code/reports/23151813.html |
+| `mic-press` | Листинг: автоматический роторный таблеточный пресс | торговая площадка, 11.2026 | https://china.org.ru/product/60841732983 |
+| `mic-blister` | Листинг: блистерная машина малой производительности | торговая площадка, 11.2026 | https://china.org.ru/product/1600217502389 |
+| `mic-cartoner` | Листинги: картонажные машины | торговые площадки, 11.2026 | https://china.org.ru/product/268729121 · https://www.goldsupplier.com/provide/p109853345.html |
+| `mic-fbd` | Листинги: сушилки-грануляторы с псевдоожиженным слоем | торговые площадки, 11.2026 | https://ivenpharmatech.en.made-in-china.com/product/nJfUClWGubVA/ · https://china.org.ru/product/1600250649171 |
+| `mic-press-terms` | Листинги: условия поставки роторных прессов — срок и оплата | торговая площадка, 11.2026 | https://www.goldsupplier.com/provide/p115020563.html · https://www.goldsupplier.com/provide/p125860951.html |
+| `hplc-ru-catalog` | Каталог: хроматографы | коммерческий, 11.2026 | https://christmas-plus.ru/catalog/analiticheskie_pribory/khromatografy |
+| `hplc-dealers` | Дилер: системы ВЭЖХ | коммерческий, 11.2026 | https://marshallscientific.com/HPLC-Systems-s/11290.htm |
+| `eu-833-2025-1494` | Регламент Совета (ЕС) 2025/1494, изменяющий Регламент (ЕС) № 833/2014 | Совет ЕС, 2025; CELEX 32025R1494 | https://lawplayer.com/eu/act/32025R1494 — копия |
+| `who-trs-1019-a3` | WHO Technical Report Series 1019 (2019), annex 3, appendix 6 «Guidelines on qualification» | ВОЗ, 2019 | https://www.gmp-compliance.org/files/guidemgr/trs1019-annex3-gmp-validation.pdf — копия |
+| `comecer-fat` | Страница производителя изоляторов о FAT и SAT | коммерческий, 11.2026 | https://www.comecer.com/fat-factory-acceptance-test/ |
+| `festo-service-2025` | «Gestellung von Technikern und Ingenieuren im Inland ab 01.01.2025» | производитель автоматики, 2025 | https://images.www2.festo.com/Web/Festo/{78c4bee6-d02f-4c9d-81f6-e6186afddbac}_Gestellung_von_Technikern_und_Ingenieuren_im_Inland_ab_01.01.2025.pdf |
 | `pallet-racks` | Каталог: паллетные фронтальные стеллажи | коммерческий, 11.2026 | https://gortorgsnab.ru/catalog/palletnye_frontalnye_stellazhi |
 | `gmp-cost-us` | Cost of building a GMP facility | коммерческий, архитектурно-инженерная фирма, 2026 | https://hixson-inc.com/feeds/blog/cost-building-gmp-facility |
 

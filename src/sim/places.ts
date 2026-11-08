@@ -4,13 +4,15 @@
 // знание завода, а не истина: их и показывает окно. Для планёрки — сводка: визиты сегодня, что кончится в срок
 // предупреждения, что просрочено.
 import type { ContentDb, Id, Text } from '../content/types';
+import { stepsOf } from '../engine/equip';
+import { unitOf } from '../engine/site/units';
 import { contractor, lineUnfit, recOf, stageUnfit, unfit, type Unfit, valid, visitLast, type Work, WORKS } from '../engine/assets';
 import { batchNo } from '../engine/batchno';
 import { DAY, isWorkday, momentOf } from '../engine/core/calendar';
 import { classOf, placesOf } from '../engine/places';
 import { planOf } from '../engine/plant';
 import { numOf, POL } from '../engine/policies';
-import type { Asset, AssetFamily, AssetRec, PlantState } from '../engine/types';
+import type { Asset, AssetFamily, AssetRec, PathStep, PlantState } from '../engine/types';
 import { calOf } from '../engine/workdays';
 import type { Thing } from './views';
 
@@ -42,6 +44,13 @@ export interface AssetInfo {
    * или записи в силе нет — нет
    */
   move?: number[];
+  /** поставщик единицы (Б7в): у вещи плана — по записи плана, у купленной — её */
+  vendor?: Id;
+  /**
+   * путь до записи квалификации (Б7в): шаг, сделано дней из скольких, обещанный день поставки — его знает завод, а не
+   * настоящий; кого заменяет; перенос; идёт ли день шага сейчас; заказ можно отменить (до поставки)
+   */
+  path?: { step: PathStep; day: number; days: number; due?: number; replaces?: string; move: boolean; working: boolean };
 }
 
 export interface PlaceCenter {
@@ -105,6 +114,28 @@ export function assetInfo(db: ContentDb, s: PlantState, id: string): AssetInfo |
     ...(thing ? { thing } : {}),
     today: momentOf(s.start, s.t).day,
     ...(v && v.from === undefined ? movable(db, s, a) : {}),
+    ...(vendorOf(db, s, a) ? { vendor: vendorOf(db, s, a) } : {}),
+    ...(a.path ? { path: pathInfo(db, a) } : {}),
+  };
+}
+
+/** Поставщик единицы: купленной — её, иначе — по записи плана. */
+function vendorOf(db: ContentDb, s: PlantState, a: PlantState['assets'][string]): Id | undefined {
+  return a.vendor ?? unitOf(planOf(db, s.plan).plant, a.id)?.vendor;
+}
+
+/** Путь единицы для окна — без настоящего дня поставки (он у движка). */
+function pathInfo(db: ContentDb, a: PlantState['assets'][string]): NonNullable<AssetInfo['path']> {
+  const p = a.path!;
+  const steps = stepsOf(db, a.type, !!p.move);
+  return {
+    step: p.step,
+    day: p.day,
+    days: steps.find(x => x.step === p.step)?.days ?? 0,
+    ...(p.due !== undefined ? { due: p.due } : {}),
+    ...(p.replaces ? { replaces: p.replaces } : {}),
+    move: !!p.move,
+    working: p.until !== undefined || p.task !== undefined,
   };
 }
 

@@ -35,6 +35,7 @@ import {
   type HeadId,
   type Id,
   type IncidentDef,
+  type Install,
   type Labor,
   type LeaveRule,
   type InstrumentType,
@@ -68,8 +69,10 @@ import {
   type TestMethod,
   type UnitType,
   type VehicleType,
+  type Vendor,
 } from '../../src/content/types';
 import { ACCEPT } from '../../src/engine/assets';
+import { VALIDATOR } from '../../src/engine/equip';
 import { HEAD_ROLE } from '../../src/engine/bosses';
 import { civilFromDays, daysFromCivil, weekday } from '../../src/engine/core/calendar';
 import { fnv1a, stableJson } from '../../src/engine/core/hash';
@@ -253,10 +256,13 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   /** Работа подрядчика (Б3в): часы — в секунды, рубли — в копейки. */
   const workOf = (w: { every: number; hours: number; price: number; name: InstrumentType['name']; verify?: true } | undefined): AssetWork | undefined =>
     w && { every: w.every, work: Math.round(w.hours * 3600), price: kop(w.price), name: w.name, ...(w.verify ? { verify: true as const } : {}) };
-  const works = (x: { qual?: Parameters<typeof workOf>[0]; cal?: Parameters<typeof workOf>[0]; critical?: true }) => ({
+  const works = (x: { qual?: Parameters<typeof workOf>[0]; cal?: Parameters<typeof workOf>[0]; critical?: true; price: number; install: Install }) => ({
     ...(x.qual ? { qual: workOf(x.qual)! } : {}),
     ...(x.cal ? { cal: workOf(x.cal)! } : {}),
     ...(x.critical ? { critical: true as const } : {}),
+    // покупка (Б7в): цена — в копейки, дни — как есть
+    price: kop(x.price),
+    install: { ...x.install },
   });
   const instruments: Record<string, InstrumentType> = {};
   for (const i of Object.values(raw.instruments)) instruments[i.id] = { id: i.id, name: i.name, ...works(i), cal: workOf(i.cal)!, ...(i.source ? { source: i.source, review: i.review } : {}) };
@@ -1054,6 +1060,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
               step: cm(s.build.step),
               undo: s.build.undo,
               check: s.build.check * 60,
+              store: kop(s.build.store),
+              validator: kop(s.build.validator),
             },
           }
         : {}),
@@ -1210,6 +1218,29 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       for (const pr of sp?.candidates ?? []) need(agreementFor(docDb, pr.supplier, pr.maker, m.id, day), `${where}: у пары-кандидата ${pr.supplier} — ${pr.maker} для ${m.id} на ${date} нет действующего соглашения по качеству`);
     }
   }
+  // поставщики оборудования (Б7в): копейки дня инженера; у вещи плана — поставщик из базы; классы типа помещения — из
+  // базы, и каждая вещь плана — в помещении типа, где её класс ставят
+  const vendors: Record<string, Vendor> = {};
+  for (const v of Object.values(raw.vendors)) vendors[v.id] = { ...v, engineer: kop(v.engineer) };
+  for (const t of Object.values(rooms)) {
+    for (const c of t.things ?? []) need(raw.equipment[c] ?? raw.machines[c] ?? raw.instruments[c], `тип помещения ${t.id}: класса ${c} нет`);
+    if (t.regime) need(raw.regimes[t.regime], `тип помещения ${t.id}: режима ${t.regime} нет`);
+  }
+  for (const p of Object.values(plants)) {
+    const typeOf = (room: string) => p.rooms.find(r => r.id === room)?.type;
+    const units = [
+      ...p.equipment.map(e => ({ ...e, room: e.room })),
+      ...p.lines.flatMap(l => l.machines.map(m => ({ ...m, room: l.room }))),
+      ...p.instruments,
+      ...p.ipc,
+      ...p.sensors,
+    ];
+    for (const u of units) {
+      if (u.vendor) need(vendors[u.vendor], `план ${p.id}: ${u.id} — нет поставщика ${u.vendor}`);
+      const t = rooms[typeOf(u.room) ?? ''];
+      need(!t || (t.things ?? []).includes(u.type), `план ${p.id}: ${u.id} — класс ${u.type} не ставят в помещение типа ${typeOf(u.room)}`);
+    }
+  }
   return {
     profiles,
     scenarios,
@@ -1240,6 +1271,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     policies,
     capa,
     rooms,
+    vendors,
     seasons: raw.seasons,
   };
 }
@@ -1497,6 +1529,9 @@ function learnErrors(raw: Raw, sops: Record<string, Sop>, tests: Record<string, 
     bulkOut: WMS.keepers,
     wasteLoad: WMS.movers,
     wasteSign: WASTE.signers,
+    // оборудование (Б7в): день квалификации — инженер по валидации, монтаж при переносе — слесари
+    qualify: [VALIDATOR],
+    mount: MAINT.mechanics,
   };
   const LINE_WORK: TaskKind[] = ['crew', 'feed', 'changeover', 'clearance', 'clearCheck'];
   const check = (where: string, has: string[], doers: Iterable<string>) => {

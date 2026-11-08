@@ -13,6 +13,7 @@ import { clampAttr, stageRedraw } from '../mes';
 import { dossierDays } from '../partners';
 import { attrsOf, lotProps } from '../quality';
 import { expo, normal, roll, spread } from '../random';
+import { redrawArrive } from '../equip';
 import { redrawLate } from '../supply';
 import { type Batch, INSTRUMENT_FAULTS, type Investigation, type Lot, type Notice, type Part, type PlantState } from '../types';
 
@@ -181,6 +182,8 @@ export function blind(db: ContentDb, s: PlantState, k: number) {
   // заказы в пути (Б6ж): настоящий приход — заново по записи поставщика; изменение досье пары — дни запроса, ответа и
   // решения, которых завод ещё не знает
   for (const po of Object.values(s.pos)) if (po.status === 'ordered') redrawLate(db, s, po);
+  // единицы оборудования в пути (Б7в): настоящий день поставки — заново
+  redrawArrive(db, s);
   const today = momentOf(s.start, s.t).day;
   for (const p of Object.values(s.pairs)) {
     const app = p.app;

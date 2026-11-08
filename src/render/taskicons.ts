@@ -50,6 +50,8 @@ export const ICON_OF: Record<TaskKind | 'pack' | 'test' | 'truck' | 'visit' | 'a
   trainCheck: 'check',
   // работа подрядчика и её приёмка (Б3в) — проверка
   accept: 'check',
+  qualify: 'check',
+  mount: 'repair',
   vendorReview: 'check',
   // оценка влияния отклонения (Б1г) — проверка по досье и результатам
   devAssess: 'check',

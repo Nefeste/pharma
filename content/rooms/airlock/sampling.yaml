@@ -5,6 +5,7 @@ grades: [D]
 vehicles: true
 area: WH
 min: [4, 4]
-build: false
+build: true
+once: true
 source: [gmp-eaeu]
 review: draft

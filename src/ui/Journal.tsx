@@ -172,6 +172,16 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
       return J.sop(T.sop.month(d.from), sopCovers(d.cover));
     case 'waste':
       return J.waste(d.at !== undefined ? whenText(start, d.at) : undefined);
+    case 'equip': {
+      // оборудование (Б7в): класс, имя, поставщик и обещанный день
+      const E = T.equip.journal;
+      const what = `${named(db && (db.equipment[d.type] ?? db.machines[d.type] ?? db.instruments[d.type])?.name, d.type)} ${d.unit}`;
+      const vendor = d.vendor ? named(db?.vendors[d.vendor]?.name, d.vendor) : '';
+      const due = d.due !== undefined ? dayText(d.due) : '';
+      if (d.op === 'buy') return E.buy(what, vendor, due);
+      if (d.op === 'replace') return E.replace(what, vendor, d.of ?? '', due);
+      return E[d.op](what);
+    }
     case 'mode':
       return J.mode(T.journal.names[d.head] ?? d.head, T.journal.modes[d.mode] ?? d.mode);
     case 'policy': {

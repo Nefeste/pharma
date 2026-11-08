@@ -68,15 +68,17 @@ function cellsOf(r: readonly [number, number, number, number]): [number, number,
   return [r[0] / CELL_CM, r[1] / CELL_CM, (r[0] + r[2]) / CELL_CM - 1, (r[1] + r[3]) / CELL_CM - 1];
 }
 
+/** След вещи на полу, см: [x0, z0, x1, z1]; поворот на четверть — ширина и глубина меняются местами; точка — середина. */
+export function boxOf(at: readonly [number, number], turn: number, size: readonly [number, number, number]): [number, number, number, number] {
+  const [w, d] = turn % 2 === 0 ? [size[0], size[1]] : [size[1], size[0]];
+  return [at[0] - Math.floor(w / 2), at[1] - Math.floor(d / 2), at[0] + Math.ceil(w / 2), at[1] + Math.ceil(d / 2)];
+}
+
 /** Следы стеллажей, оборудования и машин на полу, см: [x0, z0, x1, z1]. */
 export function footprints(db: ContentDb, plant: Plant): [number, number, number, number][] {
   const out: [number, number, number, number][] = [];
   for (const r of plant.racks) out.push([r.x, r.z, r.x + r.bays * RACK.bay, r.z + RACK.depth]);
-  const box = (at: [number, number], turn: number, size: [number, number, number]): [number, number, number, number] => {
-    // поворот на четверть: ширина и глубина меняются местами; точка — середина следа
-    const [w, d] = turn % 2 === 0 ? [size[0], size[1]] : [size[1], size[0]];
-    return [at[0] - Math.floor(w / 2), at[1] - Math.floor(d / 2), at[0] + Math.ceil(w / 2), at[1] + Math.ceil(d / 2)];
-  };
+  const box = boxOf;
   for (const e of plant.equipment) out.push(box(e.at, e.turn, db.equipment[e.type].size));
   for (const ln of plant.lines) for (const m of ln.machines) out.push(box(m.at, m.turn, db.machines[m.type].size));
   return out;

@@ -65,6 +65,8 @@ export function siteErrorText(e: SiteError): string {
       return `рампа ${e.dock} — не на воротах рампы`;
     case 'floor':
       return `${e.thing}: этаж ${e.floor} — в 1.0 этаж один, первый`;
+    case 'need':
+      return `помещению ${e.room} не хватает: ${e.type}`;
   }
 }
 

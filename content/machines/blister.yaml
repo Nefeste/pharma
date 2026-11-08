@@ -58,5 +58,11 @@ parts:
 # НДС; оборудование первичной и вторичной упаковки квалифицируют (прил. 15 GMP ЕАЭС, п. 7.1). Часы и цены — гипотезы
 qual: { every: 36, hours: 8, price: 150000, name: { ru: Квалификация блистерной машины, en: Blister machine qualification } }
 critical: true
-source: [pilchik-2000, blister-vendors, pack-line-vendors, pack-photos, sepha-seal, gmp-eaeu]
+# покупка (Б7в; геймдизайн, §5.2): цена европейского поставщика, ₽ без НДС, — у других по их доле; дни монтажа и,
+# у класса с квалификацией, IQ, OQ и PQ — рабочие дни инженера поставщика и инженера по валидации. Цена — доля
+# уровня оборудования по Стратегии Минпромторга (`minprom-965-2009`, вывод), дни — гипотезы (docs/specs/
+# 2026-10-vertical-slice.md, «Б7в», «Числа»)
+price: 65000000
+install: { days: 5, iq: 3, oq: 5, pq: 10 }
+source: [pilchik-2000, blister-vendors, pack-line-vendors, pack-photos, sepha-seal, gmp-eaeu, minprom-965-2009]
 review: draft

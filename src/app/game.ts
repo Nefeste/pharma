@@ -34,7 +34,7 @@ import { cancelsOf, commandsOf, draftKey, freshOf, ordersOf, prune, pruneDrop, t
 import { draftCommands, draftKey as policyKey, sameValue } from '../ui/policy';
 import { type Actions, holds, type Hud, LIVE, NO_POLICY_RUN, NO_RUN, PLAN_RUN, POLICY_RUN, type Speed, type Store } from '../ui/store';
 import { type ArtMode, loadArt } from './art';
-import { Builder, type Cell, resultText, thingName, whyText } from './build';
+import { Builder, type Cell, clsName, resultText, thingName, whyText } from './build';
 import { Labels } from './labels';
 import { keepFirsts, keptFirsts } from './firsts';
 import { andonBoxes, andonMarks, barBoxes, DATA_LAYERS, midSpot, nextLayer, plateBoxes, platesOf } from './floor';
@@ -233,6 +233,7 @@ export class Game {
         return g.stage.wallMode;
       },
       send: op => g.send({ kind: 'site', op }),
+      equip: op => g.send({ kind: 'equip', op }),
     });
     g.client.onSlice = s => g.receive(s);
     g.receive(first);
@@ -396,7 +397,8 @@ export class Game {
     // ним позже. Предложение руководителя (Б5б) в ту же минуту — под тем, что случилось: сначала событие, потом совет
     // стройка (Б7б): ответ движка — строкой под инструментами
     for (const n of s.notices) if (n.kind === 'site') this.builder.onResult(n);
-    if (s.notices.some(n => n.kind === 'site')) this.buildHud();
+    for (const n of s.notices) if (n.kind === 'equip') this.builder.onEquip(n);
+    if (s.notices.some(n => n.kind === 'site' || n.kind === 'equip')) this.buildHud();
     const stops = new Set(this.stops());
     const stop = (n: Notice) => stops.has(stopKey(n));
     for (const n of s.notices) if (!stop(n)) this.notice(n, false);
@@ -566,6 +568,11 @@ export class Game {
       : n.kind === 'site' ? resultText(this.db, this.world.plan, n).text
       : n.kind === 'siteGone' ? T.build.notice.gone(thingName(this.world.plan, n.id), money(n.refund))
       : n.kind === 'siteKept' ? T.build.notice.kept(n.id, whyText(this.db, this.world.plan, n.error))
+      // оборудование (Б7в): ответ на команду, поставка, квалификация принята, поставщик опаздывает
+      : n.kind === 'equip' ? (n.ok ? (n.later ? T.equip.result.later : n.op === 'cancel' ? T.equip.result.cancel : T.equip.result.buy(money(n.cost))) : T.equip.result.no(whyText(this.db, this.world.plan, n.error)))
+      : n.kind === 'unitArrived' ? T.notices.unitArrived(`${clsName(this.db, n.type)} ${n.asset}`, n.late)
+      : n.kind === 'unitReady' ? T.notices.unitReady(`${clsName(this.db, n.type)} ${n.asset}`)
+      : n.kind === 'unitLate' ? T.notices.unitLate(`${clsName(this.db, n.type)} ${n.asset}`)
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;
@@ -1254,6 +1261,7 @@ export class Game {
       this.sendViews();
     },
     moveVisit: (asset, day) => this.client.command({ kind: 'visit', asset, day, by: 'player' }),
+    equip: op => this.send({ kind: 'equip', op }),
     togglePo: () => {
       const po = this.store.get().po;
       this.store.set({ po: { ...po, open: !po.open } });

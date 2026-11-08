@@ -5,11 +5,12 @@
 // прямоугольниками. Чистые функции над планом: новый план с номером правки на один больше, цена и что правка закрывает
 // на перестройку — или ошибка «нельзя» с причиной. Состояние завода здесь не читают: занятое, касса и отмена — у
 // команды (src/engine/build.ts).
-import type { BuildPrices, ContentDb, DoorKind, Plant, ZoneKind } from '../../content/types';
+import type { BuildPrices, ContentDb, DoorKind, Id, Plant, ZoneKind } from '../../content/types';
 import { buildNav, CELL, CELL_CM, type Nav, RACK } from '../nav';
 import { planOf } from '../plant';
 import { type SitePlan, planRev } from '../types';
 import { FLOOR, levelOf, roleOf, type SiteError, type SiteThing, siteErrors } from './checks';
+import { centerFor, classRec, familyOf, footError, movedUnit, nextPlace, swapUnit, unitName, unitOf, unitPrice, unitsIn, withoutRoomUnits, withoutUnit, withUnit } from './units';
 
 /** Прямоугольник клеток: x, z, ширина, глубина — со стенами у помещения и корпуса, пол — у зоны. */
 export type Cells = [number, number, number, number];
@@ -32,7 +33,15 @@ export type BuildOp =
   | { op: 'rack'; x: number; z: number; bays: number; levels: number; face: 'n' | 's' }
   | { op: 'vehicles'; room: string; on: boolean }
   /** снос: помещение, дверь — «x,z» её первой клетки, зона, ряд стеллажа */
-  | { op: 'demolish'; what: 'room' | 'door' | 'zone' | 'rack'; id: string };
+  | { op: 'demolish'; what: 'room' | 'door' | 'zone' | 'rack'; id: string }
+  /**
+   * единицы (Б7в; src/engine/equip.ts): поставить новую — класс, помещение, середина следа, см, и поворот у оборудования,
+   * поставщик; перенести; снести; заменить на месте — новое имя, класс и поставщик
+   */
+  | { op: 'unit'; type: Id; room: string; at?: [number, number]; turn?: number; vendor: Id }
+  | { op: 'unitMove'; id: string; room: string; at?: [number, number]; turn?: number }
+  | { op: 'unitDrop'; id: string }
+  | { op: 'unitSwap'; id: string; newId: string; type: Id; vendor: Id };
 
 /**
  * Почему нельзя: ошибка планировки «нельзя» в плане после правки; «отрежет» — не дойти или не доехать до того, до чего
@@ -60,7 +69,15 @@ export type BuildError =
   | { code: 'hasThings'; thing: string }
   | { code: 'outerDoor' }
   | { code: 'noThing' }
-  | { code: 'same' };
+  | { code: 'same' }
+  /** единицы (Б7в): класса нет; класс не ставят в помещение этого типа; след не на полу или в проёме двери; машина линии
+   * — только заменой; мест на рабочем месте нет */
+  | { code: 'unitType'; type: string }
+  | { code: 'notHere'; type: string; room: string }
+  | { code: 'footprint' }
+  | { code: 'doorway' }
+  | { code: 'lineUnit' }
+  | { code: 'noPlace' };
 
 /** Счётчики имён новых вещей: тип помещения, `zone`, `rack` — номер буквы ряда. Отмена их не возвращает. */
 export type Names = Record<string, number>;
@@ -158,17 +175,14 @@ export function thingRoom(db: ContentDb, plant: Plant, what: 'zone' | 'rack', id
 }
 
 /**
- * Вещи помещения, с которыми его не сносят (с Б7в): оборудование, машины линии, приборы, датчики, посты, рампы, вход и
- * стоянка, зоны и ряды стеллажей; первая по порядку — её имя, нет — `undefined`.
+ * Вещи помещения, с которыми его не сносят: посты, рампы, вход и стоянка, зоны и ряды стеллажей; первая по порядку — её
+ * имя, нет — `undefined`. Оборудование, линии, приборы и датчики (Б7в) сносят с помещением.
  */
 export function thingIn(db: ContentDb, plant: Plant, room: string): string | undefined {
   const i = plant.rooms.findIndex(r => r.id === room);
   const nav = planOf(db, plant).nav;
   const here = (x: number, z: number) => floorRoom(nav, Math.floor(x / CELL_CM), Math.floor(z / CELL_CM)) === i || cellRoom(nav, x, z) === i;
   const first =
-    plant.equipment.find(e => e.room === room)?.id ??
-    plant.lines.find(l => l.room === room)?.id ??
-    [...plant.instruments, ...plant.ipc, ...plant.sensors].find(m => m.room === room)?.id ??
     Object.entries(plant.posts).find(([, p]) => here(p[0], p[1]))?.[0] ??
     plant.docks.find(d => here(d.x, d.z) || (doorRoomOf(db, plant, d) ?? -2) === i)?.id ??
     (here(plant.points.entrance[0], plant.points.entrance[1]) ? 'entrance' : undefined) ??
@@ -265,7 +279,13 @@ export function editPlan(db: ContentDb, b: BuildPrices, plan: SitePlan, op: Buil
       }
       const [id, next] = nameOf(op.type, names, k => plan.rooms.some(r => r.id === k));
       const room = { id, type: op.type, rect: cm(op.rect), grade: op.grade, vehicles: !!op.vehicles, floor: FLOOR };
-      const areas = t.area ? plan.areas.map(a => (a.code === t.area ? { ...a, rooms: [...a.rooms, id] } : a)) : plan.areas;
+      // помещение хранения (Б7в) — своя зона хранения с режимом типа: код — следующий в участке
+      const store = (a: Plant['areas'][number]) => {
+        if (t.role !== 'storage' || !t.regime) return a.centers;
+        const n = Math.max(0, ...a.centers.map(c => Number(c.code.slice(3)))) + 1;
+        return [...a.centers, { code: `${a.code}-${String(n).padStart(2, '0')}`, kind: 'storage' as const, name: { ru: id, en: id }, rooms: [id], regime: t.regime }];
+      };
+      const areas = t.area ? plan.areas.map(a => (a.code === t.area ? { ...a, rooms: [...a.rooms, id], centers: store(a) } : a)) : plan.areas;
       return done({ ...plan, rooms: [...plan.rooms, room], areas }, roomPrice(db, b, room), id, { room: id, names: next });
     }
     case 'hull': {
@@ -358,6 +378,56 @@ export function editPlan(db: ContentDb, b: BuildPrices, plan: SitePlan, op: Buil
     }
     case 'demolish':
       return demolish(db, b, plan, op, done);
+    case 'unit': {
+      const cls = classRec(db, op.type);
+      if (!cls) return fail({ code: 'unitType', type: op.type });
+      if (!db.vendors[op.vendor]) return fail({ code: 'noThing' });
+      const r = plan.rooms.find(x => x.id === op.room);
+      if (!r) return fail({ code: 'noThing' });
+      if (!(db.rooms[r.type]?.things ?? []).includes(op.type)) return fail({ code: 'notHere', type: op.type, room: r.id });
+      const family = familyOf(db, plan, op.type, op.room)!;
+      if (family === 'machine') return fail({ code: 'lineUnit' });
+      if (family === 'equipment') {
+        const foot = op.at ? footError(db, plan, op.type, op.room, op.at, op.turn ?? 0) : 'footprint';
+        if (foot) return fail({ code: foot });
+      }
+      const center = centerFor(plan, family, op.room);
+      const place = center && nextPlace(plan, center);
+      if (!place) return fail({ code: 'noPlace' });
+      const [id, next] = unitName(plan, op.type, names);
+      const unit = { type: op.type, room: op.room, vendor: op.vendor, ...(family === 'equipment' ? { at: op.at, turn: op.turn ?? 0 } : {}) };
+      return done(withUnit(db, plan, unit, id, place), unitPrice(db, op.type, op.vendor), id, { names: next });
+    }
+    case 'unitMove': {
+      const u = unitOf(plan, op.id);
+      if (!u) return fail({ code: 'noThing' });
+      if (u.family === 'machine') return fail({ code: 'lineUnit' });
+      const r = plan.rooms.find(x => x.id === op.room);
+      if (!r) return fail({ code: 'noThing' });
+      if (!(db.rooms[r.type]?.things ?? []).includes(u.type) || familyOf(db, plan, u.type, op.room) !== u.family) return fail({ code: 'notHere', type: u.type, room: r.id });
+      if (u.family === 'equipment') {
+        if (!op.at) return fail({ code: 'footprint' });
+        if (op.room === u.room && op.at[0] === u.at?.[0] && op.at[1] === u.at?.[1] && (op.turn ?? 0) === u.turn) return fail({ code: 'same' });
+        const foot = footError(db, plan, u.type, op.room, op.at, op.turn ?? 0, u.id);
+        if (foot) return fail({ code: foot });
+      } else if (op.room === u.room) return fail({ code: 'same' });
+      const center = centerFor(plan, u.family, op.room);
+      const place = center && (center === u.place.slice(0, 5) ? u.place : nextPlace(plan, center));
+      if (!place) return fail({ code: 'noPlace' });
+      return done(movedUnit(plan, u.id, op.room, place, op.at, op.turn), 0, u.id);
+    }
+    case 'unitDrop': {
+      const u = unitOf(plan, op.id);
+      if (!u) return fail({ code: 'noThing' });
+      if (u.family === 'machine') return fail({ code: 'lineUnit' });
+      return done(withoutUnit(db, plan, u.id), 0, u.id, { refund: half(unitPrice(db, u.type, u.vendor)) });
+    }
+    case 'unitSwap': {
+      const u = unitOf(plan, op.id);
+      if (!u) return fail({ code: 'noThing' });
+      if (!classRec(db, op.type)) return fail({ code: 'unitType', type: op.type });
+      return done(swapUnit(plan, u.id, op.newId, op.type, op.vendor), 0, op.newId, { refund: half(unitPrice(db, u.type, u.vendor)) });
+    }
   }
 }
 
@@ -378,8 +448,11 @@ export function without(db: ContentDb, plan: SitePlan, what: 'room' | 'door' | '
       const i = plan.rooms.findIndex(r => r.id === id);
       if (i < 0) return plan;
       const gone = new Set(doorsInto(db, plan, i));
-      const areas = plan.areas.map(a => (a.rooms.includes(id) ? { ...a, rooms: a.rooms.filter(x => x !== id) } : a));
-      return { ...plan, rooms: plan.rooms.filter((_, k) => k !== i), doors: plan.doors.filter(d => !gone.has(d)), areas };
+      // зона хранения только этого помещения (Б7в) — с ним
+      const centers = (a: Plant['areas'][number]) => a.centers.filter(c => !(c.kind === 'storage' && c.rooms?.length === 1 && c.rooms[0] === id));
+      const areas = plan.areas.map(a => (a.rooms.includes(id) ? { ...a, rooms: a.rooms.filter(x => x !== id), centers: centers(a) } : a));
+      const bare = withoutRoomUnits(db, plan, id);
+      return { ...bare, rooms: plan.rooms.filter((_, k) => k !== i), doors: plan.doors.filter(d => !gone.has(d)), areas };
     }
     case 'door':
       return plan.doors.some(d => doorId(d) === id) ? { ...plan, doors: plan.doors.filter(d => doorId(d) !== id) } : plan;
@@ -405,9 +478,10 @@ function demolish(
       if (i < 0) return fail({ code: 'noThing' });
       const thing = thingIn(db, plan, op.id);
       if (thing) return fail({ code: 'hasThings', thing });
-      // двери в него — с ним
+      // двери в него — с ним; оборудование, линии и приборы (Б7в) — с ним, половина их цены — назад
       const back = roomPrice(db, b, plan.rooms[i]) + doorsInto(db, plan, i).reduce((n, d) => n + doorPrice(b, d.kind, intoD(db, plan, d)), 0);
-      return done(next(), 0, op.id, { refund: half(back) });
+      const units = unitsIn(plan, op.id).reduce((n, u) => n + half(unitPrice(db, u.type, u.vendor)), 0);
+      return done(without(db, withoutRoomUnits(db, plan, op.id), 'room', op.id), 0, op.id, { refund: half(back) + units });
     }
     case 'door': {
       const d = plan.doors.find(x => doorId(x) === op.id);

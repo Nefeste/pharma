@@ -960,6 +960,14 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                   {T.morning.build(money(v.cash.build))}
                 </div>
               ) : null}
+              {v.units.length > 0 ? (
+                <div className="muted" data-test="morning-units">
+                  {T.equip.morning.title}:{' '}
+                  {v.units
+                    .map(u => T.equip.morning.row(`${named(db && (db.equipment[u.type] ?? db.machines[u.type] ?? db.instruments[u.type])?.name, u.type)} ${u.id}`, u.step === 'ordered' && u.due !== undefined ? T.equip.due(dayText(u.due)) : u.step === 'ordered' || u.step === 'swap' || u.step === 'accept' ? T.equip.steps[u.step] : T.equip.day(T.equip.steps[u.step], u.day, u.days)))
+                    .join('; ')}
+                </div>
+              ) : null}
               {v.cash.next ? (
                 <div className="muted">{T.morning.next(dayText(momentOf(start, v.cash.next.due).day), T.cash.items[v.cash.next.item], money(v.cash.next.sum))}</div>
               ) : null}

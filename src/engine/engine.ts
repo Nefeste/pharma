@@ -13,7 +13,8 @@ import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
 import { deputyCommand } from './bosses';
-import { siteCommand, siteFree } from './build';
+import { checkLater, commit, siteCommand, siteFree } from './build';
+import { equipCommand, pathDone, pathHour, pathMidnight, unitArrive, unitDay } from './equip';
 import { capaCommand, capaHour, capaRunCommand, classifyCommand } from './capa';
 import { answerFork, askDue, forksStep } from './forks';
 import { answerCommand, headsDay, modeCommand, newHeads } from './heads';
@@ -458,7 +459,21 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       steps(db, s, notices);
       return notices;
     }
+    case 'equip': {
+      // оборудование (Б7в): покупка, замена, перенос, снос — план, деньги и путь единицы; снос и перенос — когда освободится
+      const notices: Notice[] = [];
+      equipCommand(db, s, cmd, notices, plan => commit(db, s, plan));
+      later(db, s);
+      steps(db, s, notices);
+      return notices;
+    }
   }
+}
+
+/** Есть сносимое, снимаемое или переносимое (Б7в) — проверить событием стройки. */
+function later(db: ContentDb, s: PlantState) {
+  const b = db.scenarios[s.scenario].build;
+  if (b && s.build && s.build.leaving.length > 0) checkLater(s, b);
 }
 
 /**
@@ -532,6 +547,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
         // журнал решений (Б5а): записи старше срока уходят; отклонённое вчера руководитель может предложить снова (Б5б)
         trimJournal(s);
         headsDay(s);
+        // оборудование (Б7в): обещанный день поставки прошёл, а единицы нет
+        pathMidnight(s, notices);
       }
       // найм (Б4в): кандидаты, заявления, первые дни принятых, уход после последней смены — до раздачи задач часа
       hireHour(db, s, notices);
@@ -543,6 +560,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       cashHour(db, s, notices);
       // места и оборудование (Б3в): в полночь — у кого вышел срок; коллега техслужбы назначает визиты; подрядчик
       assetHour(db, s, notices);
+      // оборудование (Б7в): в начале часов подрядчика — день монтажа, IQ, OQ, PQ
+      pathHour(db, s);
       // контрагенты (Б3г): в полночь — приостановленные пары и договоры; коллега качества назначает оценки
       partnersHour(db, s, notices);
       maintStep(db, s, notices);
@@ -592,7 +611,7 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       const t = s.tasks[ev.id];
       if (!t || t.v !== ev.v || t.state !== 'busy') return;
       release(db, s, t);
-      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices) && !maintDone(db, s, t, notices) && !invDone(db, s, t, notices) && !trainDone(db, s, t) && !assetDone(db, s, t) && !partnersDone(db, s, t, notices) && !wasteDone(db, s, t, notices)) wmsDone(db, s, t, notices);
+      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices) && !maintDone(db, s, t, notices) && !invDone(db, s, t, notices) && !trainDone(db, s, t) && !pathDone(db, s, t, notices) && !assetDone(db, s, t) && !partnersDone(db, s, t, notices) && !wasteDone(db, s, t, notices)) wmsDone(db, s, t, notices);
       // паллета ГП уехала с места паллетирования — у линии освободилось место; машину линии починили — она снова в работе
       if ((t.kind === 'putaway' || t.kind === 'repair') && t.line) lineUpdate(db, s, s.lines[t.line], notices);
       if (t.kind === 'putaway' || t.kind === 'stage') startSampling(db, s);
@@ -655,6 +674,17 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
     case 'siteFree':
       // стройка (Б7б): освободившееся из сносимого — снести
       siteFree(db, s, notices);
+      steps(db, s, notices);
+      return;
+    case 'unitArrive':
+      // оборудование (Б7в): поставка — монтаж; замена — снять прежнюю, когда освободится
+      unitArrive(db, s, ev.asset, ev.v, notices);
+      later(db, s);
+      steps(db, s, notices);
+      return;
+    case 'unitDay':
+      // день монтажа или квалификации у людей поставщика и подрядчика кончился
+      unitDay(db, s, ev.asset, ev.v);
       steps(db, s, notices);
       return;
   }

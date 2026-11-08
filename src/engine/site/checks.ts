@@ -10,6 +10,7 @@
 // такой не строят; «красная» — построено, но помещение не работает; «жёлтая» — замечание (геймдизайн, §3.4).
 import type { ContentDb, Plant, RoomRole } from '../../content/types';
 import { accessOf, buildNav, CELL, CELL_CM, cellOf, fieldTo, footprints, type Nav, RACK } from '../nav';
+import { placesOf } from '../places';
 import { planOf } from '../plant';
 
 /** Что не дойти или не доехать: рабочая точка помещения, место паллеты, пост роли, рампа. */
@@ -47,7 +48,9 @@ export type SiteError =
   | { code: 'drive'; what: SiteThing }
   | { code: 'post'; role: string }
   | { code: 'dockGate'; dock: string }
-  | { code: 'floor'; thing: string; floor: number };
+  | { code: 'floor'; thing: string; floor: number }
+  /** помещению не хватает вещи его типа (Б7в): стадии карты — класса и прибора МОК, зоне хранения — датчика, лаборатории — прибора */
+  | { code: 'need'; room: string; type: string };
 
 /** Ступень проверки (геймдизайн, §3.4): нельзя, красная — помещение не работает, жёлтая — замечание. */
 export type SiteLevel = 'no' | 'red' | 'yellow';
@@ -61,6 +64,7 @@ export function levelOf(e: SiteError): SiteLevel {
   switch (e.code) {
     case 'airlock':
     case 'vehicleD':
+    case 'need':
       return 'red';
     case 'walk':
       return e.what.kind === 'room' ? 'red' : 'no';
@@ -80,7 +84,7 @@ export function levelOf(e: SiteError): SiteLevel {
  */
 export function redRoom(e: SiteError): string | undefined {
   if (e.code === 'airlock') return e.to;
-  if (e.code === 'vehicleD') return e.room;
+  if (e.code === 'vehicleD' || e.code === 'need') return e.room;
   if (e.code === 'walk' && e.what.kind === 'room') return e.what.id;
   return undefined;
 }
@@ -120,7 +124,7 @@ export function siteErrors(db: ContentDb, plant: Plant): SiteError[] {
     if (Math.min(w, d) < t.min[0] || Math.max(w, d) < t.min[1]) out.push({ code: 'small', room: r.id, min: t.min });
     if (!t.grades.includes(r.grade)) out.push({ code: 'grade', room: r.id });
     if (r.vehicles && !t.vehicles) out.push({ code: 'vehicles', room: r.id });
-    if (!t.build && seen.has(r.type)) out.push({ code: 'twice', type: r.type });
+    if (t.once && seen.has(r.type)) out.push({ code: 'twice', type: r.type });
     seen.add(r.type);
   }
   const bare: Nav = buildNav(db, { ...plant, doors: [] });
@@ -235,6 +239,43 @@ export function siteErrors(db: ContentDb, plant: Plant): SiteError[] {
     const c = cellOf(nav, d);
     if (nav.cells[c] !== CELL.door || plant.doors[nav.door[c]].kind !== 'dock') out.push({ code: 'dockGate', dock: id });
     reach({ kind: 'dock', id }, d, drive, 'drive');
+  }
+  out.push(...needs(db, plant));
+  return out;
+}
+
+/**
+ * Чего помещению не хватает (Б7в; геймдизайн, §3.3: «помещение без нужного строится, но не работает»): помещению типа
+ * стадии карты — оборудования классов стадии и приборов МОК её испытаний; помещению с зоной хранения — датчика условий
+ * хранения; лаборатории — приборов её классов. По порядку помещений плана, внутри — по порядку классов.
+ */
+export function needs(db: ContentDb, plant: Plant): SiteError[] {
+  const out: SiteError[] = [];
+  const P = placesOf(plant);
+  const have = new Map<string, Set<string>>();
+  const add = (room: string, type: string) => (have.get(room) ?? have.set(room, new Set()).get(room)!).add(type);
+  for (const t of P.things) add(t.room, t.type);
+  const stages = Object.values(db.recipes).flatMap(r => r.stages);
+  for (const r of plant.rooms) {
+    const t = db.rooms[r.type];
+    if (!t) continue;
+    const got = have.get(r.id) ?? new Set<string>();
+    const want: string[] = [];
+    if (t.role === 'production') {
+      for (const st of stages) {
+        if (st.room !== r.type) continue;
+        for (const e of st.equipment) want.push(e);
+        for (const c of st.ipc) {
+          const inst = db.tests[c.test]?.inst;
+          if (inst) want.push(inst);
+        }
+      }
+    } else if (t.role === 'lab') want.push(...(t.things ?? []));
+    else if (t.role === 'storage') {
+      const code = P.storeOf[r.id];
+      if (code && !P.sensorOf[code]) want.push(...(t.things ?? []));
+    }
+    for (const type of new Set(want)) if (!got.has(type)) out.push({ code: 'need', room: r.id, type });
   }
   return out;
 }

@@ -2,7 +2,7 @@
 // виды для панели, чистые функции из состояния, как склад и карточка (views.ts). Без истины: результат испытания — только
 // проверенный вторым лицом, значения карты — измерения МОК, а не истинные свойства серий.
 import type { ContentDb, Id } from '../content/types';
-import { unfit } from '../engine/assets';
+import { type Unfit, unfit } from '../engine/assets';
 import { batchNo } from '../engine/batchno';
 import { LAB_PRIO } from '../engine/lab';
 import { classOf } from '../engine/places';
@@ -28,7 +28,7 @@ export interface TaskNow {
   wait?: WaitCause;
   since: number;
   /** ждёт прибор, который не годен (Б3в): род, вид, инвентарный номер и почему */
-  unfit?: { family: AssetFamily; type: Id; inv: number; work?: 'qual' | 'cal' | 'visit'; verify: boolean };
+  unfit?: { family: AssetFamily; type: Id; inv: number; work?: Unfit; verify: boolean };
 }
 
 export interface LabTestRow {

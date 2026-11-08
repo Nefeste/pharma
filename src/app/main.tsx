@@ -137,6 +137,7 @@ const actions: Actions = {
   applyPolicies: later('applyPolicies'),
   resetPolicies: later('resetPolicies'),
   moveVisit: later('moveVisit'),
+  equip: later('equip'),
   setKpiTab: later('setKpiTab'),
   kpiWhy: later('kpiWhy'),
   setKpiMonth: later('setKpiMonth'),

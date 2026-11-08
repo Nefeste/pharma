@@ -5,6 +5,8 @@ grades: [cnc]
 vehicles: false
 area: QC
 min: [6, 6]
-build: false
+build: true
+things: [inst.hplc, inst.ir, inst.lod, inst.dissolution]
+once: true
 source: [gmp-eaeu]
 review: draft

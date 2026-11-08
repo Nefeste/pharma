@@ -237,6 +237,9 @@ function headOf(db: ContentDb, d: Decided): Head {
       return d.to;
     case 'fork':
       return FORK_HEAD[d.fork];
+    // оборудование (Б7в) — работа техслужбы, покупает директор
+    case 'equip':
+      return 'maint';
   }
 }
 

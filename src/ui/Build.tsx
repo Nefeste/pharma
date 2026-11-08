@@ -4,7 +4,9 @@
 // призрака — что, размер, цена, «нельзя: …», «не будет работать: …» или «замечание: …»; строка ответа движка; клавиши.
 import { BUILD_DOORS, BUILD_TOOLS } from '../app/buildpick';
 import { BUILD_ZONES } from '../engine/site/edit';
-import { money, T } from '../i18n';
+import { classRec } from '../engine/site/units';
+import { money, named, T } from '../i18n';
+import type { BuildPick } from '../app/buildpick';
 import { db } from './db';
 import type { Actions, Hud } from './store';
 
@@ -100,6 +102,7 @@ export function Build({ hud, actions }: { hud: Hud; actions: Actions }) {
           </button>
         </div>
       ) : null}
+      {p.tool === 'unit' ? <Units p={p} actions={actions} /> : null}
       {b.ghost ? (
         <div className={`ghost${b.ghost.ok ? (b.ghost.warn ? ' warn' : '') : ' bad'}`} data-test="build-ghost">
           {b.ghost.text}
@@ -126,5 +129,33 @@ export function Build({ hud, actions }: { hud: Hud; actions: Actions }) {
       </div>
       <div className="keys">{T.build.keys}</div>
     </div>
+  );
+}
+
+/**
+ * Оборудование (Б7в): класс — из тех, что ставят в строящиеся помещения каталога; поставщик — цена, срок поставки,
+ * отказы и день инженера; переносимая единица — строка «Перенести: …».
+ */
+function Units({ p, actions }: { p: BuildPick; actions: Actions }) {
+  const classes = [...new Set(Object.values(db?.rooms ?? {}).flatMap(t => t.things ?? []))];
+  const cls = p.cls && db ? classRec(db, p.cls) : undefined;
+  return (
+    <>
+      {p.moving ? <div className="muted" data-test="unit-moving">{T.equip.move(p.moving)}</div> : null}
+      <select data-test="unit-class" value={p.cls ?? ''} onChange={e => actions.buildPick({ cls: e.target.value || undefined })} title={T.equip.pick}>
+        <option value="">—</option>
+        {classes.map(c => (
+          <option key={c} value={c}>
+            {named(db && classRec(db, c)?.name, c)}
+          </option>
+        ))}
+      </select>
+      {Object.values(db?.vendors ?? {}).map(v => (
+        <button key={v.id} type="button" className={p.vendor === v.id ? 'on' : ''} data-test={`vendor-${v.region}`} onClick={() => actions.buildPick({ vendor: v.id })} title={T.equip.vendor}>
+          {named(v.name, v.id)}
+          {cls ? <div className="muted">{T.equip.offer(money(Math.floor((cls.price * v.price) / 100)), T.equip.lead(v.lead[0], v.lead[1]), T.equip.hazard(v.hazard), money(v.engineer))}</div> : null}
+        </button>
+      ))}
+    </>
   );
 }

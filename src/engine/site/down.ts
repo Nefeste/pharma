@@ -9,9 +9,10 @@ import { planOf, type PlantPlan, type Point, type Slot } from '../plant';
 import type { BuildState, PlantState } from '../types';
 import { levelOf, redRoom, type SiteError } from './checks';
 import { doorRoomOf, errorsOf } from './edit';
+import { mounting } from '../equip';
 
-/** Почему помещение не работает: ошибка планировки красной ступени, закрыто на перестройку, сносится. */
-export type DownWhy = { code: 'red'; error: SiteError } | { code: 'editing' } | { code: 'leaving' };
+/** Почему помещение не работает: ошибка планировки красной ступени, закрыто на перестройку, сносится, монтаж (Б7в). */
+export type DownWhy = { code: 'red'; error: SiteError } | { code: 'editing' } | { code: 'leaving' } | { code: 'mount'; unit: string };
 
 /**
  * Что не работает: помещение — с причиной (первая по порядку: красное, перестраиваемое, сносимое); место паллеты — с тем,
@@ -72,7 +73,9 @@ export function downOf(db: ContentDb, s: PlantState): Down {
   }
   if (st.editing !== undefined && !rooms.has(st.editing)) rooms.set(st.editing, { code: 'editing' });
   for (const l of st.leaving) if (l.what === 'room' && !rooms.has(l.id)) rooms.set(l.id, { code: 'leaving' });
-  const gone = new Set(st.leaving.filter(l => l.what !== 'room').map(l => l.id));
+  // монтаж единицы (Б7в) — помещение закрыто, пока он идёт
+  for (const [room, unit] of mounting(db, s)) if (!rooms.has(room)) rooms.set(room, { code: 'mount', unit });
+  const gone = new Set(st.leaving.filter(l => l.what === 'zone' || l.what === 'rack').map(l => l.id));
   const slots = new Map<string, string>();
   if (rooms.size > 0 || gone.size > 0) {
     const plan = planOf(db, s.plan);

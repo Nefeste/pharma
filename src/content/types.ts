@@ -129,7 +129,8 @@ export type SeatId = (typeof SEATS)[number];
  * паллета в экспедицию, отбор ящиков на паллету заказа, погрузка в фуру покупателя. Техслужба: ремонт после отказа или
  * замена узла по плану. Расследование (часть 4): шаг и замена сита калибратора по решению. Обучение (Б3б): изучить
  * документ и проверка знаний. Места и оборудование (Б3в): приёмка работы подрядчика — калибровки, поверки или
- * квалификации. Контрагенты (Б3г): рассмотрение оценки пары. Качество (Б1г): оценка влияния отклонения.
+ * квалификации. Контрагенты (Б3г): рассмотрение оценки пары. Качество (Б1г): оценка влияния отклонения. Оборудование
+ * (Б7в): день квалификации нового — инженер по валидации; монтаж при переносе — слесари.
  */
 export const TASK_KINDS = [
   'unload',
@@ -171,6 +172,8 @@ export const TASK_KINDS = [
   'bulkOut',
   'wasteLoad',
   'wasteSign',
+  'qualify',
+  'mount',
 ] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];
 
@@ -756,6 +759,7 @@ export interface PlantMeter {
   type: Id;
   room: string;
   place: string;
+  vendor?: Id;
 }
 
 /**
@@ -779,6 +783,12 @@ export interface RoomType {
   area?: string;
   min: [number, number];
   build: boolean;
+  /** что в нём ставят (Б7в): классы оборудования, машин и приборов */
+  things?: Id[];
+  /** второго такого нет (Б7в): движок ищет его по типу */
+  once?: true;
+  /** режим зоны хранения нового помещения хранения (Б7в) */
+  regime?: Id;
   twoWay?: true;
   source?: string[];
   review?: Review;
@@ -802,6 +812,38 @@ export interface BuildPrices {
   step: number;
   undo: number;
   check: number;
+  /** зал склада, м², и день инженера по валидации подрядчика (Б7в) — копейки */
+  store: number;
+  validator: number;
+}
+
+/** Дни пути новой единицы (Б7в): монтаж и, у класса с квалификацией, IQ, OQ и PQ — рабочие дни. */
+export interface Install {
+  days: number;
+  iq?: number;
+  oq?: number;
+  pq?: number;
+}
+
+/**
+ * Поставщик оборудования (Б7в; геймдизайн, §5.2): цена — доля цены класса, %; срок поставки — месяцы; опоздания — доля
+ * заказов, %, и суток; отказы узлов его единиц — доля таблицы, %; ЗИП к его единицам — суток (нет — по записи ЗИП);
+ * предоплата, %, отсрочка остатка, суток; день инженера — копейки.
+ */
+export interface Vendor {
+  id: Id;
+  name: Text;
+  region: 'eu' | 'asia' | 'ru';
+  price: number;
+  lead: [number, number];
+  late: { share: number; days: [number, number] };
+  hazard: number;
+  spares?: [number, number];
+  prepay: number;
+  payDays: number;
+  engineer: number;
+  source?: string[];
+  review?: Review;
 }
 
 /** Участок завода (геймдизайн, §3.1): «Цех», «Завод», «Большой завод». */
@@ -839,17 +881,17 @@ export interface Plant {
    */
   doors: { cell: [number, number]; len: number; along: 'x' | 'z'; kind: DoorKind; materials?: boolean }[];
   /** приборы лаборатории: вид, помещение, код места (Б3в) */
-  instruments: { id: string; type: Id; room: string; place: string }[];
+  instruments: { id: string; type: Id; room: string; place: string; vendor?: Id }[];
   /** приборы МОК у оборудования стадий и датчики условий хранения (Б3в) */
   ipc: PlantMeter[];
   sensors: PlantMeter[];
   /** оборудование производства: вид, помещение, середина следа, поворот на четверти и код места */
-  equipment: { id: string; type: Id; room: string; at: [number, number]; turn: number; place: string }[];
+  equipment: { id: string; type: Id; room: string; at: [number, number]; turn: number; place: string; vendor?: Id }[];
   /**
    * упаковочные линии: помещение, зона паллетирования на выходе, машины по порядку; после машины — накопитель на
    * `buffer` её штук (у последней — нет)
    */
-  lines: { id: string; room: string; out: string; machines: { id: string; type: Id; buffer?: number; at: [number, number]; turn: number; place: string }[] }[];
+  lines: { id: string; room: string; out: string; machines: { id: string; type: Id; buffer?: number; at: [number, number]; turn: number; place: string; vendor?: Id }[] }[];
   /** точки: стоянка техники, вход персонала; этаж стоянки, входа и постов (Б7а) */
   points: { park: [number, number]; entrance: [number, number]; floor: number };
   /** посты ожидания по ролям: где человек ждёт задачи — после прихода на смену и после каждой задачи */
@@ -883,6 +925,9 @@ export interface InstrumentType {
   cal: AssetWork;
   qual?: AssetWork;
   critical?: true;
+  /** покупка (Б7в): цена европейского поставщика, копейки без НДС; дни монтажа, IQ, OQ и PQ */
+  price: number;
+  install: Install;
   source?: string[];
   review?: Review;
 }
@@ -1032,6 +1077,9 @@ export interface EquipmentType {
   qual?: AssetWork;
   cal?: AssetWork;
   critical?: true;
+  /** покупка (Б7в): цена европейского поставщика, копейки без НДС; дни монтажа, IQ, OQ и PQ */
+  price: number;
+  install: Install;
   source?: string[];
   review?: Review;
 }
@@ -1218,6 +1266,9 @@ export interface Machine {
   qual?: AssetWork;
   cal?: AssetWork;
   critical?: true;
+  /** покупка (Б7в): цена европейского поставщика, копейки без НДС; дни монтажа, IQ, OQ и PQ */
+  price: number;
+  install: Install;
   source?: string[];
   review?: Review;
 }
@@ -1346,4 +1397,5 @@ export interface ContentDb {
   capa: Record<Id, CapaAction>;
   /** каталог типов помещений (Б7б): `content/rooms/`; ключ — тип, как его зовёт план (`warehouse`, `airlock.people`) */
   rooms: Record<string, RoomType>;
+  vendors: Record<Id, Vendor>;
 }

@@ -172,8 +172,8 @@ async function director(x) {
       // «До утра» до поставки пресса и монтажа: таблетирование не работает — монтаж; затем — запись квалификации
       let mounting = '';
       for (let i = 0; i < 160 && !mounting; i++) {
-        await untilMorning();
-        mounting = await page.evaluate(() => window.__game.builder.view?.mount?.compression ?? '');
+        if (!(await untilMorning())) continue;
+        mounting = await page.evaluate(() => (window.__game.store.get().morning.view?.units ?? []).find(u => u.id === 'press-2' && u.step === 'install')?.id ?? '');
       }
       await closeAll();
       await page.keyboard.press('KeyB');
@@ -186,8 +186,8 @@ async function director(x) {
       await page.keyboard.press('KeyB');
       let ready = false;
       for (let i = 0; i < 60 && !ready; i++) {
-        await untilMorning();
-        ready = await page.evaluate(() => window.__game.world.plan.equipment.some(e => e.id === 'press-2') && !window.__game.store.get().morning.view?.units?.some(u => u.id === 'press-2'));
+        if (!(await untilMorning())) continue;
+        ready = await page.evaluate(() => window.__game.world.plan.equipment.some(e => e.id === 'press-2') && !!window.__game.store.get().morning.view && !window.__game.store.get().morning.view.units.some(u => u.id === 'press-2'));
       }
       const c3 = ready ? await card('equipment', 'press-2') : '';
       await s.shot('Новый пресс: квалификация принята');

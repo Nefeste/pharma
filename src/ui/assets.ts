@@ -28,10 +28,12 @@ export function workName(a: { family: AssetFamily; type: Id }, work: 'qual' | 'c
   return w ? named(w.name) : work === 'qual' ? T.assets.work.qual : T.assets.work.cal;
 }
 
-/** Почему актив не берёт работу словами: «квалификация просрочена», «прибор не откалиброван», «у подрядчика». */
+/** Почему актив не берёт работу словами: «квалификация просрочена», «прибор не откалиброван», «у подрядчика», «на пути». */
 export function unfitText(a: AssetInfo): string {
   if (a.unfit === 'qual') return T.assets.unfit.qual;
   if (a.unfit === 'cal') return a.verify ? T.assets.unfit.verify : a.family === 'lab' || a.family === 'ipc' ? T.assets.unfit.calInst : T.assets.unfit.cal;
+  // на пути (Б7в): поставка, монтаж и квалификация
+  if (a.unfit === 'path') return T.assets.unfit.path;
   return a.unfit === 'visit' ? T.assets.unfit.visit : '';
 }
 

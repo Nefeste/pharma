@@ -185,7 +185,7 @@ async function director(x) {
       else ok(`монтаж — ${await s.clock()}: «${lab}»`);
       await page.keyboard.press('KeyB');
       let ready = false;
-      for (let i = 0; i < 60 && !ready; i++) {
+      for (let i = 0; i < 120 && !ready; i++) {
         if (!(await untilMorning())) continue;
         ready = await page.evaluate(() => window.__game.world.plan.equipment.some(e => e.id === 'press-2') && !!window.__game.store.get().morning.view && !window.__game.store.get().morning.view.units.some(u => u.id === 'press-2'));
       }

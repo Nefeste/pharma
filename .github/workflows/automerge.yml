@@ -1,0 +1,45 @@
+# Автослияние (устав студии, ADR 0018): PR сливается сам (squash), когда
+#   1) на PR стоит метка «ревью: ок» — её ставит Ревьюер, другая сессия, чем исполнитель;
+#   2) «Проверки PR» (pr.yml) зелёные на одобренном коммите, а других красных или
+#      незаконченных проверок на нём нет;
+#   3) в PR нет путей владельца из `.github/CODEOWNERS`.
+# Метка одобряет коммит: бот пишет его хеш в PR, и слить можно только его. Новый коммит снимает
+# метку и выключает auto-merge: Ревьюер смотрел прежний код. Агент «Merge» не нажимает.
+#
+# Логика — в общем наборе студии (ADR студии 0022): Nefeste/gornitsa-kit, workflow
+# automerge.yml. `pull_request_target` и `workflow_run` берут этот файл из `main`, набор
+# выгружает только `.github/` из `main` (там CODEOWNERS): PR не может переписать правила своего
+# слияния, код PR не запускается. Скопировано из durak (там — из nardy @ 1d2bdff); имена проверки и workflow — этого проекта.
+
+name: Автослияние
+
+on:
+  pull_request_target:
+    types: [labeled, unlabeled, synchronize, reopened, ready_for_review]
+  workflow_run:
+    workflows: [PR]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: read
+
+concurrency:
+  group: automerge-${{ github.event.pull_request.head.ref || github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  automerge:
+    # метки — только «ревью: ок», остальные слияния не касаются; PR из форка набор не трогает
+    if: >-
+      (github.event_name == 'pull_request_target' &&
+        ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ревью: ок')) ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request')
+    uses: Nefeste/gornitsa-kit/.github/workflows/automerge.yml@v1
+    with:
+      check: 'Проверки PR'
+      label: 'ревью: ок'
+    secrets:
+      AUTOMERGE_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}

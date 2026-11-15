@@ -205,12 +205,13 @@ async function director(x) {
     await page.waitForSelector('[data-test=journal-modes] [data-head=maint][data-mode=advise]', { timeout: 20_000 });
     await page.keyboard.press('Escape');
     let rep;
-    for (let i = 0; i < 80 && !rep; i++) {
+    const mid = (await page.evaluate(() => window.__game.t)) + 10 * 86400;
+    for (let i = 0; i < 400 && !rep && (await page.evaluate(() => window.__game.t)) < mid; i++) {
       const n = await s.untilEvent();
       if (n && /^Просят решить: Главный механик — Замена узла/.test(n.text)) rep = n;
     }
     if (!rep) {
-      fail('вопрос о замене пуансонов: до середины сентября его не было');
+      fail(`вопрос о замене пуансонов: до середины сентября его не было — ${await page.evaluate(() => window.__game.store.get().notices.slice(0, 4).map(n => n.text).join(' | '))}`);
       return;
     }
     await page.click('[data-test=notice-go]');

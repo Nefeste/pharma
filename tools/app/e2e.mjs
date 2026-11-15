@@ -859,6 +859,9 @@ async function mainPart() {
       await page.evaluate(() => window.__game.actions.setSpeed(4));
       hit = await page.waitForFunction(probe, null, { timeout: 30_000 }).then(h => h.jsonValue().then(v => v.hit), () => false);
       await page.evaluate(() => window.__game.actions.setSpeed(0));
+      // шаг мира в полёте мог кончить возврат до паузы — тогда дальше
+      await frames(2);
+      if (hit && !(await page.evaluate(() => !!document.querySelector('[data-test=now-row][data-kind=return]')))) hit = false;
     }
     await frames(2);
     const back = await page.evaluate(() =>

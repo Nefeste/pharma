@@ -70,13 +70,18 @@ export interface StageParam {
  * Единицы, из которых игрок выбирает стадию (Б7г): стадия ещё впереди, к ней не везут и единиц класса больше одной —
  * по порядку плана, со ступенью помещения по правилу (`rankOf`).
  */
-function choicesOf(db: ContentDb, s: PlantState, b: Batch, k: number, begun: boolean): { choices: { unit: string; room: string; rank: number }[] } | undefined {
+/** Класс и инвентарный номер единицы маршрута (Б7г) — для слов окна, без кода плана. */
+function unitOf(s: PlantState, id: string): { type: Id; inv?: number } {
+  return { type: s.equipment[id]?.type ?? id, ...(s.assets[id] ? { inv: s.assets[id].inv } : {}) };
+}
+
+function choicesOf(db: ContentDb, s: PlantState, b: Batch, k: number, begun: boolean): { choices: { unit: string; type: Id; inv?: number; room: string; rank: number }[] } | undefined {
   if (begun || b.status === 'cancelled' || k < b.stage || (k === 0 && b.status === 'kitting') || !['waiting', 'reserved', 'kitting', 'process'].includes(b.status)) return undefined;
   if (k === b.stage && Object.values(s.tasks).some(t => t.batch === b.id && t.kind === 'carry')) return undefined;
   const st = db.recipes[b.recipe].stages[k];
   const units = unitsFor(db, s, st).filter(e => !roomDown(db, s, e.room));
   if (units.length < 2) return undefined;
-  return { choices: units.map(e => ({ unit: e.id, room: e.room, rank: rankOf(db, s, b, e, id => s.rooms[id], s.t) })) };
+  return { choices: units.map(e => ({ unit: e.id, ...unitOf(s, e.id), room: e.room, rank: rankOf(db, s, b, e, id => s.rooms[id], s.t) })) };
 }
 
 export interface StageRow {
@@ -100,8 +105,8 @@ export interface StageRow {
   k: number;
   roomId: string;
   /** маршрут (Б7г): единица стадии и кто её выбрал; у стадии впереди с выбором — единицы класса со ступенью помещения */
-  route?: { unit: string; by: 'you' | 'rule' };
-  choices?: { unit: string; room: string; rank: number }[];
+  route?: { unit: string; type: Id; inv?: number; by: 'you' | 'rule' };
+  choices?: { unit: string; type: Id; inv?: number; room: string; rank: number }[];
 }
 
 /**
@@ -278,7 +283,7 @@ export function dossierView(db: ContentDb, s: PlantState, q: DossierQuery): Doss
       devs: devs.filter(d => d.stage === st.id).map(d => num(d.id)),
       k,
       roomId,
-      ...(b.route?.[k] ? { route: { ...b.route[k] } } : {}),
+      ...(b.route?.[k] ? { route: { ...b.route[k], ...unitOf(s, b.route[k].unit) } } : {}),
       ...(choicesOf(db, s, b, k, !!rec || now) ?? {}),
     };
     if (rec) {

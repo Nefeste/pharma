@@ -4,6 +4,7 @@
 // паллете, оборудование и помещение — к ним, человек и отклонение — к их карточкам (docs/13-art.md, §11). Вид собирает
 // поток расчёта без истины (src/sim/dossier.ts); здесь — слова и щелчок.
 import { roomLabel } from '../app/build';
+import { assetClass } from './assets';
 import type { ReactNode } from 'react';
 import { momentOf, type Ymd } from '../engine/core/calendar';
 import type { Thing } from '../sim/views';
@@ -14,6 +15,12 @@ import { WhoList } from './Journal';
 import { priceLine } from './price';
 import { type Actions, holds, type Hud } from './store';
 import { paramNum, paramText } from './units';
+
+/** Единица маршрута (Б7г): «Роторный таблеточный пресс, инв. № 00000114». */
+const unitName = (u: { type: string; inv?: number }) => {
+  const cls = assetClass({ family: 'equipment', type: u.type });
+  return u.inv !== undefined ? T.assets.named(cls, T.assets.inv(u.inv)) : cls;
+};
 
 /** Количество материала в его единице: масса — кг до граммов, штуки — штуками. */
 function qty(material: string, v: number): string {
@@ -163,7 +170,7 @@ function Stage({ st, first, start, actions, batch, mine }: { st: StageRow; first
       {st.route || st.choices ? (
         <div data-test="dossier-route">
           {/* маршрут (Б7г): кто выбрал единицу; у стадии впереди — выбор с постом производства или директора */}
-          {T.dossier.route.title}: {st.route ? `${st.route.unit} · ${T.dossier.route.by[st.route.by]}` : T.dossier.route.none}
+          {T.dossier.route.title}: {st.route ? `${unitName(st.route)} · ${T.dossier.route.by[st.route.by]}` : T.dossier.route.none}
           {st.choices ? (
             <>
               {' '}
@@ -171,7 +178,7 @@ function Stage({ st, first, start, actions, batch, mine }: { st: StageRow; first
                 <option value="">{T.dossier.route.rule}</option>
                 {st.choices.map(c => (
                   <option key={c.unit} value={c.unit}>
-                    {`${c.unit}, ${roomLabel(st.room, c.room)} — ${T.journal.route.ranks[c.rank] ?? ''}`}
+                    {`${unitName(c)}, ${roomLabel(st.room, c.room)} — ${T.journal.route.ranks[c.rank] ?? ''}`}
                   </option>
                 ))}
               </select>

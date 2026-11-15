@@ -524,7 +524,8 @@ const CALC: Record<string, Calc> = {
     let loss = 0;
     let base = 0;
     for (const b of Object.values(c.s.batches)) {
-      if (b.bulk === undefined || !inside(b.records[b.records.length - 1]?.end, c.p.from, c.p.to)) continue;
+      // все стадии в записях (Б7г): партии балка ещё может не быть — контейнер едет на склад балка, а потеря массы уже известна
+      if (b.records.length < (c.db.recipes[b.recipe]?.stages.length ?? Infinity) || !inside(b.records[b.records.length - 1]?.end, c.p.from, c.p.to)) continue;
       loss += b.records.reduce((n, r) => n + r.loss, 0);
       base += b.dispensed.reduce((n, k) => n + (c.db.materials[k.material]?.unit === 'mass' ? k.qty : 0), 0);
     }

@@ -386,6 +386,7 @@ export const ru = {
   grade: { D: 'класс D', cnc: 'вне классов' },
   /** задачи — по виду (`TaskKind`) */
   tasks: {
+    carry: 'Перенос полупродукта',
     unload: 'Разгрузка',
     receive: 'Приёмка',
     putaway: 'Размещение',
@@ -1441,6 +1442,7 @@ export const ru = {
     inDraft: 'в черновике: встанет так, если черновик утвердить',
   },
   plan: {
+    routeDraft: (batch: string, room: string) => `${batch} → ${room}`,
     run: 'Прогнать план',
     runHint: (days: number, seeds: number) =>
       `Тот же движок считает завод на ${days}\u00a0суток вперёд на ${seeds}\u00a0зёрнах — с разбросом, поломками и заказами; есть черновик — и его на тех же зёрнах. Игра не замирает`,
@@ -1654,6 +1656,13 @@ export const ru = {
   },
   /** досье серии (Б1д): запись по производству и запись по упаковке серии (GMP ЕАЭС, ч. I, пп. 4.20, 4.21) */
   dossier: {
+    route: {
+      title: 'Маршрут',
+      none: 'единица не выбрана',
+      rule: 'решит правило',
+      hint: 'Единица оборудования этой стадии: ваш выбор или правило начальника производства',
+      by: { you: 'выбрали вы', rule: 'выбрало правило' } as Record<string, string>,
+    },
     button: 'Досье',
     hint: 'Досье серии: из чего сделана и кто её делал',
     title: (code: string) => `Досье серии ${code}`,
@@ -2072,6 +2081,7 @@ export const ru = {
       forecast: (month: string, cases: string) => `Прогноз отдела продаж на ${month} — ${cases}`,
       fcEdit: (sku: string, month: string, cases?: string) => (cases ? `Прогноз планирования: ${sku}, ${month} — ${cases}` : `Прогноз планирования: ${sku}, ${month} — правка снята`),
       sop: (month: string, covers: string) => `План S&OP с ${month}: запас — ${covers}`,
+      route: (batch: string, stage: string, unit?: string) => (unit ? `Маршрут ${batch}: ${stage} — ${unit}` : `Маршрут ${batch}: ${stage} — выбор снят, решит правило`),
       waste: (at?: string) => (at ? `Вывоз отклонённого: подрядчик приедет ${at}` : 'Вывоз отклонённого: подрядчик приедет на следующий рабочий день'),
       mode: (head: string, mode: string) => `Режим отдела: ${head} — ${mode}`,
       policy: (what: string, to: string, from: string) => `Политика: ${what} — ${to} вместо ${from}`,
@@ -2092,6 +2102,12 @@ export const ru = {
     } as Record<string, string>,
     memos: 'Записки',
     /** служебные записки (Б5д) */
+    /** маршрут серии (Б7г): ступень помещения выбранной единицы и других единиц класса */
+    route: {
+      ranks: ['серия уже в помещении', 'помещение чистое для продукта', 'нужна малая уборка', 'нужна генеральная уборка', 'помещение занято другой серией', 'единица в ремонте или без записи'],
+      chosen: (why: string) => `Выбрана: ${why}`,
+      other: (unit: string, why: string) => `${unit}: ${why}`,
+    },
     memo: {
       title: 'Записки без ответа',
       at: (when: string) => `ответит ${when}`,
@@ -2113,6 +2129,8 @@ export const ru = {
         maintain: (part: string, machine: string) => `заменить узел: ${part} · ${machine}`,
         visit: (what: string, day: string) => `перенести визит подрядчика: ${what} — на ${day}`,
         rush: (lot: string) => `ускорить испытания партии ${lot}`,
+        stageNo: (n: number) => `стадия ${n}`,
+        route: (batch: string, stage: string, unit?: string) => (unit ? `маршрут ${batch}: ${stage} — ${unit}` : `маршрут ${batch}: ${stage} — снять выбор`),
         setpoint: (what: string, v: string) => `уставка: ${what} — ${v}`,
         po: (supplier: string, lines: string) => `заказ поставщику: ${supplier} — ${lines}`,
         expedite: (po: string) => `ускорить заказ поставщику ${po}`,

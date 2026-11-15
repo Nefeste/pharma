@@ -35,7 +35,8 @@ import { forecastCommand, forecastHour, newForecast, replan, runForecast } from 
 import { sopCommand, sopHour } from './sop';
 import { marketDone, marketHour, marketStep, newCustomers, rznPublished, seedFg } from './market';
 import { memoCommand, memoDue, memoHour, withdrawCommand } from './memos';
-import { BATCH_HOUR, cancelOrder, mesDone, mesHour, mesStep, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
+import { BATCH_HOUR, cancelOrder, mesDone, mesHour, mesStep, moveOn, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
+import { routeCommand } from './route';
 import { setpointCommand } from './modes';
 import { auditDone, pairApproveCommand, partnersDone, partnersHour, seedContracts, seedPairs, specPairs } from './partners';
 import { coldOf } from './places';
@@ -274,6 +275,13 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       const change = { batch: cmd.batch, notBefore: Math.max(s.t, Math.floor(cmd.notBefore)) };
       const frozen = b && (b.status === 'waiting' || b.status === 'reserved') && editInFrozen(db, s, { changes: [change] }) ? editPrice(db, s, { changes: [change] }) : undefined;
       shiftCommand(s, cmd, notices, frozen);
+      steps(db, s, notices);
+      return notices;
+    }
+    case 'route': {
+      // маршрут серии (Б7г): единица стадии; серия, что ждёт в помещении, едет дальше
+      const notices: Notice[] = [];
+      routeCommand(db, s, cmd, notices, b => moveOn(db, s, b, notices));
       steps(db, s, notices);
       return notices;
     }

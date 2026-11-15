@@ -24,6 +24,7 @@ import { numOf, POL, policyOf } from './policies';
 import { measure, within } from './quality';
 import { normal, roll, spread } from './random';
 import { containersByLot, createLot, free, knownAssay, nextId, putUnit, stockChanged } from './stock';
+import { chooseRoom } from './route';
 import { roomDown } from './site/down';
 import { addTask, release } from './tasks';
 import type { Batch, BatchFor, Command, Container, Deviation, EditPrice, Equipment, KitLine, Lot, Notice, OrderWhy, PackJob, Part, Place, PlantEvent, PlantState, Room, StageRecord, StageRun, Task, Unit } from './types';
@@ -431,9 +432,10 @@ export function mesHour(db: ContentDb, s: PlantState) {
  * Пластиковая паллета ждёт комплект в помещении первой стадии.
  */
 function startKitting(db: ContentDb, s: PlantState, b: Batch): boolean {
+  // помещение первой стадии — по маршруту (Б7г); ждёт выбора игрока — комплект ждёт тоже
+  const room = chooseRoom(db, s, b, 0);
+  if (room === undefined) return false;
   if (!issueNo(db, s, b)) return false;
-  const plan = planOf(db, s.plan);
-  const room = plan.roomOf[db.recipes[b.recipe].stages[0].room];
   const u: Unit = { id: nextId(s, 'U'), type: 'unit.pallet.plastic', where: { kind: 'room', id: room }, items: [], tag: 'released' };
   s.units[u.id] = u;
   b.kitUnit = u.id;
@@ -514,10 +516,12 @@ export function roomFor(db: ContentDb, s: PlantState, room: Room, product: Id, b
 function tryStart(db: ContentDb, s: PlantState, b: Batch) {
   const r = db.recipes[b.recipe];
   if (b.status !== 'process' || b.stage >= r.stages.length) return;
-  if (Object.values(s.tasks).some(t => t.kind === 'stage' && t.batch === b.id)) return;
+  if (Object.values(s.tasks).some(t => (t.kind === 'stage' || t.kind === 'carry') && t.batch === b.id)) return;
   const plan = planOf(db, s.plan);
   const st = r.stages[b.stage];
-  const roomId = plan.roomOf[st.room];
+  // помещение стадии — по маршруту (Б7г): серия уже в нём или полупродукт туда привезли
+  const roomId = b.room ?? chooseRoom(db, s, b, b.stage);
+  if (roomId === undefined) return;
   const room = s.rooms[roomId];
   // помещение не работает (Б7б) — стадия ждёт и уборку там не начинают
   if (roomDown(db, s, roomId)) return;
@@ -924,6 +928,9 @@ export function mesDone(db: ContentDb, s: PlantState, t: Task, notices: Notice[]
     case 'stage':
       stageDone(db, s, plan, t, notices);
       return true;
+    case 'carry':
+      carried(db, s, plan, t, notices);
+      return true;
     default:
       return false;
   }
@@ -1025,13 +1032,46 @@ function stageDone(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, notic
   truthOf(db, s, b, attrs, st.id);
   ipc(db, s, b, st, rec, notices);
   for (const pt of worn) failPart(db, s, pt, notices, b.id);
-  // оборудование свободно; помещение — грязное, если серия из него уходит
+  // оборудование свободно; следующая стадия — в том же помещении или полупродукт везут (Б7г)
   for (const e of eqs) delete e.batch;
-  const next = r.stages[b.stage + 1];
-  if (!next || plan.roomOf[next.room] !== roomId) leaveRoom(db, s, roomId, b.product, b.id);
   b.stage++;
-  if (last) finish(db, s, plan, b, rec, notices);
-  else tryStart(db, s, b);
+  moveOn(db, s, b, notices);
+}
+
+/** Погрузка и выгрузка контейнера с полупродуктом (Б7г), с: гипотеза — чисел нет ни в одном источнике (10-domain.md, §7). */
+export const CARRY_WORK = 10 * MIN;
+
+/** Кто везёт полупродукт (Б7г): аппаратчик стадии, которая кончилась. */
+export const CARRIERS = ['role.operator'] as const;
+
+/**
+ * Стадия кончилась (Б7г): следующая — в помещении маршрута; то же помещение — стадия ждёт его, как раньше; другое — задача
+ * переноса: аппаратчик везёт контейнер на тележке в помещение следующей стадии, после последней — на склад балка.
+ * Помещение, где серия стоит, освобождается, когда контейнер выгружен. Маршрут ждёт выбора игрока — серия ждёт в
+ * помещении.
+ */
+export function moveOn(db: ContentDb, s: PlantState, b: Batch, notices: Notice[] = []) {
+  const r = db.recipes[b.recipe];
+  if (b.status !== 'process' || !b.room) return;
+  if (Object.values(s.tasks).some(t => t.kind === 'carry' && t.batch === b.id)) return;
+  const plan = planOf(db, s.plan);
+  const last = b.stage >= r.stages.length;
+  const to = last ? plan.roomOf.bulk : chooseRoom(db, s, b, b.stage, notices);
+  if (to === undefined) return;
+  if (to === b.room) return tryStart(db, s, b);
+  addTask(s, { kind: 'carry', roles: [...CARRIERS], from: roomPlace(plan, b.room), work: CARRY_WORK, prio: MES_PRIO.stage, batch: b.id, room: to });
+}
+
+/** Полупродукт выгружен (Б7г): прежнее помещение — грязное; дальше — стадия или, после последней, партия балка. */
+function carried(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, notices: Notice[]) {
+  const b = s.batches[t.batch!];
+  const r = db.recipes[b.recipe];
+  // помещение, которое серия держала, — грязное; привезли из помещения, куда серию только доставили, — его не держали
+  if (s.rooms[b.room!]?.batch === b.id) leaveRoom(db, s, b.room!, b.product, b.id);
+  delete b.room;
+  if (b.stage >= r.stages.length) return finish(db, s, plan, b, b.records[b.records.length - 1], notices);
+  b.room = t.room;
+  tryStart(db, s, b);
 }
 
 /** Отвешивание: навески списываются с тары комплекта; пустая тара — из учёта, остаток — обратно на склад. */
@@ -1084,7 +1124,7 @@ function nextIn(db: ContentDb, s: PlantState, roomId: string, cur: string): Batc
   let best: Batch | undefined;
   for (const x of Object.values(s.batches)) {
     if (x.id === cur || x.status === 'fg' || x.status === 'released' || x.status === 'rejected') continue;
-    const needs = lineRoom ? !(x.status === 'packing' && x.pack?.state !== 'waiting') : x.status !== 'bulk' && x.status !== 'packing' && db.recipes[x.recipe].stages.some((st, i) => i >= x.stage && plan.roomOf[st.room] === roomId);
+    const needs = lineRoom ? !(x.status === 'packing' && x.pack?.state !== 'waiting') : x.status !== 'bulk' && x.status !== 'packing' && db.recipes[x.recipe].stages.some((st, i) => i >= x.stage && (x.route?.[i] ? s.equipment[x.route[i].unit]?.room === roomId : plan.room[roomId]?.type === st.room));
     if (needs && (!best || x.notBefore < best.notBefore)) best = x;
   }
   return best;

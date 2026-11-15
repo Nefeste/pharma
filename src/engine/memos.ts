@@ -55,6 +55,9 @@ export function cmdHead(db: ContentDb, cmd: Command, role?: Id): Head | undefine
       return 'qc';
     case 'setpoint':
       return 'tech';
+    // маршрут серии (Б7г) — начальник производства
+    case 'route':
+      return 'mes';
     case 'po':
     // ускорить и отменить заказ поставщику (Б6д)
     case 'expedite':

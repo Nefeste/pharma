@@ -282,7 +282,9 @@ describe('масса по стадиям и запись упаковки — п
         // Б5а: «Кто решил» — записи журнала решений; Б5в: кто из людей решал — роль, табельный номер, «и. о.»
         'who t v seat as io ' +
         // Б6а: задание — под что (заказ покупателя и его покупатель) и срок, отменить ли ещё можно
-        'goal order customer due open').split(' '),
+        'goal order customer due open ' +
+        // Б7г: маршрут стадии — номер в карте, помещение, единица и кто её выбрал, единицы для выбора со ступенью
+        'k roomId route choices unit by rank').split(' '),
     );
     expect([...keys].filter(k => !ALLOWED.has(k))).toEqual([]);
     for (const k of ['truth', 'noise', 'causes', 'screen', 'budget', 'lost', 'jammed', 'wear']) expect(keys.has(k)).toBe(false);

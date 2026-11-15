@@ -13,14 +13,15 @@ import { DAY, daysFromCivil, HOUR, isWorkday, momentOf } from '../core/calendar'
 import { fitsIn, overLeft } from '../hours';
 import { coverWindows } from '../leave';
 import { blocked } from '../maint';
-import { DIRTY_HOLD, kitPlan, MES, newBatch, nominal, readyFor, roomWork, stageMass, stageNorm, stageTaskNorm, TRANSFER_WORK, washRoles, washWork } from '../mes';
+import { CARRY_WORK, DIRTY_HOLD, kitPlan, MES, newBatch, nominal, readyFor, roomWork, stageMass, stageNorm, stageTaskNorm, TRANSFER_WORK, washRoles, washWork } from '../mes';
 import { stageSetpoints } from '../modes';
 import { classOf, placesOf } from '../places';
 import { stockDue } from '../planner';
-import { planOf } from '../plant';
+import { planOf, travel } from '../plant';
+import { stageRoom } from '../route';
 import { numOf, POL } from '../policies';
 import { admitted, needFor } from '../quals';
-import { LAST_CALL, shiftEndAt } from '../staff';
+import { LAST_CALL, shiftEndAt, WALK } from '../staff';
 import type { Batch, KitLine, Person, PlantState, Room, Task } from '../types';
 import { trialLot, trialPo } from '../supply';
 import { WMS } from '../wms';
@@ -91,6 +92,13 @@ export interface Forecast {
 export interface Change {
   batch: string;
   notBefore: number;
+}
+
+/** Выбор единицы стадии в черновике (Б7г): задание, номер стадии в карте, единица главного класса. */
+export interface RouteChange {
+  batch: string;
+  stage: number;
+  unit: string;
 }
 
 /**
@@ -237,7 +245,7 @@ interface Proj {
  * прогон не ставит — их стадии и всё, что дальше по очереди, начнётся позже, а помещение такой стадии держит её серия;
  * у сменно-суточного задания он — конец суток. Полосы до горизонта — те же, что у прогона без него.
  */
-export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[] = [], fresh: readonly Fresh[] = [], drop: readonly string[] = [], until?: number): Forecast {
+export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[] = [], fresh: readonly Fresh[] = [], drop: readonly string[] = [], until?: number, routes: readonly RouteChange[] = []): Forecast {
   const asked = new Map(changes.map(c => [c.batch, c.notBefore]));
   const plan = planOf(db, s.plan);
   const now = s.t;
@@ -297,7 +305,12 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
   const held = new Map<string, number>();
   const taskOf = (f: (t: Task) => boolean) => Object.values(s.tasks).find(f);
   const dropped = new Set(drop);
-  const order = [...Object.values(s.batches).filter(b => !dropped.has(b.id) || (b.status !== 'waiting' && b.status !== 'reserved')), ...freshBatches(db, s, fresh)];
+  // маршрут черновика (Б7г): у задания — копия с выбором игрока; состояние завода прогон не меняет
+  const routed = (b: Batch): Batch => {
+    const mine = routes.filter(x => x.batch === b.id);
+    return mine.length === 0 ? b : { ...b, route: { ...(b.route ?? {}), ...Object.fromEntries(mine.map(x => [x.stage, { unit: x.unit, by: 'you' as const }])) } };
+  };
+  const order = [...Object.values(s.batches).filter(b => !dropped.has(b.id) || (b.status !== 'waiting' && b.status !== 'reserved')).map(routed), ...freshBatches(db, s, fresh)];
 
   // последняя серия в помещении по записям — для причины «убрать после серии» у грязного сейчас помещения
   const lastIn = new Map<string, { batch: string; end: number }>();
@@ -305,6 +318,18 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
 
   const rooms = new Map<string, Proj>();
   for (const r of Object.values(s.rooms)) rooms.set(r.id, { room: { ...r }, free: now, work: 0, major: false });
+
+  // маршрут (Б7г): помещение стадии — тем же правилом, что у движка, по помещениям прогона в мгновение стадии; выбор
+  // помнится — серия не перебегает. Перенос между помещениями — погрузка, выгрузка и путь шагом человека
+  const roomAt = (id: string) => rooms.get(id)?.room;
+  const picked = new Map<string, string>();
+  const roomFor = (b: Batch, k: number, t: number): string => {
+    const key = `${b.id}:${k}`;
+    const got = picked.get(key) ?? (k < db.recipes[b.recipe].stages.length ? stageRoom(db, s, b, k, roomAt, t) : plan.roomOf.bulk) ?? plan.roomOf[db.recipes[b.recipe].stages[k].room];
+    picked.set(key, got);
+    return got;
+  };
+  const carry = (a: string, z: string) => (a === z ? 0 : CARRY_WORK + travel(plan, plan.room[a], plan.room[z], WALK));
 
   /**
    * Уборка помещения (Б4в): мойка оборудования — как только аппаратчик в смене не раньше `at`, потом уборка помещения —
@@ -406,7 +431,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     let t = t0;
     for (let k = k0; k < r.stages.length; k++) {
       const st = r.stages[k];
-      const roomId = plan.roomOf[st.room];
+      const roomId = roomFor(b, k, t);
       const p = rooms.get(roomId)!;
       // горизонт (Б6б): стадия не раньше него — дальше не нужно; помещение держит серия, как держала бы в полном прогоне:
       // кто встанет в него за ней, встанет тоже позже горизонта
@@ -480,8 +505,12 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
         if (v && v.from === undefined && c.t < v.at) fix(v, c.t + work);
       }
       t = c.t + work;
-      const next = r.stages[k + 1];
-      if (!next || plan.roomOf[next.room] !== roomId) leave(roomId, b, t);
+      // следующая стадия — в помещении маршрута; другое — перенос, помещение свободно, когда контейнер выгружен (Б7г)
+      const to = roomFor(b, k + 1, t);
+      if (to !== roomId) {
+        t += carry(roomId, to);
+        leave(roomId, b, t);
+      }
     }
   };
 
@@ -495,8 +524,16 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
   const inProcess = (b: Batch) => {
     const r = db.recipes[b.recipe];
     if (b.stage >= r.stages.length) return;
+    // полупродукт везут (Б7г): стадия — в помещении назначения после выгрузки; прежнее помещение свободно тогда же
+    const ct = taskOf(x => x.kind === 'carry' && x.batch === b.id);
+    if (ct && b.room) {
+      const end = ct.state === 'busy' ? ct.times![4] : now + carry(b.room, ct.room!);
+      if (s.rooms[b.room]?.batch === b.id) leave(b.room, b, end);
+      picked.set(`${b.id}:${b.stage}`, ct.room!);
+      return stages(b, b.stage, end, {});
+    }
     const st = r.stages[b.stage];
-    const roomId = plan.roomOf[st.room];
+    const roomId = b.room ?? roomFor(b, b.stage, now);
     const t = taskOf(x => x.kind === 'stage' && x.batch === b.id);
     let end: number;
     if (t?.state === 'busy') {
@@ -514,8 +551,11 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
       out.bars.push({ row: roomId, kind: 'stage', batch: b.id, stage: st.id, from: c.t, to: c.t + work, when: 'plan', ...(repair ? { repair: true as const } : {}) });
       end = c.t + work;
     } else return stages(b, b.stage, now, {});
-    const next = r.stages[b.stage + 1];
-    if (!next || plan.roomOf[next.room] !== roomId) leave(roomId, b, end);
+    const to = roomFor(b, b.stage + 1, end);
+    if (to !== roomId) {
+      end += carry(roomId, to);
+      leave(roomId, b, end);
+    }
     stages(b, b.stage + 1, end, {});
   };
 

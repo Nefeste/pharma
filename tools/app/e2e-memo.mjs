@@ -197,14 +197,21 @@ async function director(x) {
       fail(`вопрос об OOS: мир ${speed === 0 ? 'стоит' : 'идёт'}, строка «${open.slice(0, 200)}», ответ «${after}», шаги до ${before.join(', ')} и через сутки ${later.join(', ')}`);
     else ok(`вопрос об OOS: «${open.slice(0, 160)}»; «${after}» — через сутки шаги те же: ${before.join(', ') || 'нет'}`);
 
-    // до вопроса главного механика о замене пуансонов — «Заменить сейчас»: в карточке пресса замена
+    // до вопроса главного механика о замене пуансонов — «Заменить сейчас»: в карточке пресса замена. Отдел главного
+    // механика — «советует»: с переносом полупродукта (Б7г) серия приходит к прессу в пятницу ночью, и «сам» он заменил бы
+    // пуансоны по наработке утром понедельника, не спросив; совет замены — предложение, а вопрос перед работой — тот же
+    await s.openJournal();
+    await page.click('[data-test=journal-modes] [data-head=maint] button[data-mode=advise]');
+    await page.waitForSelector('[data-test=journal-modes] [data-head=maint][data-mode=advise]', { timeout: 20_000 });
+    await page.keyboard.press('Escape');
     let rep;
-    for (let i = 0; i < 80 && !rep; i++) {
+    const mid = (await page.evaluate(() => window.__game.t)) + 10 * 86400;
+    for (let i = 0; i < 400 && !rep && (await page.evaluate(() => window.__game.t)) < mid; i++) {
       const n = await s.untilEvent();
       if (n && /^Просят решить: Главный механик — Замена узла/.test(n.text)) rep = n;
     }
     if (!rep) {
-      fail('вопрос о замене пуансонов: до середины сентября его не было');
+      fail(`вопрос о замене пуансонов: до середины сентября его не было — ${await page.evaluate(() => window.__game.store.get().notices.slice(0, 4).map(n => n.text).join(' | '))}`);
       return;
     }
     await page.click('[data-test=notice-go]');

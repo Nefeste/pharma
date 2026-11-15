@@ -11,6 +11,7 @@ import { batchNo } from '../engine/batchno';
 import { DAY, isWorkday, momentOf } from '../engine/core/calendar';
 import { classOf, placesOf } from '../engine/places';
 import { planOf } from '../engine/plant';
+import { stageRoom } from '../engine/route';
 import { numOf, POL } from '../engine/policies';
 import type { Asset, AssetFamily, AssetRec, PathStep, PlantState } from '../engine/types';
 import { calOf } from '../engine/workdays';
@@ -255,7 +256,8 @@ export function assetWaits(db: ContentDb, s: PlantState): AssetWait[] {
     if (b.status === 'process') {
       const st = db.recipes[b.recipe].stages[b.stage];
       if (!st || Object.values(s.tasks).some(t => t.kind === 'stage' && t.batch === b.id)) continue;
-      const room = plan.roomOf[st.room];
+      const room = b.room ?? stageRoom(db, s, b, b.stage);
+      if (!room) continue;
       const u = stageUnfit(db, s, st, room);
       if (u) out.push({ batch: batchNo(b.code), asset: u.asset, why: u.why, room });
     } else if (b.status === 'packing' && b.pack?.state === 'ready') {

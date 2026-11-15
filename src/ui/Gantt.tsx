@@ -21,6 +21,7 @@ import { Jobs } from './Jobs';
 import { Launch } from './Launch';
 import { Forecast } from './Forecast';
 import { Materials } from './Materials';
+import { roomLabel } from '../app/build';
 import { draftKey } from './draft';
 import { actLabel, actOf, actOn } from './memo';
 import { policyText } from './policy';
@@ -80,7 +81,8 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
   const pct = (t: number) => ((Math.min(Math.max(t, v.from), v.to) - v.from) * 100) / span;
   const day = (t: number) => momentOf(start, t).day;
   const roomType = new Map(v.rows.map(r => [r.id, r.type]));
-  const roomName = (id: string) => T.roomTypes[roomType.get(id) ?? ''] ?? id;
+  // второе помещение вида (Б7г) — с номером: «Таблетирование 1»
+  const roomName = (id: string) => (roomType.has(id) ? roomLabel(roomType.get(id) ?? '', id) : id);
   // тянуть — с постом производства (3е): расписание — его команда; без поста — черновик уходит начальнику отдела
   // планирования одной запиской (Б5д)
   const act = actOf(hud, 'production', { kind: 'shift', batch: '', notBefore: 0 });
@@ -233,12 +235,21 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
       setTip({ x: ev.clientX, y: ev.clientY });
       actions.drag(d.batch, snap(d.t0 + (ev.clientX - d.x0) * d.perPx));
     };
-    const up = () => {
+    const up = (ev: PointerEvent) => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       const d = ref.current;
       ref.current = null;
       if (!d) return;
+      // стадию — на строку другого помещения того же типа (Б7г): выбор единицы в черновик маршрута
+      const opt = mine && d.bar.kind === 'stage' && d.bar.batch && d.bar.stage ? v.routable[d.bar.batch]?.[d.bar.stage] : undefined;
+      const to = opt ? (document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-row]') as HTMLElement | null)?.dataset.row : undefined;
+      if (opt && to && to !== row.id && opt.rooms[to]) {
+        if (drag.current) actions.cancelDrag();
+        setTip(null);
+        actions.routeDraft(d.bar.batch!, opt.k, opt.rooms[to]);
+        return;
+      }
       if (d.moved) {
         // Esc мог отменить перетаскивание, пока кнопка была нажата
         if (drag.current) actions.drop();
@@ -290,6 +301,12 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
   const lineNo = (id: string) => v.rows.filter(r => r.kind === 'line').findIndex(r => r.id === id) + 1;
   const rowName = (id: string) => (roomType.has(id) ? roomName(id) : T.gantt.line(lineNo(id)));
   const p = hud.plan;
+  // помещение единицы черновика маршрута (Б7г) — по выбору единиц окна
+  const roomOfUnit = (batch: string, k: number, unit: string) => {
+    const o = Object.values(v.routable[batch] ?? {}).find(x => x.k === k);
+    const room = o ? Object.keys(o.rooms).find(id => o.rooms[id] === unit) : undefined;
+    return room ? roomName(room) : unit;
+  };
 
   return (
     <div className="gantt panel" id="gantt" role="dialog" aria-labelledby="gantt-title" data-test="gantt">
@@ -368,9 +385,9 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
             ) : null}
           </span>
         ) : null}
-        {g.draft.length + g.urgent.length + g.drop.length > 0 ? (
+        {g.draft.length + g.urgent.length + g.drop.length + (g.routes ?? []).length > 0 ? (
           <>
-            <span data-test="draft-list">{T.plan.draft([...g.drop.map(id => T.jobs.dropped(who(labels, id) || T.jobs.order(Number(id.slice(1))))), ...g.draft.map(c => who(labels, c.batch) || c.batch), ...g.urgent.map(u => urgentText(u))].join(', '))}</span>
+            <span data-test="draft-list">{T.plan.draft([...g.drop.map(id => T.jobs.dropped(who(labels, id) || T.jobs.order(Number(id.slice(1))))), ...g.draft.map(c => who(labels, c.batch) || c.batch), ...g.urgent.map(u => urgentText(u)), ...(g.routes ?? []).map(r => T.plan.routeDraft(who(labels, r.batch) || T.jobs.order(Number(r.batch.slice(1))), roomOfUnit(r.batch, r.stage, r.unit)))].join(', '))}</span>
             <button type="button" onClick={() => actions.approveDraft()} disabled={!mine} title={act.mine ? T.plan.approveHint : act.title} data-test="draft-approve" data-memo={act.memo ?? undefined}>
               {actLabel(act, T.plan.approve)}
             </button>
@@ -537,7 +554,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
       </div>
         </>
       )}
-      {p.running || p.error || p.sums.some(Boolean) ? <PlanSum p={p} start={start} stale={p.key !== draftKey(g.draft, g.urgent, g.drop)} rowName={rowName} lineNo={lineNo} /> : null}
+      {p.running || p.error || p.sums.some(Boolean) ? <PlanSum p={p} start={start} stale={p.key !== draftKey(g.draft, g.urgent, g.drop, g.routes ?? [])} rowName={rowName} lineNo={lineNo} /> : null}
       {g.drag && tip ? (
         <div className="gtip panel" style={{ left: Math.min(tip.x + 14, window.innerWidth - 380), top: tip.y + 14 }} data-test="gtip">
           <div>

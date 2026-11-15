@@ -65,6 +65,8 @@ export interface JournalRef {
   waste?: number;
   customer?: Id;
   room?: string;
+  /** тип помещения `room` (Б7г): имя помещения — у окна, по типу и номеру */
+  rtype?: string;
   thing?: Thing;
   /** записка (Б5д): ссылки каждой её команды — по порядку команд */
   cmds?: JournalRef[];
@@ -240,6 +242,9 @@ function headOf(db: ContentDb, d: Decided): Head {
     // оборудование (Б7в) — работа техслужбы, покупает директор
     case 'equip':
       return 'maint';
+    // маршрут серии (Б7г) — начальник производства
+    case 'route':
+      return 'mes';
   }
 }
 
@@ -325,6 +330,11 @@ export function refOf(db: ContentDb, s: PlantState, d: Decided, ask?: Ask): Jour
       return { customer: d.customer };
     case 'batch':
       return batchRef(s, d.batch);
+    // маршрут серии (Б7г): серия и помещение единицы — номер и тип, имя — у окна
+    case 'route': {
+      const e = d.unit ? s.equipment[d.unit] : undefined;
+      return { ...batchRef(s, d.batch), ...(e ? { room: e.room, rtype: plan.room[e.room]?.type } : {}) };
+    }
     case 'po':
     case 'expedite':
     case 'cancelPo':
@@ -409,6 +419,10 @@ export function cmdRef(db: ContentDb, s: PlantState, c: Command): JournalRef {
     case 'pack':
     case 'cancel':
       return batchRef(s, c.batch);
+    case 'route': {
+      const e = c.unit ? s.equipment[c.unit] : undefined;
+      return { ...batchRef(s, c.batch), ...(e ? { room: e.room, rtype: planOf(db, s.plan).room[e.room]?.type } : {}) };
+    }
     case 'rush':
       return lotRef(s, c.lot);
     case 'visit':
@@ -610,7 +624,7 @@ const memoAbout = (d: Decided, f: (c: Command) => boolean) => d.kind === 'memo' 
  */
 export function whoBatch(s: PlantState, b: Batch, db?: ContentDb): WhoRow[] {
   const invs = new Set(Object.values(s.investigations).filter(i => i.batch === b.id).map(i => i.id));
-  return whoRows(s, d => ((d.kind === 'order' || d.kind === 'batch') && d.batch === b.id) || (d.kind === 'lot' && d.lot === b.bulk) || (d.kind === 'conclude' && invs.has(d.inv)) || (d.kind === 'fork' && d.fork === 'oos' && invs.has(d.inv)) || memoAbout(d, c => c.kind === 'shift' && c.batch === b.id), db);
+  return whoRows(s, d => ((d.kind === 'order' || d.kind === 'batch' || d.kind === 'route') && d.batch === b.id) || (d.kind === 'lot' && d.lot === b.bulk) || (d.kind === 'conclude' && invs.has(d.inv)) || (d.kind === 'fork' && d.fork === 'oos' && invs.has(d.inv)) || memoAbout(d, c => c.kind === 'shift' && c.batch === b.id), db);
 }
 
 /** Партия: заказ поставщику, с которым она пришла, и решение начальника ОКК; с Б5д — записки «ускорить испытания». */

@@ -99,7 +99,9 @@ function measure(db: ContentDb, c: PlantState, from: number, to: number, seed: n
     for (const r of b.records) stageSpans.set(r.room, [...(stageSpans.get(r.room) ?? []), [r.start, r.end]]);
     if (b.pack?.start !== undefined) packSpans.set(b.pack.line, [...(packSpans.get(b.pack.line) ?? []), [b.pack.start, b.pack.end ?? to]]);
   }
-  const rooms = new Set(Object.values(db.recipes).flatMap(r => r.stages.map(st => plan.roomOf[st.room])));
+  // помещения стадий — все помещения их типов (Б7г): второе помещение вида — своей загрузкой
+  const types = new Set(Object.values(db.recipes).flatMap(r => r.stages.map(st => st.room)));
+  const rooms = new Set(plan.plant.rooms.filter(r => types.has(r.type)).map(r => r.id));
   const all = switchesOf(days);
   const snap = kpiSnapshot(db, c);
   return {

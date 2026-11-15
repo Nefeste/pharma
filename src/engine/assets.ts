@@ -123,7 +123,7 @@ function busy(db: ContentDb, s: PlantState, a: Asset): boolean {
         if (t.kind !== 'stage' || !t.batch) continue;
         const b = s.batches[t.batch];
         const st = db.recipes[b.recipe].stages[b.stage];
-        if (st && plan.roomOf[st.room] === room && st.ipc.some(c => db.tests[c.test].inst === a.type)) return true;
+        if (st && b.room === room && st.ipc.some(c => db.tests[c.test].inst === a.type)) return true;
       }
       return false;
     }

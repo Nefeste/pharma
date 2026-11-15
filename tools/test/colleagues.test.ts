@@ -265,7 +265,7 @@ describe('год завода прототипа', () => {
       lots: (notes['qc/lot:release'] ?? 0) + (notes['qc/lot:reject'] ?? 0),
       releases: notes['qp/batch:release'],
       visits: notes['maint/visit'],
-    }).toEqual({ orders: 200, pos: 92, lots: 381, releases: 198, visits: 17 });
+    }).toEqual({ orders: 202, pos: 89, lots: 381, releases: 198, visits: 17 });
     // за срок журнала — около 220 записей разом (спецификация Б5а)
     expect(s.journal.length).toBeGreaterThan(180);
     expect(s.journal.length).toBeLessThan(270);

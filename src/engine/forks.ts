@@ -10,6 +10,7 @@
 // выбрано — ни вопросов, ни записей: золотой прогон тот же.
 import type { ContentDb, PartType, SeatId } from '../content/types';
 import { lineUnfit, stageUnfit, visitLast } from './assets';
+import { stageRoom } from './route';
 import { replacesBy, skillOf, thresholdBy, type Who, whoDecides } from './bosses';
 import { schedule } from './core/agenda';
 import { addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, momentOf } from './core/calendar';
@@ -80,7 +81,8 @@ function end(s: PlantState, r: Decision, how: NonNullable<NonNullable<Decision['
 function holdOf(db: ContentDb, s: PlantState, b: Batch): { asset: string; why: string } | undefined {
   if (b.status === 'process') {
     const st = db.recipes[b.recipe].stages[b.stage];
-    return st ? stageUnfit(db, s, st, planOf(db, s.plan).roomOf[st.room]) : undefined;
+    const room = st ? stageRoom(db, s, b, b.stage) : undefined;
+    return st && room ? stageUnfit(db, s, st, room) : undefined;
   }
   return b.status === 'packing' && b.pack?.state === 'ready' ? lineUnfit(db, s, b.pack.line) : undefined;
 }
@@ -226,7 +228,7 @@ function nextWork(db: ContentDb, s: PlantState, pt: Part, live: Batch[]): { batc
     for (const b of live) {
       if (b.status !== 'process') continue;
       const st = db.recipes[b.recipe].stages[b.stage];
-      if (!st || plan.roomOf[st.room] !== eq.room || !st.equipment.includes(eq.type)) continue;
+      if (!st || stageRoom(db, s, b, b.stage) !== eq.room || !st.equipment.includes(eq.type)) continue;
       if (Object.values(s.tasks).some(t => t.kind === 'stage' && t.batch === b.id)) continue;
       if (!best || b.notBefore < best.notBefore || (b.notBefore === best.notBefore && b.id < best.id)) best = b;
     }

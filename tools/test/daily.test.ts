@@ -87,7 +87,8 @@ describe('сменно-суточное задание', () => {
       const due = Object.values(s.deviations).filter(x => x.status === 'open' && dueOf(db, s, x) >= s.t && dueOf(db, s, x) < s.t + DAY);
       expect(cur.rows.filter(r => r.kind === 'assess').map(r => r.dev!).sort()).toEqual(due.map(x => x.id).sort());
     }
-    expect(packs).toBeGreaterThan(15);
+    // с Б7г стадии кончаются позже на время переноса полупродукта: упаковок за окно — на одну меньше
+    expect(packs).toBeGreaterThan(13);
   }, 60_000);
 
   test('ОКК: испытания очереди по её порядку и конечной производительности — аналитик в смене и прибор методики', () => {

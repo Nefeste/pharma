@@ -70,6 +70,7 @@ import { sopPart } from './e2e-sop.mjs';
 import { mrpPart } from './e2e-mrp.mjs';
 import { buildPart } from './e2e-build.mjs';
 import { equipPart } from './e2e-equip.mjs';
+import { routePart } from './e2e-route.mjs';
 import { editsPart } from './e2e-edits.mjs';
 import { sourcesPart } from './e2e-sources.mjs';
 import { jobsPart } from './e2e-jobs.mjs';
@@ -308,6 +309,7 @@ try {
   if (only === '' || only === 'edits') await editsPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'build') await buildPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'equip') await equipPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
+  if (only === '' || only === 'route') await routePart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'sources') await sourcesPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');
@@ -857,6 +859,9 @@ async function mainPart() {
       await page.evaluate(() => window.__game.actions.setSpeed(4));
       hit = await page.waitForFunction(probe, null, { timeout: 30_000 }).then(h => h.jsonValue().then(v => v.hit), () => false);
       await page.evaluate(() => window.__game.actions.setSpeed(0));
+      // шаг мира в полёте мог кончить возврат до паузы — тогда дальше
+      await frames(2);
+      if (hit && !(await page.evaluate(() => !!document.querySelector('[data-test=now-row][data-kind=return]')))) hit = false;
     }
     await frames(2);
     const back = await page.evaluate(() =>
@@ -867,7 +872,7 @@ async function mainPart() {
     );
     const hour = await page.evaluate(() => (window.__game.t % 86400) / 3600);
     if (!hit || back.length === 0 || !back.every(r => /^Возврат остатков · .+, П-\d{4}-\d{4} · серия [A-Z]{2}\d{3,}$/.test(r.text) && r.icon === 'back'))
-      fail(`«Сейчас» в ${hour.toFixed(1)} ч: возврат с грануляцией ${hit ? 'есть' : 'не дождались'}, строки возврата ${JSON.stringify(back)}`);
+      fail(`«Сейчас» в ${hour.toFixed(1)} ч: возврат с грануляцией ${hit ? 'есть' : 'не дождались'}, строки возврата ${JSON.stringify(back)}; ${await page.evaluate(() => `панель ${document.querySelector('#now') ? 'открыта' : 'закрыта'}, строки ${(window.__game.store.get().now.view?.rows ?? []).map(r => `${r.dept}:${r.kind}`).join(' ')}`)}`);
     else ok(`«Сейчас» в ${hour.toFixed(1)} ч: «${back[0].text}», значок «${back[0].icon}»`);
     const gi = await page.evaluate(() => window.__game.layout.plan.plant.rooms.findIndex(r => r.type === 'granulation'));
     await page.evaluate(i => window.__game.actions.select({ kind: 'room', i }), gi);

@@ -46,7 +46,7 @@ describe('поля состояния — группами', () => {
     const raw = JSON.parse(fixture(47)) as Box;
     const s = fromSave(db, fixture(47));
     expect(s.schema).toBe(SCHEMA);
-    expect(SCHEMA).toBe(49);
+    expect(SCHEMA).toBe(50);
     for (const [k, to] of MOVED) {
       expect(k in s).toBe(false);
       if (raw[k] === undefined) expect(k in box(s, to)).toBe(false);
@@ -59,7 +59,13 @@ describe('поля состояния — группами', () => {
     expect(heads).toEqual(raw.heads as typeof heads);
     const out = s as unknown as Box;
     const moved = new Set(MOVED.map(([k]) => k));
-    for (const k of Object.keys(raw)) if (!moved.has(k) && k !== 'schema' && k !== 'heads' && k !== 'plan') expect(out[k]).toEqual(raw[k]);
+    // шаг 49 → 50 (Б7г): у серии в работе — без помещения прошлой стадии, у людей — запись процедуры переноса полупродукта
+    const b7g = (k: string, v: unknown): unknown => {
+      if (k === 'people') return JSON.parse(JSON.stringify(v, (kk, vv) => (kk === 'SOP-0025' ? undefined : vv)));
+      if (k === 'batches') return JSON.parse(JSON.stringify(v, (kk, vv) => (kk === 'room' || kk === 'place' ? undefined : vv)));
+      return v;
+    };
+    for (const k of Object.keys(raw)) if (!moved.has(k) && k !== 'schema' && k !== 'heads' && k !== 'plan') expect(b7g(k, out[k])).toEqual(b7g(k, raw[k]));
     // план — тот же, только здание стало участком и корпусом: внутренность без стен здания, участок «Завод»
     const { building, ...rest } = raw.plan as Box & { building: [number, number, number, number] };
     // и у вещей плана — поставщик (Б7в, шаг 48 → 49): без него — тот же

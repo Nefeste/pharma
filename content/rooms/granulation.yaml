@@ -7,6 +7,5 @@ area: TB
 min: [6, 6]
 build: true
 things: [eq.hsm, eq.fbd, inst.lod]
-once: true
 source: [gmp-eaeu]
 review: draft

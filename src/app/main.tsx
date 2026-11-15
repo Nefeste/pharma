@@ -116,6 +116,8 @@ const actions: Actions = {
   moveGantt: later('moveGantt'),
   drag: later('drag'),
   drop: later('drop'),
+  routeDraft: later('routeDraft'),
+  routeUnit: later('routeUnit'),
   cancelDrag: later('cancelDrag'),
   approveDraft: later('approveDraft'),
   resetDraft: later('resetDraft'),

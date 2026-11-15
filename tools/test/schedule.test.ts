@@ -6,6 +6,7 @@
 // черновика, команды нет; план — с черновиком, прежние полосы сдвинутых серий — рядом; «Утвердить» — сроки как в
 // черновике и план как показан; «Сбросить» — ничего не изменилось; начатое задание из черновика уходит. Новое задание
 // черновика (0.0.39): его полосы и причины до «Утвердить» — те же, что после, с номером, который оно получит.
+import { CARRY_WORK } from '../../src/engine/mes';
 import { describe, expect, test } from 'bun:test';
 import { legacy as db } from './legacy';
 import { db as game } from '../../src/content';
@@ -207,7 +208,10 @@ describe('призрак', () => {
     // вторую серию тянут так, чтобы её комплект был готов посреди отвешивания первой
     const g = ghostView(db, s, { view: 'ghost', batch: 'B2', notBefore: b1.from + 15 * MIN });
     const room = planOf(db, s.plan).roomOf.dispensing;
-    expect(g.why).toContainEqual(expect.objectContaining({ why: 'room', bar: 'dispense', room, batch: 'B1', until: b1.to }));
+    // с Б7г помещение свободно, когда полупродукт первой серии вывезли: конец отвешивания и перенос — погрузка, выгрузка, путь
+    const w = g.why.find(x => x.why === 'room' && x.bar === 'dispense' && x.room === room && x.batch === 'B1') as { until: number } | undefined;
+    expect(w?.until).toBeGreaterThanOrEqual(b1.to + CARRY_WORK);
+    expect(w!.until).toBeLessThan(b1.to + CARRY_WORK + 5 * MIN);
     expect(g.why).toContainEqual(expect.objectContaining({ why: 'clean', bar: 'dispense', room, cause: 'after', batch: 'B1' }));
     const d2 = g.bars.find(b => b.stage === 'dispense')!;
     expect(d2.from).toBeGreaterThan(b1.to);

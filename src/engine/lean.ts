@@ -4,6 +4,7 @@
 // движка, кроме вопросов о пригодности активов (Б3в): его зовут они.
 import type { ContentDb, Dept, Id } from '../content/types';
 import { lineUnfit, stageUnfit } from './assets';
+import { stageRoom } from './route';
 import { DAY, HOUR, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { machineSpeed } from './modes';
@@ -52,6 +53,7 @@ export const AREA: Record<TaskKind, Dept> = {
   // приёмка работы подрядчика (Б3в) — ООК или ОКК; путь к активу — на участок того, кто принимает (`moved`)
   accept: 'qa',
   qualify: 'qa',
+  carry: 'mes',
   mount: 'maint',
   vendorReview: 'qa',
   devAssess: 'qa',
@@ -501,11 +503,13 @@ export function phaseOf(db: ContentDb, s: PlantState, b: Batch): BatchPhase | un
     case 'kitting':
       return 'kitting';
     case 'process': {
-      const task = Object.values(s.tasks).find(t => t.kind === 'stage' && t.batch === b.id);
+      const task = Object.values(s.tasks).find(t => (t.kind === 'stage' || t.kind === 'carry') && t.batch === b.id);
       if (task) return task.state === 'busy' ? 'work' : 'people';
       if (b.run?.rest !== undefined) return 'repair';
       const st = db.recipes[b.recipe].stages[b.stage];
-      const roomId = planOf(db, s.plan).roomOf[st.room];
+      // помещение стадии — по маршруту (Б7г); выбора ждёт игрок — серия ждёт помещение
+      const roomId = st ? (b.room ?? stageRoom(db, s, b, b.stage)) : b.room;
+      if (!st || !roomId) return 'room';
       const room = s.rooms[roomId];
       if (room.batch && room.batch !== b.id) return 'room';
       const eqs = Object.values(s.equipment).filter(e => e.room === roomId && st.equipment.includes(e.type));
@@ -586,7 +590,7 @@ export function placeOf(db: ContentDb, s: PlantState, b: Batch, ph: BatchPhase):
   const plan = planOf(db, s.plan);
   switch (b.status) {
     case 'process':
-      return plan.roomOf[db.recipes[b.recipe].stages[b.stage].room];
+      return b.room ?? stageRoom(db, s, b, b.stage);
     case 'bulk':
       return spotsOf(plan).lab;
     case 'packing':

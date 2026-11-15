@@ -29,9 +29,13 @@ export const rectOf = (a: Cell, b: Cell): [number, number, number, number] => [M
 /** Помещение словами: тип каталога и номер у построенного стройкой — «Общий коридор 2» у `corridor-2`. */
 export function roomName(plan: Plant, id: string): string {
   const r = plan.rooms.find(x => x.id === id);
-  if (!r) return id;
-  const base = T.roomTypes[r.type] ?? r.type;
-  const n = id.startsWith(`${r.type}-`) ? id.slice(r.type.length + 1) : '';
+  return r ? roomLabel(r.type, id) : id;
+}
+
+/** Помещение словами по типу и имени, без плана (Б7г): «Таблетирование 2» у `compression-2`. */
+export function roomLabel(type: string, id: string): string {
+  const base = T.roomTypes[type] ?? type;
+  const n = id.startsWith(`${type}-`) ? id.slice(type.length + 1) : '';
   return n !== '' && Number.isInteger(Number(n)) ? `${base} ${n}` : base;
 }
 

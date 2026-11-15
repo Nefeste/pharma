@@ -14,6 +14,7 @@ import { BATCH_HOUR, cleanWork, nominal, packNeeds, roomWork, washRoles, washWor
 import { contractOf, costOf, listPrice } from '../partners';
 import { aheadMilli, casesOf, choose, frozenDays, frozenOf, idNum, positionOf, prevBefore } from '../planner';
 import { planOf } from '../plant';
+import { roomDown } from '../site/down';
 import { numOf, POL, policyOf } from '../policies';
 import { QP_WORK } from '../qa';
 import { scheduleOn, spanOn } from '../shifts';
@@ -252,6 +253,11 @@ export function capacityOf(db: ContentDb, s: PlantState, n: number): SopCap {
   const cap: SopLoad = { ...blankLoad(), slot: workdaysIn(cal, y, m) };
   const have = blankHours();
   const people = Object.values(s.people);
+  // помещений вида, которые работают (Б7г): мощность вида — часы аппаратчиков в смене в каждом
+  const plant = planOf(db, s.plan).plant;
+  const roomsOf = (type: string) => plant.rooms.filter(r => r.type === type && !roomDown(db, s, r.id)).length;
+  const gran = roomsOf('granulation');
+  const comp = roomsOf('compression');
   const span = (role: Id, z: number) => {
     let a = Infinity;
     let b = -Infinity;
@@ -273,8 +279,8 @@ export function capacityOf(db: ContentDb, s: PlantState, n: number): SopCap {
     cap.hplc += span('role.analyst', z);
     cap.line += span('role.line-operator', z);
     const ops = span('role.operator', z);
-    cap.granulation += ops;
-    cap.compression += ops;
+    cap.granulation += ops * gran;
+    cap.compression += ops * comp;
   }
   cap.analyst = have['role.analyst'];
   cap.qp = have['role.qp'];

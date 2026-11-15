@@ -605,6 +605,16 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     }
     return raw;
   },
+  // 49 → 50 (Б7г): помещение серии — то, что она держит, или куда её полупродукт привезли. До Б7г серия уходила из
+  // помещения в конце стадии, а помещение прошлой стадии оставалось у неё в записи — его снимаем; маршрут появится, когда
+  // стадия станет следующей
+  49: raw => {
+    const rooms = raw.rooms as Record<string, { batch?: string }> | undefined;
+    for (const b of Object.values((raw.batches ?? {}) as Record<string, { id: string; status: string; room?: string }>)) {
+      if (b.status === 'process' && b.room && rooms?.[b.room]?.batch !== b.id) delete b.room;
+    }
+    return raw;
+  },
 };
 
 /** Поля состояния, сгруппированные с Б7б (схема 48): куда переехало прежнее поле верхнего уровня. */

@@ -174,6 +174,7 @@ export const TASK_KINDS = [
   'wasteSign',
   'qualify',
   'mount',
+  'carry',
 ] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];
 

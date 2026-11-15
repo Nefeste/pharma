@@ -1973,6 +1973,7 @@ export const en: Strings = {
       forecast: (month: string, cases: string) => `Sales department forecast for ${month}: ${cases}`,
       fcEdit: (sku: string, month: string, cases?: string) => (cases ? `Planning forecast: ${sku}, ${month}: ${cases}` : `Planning forecast: ${sku}, ${month}: edit removed`),
       sop: (month: string, covers: string) => `S&OP plan from ${month}: stock — ${covers}`,
+      route: (batch: string, stage: string, unit?: string) => (unit ? `Route of ${batch}: ${stage} — ${unit}` : `Route of ${batch}: ${stage} — choice removed, the rule decides`),
       waste: (at?: string) => (at ? `Removal of rejected material: the contractor comes ${at}` : 'Removal of rejected material: the contractor comes the next working day'),
       mode: (head: string, mode: string) => `Department mode: ${head} — ${mode}`,
       policy: (what: string, to: string, from: string) => `Policy: ${what} — ${to} instead of ${from}`,
@@ -1992,6 +1993,12 @@ export const en: Strings = {
       wms: 'warehouse manager',
     } as Record<string, string>,
     memos: 'Memos',
+    /** batch route (B7g): the rank of the chosen unit's room and of the other units of the class */
+    route: {
+      ranks: ['the batch is already in the room', 'the room is clean for the product', 'a minor cleaning is needed', 'a major cleaning is needed', 'another batch holds the room', 'the unit is under repair or without a record in force'],
+      chosen: (why: string) => `Chosen: ${why}`,
+      other: (unit: string, why: string) => `${unit}: ${why}`,
+    },
     memo: {
       title: 'Memos without an answer',
       at: (when: string) => `answers ${when}`,
@@ -2013,6 +2020,8 @@ export const en: Strings = {
         maintain: (part: string, machine: string) => `replace a part: ${part} · ${machine}`,
         visit: (what: string, day: string) => `move the contractor visit: ${what} — to ${day}`,
         rush: (lot: string) => `rush the tests of lot ${lot}`,
+        stageNo: (n: number) => `stage ${n}`,
+        route: (batch: string, stage: string, unit?: string) => (unit ? `route of ${batch}: ${stage} — ${unit}` : `route of ${batch}: ${stage} — remove the choice`),
         setpoint: (what: string, v: string) => `setpoint: ${what} — ${v}`,
         po: (supplier: string, lines: string) => `purchase order: ${supplier} — ${lines}`,
         expedite: (po: string) => `expedite purchase order ${po}`,

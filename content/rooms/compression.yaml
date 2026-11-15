@@ -7,6 +7,5 @@ area: TB
 min: [6, 6]
 build: true
 things: [eq.press, eq.deduster, inst.balance, inst.hardness, inst.friabilator, inst.disintegration]
-once: true
 source: [gmp-eaeu]
 review: draft

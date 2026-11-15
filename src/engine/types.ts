@@ -9,7 +9,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 49;
+export const SCHEMA = 50;
 
 // ---------------------------------------------------------------- склад
 
@@ -615,6 +615,21 @@ export interface BatchNo {
   y: number;
 }
 
+/** Шаг маршрута серии (Б7г): единица главного класса стадии и кто её выбрал. */
+export interface RouteStep {
+  unit: string;
+  by: 'you' | 'rule';
+}
+
+/**
+ * Почему правило выбрало единицу стадии (Б7г): ступень помещения выбранной — 0 серия уже в нём, 1 чистое для продукта,
+ * 2 нужна малая уборка, 3 генеральная, 4 занято другой серией, 5 единица негодна, — и ступени других единиц класса.
+ */
+export interface RouteWhy {
+  rank: number;
+  others: { unit: string; rank: number }[];
+}
+
 export interface Batch {
   id: string;
   /** номер серии: окно пишет «PA001» до смешивания и «PA0010927» после */
@@ -672,6 +687,11 @@ export interface Batch {
   run?: StageRun;
   /** уставки режимов начатой стадии (Б1ж): сняты, когда серия заняла помещение стадии */
   sp?: Record<string, number>;
+  /**
+   * маршрут (Б7г): у стадии по номеру — единица главного класса, на которой она идёт, и кто её выбрал — игрок или
+   * правило коллеги производства; нет — стадию ещё не выбирали
+   */
+  route?: Record<number, RouteStep>;
   /** время серии по состояниям, с (docs/specs/2026-10-engine.md, 1ж); нынешнее состояние и с какого момента */
   spent: Partial<Record<BatchPhase, number>>;
   phase?: BatchPhase;
@@ -1808,6 +1828,8 @@ export type Decided =
   | { kind: 'cancel'; batch: string; sku?: Id; notBefore: number; due?: number; for?: BatchFor; frozen?: EditPrice }
   /** новый «не раньше» задания в замороженном горизонте (Б6е): прежний и новый, цена правки */
   | { kind: 'shift'; batch: string; sku?: Id; from: number; notBefore: number; frozen: EditPrice }
+  /** маршрут серии (Б7г): единица стадии; у правила — почему она; «снять выбор» игрока — без единицы */
+  | { kind: 'route'; batch: string; stage: string; unit?: string; why?: RouteWhy }
   /** событие коммерции (Б6е): крупный заказ покупателя */
   | { kind: 'bigOrder'; order: string; customer: Id; sku: Id; cases: number; due: number }
   /** событие коммерции (Б6е): снятый спрос */
@@ -2340,6 +2362,11 @@ export type Command =
   | { kind: 'rush'; lot: string; by?: string }
   /** новый срок «не раньше» задания на серию, которое ещё не начало комплектовку (3д): игровые секунды */
   | { kind: 'shift'; batch: string; notBefore: number; by?: string }
+  /**
+   * маршрут серии (Б7г): у стадии `stage` (номер в карте) задания — единица главного класса стадии; без `unit` — снять
+   * выбор, стадию выберет правило
+   */
+  | { kind: 'route'; batch: string; stage: number; unit?: string; by?: string }
   /** места игрока (3е): набор целиком */
   | { kind: 'seat'; seats: SeatId[] }
   /** шаг расследования (часть 4) */
@@ -2485,6 +2512,9 @@ export type Refusal =
   | 'notLab'
   | 'already'
   | 'started'
+  /** маршрут (Б7г): единица не главного класса стадии; её помещение не работает или его сносят */
+  | 'notUnit'
+  | 'unitDown'
   | 'cancelled'
   | 'noOrder'
   | 'notYours'

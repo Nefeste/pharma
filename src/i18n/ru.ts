@@ -2072,6 +2072,7 @@ export const ru = {
       forecast: (month: string, cases: string) => `Прогноз отдела продаж на ${month} — ${cases}`,
       fcEdit: (sku: string, month: string, cases?: string) => (cases ? `Прогноз планирования: ${sku}, ${month} — ${cases}` : `Прогноз планирования: ${sku}, ${month} — правка снята`),
       sop: (month: string, covers: string) => `План S&OP с ${month}: запас — ${covers}`,
+      route: (batch: string, stage: string, unit?: string) => (unit ? `Маршрут ${batch}: ${stage} — ${unit}` : `Маршрут ${batch}: ${stage} — выбор снят, решит правило`),
       waste: (at?: string) => (at ? `Вывоз отклонённого: подрядчик приедет ${at}` : 'Вывоз отклонённого: подрядчик приедет на следующий рабочий день'),
       mode: (head: string, mode: string) => `Режим отдела: ${head} — ${mode}`,
       policy: (what: string, to: string, from: string) => `Политика: ${what} — ${to} вместо ${from}`,
@@ -2092,6 +2093,12 @@ export const ru = {
     } as Record<string, string>,
     memos: 'Записки',
     /** служебные записки (Б5д) */
+    /** маршрут серии (Б7г): ступень помещения выбранной единицы и других единиц класса */
+    route: {
+      ranks: ['серия уже в помещении', 'помещение чистое для продукта', 'нужна малая уборка', 'нужна генеральная уборка', 'помещение занято другой серией', 'единица в ремонте или без записи'],
+      chosen: (why: string) => `Выбрана: ${why}`,
+      other: (unit: string, why: string) => `${unit}: ${why}`,
+    },
     memo: {
       title: 'Записки без ответа',
       at: (when: string) => `ответит ${when}`,
@@ -2113,6 +2120,8 @@ export const ru = {
         maintain: (part: string, machine: string) => `заменить узел: ${part} · ${machine}`,
         visit: (what: string, day: string) => `перенести визит подрядчика: ${what} — на ${day}`,
         rush: (lot: string) => `ускорить испытания партии ${lot}`,
+        stageNo: (n: number) => `стадия ${n}`,
+        route: (batch: string, stage: string, unit?: string) => (unit ? `маршрут ${batch}: ${stage} — ${unit}` : `маршрут ${batch}: ${stage} — снять выбор`),
         setpoint: (what: string, v: string) => `уставка: ${what} — ${v}`,
         po: (supplier: string, lines: string) => `заказ поставщику: ${supplier} — ${lines}`,
         expedite: (po: string) => `ускорить заказ поставщику ${po}`,

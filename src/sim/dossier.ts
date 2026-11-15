@@ -10,6 +10,7 @@ import { RECON_LIMIT, usedByCount } from '../engine/line';
 import { stageMass } from '../engine/mes';
 import { editInFrozen, editPrice } from '../engine/plan/price';
 import { planOf } from '../engine/plant';
+import { stageRoom } from '../engine/route';
 import { unitsOfLot } from '../engine/stock';
 import type { Batch, BatchStatus, Deviation, EditPrice, KitLine, LotStatus, PackJob, PlantState, Recon } from '../engine/types';
 import { whoBatch, type WhoRow } from './journal';
@@ -233,7 +234,7 @@ export function dossierView(db: ContentDb, s: PlantState, q: DossierQuery): Doss
   const stages: StageRow[] = r.stages.map((st, k) => {
     const rec = b.records.find(x => x.stage === st.id);
     const now = !rec && k === b.stage && b.status === 'process' && b.room !== undefined && !!running;
-    const roomId = rec?.room ?? (now ? b.room! : plan.roomOf[st.room]);
+    const roomId = rec?.room ?? (now ? b.room! : (stageRoom(db, s, b, k) ?? plan.roomOf[st.room]));
     const eq = rec ? rec.equipment : Object.values(s.equipment).filter(e => e.room === roomId && st.equipment.includes(e.type)).map(e => e.id);
     const out: StageRow = {
       stage: st.id,

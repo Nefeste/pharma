@@ -13,6 +13,7 @@ import { ONE_FAILURE } from '../engine/maint';
 import type { BatchFor, Command, Decided, DeptMode, Head, PoPick } from '../engine/types';
 import { dayText, durText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
 import type { AskInfo, JournalAs, JournalRef, JournalRow, ModeInfo, WhoRow } from '../sim/journal';
+import { roomLabel } from '../app/build';
 import { assetClass, workName } from './assets';
 import { capaName, causeText } from './capa';
 import { db } from './db';
@@ -88,6 +89,9 @@ function pickLine(w: { pick?: PoPick }): string[] {
   if (k.by === 'fast') return [T.mrp.pickFast(party(k.main), k.late)];
   return [`${T.mrp.pickRfq}: ${k.offers.map(o => `${party(o.supplier)} — ${num(o.score / 100, 1)}`).join(', ')}`];
 }
+
+/** Единица маршрута словами (Б7г): имя и помещение — «press-2, Таблетирование 2». */
+const unitWord = (unit: string, r: JournalRef) => (r.room && r.rtype ? `${unit}, ${roomLabel(r.rtype, r.room)}` : unit);
 
 /** Что решено и о чём — одной строкой. */
 export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
@@ -182,6 +186,9 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
       if (d.op === 'replace') return E.replace(what, vendor, d.of ?? '', due);
       return E[d.op](what);
     }
+    case 'route':
+      // маршрут серии (Б7г): стадия и единица с помещением
+      return J.route(T.now.batch(batchCode(r) || `B${r.bn ?? ''}`), T.stages[d.stage] ?? d.stage, d.unit ? unitWord(d.unit, r) : undefined);
     case 'mode':
       return J.mode(T.journal.names[d.head] ?? d.head, T.journal.modes[d.mode] ?? d.mode);
     case 'policy': {
@@ -212,6 +219,8 @@ export function cmdText(c: Command, r: JournalRef, start: Ymd): string {
       return C.cancel(T.now.batch(batchCode(r) || c.batch));
     case 'pack':
       return C.pack(T.now.batch(batchCode(r) || c.batch), sku(c.sku));
+    case 'route':
+      return C.route(T.now.batch(batchCode(r) || c.batch), T.journal.memo.cmd.stageNo(c.stage + 1), c.unit ? unitWord(c.unit, r) : undefined);
     case 'maintain':
       return C.maintain(partName(r.machine, r.part), machineName(r.machine));
     case 'visit':
@@ -440,6 +449,13 @@ function ruleLines(d: Decided, r: JournalRef, t: number, start: Ymd): string[] {
       if (!w) return [];
       const share = w.full ? policyText(db?.policies['pol.wms.full'], w.full) : undefined;
       return w.since !== undefined ? [J.waste.old(dayText(momentOf(start, w.since).day), w.months)] : [J.waste.full(w.used, w.places, share)];
+    }
+    case 'route': {
+      // правило маршрута (Б7г): почему эта единица и чем хуже другие единицы класса
+      const w = d.why;
+      if (!w) return [];
+      const R = T.journal.route;
+      return [R.chosen(R.ranks[w.rank] ?? ''), ...w.others.map(o => R.other(o.unit, R.ranks[o.rank] ?? ''))];
     }
     case 'fork': {
       // «Просят решить» (Б5д): цена каждого ответа — «как сейчас» первым

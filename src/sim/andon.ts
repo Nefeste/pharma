@@ -13,6 +13,7 @@ import { batchNo } from '../engine/batchno';
 import { orderRisks } from '../engine/market';
 import { roomAt } from '../engine/places';
 import { planOf, type PlantPlan } from '../engine/plant';
+import { stageRoom } from '../engine/route';
 import { shiftEnd } from '../engine/staff';
 import type { PlantState, Task, TaskKind, WaitCause } from '../engine/types';
 import { assetInfo, thingOf } from './places';
@@ -123,7 +124,7 @@ function taskThing(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task): Thin
   }
   if (t.kind === 'stage' && t.batch) {
     const b = s.batches[t.batch];
-    const room = b?.room ?? (b ? plan.roomOf[db.recipes[b.recipe].stages[b.stage].room] : undefined);
+    const room = b?.room ?? (b ? stageRoom(db, s, b, b.stage) : undefined);
     return roomThing(plan, room);
   }
   if (t.room) return roomThing(plan, t.room);
@@ -176,7 +177,8 @@ export function andonView(db: ContentDb, s: PlantState): AndonView {
   for (const b of Object.values(s.batches)) {
     if (b.status !== 'process' || b.phase !== 'cleaning') continue;
     const st = db.recipes[b.recipe].stages[b.stage];
-    const room = plan.roomOf[st.room];
+    const room = st ? (b.room ?? stageRoom(db, s, b, b.stage)) : undefined;
+    if (!st || !room) continue;
     const t = Object.values(s.tasks).find(x => (x.kind === 'clean' || x.kind === 'roomClean') && x.room === room && x.state === 'open' && x.why === 'shift');
     if (!t) continue;
     if (!Object.values(s.people).some(p => p.role === st.staff.role && shiftEnd(db, s, p) !== undefined)) continue;
@@ -190,7 +192,7 @@ export function andonView(db: ContentDb, s: PlantState): AndonView {
   // материал не пришёл: серия к своему «не раньше» — над помещением первой стадии; упаковка — над помещением линии
   for (const b of Object.values(s.batches)) {
     if (b.status === 'waiting' && s.t >= b.notBefore) {
-      add(roomThing(plan, plan.roomOf[db.recipes[b.recipe].stages[0].room]), { kind: 'material', since: b.notBefore, batch: batchNo(b.code), short: (b.short ?? []).map(x => x.material) });
+      add(roomThing(plan, stageRoom(db, s, b, 0)), { kind: 'material', since: b.notBefore, batch: batchNo(b.code), short: (b.short ?? []).map(x => x.material) });
     } else if (b.pack?.state === 'waiting') {
       add(roomThing(plan, plan.plant.lines.find(l => l.id === b.pack!.line)?.room), { kind: 'material', since: b.pack.created, batch: batchNo(b.code), short: (b.pack.short ?? []).map(x => x.material) });
     }

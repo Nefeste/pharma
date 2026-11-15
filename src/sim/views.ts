@@ -418,7 +418,7 @@ export function stockView(db: ContentDb, s: PlantState, q: StockQuery): StockVie
 function cleanOf(db: ContentDb, s: PlantState, r: Room): RoomClean | undefined {
   if (r.batch) return undefined;
   const plan = planOf(db, s.plan);
-  if (!plan.plant.lines.some(l => l.room === r.id) && !Object.values(db.recipes).some(rc => rc.stages.some(st => plan.roomOf[st.room] === r.id))) return undefined;
+  if (!plan.plant.lines.some(l => l.room === r.id) && !Object.values(db.recipes).some(rc => rc.stages.some(st => st.room === r.type))) return undefined;
   if (r.status === 'clean') return { k: 'clean', ...(r.cleanFor ? { product: r.cleanFor } : {}), until: r.since + CLEAN_HOLD, ...(s.t - r.since > CLEAN_HOLD ? { expired: true as const } : {}) };
   if (r.status !== 'dirty') return undefined;
   // грязным дольше суток — генеральная; начатая мойка своё уже решила

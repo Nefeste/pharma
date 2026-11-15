@@ -1532,6 +1532,8 @@ function learnErrors(raw: Raw, sops: Record<string, Sop>, tests: Record<string, 
     // оборудование (Б7в): день квалификации — инженер по валидации, монтаж при переносе — слесари
     qualify: [VALIDATOR],
     mount: MAINT.mechanics,
+    // маршрут серии (Б7г): полупродукт в контейнере на тележке везёт аппаратчик стадии, которая кончилась
+    carry: ['role.operator'],
   };
   const LINE_WORK: TaskKind[] = ['crew', 'feed', 'changeover', 'clearance', 'clearCheck'];
   const check = (where: string, has: string[], doers: Iterable<string>) => {

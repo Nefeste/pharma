@@ -106,8 +106,10 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # planned order (e2e-sources.mjs, sources.png; `--long 1` — on to the dossier filing),
                                    # the build (e2e-build.mjs, build.png), the equipment — an order, its undo, a
                                    # replacement, a cancel from the card (e2e-equip.mjs, equip.png; `--long 1` — on
-                                   # to the installation and the qualification record); `-- --only main|week|memo|
-                                   # capa|jobs|launch|forecast|sop|mrp|edits|build|equip|sources` for one
+                                   # to the installation and the qualification record), the batch route — a unit in the
+                                   # batch record, a stage dragged to a second room's row, a move in «Сейчас»
+                                   # (e2e-route.mjs, route.png); `-- --only main|week|memo|capa|jobs|launch|forecast|
+                                   # sop|mrp|edits|build|equip|route|sources` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -475,7 +477,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   the vendor's engineer with the plant's validation engineer or a contractor's, the report accepted by the QA
   specialist —, the bills; a unit on its path does not work (`unfit` — `path`), a stage takes the first fit unit of a
   class; the undo of an order until midnight; the parts of a bought unit fail by its vendor's share, its spares come in
-  its vendor's term; the plant's own validation engineer also requalifies without a contractor's bill),
+  its vendor's term; the plant's own validation engineer also requalifies without a contractor's bill), `route.ts` (with
+  Б7г, the batch route: a stage's unit of its main class, the room — where it stands; the player's `route` command or
+  the production head's rule — the room the batch is in, clean for the product, a minor cleaning, a major one, the plan
+  order —, kept once chosen; one unit — no choice and no record; the department modes; one function for the engine, the
+  schedule run and the views — `pickUnit`, `stageRoom`; the move of the intermediate is `carry` in `mes.ts`),
   `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.

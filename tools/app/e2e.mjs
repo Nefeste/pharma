@@ -869,7 +869,7 @@ async function mainPart() {
     );
     const hour = await page.evaluate(() => (window.__game.t % 86400) / 3600);
     if (!hit || back.length === 0 || !back.every(r => /^Возврат остатков · .+, П-\d{4}-\d{4} · серия [A-Z]{2}\d{3,}$/.test(r.text) && r.icon === 'back'))
-      fail(`«Сейчас» в ${hour.toFixed(1)} ч: возврат с грануляцией ${hit ? 'есть' : 'не дождались'}, строки возврата ${JSON.stringify(back)}`);
+      fail(`«Сейчас» в ${hour.toFixed(1)} ч: возврат с грануляцией ${hit ? 'есть' : 'не дождались'}, строки возврата ${JSON.stringify(back)}; ${await page.evaluate(() => `панель ${document.querySelector('#now') ? 'открыта' : 'закрыта'}, строки ${(window.__game.store.get().now.view?.rows ?? []).map(r => `${r.dept}:${r.kind}`).join(' ')}`)}`);
     else ok(`«Сейчас» в ${hour.toFixed(1)} ч: «${back[0].text}», значок «${back[0].icon}»`);
     const gi = await page.evaluate(() => window.__game.layout.plan.plant.rooms.findIndex(r => r.type === 'granulation'));
     await page.evaluate(i => window.__game.actions.select({ kind: 'room', i }), gi);

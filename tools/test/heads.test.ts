@@ -42,9 +42,14 @@ function liveAccepting(s: PlantState, end: number) {
     if (got.length === 0 && !meet) continue;
     const rest = s.until;
     delete s.until;
-    for (const a of got) {
-      expect(refusals(apply(db, s, { kind: 'accept', n: a.n }))).toEqual([]);
+    // принятая команда сама может дать предложение (её шаги идут сразу): его — тоже в ту же минуту
+    const queue = [...got];
+    while (queue.length > 0) {
+      const a = queue.shift()!;
+      const back = apply(db, s, { kind: 'accept', n: a.n });
+      expect(refusals(back)).toEqual([]);
       accepted++;
+      queue.push(...back.filter((n): n is Extract<Notice, { kind: 'proposal' }> => n.kind === 'proposal'));
     }
     if (meet) expect(refusals(apply(db, s, { kind: 'sop', cover: s.planning.sop!.open!.best, by: 'player' }))).toEqual([]);
     if (rest !== undefined) s.until = rest;
@@ -118,7 +123,7 @@ describe('«советует»', () => {
     // расследования: все предложены и приняты
     const kinds = new Set(asks(b).map(r => r.d.kind));
     expect([...kinds].sort()).toEqual(['capaRun', 'hire', 'order', 'replace', 'vacancy']);
-    expect(asks(b).every(r => r.ask!.end?.how === 'ok' && r.ask!.end.seat === 'production')).toBe(true);
+        expect(asks(b).every(r => r.ask!.end?.how === 'ok' && r.ask!.end.seat === 'production')).toBe(true);
     expect(asks(b).length).toBe(n);
     // записи журнала — те же мгновения, руководители и причины; номера вещей — те же
     expect(life(b)).toEqual(life(a));

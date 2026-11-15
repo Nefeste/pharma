@@ -2,6 +2,7 @@
 // команде чужого отдела — руководителю отдела, ответ в его час, запись «по записке», отказ с причиной движка, отзыв; о
 // решениях ООК, политиках и своём — отказ. Вопрос — посту развилки или директору; не ответили — руководитель решает сам;
 // ответ — команда руководителя от игрока; закрытый вопрос и чужой пост — отказ. Мест нет — ни записок, ни вопросов.
+import { partType, wearAt } from '../../src/engine/maint';
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { visitLast } from '../../src/engine/assets';
@@ -230,6 +231,10 @@ describe('«Просят решить»', () => {
 
   test('замена перед работой — «Производству» в смену главного механика; «Заменить сейчас» — команда maintain', () => {
     const s = production();
+    // износ пуансонов — у порога с первого дня: вопрос — до того, как CAPA расследования опустит порог замены (с Б7г
+    // таблетирование позже на время переноса полупродукта, и CAPA приходит раньше вопроса)
+    const pt = s.parts[PRESS];
+    while (wearAt(partType(db, pt), pt.done) < 9_960) pt.done += 1_000;
     const ask = until(s, 'ask', 14 * DAY)!;
     expect(ask).toMatchObject({ kind: 'ask', fork: 'replace', head: 'maint', seat: 'production' });
     const r = rec(s, ask.n);

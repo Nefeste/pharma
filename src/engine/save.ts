@@ -608,10 +608,27 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   // 49 → 50 (Б7г): помещение серии — то, что она держит, или куда её полупродукт привезли. До Б7г серия уходила из
   // помещения в конце стадии, а помещение прошлой стадии оставалось у неё в записи — его снимаем; маршрут появится, когда
   // стадия станет следующей
-  49: raw => {
+  49: (raw, db) => {
     const rooms = raw.rooms as Record<string, { batch?: string }> | undefined;
-    for (const b of Object.values((raw.batches ?? {}) as Record<string, { id: string; status: string; room?: string }>)) {
-      if (b.status === 'process' && b.room && rooms?.[b.room]?.batch !== b.id) delete b.room;
+    const plan = raw.plan as unknown as Plant | undefined;
+    for (const b of Object.values((raw.batches ?? {}) as Record<string, { id: string; status: string; recipe: string; stage: number; room?: string; place?: string }>)) {
+      if (b.status !== 'process' || !b.room || rooms?.[b.room]?.batch === b.id) continue;
+      // место учёта (Б1к) шло за помещением прошлой стадии — теперь за помещением следующей, первым своего типа
+      const type = db.recipes[b.recipe]?.stages[b.stage]?.room;
+      const next = plan?.rooms.find(r => r.type === type)?.id;
+      if (b.place === b.room && next) b.place = next;
+      delete b.room;
+    }
+    // процедура переноса полупродукта (Б7г): у людей её роли — запись обучения, как у людей старта, без задачи изучить
+    const sc = db.scenarios[raw.scenario as string];
+    const s = raw as unknown as PlantState;
+    if (sc && s.people) {
+      const day = momentOf(s.start, s.t).day;
+      const codes = new Set(Object.values(db.sops).flatMap(x => (x.for.tasks?.includes('carry') ? [x.doc.code] : [])));
+      for (const p of Object.values(s.people)) {
+        const lack = new Set(rowsOf(db, p).filter(c => codes.has(c) && !p.train[c]));
+        if (lack.size > 0) seedTraining(db, sc, p, day, lack);
+      }
     }
     return raw;
   },

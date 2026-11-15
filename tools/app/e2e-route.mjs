@@ -14,7 +14,7 @@ export async function routePart({ browser, port, out, ok, fail, errors, requests
   const feel = [];
   const started = Date.now();
   await director({ browser, port, out, ok, fail, errors, requests, q, shots, feel });
-  ok(`Маршрут, отклик: ${feel.map(x => `${x.label} — ${x.f} кадр., ${x.ms} мс`).join('; ')}; часть — ${((Date.now() - started) / 60000).toFixed(1)} мин`);
+  ok(`Маршрут: часть — ${((Date.now() - started) / 60000).toFixed(1)} мин`);
   const cells = shots.map(c => `<figure><img src="data:image/png;base64,${readFileSync(c.file).toString('base64')}"><figcaption>${c.label}</figcaption></figure>`).join('');
   const lister = await browser.newPage({ viewport: { width: 1290, height: 800 } });
   await lister.setContent(`<style>body{margin:6px;background:#1d2226;font:12px sans-serif;color:#d8dde0}main{display:grid;grid-template-columns:repeat(3,420px);gap:6px}figure{margin:0}img{width:420px;display:block}figcaption{padding:2px 0 4px}</style><main>${cells}</main>`);
@@ -35,8 +35,8 @@ const SITE = [
 
 /** Единицы второго таблетирования: пресс и обеспыливатель — на места пола, приборы МОК — в помещение. */
 const UNITS = [
-  { type: 'eq.press', at: [6150, 250] },
-  { type: 'eq.deduster', at: [6350, 650] },
+  { type: 'eq.press', at: [6150, 350] },
+  { type: 'eq.deduster', at: [6050, 250] },
   { type: 'inst.balance' },
   { type: 'inst.hardness' },
   { type: 'inst.friabilator' },
@@ -74,11 +74,9 @@ async function director(x) {
     await page.evaluate(k => window.__game.actions.openDossier(k), target.n);
     await page.waitForSelector('[data-test=dossier-stage][data-stage=compress] [data-test=dossier-route-pick]', { timeout: 20_000 });
     await page.selectOption('[data-test=dossier-stage][data-stage=compress] [data-test=dossier-route-pick]', press);
-    await page.waitForFunction(
-      p => document.querySelector('[data-test=dossier-stage][data-stage=compress] [data-test=dossier-route]')?.textContent?.includes(p),
-      press,
-      { timeout: 20_000 },
-    );
+    await page
+      .waitForFunction(() => /выбрали вы/.test(document.querySelector('[data-test=dossier-stage][data-stage=compress] [data-test=dossier-route]')?.textContent ?? ''), null, { timeout: 20_000 })
+      .catch(async () => fail(`Маршрут: выбор не дошёл — последнее извещение «${await page.evaluate(() => window.__game.store.get().notices.at(-1)?.text ?? '')}»`));
     const line = await page.evaluate(() => document.querySelector('[data-test=dossier-stage][data-stage=compress] [data-test=dossier-route]')?.textContent ?? '');
     if (!/выбрали вы/.test(line)) fail(`Маршрут: в досье нет «выбрали вы» — «${line}»`);
     else ok(`Маршрут: досье — «${line.slice(0, 90)}»`);
@@ -88,6 +86,9 @@ async function director(x) {
     await page.keyboard.press('Escape');
     await page.keyboard.press('KeyG');
     await page.waitForSelector('[data-test=gantt] [data-test=gbar][data-kind=stage]', { timeout: 30_000 });
+    // девять суток — в окне и следующая серия с таблетированием
+    await page.evaluate(() => window.__game.actions.setGanttDays(9));
+    await page.waitForFunction(() => window.__game.store.get().gantt.view && window.__game.store.get().gantt.view.to - window.__game.store.get().gantt.view.from >= 6 * 86400, null, { timeout: 20_000 });
     const other = await page.evaluate(() => {
       const v = window.__game.store.get().gantt.view;
       return Object.keys(v.routable).find(b => v.routable[b].compress && v.bars.some(x => x.batch === b && x.stage === 'compress' && x.row === 'compression'));
@@ -112,15 +113,18 @@ async function director(x) {
       } else fail('Маршрут: нет полосы таблетирования или строки второго помещения на экране');
     } else ok('Маршрут: второй серии с таблетированием в окне нет — перетаскивание пропущено');
 
-    // перенос полупродукта: строка «Сейчас» — аппаратчик везёт контейнер
-    await page.keyboard.press('Escape');
-    await page.keyboard.press('KeyN');
-    await page.evaluate(() => window.__game.actions.setSpeed(4));
-    const carry = await page.waitForSelector('#now [data-test=now-row][data-kind=carry]', { timeout: 240_000 }).then(
-      r => r.evaluate(e => e.innerText.replace(/\s+/g, ' ').trim()),
-      () => '',
-    );
-    await page.evaluate(() => window.__game.actions.setSpeed(0));
+    // перенос полупродукта: строка «Сейчас» — аппаратчик везёт контейнер; мир — по часу «До события», окна закрыты
+    let carry = '';
+    for (let k = 0; k < 60 && !carry; k++) {
+      for (let j = 0; j < 6; j++) await page.keyboard.press('Escape');
+      if (!(await page.evaluate(() => !!document.querySelector('#now')))) await page.keyboard.press('KeyN');
+      await page.waitForSelector('#now', { timeout: 10_000 }).catch(() => undefined);
+      carry = await page.evaluate(() => document.querySelector('#now [data-test=now-row][data-kind=carry]')?.innerText.replace(/\s+/g, ' ').trim() ?? '');
+      if (carry) break;
+      await page.evaluate(() => window.__game.actions.setSpeed(4));
+      await page.waitForTimeout(1500);
+      await page.evaluate(() => window.__game.actions.setSpeed(0));
+    }
     if (carry) ok(`Маршрут: «Сейчас» — «${carry.slice(0, 90)}»`);
     else fail('Маршрут: строки переноса в «Сейчас» нет за 4 минуты на ×4');
     await s.shot('перенос');

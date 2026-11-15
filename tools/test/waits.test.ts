@@ -25,7 +25,8 @@ function place(b: Batch): string | undefined {
   if (!b.phase || b.phase === 'plan' || b.phase === 'before') return undefined;
   switch (b.status) {
     case 'process':
-      return plan.roomOf[db.recipes[b.recipe].stages[b.stage].room];
+      // с Б7г — где серия стоит: помещение, которое она держит, или куда её полупродукт привезли
+      return b.room ?? plan.roomOf[db.recipes[b.recipe].stages[b.stage].room];
     case 'bulk':
       return 'lab';
     case 'packing':

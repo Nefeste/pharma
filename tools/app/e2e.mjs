@@ -70,6 +70,7 @@ import { sopPart } from './e2e-sop.mjs';
 import { mrpPart } from './e2e-mrp.mjs';
 import { buildPart } from './e2e-build.mjs';
 import { equipPart } from './e2e-equip.mjs';
+import { routePart } from './e2e-route.mjs';
 import { editsPart } from './e2e-edits.mjs';
 import { sourcesPart } from './e2e-sources.mjs';
 import { jobsPart } from './e2e-jobs.mjs';
@@ -308,6 +309,7 @@ try {
   if (only === '' || only === 'edits') await editsPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'build') await buildPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'equip') await equipPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
+  if (only === '' || only === 'route') await routePart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'sources') await sourcesPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');

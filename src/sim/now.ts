@@ -103,6 +103,8 @@ export interface NowView {
 
 const DEPT: Partial<Record<TaskKind, NowDept>> = {
   stage: 'mes',
+  // перенос полупродукта (Б7г) — работа производства
+  carry: 'mes',
   clean: 'mes',
   pick: 'wms',
   transfer: 'wms',

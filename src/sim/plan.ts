@@ -10,7 +10,9 @@ import { DAY, daysFromCivil, HOUR } from '../engine/core/calendar';
 import { editInFrozen, frozenEdge, priceOf } from '../engine/plan/price';
 import { frozenOf } from '../engine/planner';
 import { MES, roomWork, washWork } from '../engine/mes';
-import { type Bar, type Change, type Fresh, forecast, freshBatches, type Why } from '../engine/plan/schedule';
+import { type Bar, type Change, type Fresh, forecast, freshBatches, type RouteChange, type Why } from '../engine/plan/schedule';
+import { unitsFor } from '../engine/route';
+import { roomDown } from '../engine/site/down';
 import { planOf } from '../engine/plant';
 import { shiftEndAt } from '../engine/staff';
 import type { Batch, BatchStatus, EditPrice, PlantState } from '../engine/types';
@@ -31,6 +33,8 @@ export interface GanttQuery {
   fresh?: Fresh[];
   /** задания, которые черновик отменяет (Б6а) — ещё не команды */
   drop?: string[];
+  /** маршрут черновика (Б7г): единицы стадий — ещё не команды */
+  routes?: RouteChange[];
   /** вкладка «План запуска» открыта (Б6б): собрать и его */
   launch?: true;
   /** вкладка «Прогноз» открыта (Б6в): собрать и его; ключ «прогноза против факта» — позиция или продукт */
@@ -46,6 +50,12 @@ export interface GhostQuery {
   draft?: Change[];
   fresh?: Fresh[];
   drop?: string[];
+}
+
+/** Выбор единицы стадии (Б7г): номер стадии в карте и единица главного класса в каждом помещении, где она стоит. */
+export interface RouteOpt {
+  k: number;
+  rooms: Record<string, string>;
 }
 
 /** Строка Ганта: комплектовка у шлюза, помещение производства (тип — для названия), упаковочная линия. */
@@ -86,6 +96,10 @@ export interface GanttView {
   was: Bar[];
   /** задания черновика, которые тянуть уже нельзя: начали комплектовку или их нет — окно убирает их из черновика */
   gone: string[];
+  /** правки маршрута черновика (Б7г), которых больше нет: стадия началась — `задание:стадия` */
+  routeGone: string[];
+  /** выбор единиц (Б7г): у серии — по номеру стадии единица в каждом помещении, где её можно поставить */
+  routable: Record<string, Record<string, RouteOpt>>;
   /** активы полос визитов и причин (Б3в): название класса, номер, работа — для слов */
   assets: Record<string, AssetInfo>;
   /** задания на серию и заказы без покрытия (Б6а) — по прогону с черновиком */
@@ -198,13 +212,45 @@ function movedOf(a: Bar[], b: Bar[], skip?: string): string[] {
   return [...ids].filter(id => planOfBatch(a, id) !== planOfBatch(b, id)).sort((x, y) => Number(x.slice(1)) - Number(y.slice(1)));
 }
 
+/**
+ * Стадии серии, которым можно выбрать единицу (Б7г): ещё не начались, к ним полупродукт не везут, единиц главного класса
+ * больше одной; у стадии — номер в карте и единица в каждом помещении — по помещению строки расписания.
+ */
+function routable(db: ContentDb, s: PlantState, id: string): Record<string, RouteOpt> | undefined {
+  const b = s.batches[id];
+  if (!b || ['cancelled', 'bulk', 'packing', 'fg', 'released', 'rejected'].includes(b.status)) return undefined;
+  const going = Object.values(s.tasks).some(t => t.batch === b.id && (t.kind === 'stage' || t.kind === 'carry')) || b.run !== undefined;
+  const out: Record<string, RouteOpt> = {};
+  db.recipes[b.recipe].stages.forEach((st, k) => {
+    if (k < b.stage || (k === b.stage && going) || (k === 0 && b.status === 'kitting')) return;
+    const units = unitsFor(db, s, st).filter(e => !roomDown(db, s, e.room));
+    if (units.length < 2) return;
+    const rooms: Record<string, string> = {};
+    for (const e of units) rooms[e.room] ??= e.id;
+    out[st.id] = { k, rooms };
+  });
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Выбор единиц у серий окна (Б7г): по номеру стадии — единица помещения; серии без выбора — нет. */
+function routableAll(db: ContentDb, s: PlantState, ids: Iterable<string>): Record<string, Record<string, RouteOpt>> {
+  const out: Record<string, Record<string, RouteOpt>> = {};
+  for (const id of ids) {
+    const r = routable(db, s, id);
+    if (r) out[id] = r;
+  }
+  return out;
+}
+
 export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttView {
   const base = forecast(db, s);
   const draft = q.draft ?? [];
   const fresh = q.fresh ?? [];
   const drop = q.drop ?? [];
-  const changed = draft.length + fresh.length + drop.length > 0;
-  const f = changed ? forecast(db, s, draft, fresh, drop) : base;
+  const ok = (x: RouteChange) => Object.values(routable(db, s, x.batch) ?? {}).some(o => o.k === x.stage);
+  const routes = (q.routes ?? []).filter(ok);
+  const changed = draft.length + fresh.length + drop.length + routes.length > 0;
+  const f = changed ? forecast(db, s, draft, fresh, drop, undefined, routes) : base;
   const inWindow = (b: Bar) => b.to > q.from && b.from < q.to && b.to > b.from;
   const bars = [...pastBars(db, s), ...f.bars].filter(inWindow);
   // новые задания черновика — среди сдвинутых: у них полосы по плану есть только с черновиком
@@ -248,6 +294,8 @@ export function ganttView(db: ContentDb, s: PlantState, q: GanttQuery): GanttVie
     moved,
     was,
     gone: [...draft.filter(c => !movable(s, c.batch)).map(c => c.batch), ...drop.filter(id => !movable(s, id))],
+    routeGone: (q.routes ?? []).filter(x => !ok(x)).map(x => `${x.batch}:${x.stage}`),
+    routable: routableAll(db, s, ids),
     assets,
     jobs: jobsOf(db, s, f),
     ...(launch ? { launch } : {}),

@@ -2,7 +2,7 @@
 // «не раньше» заданий, которые игрок протянул в Ганте, — ещё не команды. Командами `shift` они станут, только когда игрок
 // утвердит черновик. Чистые функции окна: движка здесь нет.
 import type { Id } from '../content/types';
-import type { Change } from '../engine/plan/schedule';
+import type { Change, RouteChange } from '../engine/plan/schedule';
 import type { Command } from '../engine/types';
 
 /**
@@ -58,5 +58,16 @@ export function freshOf(list: readonly Urgent[]): { recipe: Id; sku: Id; for?: s
 }
 
 /** Ключ черновика для итога прогона: черновик изменился — итог говорит о прежнем. Без срочных заданий — как до Б1г. */
-export const draftKey = (draft: readonly Change[], urgent: readonly Urgent[], drop: readonly string[] = []): string =>
-  JSON.stringify(drop.length > 0 ? [draft, urgent, drop] : urgent.length > 0 ? [draft, urgent] : draft);
+export const draftKey = (draft: readonly Change[], urgent: readonly Urgent[], drop: readonly string[] = [], routes: readonly RouteChange[] = []): string =>
+  JSON.stringify(routes.length > 0 ? [draft, urgent, drop, routes] : drop.length > 0 ? [draft, urgent, drop] : urgent.length > 0 ? [draft, urgent] : draft);
+
+/** Выбор единицы стадии в черновик (Б7г): строка задания и стадии одна — новая заменяет прежнюю. */
+export const upsertRoute = (list: readonly RouteChange[], r: RouteChange): RouteChange[] => [...list.filter(x => x.batch !== r.batch || x.stage !== r.stage), r];
+
+/** Правки маршрута, стадии которых уже начались, — уходят из черновика сами (Б7г). */
+export const pruneRoutes = (list: readonly RouteChange[], gone: readonly string[]): readonly RouteChange[] => (list.some(x => gone.includes(`${x.batch}:${x.stage}`)) ? list.filter(x => !gone.includes(`${x.batch}:${x.stage}`)) : list);
+
+/** Утвердить маршрут черновика (Б7г): команды `route` по порядку. */
+export function routesOf(list: readonly RouteChange[]): Command[] {
+  return list.map(r => ({ kind: 'route', batch: r.batch, stage: r.stage, unit: r.unit, by: 'player' }));
+}

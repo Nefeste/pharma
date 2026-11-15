@@ -3,6 +3,7 @@
 // по производству и запись по упаковке серии (GMP ЕАЭС, ч. I, пп. 4.20, 4.21). Каждая строка ведёт к вещи: партия — к её
 // паллете, оборудование и помещение — к ним, человек и отклонение — к их карточкам (docs/13-art.md, §11). Вид собирает
 // поток расчёта без истины (src/sim/dossier.ts); здесь — слова и щелчок.
+import { roomLabel } from '../app/build';
 import type { ReactNode } from 'react';
 import { momentOf, type Ymd } from '../engine/core/calendar';
 import type { Thing } from '../sim/views';
@@ -137,7 +138,7 @@ function Disp({ v, start, actions }: { v: DossierView; start: Ymd; actions: Acti
 }
 
 /** Стадия досье; `first` — отвешивание: оно ничего не загружает, его итог — отвешенная масса, строки — в «Отвешено». */
-function Stage({ st, first, start, actions }: { st: StageRow; first: boolean; start: Ymd; actions: Actions }) {
+function Stage({ st, first, start, actions, batch, mine }: { st: StageRow; first: boolean; start: Ymd; actions: Actions; batch: string; mine: boolean }) {
   const yieldPct = st.out !== undefined && st.in > 0 ? pctText(Math.round((st.out * 10000) / st.in), 1) : undefined;
   return (
     <li className={`dstage s-${st.state}`} data-test="dossier-stage" data-stage={st.stage} data-state={st.state}>
@@ -147,7 +148,7 @@ function Stage({ st, first, start, actions }: { st: StageRow; first: boolean; st
       </div>
       <div className="muted">
         <Go to={st.roomIx >= 0 ? { kind: 'room', i: st.roomIx } : undefined} actions={actions}>
-          {T.roomTypes[st.room] ?? st.room}
+          {roomLabel(st.room, st.roomId)}
         </Go>
         {st.equipment.map(e => (
           <span key={`${e.type}-${e.i}`}>
@@ -159,6 +160,25 @@ function Stage({ st, first, start, actions }: { st: StageRow; first: boolean; st
           </span>
         ))}
       </div>
+      {st.route || st.choices ? (
+        <div data-test="dossier-route">
+          {/* маршрут (Б7г): кто выбрал единицу; у стадии впереди — выбор с постом производства или директора */}
+          {T.dossier.route.title}: {st.route ? `${st.route.unit} · ${T.dossier.route.by[st.route.by]}` : T.dossier.route.none}
+          {st.choices ? (
+            <>
+              {' '}
+              <select value={st.route?.by === 'you' ? st.route.unit : ''} disabled={!mine} title={mine ? T.dossier.route.hint : T.seats.notYours(T.seats.names.production)} onChange={e => actions.routeUnit(batch, st.k, e.target.value || undefined)} data-test="dossier-route-pick">
+                <option value="">{T.dossier.route.rule}</option>
+                {st.choices.map(c => (
+                  <option key={c.unit} value={c.unit}>
+                    {`${c.unit}, ${roomLabel(st.room, c.room)} — ${T.journal.route.ranks[c.rank] ?? ''}`}
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : null}
+        </div>
+      ) : null}
       {st.people.length > 0 ? (
         <div>
           {T.dossier.people}: <Whos list={st.people} actions={actions} />
@@ -437,7 +457,7 @@ export function Dossier({ hud, actions }: { hud: Hud; actions: Actions }) {
             <div className="msec">{T.dossier.stages}</div>
             <ol className="dstages">
               {(v.stages ?? []).map((st, i) => (
-                <Stage key={st.stage} st={st} first={i === 0} start={start} actions={actions} />
+                <Stage key={st.stage} st={st} first={i === 0} start={start} actions={actions} batch={`B${v.batch}`} mine={holds(hud, 'production')} />
               ))}
             </ol>
           </div>

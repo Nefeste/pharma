@@ -10,7 +10,8 @@ import { RECON_LIMIT, usedByCount } from '../engine/line';
 import { stageMass } from '../engine/mes';
 import { editInFrozen, editPrice } from '../engine/plan/price';
 import { planOf } from '../engine/plant';
-import { stageRoom } from '../engine/route';
+import { rankOf, stageRoom, unitsFor } from '../engine/route';
+import { roomDown } from '../engine/site/down';
 import { unitsOfLot } from '../engine/stock';
 import type { Batch, BatchStatus, Deviation, EditPrice, KitLine, LotStatus, PackJob, PlantState, Recon } from '../engine/types';
 import { whoBatch, type WhoRow } from './journal';
@@ -65,6 +66,19 @@ export interface StageParam {
  * инвентарный номер; что на ней загружено (у стадии впереди — что загрузят) — по партиям; масса на входе — по досье и
  * карте, на выходе и потери — по досье; режимы, МОК — замеров и вне пределов, простои после отказов узлов, отклонения.
  */
+/**
+ * Единицы, из которых игрок выбирает стадию (Б7г): стадия ещё впереди, к ней не везут и единиц класса больше одной —
+ * по порядку плана, со ступенью помещения по правилу (`rankOf`).
+ */
+function choicesOf(db: ContentDb, s: PlantState, b: Batch, k: number, begun: boolean): { choices: { unit: string; room: string; rank: number }[] } | undefined {
+  if (begun || b.status === 'cancelled' || k < b.stage || (k === 0 && b.status === 'kitting') || !['waiting', 'reserved', 'kitting', 'process'].includes(b.status)) return undefined;
+  if (k === b.stage && Object.values(s.tasks).some(t => t.batch === b.id && t.kind === 'carry')) return undefined;
+  const st = db.recipes[b.recipe].stages[k];
+  const units = unitsFor(db, s, st).filter(e => !roomDown(db, s, e.room));
+  if (units.length < 2) return undefined;
+  return { choices: units.map(e => ({ unit: e.id, room: e.room, rank: rankOf(db, s, b, e, id => s.rooms[id], s.t) })) };
+}
+
 export interface StageRow {
   stage: string;
   state: 'done' | 'now' | 'plan';
@@ -82,6 +96,12 @@ export interface StageRow {
   ipc: { test: Id; n: number; out: number }[];
   stops: { part: string; from: number; to: number }[];
   devs: number[];
+  /** номер стадии в карте и имя помещения (Б7г): «Таблетирование 1» у второго помещения вида */
+  k: number;
+  roomId: string;
+  /** маршрут (Б7г): единица стадии и кто её выбрал; у стадии впереди с выбором — единицы класса со ступенью помещения */
+  route?: { unit: string; by: 'you' | 'rule' };
+  choices?: { unit: string; room: string; rank: number }[];
 }
 
 /**
@@ -256,6 +276,10 @@ export function dossierView(db: ContentDb, s: PlantState, q: DossierQuery): Doss
       }),
       stops: (rec?.stops ?? []).map(x => ({ part: s.parts[x.part]?.type ?? x.part, from: x.from, to: x.to })),
       devs: devs.filter(d => d.stage === st.id).map(d => num(d.id)),
+      k,
+      roomId,
+      ...(b.route?.[k] ? { route: { ...b.route[k] } } : {}),
+      ...(choicesOf(db, s, b, k, !!rec || now) ?? {}),
     };
     if (rec) {
       out.from = rec.start;

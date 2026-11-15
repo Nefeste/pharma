@@ -10,7 +10,7 @@ import type { Dept, HeadId, Id, OvertimeMode, Plant, SeatId } from '../content/t
 import type { Ymd } from '../engine/core/calendar';
 import type { Command, DeptMode, ForkOpt, Head, PolicyValue, Via } from '../engine/types';
 import type { RunSum } from '../engine/plan/run';
-import type { Change } from '../engine/plan/schedule';
+import type { Change, RouteChange } from '../engine/plan/schedule';
 import type { Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
@@ -119,6 +119,8 @@ export interface Hud {
     urgent: readonly Urgent[];
     /** отмены черновика (Б6а): командами `cancel` станут при «Утвердить» */
     drop: readonly string[];
+    /** маршрут черновика (Б7г): командами `route` станут при «Утвердить» */
+    routes?: readonly RouteChange[];
     /** вкладка (Б6а): полосы расписания, список заданий или, с Б6б, план запуска, с Б6в — прогноз, с Б6д — материалы; отбор списка */
     tab?: 'jobs' | 'launch' | 'forecast' | 'mrp';
     /** вид вкладки «Материалы» (Б6д): потребность в материалах — свой вид, дорогой, не чаще раза в секунду */
@@ -386,6 +388,10 @@ export interface Actions {
   moveGantt(dir: -1 | 0 | 1): void;
   drag(batch: string, notBefore: number): void;
   drop(): void;
+  /** маршрут (Б7г): стадию серии — на единицу в черновик */
+  routeDraft(batch: string, stage: number, unit: string): void;
+  /** маршрут (Б7г) из досье: единица стадии или «решит правило» — команда поста производства или директора */
+  routeUnit(batch: string, stage: number, unit?: string): void;
   cancelDrag(): void;
   approveDraft(): void;
   resetDraft(): void;

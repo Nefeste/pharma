@@ -360,6 +360,7 @@ export const en: Strings = {
   },
   grade: { D: 'grade D', cnc: 'not classified' },
   tasks: {
+    carry: 'Moving the intermediate',
     unload: 'Unloading',
     receive: 'Receiving',
     putaway: 'Putaway',
@@ -1356,6 +1357,7 @@ export const en: Strings = {
     inDraft: 'in the draft: it lands here if the draft is approved',
   },
   plan: {
+    routeDraft: (batch: string, room: string) => `${batch} → ${room}`,
     run: 'Run the plan',
     runHint: (days: number, seeds: number) =>
       `The same engine runs the plant ${days}\u00a0days ahead on ${seeds}\u00a0seeds — with spread, failures and orders; with a draft, the draft too on the same seeds. The game does not stop`,
@@ -1565,6 +1567,13 @@ export const en: Strings = {
   },
   /** batch record (Б1д): the batch processing record and the batch packaging record */
   dossier: {
+    route: {
+      title: 'Route',
+      none: 'no unit chosen',
+      rule: 'the rule decides',
+      hint: 'The equipment unit of this stage: your choice or the rule of the production head',
+      by: { you: 'chosen by you', rule: 'chosen by the rule' } as Record<string, string>,
+    },
     button: 'Record',
     hint: 'Batch record: what it is made of and who made it',
     title: (code: string) => `Batch record ${code}`,

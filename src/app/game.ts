@@ -30,7 +30,7 @@ import type { Thing, ViewQuery } from '../sim/views';
 import { assetClass, workName } from '../ui/assets';
 import { capaName, headText } from '../ui/capa';
 import { useDb } from '../ui/db';
-import { cancelsOf, commandsOf, draftKey, freshOf, ordersOf, prune, pruneDrop, toggleDrop, upsert } from '../ui/draft';
+import { cancelsOf, commandsOf, draftKey, freshOf, ordersOf, prune, pruneDrop, pruneRoutes, routesOf, toggleDrop, upsert, upsertRoute } from '../ui/draft';
 import { draftCommands, draftKey as policyKey, sameValue } from '../ui/policy';
 import { type Actions, holds, type Hud, LIVE, NO_POLICY_RUN, NO_RUN, PLAN_RUN, POLICY_RUN, type Speed, type Store } from '../ui/store';
 import { type ArtMode, loadArt } from './art';
@@ -57,7 +57,7 @@ export const RATE: Record<Speed, number> = { 0: 0, 1: 60, 2: 300, 3: 1200, 4: 72
 
 /** Промотка: кусок игровых секунд на кадр и предел отставания, при котором поток получает новый кусок. */
 /** Окно расписания закрыли или открыли: черновик, отмены, срочные задания, окно времени, вкладка и отбор остаются. */
-const ganttKept = (g: Hud['gantt']) => ({ days: g.days, draft: g.draft, urgent: g.urgent, drop: g.drop, ...(g.from !== undefined ? { from: g.from } : {}), ...(g.tab ? { tab: g.tab } : {}), ...(g.jobs ? { jobs: g.jobs } : {}) });
+const ganttKept = (g: Hud['gantt']) => ({ days: g.days, draft: g.draft, urgent: g.urgent, drop: g.drop, ...(g.routes ? { routes: g.routes } : {}), ...(g.from !== undefined ? { from: g.from } : {}), ...(g.tab ? { tab: g.tab } : {}), ...(g.jobs ? { jobs: g.jobs } : {}) });
 
 const FF_CHUNK = 1800;
 const FF_LAG = 900;
@@ -347,8 +347,9 @@ export class Game {
         const g = this.store.get().gantt;
         const draft = prune(g.draft, d.gone);
         const drop = pruneDrop(g.drop, d.gone);
-        if (g.open || draft !== g.draft || drop !== g.drop) this.store.set({ gantt: { ...g, ...(g.open ? { view: d } : {}), draft, drop } });
-        if (draft !== g.draft || drop !== g.drop) this.sendViews();
+        const routes = g.routes ? pruneRoutes(g.routes, d.routeGone) : g.routes;
+        if (g.open || draft !== g.draft || drop !== g.drop || routes !== g.routes) this.store.set({ gantt: { ...g, ...(g.open ? { view: d } : {}), draft, drop, ...(routes ? { routes } : {}) } });
+        if (draft !== g.draft || drop !== g.drop || routes !== g.routes) this.sendViews();
       } else if (d.view === 'inv') {
         if (hud.inv.open) this.store.set({ inv: { ...this.store.get().inv, view: d } });
       } else if (d.view === 'journal') {
@@ -826,6 +827,12 @@ export class Game {
       this.store.set({ gantt: { ...g, drag: undefined, ghost: undefined, draft } });
       this.sendViews();
     },
+    routeDraft: (batch, stage, unit) => {
+      // перетащили стадию на строку помещения того же типа (Б7г) — строка черновика маршрута, не команда
+      const g = this.store.get().gantt;
+      this.store.set({ gantt: { ...g, drag: undefined, ghost: undefined, routes: upsertRoute(g.routes ?? [], { batch, stage, unit }) } });
+      this.sendViews();
+    },
     cancelDrag: () => {
       const g = this.store.get().gantt;
       if (!g.drag) return;
@@ -836,20 +843,22 @@ export class Game {
       // утвердить — команды `shift` по строкам по порядку и срочные задания — команды `order` (Б1г); черновик пуст.
       // Расписание — команда производства (3е); пост не у игрока — черновик уходит планированию одной запиской (Б5д)
       const h = this.store.get();
-      if (h.gantt.draft.length === 0 && h.gantt.urgent.length === 0 && h.gantt.drop.length === 0) return;
+      const routes = h.gantt.routes ?? [];
+      if (h.gantt.draft.length === 0 && h.gantt.urgent.length === 0 && h.gantt.drop.length === 0 && routes.length === 0) return;
       // отмены (Б6а) — первыми: их резерв нужен заданиям черновика; записку об отмене не пишут — пост отдали, пока
       // черновик ждал, — отмены уходят из него
       const own = holds(h, 'production');
-      const cmds = [...(own ? cancelsOf(h.gantt.drop) : []), ...commandsOf(h.gantt.draft), ...ordersOf(h.gantt.urgent)];
+      // маршрут (Б7г) — работа производства: пост у игрока — команды, иначе — в той же записке
+      const cmds = [...(own ? cancelsOf(h.gantt.drop) : []), ...commandsOf(h.gantt.draft), ...ordersOf(h.gantt.urgent), ...routesOf(routes)];
       if (own) for (const cmd of cmds) this.client.command(cmd);
       else if (cmds.length > 0) this.client.command({ kind: 'memo', cmds: cmds.map(c => ({ ...c, by: undefined }) as Command) });
-      this.store.set({ gantt: { ...h.gantt, draft: [], urgent: [], drop: [] } });
+      this.store.set({ gantt: { ...h.gantt, draft: [], urgent: [], drop: [], routes: [] } });
       this.sendViews();
     },
     resetDraft: () => {
       const g = this.store.get().gantt;
-      if (g.draft.length === 0 && g.urgent.length === 0 && g.drop.length === 0) return;
-      this.store.set({ gantt: { ...g, draft: [], urgent: [], drop: [] } });
+      if (g.draft.length === 0 && g.urgent.length === 0 && g.drop.length === 0 && (g.routes ?? []).length === 0) return;
+      this.store.set({ gantt: { ...g, draft: [], urgent: [], drop: [], routes: [] } });
       this.sendViews();
     },
     runPlan: () => {
@@ -858,10 +867,11 @@ export class Game {
       if (h.plan.running || h.policies.run.running) return;
       this.planFor = 'gantt';
       const { draft, urgent, drop } = h.gantt;
-      // отмены черновика (Б6а) — команды варианта, первыми
-      const changes = [...cancelsOf(drop), ...commandsOf(draft), ...ordersOf(urgent)];
+      const routes = h.gantt.routes ?? [];
+      // отмены черновика (Б6а) — команды варианта, первыми; маршрут (Б7г) — последним
+      const changes = [...cancelsOf(drop), ...commandsOf(draft), ...ordersOf(urgent), ...routesOf(routes)];
       const variants: Command[][] = [[], ...(changes.length > 0 ? [changes] : [])];
-      this.store.set({ plan: { ...NO_RUN, running: true, variants: variants.length, key: draftKey(draft, urgent, drop) } });
+      this.store.set({ plan: { ...NO_RUN, running: true, variants: variants.length, key: draftKey(draft, urgent, drop, routes) } });
       const seq = ++this.planSeq;
       void this.client.save().then(json => {
         // прервали или прогнали заново, пока снимок шёл, — этого прогона нет
@@ -994,6 +1004,9 @@ export class Game {
     },
     expedite: (po, memo) => this.send({ kind: 'expedite', po }, memo),
     cancelPo: (po, memo) => this.send({ kind: 'cancelPo', po }, memo),
+    routeUnit: (batch, stage, unit) => {
+      if (holds(this.store.get(), 'production')) this.client.command({ kind: 'route', batch, stage, ...(unit ? { unit } : {}), by: 'player' });
+    },
     cancelJob: batch => {
       // «Отменить» в карточке серии (Б6а): команда поста «Производство» или директора; записку об отмене не пишут —
       // у чужого поста кнопка погашена
@@ -1440,6 +1453,7 @@ export class Game {
       ...(h.gantt.draft.length > 0 ? { draft: [...h.gantt.draft] } : {}),
       ...(h.gantt.urgent.length > 0 ? { fresh: freshOf(h.gantt.urgent) } : {}),
       ...(h.gantt.drop.length > 0 ? { drop: [...h.gantt.drop] } : {}),
+      ...((h.gantt.routes ?? []).length > 0 ? { routes: [...h.gantt.routes!] } : {}),
     };
     if (h.gantt.open) list.push({ id: 'gantt', view: 'gantt', ...this.ganttWindow(h.gantt.from, h.gantt.days), ...draft, ...(h.gantt.tab === 'launch' ? { launch: true as const } : {}), ...(h.gantt.tab === 'forecast' ? { forecast: h.gantt.fcKey ? { key: h.gantt.fcKey } : {} } : {}) });
     if (h.gantt.open && h.gantt.drag) list.push({ id: 'ghost', view: 'ghost', ...h.gantt.drag, ...draft });

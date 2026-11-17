@@ -18,7 +18,7 @@ import { stageSetpoints } from '../modes';
 import { classOf, placesOf } from '../places';
 import { stockDue } from '../planner';
 import { planOf, travel } from '../plant';
-import { stageRoom } from '../route';
+import { stageRoom, transferTime, transferVia } from '../route';
 import { numOf, POL } from '../policies';
 import { admitted, needFor } from '../quals';
 import { LAST_CALL, shiftEndAt, WALK } from '../staff';
@@ -329,7 +329,14 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     picked.set(key, got);
     return got;
   };
-  const carry = (a: string, z: string) => (a === z ? 0 : CARRY_WORK + travel(plan, plan.room[a], plan.room[z], WALK));
+  // перенос (Б7г): годная вакуумная перегрузка из `a` в `z` — пуск и масса стадии `k` на производительность (шаг 2),
+  // иначе — тележка: погрузка с выгрузкой и путь
+  const carry = (a: string, z: string, b?: Batch, k?: number) => {
+    if (a === z) return 0;
+    const via = b && k !== undefined && k < db.recipes[b.recipe].stages.length ? transferVia(db, s, a, z) : undefined;
+    if (via) return db.equipment[via.type].transfer!.setup + transferTime(db, via.type, stageMass(db, b!, k!));
+    return CARRY_WORK + travel(plan, plan.room[a], plan.room[z], WALK);
+  };
 
   /**
    * Уборка помещения (Б4в): мойка оборудования — как только аппаратчик в смене не раньше `at`, потом уборка помещения —
@@ -508,7 +515,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
       // следующая стадия — в помещении маршрута; другое — перенос, помещение свободно, когда контейнер выгружен (Б7г)
       const to = roomFor(b, k + 1, t);
       if (to !== roomId) {
-        t += carry(roomId, to);
+        t += carry(roomId, to, b, k + 1);
         leave(roomId, b, t);
       }
     }
@@ -527,10 +534,19 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     // полупродукт везут (Б7г): стадия — в помещении назначения после выгрузки; прежнее помещение свободно тогда же
     const ct = taskOf(x => x.kind === 'carry' && x.batch === b.id);
     if (ct && b.room) {
-      const end = ct.state === 'busy' ? ct.times![4] : now + carry(b.room, ct.room!);
+      const via = ct.asset && db.equipment[s.equipment[ct.asset]?.type]?.transfer ? s.equipment[ct.asset] : undefined;
+      const run = via ? transferTime(db, via.type, stageMass(db, b, b.stage)) : 0;
+      const end = ct.state === 'busy' ? ct.times![4] + run : now + (via ? db.equipment[via.type].transfer!.setup + run : carry(b.room, ct.room!, b, b.stage));
       if (s.rooms[b.room]?.batch === b.id) leave(b.room, b, end);
       picked.set(`${b.id}:${b.stage}`, ct.room!);
       return stages(b, b.stage, end, {});
+    }
+    // идёт вакуумная перегрузка (шаг 2): стадия — после её конца в помещении назначения
+    const tr = s.agenda.heap.find(x => x.e.kind === 'transfer' && x.e.batch === b.id);
+    if (tr?.e.kind === 'transfer' && b.room) {
+      if (s.rooms[b.room]?.batch === b.id) leave(b.room, b, tr.t);
+      picked.set(`${b.id}:${b.stage}`, tr.e.room);
+      return stages(b, b.stage, tr.t, {});
     }
     const st = r.stages[b.stage];
     const roomId = b.room ?? roomFor(b, b.stage, now);
@@ -553,7 +569,7 @@ export function forecast(db: ContentDb, s: PlantState, changes: readonly Change[
     } else return stages(b, b.stage, now, {});
     const to = roomFor(b, b.stage + 1, end);
     if (to !== roomId) {
-      end += carry(roomId, to);
+      end += carry(roomId, to, b, b.stage + 1);
       leave(roomId, b, end);
     }
     stages(b, b.stage + 1, end, {});

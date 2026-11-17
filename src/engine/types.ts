@@ -1098,6 +1098,8 @@ export type PlantEvent =
   | { kind: 'ask'; n: number; v: number }
   /** стройка (Б7б): снести то, что освободилось; что-то ещё ждёт — проверить снова через шаг проверки сценария */
   | { kind: 'siteFree' }
+  /** вакуумная перегрузка (Б7г, шаг 2) кончила: полупродукт серии — в помещении `room` */
+  | { kind: 'transfer'; batch: string; unit: string; room: string }
   | { kind: 'unitArrive'; asset: string; v: number }
   | { kind: 'unitDay'; asset: string; v: number };
 

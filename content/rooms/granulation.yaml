@@ -6,6 +6,6 @@ vehicles: true
 area: TB
 min: [6, 6]
 build: true
-things: [eq.hsm, eq.fbd, inst.lod]
+things: [eq.hsm, eq.fbd, inst.lod, eq.vacuum]
 source: [gmp-eaeu]
 review: draft

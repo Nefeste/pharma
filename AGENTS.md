@@ -107,8 +107,9 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # the build (e2e-build.mjs, build.png), the equipment — an order, its undo, a
                                    # replacement, a cancel from the card (e2e-equip.mjs, equip.png; `--long 1` — on
                                    # to the installation and the qualification record), the batch route — a unit in the
-                                   # batch record, a stage dragged to a second room's row, a move in «Сейчас»
-                                   # (e2e-route.mjs, route.png); `-- --only main|week|memo|capa|jobs|launch|forecast|
+                                   # batch record, a stage dragged to a second room's row, a move in «Сейчас», a
+                                   # vacuum transfer refused mid-room and ordered at a wall (e2e-route.mjs, route.png);
+                                   # `-- --only main|week|memo|capa|jobs|launch|forecast|
                                    # sop|mrp|edits|build|equip|route|sources` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
@@ -151,7 +152,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   buy, move, drop, swap in place), `site/units.ts` (with Б7в, the units of the plan as pure functions: the family by
   class and room, the price by vendor, the footprint on the floor of its room — not on another's, a rack, a zone or a
   doorway —, the next place code on its work center, a name never repeated, a plan with or without a unit, the units of
-  a room), `site/down.ts` (with Б7б, what does not work: red rooms of the plan,
+  a room; with Б7г a vacuum transfer leads into the room across the wall its footprint touches — `transferTo`),
+  `site/down.ts` (with Б7б, what does not work: red rooms of the plan,
   the room being rebuilt and things being demolished — no new task, stage, packing or test starts there and no pallet
   place there is chosen, the task waits «помещение не работает» with it), `build.ts` (with Б7б, the `site` command of
   the director's seat: an edit, «Готово» and the undo of 50 steps — the old plan, what the step paid and the room being
@@ -481,7 +483,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   Б7г, the batch route: a stage's unit of its main class, the room — where it stands; the player's `route` command or
   the production head's rule — the room the batch is in, clean for the product, a minor cleaning, a major one, the plan
   order —, kept once chosen; one unit — no choice and no record; the department modes; one function for the engine, the
-  schedule run and the views — `pickUnit`, `stageRoom`; the move of the intermediate is `carry` in `mes.ts`),
+  schedule run and the views — `pickUnit`, `stageRoom`; the move of the intermediate is `carry` in `mes.ts`; with step
+  2 a fit, free vacuum transfer from the room into the next — `transferVia` — moves it without a cart: the operator
+  starts it, then the batch mass at its rate, unattended, the `transfer` event — `transferTime`),
   `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.

@@ -104,7 +104,8 @@ export function pointOf(plan: PlantPlan, s: PlantState, p: Place): Point {
 export function destOf(plan: PlantPlan, s: PlantState, t: Task): Point | undefined {
   if (t.kind === 'repair' && t.room) return plan.room[t.room];
   // перенос полупродукта (Б7г): контейнер везут к рабочей точке помещения следующей стадии
-  if (t.kind === 'carry' && t.room) return plan.room[t.room];
+  // через вакуумную перегрузку — пуск на месте, везти некуда
+  if (t.kind === 'carry' && t.room && !t.asset) return plan.room[t.room];
   if (t.kind === 'feed' && t.line) {
     const m = plan.plant.lines.find(l => l.id === t.line)!.machines[0];
     return { x: m.at[0], z: m.at[1] };

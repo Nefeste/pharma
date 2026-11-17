@@ -35,7 +35,7 @@ import { forecastCommand, forecastHour, newForecast, replan, runForecast } from 
 import { sopCommand, sopHour } from './sop';
 import { marketDone, marketHour, marketStep, newCustomers, rznPublished, seedFg } from './market';
 import { memoCommand, memoDue, memoHour, withdrawCommand } from './memos';
-import { BATCH_HOUR, cancelOrder, mesDone, mesHour, mesStep, moveOn, packOrder, placeOrder, pressFail, shiftCommand, stageBegin } from './mes';
+import { BATCH_HOUR, cancelOrder, mesDone, mesHour, mesStep, moveOn, packOrder, placeOrder, pressFail, shiftCommand, stageBegin, transferDone } from './mes';
 import { routeCommand } from './route';
 import { setpointCommand } from './modes';
 import { auditDone, pairApproveCommand, partnersDone, partnersHour, seedContracts, seedPairs, specPairs } from './partners';
@@ -678,6 +678,11 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
     case 'ask':
       // срок ответа на «Просят решить» (Б5д): руководитель решает сам, как сейчас, — завод не меняется
       askDue(s, ev.n, ev.v);
+      return;
+    case 'transfer':
+      // вакуумная перегрузка (Б7г, шаг 2) кончила
+      transferDone(db, s, ev, notices);
+      steps(db, s, notices);
       return;
     case 'siteFree':
       // стройка (Б7б): освободившееся из сносимого — снести

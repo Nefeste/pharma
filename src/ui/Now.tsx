@@ -24,6 +24,9 @@ export function rowTitle(r: NowRow): string {
   switch (r.kind) {
     case 'stage':
       return [T.stages[r.stage ?? ''] ?? r.stage, batch].filter(Boolean).join(' · ');
+    case 'carry':
+      // вакуумная перегрузка (Б7г, шаг 2): «Вакуумная перегрузка · пуск · серия …», идёт сама — «работает»
+      return r.machine ? [named(db?.equipment[r.machine]?.name, r.machine), r.phase === 'run' ? T.now.transferRun : T.now.transferStart, batch].filter(Boolean).join(' · ') : [T.tasks.carry, batch].filter(Boolean).join(' · ');
     case 'clean':
       return T.now.clean(!!r.major);
     case 'pack':
@@ -76,7 +79,7 @@ function rowWho(r: NowRow): string {
     })
     .join(', ');
   const where = r.room ? (T.roomTypes[r.room] ?? r.room) : r.inst ? named(db?.instruments[r.inst]?.name, r.inst) : '';
-  const none = r.kind === 'test' && r.phase === 'run' ? '' : r.kind === 'visit' ? T.now.contractor : r.kind === 'audit' ? T.now.auditor : T.now.nobody;
+  const none = (r.kind === 'test' || r.kind === 'carry') && r.phase === 'run' ? '' : r.kind === 'visit' ? T.now.contractor : r.kind === 'audit' ? T.now.auditor : T.now.nobody;
   return [where, who || none].filter(Boolean).join(' · ');
 }
 

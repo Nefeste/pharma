@@ -5,7 +5,7 @@
 // предупреждения, что просрочено.
 import type { ContentDb, Id, Text } from '../content/types';
 import { stepsOf } from '../engine/equip';
-import { unitOf } from '../engine/site/units';
+import { transferTo, unitOf } from '../engine/site/units';
 import { contractor, lineUnfit, recOf, stageUnfit, unfit, type Unfit, valid, visitLast, type Work, WORKS } from '../engine/assets';
 import { batchNo } from '../engine/batchno';
 import { DAY, isWorkday, momentOf } from '../engine/core/calendar';
@@ -47,6 +47,8 @@ export interface AssetInfo {
   move?: number[];
   /** поставщик единицы (Б7в): у вещи плана — по записи плана, у купленной — её */
   vendor?: Id;
+  /** вакуумная перегрузка (Б7г, шаг 2): в какое помещение ведёт — имя и тип; у стены его нет — нет */
+  transfer?: { room: string; type: string };
   /**
    * путь до записи квалификации (Б7в): шаг, сделано дней из скольких, обещанный день поставки — его знает завод, а не
    * настоящий; кого заменяет; перенос; идёт ли день шага сейчас; заказ можно отменить (до поставки)
@@ -116,8 +118,19 @@ export function assetInfo(db: ContentDb, s: PlantState, id: string): AssetInfo |
     today: momentOf(s.start, s.t).day,
     ...(v && v.from === undefined ? movable(db, s, a) : {}),
     ...(vendorOf(db, s, a) ? { vendor: vendorOf(db, s, a) } : {}),
+    ...transferOf(db, s, id),
     ...(a.path ? { path: pathInfo(db, a) } : {}),
   };
+}
+
+/** Куда ведёт перегрузка (Б7г, шаг 2): помещение за стеной у её следа по плану. */
+function transferOf(db: ContentDb, s: PlantState, id: string): { transfer?: { room: string; type: string } } {
+  const plant = planOf(db, s.plan).plant;
+  const e = plant.equipment.find(x => x.id === id);
+  if (!e || !db.equipment[e.type]?.transfer) return {};
+  const to = transferTo(db, plant, e.type, e.room, e.at, e.turn);
+  const r = to ? plant.rooms.find(x => x.id === to) : undefined;
+  return r ? { transfer: { room: r.id, type: r.type } } : {};
 }
 
 /** Поставщик единицы: купленной — её, иначе — по записи плана. */

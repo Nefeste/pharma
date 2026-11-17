@@ -123,6 +123,47 @@ export function footError(db: ContentDb, plant: Plant, type: Id, room: string, a
   return undefined;
 }
 
+/**
+ * Куда ведёт вакуумная перегрузка (Б7г, шаг 2): помещение за стеной, к которой единица стоит вплотную, — клетка стены у
+ * её следа и за ней пол другого помещения. Пара типов «откуда — куда» — из записи класса; помещений за стеной два или
+ * пара не та — `undefined`. Не перегрузка — `undefined`.
+ */
+export function transferTo(db: ContentDb, plant: Plant, type: Id, room: string, at: readonly [number, number], turn: number): string | undefined {
+  const pairs = db.equipment[type]?.transfer?.pairs;
+  const size = sizeOf(db, type);
+  if (!pairs || !size) return undefined;
+  const nav = planOf(db, plant).nav;
+  const ri = plant.rooms.findIndex(r => r.id === room);
+  const [x0, z0, x1, z1] = boxOf(at, turn, size);
+  const cx0 = Math.floor(x0 / CELL_CM);
+  const cz0 = Math.floor(z0 / CELL_CM);
+  const cx1 = Math.ceil(x1 / CELL_CM) - 1;
+  const cz1 = Math.ceil(z1 / CELL_CM) - 1;
+  const across = new Set<number>();
+  const look = (x: number, z: number, dx: number, dz: number) => {
+    const wx = x + dx;
+    const wz = z + dz;
+    const fx = wx + dx;
+    const fz = wz + dz;
+    if (fx < 0 || fz < 0 || fx >= nav.w || fz >= nav.h) return;
+    if (nav.cells[wz * nav.w + wx] !== CELL.wall) return;
+    const j = fz * nav.w + fx;
+    if (nav.cells[j] === CELL.floor && nav.room[j] >= 0 && nav.room[j] !== ri) across.add(nav.room[j]);
+  };
+  for (let z = cz0; z <= cz1; z++) {
+    look(cx0, z, -1, 0);
+    look(cx1, z, 1, 0);
+  }
+  for (let x = cx0; x <= cx1; x++) {
+    look(x, cz0, 0, -1);
+    look(x, cz1, 0, 1);
+  }
+  if (across.size !== 1) return undefined;
+  const to = plant.rooms[[...across][0]];
+  const from = plant.rooms[ri];
+  return from && to && pairs.some(([a, z]) => a === from.type && z === to.type) ? to.id : undefined;
+}
+
 /** План без единицы: оборудование, прибор или датчик; машину линии сносят только с линией — тогда линию целиком. */
 export function withoutUnit(db: ContentDb, plan: SitePlan, id: string): SitePlan {
   if (plan.equipment.some(e => e.id === id)) return { ...plan, equipment: plan.equipment.filter(e => e.id !== id) };

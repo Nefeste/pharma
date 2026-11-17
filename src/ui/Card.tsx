@@ -2,6 +2,7 @@
 // → почему так → что можно сделать → история. Снизу экрана, как карточка выбранного в «Больнице» (её src/ui/App.tsx,
 // `card`). Вид приходит из потока расчёта (src/sim/views.ts) без истины и без слов; слова — отсюда, из src/i18n/.
 import { type ReactNode, useState } from 'react';
+import { roomLabel } from '../app/build';
 import type { PartType, Plant } from '../content/types';
 import { civilFromDays, momentOf, weekday, type Ymd } from '../engine/core/calendar';
 import { clock, dayText, durText, hText, money, named, num, pctText, qtyText, T, whenText } from '../i18n';
@@ -341,6 +342,11 @@ function UnitRows({ a, hud, actions }: { a: AssetInfo; hud: Hud; actions: Action
       {a.vendor ? (
         <Row k="">
           <span data-test="card-vendor">{E.vendorOf(named(db?.vendors[a.vendor]?.name, a.vendor))}</span>
+        </Row>
+      ) : null}
+      {a.transfer ? (
+        <Row k="">
+          <span data-test="card-transfer">{E.transferTo(roomLabel(a.transfer.type, a.transfer.room))}</span>
         </Row>
       ) : null}
       {p ? (

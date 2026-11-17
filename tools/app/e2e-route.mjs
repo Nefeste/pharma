@@ -3,7 +3,8 @@
 // стройки и «Оборудования» (как в частях «Стройка» и «Оборудование» — мышью, здесь — заготовка). Досье серии — блок
 // «Маршрут»: выбор единицы таблетирования — новый пресс, запись журнала «вы». Расписание: полоса таблетирования другой
 // серии — мышью на строку второго таблетирования, строка черновика, «Утвердить» — маршрут в досье. Перенос полупродукта
-// виден задачей аппаратчика в срезе. Снимки — tools/app/out/route-*.png, лист — tools/app/out/route.png.
+// виден задачей аппаратчика в срезе. Вакуумная перегрузка (шаг 2): посреди помещения — «нельзя», у стены — заказ, в
+// карточке — куда ведёт. Снимки — tools/app/out/route-*.png, лист — tools/app/out/route.png.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openGame, steps } from './e2e-build.mjs';
@@ -60,6 +61,23 @@ async function director(x) {
     if (!press) throw new Error('пресса во втором таблетировании нет');
     ok(`Маршрут: второе таблетирование ${id} и пресс ${press} — в плане`);
     await s.shot('второе таблетирование');
+
+    // вакуумная перегрузка (шаг 2): посреди грануляции — «нельзя»; у стены со смешиванием — заказ, в карточке — куда ведёт
+    await send({ kind: 'equip', op: { op: 'buy', type: 'eq.vacuum', vendor: 'ven.eu', room: 'granulation', at: [3650, 750], turn: 0 } });
+    await page.waitForFunction(() => /не у стены/.test(window.__game.notices?.[0]?.text ?? ''), null, { timeout: 20_000 }).catch(() => {});
+    const no = await page.evaluate(() => window.__game.notices?.[0]?.text ?? '');
+    if (!/не у стены с помещением следующей стадии/.test(no)) fail(`Перегрузка: посреди помещения — «${no}»`);
+    else ok(`Перегрузка: посреди грануляции — «${no}»`);
+    await send({ kind: 'equip', op: { op: 'buy', type: 'eq.vacuum', vendor: 'ven.eu', room: 'granulation', at: [4150, 750], turn: 0 } });
+    await page.waitForFunction(() => window.__game.world.plan.equipment.some(e => e.type === 'eq.vacuum'), null, { timeout: 20_000 });
+    const vi = await page.evaluate(() => window.__game.world.plan.equipment.findIndex(e => e.type === 'eq.vacuum'));
+    await page.evaluate(i => window.__game.actions.select({ kind: 'equipment', i }), vi);
+    await page.waitForSelector('[data-test=card-transfer]', { timeout: 20_000 }).catch(() => {});
+    const to = await page.evaluate(() => document.querySelector('[data-test=card-transfer]')?.textContent ?? '');
+    if (!/перегрузка — в «Калибровка и опудривание/.test(to)) fail(`Перегрузка: в карточке — «${to}»`);
+    else ok(`Перегрузка: карточка — «${to}», ${await page.evaluate(() => document.querySelector('[data-test=card-path]')?.textContent?.slice(0, 80) ?? '')}`);
+    await s.shot('вакуумная перегрузка: заказ и карточка');
+    await page.keyboard.press('Escape');
 
     // досье серии, которая ещё не таблетировала: «Маршрут» — выбор единицы
     await page.keyboard.press('KeyG');

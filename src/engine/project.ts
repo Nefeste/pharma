@@ -226,6 +226,7 @@ export function projectHour(db: ContentDb, s: PlantState, notices: Notice[]) {
           p.restarts++;
           order(d, s, p, 'trial', notices);
         } else if (v === 'pass') {
+          p.ok = [...(p.ok ?? []), p.trial!];
           next(d, s, p, 'protocol', notices);
           work(d, s, p, 'protocol', sc.protocol);
         }
@@ -244,7 +245,10 @@ export function projectHour(db: ContentDb, s: PlantState, notices: Notice[]) {
           // серия не прошла критерий — отклонение по Б5е; счёт серий подряд — заново
           p.passed = 0;
           p.restarts++;
-        } else p.passed++;
+        } else {
+          p.passed++;
+          p.ok = [...(p.ok ?? []), last.id];
+        }
         if (p.passed >= sc.batches) {
           next(d, s, p, 'report', notices);
           work(d, s, p, 'report', sc.report);

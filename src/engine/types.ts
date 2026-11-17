@@ -2130,6 +2130,8 @@ export interface Project {
   sell?: boolean;
   trial?: string;
   batches: string[];
+  /** серии проекта, что прошли: балк разрешён ОКК (у серий «не для продажи» он потом — в отклонённое) */
+  ok?: string[];
   passed: number;
   restarts: number;
   dossier?: { filed: number; decide: number };

@@ -20,6 +20,7 @@ import { Inv } from './Inv';
 import { Journal } from './Journal';
 import { Kpi } from './Kpi';
 import { Policies } from './Policies';
+import { Portfolio } from './Portfolio';
 import { Sop } from './Sop';
 import { Build } from './Build';
 import { FloorTip, Layers } from './Layers';
@@ -135,6 +136,9 @@ export function App({ store, actions, scenario }: { store: Store; actions: Actio
             <button type="button" className={s.sop.open ? 'on' : ''} onClick={() => actions.toggleSop()} title={T.sop.hint} data-test="sop-open">
               {T.sop.button}
             </button>
+            <button type="button" className={s.portfolio.open ? 'on' : ''} onClick={() => actions.togglePortfolio()} title={T.project.hint} data-test="portfolio-open">
+              {T.project.button}
+            </button>
             <button type="button" className={s.gantt.open ? 'on' : ''} onClick={() => actions.toggleGantt()} title={T.gantt.hint} data-test="gantt-open">
               {T.gantt.button}
             </button>
@@ -212,6 +216,9 @@ export function App({ store, actions, scenario }: { store: Store; actions: Actio
       </Guard>
       <Guard name={T.sop.button} close={s.sop.open ? actions.toggleSop : undefined}>
         {s.sop.open && <Sop hud={s} actions={actions} />}
+      </Guard>
+      <Guard name={T.project.button} close={s.portfolio.open ? actions.togglePortfolio : undefined}>
+        {s.portfolio.open && <Portfolio hud={s} actions={actions} />}
       </Guard>
       <Guard name={T.po.button} close={s.po.open ? actions.togglePo : undefined}>
         {s.po.open && <Po hud={s} actions={actions} />}

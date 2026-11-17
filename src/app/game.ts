@@ -363,6 +363,8 @@ export class Game {
         if (hud.ref.open) this.store.set({ ref: { ...this.store.get().ref, view: d } });
       } else if (d.view === 'policies') {
         if (hud.policies.open) this.store.set({ policies: { ...this.store.get().policies, view: d } });
+      } else if (d.view === 'portfolio') {
+        if (hud.portfolio.open) this.store.set({ portfolio: { ...this.store.get().portfolio, view: d } });
       } else if (d.view === 'sop') {
         if (hud.sop.open) this.store.set({ sop: { ...this.store.get().sop, view: d } });
       } else if (d.view === 'mrp') {
@@ -572,6 +574,8 @@ export class Game {
       // оборудование (Б7в): ответ на команду, поставка, квалификация принята, поставщик опаздывает
       : n.kind === 'equip' ? (n.ok ? (n.later ? T.equip.result.later : n.op === 'cancel' ? T.equip.result.cancel : T.equip.result.buy(money(n.cost))) : T.equip.result.no(whyText(this.db, this.world.plan, n.error)))
       : n.kind === 'unitArrived' ? T.notices.unitArrived(`${clsName(this.db, n.type)} ${n.asset}`, n.late)
+      // проект «Новый продукт» (Б7д): этап пройден
+      : n.kind === 'project' ? T.notices.project(named(this.db.products[n.product]?.name, n.product), T.project.stages[n.stage] ?? n.stage)
       : n.kind === 'unitReady' ? T.notices.unitReady(`${clsName(this.db, n.type)} ${n.asset}`)
       : n.kind === 'unitLate' ? T.notices.unitLate(`${clsName(this.db, n.type)} ${n.asset}`)
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
@@ -745,6 +749,8 @@ export class Game {
         if (!this.store.get().policies.open) this.actions.togglePolicies();
       } else if (g.panel === 'sop') {
         if (!this.store.get().sop.open) this.actions.toggleSop();
+      } else if (g.panel === 'portfolio') {
+        if (!this.store.get().portfolio.open) this.actions.togglePortfolio();
       } else if (g.panel === 'ref') {
         // справочник на вкладке извещения: «Места» (Б3в), «Контрагенты» (Б3г), «Люди» (Б4в)
         if (!this.store.get().ref.open) this.actions.toggleRef();
@@ -796,7 +802,7 @@ export class Game {
       const g = this.store.get().gantt;
       // большое окно поверх карты во всю ширину: панели справа закрываются; закрыли — то, что тянули, отменено
       const open = !g.open;
-      this.store.set({ gantt: { ...ganttKept(g), open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, ...this.policiesClosed(), ...this.sopClosed() } : {}) });
+      this.store.set({ gantt: { ...ganttKept(g), open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, ...this.policiesClosed(), ...this.sopClosed(), ...this.portfolioClosed() } : {}) });
       this.sendViews();
     },
     setGanttDays: days => {
@@ -887,11 +893,11 @@ export class Game {
     toggleInv: () => {
       // большое окно поверх карты, как расписание: панели справа, расписание и справочник закрываются
       const open = !this.store.get().inv.open;
-      this.store.set({ inv: { open }, ...(open ? { ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.sopClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ inv: { open }, ...(open ? { ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.sopClosed(), ...this.portfolioClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     openInv: id => {
-      this.store.set({ inv: { open: true, id }, ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.sopClosed(), ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ inv: { open: true, id }, ...this.rightClosed(), ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.sopClosed(), ...this.portfolioClosed(), ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     // досье серии (Б1д) — поверх остальных окон: открыли из карточки, «Сейчас» или расписания — они остаются под ним
@@ -908,7 +914,7 @@ export class Game {
       // справочник — большое окно поверх карты, как доска расследования
       const r = this.store.get().ref;
       const open = !r.open;
-      this.store.set({ ref: { ...r, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.sopClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ ref: { ...r, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.sopClosed(), ...this.portfolioClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     setRefTab: tab => this.store.set({ ref: { ...this.store.get().ref, tab } }),
@@ -926,7 +932,7 @@ export class Game {
       const held = this.store.get().top?.seats?.[0];
       const tab = !k.view && held ? held : k.tab;
       const keep = k.view?.tab === tab && (k.view.month.closed ? k.view.month.from : undefined) === month;
-      this.store.set({ kpi: { open: true, tab, ...(k.why ? { why: k.why } : {}), ...(month !== undefined ? { month } : {}), ...(keep ? { view: k.view } : {}) }, ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, ...this.policiesClosed(), ...this.sopClosed(), ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ kpi: { open: true, tab, ...(k.why ? { why: k.why } : {}), ...(month !== undefined ? { month } : {}), ...(keep ? { view: k.view } : {}) }, ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, ...this.policiesClosed(), ...this.sopClosed(), ...this.portfolioClosed(), ...(this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     setKpiTab: tab => {
@@ -1172,7 +1178,7 @@ export class Game {
       // окно «Политики» (Б5г) — большое, как справочник и показатели: панели справа и другие большие окна закрываются
       const p = this.store.get().policies;
       const open = !p.open;
-      this.store.set({ policies: { ...p, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.sopClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ policies: { ...p, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.sopClosed(), ...this.portfolioClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     setPolicyTab: head => this.store.set({ policies: { ...this.store.get().policies, tab: head } }),
@@ -1244,7 +1250,7 @@ export class Game {
       // окно совещания S&OP (Б6г) — большое, как политики: панели справа и другие большие окна закрываются
       const p = this.store.get().sop;
       const open = !p.open;
-      this.store.set({ sop: { ...p, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.store.set({ sop: { ...p, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.portfolioClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     setSopCell: (product, i, days) => {
@@ -1273,6 +1279,16 @@ export class Game {
       this.store.set({ sop: { ...p, draft: undefined } });
       this.sendViews();
     },
+    togglePortfolio: () => {
+      // окно «Портфель» (Б7д) — большое, как S&OP: панели справа и другие большие окна закрываются
+      const p = this.store.get().portfolio;
+      const open = !p.open;
+      this.store.set({ portfolio: { ...p, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.sopClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      this.sendViews();
+    },
+    projectStart: product => this.send({ kind: 'project', op: 'start', product }),
+    projectStop: id => this.send({ kind: 'project', op: 'stop', id }),
+    projectSell: (id, sell) => this.send({ kind: 'project', op: 'protocol', id, sell }),
     moveVisit: (asset, day) => this.client.command({ kind: 'visit', asset, day, by: 'player' }),
     equip: op => this.send({ kind: 'equip', op }),
     togglePo: () => {
@@ -1424,6 +1440,12 @@ export class Game {
     return p.open ? { sop: { ...p, open: false } } : {};
   }
 
+  /** Окно «Портфель» закрыто (Б7д). */
+  private portfolioClosed(): Partial<Hud> {
+    const p = this.store.get().portfolio;
+    return p.open ? { portfolio: { ...p, open: false } } : {};
+  }
+
   private ganttClosed(): Partial<Hud> {
     const g = this.store.get().gantt;
     return { gantt: { ...ganttKept(g), open: false } };
@@ -1466,6 +1488,7 @@ export class Game {
     if (h.po.open) list.push({ id: 'po', view: 'po', ...(h.po.supplier ? { supplier: h.po.supplier } : {}), lines: h.po.lines.map(l => ({ material: l.material, qty: l.qty })) });
     if (h.kpi.open) list.push({ id: 'kpi', view: 'kpi', tab: h.kpi.tab, ...(h.kpi.why ? { why: h.kpi.why } : {}), ...(h.kpi.month !== undefined ? { month: h.kpi.month } : {}) });
     if (h.policies.open) list.push({ id: 'policies', view: 'policies' });
+    if (h.portfolio.open) list.push({ id: 'portfolio', view: 'portfolio' });
     if (h.sop.open) list.push({ id: 'sop', view: 'sop', ...(h.sop.draft ? { draft: Object.fromEntries(Object.entries(h.sop.draft).map(([p, xs]) => [p, [...xs]])) } : {}) });
     // «Сейчас» — и при закрытой панели: карточке — для «Смотреть», смотрящему — чтобы знать, когда работа кончилась
     if (h.now.open || this.selected || this.watching) list.push({ id: 'now', view: 'now' });
@@ -1715,6 +1738,7 @@ export class Game {
       else if (k === 'KeyK') this.actions.toggleKpi();
       else if (k === 'KeyP') this.actions.togglePolicies();
       else if (k === 'KeyO') this.actions.toggleSop();
+      else if (k === 'KeyF') this.actions.togglePortfolio();
       else if (k === 'KeyL') this.actions.nextLayer();
       // стройка (Б7б; геймдизайн, §12): B — стройка, R — повернуть, Ctrl+Z — отменить шаг
       else if (k === 'KeyB') this.actions.toggleBuild();
@@ -1746,6 +1770,7 @@ export class Game {
         else if (h.kpi.open) this.actions.toggleKpi();
         else if (h.policies.open) this.actions.togglePolicies();
         else if (h.sop.open) this.actions.toggleSop();
+        else if (h.portfolio.open) this.actions.togglePortfolio();
         else if (h.morning.open) this.actions.closeMorning(false);
         else if (h.cash.open) this.actions.toggleCash();
         else if (h.lab.open) this.actions.toggleLab();

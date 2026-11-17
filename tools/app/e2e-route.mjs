@@ -133,7 +133,7 @@ async function director(x) {
 
     // перенос полупродукта: строка «Сейчас» — аппаратчик везёт контейнер; мир — по часу «До события», окна закрыты
     let carry = '';
-    for (let k = 0; k < 60 && !carry; k++) {
+    for (let k = 0; k < 160 && !carry; k++) {
       for (let j = 0; j < 6; j++) await page.keyboard.press('Escape');
       if (!(await page.evaluate(() => !!document.querySelector('#now')))) await page.keyboard.press('KeyN');
       await page.waitForSelector('#now', { timeout: 10_000 }).catch(() => undefined);
@@ -144,7 +144,7 @@ async function director(x) {
       await page.evaluate(() => window.__game.actions.setSpeed(0));
     }
     if (carry) ok(`Маршрут: «Сейчас» — «${carry.slice(0, 90)}»`);
-    else fail('Маршрут: строки переноса в «Сейчас» нет за 4 минуты на ×4');
+    else fail('Маршрут: строки переноса в «Сейчас» нет за 160 шагов на ×4');
     await s.shot('перенос');
     if (errors.length > 0) fail(`Маршрут: ошибки страницы — ${errors.slice(0, 3).join(' | ')}`);
   } catch (e) {

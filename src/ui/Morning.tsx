@@ -30,6 +30,7 @@ import { headName, kpiName, kpiText, kpiValue, monthText } from './Kpi';
 import { db } from './db';
 import { AskRows } from './Journal';
 import { Levers } from './Levers';
+import { waitText } from './Portfolio';
 import { priceParts } from './price';
 import type { Actions, Hud } from './store';
 import { paramText } from './units';
@@ -249,6 +250,36 @@ function SeatBlock({ x, start }: { x: SeatSum; start: Ymd }) {
           <li key={i}>{r}</li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** Проекты (Б7д): идущие и введённые за сутки — продукт, этап и чего ждёт; этап за сутки — «новое». Рычаг — «Портфель». */
+function ProjectsBlock({ x, actions, close }: { x: NonNullable<MorningView['projects']>; actions: Actions; close: () => void }) {
+  return (
+    <div className="mblock" data-test="morning-projects">
+      <ul>
+        {x.rows.map(p => {
+          const wait = waitText(p);
+          return (
+            <li key={p.id} data-test="morning-project" data-stage={p.stage} data-fresh={String(x.fresh.includes(p.id))}>
+              <b>{named(db?.products[p.product]?.name, p.product)}</b> — {T.project.stages[p.stage] ?? p.stage}
+              {wait ? <span className="muted"> · {wait}</span> : null}
+              {x.fresh.includes(p.id) ? <span className="muted small"> · {T.project.meetingNew}</span> : null}
+            </li>
+          );
+        })}
+      </ul>
+      <button
+        type="button"
+        onClick={() => {
+          close();
+          actions.go({ panel: 'portfolio' });
+        }}
+        data-test="morning-projects-open"
+      >
+        {T.project.open}
+      </button>
     </div>
   );
 }
@@ -593,6 +624,11 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
           {v.forecast ? (
             <Section title={T.fc.meeting}>
               <FcBlock x={v.forecast} hud={hud} actions={actions} close={close} />
+            </Section>
+          ) : null}
+          {v.projects ? (
+            <Section title={T.project.meeting}>
+              <ProjectsBlock x={v.projects} actions={actions} close={close} />
             </Section>
           ) : null}
           {v.sop ? (

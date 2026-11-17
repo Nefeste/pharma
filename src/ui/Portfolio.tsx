@@ -26,7 +26,7 @@ function gapText(g: Gap): string {
 }
 
 /** Чего ждёт этап — словами. */
-function waitText(p: ProjectRow): string | undefined {
+export function waitText(p: ProjectRow): string | undefined {
   const w = T.project.wait;
   switch (p.stage) {
     case 'ready':
@@ -154,7 +154,7 @@ export function Portfolio({ hud, actions }: { hud: Hud; actions: Actions }) {
       {!mine ? <div className="muted small">{T.project.notDirector}</div> : null}
       <div className="pbody">
         {v?.rows.map(r => (
-          <div key={r.product} className="prow" data-test="portfolio-row" data-product={r.product} data-draft={String(r.draft)}>
+          <div key={r.product} className="pfrow" data-test="portfolio-row" data-product={r.product} data-draft={String(r.draft)}>
             <div>
               <b>{named(db?.products[r.product]?.name, r.product)}</b>
               <span className="muted small"> · {r.draft ? T.project.draft : T.project.stages.done}</span>

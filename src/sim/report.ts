@@ -31,6 +31,7 @@ import { type MonthClose, monthClose } from './kpi';
 import { type FcMeeting, fcMeeting } from './forecast';
 import { type EditsMeeting, editsMeeting } from './edits';
 import { type MrpMeeting, mrpMeeting } from './mrp';
+import { type ProjectRow, projectRow } from './portfolio';
 import { type SopMeeting, sopMeeting } from './sop';
 import { type PartnerSum, partnerSum } from './partners';
 import { type TrainSum, trainSum } from './people';
@@ -297,6 +298,8 @@ export interface MorningView {
   materials?: MrpMeeting;
   /** правки плана (Б6е): события коммерции и правки в замороженном горизонте с ценой за 24 часа; ничего — нет */
   edits?: EditsMeeting;
+  /** проекты (Б7д): идущие и введённые за сутки — этап и чего ждёт; этап сменился за 24 часа — в `fresh`; нечего — нет */
+  projects?: { rows: ProjectRow[]; fresh: string[] };
   /** руководители (Б5в): где сегодня решает не руководитель — «и. о.» с его навыком, или некому; все на месте — пусто */
   bosses: BossRow[];
 }
@@ -528,6 +531,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
   const materials = mrpMeeting(db, s);
   const edits = editsMeeting(db, s, from, at);
   const unc = jobsOf(db, s, forecast(db, s)).uncovered;
+  const projects = Object.values(s.portfolio?.projects ?? {}).filter(p => (p.stage !== 'done' && p.stage !== 'stopped') || p.since >= from);
   return {
     view: 'morning',
     day: q.day,
@@ -570,6 +574,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     ...(sop ? { sop } : {}),
     ...(materials ? { materials } : {}),
     ...(edits ? { edits } : {}),
+    ...(projects.length > 0 ? { projects: { rows: projects.map(p => projectRow(db, s, p.id)!), fresh: projects.filter(p => p.since >= from).map(p => p.id) } } : {}),
     bosses: bossMeeting(db, s),
   };
 }

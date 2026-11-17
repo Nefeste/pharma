@@ -432,7 +432,7 @@ export function Dossier({ hud, actions }: { hud: Hud; actions: Actions }) {
             {v.sku ? head(T.dossier.sku, `${named(db?.skus[v.sku]?.name, v.sku)} · ${T.card.packingOf(docText('skus', v.sku))}`) : null}
             {v.mass !== undefined && v.units !== undefined ? head(T.dossier.size, T.dossier.sizeText(kg(v.mass), num(v.units))) : null}
             {v.status ? head(T.dossier.state, T.dossier.status[v.status]) : null}
-            {v.goal ? head(T.dossier.goal, v.goal.kind === 'stock' ? T.jobs.stock : T.jobs.forOrder(v.goal.customer ? named(db?.customers[v.goal.customer]?.name, v.goal.customer) : v.goal.order)) : null}
+            {v.goal ? head(T.dossier.goal, v.goal.kind === 'stock' ? T.jobs.stock : v.goal.kind === 'project' ? T.project.goal(v.goal.project, v.goal.role, v.goal.n) : T.jobs.forOrder(v.goal.customer ? named(db?.customers[v.goal.customer]?.name, v.goal.customer) : v.goal.order)) : null}
             {v.due !== undefined ? head(T.dossier.due, whenText(start, v.due)) : null}
             {v.open ? (
               <div>

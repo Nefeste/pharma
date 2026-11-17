@@ -387,6 +387,7 @@ export const en: Strings = {
     stage: 'Batch stage',
     clean: 'Equipment washing',
     roomClean: 'Room cleaning',
+    project: 'New product project work',
     crew: 'Line crew',
     changeover: 'Changeover',
     clearance: 'Line clearance',
@@ -2972,6 +2973,7 @@ export const en: Strings = {
     sellUnset: 'not decided — not sold',
     meeting: 'Projects',
     meetingNew: 'new in 24 hours',
+    goal: (project: string, role: 'trial' | 'validation', n: number) => (role === 'trial' ? `trial batch of project ${project}, not for sale` : `validation batch ${n} of project ${project}`),
     open: 'Open portfolio',
   },
   equip: {

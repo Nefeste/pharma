@@ -391,6 +391,10 @@
     /* окно «Политики» (Б5г) — как показатели: строка политики — имя, значение с «−» и «+» или вариантами, пределы и кто
        задал; черновик — полосой акцента слева; итог прогона — таблица двух вариантов */
     .pol .prow { display: grid; grid-template-columns: minmax(220px, 1.2fr) minmax(240px, 1.4fr) 2fr; gap: 4px 12px; align-items: center; padding: 5px 0 5px 8px; border-bottom: 1px solid rgba(255,255,255,.06); border-left: 3px solid transparent; }
+    .pol .pfrow { padding: 8px 0 8px 8px; border-bottom: 1px solid rgba(255,255,255,.06); }
+    .pol .pfrow > * + * { margin-top: 4px; }
+    .pol .pproj, .pol .pgaps { padding-left: 10px; border-left: 2px solid rgba(255,255,255,.08); }
+    .pol .pproj > * + * { margin-top: 3px; }
     .pol .prow.drafted { border-left-color: var(--accent); background: rgba(47,181,201,.06); }
     .pol .pctl { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
     /* окно совещания S&OP (Б6г): таблицы месяцев, клетки целей с выбором, итог плана */

@@ -162,7 +162,8 @@ export interface DossierView {
   status?: BatchStatus;
   /** срок и под что (Б6а): запас позиции или заказ покупателя — его покупатель; до комплектовки — можно отменить */
   due?: number;
-  goal?: { kind: 'stock' } | { kind: 'order'; order: string; customer?: Id };
+  /** с Б7д — серия проекта: пробная или валидации и её номер в протоколе (с 1) */
+  goal?: { kind: 'stock' } | { kind: 'order'; order: string; customer?: Id } | { kind: 'project'; project: string; role: 'trial' | 'validation'; n: number };
   open?: true;
   /** снять задание в замороженном горизонте (Б6е): цена правки — до команды */
   cancelPrice?: EditPrice;
@@ -304,7 +305,7 @@ export function dossierView(db: ContentDb, s: PlantState, q: DossierQuery): Doss
     ...(b.sku ? { sku: b.sku } : {}),
     status: b.status,
     ...(b.due !== undefined ? { due: b.due } : {}),
-    ...(b.for ? { goal: b.for.kind === 'order' ? { kind: 'order' as const, order: b.for.order, ...(s.orders[b.for.order] ? { customer: s.orders[b.for.order].customer } : {}) } : { kind: 'stock' as const } } : {}),
+    ...(b.for ? { goal: b.for.kind === 'order' ? { kind: 'order' as const, order: b.for.order, ...(s.orders[b.for.order] ? { customer: s.orders[b.for.order].customer } : {}) } : b.for.kind === 'project' ? { kind: 'project' as const, project: b.for.project, role: b.for.role, n: (b.for.role === 'trial' ? 0 : (s.portfolio?.projects[b.for.project]?.batches.indexOf(b.id) ?? -1)) + 1 } : { kind: 'stock' as const } } : {}),
     ...(b.status === 'waiting' || b.status === 'reserved' ? { open: true as const, ...(editInFrozen(db, s, { drop: [b.id] }) ? { cancelPrice: editPrice(db, s, { drop: [b.id] }) } : {}) } : {}),
     mass: r.batch.mass,
     units: r.batch.units,

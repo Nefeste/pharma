@@ -413,6 +413,7 @@ export const ru = {
     stage: 'Стадия серии',
     clean: 'Мойка оборудования',
     roomClean: 'Уборка помещения',
+    project: 'Работа проекта «Новый продукт»',
     crew: 'Смена у линии',
     changeover: 'Переналадка',
     clearance: 'Очистка линии',
@@ -3101,6 +3102,7 @@ export const ru = {
     sellUnset: 'не решено — не продавать',
     meeting: 'Проекты',
     meetingNew: 'новое за сутки',
+    goal: (project: string, role: 'trial' | 'validation', n: number) => (role === 'trial' ? `пробная серия проекта ${project}, не для продажи` : `серия валидации ${n} проекта ${project}`),
     open: 'Открыть портфель',
   },
   equip: {

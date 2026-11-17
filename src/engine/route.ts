@@ -13,6 +13,7 @@ import { blocked } from './maint';
 import { readyFor } from './mes';
 import { planOf } from './plant';
 import { roomDown } from './site/down';
+import { transferTo } from './site/units';
 import type { Batch, Command, Equipment, Notice, PlantState, Room, RouteWhy } from './types';
 
 /** Состояние помещения по имени — движка или прогона расписания. */
@@ -140,4 +141,26 @@ export function routeCommand(db: ContentDb, s: PlantState, cmd: Extract<Command,
   moot(s, routeKey(b.id, cmd.stage));
   noteCmd(s, cmd, { kind: 'route', batch: b.id, stage: st.id, ...(cmd.unit ? { unit: cmd.unit } : {}) });
   after(b);
+}
+
+/**
+ * Годная вакуумная перегрузка из помещения `from` в `to` (Б7г, шаг 2): класс с перегрузкой стоит в `from` у стены с
+ * `to`, у неё запись квалификации в силе и нет подрядчика (`unfit`), и она не занята другой серией. Нет — `undefined`:
+ * полупродукт везут на тележке.
+ */
+export function transferVia(db: ContentDb, s: PlantState, from: string, to: string): Equipment | undefined {
+  const plant = planOf(db, s.plan).plant;
+  for (const e of plant.equipment) {
+    if (e.room !== from || !db.equipment[e.type]?.transfer) continue;
+    if (transferTo(db, plant, e.type, e.room, e.at, e.turn) !== to) continue;
+    if (unfit(db, s, e.id) || s.equipment[e.id]?.batch) continue;
+    return s.equipment[e.id];
+  }
+  return undefined;
+}
+
+/** Время перегрузки массы `mass`, мг, единицей класса `type`, с: масса на производительность, вверх до секунды. */
+export function transferTime(db: ContentDb, type: Id, mass: number): number {
+  const tr = db.equipment[type].transfer!;
+  return Math.ceil((mass * 3600) / tr.rate);
 }

@@ -11,6 +11,7 @@ import { coversOn } from '../engine/leave';
 import { geo, SIXTY } from '../engine/line';
 import { partType } from '../engine/maint';
 import { nominal, roomWork, stageMass, washWork } from '../engine/mes';
+import { transferTime } from '../engine/route';
 import { SPEED } from '../engine/modes';
 import { classOf } from '../engine/places';
 import { planOf } from '../engine/plant';
@@ -205,6 +206,12 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
         row.room = roomType(b.room);
         row.thing = { kind: 'room', i: roomIx(b.room) };
       }
+    } else if (t.kind === 'carry' && t.asset && s.equipment[t.asset] && db.equipment[s.equipment[t.asset].type]?.transfer) {
+      // пуск вакуумной перегрузки (Б7г, шаг 2): у её единицы, норма — пуск и конец
+      row.machine = s.equipment[t.asset].type;
+      row.norm = t.work;
+      const i = plan.plant.equipment.findIndex(e => e.id === t.asset);
+      if (i >= 0) row.thing = { kind: 'equipment', i };
     } else if ((t.kind === 'clean' || t.kind === 'roomClean') && t.room) {
       // мойка оборудования — аппаратчики, уборка помещения — уборщик (Б4в): у каждой своя норма; помещение линии —
       // в разделе упаковки (Б1е)
@@ -294,6 +301,29 @@ export function nowView(db: ContentDb, s: PlantState): NowView {
       rated: db.machines[l.machines[k].type].nominal,
       ...(job.speed !== undefined ? { speed: job.speed } : {}),
       thing: { kind: 'machine', line: li, k: Math.max(0, k) },
+    });
+  }
+
+  // вакуумная перегрузка идёт сама (Б7г, шаг 2): с пуска — с события её конца назад на норму; людей в ней нет
+  for (const d of s.agenda.heap) {
+    if (d.e.kind !== 'transfer') continue;
+    const b = s.batches[d.e.batch];
+    const e = s.equipment[d.e.unit];
+    if (!b || !e || e.batch !== b.id) continue;
+    const norm = transferTime(db, e.type, stageMass(db, b, b.stage));
+    const i = plan.plant.equipment.findIndex(x => x.id === e.id);
+    rows.push({
+      key: `transfer:${e.id}:${d.t}`,
+      dept: 'mes',
+      kind: 'carry',
+      batch: batchNo(b.code),
+      bn: num(b.id),
+      machine: e.type,
+      phase: 'run',
+      people: [],
+      from: d.t - norm,
+      norm,
+      ...(i >= 0 ? { thing: { kind: 'equipment', i } as Thing } : {}),
     });
   }
 

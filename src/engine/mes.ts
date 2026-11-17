@@ -24,7 +24,7 @@ import { numOf, POL, policyOf } from './policies';
 import { measure, within } from './quality';
 import { normal, roll, spread } from './random';
 import { containersByLot, createLot, free, knownAssay, nextId, putUnit, stockChanged } from './stock';
-import { chooseRoom } from './route';
+import { chooseRoom, transferTime, transferVia } from './route';
 import { roomDown } from './site/down';
 import { addTask, release } from './tasks';
 import type { Batch, BatchFor, Command, Container, Deviation, EditPrice, Equipment, KitLine, Lot, Notice, OrderWhy, PackJob, Part, Place, PlantEvent, PlantState, Room, StageRecord, StageRun, Task, Unit } from './types';
@@ -1053,24 +1053,57 @@ export const CARRIERS = ['role.operator'] as const;
 export function moveOn(db: ContentDb, s: PlantState, b: Batch, notices: Notice[] = []) {
   const r = db.recipes[b.recipe];
   if (b.status !== 'process' || !b.room) return;
-  if (Object.values(s.tasks).some(t => t.kind === 'carry' && t.batch === b.id)) return;
+  if (Object.values(s.tasks).some(t => t.kind === 'carry' && t.batch === b.id) || transferring(db, s, b)) return;
   const plan = planOf(db, s.plan);
   const last = b.stage >= r.stages.length;
   const to = last ? plan.roomOf.bulk : chooseRoom(db, s, b, b.stage, notices);
   if (to === undefined) return;
   if (to === b.room) return tryStart(db, s, b);
+  // вакуумная перегрузка (Б7г, шаг 2): годная из этого помещения в то — аппаратчик пускает её на месте, без тележки
+  const via = last ? undefined : transferVia(db, s, b.room, to);
+  if (via) {
+    addTask(s, { kind: 'carry', roles: [...CARRIERS], from: roomPlace(plan, b.room), work: db.equipment[via.type].transfer!.setup, prio: MES_PRIO.stage, batch: b.id, room: to, asset: via.id });
+    return;
+  }
   addTask(s, { kind: 'carry', roles: [...CARRIERS], from: roomPlace(plan, b.room), work: CARRY_WORK, prio: MES_PRIO.stage, batch: b.id, room: to });
+}
+
+/** Идёт ли у серии вакуумная перегрузка (Б7г, шаг 2): её единица держит серию. */
+const transferring = (db: ContentDb, s: PlantState, b: Batch) => Object.values(s.equipment).some(e => e.batch === b.id && !!db.equipment[e.type]?.transfer);
+
+/**
+ * Перегрузка кончила (Б7г, шаг 2): единица свободна, полупродукт — в помещении следующей стадии; прежнее помещение —
+ * грязное, единица моется с его оборудованием.
+ */
+export function transferDone(db: ContentDb, s: PlantState, ev: Extract<PlantEvent, { kind: 'transfer' }>, notices: Notice[]) {
+  const e = s.equipment[ev.unit];
+  if (e?.batch === ev.batch) delete e.batch;
+  const b = s.batches[ev.batch];
+  if (!b || b.status !== 'process') return;
+  arrive(db, s, planOf(db, s.plan), b, ev.room, notices);
 }
 
 /** Полупродукт выгружен (Б7г): прежнее помещение — грязное; дальше — стадия или, после последней, партия балка. */
 function carried(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, notices: Notice[]) {
   const b = s.batches[t.batch!];
+  // перегрузка (Б7г, шаг 2): аппаратчик пустил её — полупродукт идёт по линии, единица держит серию до конца
+  const e = t.asset ? s.equipment[t.asset] : undefined;
+  if (e && db.equipment[e.type]?.transfer) {
+    e.batch = b.id;
+    schedule(s.agenda, s.t + transferTime(db, e.type, stageMass(db, b, b.stage)), { kind: 'transfer', batch: b.id, unit: e.id, room: t.room! });
+    return;
+  }
+  arrive(db, s, plan, b, t.room!, notices);
+}
+
+/** Полупродукт выгружен в помещении `to` (Б7г): прежнее помещение — грязное; дальше — стадия или партия балка. */
+function arrive(db: ContentDb, s: PlantState, plan: PlantPlan, b: Batch, to: string, notices: Notice[]) {
   const r = db.recipes[b.recipe];
   // помещение, которое серия держала, — грязное; привезли из помещения, куда серию только доставили, — его не держали
   if (s.rooms[b.room!]?.batch === b.id) leaveRoom(db, s, b.room!, b.product, b.id);
   delete b.room;
   if (b.stage >= r.stages.length) return finish(db, s, plan, b, b.records[b.records.length - 1], notices);
-  b.room = t.room;
+  b.room = to;
   tryStart(db, s, b);
 }
 

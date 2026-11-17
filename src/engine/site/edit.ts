@@ -10,7 +10,7 @@ import { buildNav, CELL, CELL_CM, type Nav, RACK } from '../nav';
 import { planOf } from '../plant';
 import { type SitePlan, planRev } from '../types';
 import { FLOOR, levelOf, roleOf, type SiteError, type SiteThing, siteErrors } from './checks';
-import { centerFor, classRec, familyOf, footError, movedUnit, nextPlace, swapUnit, unitName, unitOf, unitPrice, unitsIn, withoutRoomUnits, withoutUnit, withUnit } from './units';
+import { centerFor, classRec, familyOf, footError, movedUnit, nextPlace, swapUnit, unitName, transferTo, unitOf, unitPrice, unitsIn, withoutRoomUnits, withoutUnit, withUnit } from './units';
 
 /** Прямоугольник клеток: x, z, ширина, глубина — со стенами у помещения и корпуса, пол — у зоны. */
 export type Cells = [number, number, number, number];
@@ -76,6 +76,8 @@ export type BuildError =
   | { code: 'notHere'; type: string; room: string }
   | { code: 'footprint' }
   | { code: 'doorway' }
+  /** вакуумная перегрузка (Б7г): не у стены с помещением следующей стадии */
+  | { code: 'transferWall' }
   | { code: 'lineUnit' }
   | { code: 'noPlace' };
 
@@ -390,6 +392,7 @@ export function editPlan(db: ContentDb, b: BuildPrices, plan: SitePlan, op: Buil
       if (family === 'equipment') {
         const foot = op.at ? footError(db, plan, op.type, op.room, op.at, op.turn ?? 0) : 'footprint';
         if (foot) return fail({ code: foot });
+        if (db.equipment[op.type]?.transfer && !transferTo(db, plan, op.type, op.room, op.at!, op.turn ?? 0)) return fail({ code: 'transferWall' });
       }
       const center = centerFor(plan, family, op.room);
       const place = center && nextPlace(plan, center);
@@ -410,6 +413,7 @@ export function editPlan(db: ContentDb, b: BuildPrices, plan: SitePlan, op: Buil
         if (op.room === u.room && op.at[0] === u.at?.[0] && op.at[1] === u.at?.[1] && (op.turn ?? 0) === u.turn) return fail({ code: 'same' });
         const foot = footError(db, plan, u.type, op.room, op.at, op.turn ?? 0, u.id);
         if (foot) return fail({ code: foot });
+        if (db.equipment[u.type]?.transfer && !transferTo(db, plan, u.type, op.room, op.at, op.turn ?? 0)) return fail({ code: 'transferWall' });
       } else if (op.room === u.room) return fail({ code: 'same' });
       const center = centerFor(plan, u.family, op.room);
       const place = center && (center === u.place.slice(0, 5) ? u.place : nextPlace(plan, center));

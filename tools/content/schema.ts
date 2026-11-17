@@ -970,6 +970,8 @@ export const equipment = z
     /** мощность, пока идёт стадия, кВт */
     kw: z.number().min(0).default(0),
     parts: z.array(part).default([]),
+    /** вакуумная перегрузка (Б7г): кг/ч, пуск и конец — минуты, пары типов помещений «откуда — куда» */
+    transfer: z.strictObject({ kgh: z.number().positive(), setup: minutes, pairs: z.array(z.tuple([z.string(), z.string()])).min(1) }).optional(),
     /** повторная квалификация и калибровка подрядчиком (Б3в) */
     qual: qualWork.optional(),
     cal: calWork.optional(),

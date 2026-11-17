@@ -450,6 +450,11 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   const equipment: Record<string, EquipmentType> = {};
   for (const e of Object.values(raw.equipment)) {
     need(e.cleaning.minor <= e.cleaning.major, `оборудование ${e.id}: малая уборка дольше генеральной`);
+    // перегрузка (Б7г): пара — два разных типа помещений производства, единицу ставят в первый
+    for (const [a, z] of e.transfer?.pairs ?? []) {
+      need(a !== z && raw.rooms[`room.${a}`]?.role === 'production' && raw.rooms[`room.${z}`]?.role === 'production', `оборудование ${e.id}: перегрузка ${a} → ${z} — не два разных типа помещений производства`);
+      need(raw.rooms[`room.${a}`]?.things?.includes(e.id), `оборудование ${e.id}: в помещение типа ${a} его не ставят (things)`);
+    }
     equipment[e.id] = {
       id: e.id,
       name: e.name,
@@ -458,6 +463,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       cleaning: { minor: sec(e.cleaning.minor), major: sec(e.cleaning.major) },
       kw: watt(e.kw),
       parts: partsOf(e.parts, `оборудование ${e.id}`, undefined),
+      ...(e.transfer ? { transfer: { rate: Math.round(e.transfer.kgh * 1_000_000), setup: sec(e.transfer.setup), pairs: e.transfer.pairs } } : {}),
       ...works(e),
       ...(e.source ? { source: e.source, review: e.review } : {}),
     };

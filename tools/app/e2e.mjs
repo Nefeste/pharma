@@ -2217,7 +2217,9 @@ async function mainPart() {
     await frames(1);
     const partners = await page.evaluate(() => {
       const v = window.__game.store.get().ref.view;
-      const mats = v.materials.filter(m => ['api', 'excipient', 'packaging'].includes(m.kind));
+      // материалы продукта-проекта (Б7д): спецификации в силе нет — пар и договоров тоже
+      const live = m => window.__game.db.specs[window.__game.db.materials[m.id].spec].doc.from < 99_999_999;
+      const mats = v.materials.filter(m => ['api', 'excipient', 'packaging'].includes(m.kind) && live(m));
       return {
         makers: document.querySelectorAll('[data-test=ref-makers] tbody tr').length,
         pairs: [...document.querySelectorAll('[data-test=ref-pair-state]')].map(x => x.textContent ?? ''),
@@ -2302,7 +2304,8 @@ async function mainPart() {
       sums: document.querySelector('[data-test=card-sheet]')?.nextElementSibling?.textContent ?? '',
       want: (() => {
         const db = window.__game.db;
-        return [...Object.values(db.sops), ...Object.values(db.tests)].filter((x, i, all) => x.roles.includes('role.operator') && all.findIndex(y => y.doc.code === x.doc.code) === i).length;
+        // редакции-проекты (Б7д) не учат, пока их не ввёл проект
+        return [...Object.values(db.sops), ...Object.values(db.tests)].filter((x, i, all) => x.roles.includes('role.operator') && x.doc.from < 99_999_999 && all.findIndex(y => y.doc.code === x.doc.code) === i).length;
       })(),
     }));
     const fresh = c.rows.find(r => /^SOP-0015, ред\.\u00a02: /.test(r));

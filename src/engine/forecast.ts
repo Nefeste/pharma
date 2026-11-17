@@ -60,8 +60,9 @@ const monthT = (s: PlantState, n: number) => (firstDay(n) - daysFromCivil(s.star
 
 /** Индекс месяца `n` у позиции, % среднего месяца: сезон её продукта. */
 export function seasonIndex(db: ContentDb, sku: Id, n: number): number {
-  const sea = db.seasons[db.products[db.skus[sku].product].season];
-  return sea.months[n % 12];
+  const id = db.products[db.skus[sku].product].season;
+  // без сезона (Б7д) — каждый месяц как средний
+  return id ? db.seasons[id].months[n % 12] : 100;
 }
 
 /**

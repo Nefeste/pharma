@@ -1,0 +1,14 @@
+# Внешний вид покрытых таблеток (МОК, Б7д): за видом следят во время нанесения (coat-guide-2023, шаг 4) — у отобранных
+# таблеток доля с налипанием, слипанием или эрозией. Число таблеток в пробе, время и погрешность — гипотезы.
+# Редакция-проект: в силу её вводит проект «Новый продукт»
+id: test.ipc.defects
+name: { ru: Дефекты покрытия (МОК), en: Coating defects (IPC) }
+doc: { code: TM-0013, rev: 1, approved: role.qc-head }
+attr: defects
+prep: 5
+run: 0
+unattended: false
+sd: 0.1
+roles: [role.operator]
+hours: 1
+every: 12

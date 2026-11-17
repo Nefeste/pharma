@@ -234,7 +234,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   lab tests by the spec revision in force when the sample was taken, the lot decision — a lot rejected without an
   investigation settles its deviation, a lot raised by the player),
   `docs.ts` (regulatory documents — specs, test methods, recipes, packaging instructions: revisions of one code, the one
-  in force on a plant day, draft, in force or archived), `infer.ts` (the inference — a copy of Anamnez's: noisy-OR
+  in force on a plant day, draft, in force or archived; with Б7д a project revision has no day in force — `DRAFT_DAY` —
+  and stays a draft until its project), `infer.ts` (the inference — a copy of Anamnez's: noisy-OR
   findings, the posterior over candidates, entropy and the expected gain of a step), `investigation.ts` (the scenario's
   incident — root and size by the seed, its traces in parameters, the mill screen and the lab test; an out-of-spec
   dissolution opens a deviation and an investigation, the lot waits; steps as tasks of their roles or lab tests — the
@@ -743,7 +744,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   policy «кому заказывать» and the scenario's `supply.who`, the offer weights `supply.rfq` and the dossier variation
   terms `partners.variation`; with Б7а — the floor of a plan's rooms, docks and points, in 1.0 the first, set by the
   builder; with Б7б — `rooms/`: room types — the role in the layout checks, classes, vehicles, the ISA-95 area of a new
-  room, the smallest size, built in Б7б or not, a washing room's two doorways —, and a plan's lot and hull);
+  room, the smallest size, built in Б7б or not, a washing room's two doorways —, and a plan's lot and hull; with Б7д —
+  the coating room, the pan coater and the coat stage — bed temperature, spray rate in g/min, pan speed, the IPC of
+  weight gain and coating defects —, metformin as a project product: its recipe, specs, methods and agreement without
+  a day in force, a product without a demand season);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a

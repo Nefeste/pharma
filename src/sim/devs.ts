@@ -295,7 +295,8 @@ export interface Knobs {
 export function knobsAt(db: ContentDb, s: PlantState, room: string): Knobs[] {
   const type = s.rooms[room]?.type;
   const day = momentOf(s.start, s.t).day;
-  const ids = [...new Set(Object.keys(db.recipes).map(id => inForce(db, 'recipes', id, day)))];
+  // карта-проект (Б7д) уставок не имеет, пока проект не ввёл её в силу
+  const ids = [...new Set(Object.keys(db.recipes).map(id => inForce(db, 'recipes', id, day)))].filter(id => db.recipes[id].doc.from <= day);
   return ids.flatMap(id =>
     db.recipes[id].stages
       .filter(st => st.room === type && st.params.length > 0)

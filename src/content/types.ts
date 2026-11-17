@@ -85,9 +85,13 @@ export type OkeiUnit = 'mg' | 'g' | 'kg' | 'pcs' | 'pack';
 export interface DocHead {
   code: string;
   rev: number;
+  /** день «в силе»; у редакции-проекта (Б7д) — `DRAFT_DAY`, день, который не наступает */
   from: number;
   approved: Id;
 }
+
+/** День «в силе» редакции-проекта (Б7д): позже любого дня игры — до проекта она «проект» по любому календарю. */
+export const DRAFT_DAY = 99_999_999;
 
 /** Строка штата сценария: столько-то людей роли на графике. */
 export interface StaffRow {
@@ -520,7 +524,11 @@ export type Attr =
   | 'disintegration'
   | 'dissolution'
   | 'granule'
-  | 'uniformity';
+  | 'uniformity'
+  /** привес покрытия плёночной оболочкой (Б7д), % массы ядра */
+  | 'gain'
+  /** таблетки с дефектами покрытия — налипание, слипание, эрозия (Б7д), % отобранных */
+  | 'defects';
 
 /**
  * Единицы свойства в записях и в движке. Проценты — в долях 1/10 000 (99,8 % — 9 980); ньютоны — в сотых; минуты — в
@@ -542,6 +550,8 @@ export const ATTRS: Record<Attr, { unit: 'qual' | 'pct' | 'N' | 'min' | 'um' | '
   granule: { unit: 'um' },
   /** однородность дозирования (Б2б): приемлемое значение AV по 10 таблеткам — число без единицы, годно до 15,0 */
   uniformity: { unit: 'av' },
+  gain: { unit: 'pct' },
+  defects: { unit: 'pct', whole: true },
 };
 
 /** Во сколько раз значение в движке больше записанного: % → доли 1/10 000, Н → сотые, мин → с, мкм → мкм, AV → сотые. */
@@ -990,8 +1000,8 @@ export interface Product {
   strength: number;
   /** в перечне ЖНВЛП: цена позиции — не выше зарегистрированной */
   jnvlp: boolean;
-  /** сезон спроса (Б6в): группа товаров — запись `content/seasons/` */
-  season: Id;
+  /** сезон спроса (Б6в): группа товаров — запись `content/seasons/`; нет — спрос без сезона, индекс 100 (Б7д) */
+  season?: Id;
   source?: string[];
   review?: Review;
 }
@@ -1091,8 +1101,9 @@ export interface EquipmentType {
 }
 
 /** Единица режима в движке: об/мин — целыми, минуты — секундами, °C — десятыми, кН — сотыми, кг — граммами. */
-export type ParamUnit = 'rpm' | 'min' | 'C' | 'kN' | 'kg';
-export const PARAM_SCALE: Record<ParamUnit, number> = { rpm: 1, min: 60, C: 10, kN: 100, kg: 1000 };
+export type ParamUnit = 'rpm' | 'min' | 'C' | 'kN' | 'kg' | 'gpm';
+/** `gpm` — подача дисперсии покрытия, г/мин (Б7д): целыми граммами */
+export const PARAM_SCALE: Record<ParamUnit, number> = { rpm: 1, min: 60, C: 10, kN: 100, kg: 1000, gpm: 1 };
 
 export interface StageParam {
   id: string;

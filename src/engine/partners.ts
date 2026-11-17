@@ -11,7 +11,7 @@
 // партия, аудит и изменение досье типа II (reg-eaeu, прил. 19, Б.I.а.1): с положительным решением пара в спецификации
 // (п. 4.2.1). Рамочный договор — только по парам спецификации из базы: второй источник — по прайсу. Кому заказывать при
 // двух поставщиках — политика начальника отдела снабжения; предложения — цена, срок, доля поставок вовремя и предоплата.
-import type { ContentDb, Id, MaterialKind, Scenario, SpecPair } from '../content/types';
+import { type ContentDb, DRAFT_DAY, type Id, type MaterialKind, type Scenario, type SpecPair } from '../content/types';
 import { dueRule, type Who } from './bosses';
 import { part, post, vatRate } from './cash';
 import { schedule } from './core/agenda';
@@ -87,14 +87,19 @@ export function everyOf(db: ContentDb, sc: Scenario, supplier: Id, maker: Id): n
 
 /** Пары спецификации материала, действующей в день `day`. */
 export function specPairs(db: ContentDb, material: Id, day: number): { supplier: Id; maker: Id }[] {
+  return liveSpec(db, material, day)?.pairs ?? [];
+}
+
+/** Спецификация материала, действующая в день `day`; у материала продукта-проекта (Б7д) её ещё нет — `undefined`. */
+function liveSpec(db: ContentDb, material: Id, day: number) {
   const m = db.materials[material];
-  return m ? (db.specs[inForce(db, 'specs', m.spec, day)]?.pairs ?? []) : [];
+  const sp = m ? db.specs[inForce(db, 'specs', m.spec, day)] : undefined;
+  return sp && sp.doc.from <= day ? sp : undefined;
 }
 
 /** Пары-кандидаты спецификации материала, действующей в день `day` (Б6ж). */
 export function candidatePairs(db: ContentDb, material: Id, day: number): SpecPair[] {
-  const m = db.materials[material];
-  return m ? (db.specs[inForce(db, 'specs', m.spec, day)]?.candidates ?? []) : [];
+  return liveSpec(db, material, day)?.candidates ?? [];
 }
 
 /**
@@ -154,6 +159,8 @@ export function seedPairs(db: ContentDb, sc: Scenario, s: Pick<PlantState, 'pair
   for (const m of Object.values(db.materials)) {
     if (!STARTING.has(m.kind)) continue;
     for (const rev of revisions(db, 'specs', m.spec)) {
+      // редакция-проект (Б7д): пару заведёт проект, когда введёт спецификацию в силу
+      if (db.specs[rev].doc.from === DRAFT_DAY) continue;
       for (const x of db.specs[rev].pairs ?? []) {
         const key = pairKey(x.supplier, x.maker);
         first.set(key, Math.min(first.get(key) ?? Number.POSITIVE_INFINITY, db.specs[rev].doc.from));

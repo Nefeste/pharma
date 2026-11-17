@@ -4,7 +4,7 @@
 // по факту — записи стадий серий; люди по ролям и сменам — как в состоянии. Карточка паллеты: тара и сколько в ней — по учёту.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
-import type { Attr, ContentDb, Recipe } from '../../src/content/types';
+import { type Attr, type ContentDb, DRAFT_DAY, type Recipe } from '../../src/content/types';
 import { momentOf } from '../../src/engine/core/calendar';
 import { apply } from '../../src/engine/engine';
 import { nominal, stageMass } from '../../src/engine/mes';
@@ -220,7 +220,11 @@ describe('справочник: номенклатура и документы (
   test('документы — все редакции базы; в прототипе каждая действует, кроме новой редакции уборки до её дня (Б3б) и прежних редакций соглашений (Б3г)', () => {
     const all = (['specs', 'tests', 'recipes', 'skus', 'sops', 'agreements'] as const).flatMap(kind => Object.keys(db[kind]).map(id => `${kind}/${id}`));
     expect(v.docs.map(d => `${d.kind}/${d.id}`)).toEqual(all);
-    const draft = v.docs.filter(d => d.status !== 'active').map(d => `${d.kind}/${d.id}:${d.status}`);
+    // редакции-проекты (Б7д) — «проект», пока их не ввёл проект «Новый продукт»
+    const project = new Set((['specs', 'tests', 'recipes', 'skus', 'sops', 'agreements'] as const).flatMap(kind => Object.entries(db[kind]).flatMap(([id, x]) => (x.doc.from === DRAFT_DAY ? [`${kind}/${id}:draft`] : []))));
+    expect(project.size).toBeGreaterThan(0);
+    for (const p of project) expect(v.docs.map(d => `${d.kind}/${d.id}:${d.status}`)).toContain(p);
+    const draft = v.docs.map(d => `${d.kind}/${d.id}:${d.status}`).filter(d => !d.endsWith(':active') && !project.has(d));
     // соглашения по качеству (Б3г): прежние редакции — в архиве, на начало партии действует последняя
     const qag = ['agreements/qag.exc:archive', 'agreements/qag.pack-r2:archive', 'agreements/qag.pack:archive'];
     expect(draft).toEqual([...(today < db.sops['sop.cleaning-r2'].doc.from ? ['sops/sop.cleaning-r2:draft'] : ['sops/sop.cleaning:archive']), ...qag]);

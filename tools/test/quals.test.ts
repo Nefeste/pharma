@@ -9,6 +9,7 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { db } from '../../src/content';
+import { DRAFT_DAY } from '../../src/content/types';
 import { addMonths, DAY, daysFromCivil, HOUR, MIN, momentOf } from '../../src/engine/core/calendar';
 import { apply, newPlant } from '../../src/engine/engine';
 import { check } from '../../src/engine/invariants';
@@ -68,7 +69,8 @@ describe('процедуры и матрица обучения в базе', ()
     // в справочнике — все коды по порядку: процедуры, потом методики
     const codes = learnCodes(db);
     expect(codes).toEqual([...codes].sort());
-    expect(codes.length).toBe(new Set([...Object.values(db.sops), ...Object.values(db.tests)].map(x => x.doc.code)).size);
+    // кроме редакций-проектов (Б7д): их учат, когда проект введёт их в силу
+    expect(codes.length).toBe(new Set([...Object.values(db.sops), ...Object.values(db.tests)].filter(x => x.doc.from !== DRAFT_DAY).map(x => x.doc.code)).size);
   });
 
   test('что нужно для работы: вид задачи и «любая работа»; у стадии — оборудование и МОК; у испытания — методика; обучению — ничего', () => {

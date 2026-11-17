@@ -1,0 +1,15 @@
+# Система плёночного покрытия (Б7д): один порошок с полимером, пластификатором и пигментом — его распределяют в
+# очищенной воде (coat-params-2011); у метформина в оболочке — гипромеллоза, макрогол и титана диоксид
+# (meb-metformin-2009). Тара, свойства и проба — гипотезы
+id: mat.exc.coat
+kind: excipient
+code: 200007
+name: { ru: "Система покрытия, белая (гипромеллоза)", en: "Film-coating system, white (hypromellose)" }
+unit: kg
+container: cnt.bag.20
+storage: reg.ccrt
+shelf: 24
+spec: spec.mat.exc.coat
+props: { moisture: [3, 0.5] }
+bad: { attr: moisture, shift: 4 }
+sample: 20

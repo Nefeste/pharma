@@ -2,7 +2,7 @@
 // `gost-62264-2`): чему учат — процедуры (СОП) и методики, и кого — строка матрицы обучения у документа; что нужно знать
 // для работы; допущен ли человек. Допущен — если по каждому документу работы у него запись на редакцию, действующую в
 // этот день, или на более новую, и её срок не истёк. Запись — знание завода, а не истина: её видят окно и двойник.
-import type { ContentDb, Id, RecipeStage, TaskKind } from '../content/types';
+import { type ContentDb, DRAFT_DAY, type Id, type RecipeStage, type TaskKind } from '../content/types';
 import { headOf, revisions } from './docs';
 import { planOf } from './plant';
 import type { Person, PlantState, Task } from './types';
@@ -51,6 +51,8 @@ function index(db: ContentDb): Index {
   // у редакций одного документа — одни роли и работы (проверяет сборщик базы): берётся первая встреченная
   for (const kind of ['sops', 'tests'] as const) {
     for (const [id, r] of Object.entries(db[kind])) {
+      // редакция-проект (Б7д): пока проект не ввёл её в силу, её не учат и работе она не нужна
+      if (r.doc.from === DRAFT_DAY) continue;
       const code = r.doc.code;
       ix.revFrom.set(id, r.doc.from);
       ix.froms.set(code, [...(ix.froms.get(code) ?? []), r.doc.from].sort((a, b) => a - b));

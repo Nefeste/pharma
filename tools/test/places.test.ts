@@ -13,6 +13,7 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { db } from '../../src/content';
+import { DRAFT_DAY } from '../../src/content/types';
 import { ACCEPT, ACCEPT_PRIO, recOf, STORE_KINDS, unfit, WORKS } from '../../src/engine/assets';
 import { batchNo } from '../../src/engine/batchno';
 import { part } from '../../src/engine/cash';
@@ -86,8 +87,9 @@ describe('места в базе', () => {
       const th = P.thing[P.sensorOf[c.code]];
       expect([c.code, c.rooms?.includes(th.room), db.instruments[th.type].cal.verify]).toEqual([c.code, true, true]);
     }
-    // у стадии с МОК на приборе — прибор этого вида в её помещении
-    for (const r of Object.values(db.recipes))
+    // у стадии с МОК на приборе — прибор этого вида в её помещении; у карты-проекта (Б7д) помещения покрытия в плане
+    // старта нет — его строят, когда вводят продукт
+    for (const r of Object.values(db.recipes).filter(x => x.doc.from !== DRAFT_DAY))
       for (const st of r.stages)
         for (const q of st.ipc) {
           const inst = db.tests[q.test].inst;

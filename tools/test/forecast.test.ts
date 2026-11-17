@@ -45,7 +45,7 @@ const NOV = SEP + 2;
 describe('сезон спроса', () => {
   test('группа у каждого продукта плана; 12 индексов больше нуля, в сумме 1200', () => {
     for (const sku of SKUS) {
-      const sea = db.seasons[db.products[db.skus[sku].product].season];
+      const sea = db.seasons[db.products[db.skus[sku].product].season!];
       expect(sea.months.length).toBe(12);
       expect(sea.months.every(x => x > 0)).toBe(true);
       expect(sea.months.reduce((a, b) => a + b, 0)).toBe(1200);
@@ -418,7 +418,7 @@ describe('сборщик базы — на испорченной копии con
     has(broken({ 'seasons/cold.yaml': [[MONTHS, 'months: [250, 125, 110, 95, 85, 80, 80, 85, 100, 105, 105, 0]']] }), 'seasons/cold.yaml: months');
     has(broken({ 'seasons/cold.yaml': [[MONTHS, 'months: [125, 125, 110, 95, 85, 80, 80, 85, 100, 105, 105, 106]']] }), 'вместе 1200');
     has(broken({ 'products/paracetamol500.yaml': [['season: sea.cold', 'season: sea.flu']] }), 'нет сезона спроса sea.flu');
-    has(broken({ 'products/paracetamol500.yaml': [['season: sea.cold\n', '']] }), 'products/paracetamol500.yaml: season');
+    // без сезона (Б7д) — можно: спрос без сезона, индекс 100
     has(broken({ 'policies/plan/method.yaml': [['options: [best, last-year, ma, ses, holt, group]', 'options: [best, last-year, ma, ses, holt]']] }), 'политика pol.plan.method: варианты правила');
     has(broken({ 'scenarios/proto.yaml': [['  method: best', '  method: arima']] }), 'scenarios/proto.yaml: plan.method');
   });

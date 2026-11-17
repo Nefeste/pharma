@@ -1,0 +1,9 @@
+# Входной контроль системы покрытия (Б7д). Пределы — гипотезы: настоящие — по спецификации изготовителя. Редакция-
+# проект: в силу её вводит проект «Новый продукт»
+id: spec.mat.exc.coat
+name: { ru: "Система покрытия, белая", en: "Film-coating system, white" }
+doc: { code: SP-0023, rev: 1, approved: role.qc-head }
+pairs: [{ supplier: sup.exc, maker: mkr.exc }]
+tests:
+  - { test: test.ir }
+  - { test: test.lod, max: 6 }

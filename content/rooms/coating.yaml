@@ -1,0 +1,12 @@
+# покрытие плёночной оболочкой (Б7д): коатер с перфорированным барабаном и весы МОК привеса. Наименьший размер со
+# стенами — гипотеза: источника нет
+id: room.coating
+role: production
+grades: [D]
+vehicles: true
+area: TB
+min: [6, 6]
+build: true
+things: [eq.coater, inst.balance]
+source: [gmp-eaeu, who-tt-2022]
+review: draft

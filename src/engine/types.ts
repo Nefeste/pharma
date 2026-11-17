@@ -2496,6 +2496,8 @@ export type Refusal =
   | 'noAgreement'
   | 'empty'
   | 'noRecipe'
+  /** карта — проект (Б7д): в силу её вводит проект «Новый продукт» */
+  | 'draftRecipe'
   | 'noBatch'
   | 'notBulk'
   | 'noSku'

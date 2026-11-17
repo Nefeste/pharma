@@ -45,7 +45,7 @@ const NOV = SEP + 2;
 describe('сезон спроса', () => {
   test('группа у каждого продукта плана; 12 индексов больше нуля, в сумме 1200', () => {
     for (const sku of SKUS) {
-      const sea = db.seasons[db.products[db.skus[sku].product].season];
+      const sea = db.seasons[db.products[db.skus[sku].product].season!];
       expect(sea.months.length).toBe(12);
       expect(sea.months.every(x => x > 0)).toBe(true);
       expect(sea.months.reduce((a, b) => a + b, 0)).toBe(1200);

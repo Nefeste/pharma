@@ -1,0 +1,107 @@
+# Технологическая карта метформина 500 мг в плёночной оболочке (Б7д): ядро — водная грануляция метформина гидрохлорида
+# с вспомогательными, смешивание, прессование, затем покрытие (meb-metformin-2009, «Manufacturing process»). Состав ядра
+# — по инструкции: повидон и магния стеарат, оболочка — гипромеллоза (ru-metformin); масса ядра около 525 мг — сумма
+# состава, вывод. Покрытие — 3 % привеса системой покрытия в воде (coat-params-2011). Времена, режимы, разбросы, потери
+# и показатели — гипотезы геймдизайна, не чей-то регламент. Редакция-проект: в силу её вводит проект «Новый продукт»
+id: rcp.metformin500.wet.v1
+name: { ru: "Метформин 500 мг, влажная грануляция, плёночная оболочка", en: "Metformin 500 mg, wet granulation, film coat" }
+doc: { code: MF-0003, rev: 1, approved: role.production-head }
+product: prd.metformin500
+# серия: 120 кг ядер — около 228 тыс. таблеток, входит в барабан 122 см (coat-params-2011); с оболочкой — 123,6 кг
+batch: { kg: 123.6, units: 228000 }
+bom:
+  - { material: mat.api.metformin, kg: 114.28, potency: true, stage: granulate }
+  - { material: mat.exc.povidone, kg: 4.57, stage: granulate }
+  - { material: mat.exc.mgst, kg: 1.15, stage: blend }
+  # система покрытия: 3 % массы ядер — на стадии покрытия (вода очищенная — режимом нанесения, в учёте не ведётся)
+  - { material: mat.exc.coat, kg: 3.6, stage: coat }
+stages:
+  - id: dispense
+    room: dispensing
+    equipment: [eq.scale]
+    staff: { role: role.operator, n: 2 }
+    time: { setup: 20, perComponent: 15, spread: 10 }
+  # грануляция водная: метформин плохо прессуется — гранулят нужен (aodah-metformin-2020)
+  - id: granulate
+    mix: true
+    room: granulation
+    equipment: [eq.hsm]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 15, perLoad: 35, loads: 2, spread: 5 }
+    params:
+      - { id: impeller, unit: rpm, target: 150, range: [120, 180], sd: 8, step: 10 }
+      - { id: wetMassing, unit: min, target: 4, range: [3, 6], sd: 0.4, step: 0.5 }
+      - { id: water, unit: kg, target: 18, range: [15, 21], sd: 0.6, step: 0.5 }
+    loss: [0.5, 0.2]
+  - id: dry
+    room: granulation
+    equipment: [eq.fbd]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 10, perLoad: 90, loads: 2, spread: 5 }
+    params:
+      - { id: inletTemp, unit: C, target: 60, range: [55, 65], sd: 1.5, step: 1 }
+    ipc:
+      - { test: test.lod, max: 2.0 }
+    loss: [0.5, 0.2]
+  - id: mill
+    room: blending
+    equipment: [eq.mill]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 15, kgPerHour: 300, spread: 5 }
+    loss: [0.3, 0.1]
+    screen: 1.0
+  - id: blend
+    room: blending
+    equipment: [eq.blender]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 10, perLoad: 15, loads: 1, spread: 5 }
+    params:
+      - { id: lubeTime, unit: min, target: 5, range: [3, 7], sd: 0.5, step: 0.5 }
+    loss: [0.1, 0.05]
+  # таблетирование: большая таблетка — сила выше, чем у парацетамола (гипотеза)
+  - id: compress
+    room: compression
+    equipment: [eq.press, eq.deduster]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 30, unitsPerHour: 90000, spread: 5 }
+    params:
+      - { id: force, unit: kN, target: 16, range: [14, 18], sd: 0.5, step: 0.5 }
+      - { id: speed, unit: rpm, target: 50, range: [40, 60], sd: 1, step: 2 }
+    ipc:
+      - { test: test.ipc.mass, every: 30, min: 97, max: 103 }
+      - { test: test.ipc.hardness, every: 30, min: 80, max: 140 }
+      - { test: test.ipc.friability, every: 60, max: 1 }
+      - { test: test.ipc.disintegration, every: 120, max: 15 }
+    loss: [1.0, 0.3]
+  # покрытие (Б7д): дисперсия 45 мин и прогрев слоя 15 мин — подготовка; нанесение около 1,2 ч на серию — подача 260–420
+  # г/мин у барабана 122 см (coat-params-2011), охлаждение 15 мин — в норме на кг; режимы — по тому же источнику
+  - id: coat
+    room: coating
+    equipment: [eq.coater]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 60, kgPerHour: 85, spread: 10 }
+    params:
+      - { id: bedTemp, unit: C, target: 43, range: [42, 45], sd: 0.5, step: 0.5 }
+      - { id: spray, unit: gpm, target: 340, range: [260, 420], sd: 10, step: 20 }
+      - { id: pan, unit: rpm, target: 8, range: [6, 10], sd: 0.3, step: 1 }
+    ipc:
+      - { test: test.ipc.gain, every: 30, min: 2.5, max: 3.5 }
+      - { test: test.ipc.defects, every: 30, max: 1 }
+    loss: [0.3, 0.1]
+bulk: mat.bulk.metformin500
+# показатели балка без причин: номинал и разброс от серии к серии; масса — доля от цели; растворение — за 30 мин;
+# привес — % массы ядра; дефекты покрытия — % отобранных таблеток
+quality:
+  moisture: [1.5, 0.15]
+  mass: [100, 0.4]
+  assay: [100, 0.6]
+  hardness: [110, 6]
+  friability: [0.3, 0.05]
+  disintegration: [8, 1]
+  dissolution: [93, 1.5]
+  granule: [350, 25]
+  gain: [3, 0.15]
+  defects: [0.2, 0.1]
+yield: { expected: 97, alarm: 94 }
+source: [meb-metformin-2009, ru-metformin, aodah-metformin-2020, coat-params-2011, gmp-eaeu]
+review: draft

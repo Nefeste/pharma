@@ -1,0 +1,7 @@
+# Изготовитель АФС метформина (Б7д) — вымышленный (AGENTS.md): название и площадка придуманы, страна настоящая; он же и
+# поставщик (sup.api-met). Выбор геймдизайна
+id: mkr.api-met
+name: { ru: Изготовитель метформина, en: Metformin maker }
+country: { ru: Индия, en: India }
+site: { ru: Площадка 1, en: Site 1 }
+makes: [mat.api.metformin]

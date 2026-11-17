@@ -1,0 +1,12 @@
+# Входной контроль АФС метформина (Б7д): содержание 98,5–101,0 %, потеря в массе при высушивании не больше 0,5 %
+# (ep7-metformin, копия — сверить). Редакция-проект: в силу её вводит проект «Новый продукт»
+id: spec.mat.api.metformin
+name: { ru: "Метформина гидрохлорид, субстанция", en: "Metformin hydrochloride, active substance" }
+doc: { code: SP-0022, rev: 1, approved: role.qc-head }
+pairs: [{ supplier: sup.api-met, maker: mkr.api-met }]
+tests:
+  - { test: test.ir }
+  - { test: test.hplc-assay, min: 98.5, max: 101 }
+  - { test: test.lod, max: 0.5 }
+source: [ep7-metformin]
+review: draft

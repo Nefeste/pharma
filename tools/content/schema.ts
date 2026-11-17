@@ -13,7 +13,7 @@ const percent = z.number().min(0).max(100);
 const day = z.number().int().min(1).max(28);
 const id = z.string().regex(/^[a-z][a-zA-Z0-9.-]*$/, 'идентификатор — латиница, цифры, точка и дефис');
 /** Свойство качества (src/content/types.ts, `Attr` и `ATTRS` — единицы). */
-const attr = z.enum(['identity', 'assay', 'moisture', 'appearance', 'particle', 'mass', 'hardness', 'friability', 'disintegration', 'dissolution', 'granule', 'uniformity']);
+const attr = z.enum(['identity', 'assay', 'moisture', 'appearance', 'particle', 'mass', 'hardness', 'friability', 'disintegration', 'dissolution', 'granule', 'uniformity', 'gain', 'defects']);
 /** Источник и review пишутся вместе: запись с фактом — с источником; выбор геймдизайна — без. */
 const paired = <T extends { source?: unknown; review?: unknown }>(o: T) => (o.source === undefined) === (o.review === undefined);
 const pairedMsg = { message: 'источник и review пишутся вместе' };
@@ -102,7 +102,8 @@ const doc = (kind: 'SP' | 'TM' | 'MF' | 'PI' | 'SOP' | 'QAG') =>
   z.strictObject({
     code: z.string().regex(new RegExp(`^${kind}-\\d{4}$`), `код документа — ${kind}-NNNN`),
     rev: z.number().int().min(1).max(99),
-    from: date,
+    /** день «в силе»; нет — редакция-проект (Б7д): в силу её вводит проект «Новый продукт», а не календарь */
+    from: date.optional(),
     approved: id,
   });
 /** Количество в единице материала: кг или штуки — load.ts сверяет с материалом. */
@@ -897,8 +898,8 @@ export const product = z.strictObject({
   strength: z.strictObject({ mg: z.number().positive() }),
   /** в перечне ЖНВЛП: цена позиции — не выше зарегистрированной */
   jnvlp: z.boolean().default(false),
-  /** сезон спроса (Б6в): группа товаров — запись content/seasons/ */
-  season: id,
+  /** сезон спроса (Б6в): группа товаров — запись content/seasons/; нет — спрос без сезона (Б7д) */
+  season: id.optional(),
   source: sources.optional(),
   review: review.optional(),
 }).refine(paired, pairedMsg);
@@ -1038,7 +1039,7 @@ export const recipe = z
             .array(
               z.strictObject({
                 id: z.string().regex(/^[a-z][a-zA-Z0-9]*$/),
-                unit: z.enum(['rpm', 'min', 'C', 'kN', 'kg']),
+                unit: z.enum(['rpm', 'min', 'C', 'kN', 'kg', 'gpm']),
                 target: z.number(),
                 range: z.tuple([z.number(), z.number()]),
                 sd: z.number().min(0),

@@ -1,0 +1,12 @@
+# Балк метформина (Б7д) — покрытые таблетки после производства, до упаковки. Свойства — от серии (технологическая
+# карта). Срок хранения балка до упаковки — гипотеза
+id: mat.bulk.metformin500
+kind: bulk
+code: 400003
+name: { ru: Таблетки метформина 500 мг в балке, en: Metformin 500 mg tablets in bulk }
+unit: pcs
+container: cnt.bin.tablets
+storage: reg.ccrt
+shelf: 6
+spec: spec.bulk.metformin500
+sample: 25

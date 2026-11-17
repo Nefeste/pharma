@@ -1,0 +1,11 @@
+# Работа на коатере (Б7д): процедуры покрытия — часть плана обучения переноса технологии (who-tt-2022, §12.21).
+# Редакция-проект: в силу её вводит проект «Новый продукт». Часы и срок — гипотезы, как у других процедур
+id: sop.coater
+name: { ru: Работа на коатере, en: Pan coater operation }
+doc: { code: SOP-0026, rev: 1, approved: role.production-head }
+roles: [role.operator]
+for: { equipment: [eq.coater] }
+hours: 4
+every: 12
+source: [gmp-eaeu, who-tt-2022]
+review: draft

@@ -1,0 +1,9 @@
+# Подача дисперсии выше цели (Б7д): перемокание слоя — налипание и слипание таблеток (pm-rowley-2005; pmc-pancoat-2025,
+# §3). Направление — факт, величина — гипотеза: процентов дефектных таблеток на г/мин сверх цели
+id: cause.coat.spray
+name: { ru: Подача дисперсии не по цели, en: Spray rate off target }
+driver: { param: spray }
+effects:
+  - { attr: defects, coef: 0.02 }
+source: [pm-rowley-2005, pmc-pancoat-2025]
+review: draft

@@ -1,0 +1,9 @@
+# Скорость барабана выше цели (Б7д): эрозия и сколы покрытия (pm-rowley-2005; tc-slater-2018). Направление — факт,
+# величина — гипотеза: процентов дефектных таблеток на об/мин сверх цели
+id: cause.coat.pan
+name: { ru: Скорость барабана не по цели, en: Pan speed off target }
+driver: { param: pan }
+effects:
+  - { attr: defects, coef: 0.3 }
+source: [pm-rowley-2005, tc-slater-2018]
+review: draft

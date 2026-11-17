@@ -1,0 +1,9 @@
+# Температура слоя ниже цели (Б7д): сушки мало — перемокание, налипание и слипание (pm-rowley-2005; pmc-pancoat-2025,
+# §3). Направление — факт, величина — гипотеза: процентов дефектных таблеток на °C ниже цели
+id: cause.coat.bed
+name: { ru: Температура слоя не по цели, en: Bed temperature off target }
+driver: { param: bedTemp }
+effects:
+  - { attr: defects, coef: -0.4 }
+source: [pm-rowley-2005, pmc-pancoat-2025]
+review: draft

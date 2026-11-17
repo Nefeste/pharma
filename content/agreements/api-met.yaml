@@ -1,0 +1,12 @@
+# Соглашение по качеству с изготовителем метформина (Б7д; GMP ЕАЭС, ч. I, п. 5.28): поставщиков критических исходных
+# материалов квалифицируют до серий валидации (eaeu-65, п. 51). Редакция-проект: в силу её вводит проект «Новый
+# продукт»
+id: qag.api-met
+name: { ru: Соглашение по качеству с изготовителем метформина, en: Quality agreement with the metformin maker }
+doc: { code: QAG-0007, rev: 1, approved: role.qa-head }
+supplier: sup.api-met
+makers: [mkr.api-met]
+materials: [mat.api.metformin]
+terms: [handling, labelling, packaging, shipping, complaints, recall]
+source: [gmp-eaeu, eaeu-65]
+review: draft

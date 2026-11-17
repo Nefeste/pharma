@@ -70,6 +70,7 @@ import {
   type UnitType,
   type VehicleType,
   type Vendor,
+  DRAFT_DAY,
 } from '../../src/content/types';
 import { ACCEPT } from '../../src/engine/assets';
 import { VALIDATOR } from '../../src/engine/equip';
@@ -247,8 +248,9 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     if (!ok) errors.push(msg);
   };
   /** Шапка документа: день введения — номером дня; утвердил — роль из базы. */
-  const headDoc = (d: { code: string; rev: number; from: string; approved: string }, where: string): DocHead => {
-    const from = dayOf(d.from);
+  const headDoc = (d: { code: string; rev: number; from?: string; approved: string }, where: string): DocHead => {
+    // редакция-проект (Б7д): дня «в силе» нет — день, который не наступает, и статус «проект» (docs.ts, `statusOf`)
+    const from = d.from === undefined ? DRAFT_DAY : dayOf(d.from);
     need(from >= 0, `${where}: даты ${d.from} нет в календаре`);
     need(raw.roles[d.approved], `${where}: утвердил ${d.approved} — нет такой роли`);
     return { code: d.code, rev: d.rev, from, approved: d.approved };
@@ -394,7 +396,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   }
   const products: Record<string, Product> = Object.fromEntries(Object.values(raw.products).map(pr => [pr.id, { ...pr, strength: pr.strength.mg }]));
   // сезон спроса (Б6в): у продукта — группа базы
-  for (const pr of Object.values(raw.products)) need(raw.seasons[pr.season], `продукт ${pr.id}: нет сезона спроса ${pr.season}`);
+  for (const pr of Object.values(raw.products)) if (pr.season) need(raw.seasons[pr.season], `продукт ${pr.id}: нет сезона спроса ${pr.season}`);
   for (const pr of Object.values(raw.products)) if (pr.jnvlp) need(pr.source, `продукт ${pr.id}: «в перечне ЖНВЛП» — факт, нужен источник`);
   // код продукта в номере серии — у каждого свой: иначе номера двух продуктов совпадут
   const codes = new Map<string, string>();
@@ -1211,14 +1213,16 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     const day = daysFromCivil(sc.start.date);
     const date = raw.scenarios[sc.id].start.date;
     const active = (kind: DocKind, id: string) => headOf(docDb, kind, inForce(docDb, kind, id, day))!.from <= day;
-    for (const m of Object.values(materials)) if (specs[m.spec]) need(active('specs', m.spec), `${where}: у материала ${m.id} на ${date} нет действующей спецификации`);
+    // материал продукта-проекта (Б7д): у его спецификации только редакции-проекты — в силу их вводит проект
+    const project = (kind: DocKind, id: string) => headOf(docDb, kind, inForce(docDb, kind, id, day))!.from === DRAFT_DAY;
+    for (const m of Object.values(materials)) if (specs[m.spec] && !project('specs', m.spec)) need(active('specs', m.spec), `${where}: у материала ${m.id} на ${date} нет действующей спецификации`);
     for (const r of [...sc.batches.map(b => b.recipe), ...(sc.plan?.items.map(it => it.recipe) ?? [])]) if (recipes[r]) need(active('recipes', r), `${where}: у карты ${r} на ${date} нет действующей редакции`);
     const used = [...sc.batches.flatMap(b => (b.sku ? [b.sku] : [])), ...(sc.plan?.items.map(it => it.sku) ?? []), ...sc.customers.flatMap(c => Object.keys(customers[c]?.demand ?? {}))];
     for (const k of new Set(used)) if (skus[k]) need(active('skus', k), `${where}: инструкция по упаковке позиции ${k} на ${date} ещё не действует`);
     // соглашения по качеству (Б3г): у каждой пары спецификации, действующей на начало, — соглашение, действующее на
     // начало
     for (const m of Object.values(materials)) {
-      const sp = specs[m.spec] && specs[inForce(docDb, 'specs', m.spec, day)];
+      const sp = specs[m.spec] && !project('specs', m.spec) ? specs[inForce(docDb, 'specs', m.spec, day)] : undefined;
       for (const pr of sp?.pairs ?? []) need(agreementFor(docDb, pr.supplier, pr.maker, m.id, day), `${where}: у пары ${pr.supplier} — ${pr.maker} для ${m.id} на ${date} нет действующего соглашения по качеству`);
       // пара-кандидат (Б6ж): одобрить её можно с первого дня — соглашение по качеству подписано заранее
       for (const pr of sp?.candidates ?? []) need(agreementFor(docDb, pr.supplier, pr.maker, m.id, day), `${where}: у пары-кандидата ${pr.supplier} — ${pr.maker} для ${m.id} на ${date} нет действующего соглашения по качеству`);

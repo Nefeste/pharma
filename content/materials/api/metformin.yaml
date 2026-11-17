@@ -1,0 +1,17 @@
+# АФС метформина (Б7д): метформина гидрохлорид — легко растворим в воде; потеря в массе при высушивании не больше 0,5 %
+# (ep7-metformin). Хранение и срок повторных испытаний — выбор геймдизайна, сверить с консультантом
+id: mat.api.metformin
+kind: api
+code: 100003
+name: { ru: Метформина гидрохлорид, en: Metformin hydrochloride }
+unit: kg
+container: cnt.drum.fibre50
+storage: reg.ccrt
+shelf: 60
+potency: true
+spec: spec.mat.api.metformin
+# истинные свойства партии: среднее и разброс (содержание и влажность — %, размер частиц d50 — мкм); партия брака —
+# сдвиг (гипотезы)
+props: { assay: [99.8, 0.1], moisture: [0.2, 0.05], particle: [80, 15] }
+bad: { attr: assay, shift: -3 }
+sample: 20

@@ -157,7 +157,7 @@ export function Portfolio({ hud, actions }: { hud: Hud; actions: Actions }) {
           <div key={r.product} className="pfrow" data-test="portfolio-row" data-product={r.product} data-draft={String(r.draft)}>
             <div>
               <b>{named(db?.products[r.product]?.name, r.product)}</b>
-              <span className="muted small"> · {r.draft ? T.project.draft : T.project.stages.done}</span>
+              <span className="muted small"> · {r.draft ? T.project.draft : r.project && r.project.stage !== 'done' ? T.project.going : T.project.stages.done}</span>
               {r.stopped > 0 ? <span className="muted small"> · {T.project.stopped(r.stopped)}</span> : null}
             </div>
             <div className="muted small">{T.project.docs(r.docs.materials, r.docs.methods, r.docs.docs, r.docs.launch)}</div>

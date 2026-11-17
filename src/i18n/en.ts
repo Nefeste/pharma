@@ -2935,6 +2935,7 @@ export const en: Strings = {
     stopHint: 'The project’s work goes; what was spent does not return. The product can be started again',
     notDirector: 'Only the director starts and stops a project',
     draft: 'not made',
+    going: 'being introduced',
     live: (day: string, ramp: number) => `in production since ${day}, demand ${ramp} %`,
     stopped: (n: number) => `projects stopped: ${n}`,
     docs: (m: number, t: number, d: number, l: number) => `draft documents: materials ${m}, methods ${t}, recipe and procedures ${d}, launch ${l}`,

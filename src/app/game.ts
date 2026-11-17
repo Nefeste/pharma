@@ -1283,7 +1283,8 @@ export class Game {
       // окно «Портфель» (Б7д) — большое, как S&OP: панели справа и другие большие окна закрываются
       const p = this.store.get().portfolio;
       const open = !p.open;
-      this.store.set({ portfolio: { ...p, open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.sopClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
+      // закрыто — вида нет: открытое снова ждёт свежего, а не показывает прежний
+      this.store.set({ portfolio: open ? { ...p, open } : { open }, ...(open ? { ...this.rightClosed(), inv: { open: false }, ref: { ...this.store.get().ref, open: false }, kpi: { ...this.store.get().kpi, open: false }, ...this.policiesClosed(), ...this.sopClosed() } : {}), ...(open && this.store.get().gantt.open ? this.ganttClosed() : {}) });
       this.sendViews();
     },
     projectStart: product => this.send({ kind: 'project', op: 'start', product }),
@@ -1443,7 +1444,7 @@ export class Game {
   /** Окно «Портфель» закрыто (Б7д). */
   private portfolioClosed(): Partial<Hud> {
     const p = this.store.get().portfolio;
-    return p.open ? { portfolio: { ...p, open: false } } : {};
+    return p.open ? { portfolio: { open: false } } : {};
   }
 
   private ganttClosed(): Partial<Hud> {

@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { legacy as db } from './legacy';
 import { db as game } from '../../src/content';
-import type { ContentDb } from '../../src/content/types';
+import { type ContentDb, DRAFT_DAY } from '../../src/content/types';
 import { DAY, HOUR } from '../../src/engine/core/calendar';
 import { P_ONE } from '../../src/engine/core/rng';
 import { apply, newPlant } from '../../src/engine/engine';
@@ -271,7 +271,8 @@ describe('виды — по записям завода, без истины', (
     const i = bare.plants[bare.scenarios[SC].plant].rooms.findIndex(r => r.id === ROOM);
     const card = cardView(bare, s, { kind: 'room', i }).card;
     if (card.kind !== 'room') throw new Error(card.kind);
-    expect(card.knobs!.map(k => `${k.recipe}/${k.stage}`).sort()).toEqual(Object.values(bare.recipes).map(r => `${r.id}/compress`).sort());
+    // карта-проект (Б7д) уставок не имеет, пока проект не ввёл её в силу
+    expect(card.knobs!.map(k => `${k.recipe}/${k.stage}`).sort()).toEqual(Object.values(bare.recipes).filter(r => r.doc.from !== DRAFT_DAY).map(r => `${r.id}/compress`).sort());
     const kn = card.knobs!.find(k => k.recipe === RCP)!.list.find(p => p.id === 'speed')!;
     expect(kn).toEqual({ id: 'speed', unit: 'rpm', target: SPEED.target, set: fast, step: SPEED.step, range: [SPEED.range[0], SPEED.range[1]] });
     expect(JSON.stringify(g)).not.toContain('truth');
@@ -284,7 +285,7 @@ describe('виды — по записям завода, без истины', (
     const card = cardView(bare, z, { kind: 'room', i }).card;
     if (card.kind !== 'room') throw new Error(card.kind);
     expect(card.regimes).toBeUndefined();
-    expect(card.knobs!.length).toBe(Object.keys(bare.recipes).length);
+    expect(card.knobs!.length).toBe(Object.values(bare.recipes).filter(r => r.doc.from !== DRAFT_DAY).length);
   });
 
   test('справочник, «Сейчас», планёрка: уставка рядом с целью, норма по ней, не по цели — с какого часа', () => {

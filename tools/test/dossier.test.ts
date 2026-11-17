@@ -83,10 +83,10 @@ describe('сборщик базы — порядок загрузки на ис�
     has(alone, 'на стадии первого смешивания — АФС и хотя бы один другой компонент');
   });
 
-  test('карты базы: магния стеарат — на опудривании, остальное — в гранулятор', () => {
+  test('карты базы: магния стеарат — на опудривании, система покрытия — на покрытии (Б7д), остальное — в гранулятор', () => {
     for (const id of Object.keys(db.recipes)) {
       const x = db.recipes[id];
-      for (const l of x.bom) expect([id, l.material, l.stage]).toEqual([id, l.material, l.material === MGST ? 'blend' : 'granulate']);
+      for (const l of x.bom) expect([id, l.material, l.stage]).toEqual([id, l.material, l.material === MGST ? 'blend' : l.material === 'mat.exc.coat' ? 'coat' : 'granulate']);
     }
   });
 });

@@ -418,7 +418,7 @@ describe('сборщик базы — на испорченной копии con
     has(broken({ 'seasons/cold.yaml': [[MONTHS, 'months: [250, 125, 110, 95, 85, 80, 80, 85, 100, 105, 105, 0]']] }), 'seasons/cold.yaml: months');
     has(broken({ 'seasons/cold.yaml': [[MONTHS, 'months: [125, 125, 110, 95, 85, 80, 80, 85, 100, 105, 105, 106]']] }), 'вместе 1200');
     has(broken({ 'products/paracetamol500.yaml': [['season: sea.cold', 'season: sea.flu']] }), 'нет сезона спроса sea.flu');
-    has(broken({ 'products/paracetamol500.yaml': [['season: sea.cold\n', '']] }), 'products/paracetamol500.yaml: season');
+    // без сезона (Б7д) — можно: спрос без сезона, индекс 100
     has(broken({ 'policies/plan/method.yaml': [['options: [best, last-year, ma, ses, holt, group]', 'options: [best, last-year, ma, ses, holt]']] }), 'политика pol.plan.method: варианты правила');
     has(broken({ 'scenarios/proto.yaml': [['  method: best', '  method: arima']] }), 'scenarios/proto.yaml: plan.method');
   });

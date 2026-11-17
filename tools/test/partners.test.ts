@@ -12,6 +12,7 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { db } from '../../src/content';
+import { DRAFT_DAY } from '../../src/content/types';
 import { part } from '../../src/engine/cash';
 import { addMonths, addWorkdays, DAY, daysFromCivil, HOUR, isWorkday, MIN, momentOf } from '../../src/engine/core/calendar';
 import { headOf } from '../../src/engine/docs';
@@ -55,14 +56,16 @@ function due(s: PlantState, key: string, until: number) {
 describe('контрагенты в базе', () => {
   test('изготовители вымышленные, со страной и площадкой; у материала — пара спецификации, поставщик продаёт его от этого изготовителя', () => {
     // с Б6ж — вторые изготовители АФС: пары-кандидаты спецификаций
-    expect(Object.keys(db.makers).sort()).toEqual(['mkr.api-lor', 'mkr.api-lor2', 'mkr.api-par', 'mkr.api-par2', 'mkr.exc', 'mkr.pack']);
+    // с Б7д — изготовитель АФС метформина, продукта-проекта
+    expect(Object.keys(db.makers).sort()).toEqual(['mkr.api-lor', 'mkr.api-lor2', 'mkr.api-met', 'mkr.api-par', 'mkr.api-par2', 'mkr.exc', 'mkr.pack']);
     for (const m of Object.values(db.makers)) expect([m.country.ru.length > 0, m.site.ru.length > 0]).toEqual([true, true]);
     expect(db.suppliers['sup.api'].maker).toBeUndefined();
     expect(db.suppliers['sup.api'].items['mat.api.paracetamol'].maker).toBe('mkr.api-par');
     for (const id of ['sup.api-lor', 'sup.api-par2', 'sup.api-lor2', 'sup.exc', 'sup.pack']) for (const it of Object.values(db.suppliers[id].items)) expect(it.maker).toBe(db.suppliers[id].maker!);
     for (const m of Object.values(db.materials)) {
       const pairs = specPairs(db, m.id, start);
-      if (!STARTING.has(m.kind)) {
+      // материал продукта-проекта (Б7д): спецификации в силе ещё нет — пар нет
+      if (!STARTING.has(m.kind) || db.specs[m.spec].doc.from === DRAFT_DAY) {
         expect(pairs).toEqual([]);
         continue;
       }

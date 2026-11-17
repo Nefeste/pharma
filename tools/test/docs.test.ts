@@ -8,7 +8,7 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { db } from '../../src/content';
-import type { ContentDb, Recipe, Spec } from '../../src/content/types';
+import { type ContentDb, DRAFT_DAY, type Recipe, type Spec } from '../../src/content/types';
 import { DAY, daysFromCivil, momentOf } from '../../src/engine/core/calendar';
 import { inForce, revisions, statusOf } from '../../src/engine/docs';
 import { apply, newPlant } from '../../src/engine/engine';
@@ -42,7 +42,8 @@ describe('коды и шапки в базе', () => {
       for (const r of Object.values(records)) {
         expect(r.doc.code).toMatch(new RegExp(`^${kind}-\\d{4}$`));
         expect(r.doc.rev).toBe(1);
-        expect(r.doc.from).toBeLessThanOrEqual(start);
+        // редакция-проект (Б7д) — без дня «в силе»
+        if (r.doc.from !== DRAFT_DAY) expect(r.doc.from).toBeLessThanOrEqual(start);
         expect(r.doc.approved).toBe(who);
       }
     // в базе прототипа у каждого документа одна редакция, введённая до начала сценария

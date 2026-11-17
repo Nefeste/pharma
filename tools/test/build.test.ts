@@ -81,8 +81,8 @@ describe('каталог типов помещений', () => {
     }
     // с Б7в строят все типы: помещения с вещами — тоже; второго такого нет у всех, кроме зала склада и помещений без вещей
     expect(Object.values(db.rooms).filter(t => !t.build)).toEqual([]);
-    // с Б7г — и помещения стадий: отвешивание, грануляция, смешивание, таблетирование
-    expect(Object.values(db.rooms).filter(t => !t.once).map(t => t.type).sort()).toEqual(['airlock.material', 'airlock.people', 'amenities', 'blending', 'changing', 'compression', 'corridor', 'corridor.clean', 'dispensing', 'granulation', 'office', 'warehouse']);
+    // с Б7г — и помещения стадий: отвешивание, грануляция, смешивание, таблетирование; с Б7д — покрытие
+    expect(Object.values(db.rooms).filter(t => !t.once).map(t => t.type).sort()).toEqual(['airlock.material', 'airlock.people', 'amenities', 'blending', 'changing', 'coating', 'compression', 'corridor', 'corridor.clean', 'dispensing', 'granulation', 'office', 'warehouse']);
   });
 
   test('роль — из каталога, а не из имени типа: коридор — клетки коридора, шлюз — проход в класс D', () => {

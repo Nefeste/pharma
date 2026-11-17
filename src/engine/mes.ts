@@ -12,7 +12,7 @@ import { schedule } from './core/agenda';
 import { HOUR, MIN, momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
 import { openClass, reclass } from './devclass';
-import { inForce, statusOf } from './docs';
+import { inForce } from './docs';
 import { incidentParams, incidentScreen } from './investigation';
 import { noteCmd } from './journal';
 import { cleaned, defect, lossAt, recleaned } from './lean';
@@ -78,8 +78,9 @@ export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, {
     if (window !== undefined && db.skus[cmd.sku]) due = stockDue(db, s, cmd.sku, window);
   }
   const notBefore = Math.max(s.t, cmd.notBefore ?? s.t);
-  // карта-проект (Б7д): на день «не раньше» у неё нет редакции в силе — серию не поставить
-  if (statusOf(db, 'recipes', cmd.recipe, momentOf(s.start, notBefore).day) === 'draft') {
+  // карта-проект (Б7д): на день «не раньше» ни одна редакция карты не в силе — серию не поставить
+  const day = momentOf(s.start, notBefore).day;
+  if (db.recipes[inForce(db, 'recipes', cmd.recipe, day)].doc.from > day) {
     notices.push({ kind: 'refused', cmd: 'order', why: 'draftRecipe', detail: cmd.recipe });
     return;
   }

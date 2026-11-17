@@ -1,0 +1,11 @@
+id: mat.pk.carton-m60
+kind: packaging
+code: 300010
+name: { ru: Пачка «Метформин 500 мг №60», en: Carton «Metformin 500 mg No. 60» }
+unit: pcs
+container: cnt.box.cartons
+storage: reg.ccrt
+shelf: 60
+spec: spec.mat.pk.carton-m60
+bad: { attr: appearance }
+sample: 10

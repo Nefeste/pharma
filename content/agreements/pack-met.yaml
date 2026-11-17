@@ -1,0 +1,11 @@
+# Соглашение по качеству с изготовителем упаковки на упаковку метформина (Б7д): поставщиков упаковочных материалов
+# квалифицируют до серий валидации (eaeu-65, п. 51). Редакция-проект: в силу её вводит проект «Новый продукт»
+id: qag.pack-met
+name: { ru: Соглашение по качеству на упаковку метформина, en: Quality agreement on metformin packaging }
+doc: { code: QAG-0008, rev: 1, approved: role.qa-head }
+supplier: sup.pack
+makers: [mkr.pack]
+materials: [mat.pk.carton-m60, mat.pk.leaflet-met]
+terms: [handling, labelling, packaging, shipping, complaints, recall]
+source: [gmp-eaeu, eaeu-65]
+review: draft

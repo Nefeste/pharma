@@ -186,6 +186,13 @@ export function whatText(d: Decided, r: JournalRef, start: Ymd): string {
       if (d.op === 'replace') return E.replace(what, vendor, d.of ?? '', due);
       return E[d.op](what);
     }
+    case 'project': {
+      // проект «Новый продукт» (Б7д): продукт и что с проектом
+      const p = named(db?.products[d.product]?.name, d.product);
+      if (d.op === 'stage') return J.project.stage(p, T.project.stages[d.stage ?? ''] ?? d.stage ?? '');
+      if (d.op === 'protocol') return J.project.protocol(p, !!d.sell);
+      return J.project[d.op](p);
+    }
     case 'route':
       // маршрут серии (Б7г): стадия и единица с помещением
       return J.route(T.now.batch(batchCode(r) || `B${r.bn ?? ''}`), T.stages[d.stage] ?? d.stage, d.unit ? unitWord(d.unit, r) : undefined);

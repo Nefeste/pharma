@@ -12,7 +12,7 @@ import { salaryOf } from '../engine/cash';
 import { dismissTerms, laborOf } from '../engine/hire';
 import { momentOf } from '../engine/core/calendar';
 import { partType, wearAt } from '../engine/maint';
-import { inForce } from '../engine/docs';
+import { inForce, liveOf } from '../engine/docs';
 import { CLEAN_HOLD, DIRTY_HOLD } from '../engine/mes';
 import { speedOf } from '../engine/modes';
 import { planOf } from '../engine/plant';
@@ -891,7 +891,8 @@ export class ViewDesk {
       const slow = VIEW_SLOW[q.view];
       const key = slow !== undefined ? JSON.stringify(q) : undefined;
       if (slow !== undefined && last && last.q === key && last.touch === this.touches && (last.t === s.t || now - (last.at ?? 0) < slow)) continue;
-      const data = viewOf(this.db, s, q);
+      // база, по которой живёт завод (Б7д): у редакций, введённых проектом, — их дни
+      const data = viewOf(liveOf(this.db, s.portfolio?.docs), s, q);
       const json = JSON.stringify(data);
       const meta = slow !== undefined ? { t: s.t, at: now, q: key, touch: this.touches } : {};
       if (last?.json === json) {

@@ -1,0 +1,8 @@
+# Готовая продукция метформина (Б7д). Редакция-проект: в силу её вводит проект «Новый продукт»
+id: spec.fg.metformin500
+name: { ru: "Метформин, таблетки 500 мг — готовая продукция", en: "Metformin 500 mg tablets — finished product" }
+doc: { code: SP-0025, rev: 1, approved: role.qc-head }
+tests:
+  - { test: test.visual }
+source: [gmp-eaeu]
+review: draft

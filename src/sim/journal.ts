@@ -245,6 +245,9 @@ function headOf(db: ContentDb, d: Decided): Head {
     // маршрут серии (Б7г) — начальник производства
     case 'route':
       return 'mes';
+    // проект «Новый продукт» (Б7д) — ведёт качество, начинает директор
+    case 'project':
+      return 'qa';
   }
 }
 

@@ -64,6 +64,8 @@ export interface NewTask {
   asset?: string;
   pair?: string;
   dev?: string;
+  /** работа проекта «Новый продукт» (Б7д) */
+  project?: string;
   norm?: [number, number];
 }
 

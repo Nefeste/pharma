@@ -12,5 +12,7 @@ makes:
   - mat.pk.leaflet
   - mat.pk.carton-l10
   - mat.pk.carton-l30
+  - mat.pk.carton-m60
+  - mat.pk.leaflet-met
   - mat.pk.leaflet-lor
   - mat.pk.case

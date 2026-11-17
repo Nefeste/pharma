@@ -22,6 +22,7 @@ import { addTask } from './tasks';
 import type { Container, Lot, Notice, Order, PlantState, Shipment, Task, Truck, Unit } from './types';
 import { wasteDocked } from './waste';
 import { WMS } from './wms';
+import { rampOf } from './project';
 import { calOf } from './workdays';
 
 /** Отбор: кладовщик перекладывает ящик на паллету заказа, с (гипотеза). */
@@ -170,7 +171,10 @@ function placeOrder(db: ContentDb, s: PlantState, c: Customer) {
   for (const [sku, perDay] of Object.entries(c.demand)) {
     const per = db.skus[sku].case.per;
     // снятый спрос (Б6е): покупатель не возьмёт снятых ящиков позиции — бросок тот же, ящиков меньше
-    const cases = cutOrder(s, c.id, sku, roll(s, `market/${c.id}/${sku}`, r => poisson(r, (perDay * seasonSec(db, s, sku, st.last, s.t)) / (DAY * per))));
+    // позиция, которую ввёл проект (Б7д), — с разгоном спроса; у прочих среднее — прежним счётом, до бита
+    const ramp = rampOf(db, s, sku);
+    const mean = (perDay * seasonSec(db, s, sku, st.last, s.t)) / (DAY * per);
+    const cases = cutOrder(s, c.id, sku, roll(s, `market/${c.id}/${sku}`, r => poisson(r, ramp === 100 ? mean : (mean * ramp) / 100)));
     if (cases > 0) lines.push({ sku, cases, reserved: 0, shipped: 0 });
     if (cases > 0) addDemand(s, sku, cases);
   }

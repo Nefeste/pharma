@@ -1,0 +1,11 @@
+id: mat.pk.leaflet-met
+kind: packaging
+code: 300011
+name: { ru: Инструкция «Метформин 500 мг», en: Leaflet «Metformin 500 mg» }
+unit: pcs
+container: cnt.box.leaflets
+storage: reg.ccrt
+shelf: 60
+spec: spec.mat.pk.leaflet-met
+bad: { attr: appearance }
+sample: 10

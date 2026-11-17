@@ -2088,6 +2088,12 @@ export const ru = {
       fcEdit: (sku: string, month: string, cases?: string) => (cases ? `Прогноз планирования: ${sku}, ${month} — ${cases}` : `Прогноз планирования: ${sku}, ${month} — правка снята`),
       sop: (month: string, covers: string) => `План S&OP с ${month}: запас — ${covers}`,
       route: (batch: string, stage: string, unit?: string) => (unit ? `Маршрут ${batch}: ${stage} — ${unit}` : `Маршрут ${batch}: ${stage} — выбор снят, решит правило`),
+      project: {
+        start: (p: string) => `Проект «Новый продукт»: ${p} — начат`,
+        stop: (p: string) => `Проект «Новый продукт»: ${p} — остановлен`,
+        protocol: (p: string, sell: boolean) => `Протокол валидации: ${p} — серии валидации ${sell ? 'продать после отчёта' : 'не для продажи'}`,
+        stage: (p: string, stage: string) => `Проект ${p}: ${stage}`,
+      },
       waste: (at?: string) => (at ? `Вывоз отклонённого: подрядчик приедет ${at}` : 'Вывоз отклонённого: подрядчик приедет на следующий рабочий день'),
       mode: (head: string, mode: string) => `Режим отдела: ${head} — ${mode}`,
       policy: (what: string, to: string, from: string) => `Политика: ${what} — ${to} вместо ${from}`,
@@ -2436,6 +2442,7 @@ export const ru = {
     order: (n: number) => `задание ${n}`,
     stock: 'запас позиции',
     forOrder: (customer: string) => `заказ: ${customer}`,
+    project: { trial: 'пробная серия проекта', validation: 'серия валидации проекта' } as Record<string, string>,
     day: 'ждёт своего дня',
     material: (m: string) => `ждёт материала: ${m}`,
     stage: (st: string) => `стадия: ${st}`,
@@ -3023,6 +3030,22 @@ export const ru = {
   },
   /** стройка (Б7б; docs/specs/2026-10-vertical-slice.md, «Б7б», «Окно»): инструменты, призрак, подписи помещений */
   /** оборудование (Б7в): инструмент стройки, путь единицы, карточка, планёрка */
+  /** проект «Новый продукт» (Б7д) */
+  project: {
+    stages: {
+      ready: 'готовность завода',
+      methods: 'перенос методик',
+      docs: 'документы и обучение',
+      clean: 'оценка очистки',
+      trial: 'пробная серия',
+      protocol: 'протокол валидации',
+      validation: 'серии валидации',
+      report: 'отчёт о валидации',
+      dossier: 'изменение досье',
+      done: 'в производстве',
+      stopped: 'остановлен',
+    } as Record<string, string>,
+  },
   equip: {
     tool: 'Оборудование',
     hint: 'Класс и поставщик — затем щёлкните по месту в помещении; R — поворот. Прибор и датчик — щелчок по помещению',

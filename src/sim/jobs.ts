@@ -22,7 +22,7 @@ export interface JobRow {
   recipe: Id;
   sku?: Id;
   /** под что: запас позиции или заказ покупателя — его покупатель */
-  goal?: { kind: 'stock' } | { kind: 'order'; order: string; customer?: Id };
+  goal?: { kind: 'stock' } | { kind: 'order'; order: string; customer?: Id } | { kind: 'project'; role: 'trial' | 'validation' };
   due?: number;
   notBefore: number;
   status: BatchStatus;
@@ -111,7 +111,7 @@ export function jobsOf(db: ContentDb, s: PlantState, f: Forecast): Jobs {
       ...(code ? { code } : {}),
       recipe: b.recipe,
       ...(b.sku ? { sku: b.sku } : {}),
-      ...(b.for ? { goal: b.for.kind === 'order' ? { kind: 'order' as const, order: b.for.order, ...(o ? { customer: o.customer } : {}) } : { kind: 'stock' as const } } : {}),
+      ...(b.for ? { goal: b.for.kind === 'order' ? { kind: 'order' as const, order: b.for.order, ...(o ? { customer: o.customer } : {}) } : b.for.kind === 'project' ? { kind: 'project' as const, role: b.for.role } : { kind: 'stock' as const } } : {}),
       ...(b.due !== undefined ? { due: b.due } : {}),
       notBefore: b.notBefore,
       status: b.status,

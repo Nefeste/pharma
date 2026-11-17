@@ -54,6 +54,8 @@ export const AREA: Record<TaskKind, Dept> = {
   accept: 'qa',
   qualify: 'qa',
   carry: 'mes',
+  // проект «Новый продукт» (Б7д): работы ОКК и ООК — у качества
+  project: 'qa',
   mount: 'maint',
   vendorReview: 'qa',
   devAssess: 'qa',

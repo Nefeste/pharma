@@ -122,8 +122,9 @@ const emptyBy = (): ForecastState['by'] => ({ 'last-year': {}, ma: {}, ses: {}, 
 /** Заказ покупателя (market.ts): его ящики — в факт месяца заказа, мгновение `t` — сейчас или, в миграции, его. */
 export function addDemand(s: PlantState, sku: Id, cases: number, t = s.t) {
   const f = s.planning.forecast;
-  const row = f?.demand[sku];
-  if (!f || !row) return;
+  if (!f) return;
+  // позиция, которую ввёл проект (Б7д): строка — с её первого заказа
+  const row = (f.demand[sku] ??= []);
   const k = monthAt(s, t) - f.from;
   while (row.length <= k) row.push(0);
   row[k] += cases;
@@ -289,7 +290,11 @@ export function runForecast(db: ContentDb, s: PlantState, M: number, o: { lag: b
   if (!f || !sc.forecast) return;
   const skus = fcSkus(db, s);
   const L = M - f.from;
-  for (const sku of skus) while (f.demand[sku].length < L) f.demand[sku].push(0);
+  // позиция, которую ввёл проект (Б7д), — со своей строкой: до ввода её не заказывали
+  for (const sku of skus) {
+    const row = (f.demand[sku] ??= []);
+    while (row.length < L) row.push(0);
+  }
   const by = emptyBy();
   for (const sku of skus) {
     const r = ratesOfRow(f.demand[sku], f.from, L);

@@ -1,0 +1,25 @@
+# Товарная позиция метформина (Б7д): 60 таблеток — шесть блистеров ПВХ/алюминий по 10 в пачке с инструкцией. Число
+# таблеток в пачке, плёнки и фольги на блистер, ящики, брак на наладку и цены — гипотезы. Инструкция по упаковке —
+# редакция-проект: в силу её вводит проект «Новый продукт», и с того дня позиция — в плане и в спросе покупателей
+id: sku.metformin500.n60
+name: { ru: "Метформин, таблетки, покрытые плёночной оболочкой, 500 мг, №60", en: "Metformin 500 mg film-coated tablets, 60" }
+doc: { code: PI-0005, rev: 1, approved: role.production-head }
+product: prd.metformin500
+fg: mat.fg.metformin500-n60
+format: m60
+perBlister: 10
+blisters: 6
+blister:
+  - { material: mat.pk.pvc, g: 1.0 }
+  - { material: mat.pk.alu, g: 0.45 }
+carton:
+  - { material: mat.pk.carton-m60, n: 1 }
+  - { material: mat.pk.leaflet-met, n: 1 }
+case: { material: mat.pk.case, per: 60 }
+pallet: { cases: 40 }
+waste: { blisters: 50, cartons: 20, jams: 40 }
+speed: { target: 120, range: [100, 135], step: 5 }
+price: 95
+regPrice: 100
+# спрос после ввода (Б7д): пачек в рабочий день у покупателя — около трети серии в рабочий день на двоих (гипотеза)
+launch: { cus.national: 900, cus.regional: 400 }

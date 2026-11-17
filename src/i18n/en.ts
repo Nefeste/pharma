@@ -1988,6 +1988,12 @@ export const en: Strings = {
       fcEdit: (sku: string, month: string, cases?: string) => (cases ? `Planning forecast: ${sku}, ${month}: ${cases}` : `Planning forecast: ${sku}, ${month}: edit removed`),
       sop: (month: string, covers: string) => `S&OP plan from ${month}: stock — ${covers}`,
       route: (batch: string, stage: string, unit?: string) => (unit ? `Route of ${batch}: ${stage} — ${unit}` : `Route of ${batch}: ${stage} — choice removed, the rule decides`),
+      project: {
+        start: (p: string) => `New product project: ${p} — started`,
+        stop: (p: string) => `New product project: ${p} — stopped`,
+        protocol: (p: string, sell: boolean) => `Validation protocol: ${p} — validation batches ${sell ? 'sold after the report' : 'not for sale'}`,
+        stage: (p: string, stage: string) => `Project ${p}: ${stage}`,
+      },
       waste: (at?: string) => (at ? `Removal of rejected material: the contractor comes ${at}` : 'Removal of rejected material: the contractor comes the next working day'),
       mode: (head: string, mode: string) => `Department mode: ${head} — ${mode}`,
       policy: (what: string, to: string, from: string) => `Policy: ${what} — ${to} instead of ${from}`,
@@ -2319,6 +2325,7 @@ export const en: Strings = {
     order: (n: number) => `order ${n}`,
     stock: 'item stock',
     forOrder: (customer: string) => `order: ${customer}`,
+    project: { trial: 'project trial batch', validation: 'project validation batch' } as Record<string, string>,
     day: 'waits for its day',
     material: (m: string) => `waits for material: ${m}`,
     stage: (st: string) => `stage: ${st}`,
@@ -2894,6 +2901,22 @@ export const en: Strings = {
     open: 'Open the forecast',
   },
   /** equipment (B7v): the build tool, a unit's path, the card, the meeting */
+  /** the new product project (Б7д) */
+  project: {
+    stages: {
+      ready: 'plant readiness',
+      methods: 'method transfer',
+      docs: 'documents and training',
+      clean: 'cleaning assessment',
+      trial: 'trial batch',
+      protocol: 'validation protocol',
+      validation: 'validation batches',
+      report: 'validation report',
+      dossier: 'dossier variation',
+      done: 'in production',
+      stopped: 'stopped',
+    } as Record<string, string>,
+  },
   equip: {
     tool: 'Equipment',
     hint: 'Pick the class and the vendor, then click a place in a room; R turns. An instrument or a sensor — click the room',

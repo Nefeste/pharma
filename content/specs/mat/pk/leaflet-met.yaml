@@ -1,0 +1,7 @@
+# Редакция-проект (Б7д): в силу её вводит проект «Новый продукт»
+id: spec.mat.pk.leaflet-met
+name: { ru: "Инструкция «Метформин 500 мг»", en: "Leaflet «Metformin 500 mg»" }
+doc: { code: SP-0027, rev: 1, approved: role.qc-head }
+pairs: [{ supplier: sup.pack, maker: mkr.pack }]
+tests:
+  - { test: test.visual }

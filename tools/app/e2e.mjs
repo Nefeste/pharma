@@ -317,7 +317,7 @@ try {
   if (only === '' || only === 'sources') await sourcesPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
   if (only === '' || only === 'portfolio') await portfolioPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
   if (only === '' || only === 'c1') await c1Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'c2') await c2Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'c2') await c2Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

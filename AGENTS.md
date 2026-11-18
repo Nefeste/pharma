@@ -114,7 +114,8 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # batch), scenario 1 — the «Кампания» screen, its start after the warm-up, the goals,
                                    # the truck in the first hour, the first day by the letters to the shipment, a skip
                                    # (e2e-c1.mjs, c1.png), scenario 2 — its start, the distributor's letters, the order
-                                   # at risk, «До утра» to the result (e2e-c2.mjs, c2.png); `-- --only main|week|memo|
+                                   # at risk (e2e-c2.mjs, c2.png; `--long 1` — «До утра» to the result, ~50 min); `--
+                                   # --only main|week|memo|
                                    # capa|jobs|launch|forecast|sop|mrp|edits|build|equip|route|sources|portfolio|c1|c2`
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
@@ -854,7 +855,7 @@ first, or copy the working code of Bolnitsa on the same versions.
   «Предложения» and «Заказать», with `--long 1` on to the dossier filing (`e2e-sources.mjs`), the portfolio — a
   metformin project from the «Портфель» window, with `--long 1` on to the trial batch (`e2e-portfolio.mjs`), scenario 1 from
   the «Кампания» screen through its first day by the mentor's letters (`e2e-c1.mjs`), scenario 2 from its start to the
-  result (`e2e-c2.mjs`; the other parts open `?scn=scn.proto`), the
+  risk letter, with `--long 1` to the result (`e2e-c2.mjs`; the other parts open `?scn=scn.proto`), the
   «code —
   Blender» sheet
   of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench

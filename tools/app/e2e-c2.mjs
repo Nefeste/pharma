@@ -2,14 +2,15 @@
 // чистое окно — экран «Кампания»: «Первая зима» вторым, чему учит, старт, срок и цели с 1 ноября. «Начать» — места
 // сценария: директор и производство. «Взять» — понедельник 7 августа 2028 г., 07:00 после прогрева; панель писем — на
 // письме дистрибьютора о сезоне, без «Пропустить»; прочли — письмо кончилось. «До утра» — пока не придёт письмо о заказе
-// под угрозой: «Показать» — карточка заказа. Дальше «До утра» до конца срока — 1 апреля 2029 г.: окно целей с итогом.
+// под угрозой: «Показать» — карточка заказа. С `--long 1` — «До утра» до конца срока, 1 апреля 2029 г.: окно целей с
+// итогом.
 // Снимки — tools/app/out/c2-*.png, лист — tools/app/out/c2.png.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openGame, steps } from './e2e-build.mjs';
 
-/** @param {{ browser: import('playwright-core').Browser, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, errors: string[], requests: string[], q: string }} x */
-export async function c2Part({ browser, port, out, ok, fail, errors, requests, q }) {
+/** @param {{ browser: import('playwright-core').Browser, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, errors: string[], requests: string[], q: string, long?: boolean }} x */
+export async function c2Part({ browser, port, out, ok, fail, errors, requests, q, long }) {
   const shots = [];
   const feel = [];
   const started = Date.now();
@@ -104,9 +105,10 @@ export async function c2Part({ browser, port, out, ok, fail, errors, requests, q
       await page.evaluate(() => window.__game.actions.select(undefined));
     }
 
-    // «До утра» до конца срока — окно целей с итогом
-    const end = await until(() => !!window.__game.store.get().goals.view?.ended, 300);
-    if (!end) fail(`итога нет: ${await s.clock()}`);
+    // с `--long 1`: «До утра» до конца срока — окно целей с итогом (около 50 минут)
+    const end = !long ? undefined : await until(() => !!window.__game.store.get().goals.view?.ended, 300);
+    if (end === undefined) ok('итог — с `--long 1`');
+    else if (!end) fail(`итога нет: ${await s.clock()}`);
     else {
       await page.evaluate(() => window.__game.actions.setSpeed(0));
       await page.waitForSelector('[data-test=goals]', { timeout: 20_000 }).catch(() => undefined);

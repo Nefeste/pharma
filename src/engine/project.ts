@@ -172,13 +172,13 @@ function order(db: ContentDb, s: PlantState, p: Project, role: 'trial' | 'valida
   return b;
 }
 
+/** Переходы статуса партии: балк серии проекта «не для продажи» из разрешённого — в отклонённое. */
+const NOT_FOR_SALE = { ...LOT_FLOW, released: [...LOT_FLOW.released, 'rejected' as const] };
+
 /**
  * Итог лаборатории по серии проекта: разрешён — `pass`, отклонён (балк или серия) — `fail`, ещё нет — `undefined`.
  * Балк «не для продажи» после разрешения — в отклонённое: его выносят, как отклонённый (Б1з).
  */
-/** Переходы статуса партии: балк серии проекта «не для продажи» из разрешённого — в отклонённое. */
-const NOT_FOR_SALE = { ...LOT_FLOW, released: [...LOT_FLOW.released, 'rejected' as const] };
-
 function verdict(s: PlantState, b: Batch | undefined, keep: boolean): 'pass' | 'fail' | undefined {
   if (!b) return undefined;
   if (b.status === 'rejected' || b.status === 'cancelled') return 'fail';

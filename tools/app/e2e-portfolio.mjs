@@ -82,16 +82,16 @@ async function director(x) {
     else ok(`портфель, ибупрофен: «${ri}»`);
 
     // «Начать проект» — готовность завода и чего нет: помещения покрытия, пары поставщика
-    await s.measure('«Начать проект»', () => page.click('[data-test=portfolio-start]'), 'stage', 'ready');
-    await page.waitForSelector('[data-test=portfolio-gap]', { timeout: 20_000 });
-    const gaps = await page.evaluate(() => [...document.querySelectorAll('[data-test=portfolio-gap]')].map(g => g.dataset.kind));
+    await s.measure('«Начать проект»', () => page.click('[data-test=portfolio-row][data-product="prd.metformin500"] [data-test=portfolio-start]'), 'stage', 'ready');
+    await page.waitForSelector('[data-test=portfolio-row][data-product="prd.metformin500"] [data-test=portfolio-gap]', { timeout: 20_000 });
+    const gaps = await page.evaluate(() => [...document.querySelectorAll('[data-test=portfolio-row][data-product="prd.metformin500"] [data-test=portfolio-gap]')].map(g => g.dataset.kind));
     const r1 = await text('[data-test=portfolio-row][data-product="prd.metformin500"]');
     await s.shot('Проект начат: готовность завода, чего нет');
     if (!gaps.includes('room') || !gaps.includes('pair') || !/готовность завода — с /.test(r1) || !/помещения «Покрытие/.test(r1)) fail(`проект начат: чего нет ${gaps.join(', ')} — «${r1}»`);
     else ok(`проект начат: чего нет — ${gaps.join(', ')}`);
 
     // решение протокола заранее — «продать»
-    await s.measure('Протокол: «продать»', () => page.click('[data-test=portfolio-sell-yes]'), 'sell', 'true');
+    await s.measure('Протокол: «продать»', () => page.click('[data-test=portfolio-row][data-product="prd.metformin500"] [data-test=portfolio-sell-yes]'), 'sell', 'true');
     ok('решение протокола: продать серии валидации');
 
     // «Контрагенты» — справочник на вкладке, где «Одобрить пару»
@@ -116,7 +116,7 @@ async function director(x) {
 
     // «Остановить» — проекта нет, начать можно снова
     await openPortfolio('F — окно снова');
-    await s.measure('«Остановить»', () => page.click('[data-test=portfolio-stop]'), 'stage', 'none');
+    await s.measure('«Остановить»', () => page.click('[data-test=portfolio-row][data-product="prd.metformin500"] [data-test=portfolio-stop]'), 'stage', 'none');
     const r2 = await text('[data-test=portfolio-row][data-product="prd.metformin500"]');
     if (!/остановлено проектов: 1/.test(r2)) fail(`проект остановлен: «${r2}»`);
     else ok(`проект остановлен: «${r2}»`);
@@ -151,7 +151,7 @@ async function trial({ page, s, ok, fail, untilMorning, openPortfolio, text }) {
   await send({ kind: 'equip', op: { op: 'buy', type: 'eq.coater', vendor: 'ven.ru', room, at: [6150, 350], turn: 0 } });
   await send({ kind: 'equip', op: { op: 'buy', type: 'inst.balance', vendor: 'ven.ru', room } });
   await openPortfolio('F — проект заново');
-  await s.measure('«Начать проект» заново', () => page.click('[data-test=portfolio-start]'), 'stage', 'ready');
+  await s.measure('«Начать проект» заново', () => page.click('[data-test=portfolio-row][data-product="prd.metformin500"] [data-test=portfolio-start]'), 'stage', 'ready');
   const stage = () => page.evaluate(() => window.__game.store.get().portfolio.view?.rows.find(r => r.product === 'prd.metformin500')?.project?.stage);
   let st;
   for (let d = 0; d < 400; d++) {
@@ -166,7 +166,7 @@ async function trial({ page, s, ok, fail, untilMorning, openPortfolio, text }) {
   if (st !== 'trial' || !/пробная/.test(row)) fail(`пробная серия: этап ${st} — «${row}»`);
   else ok(`пробная серия: «${row}»`);
   // досье пробной серии — назначение
-  const b = await page.$('[data-test=portfolio-batch][data-role=trial] button');
+  const b = await page.$('[data-test=portfolio-row][data-product="prd.metformin500"] [data-test=portfolio-batch][data-role=trial] button');
   if (b) {
     await b.click();
     await page.waitForFunction(() => !!window.__game.store.get().dossier.view, null, { timeout: 20_000 });

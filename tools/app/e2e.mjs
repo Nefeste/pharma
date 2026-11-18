@@ -2088,19 +2088,19 @@ async function mainPart() {
     const skus = await page.evaluate(() => [...document.querySelectorAll('[data-test=ref-skus] tbody tr')].map(r => r.children[4]?.textContent ?? ''));
     if (!skus.includes('120 пачек')) fail(`справочник: пачек в ящике — ${skus.join(', ')}`);
     else ok(`справочник: пачек в ящике — ${skus.join(', ')}; снимок ${join(out, 'e2e-ref.png')}`);
-    // поиск: «№20» — одна позиция; цифры в поле — текст, скорость та же
+    // поиск: «500 мг, №20» — одна позиция (у ибупрофена тоже №20); цифры в поле — текст, скорость та же
     const speed0 = await page.evaluate(() => window.__game.speed);
     await page.fill('[data-test=ref-search]', '');
     await page.click('[data-test=ref-search]');
-    await page.keyboard.type('№20');
+    await page.keyboard.type('500 мг, №20');
     await frames(1);
     // позиции — таблицей на продукт: у лоратадина «№20» нет, там строка «Ничего не нашлось»
     const found = await page.evaluate(() => ({
       rows: [...document.querySelectorAll('[data-test=ref-skus] tbody tr')].map(r => r.innerText.split('\t')[0]).filter(t => t.trim() !== 'Ничего не нашлось'),
       speed: window.__game.speed,
     }));
-    if (found.rows.length !== 1 || !/№20/.test(found.rows[0]) || found.speed !== speed0) fail(`справочник: поиск «№20» — строк ${found.rows.length} (${found.rows.join(' | ')}), скорость ${speed0} → ${found.speed}`);
-    else ok(`справочник: поиск «№20» — одна позиция «${found.rows[0]}», скорость не тронута`);
+    if (found.rows.length !== 1 || !/№20/.test(found.rows[0]) || found.speed !== speed0) fail(`справочник: поиск «500 мг, №20» — строк ${found.rows.length} (${found.rows.join(' | ')}), скорость ${speed0} → ${found.speed}`);
+    else ok(`справочник: поиск «500 мг, №20» — одна позиция «${found.rows[0]}», скорость не тронута`);
     await page.fill('[data-test=ref-search]', 'пресс');
     await page.click('[data-test=ref-tab][data-tab=equipment]');
     await frames(1);

@@ -192,7 +192,8 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   seedContracts(db, sc, s, startDay);
   // заказы сценария — в первую секунду партии
   const out: Notice[] = [];
-  for (const o of sc.orders) placePo(db, s, { kind: 'po', supplier: o.supplier, lines: o.lines, by: 'scenario' }, out);
+  // фура сценария (Б9) — в свой час первого дня игрока, после прогрева
+  for (const o of sc.orders) placePo(db, s, { kind: 'po', supplier: o.supplier, lines: o.lines, by: 'scenario' }, out, undefined, undefined, o.at !== undefined ? today + sc.warm + o.at : undefined);
   // задания на серию сценария: день от начала партии, с начала смены аппаратчиков
   for (const b of sc.batches) placeOrder(db, s, { kind: 'order', recipe: b.recipe, notBefore: today + b.day * DAY + BATCH_HOUR, by: 'scenario', ...(b.sku ? { sku: b.sku } : {}) }, out);
   // происшествие сценария (часть 4): корень по жребию зерна — скрытое
@@ -200,6 +201,13 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   // кому пора учиться уже на старте (Б3б)
   trainDay(db, s, out);
   settle(db, s);
+  // конец срока сценария (Б9) — от старта игрока
+  if (sc.days !== undefined) schedule(s.agenda, today + sc.start.hour * HOUR + sc.warm + sc.days, { kind: 'scenarioEnd' });
+  // прогрев (Б9): завод живёт сам до старта игрока — места не взяты, отделы ведут коллеги; извещения никому не идут
+  if (sc.warm > 0) {
+    s.until = s.t + sc.warm;
+    catchUp(db, s);
+  }
   return s;
 }
 
@@ -546,6 +554,9 @@ export function catchUp(db: ContentDb, s: PlantState, more?: More): Notice[] {
 
 function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[]) {
   switch (ev.kind) {
+    case 'scenarioEnd':
+      notices.push({ kind: 'scenarioEnd' });
+      return;
     case 'morning':
       s.day++;
       // сменно-суточное задание (Б6б): итог вчерашнего и строки на сутки — до планёрки, которую это событие открывает

@@ -1,0 +1,70 @@
+# Сценарий 1 кампании «Цех на окраине» (Б9; геймдизайн, §15.1, §17; docs/specs/2026-10-vertical-slice.md, «Б9»): старый
+# цех таблеток, одна блистерная линия, договор поставки парацетамола с одним дистрибьютором. Завод, штат и правила — от
+# прототипа (`base`); своё — дата, прогрев, покупатель, продукт, запас, фура и цели. Числа — гипотезы
+id: scn.c1
+base: scn.proto
+name: { ru: Цех на окраине, en: The Workshop on the Outskirts }
+campaign: 1
+teaches: { ru: 'путь материала, серия, лаборатория, выпуск, отгрузка', en: 'the path of material, the batch, the lab, release, shipping' }
+# старт игрока — понедельник 13 сентября 2027 г., 07:00; прогрев — неделя с понедельника 6 сентября, когда документы
+# базы уже в силе (с 1 сентября 2027 г.): к старту серия прогрева на проверке ООК и выпускается в первый день (§17,
+# «Первые полчаса»)
+start: { date: 2027-09-13, hour: 7 }
+warm: 7
+days: 28
+seed: 20270913
+customers: [cus.district]
+# задания прогрева и первых двух недель — по серии в рабочий день от начала прогрева (понедельник 6 сентября); дальше —
+# коллега планирования
+batches:
+  - { recipe: rcp.paracetamol500.wet.v1, day: 0, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 1, sku: sku.paracetamol500.n10 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 2, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 3, sku: sku.paracetamol500.n10 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 4, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 7, sku: sku.paracetamol500.n10 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 8, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 9, sku: sku.paracetamol500.n10 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 10, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 11, sku: sku.paracetamol500.n10 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 14, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 15, sku: sku.paracetamol500.n10 }
+plan:
+  items:
+    - { recipe: rcp.paracetamol500.wet.v1, sku: sku.paracetamol500.n20 }
+    - { recipe: rcp.paracetamol500.wet.v1, sku: sku.paracetamol500.n10 }
+  cover: 21
+  window: 28
+  urgent: 10
+  method: best
+  demand: orders
+  reserve: [3, 10]
+  frozen: 10
+  price: 21
+# первая фура — в первые минуты игры (§17): крахмал картофельный из карты парацетамола
+orders:
+  - { supplier: sup.exc, lines: [{ material: mat.exc.starch, qty: 250 }], at: '07:20' }
+seats: [director]
+incident: null
+stock:
+  - { material: mat.api.paracetamol, qty: 6000 }
+  - { material: mat.exc.starch, qty: 400 }
+  - { material: mat.exc.starch-maize, qty: 100 }
+  - { material: mat.exc.povidone, qty: 100 }
+  - { material: mat.exc.mcc, qty: 140 }
+  - { material: mat.exc.mgst, qty: 40 }
+  - { material: mat.pk.pvc, qty: 600 }
+  - { material: mat.pk.alu, qty: 300 }
+  - { material: mat.pk.carton-n10, qty: 320000 }
+  - { material: mat.pk.carton-n20, qty: 160000 }
+  - { material: mat.pk.leaflet, qty: 480000 }
+  - { material: mat.pk.case, qty: 2700 }
+# цели (§15.1): за 28 суток — двенадцать выпущенных серий, заказы вовремя не меньше 90 %, касса в последний день не в
+# минусе; «на отлично» — все заказы вовремя и ни одного отклонения с прошедшим сроком. Коллеги без игрока выпускают 14
+# серий и везут всё вовремя (замер на зерне сценария) — обучение их замедляет
+goals:
+  - { kind: released, v: 12 }
+  - { kind: otif, v: 90 }
+  - { kind: cash, v: 0 }
+  - { kind: otif, v: 100, top: true }
+  - { kind: lateDevs, v: 0, top: true }

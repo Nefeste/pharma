@@ -37,6 +37,8 @@ export type ToSim =
 export interface World {
   plan: Plant;
   rev: number;
+  /** сценарий завода (Б9): окно берёт его отсюда — после старта и загрузки */
+  scenario: string;
 }
 
 export type FromSim =

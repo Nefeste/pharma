@@ -79,7 +79,7 @@ async function openGame({ browser, port, errors, requests, q }) {
     const u = r.url();
     if (!u.startsWith(`http://127.0.0.1:${port}/`) && !u.startsWith('data:') && !u.startsWith('blob:')) requests.push(u);
   });
-  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru`);
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&scn=scn.proto`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 60_000 });
   return { ctx, page };
 }

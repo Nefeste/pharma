@@ -21,6 +21,8 @@ import { Journal } from './Journal';
 import { Kpi } from './Kpi';
 import { Policies } from './Policies';
 import { Portfolio } from './Portfolio';
+import { Campaign } from './Campaign';
+import { Goals } from './Goals';
 import { Sop } from './Sop';
 import { Build } from './Build';
 import { FloorTip, Layers } from './Layers';
@@ -37,8 +39,10 @@ import { type Actions, type Hud, LIVE, type Speed, type Store, useHud } from './
 const SPEEDS: Speed[] = [1, 2, 3, 4];
 const WALLS: WallMode[] = ['full', 'cut', 'down'];
 
-export function App({ store, actions, scenario }: { store: Store; actions: Actions; scenario: string }) {
+export function App({ store, actions }: { store: Store; actions: Actions }) {
   const s = useHud(store);
+  // сценарий завода (Б9) — из потока; до первого среза — прототип
+  const scenario = s.scenario ?? 'scn.proto';
   // план здания — от потока расчёта (Б7а); до первого среза панелей плана нет
   const plant = s.world;
   // низ верхней полосы — для панелей под ней: на узком окне полоса переносится во вторую строку
@@ -69,7 +73,8 @@ export function App({ store, actions, scenario }: { store: Store; actions: Actio
           <span className="date" data-test="date">
             {dateText(m)}
           </span>
-          <span className="stat">{T.top.day(s.day)}</span>
+          {/* сутки — от старта игрока: прогрев сценария (Б9) не в счёт */}
+          <span className="stat">{T.top.day(Math.max(0, s.day - Math.round((db?.scenarios[scenario]?.warm ?? 0) / 86_400)))}</span>
           <span className="group">
             <button className={s.speed === 0 && !s.ff ? 'on' : ''} onClick={() => actions.setSpeed(0)} title={T.top.pause}>
               ❚❚
@@ -139,6 +144,11 @@ export function App({ store, actions, scenario }: { store: Store; actions: Actio
             <button type="button" className={s.portfolio.open ? 'on' : ''} onClick={() => actions.togglePortfolio()} title={T.project.hint} data-test="portfolio-open">
               {T.project.button}
             </button>
+            {s.goals.view && s.goals.view.goals.length > 0 ? (
+              <button type="button" className={`goalbtn${s.goals.open ? ' on' : ''}`} onClick={() => actions.toggleGoals()} title={T.campaign.hint} data-test="goals-open">
+                {T.campaign.button} {T.campaign.count(s.goals.view.goals.filter(g => g.met && !g.goal.top).length, s.goals.view.goals.filter(g => !g.goal.top).length)}
+              </button>
+            ) : null}
             <button type="button" className={s.gantt.open ? 'on' : ''} onClick={() => actions.toggleGantt()} title={T.gantt.hint} data-test="gantt-open">
               {T.gantt.button}
             </button>
@@ -222,6 +232,10 @@ export function App({ store, actions, scenario }: { store: Store; actions: Actio
       </Guard>
       <Guard name={T.po.button} close={s.po.open ? actions.togglePo : undefined}>
         {s.po.open && <Po hud={s} actions={actions} />}
+      </Guard>
+      <Guard name={T.campaign.title}>{s.campaign.open && <Campaign actions={actions} />}</Guard>
+      <Guard name={T.campaign.button} close={s.goals.open ? actions.toggleGoals : undefined}>
+        {s.goals.open && <Goals hud={s} actions={actions} />}
       </Guard>
       <Guard name={T.seats.button} close={s.seats.open ? actions.closeSeats : undefined}>
         {s.seats.open && <Seats hud={s} actions={actions} scenario={scenario} />}

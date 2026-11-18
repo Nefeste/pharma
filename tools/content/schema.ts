@@ -158,7 +158,13 @@ export const scenario = z.strictObject({
   customers: z.array(id).default([]),
   staff: z.array(z.strictObject({ role: id, shift: id, skill: z.number().int().min(1).max(5), n: z.number().int().min(1).max(50), also: z.array(id).min(1).optional() })).min(1),
   vehicles: z.array(z.strictObject({ type: id, n: z.number().int().min(1).max(20) })),
-  orders: z.array(z.strictObject({ supplier: id, lines: z.array(z.strictObject({ material: id, qty })).min(1) })).default([]),
+  /**
+   * заказы поставщикам на старте; с Б9 `at` — фура сценария: приходит в этот час первого дня игрока (после прогрева),
+   * без опоздания поставщика
+   */
+  orders: z
+    .array(z.strictObject({ supplier: id, lines: z.array(z.strictObject({ material: id, qty })).min(1), at: z.string().regex(/^\d{2}:\d{2}$/, 'час пишется как ЧЧ:ММ').optional() }))
+    .default([]),
   /** задания на серию: карта, день «не раньше» от начала партии и товарная позиция, в которую упаковать балк */
   batches: z.array(z.strictObject({ recipe: id, day: z.number().int().min(0).max(3650), sku: id.optional() })).default([]),
   /**
@@ -241,6 +247,18 @@ export const scenario = z.strictObject({
   norm: percent.default(100),
   /** места, которые игрок может взять (геймдизайн, §29.5); остальные ведёт сценарий; нет — все */
   seats: z.array(z.enum(SEATS)).min(1).default([...SEATS]),
+  /**
+   * кампания (Б9; геймдизайн, §15.1): номер сценария в кампании, чему учит; прогрев — сколько суток до старта игрока
+   * завод живёт сам; срок сценария в сутках от старта игрока; цели и цели «на отлично» — вид и порог: выпущено серий,
+   * доля заказов вовремя, %, касса в последний день не ниже, ₽, отклонений с прошедшим сроком не больше
+   */
+  campaign: z.number().int().min(1).max(8).optional(),
+  teaches: text.optional(),
+  warm: z.number().int().min(0).max(14).default(0),
+  days: z.number().int().min(1).max(730).optional(),
+  goals: z
+    .array(z.strictObject({ kind: z.enum(['released', 'otif', 'cash', 'lateDevs']), v: z.number(), top: z.boolean().optional() }))
+    .default([]),
   /**
    * обучение (Б3б): за сколько суток до введения новой редакции или конца срока записи — задача обучения; проверка
    * знаний, минуты; на старте дни обучения — до стольких суток назад; табельные номера — с этого номера

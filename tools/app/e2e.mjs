@@ -59,7 +59,7 @@
 // «Вывоз отходов». Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png. Первая неделя
 // (docs/specs/2026-10-vertical-slice.md): путь новичка от «Кем вы будете» до «За эту игру» на планёрке 8 сентября в
 // чистом окне — tools/app/e2e-week.mjs.
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits|build|equip|sources|portfolio] [--long 1]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits|build|equip|sources|portfolio|c1] [--long 1]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -71,6 +71,7 @@ import { mrpPart } from './e2e-mrp.mjs';
 import { buildPart } from './e2e-build.mjs';
 import { equipPart } from './e2e-equip.mjs';
 import { portfolioPart } from './e2e-portfolio.mjs';
+import { c1Part } from './e2e-c1.mjs';
 import { routePart } from './e2e-route.mjs';
 import { editsPart } from './e2e-edits.mjs';
 import { sourcesPart } from './e2e-sources.mjs';
@@ -314,6 +315,7 @@ try {
   if (only === '' || only === 'route') await routePart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'sources') await sourcesPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
   if (only === '' || only === 'portfolio') await portfolioPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
+  if (only === '' || only === 'c1') await c1Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
@@ -326,7 +328,7 @@ try {
 }
 
 async function mainPart() {
-  await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru`);
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru&scn=scn.proto`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 60_000 });
   ok('страница загружена, первый кадр нарисован');
 
@@ -3506,7 +3508,7 @@ async function mainPart() {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const fresh = await ctx.newPage();
     fresh.on('pageerror', e => errors.push(e.message));
-    await fresh.goto(`http://127.0.0.1:${port}/index.html?lang=ru`);
+    await fresh.goto(`http://127.0.0.1:${port}/index.html?lang=ru&scn=scn.proto`);
     // кадр программной отрисовки на среднем — секунда и больше: замер может кончиться раньше, чем сценарий успеет
     // спросить пресет, поэтому что мерили — из записи замера (main.tsx, `__preset`)
     await fresh.waitForFunction(() => localStorage.getItem('pharma.quality') !== null, null, { timeout: 90_000 });

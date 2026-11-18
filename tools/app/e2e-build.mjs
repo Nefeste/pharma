@@ -29,7 +29,7 @@ export async function buildPart({ browser, port, out, ok, fail, errors, requests
 }
 
 /** Чистое окно игры: прокрутка с Promise, счёт кадров и миг ввода, проверки ответа по имени (страница запрещает `eval`). */
-export async function openGame({ browser, port, errors, requests, q }) {
+export async function openGame({ browser, port, errors, requests, q, scn = 'scn.proto' }) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await ctx.newPage();
   await page.addInitScript(() => {
@@ -84,7 +84,8 @@ export async function openGame({ browser, port, errors, requests, q }) {
     const u = r.url();
     if (!u.startsWith(`http://127.0.0.1:${port}/`) && !u.startsWith('data:') && !u.startsWith('blob:')) requests.push(u);
   });
-  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru`);
+  // сценарий (Б9): `scn` — сразу он; `null` — экран «Кампания»
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru${scn ? `&scn=${scn}` : ''}`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 60_000 });
   return { ctx, page };
 }

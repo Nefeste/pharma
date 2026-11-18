@@ -9,7 +9,7 @@ import { setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import { App } from '../ui/App';
 import { type Actions, Store } from '../ui/store';
-import { Game, SCENARIO } from './game';
+import { Game } from './game';
 import { kept, medianFrame, PRESET, pickPreset, keep as remember, windowKeep } from './preset';
 
 declare const __VERSION__: string;
@@ -153,12 +153,14 @@ const actions: Actions = {
   closeDossier: later('closeDossier'),
   investigate: later('investigate'),
   conclude: later('conclude'),
+  pickScenario: later('pickScenario'),
+  toggleGoals: later('toggleGoals'),
   openSeats: later('openSeats'),
   pickSeat: later('pickSeat'),
   takeSeats: later('takeSeats'),
   closeSeats: later('closeSeats'),
 };
-createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} scenario={SCENARIO} />);
+createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} />);
 
 const asked = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q'));
 // пресет: из адреса (проверки) — как есть; иначе запомненный; первый запуск — средний, замер решит (preset.ts)
@@ -202,7 +204,7 @@ async function firstPreset(g: Game) {
 }
 
 // модели: из Blender (#109) или кодом — `?art=code`; у Electron — `--art code` (после запуска, тем же переключателем)
-Game.create(document.getElementById('view')!, store, quality, q.get('art') === 'code' ? 'code' : 'blender')
+Game.create(document.getElementById('view')!, store, quality, q.get('art') === 'code' ? 'code' : 'blender', q.get('scn') ?? undefined)
   .then(async g => {
     game = g;
     window.__game = g;

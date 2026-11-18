@@ -192,19 +192,21 @@ export class Game {
   private models!: ModelIndex;
 
   /** База, сцена, поток — и первый кадр после первого среза; `art` — модели из Blender или кодом (#109). */
-  static async create(host: HTMLElement, store: Store, quality: Quality, art: ArtMode = 'blender'): Promise<Game> {
+  static async create(host: HTMLElement, store: Store, quality: Quality, art: ArtMode = 'blender', scn?: string): Promise<Game> {
     const db = (await (await fetch('./content.json')).json()) as ContentDb;
     useDb(db);
     const g = new Game(db, store, host);
-    const sc = db.scenarios[SCENARIO];
-    if (!sc) throw new Error(`no scenario ${SCENARIO}`);
+    // сценарий (Б9): из адреса — сразу он; нет — экран «Кампания», а за ним стоит завод прототипа
+    const id = scn && db.scenarios[scn] ? scn : SCENARIO;
+    const sc = db.scenarios[id];
+    if (!sc) throw new Error(`no scenario ${id}`);
     g.scenario = sc;
     // план здания — от потока расчёта (Б7а): поток запускается первым, сцена строится по плану первого среза
     g.client = new SimClient('./sim.js');
     g.client.onError = m => store.set({ error: m });
     const first = await new Promise<Slice>(done => {
       g.client.onSlice = done;
-      g.client.start({ kind: 'start', scenario: SCENARIO });
+      g.client.start({ kind: 'start', scenario: id });
     });
     if (!first.world) throw new Error('slice: no plan');
     g.world = first.world;
@@ -266,7 +268,7 @@ export class Game {
     // игра начинается с экрана «Кем вы будете» (3е): мир стоит, пока место не выбрано; «Взять» пустит его на ×1
     g.speed = 0;
     g.resume = 1;
-    store.set({ seats: { open: true, pick: [] } });
+    store.set({ scenario: id, ...(scn && db.scenarios[scn] ? { seats: { open: true, pick: [] } } : { campaign: { open: true } }) });
     g.sendViews();
     requestAnimationFrame(g.loop);
     return g;
@@ -309,6 +311,12 @@ export class Game {
     // (стройка, Б7б) — сцена заново по нему, до разбора среза: номера вещей в срезе — номера его плана
     const relaid = !!s.world && (s.world.rev !== this.world.rev || stableJson(s.world.plan) !== stableJson(this.world.plan));
     if (s.world && relaid) this.relayout(s.world);
+    // другой сценарий (Б9): после «Начать» на экране «Кампания» и после загрузки — даты, места и цели по нему
+    if (s.world && s.world.scenario !== this.scenario.id && this.db.scenarios[s.world.scenario]) {
+      this.scenario = this.db.scenarios[s.world.scenario];
+      this.store.set({ scenario: this.scenario.id, start: this.scenario.start.date, goals: { open: false } });
+      this.sendViews();
+    }
     const sl = unpack(s.buf);
     // срез другой правки плана окно не разбирает
     if (sl.rev !== this.world.rev) return;
@@ -394,6 +402,9 @@ export class Game {
         // стройка (Б7б): шаги отмены, перестраиваемое, сносимое, занятое и касса — призраку и подписям
         this.builder.setView(d);
         this.buildHud();
+      } else if (d.view === 'goals') {
+        // цели сценария (Б9): полоса и окно целей; в конце срока — итог
+        this.store.set({ goals: { ...this.store.get().goals, view: d } });
       } else this.store.set({ top: d });
     }
     // извещения автопауз игрока — вес «стоп» (13-art.md, §11): на таком поток встал; в полосе — оно, а не то, что пришло с
@@ -408,6 +419,8 @@ export class Game {
     for (const n of s.notices) if (stop(n) && n.kind === 'proposal') this.notice(n, true);
     for (const n of s.notices) if (stop(n) && n.kind !== 'proposal') this.notice(n, true);
     if (s.notices.some(n => n.kind === 'morning')) this.morning(sl.t);
+    // конец срока сценария (Б9): окно целей с итогом открывается само
+    if (s.notices.some(n => n.kind === 'scenarioEnd')) this.store.set({ goals: { ...this.store.get().goals, open: true } });
     // совещание S&OP (Б6г) открылось и ждёт игрока — окно совещания открывается само, как планёрка
     if (s.notices.some(n => n.kind === 'sop' && n.open) && !this.store.get().sop.open) this.actions.toggleSop();
     if (s.stopped) this.autopause();
@@ -1054,6 +1067,16 @@ export class Game {
       this.store.set({ firsts: next });
     },
     conclude: (inv, cause, fate) => this.client.command({ kind: 'conclude', inv, cause, fate, by: 'player' }),
+    pickScenario: id => {
+      // экран «Кампания» (Б9): новый завод сценария; мир стоит до «Взять» на экране мест
+      if (!this.db.scenarios[id] || !this.store.get().campaign.open) return;
+      this.client.start({ kind: 'start', scenario: id });
+      this.store.set({ campaign: { open: false }, seats: { open: true, pick: [] } });
+    },
+    toggleGoals: () => {
+      const g = this.store.get().goals;
+      this.store.set({ goals: { ...g, open: !g.open } });
+    },
     openSeats: () => {
       // сменить место — на паузе; «Взять» пустит мир с прежней скоростью
       if (this.speed !== 0) this.resume = this.speed;
@@ -1466,6 +1489,8 @@ export class Game {
     const h = this.store.get();
     const st = h.stock;
     const list: ViewQuery[] = [{ id: 'top', view: 'top' }];
+    // цели сценария (Б9) — всегда, если они у сценария есть: полоса целей вверху
+    if (this.scenario.goals.length > 0) list.push({ id: 'goals', view: 'goals' });
     if (st.open) list.push({ id: 'stock', ...st.query });
     if (this.selected) list.push({ id: 'card', view: 'card', thing: this.selected });
     if (h.morning.open && h.morning.day !== undefined) list.push({ id: 'morning', view: 'morning', day: h.morning.day, ...(h.session ? { since: h.session.from } : {}) });

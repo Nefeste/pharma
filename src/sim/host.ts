@@ -37,7 +37,7 @@ export function createSim(db: ContentDb): SimHost {
   const slice = (notices: Notice[], tick = false, stopped = false): FromSim => {
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const views = desk.out(s!, performance.now());
-    const world = s!.plan !== sent ? { plan: s!.plan, rev: planRev(s!.plan) } : undefined;
+    const world = s!.plan !== sent ? { plan: s!.plan, rev: planRev(s!.plan), scenario: s!.scenario } : undefined;
     sent = s!.plan;
     return {
       kind: 'slice',

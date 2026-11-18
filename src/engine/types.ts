@@ -1067,6 +1067,8 @@ export interface Task {
 export type PlantEvent =
   /** планёрка в 08:00: итог суток (геймдизайн, §2, §18) */
   | { kind: 'morning' }
+  /** конец срока сценария (Б9): цели — итог, завод живёт дальше */
+  | { kind: 'scenarioEnd' }
   /** каждый час: начало и конец смен, задачи «не раньше» */
   | { kind: 'hour' }
   /** фура заказа встаёт к рампе */
@@ -2789,6 +2791,8 @@ export type Notice =
   | { kind: 'lateOrder'; order: string; missing: number }
   /** касса ниже предела кредитной линии */
   | { kind: 'cashLow'; balance: number }
+  /** срок сценария прошёл (Б9): итог целей — src/engine/goals.ts */
+  | { kind: 'scenarioEnd' }
   /** отказ узла машины; узел починили или заменили по плану */
   | { kind: 'failure'; machine: string; part: string }
   /**

@@ -68,7 +68,7 @@ export function quotePo(db: ContentDb, s: PlantState, supplier: Id, want: readon
   return { lines, costs, net, vat, prepaid: part(net + vat, sup.prepay) };
 }
 
-export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'po' }>, notices: Notice[], why?: PoWhy[], trial?: string): Po | undefined {
+export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'po' }>, notices: Notice[], why?: PoWhy[], trial?: string, at?: number): Po | undefined {
   const q = quotePo(db, s, cmd.supplier, cmd.lines, trial);
   if ('why' in q) {
     notices.push({ kind: 'refused', cmd: 'po', why: q.why, ...(q.detail ? { detail: q.detail } : {}) });
@@ -76,9 +76,10 @@ export function placePo(db: ContentDb, s: PlantState, cmd: Extract<Command, { ki
   }
   const sup = db.suppliers[cmd.supplier];
   const lines = q.lines;
-  const eta = etaOf(db, s, sup.id, sup.lead);
+  // фура сценария (Б9) — к своему мгновению и без опоздания
+  const eta = at ?? etaOf(db, s, sup.id, sup.lead);
   // опоздание (Б6ж): по своей ветви поставщика; завод знает обещанный приход, фура придёт к настоящему
-  const truth = lateOf(db, s, sup.id, eta);
+  const truth = at !== undefined ? undefined : lateOf(db, s, sup.id, eta);
   // сумма с НДС: АФС — по ставке лекарственных средств, остальное — по общей; предоплата — сейчас, остаток — после прихода
   let net = 0;
   let vat = 0;

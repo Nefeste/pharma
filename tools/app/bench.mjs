@@ -45,7 +45,7 @@ page.on('pageerror', e => {
   console.log(`  pageerror ${e.message}`);
   errors.push(e.message);
 });
-const url = `http://127.0.0.1:${port}/index.html?bench=1&secs=${secs}&warm=${warm}&qualities=${qualities}&shots=${shots ? 1 : 0}&lang=ru${layer}${art}`;
+const url = `http://127.0.0.1:${port}/index.html?bench=1&secs=${secs}&warm=${warm}&qualities=${qualities}&shots=${shots ? 1 : 0}&lang=ru&scn=scn.proto${layer}${art}`;
 console.log(`→ ${url}`);
 const tStart = Date.now();
 await page.goto(url);

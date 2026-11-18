@@ -129,6 +129,37 @@ function files(dir: string): string[] {
     });
 }
 
+/**
+ * Сценарий от сценария (Б9): у записи `base` — номер другого сценария; берутся его поля, свои заменяют их целиком, без
+ * слияния списков и объектов; своё `null` убирает поле основы. Основа может стоять на своей основе; круга нет.
+ */
+function withBase(content: string, data: unknown, rel: string, errors: string[], seen: string[] = []): unknown {
+  if (!data || typeof data !== 'object' || !('base' in data)) return data;
+  const { base, ...own } = data as Record<string, unknown>;
+  if (typeof base !== 'string' || !base.startsWith('scn.')) {
+    errors.push(`${rel}: base — номер сценария`);
+    return own;
+  }
+  if (seen.includes(base)) {
+    errors.push(`${rel}: base — круг сценариев ${[...seen, base].join(' → ')}`);
+    return own;
+  }
+  let parent: unknown;
+  try {
+    parent = parse(readFileSync(join(content, 'scenarios', ...base.split('.').slice(1)) + '.yaml', 'utf8'));
+  } catch {
+    errors.push(`${rel}: base — нет сценария ${base}`);
+    return own;
+  }
+  const from = withBase(content, parent, rel, errors, [...seen, base]) as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...from };
+  for (const [k, v] of Object.entries(own)) {
+    if (v === null) delete out[k];
+    else out[k] = v;
+  }
+  return out;
+}
+
 /** Ключи источников из таблицы «## 9. Источники» в docs/10-domain.md. */
 export function sourceKeys(): Set<string> {
   const doc = readFileSync(join(ROOT, 'docs/10-domain.md'), 'utf8');
@@ -205,6 +236,8 @@ export function buildDb(content = CONTENT): Built {
         errors.push(`${rel}: YAML не читается: ${e instanceof Error ? e.message : String(e)}`);
         continue;
       }
+      // сценарий от сценария (Б9): поля сценария-основы, свои — целиком; своё `null` — поля нет
+      if (kind === 'scenarios') data = withBase(content, data, rel, errors);
       const r = schema.safeParse(data);
       if (!r.success) {
         for (const issue of r.error.issues) errors.push(`${rel}: ${issue.path.join('.') || '(запись)'}: ${issue.message}`);
@@ -1052,9 +1085,19 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     // отклонения (Б5е): у класса строже — срок не длиннее; порог признака — доли 1/10 000 ресурса, как у порога замены
     const term = s.deviations.term;
     need(term.critical <= term.major && term.major <= term.minor, `${where}: deviations.term — у критического срок не длиннее, чем у существенного, у существенного — чем у незначительного`);
-    const [y, m, d] = s.start.date.split('-').map(Number);
+    // прогрев (Б9): завод начинает жить за `warm` суток до старта игрока — начало партии раньше на столько же
+    const [sy, sm, sd] = s.start.date.split('-').map(Number);
+    const warmAt = new Date(Date.UTC(sy, sm - 1, sd) - s.warm * 86_400_000);
+    const [y, m, d] = [warmAt.getUTCFullYear(), warmAt.getUTCMonth() + 1, warmAt.getUTCDate()];
+    // цели (Б9): проценты — доли 1/10 000, рубли — копейки; срок — от старта игрока
+    for (const g of s.goals) need(g.kind !== 'otif' || (g.v >= 0 && g.v <= 100), `${where}: цель otif — от 0 до 100 %`);
+    need(s.goals.length === 0 || s.days !== undefined, `${where}: у целей нет срока days`);
+    for (const o of s.orders) if (o.at) need(s.warm > 0 || Number(o.at.slice(0, 2)) >= s.start.hour, `${where}: фура сценария в ${o.at} — раньше старта`);
     scenarios[s.id] = {
       ...s,
+      warm: s.warm * 86_400,
+      ...(s.days !== undefined ? { days: s.days * 86_400 } : {}),
+      goals: s.goals.map(g => ({ kind: g.kind, v: g.kind === 'otif' ? share(g.v) : g.kind === 'cash' ? kop(g.v) : g.v, ...(g.top ? { top: true as const } : {}) })),
       deviations: { ...s.deviations, wear: share(s.deviations.wear) },
       start: { date: { y, m, d }, hour: s.start.hour },
       cash: kop(s.cash),
@@ -1079,7 +1122,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
             },
           }
         : {}),
-      orders: s.orders.map(o => ({ supplier: o.supplier, lines: o.lines.map(l => ({ material: l.material, qty: amount(l.material, l.qty, where) })) })),
+      orders: s.orders.map(o => ({ supplier: o.supplier, lines: o.lines.map(l => ({ material: l.material, qty: amount(l.material, l.qty, where) })), ...(o.at ? { at: Number(o.at.slice(0, 2)) * 3600 + Number(o.at.slice(3)) * 60 } : {}) })),
       stock: s.stock.map(x => ({ material: x.material, qty: amount(x.material, x.qty, where) })),
       wear: Object.fromEntries(Object.entries(s.wear).map(([k, v]) => [k, share(v)])),
       maint: Object.fromEntries(Object.entries(s.maint).map(([k, v]) => [k, share(v)])),

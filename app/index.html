@@ -289,6 +289,14 @@
     .tile:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
     .sfoot { display: flex; align-items: center; gap: 12px; }
     .sfoot .muted { margin-right: auto; }
+    /* экран «Кампания» и окно целей сценария (Б9): карточки сценариев — как плитки мест; цели — справа под полосой */
+    div.tile { background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; }
+    div.tile .take { margin-top: auto; align-self: flex-start; }
+    .goals { position: absolute; right: 8px; top: calc(var(--top-h, 48px) + 8px); width: min(440px, calc(100% - 16px)); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 6px; z-index: 5; background: rgba(22, 30, 34, 0.97); box-shadow: 0 6px 30px rgba(0,0,0,.5); }
+    .goals ul { margin: 0; padding-left: 16px; }
+    .goalbtn { white-space: nowrap; }
+    .goals li.ok { color: var(--green); }
+    .goals .take { align-self: flex-start; }
     .seatbtn { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* доска расследования (часть 4б) — большое окно во всю ширину под полосой, как расписание: три столбца и решение снизу */
     .inv { position: absolute; left: 8px; right: 8px; top: calc(var(--top-h, 48px) + 8px); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 4px; background: rgba(22, 30, 34, 0.98); }

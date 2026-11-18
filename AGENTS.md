@@ -111,8 +111,9 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # vacuum transfer refused mid-room and ordered at a wall (e2e-route.mjs, route.png),
                                    # the portfolio — a metformin project, what the plant lacks, the protocol, the
                                    # meeting, a stop (e2e-portfolio.mjs, portfolio.png; `--long 1` — on to the trial
-                                   # batch); `-- --only main|week|memo|capa|jobs|launch|forecast|
-                                   # sop|mrp|edits|build|equip|route|sources|portfolio` for one
+                                   # batch), scenario 1 — the «Кампания» screen, its start after the warm-up, the goals,
+                                   # the truck in the first hour (e2e-c1.mjs, c1.png); `-- --only main|week|memo|capa|
+                                   # jobs|launch|forecast|sop|mrp|edits|build|equip|route|sources|portfolio|c1` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -499,7 +500,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   schedule run and the views — `pickUnit`, `stageRoom`; the move of the intermediate is `carry` in `mes.ts`; with step
   2 a fit, free vacuum transfer from the room into the next — `transferVia` — moves it without a cart: the operator
   starts it, then the batch mass at its rate, unattended, the `transfer` event — `transferTime`),
-  `invariants.ts`.
+  `goals.ts` (with Б9, a scenario's goals as pure functions of plant records — released batches, OTIF, the cash at the
+  end of the term by the ledger, deviations past their term — from the player's start after the warm-up, `goalsNow`;
+  the end of the term is the `scenarioEnd` event), `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`; a `tick` carries the notice kinds of the player's
@@ -599,7 +602,7 @@ first, or copy the working code of Bolnitsa on the same versions.
   window by kind and cause with their things and the things' names — records of the plant (`floor.ts`); with Б7д, the
   portfolio — products not made yet and their projects: the stage since when, what it waits for, what the plant
   lacks, the project's batches with their numbers and state, the dossier, and the meeting's «Проекты»
-  (`portfolio.ts`); with Б1к, the andon — what is
+  (`portfolio.ts`); with Б9, a scenario's goals — what each sees now and the result at the end (`goals.ts`); with Б1к, the andon — what is
   not working now by thing: a failed part, an asset without a record in force or with the contractor, a cleaning a batch
   waits for with the stage operators on shift and no cleaners, a task waiting for an admission, hours or the end of a
   leave, a supplier truck not unloaded for 2 hours, a batch without material at its not-before, an order at risk — with
@@ -715,7 +718,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   day (`draft.ts`), the
   «Кем вы будете» screen of places (`Seats.tsx`), with Б7д the «Портфель» window — F, products, «Начать проект»,
   what the plant lacks with its way to the build or the partners, the protocol, the project's batches, «Остановить»
-  (`Portfolio.tsx`), the investigation board — steps, findings in words with numbers
+  (`Portfolio.tsx`), with Б9 the «Кампания» screen before «Кем вы будете» — the scenarios by their campaign number
+  (`Campaign.tsx`), the goals window with the result at the end of the term (`Goals.tsx`) and a goal in words
+  (`goalwords.ts`), the investigation board — steps, findings in words with numbers
   from the records, version bars, the decision, the debrief, with Б5е the CAPA after the conclusion (`Inv.tsx`), the
   batch record over the other windows — opened from a
   card, «Сейчас», the meeting and a click
@@ -772,7 +777,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   bed; with Б8 — the capsulation room, the dosing-disc capsule filler with its disc part and spare, empty capsules by
   mass, the `encap` stage — disc thickness in `mm`, tamping force, machine speed —, the IPC of capsule fill mass and
   defects, fluconazole 150 mg capsules as a project product, the form `capsule`; with Б8 step 2 — its SKU №10, carton,
-  leaflet, FG spec and packaging agreement without a day in force, its demand after launch);
+  leaflet, FG spec and packaging agreement without a day in force, its demand after launch; with Б9 — a scenario on
+  another (`base`: the base's fields, its own whole, `null` drops one), its campaign number and what it teaches, the
+  warm-up in days, the term, the goals, a start order's truck hour `at`; scenario 1 `scn.c1` and its customer
+  `cus.district`);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
@@ -828,7 +836,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   «Утвердить» and the journal, the horizon policy and its edge (`e2e-edits.mjs`), the sources — candidate pairs and
   «Одобрить пару» to the trial lot with its promised day, the trial PO in the «Материалы» tab, a planned order's
   «Предложения» and «Заказать», with `--long 1` on to the dossier filing (`e2e-sources.mjs`), the portfolio — a
-  metformin project from the «Портфель» window, with `--long 1` on to the trial batch (`e2e-portfolio.mjs`), the
+  metformin project from the «Портфель» window, with `--long 1` on to the trial batch (`e2e-portfolio.mjs`), scenario 1 from
+  the «Кампания» screen to its first hour (`e2e-c1.mjs`; the other parts open `?scn=scn.proto`), the
   «code —
   Blender» sheet
   of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench

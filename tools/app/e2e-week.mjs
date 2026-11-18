@@ -117,7 +117,7 @@ export async function weekPart({ browser, port, out, ok, fail, errors, requests,
   try {
     // 1. первый экран: загрузка — первый кадр; «Кем вы будете» открыт, мир стоит
     const w0 = Date.now();
-    await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru`);
+    await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&scn=scn.proto`);
     await page.waitForFunction(() => window.__ready === true, null, { timeout: 60_000 });
     const load = Date.now() - w0;
     const day0 = await page.evaluate(() => window.__game.day);

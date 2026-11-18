@@ -25,7 +25,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = [];
 page.on('console', m => m.type() === 'error' && errors.push(m.text()));
 page.on('pageerror', e => errors.push(e.message));
-await page.goto(`http://127.0.0.1:${port}/index.html?q=medium&lang=ru`);
+await page.goto(`http://127.0.0.1:${port}/index.html?q=medium&lang=ru&scn=scn.proto`);
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 120_000 });
 
 // директором: экран «Кем вы будете» не заслоняет снимки; ×4, пока пресс не заработает, — и пауза

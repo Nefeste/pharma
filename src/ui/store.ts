@@ -17,6 +17,7 @@ import type { WallMode } from '../render/world';
 import type { DossierView } from '../sim/dossier';
 import type { MrpView } from '../sim/mrp';
 import type { PortfolioView } from '../sim/portfolio';
+import type { GoalsView } from '../sim/goals';
 import type { SopView } from '../sim/sop';
 import type { AndonView } from '../sim/andon';
 import type { LossPick } from '../app/losses';
@@ -156,6 +157,10 @@ export interface Hud {
   sop: { open: boolean; draft?: Readonly<Record<Id, readonly number[]>>; view?: SopView };
   /** окно «Портфель» (Б7д): продукты-проекты, этапы, чего нет заводу */
   portfolio: { open: boolean; view?: PortfolioView };
+  /** сценарий завода (Б9) — из потока; экран «Кампания» до выбора места; цели и итог сценария */
+  scenario?: string;
+  campaign: { open: boolean };
+  goals: { open: boolean; view?: GoalsView };
   /**
    * слой слева (Б1и; геймдизайн, §3.6, §18): обычный вид; «Загрузка и OEE» — столбики, числа, доски «План — факт»;
    * «Узкие места» и «Проблемы» (Б1к) — таблички над местами, где серии ждут, и значки андона; «Потери» (Б1л) — столбики
@@ -273,6 +278,8 @@ export const initial: Hud = {
   policies: { open: false, draft: {}, run: NO_POLICY_RUN },
   sop: { open: false },
   portfolio: { open: false },
+  campaign: { open: false },
+  goals: { open: false },
   layer: 'plain',
   floor: { win: 'today', pick: 'all' },
   andon: {},
@@ -511,6 +518,9 @@ export interface Actions {
   showSpot(spot: string): void;
   understood(kind: string): void;
   /** экран «Кем вы будете»: открыть — мир на паузе; отметить место; взять отмеченные — команда `seat`; закрыть без смены */
+  /** экран «Кампания» (Б9): начать сценарий; окно целей сценария — открыть или закрыть */
+  pickScenario(id: string): void;
+  toggleGoals(): void;
   openSeats(): void;
   pickSeat(seat: SeatId): void;
   takeSeats(): void;

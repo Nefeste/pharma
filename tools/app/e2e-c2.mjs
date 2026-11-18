@@ -87,7 +87,11 @@ export async function c2Part({ browser, port, out, ok, fail, errors, requests, q
     if (!risk) fail('письма о заказе под угрозой нет');
     else {
       await page.evaluate(() => window.__game.actions.setSpeed(0));
-      await page.evaluate(() => window.__game.actions.readLetter('let.c2.risk'));
+      await page.evaluate(() => {
+        const g = window.__game;
+        if (!g.store.get().letters.open) g.actions.toggleLetters();
+        g.actions.readLetter('let.c2.risk');
+      });
       await page.waitForSelector('[data-test=letter][data-letter="let.c2.risk"]', { timeout: 20_000 });
       const t = await text('[data-test=letter]');
       const clock = await s.clock();

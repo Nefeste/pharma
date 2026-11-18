@@ -1,0 +1,9 @@
+# Письмо первого заказа под угрозой: что не покрыто к сроку и что можно сделать.
+id: let.c1.risk
+scenario: scn.c1
+from: mentor
+n: 14
+when: { first: risk }
+done: { kind: shipped }
+shows: event
+review: draft

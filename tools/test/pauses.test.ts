@@ -49,10 +49,11 @@ describe('автопаузы', () => {
     // предложение руководителя (Б5б) — у поста его отдела; до планёрки — ждёт её, пока автопауза планёрки включена;
     // «Некому решить» (Б5в) — у поста отдела руководителя; «Просят решить» (Б5д) — у поста развилки производства или
     // директора; ответ на записку (Б5д) — у поста, с которого она; совещание S&OP (Б6г) — у «Производства» и директора
-    expect(sorted(stopKinds([], ['production']))).toEqual(sorted(['failure', 'investigation', 'lotRejected', 'materialLate', 'morning', 'leaveDraft', 'noOne/production', 'proposal/production', 'ask/production', 'memoDone/production', 'sop', ...eq, ...ot('mes', 'line', 'maint'), ...rs('mes', 'line', 'maint')]));
-    expect(sorted(stopKinds([], ['quality']))).toEqual(sorted(['deviation', 'investigation', 'lotRejected', 'qualLost', 'morning', 'leaveDraft', 'assetExpired/lab', 'pairSuspended', 'noOne/quality', 'proposal/quality', 'memoDone/quality', ...ot('qc', 'qa'), ...rs('qc', 'qa')]));
-    expect(stopKinds([], ['commerce'])).toEqual(['orderRisk', 'leaveDraft', 'memoDone/commerce', 'morning']);
-    expect(sorted(stopKinds([], ['supply']))).toEqual(sorted(['materialLate', 'morning', 'leaveDraft', 'truckWait', 'assetExpired/sensor', 'pairSuspended', 'noOne/supply', 'proposal/supply', 'memoDone/supply', ...ot('wms'), ...rs('wms')]));
+    expect(sorted(stopKinds([], ['production']))).toEqual(sorted(['letter/mentor', 'failure', 'investigation', 'lotRejected', 'materialLate', 'morning', 'leaveDraft', 'noOne/production', 'proposal/production', 'ask/production', 'memoDone/production', 'sop', ...eq, ...ot('mes', 'line', 'maint'), ...rs('mes', 'line', 'maint')]));
+    expect(sorted(stopKinds([], ['quality']))).toEqual(sorted(['letter/mentor', 'deviation', 'investigation', 'lotRejected', 'qualLost', 'morning', 'leaveDraft', 'assetExpired/lab', 'pairSuspended', 'noOne/quality', 'proposal/quality', 'memoDone/quality', ...ot('qc', 'qa'), ...rs('qc', 'qa')]));
+    expect(stopKinds([], ['commerce'])).toEqual(['letter/mentor', 'orderRisk', 'leaveDraft', 'memoDone/commerce', 'morning']);
+    expect(sorted(stopKinds([], ['supply']))).toEqual(sorted(['letter/mentor', 'materialLate', 'morning', 'leaveDraft', 'truckWait', 'assetExpired/sensor', 'pairSuspended', 'noOne/supply', 'proposal/supply', 'memoDone/supply', ...ot('wms'), ...rs('wms')]));
+    // письмо наставника (Б9) — у всех мест
     // директор и «место не выбрано» — всё, кроме предложений до планёрки
     const all = PAUSES.flatMap(p => PAUSE_NOTICES[p]).filter(k => !k.endsWith('/early'));
     expect(stopKinds([], ['director'])).toEqual(all);
@@ -63,7 +64,7 @@ describe('автопаузы', () => {
 
   test('отключённая автопауза не ставит мир на паузу', () => {
     // автопауза планёрки выключена — предложение до планёрки ставит мир на паузу в свой час (Б5б)
-    expect(stopKinds(['morning', 'oos'], ['quality'])).toEqual(['deviation', 'qualLost', 'overtimeLow/qc', 'overtimeLow/qa', 'resign/qc', 'resign/qa', 'assetExpired/lab', 'pairSuspended', 'leaveDraft', 'noOne/quality', 'proposal/quality', 'proposal/quality/early', 'memoDone/quality']);
+    expect(stopKinds(['morning', 'oos'], ['quality'])).toEqual(['letter/mentor', 'deviation', 'qualLost', 'overtimeLow/qc', 'overtimeLow/qa', 'resign/qc', 'resign/qa', 'assetExpired/lab', 'pairSuspended', 'leaveDraft', 'noOne/quality', 'proposal/quality', 'proposal/quality/early', 'memoDone/quality']);
     expect(stopKinds(['proposal'], ['quality'])).not.toContain('proposal/quality');
     expect(stopKinds([...PAUSES], ['director'])).toEqual([]);
   });

@@ -1,0 +1,9 @@
+# Письмо первого отклонения (геймдизайн, §17): оценка влияния — отклонение, а не катастрофа.
+id: let.c1.deviation
+scenario: scn.c1
+from: mentor
+n: 12
+when: { first: deviation }
+done: { kind: assessed }
+shows: event
+review: draft

@@ -1,0 +1,9 @@
+# Письмо 11, последнее по шагам: оставшиеся отделы — игроку, цели сценария.
+id: let.c1.goals
+scenario: scn.c1
+from: mentor
+n: 11
+when: { after: let.c1.pack }
+done: { kind: seen, what: goals }
+gives: [maint]
+review: draft

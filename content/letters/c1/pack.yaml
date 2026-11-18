@@ -1,0 +1,9 @@
+# Письмо 10: упаковка серии игрока — линия, очистка линии, сверка.
+id: let.c1.pack
+scenario: scn.c1
+from: mentor
+n: 10
+when: { after: let.c1.dossier }
+done: { kind: packed }
+shows: playerBatch
+review: draft

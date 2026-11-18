@@ -1,0 +1,9 @@
+# Письмо 4: выпущенное — в обороте; фура покупателя в 15:00, отгрузка по заказу.
+id: let.c1.ship
+scenario: scn.c1
+from: mentor
+n: 4
+when: { after: let.c1.release }
+done: { kind: shipped }
+shows: nextOrder
+review: draft

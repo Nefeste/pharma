@@ -1,0 +1,10 @@
+# Письмо 8: комплектовка через шлюз и стадии серии игрока; производство передаётся игроку.
+id: let.c1.stages
+scenario: scn.c1
+from: mentor
+n: 8
+when: { after: let.c1.order }
+done: { kind: stageDone }
+shows: playerBatch
+gives: [mes]
+review: draft

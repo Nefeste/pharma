@@ -88,6 +88,18 @@ import { pendingOf } from '../../src/engine/shifts';
 import { SCHEMA } from '../../src/engine/types';
 import { calOf } from '../../src/engine/workdays';
 
+// с схемы 52 (Б9) — посреди обучения: сценарий 1 после прогрева, игрок — директор; письмо о фуре кончилось своим
+// условием, о карантине — пропущено, о выпуске серии пришло в свой час и открыто, склад «советует»
+if ((SCHEMA as number) === 52) {
+  const c = newPlant(db, { scenario: 'scn.c1', seed: 1 });
+  apply(db, c, { kind: 'seat', seats: ['director'] });
+  while (!c.heads.letters?.find(r => r.id === 'let.c1.truck')?.end) apply(db, c, { kind: 'advance', seconds: 10 * MIN });
+  apply(db, c, { kind: 'letter', op: 'skip', id: 'let.c1.quarantine' });
+  while (!c.heads.letters!.some(r => r.id === 'let.c1.release')) apply(db, c, { kind: 'advance', seconds: 10 * MIN });
+  writeFileSync(new URL(`./fixtures/save-v${SCHEMA}.json`, import.meta.url), `${toSave(c)}\n`);
+  console.log(`fixtures/save-v${SCHEMA}.json: писем ${c.heads.letters!.length}`);
+  process.exit(0);
+}
 const s = newPlant(db, { scenario: 'scn.proto', seed: 1 });
 // отпуска (Б4г) — с января 2028 года: до 9 января — по часу
 const end = s.t + ((SCHEMA as number) === 25 ? 160 : 120) * DAY;

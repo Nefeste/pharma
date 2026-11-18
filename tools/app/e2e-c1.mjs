@@ -1,8 +1,10 @@
-// Сценарий в браузере, часть «Сценарий 1» (Б9, шаг 1; docs/specs/2026-10-vertical-slice.md, «Б9», «Проверки Б9»):
+// Сценарий в браузере, часть «Сценарий 1» (Б9, шаги 1–2; docs/specs/2026-10-vertical-slice.md, «Б9», «Проверки Б9»):
 // чистое окно без сценария в адресе — экран «Кампания»: «Цех на окраине» первым, чему учит, старт, срок и цели. «Начать»
-// — экран «Кем вы будете» сценария: только директор. «Взять» — понедельник 13 сентября, 07:00 после прогрева; полоса
-// «Цели», окно целей. Фура поставщика — у рампы в первый час. Снимки — tools/app/out/c1-*.png, лист —
-// tools/app/out/c1.png.
+// — экран «Кем вы будете» сценария: только директор. «Взять» — понедельник 13 сентября, 07:00 после прогрева; панель
+// писем открыта на письме о фуре; полоса «Цели», окно целей. Фура поставщика — у рампы в первый час. Первый день по
+// письмам: фура разгружена — мир встал на письме о карантине; в 09:00 — письмо о выпуске серии, «Показать» — досье;
+// выпуск — письмо об отгрузке; отгрузка в 15:00 — письмо о планёрке; «Пропустить» — следующее. Снимки —
+// tools/app/out/c1-*.png, лист — tools/app/out/c1.png.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openGame, steps } from './e2e-build.mjs';
@@ -19,6 +21,7 @@ export async function c1Part({ browser, port, out, ok, fail, errors, requests, q
     Object.assign(window.__seen, {
       seatsOf: id => h().scenario === id && !!document.querySelector('#seats'),
       goals: () => !!document.querySelector('[data-test=goals]') && !!h().goals.view,
+      dossier: () => !!document.querySelector('[data-test=dossier]'),
     });
   });
   const text = sel => page.evaluate(q => document.querySelector(q)?.innerText.replace(/\s*\n\s*/g, ' · ') ?? '', sel);
@@ -44,6 +47,14 @@ export async function c1Part({ browser, port, out, ok, fail, errors, requests, q
     if (!/13 сентября 2027/.test(when) || !/07:0\d/.test(when)) fail(`старт: «${when}»`);
     else ok(`старт: «${when}»`);
 
+    // панель писем — сама, на первом письме наставника
+    await page.waitForSelector('[data-test=letter][data-letter="let.c1.truck"]', { timeout: 20_000 }).catch(() => undefined);
+    const l1 = await text('[data-test=letter]');
+    await s.shot('Письмо о фуре');
+    if (!/Фура у ворот/.test(l1) || !/главным технологом/.test(l1) || !/крахмал/i.test(l1) || !(await page.evaluate(() => !!document.querySelector('[data-test=letter-skip-all]')))) fail(`письмо о фуре: «${l1}»`);
+    else ok(`письмо о фуре: «${l1.slice(0, 160)}…»`);
+    await page.click('[data-test=letters] .close');
+
     // полоса и окно целей
     await page.waitForSelector('[data-test=goals-open]', { timeout: 20_000 });
     const bar = await text('[data-test=goals-open]');
@@ -66,6 +77,68 @@ export async function c1Part({ browser, port, out, ok, fail, errors, requests, q
     if (!/0[78]:\d\d/.test(at)) fail(`фура у рампы в ${at}`);
     else ok(`фура у рампы — ${at}`);
     await s.shot('Фура у рампы');
+
+    // первый день по письмам: каждое письмо наставника останавливает мир; дальше — с той же скоростью
+    const letter = async (id, timeout = 180_000) => {
+      const got = await page
+        .waitForFunction(
+          id => {
+            const h = window.__game.store.get();
+            if (h.letters.view?.rows.some(r => r.id === id)) return true;
+            // планёрка в 08:00 — закрыть: открытая, она кончила бы письмо о планёрке, едва оно придёт
+            if (h.morning.open) window.__game.actions.closeMorning(false);
+            if (h.speed === 0) window.__game.actions.setSpeed(4);
+            return false;
+          },
+          id,
+          { timeout, polling: 250 },
+        )
+        .then(
+          () => true,
+          () => false,
+        );
+      await page.evaluate(() => window.__game.actions.setSpeed(0));
+      return got;
+    };
+    const opened = id => page.evaluate(id => window.__game.store.get().letters.open && !!document.querySelector(`[data-test=letter][data-letter="${id}"]`), id);
+    if (!(await letter('let.c1.quarantine'))) fail('письма о карантине нет');
+    else {
+      const r = await page.evaluate(() => window.__game.store.get().letters.view.rows.find(x => x.id === 'let.c1.truck')?.end?.how);
+      const t = await text('[data-test=letter]');
+      await s.shot('Письмо о карантине');
+      if (r !== 'done' || !(await opened('let.c1.quarantine')) || !/Карантин и проба/.test(t) || !/партия/.test(t)) fail(`карантин: письмо о фуре — ${r}, «${t}»`);
+      else ok(`фура разгружена — письмо о карантине, мир встал: «${t.slice(0, 120)}…»`);
+    }
+    if (!(await letter('let.c1.release'))) fail('письма о выпуске серии нет');
+    else {
+      const t = await text('[data-test=letter]');
+      const clock = await s.clock();
+      await s.measure('«Показать» — досье серии', () => page.click('[data-test=letter-show]'), 'dossier', undefined, 'input');
+      await s.shot('Досье серии из письма');
+      if (!/Серия на выпуске/.test(t) || !/09:\d\d/.test(clock)) fail(`выпуск: ${clock} — «${t}»`);
+      else ok(`в ${clock} — письмо о выпуске серии, «Показать» открыло досье`);
+      await page.evaluate(() => window.__game.actions.closeDossier());
+    }
+    if (!(await letter('let.c1.ship'))) fail('письма об отгрузке нет');
+    else ok(`серия выпущена — письмо об отгрузке, ${await s.clock()}`);
+    if (!(await letter('let.c1.morning'))) fail('письма о планёрке нет');
+    else {
+      const clock = await s.clock();
+      const shipped = await page.evaluate(() => window.__game.store.get().letters.view.rows.find(x => x.id === 'let.c1.ship')?.end?.how);
+      await s.shot('Отгрузка — письмо о планёрке');
+      if (shipped !== 'done' || !/13 сентября/.test(clock) || !/1[5-9]:\d\d|2\d:\d\d/.test(clock)) fail(`отгрузка: ${clock}, письмо — ${shipped}`);
+      else ok(`отгрузка в первый день — письмо о планёрке, ${clock}`);
+      await page.click('[data-test=letter-skip]');
+      const next = await page
+        .waitForFunction(() => window.__game.store.get().letters.view?.rows.some(r => r.id === 'let.c1.lot'), null, { timeout: 20_000 })
+        .then(
+          () => true,
+          () => false,
+        );
+      const how = await page.evaluate(() => window.__game.store.get().letters.view.rows.find(x => x.id === 'let.c1.morning')?.end?.how);
+      if (!next || how !== 'skip') fail(`«Пропустить»: письмо о планёрке — ${how}, следующее — ${next}`);
+      else ok('«Пропустить» — письмо о планёрке пропущено, пришло письмо о партии');
+    }
   } catch (e) {
     fail(`сценарий 1: ${e instanceof Error ? e.message : String(e)}`);
   }

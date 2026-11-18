@@ -1414,6 +1414,35 @@ export interface CapaAction {
   review: Review;
 }
 
+/** Когда приходит письмо (Б9): на старте; после другого письма, когда то кончилось; в час первого события вида; в день сценария к часу (секунды от полуночи). */
+export type LetterWhen = { start: true } | { after: Id } | { first: 'deviation' | 'oos' | 'risk' | 'late' } | { day: number; at: number };
+
+/** Чем кончается письмо: условие над записями завода; `seen` — окно открыло то, на что письмо показывает. */
+export type LetterDone =
+  | { kind: 'unloaded' | 'sampled' | 'lotDecided' | 'released' | 'shipped' | 'order' | 'stageDone' | 'packed' | 'assessed' }
+  | { kind: 'seen'; what: LetterSeen };
+
+export type LetterSeen = 'lab' | 'dossier' | 'morning' | 'goals' | 'cash' | 'card';
+
+/** На что показывает письмо — вещь, которую движок находит в час прихода. */
+export type LetterShows = 'scenarioPo' | 'poLot' | 'qaBatch' | 'playerBatch' | 'nextOrder' | 'event';
+
+/**
+ * Письмо сценария (Б9; геймдизайн, §17, §26.3): от кого, номер по порядку в панели, когда приходит, чем кончается, на
+ * что показывает, каким отделам передаёт решения («советует»). Текст — шаблон `src/i18n/` по идентификатору.
+ */
+export interface Letter {
+  id: Id;
+  scenario: Id;
+  from: 'mentor' | 'distributor' | 'supplier';
+  n: number;
+  when: LetterWhen;
+  done: LetterDone;
+  shows?: LetterShows;
+  gives?: ('plan' | 'mes' | 'maint' | 'qa' | 'qc' | 'supply' | 'wms')[];
+  review: Review;
+}
+
 export interface ContentDb {
   /** отпечаток базы: сохранение помнит, с какой базой оно сделано */
   hash: string;
@@ -1452,4 +1481,6 @@ export interface ContentDb {
   /** каталог типов помещений (Б7б): `content/rooms/`; ключ — тип, как его зовёт план (`warehouse`, `airlock.people`) */
   rooms: Record<string, RoomType>;
   vendors: Record<Id, Vendor>;
+  /** письма сценариев (Б9): `content/letters/<сценарий>/` */
+  letters: Record<Id, Letter>;
 }

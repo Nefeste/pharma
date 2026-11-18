@@ -1,6 +1,7 @@
 // Игра в окне (docs/02-architecture.md, §10): база, поток расчёта, 3D-вид, часы и скорости, ввод, панели. Устройство —
 // как у «Больницы» (её src/app/game.ts): окно не считает завод, оно шлёт ход часов и команды и рисует срез. Всё, что знает
 // игра, — здесь; панели только читают хранилище и просят.
+import { lettersOf } from '../engine/letters';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -314,7 +315,9 @@ export class Game {
     // другой сценарий (Б9): после «Начать» на экране «Кампания» и после загрузки — даты, места и цели по нему
     if (s.world && s.world.scenario !== this.scenario.id && this.db.scenarios[s.world.scenario]) {
       this.scenario = this.db.scenarios[s.world.scenario];
-      this.store.set({ scenario: this.scenario.id, start: this.scenario.start.date, goals: { open: false } });
+      this.store.set({ scenario: this.scenario.id, start: this.scenario.start.date, goals: { open: false }, letters: { open: false } });
+      this.lettersShown = false;
+      this.seenSent.clear();
       this.sendViews();
     }
     const sl = unpack(s.buf);
@@ -405,6 +408,11 @@ export class Game {
       } else if (d.view === 'goals') {
         // цели сценария (Б9): полоса и окно целей; в конце срока — итог
         this.store.set({ goals: { ...this.store.get().goals, view: d } });
+      } else if (d.view === 'letters') {
+        // письма сценария (Б9): значок и панель; письмо, которое ждёт открытое окно, кончается
+        this.store.set({ letters: { ...this.store.get().letters, view: d } });
+        this.firstLetter();
+        this.seenLetters();
       } else this.store.set({ top: d });
     }
     // извещения автопауз игрока — вес «стоп» (13-art.md, §11): на таком поток встал; в полосе — оно, а не то, что пришло с
@@ -421,6 +429,12 @@ export class Game {
     if (s.notices.some(n => n.kind === 'morning')) this.morning(sl.t);
     // конец срока сценария (Б9): окно целей с итогом открывается само
     if (s.notices.some(n => n.kind === 'scenarioEnd')) this.store.set({ goals: { ...this.store.get().goals, open: true } });
+    // письмо наставника, на котором встал мир (Б9): панель писем открывается сама — на этом письме
+    const letter = s.notices.find(n => n.kind === 'letter' && stop(n));
+    if (letter && letter.kind === 'letter') {
+      this.store.set({ letters: { ...this.store.get().letters, open: true } });
+      this.actions.readLetter(letter.id);
+    }
     // совещание S&OP (Б6г) открылось и ждёт игрока — окно совещания открывается само, как планёрка
     if (s.notices.some(n => n.kind === 'sop' && n.open) && !this.store.get().sop.open) this.actions.toggleSop();
     if (s.stopped) this.autopause();
@@ -591,6 +605,8 @@ export class Game {
       : n.kind === 'project' ? T.notices.project(named(this.db.products[n.product]?.name, n.product), T.project.stages[n.stage] ?? n.stage)
       : n.kind === 'unitReady' ? T.notices.unitReady(`${clsName(this.db, n.type)} ${n.asset}`)
       : n.kind === 'unitLate' ? T.notices.unitLate(`${clsName(this.db, n.type)} ${n.asset}`)
+      // письмо сценария (Б9): от кого и тема
+      : n.kind === 'letter' ? T.letters.notice(T.letters.from[n.from] ?? n.from, T.letters.subject[n.id.replace(/^let\./, '')] ?? n.id)
       : n.kind === 'refused' && n.why === 'notYours' ? T.seats.notYours(T.seats.names[n.detail ?? ''] ?? n.detail ?? '')
       : n.kind === 'refused' && T.notices.why[n.why] ? `${T.notices.refused}: ${T.notices.why[n.why]}`
       : T.notices.refused;
@@ -598,6 +614,40 @@ export class Game {
     const go = goOf(this.layout.plan.plant, n);
     this.notices.unshift({ t: this.t, text, ...(stop ? { stop: true as const } : {}), ...(go ? { go } : {}) });
     if (this.notices.length > 30) this.notices.length = 30;
+  }
+
+  /** Письма, которых окно уже сказало «открыто» (Б9): команда `seen` — одна на письмо. */
+  private seenSent = new Set<string>();
+  /** панель писем уже открывалась сама — на первом письме сценария */
+  private lettersShown = false;
+
+  /**
+   * Окно открыло то, что ждёт письмо (Б9): планёрку, лабораторию, цели, кассу, досье его серии, карточку — команда
+   * `letter` со словом `seen`; поток кончит письмо.
+   */
+  private seenLetters() {
+    const h = this.store.get();
+    const v = h.letters.view;
+    if (!v) return;
+    const on: Record<string, boolean> = { lab: h.lab.open, morning: h.morning.open, goals: h.goals.open, cash: h.cash.open, dossier: h.dossier.open, card: !!this.selected };
+    for (const r of v.rows) {
+      if (!r.seen || !on[r.seen] || this.seenSent.has(r.id)) continue;
+      if (r.seen === 'dossier' && r.go && 'dossier' in r.go && h.dossier.batch !== r.go.dossier) continue;
+      this.seenSent.add(r.id);
+      this.client.command({ kind: 'letter', op: 'seen', what: r.seen });
+    }
+  }
+
+  /** Первое письмо сценария (Б9) — панель открывается сама, когда экраны «Кампания» и «Кем вы будете» закрыты. */
+  private firstLetter() {
+    const h = this.store.get();
+    const v = h.letters.view;
+    if (this.lettersShown || !v || v.unread === 0 || h.campaign.open || h.seats.open) return;
+    this.lettersShown = true;
+    this.store.set({ letters: { ...h.letters, open: true } });
+    this.actions.readLetter(v.rows[0].id);
+    // автопауза письма наставника включена — мир ждёт, пока игрок прочтёт
+    if (v.rows[0].from === 'mentor' && !h.pauses.off.includes('letter')) this.actions.setSpeed(0);
   }
 
   /** Роль словами. */
@@ -764,6 +814,8 @@ export class Game {
         if (!this.store.get().sop.open) this.actions.toggleSop();
       } else if (g.panel === 'portfolio') {
         if (!this.store.get().portfolio.open) this.actions.togglePortfolio();
+      } else if (g.panel === 'letters') {
+        if (!this.store.get().letters.open) this.actions.toggleLetters();
       } else if (g.panel === 'ref') {
         // справочник на вкладке извещения: «Места» (Б3в), «Контрагенты» (Б3г), «Люди» (Б4в)
         if (!this.store.get().ref.open) this.actions.toggleRef();
@@ -1076,7 +1128,30 @@ export class Game {
     toggleGoals: () => {
       const g = this.store.get().goals;
       this.store.set({ goals: { ...g, open: !g.open } });
+      this.seenLetters();
     },
+    toggleLetters: () => {
+      const l = this.store.get().letters;
+      this.store.set({ letters: { ...l, open: !l.open } });
+      // открыли — письмо сверху (или то, что было открыто) прочитано
+      const id = l.at ?? l.view?.rows[0]?.id;
+      if (!l.open && id) this.actions.readLetter(id);
+    },
+    readLetter: id => {
+      const l = this.store.get().letters;
+      this.store.set({ letters: { ...l, at: id } });
+      if (l.view?.rows.some(r => r.id === id && r.read === undefined)) this.client.command({ kind: 'letter', op: 'read', id });
+    },
+    showLetter: go => {
+      // «Показать» (Б9): как щелчок по извещению — вещь, панель или досье серии
+      if ('thing' in go) this.actions.show(go.thing);
+      else if ('dossier' in go) this.actions.openDossier(go.dossier);
+      else if (go.panel === 'goals') {
+        if (!this.store.get().goals.open) this.actions.toggleGoals();
+      } else this.actions.go({ panel: go.panel });
+    },
+    skipLetter: id => this.client.command({ kind: 'letter', op: 'skip', id }),
+    skipTutorial: () => this.client.command({ kind: 'letter', op: 'skipAll' }),
     openSeats: () => {
       // сменить место — на паузе; «Взять» пустит мир с прежней скоростью
       if (this.speed !== 0) this.resume = this.speed;
@@ -1100,6 +1175,7 @@ export class Game {
       for (const [head, mode] of Object.entries(h.seats.modes ?? {}) as [Head, DeptMode][]) if (kept[head] !== mode) this.client.command({ kind: 'mode', head, mode, by: 'player' });
       this.store.set({ seats: { open: false, pick: [] } });
       this.actions.setSpeed(this.resume);
+      this.firstLetter();
     },
     pickMode: (head, mode) => {
       const st = this.store.get().seats;
@@ -1109,6 +1185,7 @@ export class Game {
       // в начале партии место нужно выбрать: закрыть экран нечем
       if (!this.store.get().top?.seats) return;
       this.store.set({ seats: { open: false, pick: [] } });
+      this.firstLetter();
     },
     setStock: patch => {
       const st = this.store.get().stock;
@@ -1491,6 +1568,8 @@ export class Game {
     const list: ViewQuery[] = [{ id: 'top', view: 'top' }];
     // цели сценария (Б9) — всегда, если они у сценария есть: полоса целей вверху
     if (this.scenario.goals.length > 0) list.push({ id: 'goals', view: 'goals' });
+    // письма сценария (Б9) — всегда, если они у сценария есть: значок писем вверху
+    if (lettersOf(this.db, this.scenario.id).length > 0) list.push({ id: 'letters', view: 'letters' });
     if (st.open) list.push({ id: 'stock', ...st.query });
     if (this.selected) list.push({ id: 'card', view: 'card', thing: this.selected });
     if (h.morning.open && h.morning.day !== undefined) list.push({ id: 'morning', view: 'morning', day: h.morning.day, ...(h.session ? { since: h.session.from } : {}) });

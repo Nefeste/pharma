@@ -1,0 +1,9 @@
+# Письмо наставника 1 (Б9; геймдизайн, §17 «Первые полчаса»): фура поставщика у ворот — проверка у рампы и разгрузка.
+id: let.c1.truck
+scenario: scn.c1
+from: mentor
+n: 1
+when: { start: true }
+done: { kind: unloaded }
+shows: scenarioPo
+review: draft

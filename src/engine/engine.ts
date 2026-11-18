@@ -5,6 +5,7 @@
 // ставит `until`, а `catchUp` проживает события по порядку, пока бюджет кадра `more()` позволяет. Недожитое
 // доживается в следующих кадрах; любая следующая команда сначала доживает всё. `more` спрашивают после каждого события, и он
 // видит извещения, уже данные этим доживанием: так поток расчёта встаёт ровно на событии автопаузы (Б2а).
+import { letterCommand, letterDue, lettersStep, startLetters } from './letters';
 import type { ContentDb, Id } from '../content/types';
 import { alertsHour } from './alerts';
 import { dailyHour, dailyMorning } from './daily';
@@ -208,6 +209,8 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     s.until = s.t + sc.warm;
     catchUp(db, s);
   }
+  // письма сценария (Б9) — со старта игрока, после прогрева
+  startLetters(db, s, today, sc.warm);
   return s;
 }
 
@@ -218,7 +221,10 @@ export function apply(db: ContentDb, s: PlantState, cmd: Command, more?: More): 
   // время прошлой команды, ещё не прожитое, — сначала всё: команда видит завод таким же, как игрок
   const before = catchUp(db, s);
   // база, по которой живёт завод (Б7д): редакции, введённые проектом, — с их днём из состояния
-  const out = command(liveOf(db, s.portfolio?.docs), s, cmd, more);
+  const live = liveOf(db, s.portfolio?.docs);
+  const out = command(live, s, cmd, more);
+  // письма (Б9): команда могла выполнить условие письма — задание на серию игрока
+  if (s.heads.letters) lettersStep(live, s, out, 0);
   return before.length > 0 ? [...before, ...out] : out;
 }
 
@@ -314,6 +320,11 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       const notices: Notice[] = [];
       sopCommand(db, s, cmd, notices);
       steps(db, s, notices);
+      return notices;
+    }
+    case 'letter': {
+      const notices: Notice[] = [];
+      letterCommand(db, s, cmd, notices);
       return notices;
     }
     case 'seat': {
@@ -544,7 +555,11 @@ export function catchUp(db: ContentDb, s: PlantState, more?: More): Notice[] {
     const due = popDue(s.agenda, target)!;
     s.t = Math.max(s.t, due.t);
     // проект мог ввести редакцию в силу на прошлом событии — база на каждое событие своя (Б7д)
-    handle(liveOf(db, s.portfolio?.docs), s, due.e, notices);
+    const k = notices.length;
+    const live = liveOf(db, s.portfolio?.docs);
+    handle(live, s, due.e, notices);
+    // письма (Б9): первое событие вида и условия открытых писем — после каждого события
+    if (s.heads.letters) lettersStep(live, s, notices, k);
     if (more && !more(notices)) return notices;
   }
   s.t = target;
@@ -554,6 +569,9 @@ export function catchUp(db: ContentDb, s: PlantState, more?: More): Notice[] {
 
 function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[]) {
   switch (ev.kind) {
+    case 'letter':
+      letterDue(db, s, ev.id, notices);
+      break;
     case 'scenarioEnd':
       notices.push({ kind: 'scenarioEnd' });
       return;

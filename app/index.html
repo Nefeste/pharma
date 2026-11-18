@@ -297,6 +297,14 @@
     .goalbtn { white-space: nowrap; }
     .goals li.ok { color: var(--green); }
     .goals .take { align-self: flex-start; }
+    .letters { position: absolute; left: 8px; top: calc(var(--top-h, 48px) + 8px); width: min(520px, calc(100% - 16px)); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 6px; z-index: 6; background: rgba(22, 30, 34, 0.97); box-shadow: 0 6px 30px rgba(0,0,0,.5); }
+    .letters .lrows { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow: auto; }
+    .letters .lrow { display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; background: none; border: 0; border-left: 3px solid transparent; padding: 3px 6px; color: inherit; }
+    .letters .lrow.on { background: var(--panel-2); border-left-color: var(--accent, #6cb); }
+    .letters .lrow.new > span:first-child { font-weight: 600; }
+    .letters .letter p { margin: 4px 0; line-height: 1.4; }
+    .letters .lacts { display: flex; gap: 6px; flex-wrap: wrap; }
+    .goalbtn.new { font-weight: 600; }
     .seatbtn { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* доска расследования (часть 4б) — большое окно во всю ширину под полосой, как расписание: три столбца и решение снизу */
     .inv { position: absolute; left: 8px; right: 8px; top: calc(var(--top-h, 48px) + 8px); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 4px; background: rgba(22, 30, 34, 0.98); }

@@ -18,6 +18,7 @@ import type { DossierView } from '../sim/dossier';
 import type { MrpView } from '../sim/mrp';
 import type { PortfolioView } from '../sim/portfolio';
 import type { GoalsView } from '../sim/goals';
+import type { LetterGo, LettersView } from '../sim/letters';
 import type { SopView } from '../sim/sop';
 import type { AndonView } from '../sim/andon';
 import type { LossPick } from '../app/losses';
@@ -161,6 +162,8 @@ export interface Hud {
   scenario?: string;
   campaign: { open: boolean };
   goals: { open: boolean; view?: GoalsView };
+  /** письма сценария (Б9): панель и вид потока; открытое письмо — его номер */
+  letters: { open: boolean; view?: LettersView; at?: string };
   /**
    * слой слева (Б1и; геймдизайн, §3.6, §18): обычный вид; «Загрузка и OEE» — столбики, числа, доски «План — факт»;
    * «Узкие места» и «Проблемы» (Б1к) — таблички над местами, где серии ждут, и значки андона; «Потери» (Б1л) — столбики
@@ -280,6 +283,7 @@ export const initial: Hud = {
   portfolio: { open: false },
   campaign: { open: false },
   goals: { open: false },
+  letters: { open: false },
   layer: 'plain',
   floor: { win: 'today', pick: 'all' },
   andon: {},
@@ -521,6 +525,12 @@ export interface Actions {
   /** экран «Кампания» (Б9): начать сценарий; окно целей сценария — открыть или закрыть */
   pickScenario(id: string): void;
   toggleGoals(): void;
+  /** письма (Б9): панель; открыть письмо — прочитано; «Показать», «Пропустить», «Пропустить обучение» */
+  toggleLetters(): void;
+  readLetter(id: string): void;
+  showLetter(go: LetterGo): void;
+  skipLetter(id: string): void;
+  skipTutorial(): void;
   openSeats(): void;
   pickSeat(seat: SeatId): void;
   takeSeats(): void;

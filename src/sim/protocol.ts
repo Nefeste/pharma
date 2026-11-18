@@ -81,6 +81,8 @@ export function stopKey(n: Notice): string {
   if (n.kind === 'proposal') return `proposal/${n.seat}${n.t % DAY < MORNING ? '/early' : ''}`;
   if (n.kind === 'deviation' && n.cls === 'minor') return 'deviation/minor';
   if (n.kind === 'noOne') return `noOne/${n.seat}`;
+  // письмо сценария (Б9): встаёт мир на письме наставника
+  if (n.kind === 'letter') return `letter/${n.from}`;
   // «Просят решить» и ответ на записку (Б5д): у того, кого спросили, и у поста, с которого записка
   if (n.kind === 'ask') return `ask/${n.seat}`;
   if (n.kind === 'memoDone') return `memoDone/${n.seat ?? 'director'}`;

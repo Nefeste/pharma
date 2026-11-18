@@ -390,7 +390,7 @@ describe('прогон расписания с бригадами', () => {
   const bdb: ContentDb = structuredClone(legacy);
   const bsc = bdb.scenarios[SC];
   bsc.staff = bsc.staff.filter(r => r.role !== 'role.operator').concat(CREWS.map(shift => ({ role: 'role.operator', shift, skill: 3, n: 2 })));
-  const recipe = Object.values(bdb.recipes)[0];
+  const recipe = bdb.recipes['rcp.loratadine10.wet.v1'];
   const s0 = newPlant(bdb, { scenario: SC });
   // каждый час: стадия серии, которой пора (прежняя кончилась), — где её ставит прогон
   const s = structuredClone(s0);

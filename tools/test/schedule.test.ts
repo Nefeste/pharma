@@ -24,7 +24,8 @@ const SC = 'scn.proto';
 const at = (day: number, hour: number) => day * DAY + hour * HOUR;
 const fresh = (): PlantState => newPlant(db, { scenario: SC });
 const live = (s: PlantState, until: number) => apply(db, s, { kind: 'advance', seconds: until - s.t });
-const recipe = Object.values(db.recipes)[0];
+// с Б7д, шаг 3 — карта лоратадина по имени: первой в базе стала карта ибупрофена
+const recipe = db.recipes['rcp.loratadine10.wet.v1'];
 
 /** Полосы одной строки по времени. */
 const rowBars = (bars: Bar[], row: string) => bars.filter(b => b.row === row).sort((a, b) => a.from - b.from || a.to - b.to);

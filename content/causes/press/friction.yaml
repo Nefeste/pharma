@@ -1,0 +1,12 @@
+# Налипание на пуансоны от теплоты трения (Б7д, шаг 3): ибупрофен плавится при 75–78 °C, налипание — и от плавления
+# теплотой трения при прессовании (ep7-ibuprofen, nakamura-sticking-2016); быстрее ротор — больше теплоты (гипотеза).
+# Только у ибупрофена и только выше цели; величина — гипотеза: процентов таблеток с дефектом на об/мин сверх цели
+id: cause.press.friction
+name: { ru: Налипание на пуансоны — ротор быстрее цели, en: Punch sticking — turret above target }
+driver: { param: speed }
+products: [prd.ibuprofen200]
+side: above
+effects:
+  - { attr: defects, coef: 0.06 }
+source: [nakamura-sticking-2016, ep7-ibuprofen]
+review: draft

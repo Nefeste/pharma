@@ -56,8 +56,8 @@ function due(s: PlantState, key: string, until: number) {
 describe('контрагенты в базе', () => {
   test('изготовители вымышленные, со страной и площадкой; у материала — пара спецификации, поставщик продаёт его от этого изготовителя', () => {
     // с Б6ж — вторые изготовители АФС: пары-кандидаты спецификаций
-    // с Б7д — изготовитель АФС метформина, продукта-проекта
-    expect(Object.keys(db.makers).sort()).toEqual(['mkr.api-lor', 'mkr.api-lor2', 'mkr.api-met', 'mkr.api-par', 'mkr.api-par2', 'mkr.exc', 'mkr.pack']);
+    // с Б7д — изготовители АФС метформина и ибупрофена, продуктов-проектов
+    expect(Object.keys(db.makers).sort()).toEqual(['mkr.api-ibu', 'mkr.api-lor', 'mkr.api-lor2', 'mkr.api-met', 'mkr.api-par', 'mkr.api-par2', 'mkr.exc', 'mkr.pack']);
     for (const m of Object.values(db.makers)) expect([m.country.ru.length > 0, m.site.ru.length > 0]).toEqual([true, true]);
     expect(db.suppliers['sup.api'].maker).toBeUndefined();
     expect(db.suppliers['sup.api'].items['mat.api.paracetamol'].maker).toBe('mkr.api-par');

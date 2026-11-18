@@ -1,0 +1,8 @@
+# Готовая продукция ибупрофена (Б7д, шаг 3). Редакция-проект: в силу её вводит проект «Новый продукт»
+id: spec.fg.ibuprofen200
+name: { ru: "Ибупрофен, таблетки 200 мг — готовая продукция", en: "Ibuprofen 200 mg tablets — finished product" }
+doc: { code: SP-0031, rev: 1, approved: role.qc-head }
+tests:
+  - { test: test.visual }
+source: [gmp-eaeu]
+review: draft

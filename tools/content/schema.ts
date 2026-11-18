@@ -1104,6 +1104,10 @@ export const cause = z
     ]),
     /** вклад: показатель серии и коэффициент — единиц показателя на единицу отхода */
     effects: z.array(z.strictObject({ attr, coef: z.number() })).min(1),
+    /** только у серий этих продуктов (Б7д, шаг 3): свойство продукта — например, ибупрофен налипает на пуансоны */
+    products: z.array(z.string()).min(1).optional(),
+    /** в счёт — только отход выше цели или ниже (Б7д, шаг 3): порог причины — цель режима */
+    side: z.enum(['above', 'below']).optional(),
     /** разброс МОК по ходу стадии (Б1ж): единиц показателя на единицу отхода режима выше цели; ниже цели — нет */
     scatter: z.array(z.strictObject({ attr, coef: z.number().positive() })).optional(),
     source: sources.optional(),

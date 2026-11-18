@@ -1,0 +1,11 @@
+id: mat.pk.leaflet-ibu
+kind: packaging
+code: 300013
+name: { ru: Инструкция «Ибупрофен 200 мг», en: Leaflet «Ibuprofen 200 mg» }
+unit: pcs
+container: cnt.box.leaflets
+storage: reg.ccrt
+shelf: 60
+spec: spec.mat.pk.leaflet-ibu
+bad: { attr: appearance }
+sample: 10

@@ -19,3 +19,5 @@ items:
   # система покрытия (Б7д): цена — гипотеза
   mat.exc.coat: { price: 2400, moq: 20 }
   mat.exc.lactose: { price: 260, moq: 250 }
+  # кроскармеллоза натрия (Б7д, шаг 3): цена — гипотеза
+  mat.exc.croscarmellose: { price: 1100, moq: 25 }

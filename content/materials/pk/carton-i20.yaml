@@ -1,0 +1,11 @@
+id: mat.pk.carton-i20
+kind: packaging
+code: 300012
+name: { ru: Пачка «Ибупрофен 200 мг №20», en: Carton «Ibuprofen 200 mg No. 20» }
+unit: pcs
+container: cnt.box.cartons
+storage: reg.ccrt
+shelf: 60
+spec: spec.mat.pk.carton-i20
+bad: { attr: appearance }
+sample: 10

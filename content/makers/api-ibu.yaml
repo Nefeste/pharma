@@ -1,0 +1,7 @@
+# Изготовитель АФС ибупрофена (Б7д, шаг 3) — вымышленный (AGENTS.md): название и площадка придуманы, страна настоящая; он
+# же и поставщик (sup.api-ibu). Выбор геймдизайна
+id: mkr.api-ibu
+name: { ru: Изготовитель ибупрофена, en: Ibuprofen maker }
+country: { ru: Китай, en: China }
+site: { ru: Площадка 1, en: Site 1 }
+makes: [mat.api.ibuprofen]

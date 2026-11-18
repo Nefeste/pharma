@@ -21,7 +21,7 @@ import { stageSetpoints, unitsPerHour } from './modes';
 import { type PlantPlan, planOf } from './plant';
 import { stockDue } from './planner';
 import { numOf, POL, policyOf } from './policies';
-import { measure, within } from './quality';
+import { causeOn, measure, sided, within } from './quality';
 import { normal, roll, spread } from './random';
 import { containersByLot, createLot, free, knownAssay, nextId, putUnit, stockChanged } from './stock';
 import { chooseRoom, transferTime, transferVia } from './route';
@@ -1187,9 +1187,10 @@ function truthOf(db: ContentDb, s: PlantState, b: Batch, attrs: Attr[], stage: s
     b.noise[a] = noise;
     let v = nominal + noise;
     for (const c of Object.values(db.causes)) {
+      if (!causeOn(c, b.product)) continue;
       for (const e of c.effects) {
         if (e.attr !== a) continue;
-        const d = driver(db, s, b, c.driver);
+        const d = sided(c, driver(db, s, b, c.driver));
         const delta = d ? Math.round(e.coef * d) : 0;
         if (delta === 0) continue;
         v += delta;
@@ -1261,11 +1262,11 @@ function causeStage(db: ContentDb, b: Batch, d: CauseDriver, stage: string): str
 }
 
 /** Разброс МОК по ходу стадии от режимов выше цели (Б1ж) — по записям причин, единиц движка свойства. */
-function scatterOf(db: ContentDb, st: RecipeStage, rec: StageRecord, a: Attr): number {
+function scatterOf(db: ContentDb, product: Id, st: RecipeStage, rec: StageRecord, a: Attr): number {
   let n = 0;
   for (const c of Object.values(db.causes)) {
     const d = c.driver;
-    if (!c.scatter || !('param' in d)) continue;
+    if (!c.scatter || !('param' in d) || !causeOn(c, product)) continue;
     const p = st.params.find(x => x.id === d.param);
     const v = p ? rec.params[p.id] : undefined;
     if (!p || v === undefined || v <= p.target) continue;
@@ -1290,7 +1291,7 @@ function ipc(db: ContentDb, s: PlantState, b: Batch, st: RecipeStage, rec: Stage
   for (const c of st.ipc) {
     const m = db.tests[c.test];
     const n = c.every ? Math.max(1, Math.floor((rec.end - rec.start - stopped) / c.every)) : 1;
-    let extra = scatterOf(db, st, rec, m.attr);
+    let extra = scatterOf(db, b.product, st, rec, m.attr);
     for (const [k, w] of Object.entries(rec.wear ?? {})) extra += Math.floor(((partType(db, s.parts[k]).scatter?.[m.attr] ?? 0) * w) / P_ONE);
     let out = false;
     for (let k = 1; k <= n; k++) {

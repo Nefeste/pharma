@@ -250,14 +250,17 @@ export const scenario = z.strictObject({
   /**
    * кампания (Б9; геймдизайн, §15.1): номер сценария в кампании, чему учит; прогрев — сколько суток до старта игрока
    * завод живёт сам; срок сценария в сутках от старта игрока; цели и цели «на отлично» — вид и порог: выпущено серий,
-   * доля заказов вовремя, %, касса в последний день не ниже, ₽, отклонений с прошедшим сроком не больше
+   * доля заказов вовремя, %, касса в последний день не ниже, ₽, отклонений с прошедшим сроком не больше, дней срыва
+   * заказов не больше; `from` — считать с этой даты, а не со старта игрока. Продукты, введённые до старта (`launched`):
+   * у продукта-проекта (Б7д) все редакции-проекты — в силе с начала прогрева
    */
   campaign: z.number().int().min(1).max(8).optional(),
   teaches: text.optional(),
   warm: z.number().int().min(0).max(14).default(0),
+  launched: z.array(id).default([]),
   days: z.number().int().min(1).max(730).optional(),
   goals: z
-    .array(z.strictObject({ kind: z.enum(['released', 'otif', 'cash', 'lateDevs']), v: z.number(), top: z.boolean().optional() }))
+    .array(z.strictObject({ kind: z.enum(['released', 'otif', 'cash', 'lateDevs', 'missDays']), v: z.number(), top: z.boolean().optional(), from: date.optional() }))
     .default([]),
   /**
    * обучение (Б3б): за сколько суток до введения новой редакции или конца срока записи — задача обучения; проверка
@@ -1387,11 +1390,11 @@ export const letter = z
     when: z.union([
       z.strictObject({ start: z.literal(true) }),
       z.strictObject({ after: z.string() }),
-      z.strictObject({ first: z.enum(['deviation', 'oos', 'risk', 'late']) }),
-      z.strictObject({ day: z.number().int().min(0).max(400), at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/) }),
+      z.strictObject({ first: z.enum(['deviation', 'oos', 'risk', 'late', 'miss']) }),
+      z.strictObject({ day: z.number().int().min(0).max(400), at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), unless: z.string().optional() }),
     ]),
     done: z.strictObject({
-      kind: z.enum(['unloaded', 'sampled', 'lotDecided', 'released', 'shipped', 'order', 'stageDone', 'packed', 'assessed', 'seen']),
+      kind: z.enum(['unloaded', 'sampled', 'lotDecided', 'released', 'shipped', 'order', 'stageDone', 'packed', 'assessed', 'delivered', 'read', 'seen']),
       what: z.enum(['lab', 'dossier', 'morning', 'goals', 'cash', 'card']).optional(),
     }),
     shows: z.enum(['scenarioPo', 'poLot', 'qaBatch', 'playerBatch', 'nextOrder', 'event']).optional(),

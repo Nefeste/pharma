@@ -3,7 +3,7 @@
  * срок сценария, как показатели руководителей (Б5ж), — истины не читают. Срок — от старта игрока, после прогрева.
  */
 import type { ContentDb, Goal } from '../content/types';
-import { HOUR } from './core/calendar';
+import { DAY, HOUR } from './core/calendar';
 import { decidedAt, kpiPick, sincePeriod } from './kpi';
 import type { PlantState } from './types';
 
@@ -16,7 +16,9 @@ export function goalSpan(db: ContentDb, s: Pick<PlantState, 'scenario'>): { from
 
 /** Что цель видит сейчас: число в единицах движка; `undefined` — ещё нечего считать (нет закрытых заказов). */
 export function goalValue(db: ContentDb, s: PlantState, g: Goal): number | undefined {
-  const { from, to } = goalSpan(db, s);
+  const span = goalSpan(db, s);
+  const to = span.to;
+  const from = Math.max(span.from, g.from ?? 0);
   const until = to === undefined ? s.t : Math.min(s.t, to);
   switch (g.kind) {
     case 'released':
@@ -28,13 +30,39 @@ export function goalValue(db: ContentDb, s: PlantState, g: Goal): number | undef
       return s.cash.ledger.reduce((n, e) => (e.t <= until ? n + e.sum : n), s.cash.start);
     case 'lateDevs':
       return Object.values(s.deviations).filter(d => d.opened >= from && d.opened <= until && d.late).length;
+    case 'missDays':
+      return missDays(s, from, until);
   }
+}
+
+/**
+ * Дни срыва заказов (Б9, шаг 3): сутки, в которые заказ покупателя должен был уйти и не ушёл целиком, — от дня срока до
+ * дня отгрузки: опоздал — до дня перед отгрузкой, недопоставка — включая день отгрузки, открыт после срока — по сей
+ * день. Сутки считаются один раз, сколько бы заказов в них ни сорвалось. Только записи заказов и отгрузок.
+ */
+export function missDays(s: PlantState, from: number, until: number): number {
+  const days = new Set<number>();
+  const last = Math.floor(until / DAY);
+  for (const o of Object.values(s.orders)) {
+    if (o.due < from || o.due > until || o.status === 'shipped') continue;
+    const first = Math.floor(o.due / DAY);
+    const sh = o.shipment ? s.shipments[o.shipment] : undefined;
+    let end: number;
+    if (o.status === 'open') {
+      if (until <= o.due) continue;
+      end = last;
+    } else if (!sh) end = first;
+    else end = o.status === 'late' ? Math.floor(sh.t / DAY) - 1 : Math.floor(sh.t / DAY);
+    for (let d = first; d <= Math.min(end, last); d++) days.add(d);
+  }
+  return days.size;
 }
 
 /** Выполнена ли цель: «не меньше» у серий, доли и кассы, «не больше» у отклонений с прошедшим сроком. */
 export function goalMet(g: Goal, v: number | undefined): boolean {
-  if (v === undefined) return g.kind === 'lateDevs' ? true : false;
-  return g.kind === 'lateDevs' ? v <= g.v : v >= g.v;
+  const most = g.kind === 'lateDevs' || g.kind === 'missDays';
+  if (v === undefined) return most;
+  return most ? v <= g.v : v >= g.v;
 }
 
 /** Все цели сценария сейчас — для окна и итога: значение и выполнена ли; `ended` — срок сценария прошёл. */

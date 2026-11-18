@@ -113,8 +113,9 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # meeting, a stop (e2e-portfolio.mjs, portfolio.png; `--long 1` — on to the trial
                                    # batch), scenario 1 — the «Кампания» screen, its start after the warm-up, the goals,
                                    # the truck in the first hour, the first day by the letters to the shipment, a skip
-                                   # (e2e-c1.mjs, c1.png); `-- --only main|week|memo|capa|
-                                   # jobs|launch|forecast|sop|mrp|edits|build|equip|route|sources|portfolio|c1` for one
+                                   # (e2e-c1.mjs, c1.png), scenario 2 — its start, the distributor's letters, the order
+                                   # at risk, «До утра» to the result (e2e-c2.mjs, c2.png); `-- --only main|week|memo|
+                                   # capa|jobs|launch|forecast|sop|mrp|edits|build|equip|route|sources|portfolio|c1|c2`
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -123,6 +124,7 @@ npm run models                     # Blender 5.2.3 in the background (BLENDER or
                                    # → assets/models with their passport; `-- --check` — twice, same SHA-256
 node tools/app/blender-sheet.mjs   # after build: the «code — Blender» sheet → tools/app/out/blender-sheet.png
 npm run bench                      # engine without a window: a year of scn.proto (--days, --step, --seed; --plan — also a plan run); compare before/after engine changes
+npm run bench:director             # the «virtual director»: each campaign scenario to its end without the player (--seeds 20)
 ```
 
 The browser scenario needs Chromium: `PLAYWRIGHT_BROWSERS_PATH` (default `/opt/pw-browsers`) or `CHROMIUM_PATH`.
@@ -502,12 +504,15 @@ first, or copy the working code of Bolnitsa on the same versions.
   2 a fit, free vacuum transfer from the room into the next — `transferVia` — moves it without a cart: the operator
   starts it, then the batch mass at its rate, unattended, the `transfer` event — `transferTime`),
   `goals.ts` (with Б9, a scenario's goals as pure functions of plant records — released batches, OTIF, the cash at the
-  end of the term by the ledger, deviations past their term — from the player's start after the warm-up, `goalsNow`;
-  the end of the term is the `scenarioEnd` event), `letters.ts` (with Б9 step 2, a scenario's letters: at the start,
+  end of the term by the ledger, deviations past their term, with step 3 the days of missed orders (`missDays`) — from
+  the player's start after the warm-up or the goal's own date, `goalsNow`; the end of the term is the `scenarioEnd`
+  event; with step 3 a scenario's launched products — their project revisions in force from the warm-up's start in
+  `newPlant`), `letters.ts` (with Б9 step 2, a scenario's letters: at the start,
   after another letter ended, in the hour of the first event of a kind or on a scenario day at its hour; the thing
   found at arrival; the end by its own condition on plant records or the window's `seen`, and only by it; a mentor's
   letter skipped, or all of them; an ended letter's departments advise unless the player chose their mode; the `letter`
-  command), `invariants.ts`.
+  command; with step 3 an order closed or the letter read as its end, the first missed order, a day letter that does not
+  come after another — `unless`), `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`; a `tick` carries the notice kinds of the player's
@@ -789,7 +794,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   another (`base`: the base's fields, its own whole, `null` drops one), its campaign number and what it teaches, the
   warm-up in days, the term, the goals, a start order's truck hour `at`; scenario 1 `scn.c1` and its customer
   `cus.district`; with Б9 step 2 — `letters/`: a scenario's letters — from whom, when, the condition that ends it, what
-  it shows, the departments it hands over);
+  it shows, the departments it hands over; with Б9 step 3 — scenario 2 `scn.c2` with its plan `plant.c2` — the
+  prototype's and a coating wing —, ibuprofen launched before the start, customers `cus.chain` and `cus.oblast`, goals
+  from 1 November, the distributor's and the supplier's letters);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
@@ -846,8 +853,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   «Одобрить пару» to the trial lot with its promised day, the trial PO in the «Материалы» tab, a planned order's
   «Предложения» and «Заказать», with `--long 1` on to the dossier filing (`e2e-sources.mjs`), the portfolio — a
   metformin project from the «Портфель» window, with `--long 1` on to the trial batch (`e2e-portfolio.mjs`), scenario 1 from
-  the «Кампания» screen through its first day by the mentor's letters (`e2e-c1.mjs`; the other parts open
-  `?scn=scn.proto`), the
+  the «Кампания» screen through its first day by the mentor's letters (`e2e-c1.mjs`), scenario 2 from its start to the
+  result (`e2e-c2.mjs`; the other parts open `?scn=scn.proto`), the
   «code —
   Blender» sheet
   of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench
@@ -855,4 +862,5 @@ first, or copy the working code of Bolnitsa on the same versions.
   (`update-zip.mjs`); `tools/test/` — Bun tests
   and save samples; engine mechanics tests run on the scenario as it was before Б2в (`legacy.ts`), the golden run — on
   the game's scenario;
-  `tools/bench/` — the engine bench, with `--plan` also the plan run.
+  `tools/bench/` — the engine bench, with `--plan` also the plan run; with Б9 step 3 the «virtual director» — each
+  campaign scenario to its end without the player, letters skipped, on seeds (`director.ts`).

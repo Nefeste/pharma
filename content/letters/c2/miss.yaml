@@ -1,0 +1,10 @@
+# Письмо дистрибьютора: первый срыв — заказ ушёл позже срока или не весь. Письмо называет срыв, денег не берёт (штрафы —
+# сценарий 6). Кончается, когда его прочли
+id: let.c2.miss
+scenario: scn.c2
+from: distributor
+n: 3
+when: { first: miss }
+done: { kind: read }
+shows: event
+review: draft

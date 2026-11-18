@@ -1,0 +1,10 @@
+# Письмо дистрибьютора: первый заказ под угрозой — покупатель спрашивает, уйдёт ли заказ к сроку. Кончается, когда
+# заказ закрыт — отгружен вовремя, позже или не весь
+id: let.c2.risk
+scenario: scn.c2
+from: distributor
+n: 2
+when: { first: risk }
+done: { kind: delivered }
+shows: event
+review: draft

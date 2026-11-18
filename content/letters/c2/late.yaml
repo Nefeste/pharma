@@ -1,0 +1,10 @@
+# Письмо поставщика: первая поставка опаздывает (Б6ж) — поставщик называет заказ и материал. Кончается, когда фура этого
+# заказа разгружена
+id: let.c2.late
+scenario: scn.c2
+from: supplier
+n: 5
+when: { first: late }
+done: { kind: unloaded }
+shows: event
+review: draft

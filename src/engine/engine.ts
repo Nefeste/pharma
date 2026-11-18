@@ -12,11 +12,11 @@ import { dailyHour, dailyMorning } from './daily';
 import { assetDone, assetHour, assetStep, seedAssets, visitCommand, visitDone } from './assets';
 import { cashHour, newCash } from './cash';
 import { agenda, nextTime, popDue, schedule } from './core/agenda';
-import { DAY, HOUR, momentOf } from './core/calendar';
+import { DAY, daysFromCivil, HOUR, momentOf } from './core/calendar';
 import { deputyCommand } from './bosses';
 import { checkLater, commit, siteCommand, siteFree } from './build';
-import { liveOf } from './docs';
-import { projectCommand, projectDone, projectHour } from './project';
+import { type DocDays, liveOf } from './docs';
+import { projectCommand, projectDocs, projectDone, projectHour, recipeOf } from './project';
 import { equipCommand, pathDone, pathHour, pathMidnight, unitArrive, unitDay } from './equip';
 import { capaCommand, capaHour, capaRunCommand, classifyCommand } from './capa';
 import { answerFork, askDue, forksStep } from './forks';
@@ -66,9 +66,13 @@ export interface NewPlant {
   seed?: number;
 }
 
-export function newPlant(db: ContentDb, o: NewPlant): PlantState {
-  const sc = db.scenarios[o.scenario];
+export function newPlant(base: ContentDb, o: NewPlant): PlantState {
+  const sc = base.scenarios[o.scenario];
   if (!sc) throw new Error(`no scenario ${o.scenario}`);
+  // продукты, введённые до старта (Б9, шаг 3): редакции-проекты их карт, документов, материалов и позиций — в силе с
+  // начала прогрева, как после проекта «Новый продукт» (Б7д); завод живёт по этой базе с первой секунды
+  const docs = launchedDays(base, sc.launched ?? [], daysFromCivil(sc.start.date));
+  const db = liveOf(base, docs);
   // план здания — в состоянии (Б7а): запись плана сценария — образец старта; план не правят на месте, так что копия —
   // сам объект записи, и свежие заводы одной базы делят один построенный план
   const start = db.plants[sc.plant];
@@ -133,6 +137,7 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
     heads: newHeads(),
     waste: { log: [] },
     kpi: newKpi(sc.start.hour * HOUR),
+    ...(docs ? { portfolio: { projects: {}, docs } } : {}),
   };
   s.losses.push(newLoss(momentOf(s.start, s.t).day));
   // люди — у входа, с табельными номерами по порядку приёма и записями обучения (Б3б); техника — на стоянке, приборы — в
@@ -212,6 +217,18 @@ export function newPlant(db: ContentDb, o: NewPlant): PlantState {
   // письма сценария (Б9) — со старта игрока, после прогрева
   startLetters(db, s, today, sc.warm);
   return s;
+}
+
+/** Дни «в силе» редакций-проектов продуктов, введённых до старта: все группы проекта — с дня `day`; нет продуктов — нет. */
+function launchedDays(db: ContentDb, products: readonly Id[], day: number): DocDays | undefined {
+  if (products.length === 0) return undefined;
+  const out: DocDays = {};
+  for (const p of products) {
+    if (!recipeOf(db, p)) continue;
+    const g = projectDocs(db, p);
+    for (const id of [...g.materials, ...g.methods, ...g.docs, ...g.launch]) out[id] = day;
+  }
+  return out;
 }
 
 /** Жить ли дальше после события: бюджет кадра и извещения, уже данные этим доживанием (автопауза, Б2а). */

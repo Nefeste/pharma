@@ -14,7 +14,7 @@ export function Goals({ hud, actions }: { hud: Hud; actions: Actions }) {
       .map((g, i) => (
         <li key={`${top}-${i}`} className={g.met ? 'ok' : ''} data-test="goal-row" data-met={g.met ? '1' : '0'}>
           {g.met ? '✓ ' : ''}
-          {goalText(g.goal)} — {v.ended ? T.campaign.end(goalValueText(g.goal, g.v)) : T.campaign.now(goalValueText(g.goal, g.v))}
+          {goalText(g.goal, hud.start)} — {v.ended ? T.campaign.end(goalValueText(g.goal, g.v)) : T.campaign.now(goalValueText(g.goal, g.v))}
           {v.ended ? ` · ${g.met ? T.campaign.met : T.campaign.notMet}` : ''}
         </li>
       ));

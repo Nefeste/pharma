@@ -1,0 +1,77 @@
+# Сценарий 2 кампании «Первая зима» (Б9, шаг 3; геймдизайн, §15.1; docs/specs/2026-10-vertical-slice.md, «Б9»): свои
+# парацетамол и ибупрофен в аптеки через двух дистрибьюторов, сезон простуд. Ибупрофен введён до старта (`launched`): его
+# документы в силе с начала прогрева, помещение покрытия и коатер — в плане сценария (`plant.c2`). Спрос правила задания —
+# по заказам, прогноз — «как в прошлом году»: запас к сезону строят до ноября сами. Завод, штат и правила — от прототипа
+# (`base`); своё — дата, план, прогрев, покупатели, продукты, запас и цели. Числа — гипотезы
+id: scn.c2
+base: scn.proto
+name: { ru: Первая зима, en: The First Winter }
+campaign: 2
+teaches: { ru: 'прогноз, сезон, запас к сезону, S&OP', en: 'the forecast, the season, stock for the season, S&OP' }
+plant: plant.c2
+# старт игрока — понедельник 7 августа 2028 г., 07:00; прогрев — неделя с понедельника 31 июля; конец — 1 апреля 2029 г.,
+# 07:00: сезон простуд позади (индекс группы — content/seasons/cold.yaml)
+start: { date: 2028-08-07, hour: 7 }
+warm: 7
+days: 237
+seed: 20280807
+customers: [cus.chain, cus.oblast]
+launched: [prd.ibuprofen200]
+# задания прогрева и первых двух недель — по серии в рабочий день от начала прогрева, через одну — ибупрофен; дальше —
+# коллега планирования
+batches:
+  - { recipe: rcp.paracetamol500.wet.v1, day: 0, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.ibuprofen200.dc.v1, day: 1, sku: sku.ibuprofen200.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 2, sku: sku.paracetamol500.n10 }
+  - { recipe: rcp.ibuprofen200.dc.v1, day: 3, sku: sku.ibuprofen200.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 4, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.ibuprofen200.dc.v1, day: 7, sku: sku.ibuprofen200.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 8, sku: sku.paracetamol500.n10 }
+  - { recipe: rcp.ibuprofen200.dc.v1, day: 9, sku: sku.ibuprofen200.n20 }
+  - { recipe: rcp.paracetamol500.wet.v1, day: 10, sku: sku.paracetamol500.n20 }
+  - { recipe: rcp.ibuprofen200.dc.v1, day: 11, sku: sku.ibuprofen200.n20 }
+# спрос правила задания — по заказам окна, способ прогноза — «как в прошлом году» (§26.5, «Зима без запаса»): без сезона
+# правило не строит запас к ноябрю
+plan:
+  items:
+    - { recipe: rcp.paracetamol500.wet.v1, sku: sku.paracetamol500.n20 }
+    - { recipe: rcp.paracetamol500.wet.v1, sku: sku.paracetamol500.n10 }
+    - { recipe: rcp.ibuprofen200.dc.v1, sku: sku.ibuprofen200.n20 }
+  cover: 21
+  window: 28
+  urgent: 10
+  method: last-year
+  demand: orders
+  reserve: [3, 10]
+  frozen: 10
+  price: 21
+orders: []
+seats: [director, production]
+incident: null
+# запас на старте — как у прототипа без лоратадина; ибупрофен — субстанция на срок её поставки и входной контроль при
+# серии в два рабочих дня, остальное — на шесть недель
+stock:
+  - { material: mat.api.paracetamol, qty: 6000 }
+  - { material: mat.exc.starch, qty: 400 }
+  - { material: mat.exc.starch-maize, qty: 100 }
+  - { material: mat.exc.povidone, qty: 100 }
+  - { material: mat.exc.mcc, qty: 400 }
+  - { material: mat.exc.mgst, qty: 60 }
+  - { material: mat.pk.pvc, qty: 900 }
+  - { material: mat.pk.alu, qty: 450 }
+  - { material: mat.pk.carton-n10, qty: 320000 }
+  - { material: mat.pk.carton-n20, qty: 160000 }
+  - { material: mat.pk.leaflet, qty: 480000 }
+  - { material: mat.pk.case, qty: 4000 }
+  - { material: mat.api.ibuprofen, qty: 1200 }
+  - { material: mat.exc.lactose, qty: 200 }
+  - { material: mat.exc.croscarmellose, qty: 100 }
+  - { material: mat.exc.coat, qty: 60 }
+  - { material: mat.pk.carton-i20, qty: 300000 }
+  - { material: mat.pk.leaflet-ibu, qty: 300000 }
+# цели (§15.1): с 1 ноября — заказы вовремя не меньше 90 %, касса в последний день не в минусе; «на отлично» — ни одного
+# дня срыва заказов с 1 ноября (§26.5, «Зима без запаса»)
+goals:
+  - { kind: otif, v: 90, from: 2028-11-01 }
+  - { kind: cash, v: 0 }
+  - { kind: missDays, v: 0, top: true, from: 2028-11-01 }

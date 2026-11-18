@@ -288,6 +288,9 @@ export function mesStep(db: ContentDb, s: PlantState) {
         // задана
         const lot = s.lots[b.bulk!];
         if (lot.status === 'rejected') {
+          // серию отклонили — с ней решены и её открытые отклонения, как у решения уполномоченного лица (qa.ts); так и у
+          // балка серии проекта «не для продажи» (Б7д)
+          for (const d of Object.values(s.deviations)) if (d.status === 'open' && (d.batch === b.id || d.lot === b.bulk)) d.status = 'closed';
           b.status = 'rejected';
           bulkOut(db, s, lot);
         } else if (lot.status === 'released' && b.sku) startPacking(db, s, b);

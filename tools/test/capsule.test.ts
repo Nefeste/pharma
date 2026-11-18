@@ -7,11 +7,12 @@ import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { type ContentDb, DRAFT_DAY } from '../../src/content/types';
 import { DAY, HOUR } from '../../src/engine/core/calendar';
-import { statusOf } from '../../src/engine/docs';
+import { liveOf, statusOf } from '../../src/engine/docs';
 import { apply, newPlant } from '../../src/engine/engine';
 import { check } from '../../src/engine/invariants';
 import { washWork } from '../../src/engine/mes';
 import { planOf } from '../../src/engine/plant';
+import { gapsOf, rampOf } from '../../src/engine/project';
 import { fromSave, toSave } from '../../src/engine/save';
 import { editPlan } from '../../src/engine/site/edit';
 import { footError } from '../../src/engine/site/units';
@@ -50,7 +51,7 @@ function spot(base: ContentDb, s: PlantState, type: string, room: string): [numb
 }
 
 /** Завод с помещением капсулирования к востоку от корпуса, машиной и весами; АФС и пустые капсулы — на складе. */
-function withCapsules(base: ContentDb): { s: PlantState; room: string; filler: string } {
+function withCapsules(base: ContentDb, stock = true): { s: PlantState; room: string; filler: string } {
   const s = newPlant(base, { scenario: SC });
   const site = (op: object) => expect(apply(base, s, { kind: 'site', op } as never).some(n => n.kind === 'site' && n.ok)).toBe(true);
   site({ op: 'hull', rect: [59, 1, 12, 12] });
@@ -75,6 +76,7 @@ function withCapsules(base: ContentDb): { s: PlantState; room: string; filler: s
     a.recs = structuredClone(Object.values(s.assets).find(x => x.type === like && x.id !== id && !x.path)!.recs);
     delete a.path;
   }
+  if (!stock) return { s, room, filler: bought[0] };
   const plan = planOf(base, s.plan);
   const near = plan.slot[plan.byKind.staging[0].id];
   for (const [material, supplier, qty] of [
@@ -201,4 +203,45 @@ describe('стадия капсулирования', () => {
     apply(base, s, { kind: 'advance', seconds: DAY });
     expect(toSave(back)).toBe(toSave(s));
   });
+});
+
+// Шаг 2 (0.0.82): флуконазол проектом — позиция №10, упаковка, спецификация готовой продукции и соглашение без дня «в
+// силе»; проект на настоящей базе — помещение капсулирования, машина и весы командами, материалы — заказом.
+describe('проект флуконазола — до производства', () => {
+  const FLU = 'prd.fluconazole150';
+  const SKU = 'sku.fluconazole150.n10';
+  const why = (ns: Notice[]) => ns.flatMap(n => (n.kind === 'refused' ? [n.why] : []));
+
+  test('чего нет на старте — помещение капсулирования, машина и пара изготовителя флуконазола; спроса до ввода нет', () => {
+    const s = newPlant(db, { scenario: SC });
+    for (const k of ['spec.fg.fluconazole150', 'spec.mat.pk.carton-f10', 'spec.mat.pk.leaflet-flu']) expect(statusOf(db, 'specs', k, 1_000)).toBe('draft');
+    for (const c of Object.values(db.customers)) expect(c.demand[SKU]).toBeUndefined();
+    expect(db.products[FLU].jnvlp).toBe(true);
+    apply(db, s, { kind: 'seat', seats: ['director'] });
+    expect(why(apply(db, s, { kind: 'project', op: 'start', product: FLU }))).toEqual([]);
+    const gaps = gapsOf(db, s, FLU);
+    expect(gaps).toContainEqual({ kind: 'room', type: 'capsulation' });
+    expect(gaps).toContainEqual({ kind: 'pair', material: 'mat.api.fluconazole' });
+    expect(gaps.some(g => g.kind === 'pair' && g.material === 'mat.exc.capsule')).toBe(false);
+  });
+
+  test('с помещением и машиной — этапы по порядку; после досье — позиция в плане и в спросе с разгоном, задание на запас', () => {
+    const { s } = withCapsules(db, false);
+    apply(db, s, { kind: 'seat', seats: ['director'] });
+    expect(why(apply(db, s, { kind: 'project', op: 'start', product: FLU }))).toEqual([]);
+    expect(gapsOf(db, s, FLU).some(g => g.kind === 'room' || g.kind === 'unit')).toBe(false);
+    const stages: string[] = [];
+    for (let i = 0; i < 330 && s.portfolio!.projects.P1.stage !== 'done'; i++)
+      for (const n of apply(db, s, { kind: 'advance', seconds: DAY })) if (n.kind === 'project') stages.push(n.stage);
+    expect(stages).toEqual(['methods', 'docs', 'clean', 'trial', 'protocol', 'validation', 'report', 'dossier', 'done']);
+    const d = liveOf(db, s.portfolio!.docs);
+    expect(d.scenarios[SC].plan!.items.some(it => it.sku === SKU)).toBe(true);
+    expect(d.customers['cus.national'].demand[SKU]).toBe(8000);
+    expect(rampOf(d, s, SKU)).toBe(db.scenarios[SC].project!.ramp.from);
+    until(db, s, () => Object.values(s.batches).some(b => b.product === FLU && b.for?.kind === 'stock' && b.status === 'released'), 120);
+    const b = Object.values(s.batches).find(x => x.product === FLU && x.for?.kind === 'stock' && x.status === 'released')!;
+    expect(b.records.map(r => r.stage)).toContain('encap');
+    expect(Object.values(s.orders).some(o => o.lines.some(l => l.sku === SKU))).toBe(true);
+    expect(check(db, s)).toEqual([]);
+  }, 600_000);
 });

@@ -771,7 +771,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   side of the target `side` — punch sticking from a short lubrication or a fast turret, a lower dissolution from a hot
   bed; with Б8 — the capsulation room, the dosing-disc capsule filler with its disc part and spare, empty capsules by
   mass, the `encap` stage — disc thickness in `mm`, tamping force, machine speed —, the IPC of capsule fill mass and
-  defects, fluconazole 150 mg capsules as a project product, the form `capsule`);
+  defects, fluconazole 150 mg capsules as a project product, the form `capsule`; with Б8 step 2 — its SKU №10, carton,
+  leaflet, FG spec and packaging agreement without a day in force, its demand after launch);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a

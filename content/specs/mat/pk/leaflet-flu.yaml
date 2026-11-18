@@ -1,0 +1,7 @@
+# Редакция-проект (Б8, шаг 2): в силу её вводит проект «Новый продукт»
+id: spec.mat.pk.leaflet-flu
+name: { ru: "Инструкция «Флуконазол 150 мг»", en: "Leaflet «Fluconazole 150 mg»" }
+doc: { code: SP-0039, rev: 1, approved: role.qc-head }
+pairs: [{ supplier: sup.pack, maker: mkr.pack }]
+tests:
+  - { test: test.visual }

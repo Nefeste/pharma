@@ -769,7 +769,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   ibuprofen, the second project product: a direct-compression recipe with a coat, croscarmellose, its maker, SKU,
   specs and agreements without a day in force, the cold season; a cause only of some products `products` and of one
   side of the target `side` — punch sticking from a short lubrication or a fast turret, a lower dissolution from a hot
-  bed);
+  bed; with Б8 — the capsulation room, the dosing-disc capsule filler with its disc part and spare, empty capsules by
+  mass, the `encap` stage — disc thickness in `mm`, tamping force, machine speed —, the IPC of capsule fill mass and
+  defects, fluconazole 150 mg capsules as a project product, the form `capsule`);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a

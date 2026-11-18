@@ -904,7 +904,7 @@ export const product = z.strictObject({
    * цифры — в наборе знаков GS1 нет кириллицы; у каждого продукта свой, и его не меняют — по нему записаны номера серий
    */
   code: z.string().regex(/^[A-Z0-9]{2}$/),
-  form: z.enum(['tablet']),
+  form: z.enum(['tablet', 'capsule']),
   /** дозировка (Б3а): действующего вещества в единице формы, мг */
   strength: z.strictObject({ mg: z.number().positive() }),
   /** в перечне ЖНВЛП: цена позиции — не выше зарегистрированной */
@@ -1050,7 +1050,7 @@ export const recipe = z
             .array(
               z.strictObject({
                 id: z.string().regex(/^[a-z][a-zA-Z0-9]*$/),
-                unit: z.enum(['rpm', 'min', 'C', 'kN', 'kg', 'gpm']),
+                unit: z.enum(['rpm', 'min', 'C', 'kN', 'kg', 'gpm', 'mm']),
                 target: z.number(),
                 range: z.tuple([z.number(), z.number()]),
                 sd: z.number().min(0),

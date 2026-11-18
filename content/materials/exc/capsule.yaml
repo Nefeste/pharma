@@ -1,0 +1,18 @@
+# Капсулы твёрдые желатиновые пустые, размер 1 (Б8): вместимость 0,50 мл (gf-15, ОФС.1.4.1.0005, табл. 1); масса капсулы
+# 76 ± 5 мг, влажность оболочки 13–16 %, хранение 15–25 °C (stegemann-2014). В учёте карты — по массе: строка состава в
+# килограммах, 76 мг на капсулу (docs/specs/2026-10-vertical-slice.md, «Б8», «По ходу решено»). Брак — сдвиг влажности:
+# пересохшие капсулы, гипотеза
+id: mat.exc.capsule
+kind: excipient
+code: 200009
+name: { ru: "Капсулы твёрдые желатиновые, размер 1", en: "Hard gelatin capsules, size 1" }
+unit: kg
+container: cnt.box.capsules
+storage: reg.ccrt
+shelf: 36
+spec: spec.mat.exc.capsule
+props: { moisture: [14.5, 0.4] }
+bad: { attr: moisture, shift: -3 }
+sample: 20
+source: [gf-15, stegemann-2014]
+review: draft

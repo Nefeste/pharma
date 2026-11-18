@@ -1,0 +1,12 @@
+# капсулирование (Б8): капсулонаполнительная машина с дозирующим диском и весы МОК массы капсул. Наименьший размер со
+# стенами — гипотеза: источника нет
+id: room.capsulation
+role: production
+grades: [D]
+vehicles: true
+area: TB
+min: [6, 6]
+build: true
+things: [eq.encapsulator, inst.balance]
+source: [gmp-eaeu, fda-supac-me]
+review: draft

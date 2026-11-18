@@ -1,0 +1,11 @@
+# Работа на капсулонаполнительной машине (Б8): в технологических указаниях называют машину и её настройки — дозирующие
+# диски (fda-osd-1994). Редакция-проект: в силу её вводит проект «Новый продукт». Часы и срок — гипотезы
+id: sop.encapsulator
+name: { ru: Работа на капсулонаполнительной машине, en: Capsule filling machine operation }
+doc: { code: SOP-0027, rev: 1, approved: role.production-head }
+roles: [role.operator]
+for: { equipment: [eq.encapsulator] }
+hours: 4
+every: 12
+source: [gmp-eaeu, fda-osd-1994]
+review: draft

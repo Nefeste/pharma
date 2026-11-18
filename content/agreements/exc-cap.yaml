@@ -1,0 +1,10 @@
+# Соглашение по качеству на пустые капсулы (Б8). Редакция-проект: в силу её вводит проект «Новый продукт»
+id: qag.exc-cap
+name: { ru: Соглашение по качеству на пустые капсулы, en: Quality agreement on empty capsules }
+doc: { code: QAG-0014, rev: 1, approved: role.qa-head }
+supplier: sup.exc
+makers: [mkr.exc]
+materials: [mat.exc.capsule]
+terms: [handling, labelling, packaging, shipping, complaints, recall]
+source: [gmp-eaeu, eaeu-65]
+review: draft

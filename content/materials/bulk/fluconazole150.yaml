@@ -1,0 +1,12 @@
+# Балк флуконазола (Б8) — наполненные капсулы после капсулирования, до упаковки. Свойства — от серии (технологическая
+# карта). Срок хранения балка до упаковки — гипотеза
+id: mat.bulk.fluconazole150
+kind: bulk
+code: 400005
+name: { ru: Капсулы флуконазола 150 мг в балке, en: Fluconazole 150 mg capsules in bulk }
+unit: pcs
+container: cnt.bin.capsules
+storage: reg.ccrt
+shelf: 6
+spec: spec.bulk.fluconazole150
+sample: 25

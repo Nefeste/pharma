@@ -306,6 +306,7 @@ export const ru = {
     blend: 'Опудривание',
     compress: 'Таблетирование',
     coat: 'Покрытие',
+    encap: 'Капсулирование',
   } as Record<string, string>,
   debug: {
     title: 'Отладка',
@@ -343,7 +344,7 @@ export const ru = {
   kinds: { api: 'АФС', excipient: 'Вспомогательные', packaging: 'Упаковка', bulk: 'Балк', fg: 'Готовая продукция' },
   /** внутренний номер партии и номер серии */
   lotCode: (y: number, m: number, n: number) => `П-${String(y).padStart(2, '0')}${String(m).padStart(2, '0')}-${String(n).padStart(4, '0')}`,
-  units: { m: 'м', kg: 'кг', pcs: 'шт.', h: 'ч', min: 'мин', km: 'км', N: 'Н', kN: 'кН', um: 'мкм', rpm: 'об/мин', gpm: 'г/мин', C: '°C', pct: '%', pp: 'п.\u00a0п.', day: 'сут.' },
+  units: { m: 'м', kg: 'кг', pcs: 'шт.', h: 'ч', min: 'мин', km: 'км', N: 'Н', kN: 'кН', um: 'мкм', rpm: 'об/мин', gpm: 'г/мин', mm: 'мм', C: '°C', pct: '%', pp: 'п.\u00a0п.', day: 'сут.' },
   /** панель склада (docs/specs/2026-10-panels.md, 3б) */
   stock: {
     title: 'Склад',
@@ -381,6 +382,7 @@ export const ru = {
     blending: 'Калибровка и опудривание',
     compression: 'Таблетирование',
     coating: 'Покрытие',
+    capsulation: 'Капсулирование',
     washing: 'Мойка',
     packaging: 'Упаковка',
     'airlock.people': 'Шлюз для людей',
@@ -1112,7 +1114,7 @@ export const ru = {
     notFound: 'Ничего не нашлось',
     tabs: { products: 'Продукты', materials: 'Материалы', recipes: 'Карты', equipment: 'Оборудование', places: 'Места', lab: 'Лаборатория', people: 'Люди', partners: 'Контрагенты', docs: 'Документы' },
     product: (form: string, mg: string, code: string) => `${form} ${mg}\u00a0мг · код препарата ${code}`,
-    forms: { tablet: 'таблетки' } as Record<string, string>,
+    forms: { tablet: 'таблетки', capsule: 'капсулы' } as Record<string, string>,
     skuCols: { sku: 'Позиция', code: 'Код', blister: 'В блистере', blisters: 'Блистеров в пачке', perCase: 'Пачек в ящике', cases: 'Ящиков на паллете', packs: 'Пачек на паллете', shelf: 'Срок годности', price: 'Цена завода', regPrice: 'Предельная цена', speed: 'Скорость блистерной', pi: 'Инструкция по упаковке' },
     tablets: (n: number) => `${groupRu(n)} ${pluralRu(n, 'таблетка', 'таблетки', 'таблеток')}`,
     months: (n: number) => `${n} ${pluralRu(n, 'месяц', 'месяца', 'месяцев')}`,
@@ -1133,7 +1135,7 @@ export const ru = {
     atSet: (norm: string) => `с уставками — ${norm}`,
     idle: '—',
     planNote: 'По карте — на размер серии по технологической карте; по факту — по записям стадий сделанных серий.',
-    params: { impeller: 'Скорость импеллера', wetMassing: 'Влажное перемешивание', water: 'Вода очищенная', inletTemp: 'Температура воздуха на входе', lubeTime: 'Время опудривания', force: 'Сила прессования', speed: 'Скорость ротора', bedTemp: 'Температура слоя', spray: 'Подача дисперсии', pan: 'Скорость барабана' } as Record<string, string>,
+    params: { impeller: 'Скорость импеллера', wetMassing: 'Влажное перемешивание', water: 'Вода очищенная', inletTemp: 'Температура воздуха на входе', lubeTime: 'Время опудривания', force: 'Сила прессования', speed: 'Скорость ротора', bedTemp: 'Температура слоя', spray: 'Подача дисперсии', pan: 'Скорость барабана', disc: 'Толщина дозирующего диска', tamp: 'Сила трамбовки' } as Record<string, string>,
     range: (target: string, lo: string, hi: string) => `${target} (${lo}–${hi})`,
     eqCols: { name: 'Оборудование', room: 'Помещение', cleaning: 'Уборка: малая · генеральная', parts: 'Узлы: износ и ресурс', now: 'Сейчас' },
     part: (name: string, wear: string, life: string) => `${name}: износ ${wear} · ресурс ${life}`,

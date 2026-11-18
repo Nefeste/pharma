@@ -1,0 +1,17 @@
+# Масса содержимого капсул (МОК, Б8): массы отдельных капсул на протяжении всего капсулирования, а не средняя
+# (fda-osd-1994, «In-Process Testing»); в движке — средняя по пробе с разбросом. Число капсул, время и погрешность —
+# гипотезы. Редакция-проект: в силу её вводит проект «Новый продукт»
+id: test.ipc.capmass
+name: { ru: Масса содержимого капсул (МОК), en: Capsule fill mass (IPC) }
+doc: { code: TM-0014, rev: 1, approved: role.qc-head }
+attr: mass
+inst: inst.balance
+prep: 5
+run: 0
+unattended: false
+sd: 0.3
+roles: [role.operator]
+hours: 1
+every: 12
+source: [fda-osd-1994]
+review: draft

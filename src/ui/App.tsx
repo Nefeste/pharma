@@ -23,6 +23,7 @@ import { Policies } from './Policies';
 import { Portfolio } from './Portfolio';
 import { Campaign } from './Campaign';
 import { Goals } from './Goals';
+import { Letters } from './Letters';
 import { Sop } from './Sop';
 import { Build } from './Build';
 import { FloorTip, Layers } from './Layers';
@@ -144,6 +145,12 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
             <button type="button" className={s.portfolio.open ? 'on' : ''} onClick={() => actions.togglePortfolio()} title={T.project.hint} data-test="portfolio-open">
               {T.project.button}
             </button>
+            {s.letters.view ? (
+              <button type="button" className={`goalbtn${s.letters.open ? ' on' : ''}${s.letters.view.unread > 0 ? ' new' : ''}`} onClick={() => actions.toggleLetters()} title={T.letters.hint} data-test="letters-open">
+                ✉ {T.letters.button}
+                {T.letters.count(s.letters.view.unread)}
+              </button>
+            ) : null}
             {s.goals.view && s.goals.view.goals.length > 0 ? (
               <button type="button" className={`goalbtn${s.goals.open ? ' on' : ''}`} onClick={() => actions.toggleGoals()} title={T.campaign.hint} data-test="goals-open">
                 {T.campaign.button} {T.campaign.count(s.goals.view.goals.filter(g => g.met && !g.goal.top).length, s.goals.view.goals.filter(g => !g.goal.top).length)}
@@ -234,6 +241,9 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
         {s.po.open && <Po hud={s} actions={actions} />}
       </Guard>
       <Guard name={T.campaign.title}>{s.campaign.open && <Campaign actions={actions} />}</Guard>
+      <Guard name={T.letters.button} close={s.letters.open ? actions.toggleLetters : undefined}>
+        {s.letters.open && <Letters hud={s} actions={actions} />}
+      </Guard>
       <Guard name={T.campaign.button} close={s.goals.open ? actions.toggleGoals : undefined}>
         {s.goals.open && <Goals hud={s} actions={actions} />}
       </Guard>

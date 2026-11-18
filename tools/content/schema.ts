@@ -1372,6 +1372,36 @@ export const capa = z
     if (!c.causes && !c.kinds) ctx.addIssue({ code: 'custom', message: 'нужны causes или kinds: к чему действие подходит' });
   });
 
+/**
+ * Письмо сценария (Б9): от кого, когда приходит — на старте, после другого письма, в час первого события вида или в день
+ * сценария к часу; чем кончается — условие над записями завода или «окно открыло» (`seen`); на что показывает — вещь,
+ * которую движок находит в час прихода; каким отделам передаёт решения — режим «советует». Текст — в `src/i18n/` по
+ * идентификатору письма, числа и имена — из записей завода.
+ */
+export const letter = z
+  .strictObject({
+    id: z.string(),
+    scenario: z.string(),
+    from: z.enum(['mentor', 'distributor', 'supplier']),
+    n: z.number().int().min(1).max(99),
+    when: z.union([
+      z.strictObject({ start: z.literal(true) }),
+      z.strictObject({ after: z.string() }),
+      z.strictObject({ first: z.enum(['deviation', 'oos', 'risk', 'late']) }),
+      z.strictObject({ day: z.number().int().min(0).max(400), at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/) }),
+    ]),
+    done: z.strictObject({
+      kind: z.enum(['unloaded', 'sampled', 'lotDecided', 'released', 'shipped', 'order', 'stageDone', 'packed', 'assessed', 'seen']),
+      what: z.enum(['lab', 'dossier', 'morning', 'goals', 'cash', 'card']).optional(),
+    }),
+    shows: z.enum(['scenarioPo', 'poLot', 'qaBatch', 'playerBatch', 'nextOrder', 'event']).optional(),
+    gives: z.array(z.enum(['plan', 'mes', 'maint', 'qa', 'qc', 'supply', 'wms'])).optional(),
+    review,
+  })
+  .superRefine((l, ctx) => {
+    if ((l.done.kind === 'seen') !== (l.done.what !== undefined)) ctx.addIssue({ code: 'custom', message: 'what — только и всегда у seen: что открыло окно' });
+  });
+
 /** Папка в content/ → приставка идентификатора и схема. */
 export const KINDS = {
   profiles: { prefix: 'prf', schema: profile },
@@ -1405,6 +1435,7 @@ export const KINDS = {
   capa: { prefix: 'capa', schema: capa },
   rooms: { prefix: 'room', schema: roomType },
   vendors: { prefix: 'ven', schema: vendor },
+  letters: { prefix: 'let', schema: letter },
 } as const;
 
 export type Kind = keyof typeof KINDS;

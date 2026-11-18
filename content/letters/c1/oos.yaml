@@ -1,0 +1,9 @@
+# Письмо первого результата вне спецификации: очередь лаборатории и расследование.
+id: let.c1.oos
+scenario: scn.c1
+from: mentor
+n: 13
+when: { first: oos }
+done: { kind: seen, what: lab }
+shows: event
+review: draft

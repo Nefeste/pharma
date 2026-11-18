@@ -25,6 +25,7 @@ import {
   type AssetWork,
   type Attr,
   type CapaAction,
+  type Letter,
   type Cause,
   type ContainerType,
   type ContentDb,
@@ -1190,6 +1191,50 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     const ranks = Object.values(capa).filter(c => c.rule !== undefined && (c.causes?.includes(cls) ?? false)).map(c => c.rule!);
     need(new Set(ranks).size === ranks.length, `CAPA: у причины рода ${cls} два действия правила с одним порядком`);
   }
+  // письма сценариев (Б9): сценарий из базы, номер по порядку без повторов в сценарии, письмо-предшественник того же
+  // сценария и без круга, вещь — та, о которой условие; день письма — в сроке сценария; час — в секунды
+  const letters: Record<string, Letter> = {};
+  const THING: Record<string, readonly string[]> = {
+    unloaded: ['scenarioPo'],
+    sampled: ['poLot'],
+    lotDecided: ['poLot'],
+    released: ['qaBatch', 'playerBatch'],
+    stageDone: ['playerBatch', 'qaBatch'],
+    packed: ['playerBatch', 'qaBatch'],
+    assessed: ['event'],
+  };
+  for (const l of Object.values(raw.letters)) {
+    const where = `письмо ${l.id}`;
+    const sc = raw.scenarios[l.scenario];
+    need(sc, `${where}: нет сценария ${l.scenario}`);
+    need(l.id.startsWith(`let.${l.scenario.replace(/^scn\./, '')}.`), `${where}: лежит не в папке сценария ${l.scenario}`);
+    if ('after' in l.when) {
+      const a = raw.letters[l.when.after];
+      need(a && a.scenario === l.scenario && a.id !== l.id, `${where}: нет письма-предшественника ${l.when.after} того же сценария`);
+    }
+    if ('day' in l.when && sc) need(sc.days === undefined || l.when.day < sc.days, `${where}: день ${l.when.day} — после срока сценария`);
+    const ok = THING[l.done.kind];
+    if (ok) need(l.shows && ok.includes(l.shows), `${where}: условие ${l.done.kind} — о вещи ${ok.join(' или ')}, письмо показывает ${l.shows ?? 'ничего'}`);
+    if (l.shows === 'event') need('first' in l.when, `${where}: вещь события — только у письма первого события`);
+    if (l.done.kind === 'assessed') need('first' in l.when && (l.when.first === 'deviation' || l.when.first === 'oos'), `${where}: оценка — только у письма первого отклонения`);
+    if (l.shows === 'scenarioPo' && sc) need(sc.orders?.some(o => o.at !== undefined), `${where}: у сценария нет фуры с часом`);
+    if (l.from !== 'mentor') need(l.gives === undefined, `${where}: отделы передаёт только наставник`);
+    letters[l.id] = { ...l, when: 'day' in l.when ? { day: l.when.day, at: Number(l.when.at.slice(0, 2)) * 3600 + Number(l.when.at.slice(3)) * 60 } : l.when } as Letter;
+  }
+  for (const l of Object.values(letters)) {
+    const twin = Object.values(letters).find(o => o.id !== l.id && o.scenario === l.scenario && o.n === l.n);
+    need(!twin || twin.id > l.id, `письмо ${l.id}: номер ${l.n} уже у ${twin?.id}`);
+    const seen = new Set<string>();
+    let cur: Letter | undefined = l;
+    while (cur && 'after' in cur.when) {
+      if (seen.has(cur.id)) {
+        need(false, `письмо ${l.id}: круг писем-предшественников`);
+        break;
+      }
+      seen.add(cur.id);
+      cur = letters[cur.when.after];
+    }
+  }
   // покупатели: дни недели — с нуля (0 — понедельник), спрос — только по позициям из базы
   const customers: Record<string, Customer> = {};
   for (const c of Object.values(raw.customers)) {
@@ -1332,6 +1377,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     rooms,
     vendors,
     seasons: raw.seasons,
+    letters,
   };
 }
 

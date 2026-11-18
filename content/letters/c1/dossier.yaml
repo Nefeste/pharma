@@ -1,0 +1,9 @@
+# Письмо 9: досье серии — что взвесили, кто проверил, что загрузила стадия.
+id: let.c1.dossier
+scenario: scn.c1
+from: mentor
+n: 9
+when: { after: let.c1.stages }
+done: { kind: seen, what: dossier }
+shows: playerBatch
+review: draft

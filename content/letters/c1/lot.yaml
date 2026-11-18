@@ -1,0 +1,10 @@
+# Письмо 6: решение по партии — ОКК выпускает или отклоняет по результатам; снабжение передаётся игроку.
+id: let.c1.lot
+scenario: scn.c1
+from: mentor
+n: 6
+when: { after: let.c1.morning }
+done: { kind: lotDecided }
+shows: poLot
+gives: [qc, supply]
+review: draft

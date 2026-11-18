@@ -1,0 +1,10 @@
+# Письмо 3: серия прогрева на упаковке или проверке ООК — выпуск уполномоченным лицом в первый день.
+id: let.c1.release
+scenario: scn.c1
+from: mentor
+n: 3
+when: { day: 0, at: '09:00' }
+done: { kind: released }
+shows: qaBatch
+gives: [qa]
+review: draft

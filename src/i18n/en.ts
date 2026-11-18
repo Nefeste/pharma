@@ -1,5 +1,5 @@
 // Строки игры по-английски — того же вида, что ru.ts (проверяет tsc).
-import type { Strings } from './ru';
+import type { LetterWords, Strings } from './ru';
 
 const TARE_EN: Record<string, [string, string]> = {
   case: ['case', 'cases'],
@@ -56,6 +56,7 @@ export const en: Strings = {
     hint: 'Which events stop the world',
     title: 'What stops the world',
     names: {
+      letter: 'A mentor letter',
       failure: 'Equipment failure',
       oos: 'Out-of-specification result',
       deviation: 'Deviation',
@@ -193,6 +194,9 @@ export const en: Strings = {
       leaving: 'the person is already leaving',
       noNotice: 'only a person who has resigned can be let go early',
       noLeave: 'the scenario has no annual leave',
+      noLetter: 'there is no such letter, or it has not come yet',
+      letterDone: 'the letter has already ended',
+      noSkip: 'only a mentor letter can be skipped',
       noAway: 'no such leave part',
       leaveYear: 'there is no leave schedule for that year, or the day is not in the year of the part',
       leaveDays: 'more days than are left in the year’s schedule',
@@ -1253,6 +1257,68 @@ export const en: Strings = {
     watching: (what: string): string => `Watching: ${what}`,
     stop: 'Stop',
     stopHint: 'Stop watching: the previous speed',
+  },
+  letters: {
+    title: 'Letters',
+    button: 'Letters',
+    hint: 'Letters from your mentor and partners — newest first',
+    count: (n: number) => (n > 0 ? ` · ${groupEn(n)}` : ''),
+    from: { mentor: 'Mentor', distributor: 'Distributor', supplier: 'Supplier' } as Record<string, string>,
+    notice: (from: string, subject: string) => `Letter — ${from}: “${subject}”`,
+    show: 'Show',
+    showHint: 'Camera and card — to what the letter is about',
+    skip: 'Skip',
+    skipHint: 'The letter ends without the action; the next one comes',
+    skipAll: 'Skip the tutorial',
+    skipAllHint: 'All mentor letters end; the departments are yours, as in the last letter',
+    done: 'done',
+    skipped: 'skipped',
+    open: 'waiting',
+    none: 'No letters yet',
+    mentorLeft: (n: number) => `Mentor letters ahead: ${groupEn(n)}`,
+    order: (n: number) => `order no. ${n}`,
+    subject: {
+      'c1.truck': 'A truck at the gate',
+      'c1.quarantine': 'Quarantine and sampling',
+      'c1.release': 'A batch at release',
+      'c1.ship': 'Shipping at 15:00',
+      'c1.morning': 'The morning meeting',
+      'c1.lot': 'A lot decision',
+      'c1.order': 'A batch order',
+      'c1.stages': 'Kitting and stages',
+      'c1.dossier': 'The batch record',
+      'c1.pack': 'Packing',
+      'c1.goals': 'Over to you',
+      'c1.deviation': 'The first deviation',
+      'c1.oos': 'An out-of-specification result',
+      'c1.risk': 'An order at risk',
+    } as Record<string, string>,
+    body: {
+      'c1.truck': (f: LetterWords) =>
+        `Hello. I was the chief technologist of this plant; I am retired now, and I will write to you for the first weeks. Let us start at the gate: a truck of ${f.supplier} brings ${f.material}, ${f.qty}. The storekeeper checks it at the dock first and only then unloads it. Press “Show” — the truck's card tells how it goes. The letter ends when the truck is unloaded.`,
+      'c1.quarantine': (f: LetterWords) =>
+        `Unloaded: ${f.material}, lot ${f.lot}, now in quarantine. Until the lab samples and tests it, it does not go into production. QC takes the sample. From this letter the warehouse is yours: its head will advise, you decide.`,
+      'c1.release': (f: LetterWords) =>
+        `While you took the truck, batch ${f.batch} — ${f.product} — was in work. QA checks its records, and the qualified person decides whether to release it: without that decision not one pack leaves. From this letter QA advises you.`,
+      'c1.ship': (f: LetterWords) =>
+        `The batch is released; its packs are in circulation. At 15:00 a truck of ${f.customer} comes: an order due ${f.due}. The warehouse picks the pallets and loads them. The letter ends with the shipment.`,
+      'c1.morning': () => 'Every morning at 08:00 there is a meeting: yesterday, what waits, what to decide. It opens by itself; open it too, and the letter ends.',
+      'c1.lot': (f: LetterWords) =>
+        `The lab tests the sample: ${f.material}, lot ${f.lot}. The result decides whether the lot is fit for production. From this letter supply and QC advise you. The letter ends with the lot decision.`,
+      'c1.order': () => 'Now a batch of your own. Place a batch order in the schedule: the launch plan shows which SKU is lowest. From this letter planning advises you.',
+      'c1.stages': (f: LetterWords) =>
+        `Order ${f.batch} is placed. The storekeeper kits it and takes it through the airlock; operators start the stages. From this letter production advises you. I will write when the first stage ends.`,
+      'c1.dossier': (f: LetterWords) =>
+        `The first stage of ${f.batch} is done. Open the batch record: what was weighed and who checked it, what the stage loaded, the mass in and out. All the plant knows about the batch is there.`,
+      'c1.pack': (f: LetterWords) => `When the stages end, ${f.batch} goes to the line: line clearance, blisters, cartons, cases and the reconciliation at the end. I will write when it is packed.`,
+      'c1.goals': () => 'You have walked a batch all the way. The last department — the chief mechanic’s — is yours too. The scenario goals are on the top bar; open them. From here on, without me. Good luck.',
+      'c1.deviation': (f: LetterWords) =>
+        `Deviation ${f.dev} is not a disaster: this is how the plant learns that something went off the document. It is assessed — does it affect quality? “Show” opens its card; the letter ends with the assessment.`,
+      'c1.oos': (f: LetterWords) =>
+        `The lab has an out-of-specification result — deviation ${f.dev}. It is investigated: a lab error or the truth about the lot. Open the lab queue.`,
+      'c1.risk': (f: LetterWords) =>
+        `The order of ${f.customer} due ${f.due} may not leave on time: there are not enough finished goods. The morning meeting shows what is missing. The letter ends when the plant ships something.`,
+    } as Record<string, (f: LetterWords) => string>,
   },
   campaign: {
     title: 'Campaign',

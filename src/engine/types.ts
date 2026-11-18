@@ -1,7 +1,7 @@
 // Состояние завода и обмен с движком (docs/02-architecture.md, §1, §3, §7; docs/specs/2026-10-engine.md). Состояние —
 // обычный сериализуемый объект: сохранение — его снимок со схемой и миграциями (ADR студии 0004). Сущности — словари с
 // ключами-строками (`L12`, `U77`): обход идёт в порядке вставки, поэтому детерминирован.
-import type { Attr, Dept, DevClass, FcMethod, HeadId, Id, IncidentRoot, OvertimeMode, Plant, SeatId, TaskKind, ZoneKind } from '../content/types';
+import type { Attr, Dept, DevClass, FcMethod, HeadId, Id, IncidentRoot, LetterSeen, OvertimeMode, Plant, SeatId, TaskKind, ZoneKind } from '../content/types';
 import type { Agenda } from './core/agenda';
 import type { EquipOp } from './equip';
 import type { BuildError, BuildOp } from './site/edit';
@@ -9,7 +9,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 51;
+export const SCHEMA = 52;
 
 // ---------------------------------------------------------------- склад
 
@@ -1069,6 +1069,8 @@ export type PlantEvent =
   | { kind: 'morning' }
   /** конец срока сценария (Б9): цели — итог, завод живёт дальше */
   | { kind: 'scenarioEnd' }
+  /** письмо сценария в свой день и час (Б9) */
+  | { kind: 'letter'; id: Id }
   /** каждый час: начало и конец смен, задачи «не раньше» */
   | { kind: 'hour' }
   /** фура заказа встаёт к рампе */
@@ -2151,6 +2153,18 @@ export interface Portfolio {
   docs?: Record<Id, number>;
 }
 
+/**
+ * Пришедшее письмо (Б9): какое, когда пришло, вещь, на которую показывает (номер заказа поставщику, партии, серии,
+ * заказа покупателя или отклонения), когда прочитано, когда и как кончилось — по условию или пропущено.
+ */
+export interface LetterRec {
+  id: Id;
+  at: number;
+  thing?: string;
+  read?: number;
+  end?: { t: number; how: 'done' | 'skip' };
+}
+
 export interface PlantState {
   schema: number;
   /** отпечаток базы, с которой начата партия */
@@ -2252,6 +2266,8 @@ export interface PlantState {
   waste: WasteState;
   /** показатели руководителей (Б5ж; src/engine/kpi.ts): срезы суток этого месяца и закрытые месяцы */
   kpi: KpiState;
+  /** письма сценария (Б9; src/engine/letters.ts): пришедшие по порядку; нет у сценария без писем */
+  letters?: LetterRec[];
   /** стройка (Б7б; src/engine/build.ts): шаги отмены, перестраиваемое, сносимое, счётчики имён, потрачено; не строили — нет */
   build?: BuildState;
 }
@@ -2430,6 +2446,13 @@ export type Command =
   | { kind: 'route'; batch: string; stage: number; unit?: string; by?: string }
   /** места игрока (3е): набор целиком */
   | { kind: 'seat'; seats: SeatId[] }
+  /**
+   * письма сценария (Б9): окно открыло то, на что показывает письмо, — `seen`; письмо прочитано; пропустить письмо
+   * наставника; пропустить обучение — все письма наставника
+   */
+  | { kind: 'letter'; op: 'seen'; what: LetterSeen }
+  | { kind: 'letter'; op: 'read' | 'skip'; id: Id }
+  | { kind: 'letter'; op: 'skipAll' }
   /** шаг расследования (часть 4) */
   | { kind: 'investigate'; inv: string; step: string; by?: string }
   /** решение расследования: причина — версия модели; судьба серии */
@@ -2533,6 +2556,10 @@ export type SiteRefusal =
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
+  /** письма (Б9): такого письма нет или оно не пришло; оно уже кончилось; не пропускается — не письмо наставника */
+  | 'noLetter'
+  | 'letterDone'
+  | 'noSkip'
   | 'noSupplier'
   | 'notSold'
   | 'belowMoq'
@@ -2792,6 +2819,8 @@ export type Notice =
   /** касса ниже предела кредитной линии */
   | { kind: 'cashLow'; balance: number }
   /** срок сценария прошёл (Б9): итог целей — src/engine/goals.ts */
+  /** пришло письмо сценария (Б9) */
+  | { kind: 'letter'; id: Id; from: 'mentor' | 'distributor' | 'supplier' }
   | { kind: 'scenarioEnd' }
   /** отказ узла машины; узел починили или заменили по плану */
   | { kind: 'failure'; machine: string; part: string }

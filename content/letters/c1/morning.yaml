@@ -1,0 +1,8 @@
+# Письмо 5: планёрка в 08:00 — вчера, что ждёт и что решить.
+id: let.c1.morning
+scenario: scn.c1
+from: mentor
+n: 5
+when: { after: let.c1.ship }
+done: { kind: seen, what: morning }
+review: draft

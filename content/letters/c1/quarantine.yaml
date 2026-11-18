@@ -1,0 +1,10 @@
+# Письмо 2: разгруженное — в карантине, пока ОКК не отберёт пробу; склад передаётся игроку.
+id: let.c1.quarantine
+scenario: scn.c1
+from: mentor
+n: 2
+when: { after: let.c1.truck }
+done: { kind: sampled }
+shows: poLot
+gives: [wms]
+review: draft

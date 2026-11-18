@@ -1,0 +1,9 @@
+# Письмо 7: задание на серию — от игрока; планирование передаётся игроку.
+id: let.c1.order
+scenario: scn.c1
+from: mentor
+n: 7
+when: { after: let.c1.lot }
+done: { kind: order }
+gives: [plan]
+review: draft

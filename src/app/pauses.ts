@@ -27,7 +27,7 @@ const MEMO_SEATS: readonly SeatId[] = ['production', 'quality', 'supply', 'comme
  * (Б3г); черновик графика отпусков (Б4г); некому решить за руководителя (Б5в); предложение руководителя (Б5б); совещание
  * S&OP (Б6г); жалоб и инспекций в прототипе нет.
  */
-export const PAUSES = ['failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'unit', 'project', 'leaveDraft', 'noOne', 'proposal', 'ask', 'memoDone', 'sop', 'morning'] as const;
+export const PAUSES = ['letter', 'failure', 'oos', 'deviation', 'truckWait', 'orderRisk', 'materialLate', 'qualLost', 'overtimeLow', 'resign', 'assetExpired', 'pairSuspended', 'unit', 'project', 'leaveDraft', 'noOne', 'proposal', 'ask', 'memoDone', 'sop', 'morning'] as const;
 export type Pause = (typeof PAUSES)[number];
 
 /**
@@ -37,6 +37,8 @@ export type Pause = (typeof PAUSES)[number];
  * Срок актива (Б3в) — по роду актива: чьё это дело, решает род.
  */
 export const PAUSE_NOTICES: Record<Pause, readonly string[]> = {
+  // письмо наставника (Б9): обучение ждёт, пока игрок прочтёт; письма партнёров — извещение без стопа
+  letter: ['letter/mentor'],
   failure: ['failure'],
   oos: ['investigation', 'lotRejected'],
   deviation: ['deviation'],
@@ -72,6 +74,7 @@ export const PAUSE_NOTICES: Record<Pause, readonly string[]> = {
  * коммерцию — заказами в срок. Срок актива (Б3в) — у трёх постов, у каждого свой род (`KEY_SEATS`). Планёрка — у всех.
  */
 export const PAUSE_SEATS: Record<Pause, readonly SeatId[] | 'all'> = {
+  letter: 'all',
   failure: ['production'],
   oos: ['quality', 'production'],
   deviation: ['quality'],
@@ -173,7 +176,7 @@ export function keepOff(keep: Keep | undefined, off: readonly Pause[]) {
 }
 
 /** Куда ведёт щелчок по извещению: вещь на полу, окно, справочник на своей вкладке, доска расследования или журнал на записи. */
-export type Go = { thing: Thing } | { panel: 'gantt' | 'morning' | 'lab' | 'policies' | 'sop' | 'portfolio' } | { panel: 'ref'; tab: 'places' | 'partners' | 'people' } | { inv: string } | { journal: number };
+export type Go = { thing: Thing } | { panel: 'gantt' | 'morning' | 'lab' | 'policies' | 'sop' | 'portfolio' | 'letters' } | { panel: 'ref'; tab: 'places' | 'partners' | 'people' } | { inv: string } | { journal: number };
 
 /** Машина линии или оборудование участка по имени в плане — вещь для карточки. */
 export function machineThing(plant: Plant, id: string): Thing | undefined {
@@ -198,6 +201,9 @@ export function goOf(plant: Plant, n: Notice): Go | undefined {
       const thing = machineThing(plant, n.machine);
       return thing ? { thing } : undefined;
     }
+    case 'letter':
+      // письмо сценария (Б9) — к панели писем
+      return { panel: 'letters' };
     case 'truckWait':
       return { thing: { kind: 'truck', n: Number(n.truck.slice(1)), customer: false } };
     case 'materialLate':

@@ -165,6 +165,19 @@ describe('стадия капсулирования', () => {
     expect(Object.values(db.causes).some(c => 'param' in c.driver && c.driver.param === 'tamp')).toBe(false);
   });
 
+  test('сила трамбовки выше цели — дозирующий диск изнашивается быстрее', () => {
+    const worn = (value?: number) => {
+      const { b, s } = batchWith(value === undefined ? [] : [{ param: 'tamp', value }]);
+      const pt = Object.values(s.parts).find(p => p.type === 'disc')!;
+      return { done: pt.done, n: b.records.find(r => r.stage === 'encap')!.out };
+    };
+    const at = worn();
+    const hi = worn(20);
+    expect(at.done).toBeGreaterThan(0);
+    // +0,05 кН — наработка на капсулу больше примерно на 5 %
+    expect(hi.done / hi.n / (at.done / at.n)).toBeGreaterThan(1.03);
+  });
+
   test('у таблеток скорость ротора выше цели не даёт дефектов капсул', () => {
     expect(db.causes['cause.encap.speed'].products).toEqual(['prd.fluconazole150']);
   });

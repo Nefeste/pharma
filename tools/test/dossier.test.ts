@@ -88,7 +88,7 @@ describe('сборщик базы — порядок загрузки на ис�
       const x = db.recipes[id];
       // первое смешивание — гранулятор; у прямого прессования ибупрофена (Б7д, шаг 3) — смеситель
       const mix = x.stages.find(st => st.mix)!.id;
-      for (const l of x.bom) expect([id, l.material, l.stage]).toEqual([id, l.material, l.material === MGST ? 'blend' : l.material === 'mat.exc.coat' ? 'coat' : mix]);
+      for (const l of x.bom) expect([id, l.material, l.stage]).toEqual([id, l.material, l.material === MGST ? 'blend' : l.material === 'mat.exc.coat' ? 'coat' : l.material === 'mat.exc.capsule' ? 'encap' : mix]);
     }
   });
 });

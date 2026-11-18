@@ -141,7 +141,7 @@ describe('покупка', () => {
   test('новая единица без записи не держит годную: стадия идёт на прежнем прессе', () => {
     const s = newPlant(db, { scenario: SC });
     equip(s, { op: 'buy', type: 'eq.press', vendor: 'ven.asia', room: 'compression', at: spot(s, 'eq.press', 'compression'), turn: 0 });
-    const st = db.recipes[Object.keys(db.recipes)[0]].stages.find(x => x.room === 'compression')!;
+    const st = db.recipes['rcp.paracetamol500.wet.v1'].stages.find(x => x.room === 'compression')!;
     expect(stageUnfit(db, s, st, 'compression')).toBeUndefined();
     const a = newPlant(db, { scenario: SC });
     // через 20 суток таблетирование шло столько же раз, сколько без покупки

@@ -24,27 +24,21 @@ export async function c2Part({ browser, port, out, ok, fail, errors, requests, q
     });
   });
   const text = sel => page.evaluate(q => document.querySelector(q)?.innerText.replace(/\s*\n\s*/g, ' · ') ?? '', sel);
-  /** «До утра», пока условие не выполнится: планёрку и окна — закрыть, мир встал на извещении — дальше. */
-  const until = (cond, arg, timeout) =>
-    page
-      .waitForFunction(
-        ([cond, arg]) => {
-          const g = window.__game;
-          const h = g.store.get();
-          if (new Function('h', 'arg', `return (${cond})(h, arg)`)(h, arg)) return true;
-          if (g.ff) return false;
-          if (h.morning.open) g.actions.closeMorning(false);
-          if (h.selected) g.actions.select(undefined);
-          g.actions.untilMorning();
-          return false;
-        },
-        [cond.toString(), arg],
-        { timeout, polling: 300 },
-      )
-      .then(
-        () => true,
-        () => false,
-      );
+  /** «До утра», пока условие не выполнится: планёрку и карточку — закрыть, мир встал на извещении — дальше. */
+  const until = async (cond, limit) => {
+    for (let i = 0; i < limit; i++) {
+      if (await page.evaluate(cond)) return true;
+      await page.evaluate(() => {
+        const g = window.__game;
+        const h = g.store.get();
+        if (h.morning.open) g.actions.closeMorning(false);
+        if (h.selected) g.actions.select(undefined);
+        g.actions.untilMorning();
+      });
+      await page.waitForFunction(() => !window.__game.ff, null, { timeout: 180_000 });
+    }
+    return page.evaluate(cond);
+  };
   try {
     // экран «Кампания»: «Первая зима» — вторым
     await page.waitForSelector('[data-test=campaign]', { timeout: 20_000 });
@@ -67,6 +61,7 @@ export async function c2Part({ browser, port, out, ok, fail, errors, requests, q
     // письмо дистрибьютора о сезоне — без «Пропустить» и «Пропустить обучение»; прочли — кончилось
     await page.waitForSelector('[data-test=letter][data-letter="let.c2.season"]', { timeout: 20_000 }).catch(() => undefined);
     const l1 = await text('[data-test=letter]');
+    const row = await text('[data-test=letter-row][data-letter="let.c2.season"]');
     const skip = await page.evaluate(() => !!document.querySelector('[data-test=letter-skip], [data-test=letter-skip-all]'));
     await s.shot('Письмо о сезоне');
     const read = await page
@@ -75,7 +70,7 @@ export async function c2Part({ browser, port, out, ok, fail, errors, requests, q
         () => true,
         () => false,
       );
-    if (!/Сезон впереди/.test(l1) || !/Дистрибьютор/.test(l1) || !/1 ноября/.test(l1) || skip || !read) fail(`письмо о сезоне: «${l1}», пропуск — ${skip}, кончилось — ${read}`);
+    if (!/Сезон впереди/.test(l1) || !/Дистрибьютор/.test(row) || !/1 ноября/.test(l1) || skip || !read) fail(`письмо о сезоне: «${l1}», пропуск — ${skip}, кончилось — ${read}`);
     else ok(`письмо о сезоне прочли — кончилось: «${l1.slice(0, 140)}…»`);
     await page.click('[data-test=letters] .close');
 
@@ -88,7 +83,7 @@ export async function c2Part({ browser, port, out, ok, fail, errors, requests, q
     await page.click('[data-test=goals] .close');
 
     // «До утра» — пока не придёт письмо о заказе под угрозой; «Показать» — карточка заказа
-    const risk = await until(h => !!h.letters.view?.rows.some(r => r.id === 'let.c2.risk'), null, 600_000);
+    const risk = await until(() => !!window.__game.store.get().letters.view?.rows.some(r => r.id === 'let.c2.risk'), 120);
     if (!risk) fail('письма о заказе под угрозой нет');
     else {
       await page.evaluate(() => window.__game.actions.setSpeed(0));
@@ -106,7 +101,7 @@ export async function c2Part({ browser, port, out, ok, fail, errors, requests, q
     }
 
     // «До утра» до конца срока — окно целей с итогом
-    const end = await until(h => !!h.goals.view?.ended, null, 1_800_000);
+    const end = await until(() => !!window.__game.store.get().goals.view?.ended, 300);
     if (!end) fail(`итога нет: ${await s.clock()}`);
     else {
       await page.evaluate(() => window.__game.actions.setSpeed(0));

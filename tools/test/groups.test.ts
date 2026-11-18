@@ -46,7 +46,7 @@ describe('поля состояния — группами', () => {
     const raw = JSON.parse(fixture(47)) as Box;
     const s = fromSave(db, fixture(47));
     expect(s.schema).toBe(SCHEMA);
-    expect(SCHEMA).toBe(50);
+    expect(SCHEMA).toBe(51);
     for (const [k, to] of MOVED) {
       expect(k in s).toBe(false);
       if (raw[k] === undefined) expect(k in box(s, to)).toBe(false);

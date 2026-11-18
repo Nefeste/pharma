@@ -55,7 +55,7 @@ const roomPlace = (plan: PlantPlan, roomId: string): Place => ({ kind: 'point', 
  * Задание на серию: серия ждёт резерва и своей даты. Нет карты — отказ. Карта — редакция, действующая в день «не раньше»
  * (Б3а): задание держит её до конца — ни новая редакция, ни сдвиг срока её не меняют.
  */
-export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'order' }>, notices: Notice[], why?: OrderWhy, frozen?: EditPrice) {
+export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'order' }>, notices: Notice[], why?: OrderWhy, frozen?: EditPrice): Batch | undefined {
   if (!db.recipes[cmd.recipe]) {
     notices.push({ kind: 'refused', cmd: 'order', why: 'noRecipe', detail: cmd.recipe });
     return;
@@ -92,6 +92,7 @@ export function placeOrder(db: ContentDb, s: PlantState, cmd: Extract<Command, {
   reserve(db, s, b);
   // журнал решений (Б5а): игрок или начальник отдела планирования — с причиной коллеги
   noteCmd(s, cmd, { kind: 'order', batch: b.id, recipe: b.recipe, ...(b.sku ? { sku: b.sku } : {}), notBefore: b.notBefore, ...(due !== undefined ? { due } : {}), ...(goal ? { for: goal } : {}), ...(why ? { why } : {}), ...(frozen ? { frozen } : {}) });
+  return b;
 }
 
 /**

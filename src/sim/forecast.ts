@@ -110,7 +110,7 @@ export function forecastView(db: ContentDb, s: PlantState, key?: Id): ForecastVi
   for (let m = f.at - HISTORY; m < f.at; m++) {
     if (m < f.from) continue;
     const x = lag.get(m);
-    past.push({ m, fact: sum(of.map(sku => f.demand[sku][m - f.from] ?? 0)), ...(x ? { plan: sum(of.map(sku => x.plan[sku] ?? 0)), sales: sum(of.map(sku => x.sales[sku] ?? 0)) } : {}) });
+    past.push({ m, fact: sum(of.map(sku => f.demand[sku]?.[m - f.from] ?? 0)), ...(x ? { plan: sum(of.map(sku => x.plan[sku] ?? 0)), sales: sum(of.map(sku => x.sales[sku] ?? 0)) } : {}) });
   }
   const ahead: FcPoint[] = [];
   for (let i = 0; i < HORIZON; i++) ahead.push({ m: f.at + i, plan: sum(of.map(sku => f.plan[sku][i])), sales: sum(of.map(sku => f.sales[sku][i])) });
@@ -155,7 +155,7 @@ export function fcMeeting(db: ContentDb, s: PlantState, at: number): FcMeeting |
   if (!x) return undefined;
   return {
     m,
-    fact: sum(all.map(sku => f.demand[sku][m - f.from] ?? 0)),
+    fact: sum(all.map(sku => f.demand[sku]?.[m - f.from] ?? 0)),
     plan: sum(all.map(sku => x.plan[sku] ?? 0)),
     sales: sum(all.map(sku => x.sales[sku] ?? 0)),
     next: { m: now, plan: sum(all.map(sku => f.plan[sku][0])), sales: sum(all.map(sku => f.sales[sku][0])) },

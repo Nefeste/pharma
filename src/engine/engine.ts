@@ -14,6 +14,8 @@ import { agenda, nextTime, popDue, schedule } from './core/agenda';
 import { DAY, HOUR, momentOf } from './core/calendar';
 import { deputyCommand } from './bosses';
 import { checkLater, commit, siteCommand, siteFree } from './build';
+import { liveOf } from './docs';
+import { projectCommand, projectDone, projectHour } from './project';
 import { equipCommand, pathDone, pathHour, pathMidnight, unitArrive, unitDay } from './equip';
 import { capaCommand, capaHour, capaRunCommand, classifyCommand } from './capa';
 import { answerFork, askDue, forksStep } from './forks';
@@ -207,7 +209,8 @@ export type More = (notices: readonly Notice[]) => boolean;
 export function apply(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notice[] {
   // время прошлой команды, ещё не прожитое, — сначала всё: команда видит завод таким же, как игрок
   const before = catchUp(db, s);
-  const out = command(db, s, cmd, more);
+  // база, по которой живёт завод (Б7д): редакции, введённые проектом, — с их днём из состояния
+  const out = command(liveOf(db, s.portfolio?.docs), s, cmd, more);
   return before.length > 0 ? [...before, ...out] : out;
 }
 
@@ -475,6 +478,13 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       steps(db, s, notices);
       return notices;
     }
+    case 'project': {
+      // проект «Новый продукт» (Б7д): начать, остановить, решение протокола; этапы ведёт час
+      const notices: Notice[] = [];
+      projectCommand(db, s, cmd, notices);
+      steps(db, s, notices);
+      return notices;
+    }
   }
 }
 
@@ -525,7 +535,8 @@ export function catchUp(db: ContentDb, s: PlantState, more?: More): Notice[] {
     if (next === undefined || next > target) break;
     const due = popDue(s.agenda, target)!;
     s.t = Math.max(s.t, due.t);
-    handle(db, s, due.e, notices);
+    // проект мог ввести редакцию в силу на прошлом событии — база на каждое событие своя (Б7д)
+    handle(liveOf(db, s.portfolio?.docs), s, due.e, notices);
     if (more && !more(notices)) return notices;
   }
   s.t = target;
@@ -572,6 +583,8 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       pathHour(db, s);
       // контрагенты (Б3г): в полночь — приостановленные пары и договоры; коллега качества назначает оценки
       partnersHour(db, s, notices);
+      // проекты «Новый продукт» (Б7д): этапы, чья работа сделана
+      projectHour(db, s, notices);
       maintStep(db, s, notices);
       mesHour(db, s);
       lineHour(db, s, notices);
@@ -619,7 +632,7 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
       const t = s.tasks[ev.id];
       if (!t || t.v !== ev.v || t.state !== 'busy') return;
       release(db, s, t);
-      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices) && !maintDone(db, s, t, notices) && !invDone(db, s, t, notices) && !trainDone(db, s, t) && !pathDone(db, s, t, notices) && !assetDone(db, s, t) && !partnersDone(db, s, t, notices) && !wasteDone(db, s, t, notices)) wmsDone(db, s, t, notices);
+      if (!labDone(db, s, t, notices) && !mesDone(db, s, t, notices) && !lineDone(db, s, t, notices) && !qaDone(db, s, t, notices) && !marketDone(db, s, t, notices) && !maintDone(db, s, t, notices) && !invDone(db, s, t, notices) && !trainDone(db, s, t) && !pathDone(db, s, t, notices) && !assetDone(db, s, t) && !partnersDone(db, s, t, notices) && !wasteDone(db, s, t, notices) && !projectDone(db, s, t)) wmsDone(db, s, t, notices);
       // паллета ГП уехала с места паллетирования — у линии освободилось место; машину линии починили — она снова в работе
       if ((t.kind === 'putaway' || t.kind === 'repair') && t.line) lineUpdate(db, s, s.lines[t.line], notices);
       if (t.kind === 'putaway' || t.kind === 'stage') startSampling(db, s);

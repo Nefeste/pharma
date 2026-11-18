@@ -52,6 +52,7 @@ export const ICON_OF: Record<TaskKind | 'pack' | 'test' | 'truck' | 'visit' | 'a
   accept: 'check',
   qualify: 'check',
   carry: 'move',
+  project: 'check',
   mount: 'repair',
   vendorReview: 'check',
   // оценка влияния отклонения (Б1г) — проверка по досье и результатам

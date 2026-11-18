@@ -1,0 +1,14 @@
+id: mat.fg.metformin500-n60
+kind: fg
+code: 500005
+name: { ru: "Метформин, таблетки, покрытые плёночной оболочкой, 500 мг, №60", en: "Metformin 500 mg film-coated tablets, 60" }
+unit: pcs
+container: cnt.case.fg
+storage: reg.ccrt
+# срок годности — до 60 месяцев в блистерах (meb-metformin-2009, «Stability»); в игре — 36, как у инструкций РФ
+# (ru-metformin): выбор геймдизайна
+shelf: 36
+spec: spec.fg.metformin500
+sample: 6
+source: [meb-metformin-2009, ru-metformin]
+review: draft

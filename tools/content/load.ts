@@ -679,6 +679,9 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     // цена ЖНВЛП — не выше зарегистрированной предельной (61-ФЗ, ст. 61, ч. 8)
     if (raw.products[k.product]?.jnvlp) need(k.regPrice !== undefined, `${where}: продукт в перечне ЖНВЛП — нужна зарегистрированная цена`);
     if (k.regPrice !== undefined) need(k.price <= k.regPrice, `${where}: цена ${k.price} ₽ выше зарегистрированной ${k.regPrice} ₽`);
+    // спрос после ввода (Б7д): у позиции продукта-проекта — у покупателей базы
+    for (const c of Object.keys(k.launch ?? {})) need(raw.customers[c], `${where}: спрос после ввода у ${c} — нет такого покупателя`);
+    if (k.launch) need(k.doc.from === undefined, `${where}: спрос после ввода — только у позиции продукта-проекта`);
     // скорость блистерной (Б1ж): цель в диапазоне, шагом от цели — до обоих краёв, не быстрее паспорта блистерной машины
     const sp = k.speed;
     need(sp.range[0] <= sp.target && sp.target <= sp.range[1], `${where}: цель скорости вне диапазона`);
@@ -693,6 +696,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       carton: k.carton.map(l => ({ material: l.material, qty: l.n })),
       price: kop(k.price),
       ...(k.regPrice !== undefined ? { regPrice: kop(k.regPrice) } : {}),
+      ...(k.launch ? { launch: k.launch } : {}),
     };
   }
   // типы помещений (Б7б): ключ — тип, как его зовёт план, — идентификатор без приставки
@@ -1544,6 +1548,8 @@ function learnErrors(raw: Raw, sops: Record<string, Sop>, tests: Record<string, 
     mount: MAINT.mechanics,
     // маршрут серии (Б7г): полупродукт в контейнере на тележке везёт аппаратчик стадии, которая кончилась
     carry: ['role.operator'],
+    // проект «Новый продукт» (Б7д): методики — аналитик, оценка очистки и отчёт — специалист ООК, протокол — начальник ООК
+    project: ['role.analyst', 'role.qa', 'role.qa-head'],
   };
   const LINE_WORK: TaskKind[] = ['crew', 'feed', 'changeover', 'clearance', 'clearCheck'];
   const check = (where: string, has: string[], doers: Iterable<string>) => {

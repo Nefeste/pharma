@@ -108,9 +108,11 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # replacement, a cancel from the card (e2e-equip.mjs, equip.png; `--long 1` — on
                                    # to the installation and the qualification record), the batch route — a unit in the
                                    # batch record, a stage dragged to a second room's row, a move in «Сейчас», a
-                                   # vacuum transfer refused mid-room and ordered at a wall (e2e-route.mjs, route.png);
-                                   # `-- --only main|week|memo|capa|jobs|launch|forecast|
-                                   # sop|mrp|edits|build|equip|route|sources` for one
+                                   # vacuum transfer refused mid-room and ordered at a wall (e2e-route.mjs, route.png),
+                                   # the portfolio — a metformin project, what the plant lacks, the protocol, the
+                                   # meeting, a stop (e2e-portfolio.mjs, portfolio.png; `--long 1` — on to the trial
+                                   # batch); `-- --only main|week|memo|capa|jobs|launch|forecast|
+                                   # sop|mrp|edits|build|equip|route|sources|portfolio` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -235,7 +237,16 @@ first, or copy the working code of Bolnitsa on the same versions.
   investigation settles its deviation, a lot raised by the player),
   `docs.ts` (regulatory documents — specs, test methods, recipes, packaging instructions: revisions of one code, the one
   in force on a plant day, draft, in force or archived; with Б7д a project revision has no day in force — `DRAFT_DAY` —
-  and stays a draft until its project), `infer.ts` (the inference — a copy of Anamnez's: noisy-OR
+  and stays a draft until its project; with step 2 the content base the plant lives by — the days in force its
+  projects set, the launched SKUs in the customers' demand and the scenario's plan — `liveOf`, cached per days object),
+  `project.ts` (with Б7д step 2, the project «Новый продукт» of the director's seat: a product whose recipe never was
+  in force; the `project` command — start, stop, the protocol's «sell the validation batches»; at the start its
+  materials' specs and agreements in force, new pairs to evaluation; what the plant lacks — a room of a stage's type,
+  a fit unit of its class there, a lab instrument, an approved pair (`gapsOf`); in the hour the stages — methods by
+  analysts, documents in force after the training's warning days, the cleaning assessment by the QA specialist, a
+  trial batch not for sale, the protocol by the QA head, validation batches until so many pass in a row, the report,
+  the dossier decision by the variation's terms, then the launch documents in force; a passed batch not for sale —
+  its bulk rejected; the demand ramp of a launched SKU (`rampOf`)), `infer.ts` (the inference — a copy of Anamnez's: noisy-OR
   findings, the posterior over candidates, entropy and the expected gain of a step), `investigation.ts` (the scenario's
   incident — root and size by the seed, its traces in parameters, the mill screen and the lab test; an out-of-spec
   dissolution opens a deviation and an investigation, the lot waits; steps as tasks of their roles or lab tests — the
@@ -584,8 +595,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   seven days, the key machine and OEE by the meeting's `lineSum`, the plan-vs-actual board of the shift by hours, the
   batch a held room leads to — records of the plant, and with Б1к the hours batches waited at each place over the
   window with its main word, the batches waiting now and «держит линию», and with Б1л the losses of places over the
-  window by kind and cause with their things and the things' names — records of the plant (`floor.ts`); with Б1к, the
-  andon — what is
+  window by kind and cause with their things and the things' names — records of the plant (`floor.ts`); with Б7д, the
+  portfolio — products not made yet and their projects: the stage since when, what it waits for, what the plant
+  lacks, the project's batches with their numbers and state, the dossier, and the meeting's «Проекты»
+  (`portfolio.ts`); with Б1к, the andon — what is
   not working now by thing: a failed part, an asset without a record in force or with the contractor, a cleaning a batch
   waits for with the stage operators on shift and no cleaners, a task waiting for an admission, hours or the end of a
   leave, a supplier truck not unloaded for 2 hours, a batch without material at its not-before, an order at risk — with
@@ -699,7 +712,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   «Сменно-суточные задания» block and a card's rows of the day (`Daily.tsx`), the draft's pure rules — a row per batch
   order, gone once kitting starts, `shift` commands on approval, with Б6а the cancels, with Б6б an urgent order on a
   day (`draft.ts`), the
-  «Кем вы будете» screen of places (`Seats.tsx`), the investigation board — steps, findings in words with numbers
+  «Кем вы будете» screen of places (`Seats.tsx`), with Б7д the «Портфель» window — F, products, «Начать проект»,
+  what the plant lacks with its way to the build or the partners, the protocol, the project's batches, «Остановить»
+  (`Portfolio.tsx`), the investigation board — steps, findings in words with numbers
   from the records, version bars, the decision, the debrief, with Б5е the CAPA after the conclusion (`Inv.tsx`), the
   batch record over the other windows — opened from a
   card, «Сейчас», the meeting and a click
@@ -747,7 +762,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   room, the smallest size, built in Б7б or not, a washing room's two doorways —, and a plan's lot and hull; with Б7д —
   the coating room, the pan coater and the coat stage — bed temperature, spray rate in g/min, pan speed, the IPC of
   weight gain and coating defects —, metformin as a project product: its recipe, specs, methods and agreement without
-  a day in force, a product without a demand season);
+  a day in force, a product without a demand season; with Б7д step 2 — a project SKU's demand by customer after its
+  launch `launch`, metformin's SKU, its packaging and their specs and agreements without a day in force, and the
+  scenario's `project` — days of the stages, validation batches in a row, the demand ramp);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
@@ -802,7 +819,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   plan edits — a commerce event at the meeting, a batch order dragged inside the frozen horizon with its price,
   «Утвердить» and the journal, the horizon policy and its edge (`e2e-edits.mjs`), the sources — candidate pairs and
   «Одобрить пару» to the trial lot with its promised day, the trial PO in the «Материалы» tab, a planned order's
-  «Предложения» and «Заказать», with `--long 1` on to the dossier filing (`e2e-sources.mjs`), the
+  «Предложения» and «Заказать», with `--long 1` on to the dossier filing (`e2e-sources.mjs`), the portfolio — a
+  metformin project from the «Портфель» window, with `--long 1` on to the trial batch (`e2e-portfolio.mjs`), the
   «code —
   Blender» sheet
   of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench

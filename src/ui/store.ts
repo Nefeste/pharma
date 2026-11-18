@@ -16,6 +16,7 @@ import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import type { DossierView } from '../sim/dossier';
 import type { MrpView } from '../sim/mrp';
+import type { PortfolioView } from '../sim/portfolio';
 import type { SopView } from '../sim/sop';
 import type { AndonView } from '../sim/andon';
 import type { LossPick } from '../app/losses';
@@ -153,6 +154,8 @@ export interface Hud {
    * окно совещания S&OP (Б6г): открыто ли; черновик игрока — цели по продуктам на 6 месяцев, пока не утверждён; вид
    */
   sop: { open: boolean; draft?: Readonly<Record<Id, readonly number[]>>; view?: SopView };
+  /** окно «Портфель» (Б7д): продукты-проекты, этапы, чего нет заводу */
+  portfolio: { open: boolean; view?: PortfolioView };
   /**
    * слой слева (Б1и; геймдизайн, §3.6, §18): обычный вид; «Загрузка и OEE» — столбики, числа, доски «План — факт»;
    * «Узкие места» и «Проблемы» (Б1к) — таблички над местами, где серии ждут, и значки андона; «Потери» (Б1л) — столбики
@@ -269,6 +272,7 @@ export const initial: Hud = {
   kpi: { open: false, tab: 'director' },
   policies: { open: false, draft: {}, run: NO_POLICY_RUN },
   sop: { open: false },
+  portfolio: { open: false },
   layer: 'plain',
   floor: { win: 'today', pick: 'all' },
   andon: {},
@@ -431,6 +435,11 @@ export interface Actions {
    * сбросить черновик; «Утвердить» — команда `sop` с показанным планом
    */
   toggleSop(): void;
+  /** окно «Портфель» (Б7д) и команды проекта директора: начать, остановить, решение протокола */
+  togglePortfolio(): void;
+  projectStart(product: Id): void;
+  projectStop(id: string): void;
+  projectSell(id: string, sell: boolean): void;
   /**
    * стройка (Б7б): включить или выйти (B; выход — «Готово»); выбор в панели — инструмент, тип и класс, дверь, зона, ряд
    * стеллажа; отменить шаг (Ctrl+Z); «Готово» — перестраиваемое помещение снова работает

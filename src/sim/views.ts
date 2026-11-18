@@ -12,7 +12,7 @@ import { salaryOf } from '../engine/cash';
 import { dismissTerms, laborOf } from '../engine/hire';
 import { momentOf } from '../engine/core/calendar';
 import { partType, wearAt } from '../engine/maint';
-import { inForce } from '../engine/docs';
+import { inForce, liveOf } from '../engine/docs';
 import { CLEAN_HOLD, DIRTY_HOLD } from '../engine/mes';
 import { speedOf } from '../engine/modes';
 import { planOf } from '../engine/plant';
@@ -32,6 +32,7 @@ import { type InvQuery, type InvView, invView } from './inv';
 import { type BossLimit, type BossRow, bossOfPerson } from './bosses';
 import { type JournalQuery, type JournalView, journalView, whoAsset, whoBatch, whoDecided, whoLot, whoMachine, whoPerson, type WhoRow } from './journal';
 import { type PoliciesQuery, type PoliciesView, policiesView } from './policies';
+import { type PortfolioQuery, type PortfolioView, portfolioView } from './portfolio';
 import { type MrpQuery, type MrpView, mrpView } from './mrp';
 import { type SopQuery, type SopView, sopView } from './sop';
 import { type DailyRowView, dailyOf } from './daily';
@@ -81,7 +82,7 @@ export interface CardQuery {
   thing: Thing;
 }
 
-export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery | PoQuery | PoliciesQuery | SopQuery | MrpQuery | BuildQuery);
+export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery | PoQuery | PoliciesQuery | SopQuery | MrpQuery | BuildQuery | PortfolioQuery);
 
 /** Место паллеты: место плана (номер по порядку), помещение (номер по порядку), фура. */
 export type PlaceRef = { k: 'slot'; i: number } | { k: 'room'; i: number } | { k: 'truck'; n: number; customer: boolean; waste?: true };
@@ -322,7 +323,7 @@ export interface CardView {
   card: CardData;
 }
 
-export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView | PoView | PoliciesView | SopView | MrpView | BuildView;
+export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView | PoView | PoliciesView | SopView | MrpView | BuildView | PortfolioView;
 
 const num = (id: string) => Number(id.slice(1));
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
@@ -825,6 +826,9 @@ export function viewOf(db: ContentDb, s: PlantState, q: ViewQuery): ViewData {
     // стройка (Б7б): шаги отмены, перестраиваемое, сносимое, занятое, касса
     case 'build':
       return buildView(db, s);
+    // портфель (Б7д): продукты-проекты, этапы, чего нет заводу, серии проекта и досье
+    case 'portfolio':
+      return portfolioView(db, s);
   }
 }
 
@@ -891,7 +895,8 @@ export class ViewDesk {
       const slow = VIEW_SLOW[q.view];
       const key = slow !== undefined ? JSON.stringify(q) : undefined;
       if (slow !== undefined && last && last.q === key && last.touch === this.touches && (last.t === s.t || now - (last.at ?? 0) < slow)) continue;
-      const data = viewOf(this.db, s, q);
+      // база, по которой живёт завод (Б7д): у редакций, введённых проектом, — их дни
+      const data = viewOf(liveOf(this.db, s.portfolio?.docs), s, q);
       const json = JSON.stringify(data);
       const meta = slow !== undefined ? { t: s.t, at: now, q: key, touch: this.touches } : {};
       if (last?.json === json) {

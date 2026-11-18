@@ -1,0 +1,7 @@
+# Редакция-проект (Б7д): в силу её вводит проект «Новый продукт»
+id: spec.mat.pk.carton-m60
+name: { ru: "Пачка «Метформин 500 мг №60»", en: "Carton «Metformin 500 mg No. 60»" }
+doc: { code: SP-0026, rev: 1, approved: role.qc-head }
+pairs: [{ supplier: sup.pack, maker: mkr.pack }]
+tests:
+  - { test: test.visual }

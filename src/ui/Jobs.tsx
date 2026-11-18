@@ -39,7 +39,13 @@ export function Jobs({ hud, actions, jobs, mine, items }: { hud: Hud; actions: A
     if (r.status === 'cancelled' && r.cancelled !== undefined) return T.jobs.cancelledAt(when(r.cancelled));
     return T.dossier.status[r.status] ?? r.status;
   };
-  const goal = (r: JobRow) => (!r.goal ? '—' : r.goal.kind === 'stock' ? T.jobs.stock : T.jobs.forOrder(r.goal.customer ? named(db?.customers[r.goal.customer]?.name, r.goal.customer) : r.goal.order));
+  const goal = (r: JobRow) => {
+    if (!r.goal) return '—';
+    if (r.goal.kind === 'stock') return T.jobs.stock;
+    // серия проекта «Новый продукт» (Б7д): пробная или валидации
+    if (r.goal.kind === 'project') return T.jobs.project[r.goal.role];
+    return T.jobs.forOrder(r.goal.customer ? named(db?.customers[r.goal.customer]?.name, r.goal.customer) : r.goal.order);
+  };
   const late = (r: JobRow) => (r.late === undefined ? '' : T.jobs.late(Math.ceil(r.late / DAY)));
 
   return (

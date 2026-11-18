@@ -53,6 +53,57 @@ export function inForce(db: Pick<ContentDb, DocKind>, kind: DocKind, id: Id, day
   return out;
 }
 
+/** Дни «в силе» редакций-проектов, которые назначил проект «Новый продукт» (Б7д): id редакции → номер дня. */
+export type DocDays = Record<Id, number>;
+
+const lived = new WeakMap<ContentDb, WeakMap<DocDays, ContentDb>>();
+
+/**
+ * База, по которой живёт завод (Б7д): у редакций, которые проект ввёл в силу, — их день из состояния вместо дня, который
+ * не наступает. Дней нет — та же база, тем же объектом, и все кэши по базе живут как раньше. Копия — на объект дней:
+ * проект не правит дни на месте, а кладёт новый объект.
+ */
+export function liveOf(db: ContentDb, days: DocDays | undefined): ContentDb {
+  if (!days) return db;
+  let byDays = lived.get(db);
+  if (!byDays) {
+    byDays = new WeakMap();
+    lived.set(db, byDays);
+  }
+  const hit = byDays.get(days);
+  if (hit) return hit;
+  const out: ContentDb = { ...db };
+  for (const kind of DOC_KINDS) {
+    const recs = db[kind] as Docs;
+    if (!Object.keys(days).some(id => recs[id])) continue;
+    const copy: Docs = { ...recs };
+    for (const [id, day] of Object.entries(days)) if (recs[id]) copy[id] = { ...recs[id], doc: { ...recs[id].doc, from: day } };
+    (out as unknown as Record<DocKind, Docs>)[kind] = copy;
+  }
+  // позиция, которую проект ввёл (Б7д): её спрос после ввода — у покупателей, сама она — в позициях плана сценария с
+  // картой своего продукта
+  const launched = Object.keys(days).filter(id => db.skus[id]?.launch);
+  if (launched.length > 0) {
+    const customers = { ...db.customers };
+    for (const id of launched)
+      for (const [c, perDay] of Object.entries(db.skus[id].launch!)) if (customers[c]) customers[c] = { ...customers[c], demand: { ...customers[c].demand, [id]: perDay } };
+    out.customers = customers;
+    const scenarios = { ...db.scenarios };
+    for (const [k, sc] of Object.entries(db.scenarios)) {
+      if (!sc.plan) continue;
+      const items = [...sc.plan.items];
+      for (const id of launched) {
+        const recipe = Object.values(db.recipes).find(r => r.product === db.skus[id].product)?.id;
+        if (recipe && !items.some(it => it.sku === id)) items.push({ recipe, sku: id });
+      }
+      scenarios[k] = { ...sc, plan: { ...sc.plan, items } };
+    }
+    out.scenarios = scenarios;
+  }
+  byDays.set(days, out);
+  return out;
+}
+
 /** Статус редакции в день `day`: проект — до дня введения; действует; в архиве — когда введена следующая. */
 export function statusOf(db: Pick<ContentDb, DocKind>, kind: DocKind, id: Id, day: number): DocStatus {
   const head = headOf(db, kind, id);

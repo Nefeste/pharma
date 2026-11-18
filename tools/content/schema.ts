@@ -186,6 +186,17 @@ export const scenario = z.strictObject({
    * покупателей ровный, прогноза нет
    */
   forecast: z.strictObject({ optimism: percent }).optional(),
+  /** проект «Новый продукт» (Б7д): рабочие дни этапов, серии валидации, разгон спроса */
+  project: z
+    .strictObject({
+      method: z.number().int().positive(),
+      clean: z.number().int().positive(),
+      protocol: z.number().int().positive(),
+      report: z.number().int().positive(),
+      batches: z.number().int().positive(),
+      ramp: z.strictObject({ from: z.number().int().min(1).max(100), months: z.number().int().positive() }),
+    })
+    .optional(),
   /**
    * события коммерции (Б6е): в месяц — от и до; событие — серия позиции ± `size` %; крупный заказ — срок через столько
    * суток, от и до, его доля событий — `big` %; остальные — снятый спрос
@@ -1177,6 +1188,8 @@ export const sku = z.strictObject({
   /** цена завода за пачку и зарегистрированная предельная цена (у ЖНВЛП), ₽ без НДС */
   price: z.number().positive(),
   regPrice: z.number().positive().optional(),
+  /** спрос после ввода (Б7д): пачек в рабочий день у покупателя — у позиции продукта-проекта */
+  launch: z.record(z.string(), z.number().positive()).optional(),
 });
 
 /**

@@ -9,7 +9,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 50;
+export const SCHEMA = 51;
 
 // ---------------------------------------------------------------- склад
 
@@ -447,7 +447,8 @@ export interface CauseHit {
 export type BatchStatus = 'waiting' | 'reserved' | 'kitting' | 'process' | 'bulk' | 'packing' | 'fg' | 'released' | 'rejected' | 'cancelled';
 
 /** Под что задание на серию (Б6а): запас позиции или заказ покупателя. */
-export type BatchFor = { kind: 'stock' } | { kind: 'order'; order: string };
+/** Под что задание на серию (Б6а): запас позиции, заказ покупателя; с Б7д — пробная серия и серия валидации проекта. */
+export type BatchFor = { kind: 'stock' } | { kind: 'order'; order: string } | { kind: 'project'; project: string; role: 'trial' | 'validation' };
 
 /**
  * Чем занято время серии (геймдизайн, §5.4): ждёт своей даты; нет материалов; комплектация; стадия ждёт людей;
@@ -1037,6 +1038,8 @@ export interface Task {
   pair?: string;
   /** оценка влияния отклонения (Б1г): какого */
   dev?: string;
+  /** работа проекта «Новый продукт» (Б7д): какого */
+  project?: string;
   /** работа на месте, с */
   work: number;
   /**
@@ -1822,6 +1825,11 @@ export interface TestWhy {
  * только с командой, — задания, заказа, вакансии, вывоза — нет, пока его не приняли.
  */
 export type Decided =
+  /**
+   * проект «Новый продукт» (Б7д): начат — продукт; остановлен; протокол валидации — продавать ли серии валидации; этап
+   * пройден — какой и куда дальше
+   */
+  | { kind: 'project'; op: 'start' | 'stop' | 'protocol' | 'stage'; project: string; product: Id; sell?: boolean; stage?: ProjectStage }
   /** оборудование (Б7в): что сделано с какой единицей — класс, поставщик, обещанный день поставки, кого заменяет */
   | { kind: 'equip'; op: 'buy' | 'replace' | 'move' | 'remove' | 'cancel'; unit: string; type: Id; vendor?: Id; due?: number; of?: string }
   /** задание на серию: позиция, карта и «не раньше»; в замороженном горизонте (Б6е) — цена правки */
@@ -2101,6 +2109,46 @@ export type SitePlan = Plant & { rev?: number };
 /** Номер правки плана здания (Б7а): у записи базы его нет — 0. */
 export const planRev = (plan: SitePlan): number => plan.rev ?? 0;
 
+/**
+ * Этап проекта «Новый продукт» (Б7д): готовность завода, перенос методик, документы и обучение, оценка очистки, пробная
+ * серия, протокол валидации, серии валидации, отчёт, изменение досье — затем продукт в производстве; остановлен игроком.
+ */
+export type ProjectStage = 'ready' | 'methods' | 'docs' | 'clean' | 'trial' | 'protocol' | 'validation' | 'report' | 'dossier' | 'done' | 'stopped';
+
+/**
+ * Проект «Новый продукт» (Б7д): продукт и его карта, когда начат, этап и с какого мгновения; решение протокола — продавать
+ * ли серии валидации; пробная серия и серии валидации; сколько серий валидации подряд прошли и сколько раз счёт начинался
+ * заново; изменение досье — день подачи и день решения; день, с которого продукт производят.
+ */
+export interface Project {
+  id: string;
+  product: Id;
+  recipe: Id;
+  started: number;
+  stage: ProjectStage;
+  since: number;
+  sell?: boolean;
+  trial?: string;
+  batches: string[];
+  /** серии проекта, что прошли: балк разрешён ОКК (у серий «не для продажи» он потом — в отклонённое) */
+  ok?: string[];
+  passed: number;
+  restarts: number;
+  dossier?: { filed: number; decide: number };
+  live?: number;
+  /** до какого дня ждёт этап «документы и обучение»: день ввода карты и процедур */
+  until?: number;
+}
+
+/**
+ * Портфель (Б7д): проекты «Новый продукт» по номеру; дни «в силе» редакций-проектов, которые проекты ввели, — id редакции
+ * → номер дня. Дни — новым объектом на каждую правку: по нему кэш действующей базы (`liveOf`)
+ */
+export interface Portfolio {
+  projects: Record<string, Project>;
+  docs?: Record<Id, number>;
+}
+
 export interface PlantState {
   schema: number;
   /** отпечаток базы, с которой начата партия */
@@ -2111,6 +2159,8 @@ export interface PlantState {
    * план отсюда, его номер записи — `plan.id`. Его не правят на месте: правка стройки (Б7б) даёт новый объект
    */
   plan: SitePlan;
+  /** портфель (Б7д): проекты «Новый продукт» и дни «в силе» редакций, которые они ввели */
+  portfolio?: Portfolio;
   seed: number;
   /** ветви зерна по именам (src/engine/random.ts): своя ветвь у подсистемы и у вещи */
   rng: Record<string, RngState>;
@@ -2337,6 +2387,13 @@ export type Command =
   | { kind: 'cancelPo'; po: string; by?: string }
   /** задание на серию по карте: не раньше — игровые секунды; нет — сейчас */
   | { kind: 'order'; recipe: Id; notBefore?: number; by?: string; sku?: Id; for?: string }
+  /**
+   * проект «Новый продукт» (Б7д) — место директора: начать проект продукта-проекта, остановить проект, решение протокола
+   * валидации — продавать ли серии валидации
+   */
+  | { kind: 'project'; op: 'start'; product: Id }
+  | { kind: 'project'; op: 'stop'; id: string }
+  | { kind: 'project'; op: 'protocol'; id: string; sell: boolean }
   /** отменить задание на серию до комплектовки (Б6а) */
   | { kind: 'cancel'; batch: string; by?: string }
   /**
@@ -2629,6 +2686,11 @@ export type Refusal =
    * CAPA (Б5е): такого класса или действия нет; действие не подходит к отклонению или его нечем выполнить; у цепочки уже
    * есть CAPA, которую ещё не проверили; такой CAPA нет; она уже выполнена; причины без признака в записях
    */
+  /** проект «Новый продукт» (Б7д): продукта нет или он не проект; проект продукта уже идёт; проекта нет; этап не тот */
+  | 'noProduct'
+  | 'projectBusy'
+  | 'noProject'
+  | 'notStage'
   | 'noCls'
   | 'noAction'
   | 'capaFit'
@@ -2639,6 +2701,8 @@ export type Refusal =
 
 /** Извещение для окна: что случилось за время команды. */
 export type Notice =
+  /** проект «Новый продукт» (Б7д): этап пройден — какой теперь; продукт в производстве — `done` */
+  | { kind: 'project'; project: string; product: Id; stage: ProjectStage }
   /**
    * стройка (Б7б): правка принята — цена с НДС (у сноса — возврат минусом), имя вещи, снос занятого — «когда
    * освободится»; не принята — почему; отложенный снос прошёл или больше не годится

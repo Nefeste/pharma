@@ -59,7 +59,7 @@
 // «Вывоз отходов». Ошибок в консоли и запросов наружу нет. Снимки — tools/app/out/e2e*.png. Первая неделя
 // (docs/specs/2026-10-vertical-slice.md): путь новичка от «Кем вы будете» до «За эту игру» на планёрке 8 сентября в
 // чистом окне — tools/app/e2e-week.mjs.
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits|build|equip|sources] [--long 1]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--port 8094] [--only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits|build|equip|sources|portfolio] [--long 1]
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -70,6 +70,7 @@ import { sopPart } from './e2e-sop.mjs';
 import { mrpPart } from './e2e-mrp.mjs';
 import { buildPart } from './e2e-build.mjs';
 import { equipPart } from './e2e-equip.mjs';
+import { portfolioPart } from './e2e-portfolio.mjs';
 import { routePart } from './e2e-route.mjs';
 import { editsPart } from './e2e-edits.mjs';
 import { sourcesPart } from './e2e-sources.mjs';
@@ -290,7 +291,8 @@ const answerAsks = async (no = () => false) => {
 // (Б7б) — чистое окно места «Директор»: корпус, помещения, двери, зона и ряд, ступени проверок, снос и отмена
 // (tools/app/e2e-build.mjs); «Оборудование» (Б7в) — чистое окно места «Директор»: заказ, отмена, «нельзя», замена,
 // заказ из карточки и его отмена, с `--long 1` — до монтажа и записи квалификации (tools/app/e2e-equip.mjs). `--only main`, `week`, `memo`, `capa`, `jobs`, `launch`, `forecast`, `sop`, `mrp`, `edits`,
-// `build`, `equip` или `sources` — одна из них
+// `build`, `equip`, `sources` или `portfolio` — одна из них; «Портфель» (Б7д) — чистое окно места «Директор»: проект
+// метформина, «чего нет», протокол, планёрка, остановка, с `--long 1` — до пробной серии (tools/app/e2e-portfolio.mjs)
 const only = arg('only', '');
 try {
   // основная часть кончилась — её страницу закрыть: она рисует кадры и отняла бы у других частей процессор
@@ -311,6 +313,7 @@ try {
   if (only === '' || only === 'equip') await equipPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
   if (only === '' || only === 'route') await routePart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'sources') await sourcesPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
+  if (only === '' || only === 'portfolio') await portfolioPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
@@ -1269,7 +1272,13 @@ async function mainPart() {
     const top = await page.evaluate(() => {
       const g = window.__game;
       const p = g.stage.plates.plates.find(x => x.k === 'top' && x.rank === 1);
-      return p ? { sp: g.stage.screen(p.x, 2.4 + p.h / 2, p.z), i: p.thing.i } : undefined;
+      if (!p) return undefined;
+      // камеру могли увести прежние шаги: табличка вне кадра — камера на неё, как у карточки вещи
+      if (!g.stage.screen(p.x, 2.4 + p.h / 2, p.z)) {
+        g.stage.cam.target.set(p.x, 0, p.z);
+        g.stage.cam.update(0);
+      }
+      return { sp: g.stage.screen(p.x, 2.4 + p.h / 2, p.z), i: p.thing.i };
     });
     if (!top?.sp) fail('табличка первого места не на экране');
     else {
@@ -1503,7 +1512,7 @@ async function mainPart() {
     await page.screenshot({ path: join(out, 'e2e-pauses.png') });
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press('Escape');
-    if (menu.all !== 19 || menu.on !== 19 || menu.notYours.join() !== 'truckWait,orderRisk,unit' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
+    if (menu.all !== 20 || menu.on !== 20 || menu.notYours.join() !== 'truckWait,orderRisk,unit,project' || kept !== '["morning"]' || (await page.evaluate(() => !!document.querySelector('#pauses'))))
       fail(`автопаузы: в меню ${menu.all}, включено ${menu.on}, не ваши ${menu.notYours.join(', ')}, в окне «${kept}»`);
     else ok(`автопаузы: в меню ${menu.all}, не ваши — ${menu.notYours.join(', ')}; планёрку отключили — в окне ${kept}; Esc закрыл меню`);
     const t0 = await gameT();

@@ -8,5 +8,7 @@ inn: fluconazole
 code: FL
 form: capsule
 strength: { mg: 150 }
-source: [ru-fluconazole]
+# в перечне ЖНВЛП: твёрдые формы для приёма внутрь с обычным высвобождением (распоряжение № 3867-р, с. 50 копии)
+jnvlp: true
+source: [jnvlp-3867, ru-fluconazole]
 review: draft

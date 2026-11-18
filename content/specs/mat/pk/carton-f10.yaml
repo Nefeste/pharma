@@ -1,0 +1,7 @@
+# Редакция-проект (Б8, шаг 2): в силу её вводит проект «Новый продукт»
+id: spec.mat.pk.carton-f10
+name: { ru: "Пачка «Флуконазол 150 мг №10»", en: "Carton «Fluconazole 150 mg No. 10»" }
+doc: { code: SP-0038, rev: 1, approved: role.qc-head }
+pairs: [{ supplier: sup.pack, maker: mkr.pack }]
+tests:
+  - { test: test.visual }

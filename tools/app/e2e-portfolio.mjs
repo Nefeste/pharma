@@ -5,7 +5,8 @@
 // открыта. «Остановить» — проекта нет, «Начать проект» снова. С `--long 1` — помещение покрытия, коатер и весы
 // командами стройки и оборудования (их окно проверяют части «Стройка» и «Оборудование»), «До утра», пока проект не
 // дойдёт до пробной серии: её строка в окне и в досье — «пробная серия проекта P2, не для продажи». Снимки —
-// tools/app/out/portfolio-*.png, лист — tools/app/out/portfolio.png.
+// tools/app/out/portfolio-*.png, лист — tools/app/out/portfolio.png. Флуконазол (Б8) — «Начать проект»: чего нет —
+// помещения капсулирования и пары изготовителя; «Остановить».
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openGame, steps } from './e2e-build.mjs';
@@ -38,6 +39,11 @@ async function director(x) {
       portfolio: () => !!window.__game.store.get().portfolio.view && !!row(),
       // проект метформина на этапе; `none` — проекта нет, «Начать проект» снова есть
       stage: st => (st === 'none' ? !row()?.querySelector('[data-test=portfolio-project]') && !!row()?.querySelector('[data-test=portfolio-start]') : row()?.querySelector('[data-test=portfolio-project]')?.dataset.stage === st),
+      // проект флуконазола на этапе (Б8) — как `stage`
+      flu: st => {
+        const r = document.querySelector('[data-test=portfolio-row][data-product="prd.fluconazole150"]');
+        return st === 'none' ? !r?.querySelector('[data-test=portfolio-project]') && !!r?.querySelector('[data-test=portfolio-start]') : r?.querySelector('[data-test=portfolio-project]')?.dataset.stage === st;
+      },
       sell: v => row()?.querySelector('[data-test=portfolio-sell]')?.dataset.sell === v,
       ref: tab => !!document.querySelector('#ref') && window.__game.store.get().ref.tab === tab,
     });
@@ -122,6 +128,22 @@ async function director(x) {
     else ok(`проект остановлен: «${r2}»`);
 
     if (long) await trial({ page, s, ok, fail, untilMorning, openPortfolio, text });
+
+    // флуконазол (Б8, шаг 2) — капсулы: чего нет — помещения капсулирования, его машины и пары изготовителя; затем
+    // «Остановить». После пробной серии метформина: номер его проекта — прежний
+    const FLU = '[data-test=portfolio-row][data-product="prd.fluconazole150"]';
+    if (!(await page.$('[data-test=portfolio-row]'))) await openPortfolio('F — окно для флуконазола');
+    const rf = await text(FLU);
+    if (!/Флуконазол/.test(rf) || !/не производится/.test(rf)) fail(`портфель, флуконазол: «${rf}»`);
+    else ok(`портфель, флуконазол: «${rf}»`);
+    await s.measure('Флуконазол: «Начать проект»', () => page.click(`${FLU} [data-test=portfolio-start]`), 'flu', 'ready');
+    await page.waitForSelector(`${FLU} [data-test=portfolio-gap]`, { timeout: 20_000 });
+    const fg = await page.evaluate(sel => [...document.querySelectorAll(`${sel} [data-test=portfolio-gap]`)].map(g => g.dataset.kind), FLU);
+    const rf1 = await text(FLU);
+    await s.shot('Флуконазол: чего нет');
+    if (!fg.includes('room') || !fg.includes('pair') || !/Капсулирование/.test(rf1)) fail(`флуконазол: чего нет ${fg.join(', ')} — «${rf1}»`);
+    else ok(`флуконазол: чего нет — ${fg.join(', ')}`);
+    await s.measure('Флуконазол: «Остановить»', () => page.click(`${FLU} [data-test=portfolio-stop]`), 'flu', 'none');
     if (errors.length > 0) fail(`ошибки в консоли: ${errors.slice(0, 3).join(' | ')}`);
   } finally {
     await ctx.close();

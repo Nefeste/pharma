@@ -23,4 +23,7 @@ items:
   mat.pk.leaflet-met: { price: 0.5, moq: 50000 }
   mat.pk.carton-i20: { price: 2.4, moq: 20000 }
   mat.pk.leaflet-ibu: { price: 0.5, moq: 50000 }
+  # упаковка флуконазола (Б8): цены — гипотезы
+  mat.pk.carton-f10: { price: 2.2, moq: 20000 }
+  mat.pk.leaflet-flu: { price: 0.45, moq: 50000 }
   mat.pk.case: { price: 38, moq: 500 }

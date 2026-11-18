@@ -1,0 +1,11 @@
+id: mat.pk.carton-f10
+kind: packaging
+code: 300014
+name: { ru: Пачка «Флуконазол 150 мг №10», en: Carton «Fluconazole 150 mg No. 10» }
+unit: pcs
+container: cnt.box.cartons
+storage: reg.ccrt
+shelf: 60
+spec: spec.mat.pk.carton-f10
+bad: { attr: appearance }
+sample: 10

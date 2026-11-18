@@ -1,0 +1,11 @@
+# Соглашение по качеству с изготовителем упаковки на упаковку флуконазола (Б8, шаг 2): поставщиков упаковочных
+# материалов квалифицируют до серий валидации (eaeu-65, п. 51). Редакция-проект: в силу её вводит проект «Новый продукт»
+id: qag.pack-flu
+name: { ru: Соглашение по качеству на упаковку флуконазола, en: Quality agreement on fluconazole packaging }
+doc: { code: QAG-0015, rev: 1, approved: role.qa-head }
+supplier: sup.pack
+makers: [mkr.pack]
+materials: [mat.pk.carton-f10, mat.pk.leaflet-flu]
+terms: [handling, labelling, packaging, shipping, complaints, recall]
+source: [gmp-eaeu, eaeu-65]
+review: draft

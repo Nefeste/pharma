@@ -1,0 +1,11 @@
+id: mat.pk.leaflet-flu
+kind: packaging
+code: 300015
+name: { ru: Инструкция «Флуконазол 150 мг», en: Leaflet «Fluconazole 150 mg» }
+unit: pcs
+container: cnt.box.leaflets
+storage: reg.ccrt
+shelf: 60
+spec: spec.mat.pk.leaflet-flu
+bad: { attr: appearance }
+sample: 10

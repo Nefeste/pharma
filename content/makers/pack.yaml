@@ -17,4 +17,6 @@ makes:
   - mat.pk.carton-i20
   - mat.pk.leaflet-ibu
   - mat.pk.leaflet-lor
+  - mat.pk.carton-f10
+  - mat.pk.leaflet-flu
   - mat.pk.case

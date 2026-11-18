@@ -1,0 +1,12 @@
+id: mat.fg.fluconazole150-n10
+kind: fg
+code: 500007
+name: { ru: "Флуконазол, капсулы 150 мг, №10", en: "Fluconazole 150 mg capsules, 10" }
+unit: pcs
+container: cnt.case.fg
+# «не выше 25 °C» инструкции (ru-fluconazole) — режим контролируемой комнатной, как у прочих продуктов завода
+storage: reg.ccrt
+# срок годности — 2 года (ru-fluconazole)
+shelf: 24
+spec: spec.fg.fluconazole150
+sample: 6

@@ -1,0 +1,7 @@
+# Контейнер капсул в балке: 50 000 капсул по 276 мг — около 14 кг; на пластиковой паллете — 4 (гипотезы).
+id: cnt.bin.capsules
+name: { ru: "Контейнер капсул, 50 000 шт.", en: Capsule bin of 50 000 }
+kind: bin
+capacity: { pcs: 50000 }
+perPallet: 4
+load: drums

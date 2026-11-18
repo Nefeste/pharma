@@ -1,0 +1,9 @@
+# Толщина дозирующего диска (Б8): капсулы наполняют по объёму — масса содержимого пропорциональна объёму пробки при той
+# же плотности (stranzinger-2019). Объём — толщина диска: при цели 15 мм на каждый мм — 6,7 % массы (вывод)
+id: cause.encap.disc
+name: { ru: Дозирующий диск не по цели, en: Dosing disc off target }
+driver: { param: disc }
+effects:
+  - { attr: mass, coef: 6.7 }
+source: [stranzinger-2019]
+review: draft

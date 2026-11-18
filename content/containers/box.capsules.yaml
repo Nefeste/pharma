@@ -1,0 +1,8 @@
+# Коробка пустых капсул: 100 000 капсул размера 1 по 76 мг — 7,6 кг (масса — stegemann-2014; число в коробке и паллете —
+# гипотезы)
+id: cnt.box.capsules
+name: { ru: "Коробка пустых капсул, 100 000 шт.", en: Box of 100 000 empty capsules }
+kind: box
+capacity: { kg: 7.6 }
+perPallet: 40
+load: bags

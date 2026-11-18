@@ -1,0 +1,16 @@
+# Внешний вид капсул (МОК, Б8): частые дефекты — расщеплённые крышечки и не до конца закрытые капсулы (nair-2004, по
+# аннотации); у отобранных капсул — доля с дефектами. Число капсул, время и погрешность — гипотезы. Редакция-проект: в
+# силу её вводит проект «Новый продукт»
+id: test.ipc.capdefects
+name: { ru: Дефекты капсул (МОК), en: Capsule defects (IPC) }
+doc: { code: TM-0015, rev: 1, approved: role.qc-head }
+attr: defects
+prep: 5
+run: 0
+unattended: false
+sd: 0.1
+roles: [role.operator]
+hours: 1
+every: 12
+source: [nair-2004]
+review: draft

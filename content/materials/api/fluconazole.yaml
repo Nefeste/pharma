@@ -1,0 +1,16 @@
+# АФС флуконазола (Б8). Хранение, срок повторных испытаний и свойства партии — выбор геймдизайна, сверить с консультантом
+id: mat.api.fluconazole
+kind: api
+code: 100005
+name: { ru: Флуконазол, en: Fluconazole }
+unit: kg
+container: cnt.drum.fibre50
+storage: reg.ccrt
+shelf: 60
+potency: true
+spec: spec.mat.api.fluconazole
+# истинные свойства партии: среднее и разброс (содержание и влажность — %, размер частиц d50 — мкм); партия брака —
+# сдвиг (гипотезы)
+props: { assay: [99.6, 0.15], moisture: [0.2, 0.05], particle: [50, 10] }
+bad: { attr: assay, shift: -3 }
+sample: 20

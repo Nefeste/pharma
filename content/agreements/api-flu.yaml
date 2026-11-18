@@ -1,0 +1,11 @@
+# Соглашение по качеству с изготовителем флуконазола (Б8; GMP ЕАЭС, ч. I, п. 5.28). Редакция-проект: в силу её вводит
+# проект «Новый продукт»
+id: qag.api-flu
+name: { ru: Соглашение по качеству с изготовителем флуконазола, en: Quality agreement with the fluconazole maker }
+doc: { code: QAG-0013, rev: 1, approved: role.qa-head }
+supplier: sup.api-flu
+makers: [mkr.api-flu]
+materials: [mat.api.fluconazole]
+terms: [handling, labelling, packaging, shipping, complaints, recall]
+source: [gmp-eaeu, eaeu-65]
+review: draft

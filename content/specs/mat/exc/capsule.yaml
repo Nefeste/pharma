@@ -1,0 +1,10 @@
+# Входной контроль пустых капсул (Б8): влажность оболочки по потере в массе при высушивании — 13–16 % (stegemann-2014);
+# ниже 13 % оболочка хрупкая. Редакция-проект: в силу её вводит проект «Новый продукт»
+id: spec.mat.exc.capsule
+name: { ru: "Капсулы твёрдые желатиновые, размер 1", en: "Hard gelatin capsules, size 1" }
+doc: { code: SP-0035, rev: 1, approved: role.qc-head }
+pairs: [{ supplier: sup.exc, maker: mkr.exc }]
+tests:
+  - { test: test.lod, min: 13, max: 16 }
+source: [stegemann-2014]
+review: draft

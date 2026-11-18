@@ -1,0 +1,10 @@
+# Входной контроль АФС флуконазола (Б8): пределы — гипотезы, как у прочих субстанций; статьи на субстанцию не искали.
+# Редакция-проект: в силу её вводит проект «Новый продукт»
+id: spec.mat.api.fluconazole
+name: { ru: "Флуконазол, субстанция", en: "Fluconazole, active substance" }
+doc: { code: SP-0034, rev: 1, approved: role.qc-head }
+pairs: [{ supplier: sup.api-flu, maker: mkr.api-flu }]
+tests:
+  - { test: test.ir }
+  - { test: test.hplc-assay, min: 98.5, max: 101 }
+  - { test: test.lod, max: 0.5 }

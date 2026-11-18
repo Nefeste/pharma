@@ -1,0 +1,94 @@
+# Технологическая карта капсул флуконазола 150 мг (Б8). Состав содержимого капсулы — по инструкции (ru-fluconazole):
+# флуконазол 150 мг, лактоза 31, крахмал кукурузный 12, повидон 5, кремния диоксид коллоидный 1, магния стеарат 1 —
+# 200 мг; кремния диоксид в учёте карты не ведётся — его доля в лактозе: упрощение геймдизайна. Повидон — связующее,
+# поэтому влажная грануляция, как у парацетамола (вывод: способ производства в источнике не описан). Капсулирование — на
+# машине с дозирующим диском (fda-supac-me), капсулы размера 1, 76 мг (gf-15; stegemann-2014). Времена, режимы,
+# разбросы, потери и показатели — гипотезы геймдизайна, не чей-то регламент. Редакция-проект: в силу её вводит проект
+# «Новый продукт»
+id: rcp.fluconazole150.wet.v1
+name: { ru: "Флуконазол 150 мг, влажная грануляция, капсулы", en: "Fluconazole 150 mg, wet granulation, capsules" }
+doc: { code: MF-0005, rev: 1, approved: role.production-head }
+product: prd.fluconazole150
+# серия: 120 кг содержимого — 600 тыс. капсул; с пустыми капсулами по 76 мг — 165,6 кг (гипотеза размера серии)
+batch: { kg: 165.6, units: 600000 }
+bom:
+  - { material: mat.api.fluconazole, kg: 90, potency: true, stage: granulate }
+  - { material: mat.exc.starch-maize, kg: 7.2, stage: granulate }
+  - { material: mat.exc.povidone, kg: 3, stage: granulate }
+  - { material: mat.exc.lactose, kg: 19.2, qs: true, stage: granulate }
+  - { material: mat.exc.mgst, kg: 0.6, stage: blend }
+  # пустые капсулы — 600 тыс. по 76 мг
+  - { material: mat.exc.capsule, kg: 45.6, stage: encap }
+stages:
+  - id: dispense
+    room: dispensing
+    equipment: [eq.scale]
+    staff: { role: role.operator, n: 2 }
+    time: { setup: 20, perComponent: 15, spread: 10 }
+  - id: granulate
+    mix: true
+    room: granulation
+    equipment: [eq.hsm]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 15, perLoad: 35, loads: 2, spread: 5 }
+    params:
+      - { id: impeller, unit: rpm, target: 150, range: [120, 180], sd: 8, step: 10 }
+      - { id: wetMassing, unit: min, target: 4, range: [3, 6], sd: 0.4, step: 0.5 }
+      - { id: water, unit: kg, target: 24, range: [21, 27], sd: 0.6, step: 0.5 }
+    loss: [0.5, 0.2]
+  - id: dry
+    room: granulation
+    equipment: [eq.fbd]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 10, perLoad: 90, loads: 2, spread: 5 }
+    params:
+      - { id: inletTemp, unit: C, target: 60, range: [55, 65], sd: 1.5, step: 1 }
+    ipc:
+      - { test: test.lod, max: 2.0 }
+    loss: [0.5, 0.2]
+  - id: mill
+    room: blending
+    equipment: [eq.mill]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 15, kgPerHour: 300, spread: 5 }
+    loss: [0.3, 0.1]
+    screen: 1.0
+  - id: blend
+    room: blending
+    equipment: [eq.blender]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 10, perLoad: 15, loads: 1, spread: 5 }
+    params:
+      - { id: lubeTime, unit: min, target: 5, range: [3, 7], sd: 0.5, step: 0.5 }
+    loss: [0.1, 0.05]
+  # капсулирование: машина с дозирующим диском; производительность — при скорости по цели, с уставкой — вместе с ней;
+  # масса содержимого — по объёму пробки: толщина диска (stranzinger-2019); сила трамбовки — твёрдость пробки, масса
+  # не меняется (shah-1986)
+  - id: encap
+    room: capsulation
+    equipment: [eq.encapsulator]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 30, unitsPerHour: 90000, spread: 5 }
+    params:
+      - { id: disc, unit: mm, target: 15, range: [14, 16], sd: 0.05, step: 0.1 }
+      - { id: tamp, unit: kN, target: 0.15, range: [0.1, 0.2], sd: 0.005, step: 0.01 }
+      - { id: speed, unit: rpm, target: 100, range: [80, 120], sd: 2, step: 5 }
+    # массы отдельных капсул — 90–110 % номинала (fda-osd-1994); в движке — средняя по пробе
+    ipc:
+      - { test: test.ipc.capmass, every: 30, min: 95, max: 105 }
+      - { test: test.ipc.capdefects, every: 30, max: 1 }
+    loss: [0.8, 0.3]
+bulk: mat.bulk.fluconazole150
+# показатели балка без причин: номинал и разброс от серии к серии; растворение — за 45 мин; дефекты — % отобранных
+# капсул
+quality:
+  moisture: [2.0, 0.15]
+  mass: [100, 0.5]
+  assay: [100, 0.6]
+  disintegration: [8, 1]
+  dissolution: [92, 1.5]
+  granule: [350, 25]
+  defects: [0.2, 0.1]
+yield: { expected: 97, alarm: 94 }
+source: [ru-fluconazole, fda-supac-me, fda-osd-1994, gf-15, stegemann-2014, stranzinger-2019, shah-1986]
+review: draft

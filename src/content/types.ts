@@ -1003,7 +1003,8 @@ export interface Product {
   inn: string;
   /** код в номере серии: две заглавные латинские буквы или цифры, у каждого продукта свой */
   code: string;
-  form: 'tablet';
+  /** капсулы — с Б8 */
+  form: 'tablet' | 'capsule';
   /** дозировка (Б3а): действующего вещества в единице формы, мг */
   strength: number;
   /** в перечне ЖНВЛП: цена позиции — не выше зарегистрированной */
@@ -1109,9 +1110,10 @@ export interface EquipmentType {
 }
 
 /** Единица режима в движке: об/мин — целыми, минуты — секундами, °C — десятыми, кН — сотыми, кг — граммами. */
-export type ParamUnit = 'rpm' | 'min' | 'C' | 'kN' | 'kg' | 'gpm';
+export type ParamUnit = 'rpm' | 'min' | 'C' | 'kN' | 'kg' | 'gpm' | 'mm';
 /** `gpm` — подача дисперсии покрытия, г/мин (Б7д): целыми граммами */
-export const PARAM_SCALE: Record<ParamUnit, number> = { rpm: 1, min: 60, C: 10, kN: 100, kg: 1000, gpm: 1 };
+/** `mm` — толщина дозирующего диска капсулонаполнительной машины (Б8): сотыми мм */
+export const PARAM_SCALE: Record<ParamUnit, number> = { rpm: 1, min: 60, C: 10, kN: 100, kg: 1000, gpm: 1, mm: 100 };
 
 export interface StageParam {
   id: string;

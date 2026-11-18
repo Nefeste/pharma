@@ -2064,6 +2064,11 @@ export interface Decision {
  */
 export interface HeadsState {
   mode: Partial<Record<Head, DeptMode>>;
+  /**
+   * письма сценария (Б9; src/engine/letters.ts): пришедшие по порядку; нет у сценария без писем. Здесь, а не полем
+   * состояния: письмо передаёт игроку режимы отделов, а полей верхнего уровня — не больше 63
+   */
+  letters?: LetterRec[];
   open: Record<string, number>;
   no: Record<string, number>;
   /** служебные записки без ответа (Б5д) — номера записей журнала */
@@ -2266,8 +2271,6 @@ export interface PlantState {
   waste: WasteState;
   /** показатели руководителей (Б5ж; src/engine/kpi.ts): срезы суток этого месяца и закрытые месяцы */
   kpi: KpiState;
-  /** письма сценария (Б9; src/engine/letters.ts): пришедшие по порядку; нет у сценария без писем */
-  letters?: LetterRec[];
   /** стройка (Б7б; src/engine/build.ts): шаги отмены, перестраиваемое, сносимое, счётчики имён, потрачено; не строили — нет */
   build?: BuildState;
 }

@@ -34,7 +34,7 @@ export function lettersOf(db: ContentDb, scenario: Id): readonly Letter[] {
 export function startLetters(db: ContentDb, s: PlantState, today: number, warm: number) {
   const all = lettersOf(db, s.scenario);
   if (all.length === 0) return;
-  s.letters = [];
+  s.heads.letters = [];
   for (const l of all) {
     if ('start' in l.when) arrive(db, s, l, []);
     else if ('day' in l.when) {
@@ -44,15 +44,15 @@ export function startLetters(db: ContentDb, s: PlantState, today: number, warm: 
   }
 }
 
-const recOf = (s: PlantState, id: Id) => s.letters?.find(r => r.id === id);
+const recOf = (s: PlantState, id: Id) => s.heads.letters?.find(r => r.id === id);
 
 /** Письмо пришло: вещь — по `shows` в этот час (у письма события — вещь события); извещение. */
 function arrive(db: ContentDb, s: PlantState, l: Letter, notices: Notice[], ev?: string) {
-  if (!s.letters || recOf(s, l.id)) return;
+  if (!s.heads.letters || recOf(s, l.id)) return;
   const rec: LetterRec = { id: l.id, at: s.t };
   const thing = l.shows === 'event' ? ev : l.shows ? find(s, l.shows) : undefined;
   if (thing) rec.thing = thing;
-  s.letters.push(rec);
+  s.heads.letters.push(rec);
   notices.push({ kind: 'letter', id: l.id, from: l.from });
 }
 
@@ -171,7 +171,7 @@ function firstOf(n: Notice): [Letter['when'] & { first: string }, string] | unde
  * пришедшие сейчас, проверяются со следующим событием: игрок их увидит.
  */
 export function lettersStep(db: ContentDb, s: PlantState, notices: Notice[], from: number) {
-  const recs = s.letters;
+  const recs = s.heads.letters;
   if (!recs) return;
   const all = lettersOf(db, s.scenario);
   const open = recs.filter(r => !r.end);
@@ -193,7 +193,7 @@ export function lettersStep(db: ContentDb, s: PlantState, notices: Notice[], fro
  * пропуском, их отделы передаются. Отказы: письма нет или не пришло; кончилось; не наставника.
  */
 export function letterCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, { kind: 'letter' }>, notices: Notice[]) {
-  const recs = s.letters;
+  const recs = s.heads.letters;
   if (!recs) return notices.push({ kind: 'refused', cmd: 'letter', why: 'noLetter' });
   if (cmd.op === 'seen') {
     for (const r of recs.filter(x => !x.end)) {

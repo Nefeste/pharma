@@ -10,17 +10,20 @@ import type { Actions, Hud } from './store';
 
 const key = (id: string) => id.replace(/^let\./, '');
 
+/** Название материала внутри фразы — со строчной, если это не сокращение. */
+const inPhrase = (x: string) => (x.length > 1 && x[1] === x[1].toLowerCase() ? x[0].toLowerCase() + x.slice(1) : x);
+
 /** Записи завода — словами для шаблона письма. */
 function words(hud: Hud, f: LetterFacts): LetterWords {
   const mat = f.material ? db?.materials[f.material] : undefined;
   return {
-    supplier: f.supplier ? named(db?.suppliers[f.supplier]?.name, f.supplier) : '',
-    material: f.material ? named(mat?.name, f.material) : '',
+    supplier: f.supplier ? T.letters.quoted(named(db?.suppliers[f.supplier]?.name, f.supplier)) : '',
+    material: f.material ? inPhrase(named(mat?.name, f.material)) : '',
     qty: f.qty !== undefined && mat ? qtyText(f.qty, mat.unit, 0) : '',
     lot: f.lot ? T.lotCode(...f.lot) : '',
     batch: f.batch ?? (f.order !== undefined ? T.letters.order(f.order) : ''),
     product: f.product ? named(db?.products[f.product]?.name, f.product) : '',
-    customer: f.customer ? named(db?.customers[f.customer]?.name, f.customer) : '',
+    customer: f.customer ? T.letters.quoted(named(db?.customers[f.customer]?.name, f.customer)) : '',
     due: f.due !== undefined ? dateText(momentOf(hud.start, f.due)) : '',
     dev: f.dev ?? '',
   };

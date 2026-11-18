@@ -88,7 +88,7 @@ function goOf(s: PlantState, l: Letter, r: LetterRec): LetterGo | undefined {
 }
 
 export function lettersView(db: ContentDb, s: PlantState): LettersView {
-  const recs = s.letters ?? [];
+  const recs = s.heads.letters ?? [];
   const rows: LetterRow[] = [];
   for (const r of recs) {
     const l = db.letters[r.id];

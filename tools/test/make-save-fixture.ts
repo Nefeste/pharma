@@ -93,11 +93,11 @@ import { calOf } from '../../src/engine/workdays';
 if ((SCHEMA as number) === 52) {
   const c = newPlant(db, { scenario: 'scn.c1', seed: 1 });
   apply(db, c, { kind: 'seat', seats: ['director'] });
-  while (!c.letters?.find(r => r.id === 'let.c1.truck')?.end) apply(db, c, { kind: 'advance', seconds: 10 * MIN });
+  while (!c.heads.letters?.find(r => r.id === 'let.c1.truck')?.end) apply(db, c, { kind: 'advance', seconds: 10 * MIN });
   apply(db, c, { kind: 'letter', op: 'skip', id: 'let.c1.quarantine' });
-  while (!c.letters.some(r => r.id === 'let.c1.release')) apply(db, c, { kind: 'advance', seconds: 10 * MIN });
+  while (!c.heads.letters!.some(r => r.id === 'let.c1.release')) apply(db, c, { kind: 'advance', seconds: 10 * MIN });
   writeFileSync(new URL(`./fixtures/save-v${SCHEMA}.json`, import.meta.url), `${toSave(c)}\n`);
-  console.log(`fixtures/save-v${SCHEMA}.json: писем ${c.letters.length}`);
+  console.log(`fixtures/save-v${SCHEMA}.json: писем ${c.heads.letters!.length}`);
   process.exit(0);
 }
 const s = newPlant(db, { scenario: 'scn.proto', seed: 1 });

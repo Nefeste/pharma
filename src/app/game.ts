@@ -411,12 +411,7 @@ export class Game {
       } else if (d.view === 'letters') {
         // письма сценария (Б9): значок и панель; письмо, которое ждёт открытое окно, кончается
         this.store.set({ letters: { ...this.store.get().letters, view: d } });
-        // первое письмо сценария — панель открывается сама: с него начинается обучение
-        if (!this.lettersShown && d.unread > 0) {
-          this.lettersShown = true;
-          this.store.set({ letters: { ...this.store.get().letters, open: true } });
-          this.actions.readLetter(d.rows[0].id);
-        }
+        this.firstLetter();
         this.seenLetters();
       } else this.store.set({ top: d });
     }
@@ -641,6 +636,18 @@ export class Game {
       this.seenSent.add(r.id);
       this.client.command({ kind: 'letter', op: 'seen', what: r.seen });
     }
+  }
+
+  /** Первое письмо сценария (Б9) — панель открывается сама, когда экраны «Кампания» и «Кем вы будете» закрыты. */
+  private firstLetter() {
+    const h = this.store.get();
+    const v = h.letters.view;
+    if (this.lettersShown || !v || v.unread === 0 || h.campaign.open || h.seats.open) return;
+    this.lettersShown = true;
+    this.store.set({ letters: { ...h.letters, open: true } });
+    this.actions.readLetter(v.rows[0].id);
+    // автопауза письма наставника включена — мир ждёт, пока игрок прочтёт
+    if (v.rows[0].from === 'mentor' && !h.pauses.off.includes('letter')) this.actions.setSpeed(0);
   }
 
   /** Роль словами. */
@@ -1168,6 +1175,7 @@ export class Game {
       for (const [head, mode] of Object.entries(h.seats.modes ?? {}) as [Head, DeptMode][]) if (kept[head] !== mode) this.client.command({ kind: 'mode', head, mode, by: 'player' });
       this.store.set({ seats: { open: false, pick: [] } });
       this.actions.setSpeed(this.resume);
+      this.firstLetter();
     },
     pickMode: (head, mode) => {
       const st = this.store.get().seats;
@@ -1177,6 +1185,7 @@ export class Game {
       // в начале партии место нужно выбрать: закрыть экран нечем
       if (!this.store.get().top?.seats) return;
       this.store.set({ seats: { open: false, pick: [] } });
+      this.firstLetter();
     },
     setStock: patch => {
       const st = this.store.get().stock;

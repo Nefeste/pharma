@@ -224,7 +224,7 @@ export function apply(db: ContentDb, s: PlantState, cmd: Command, more?: More): 
   const live = liveOf(db, s.portfolio?.docs);
   const out = command(live, s, cmd, more);
   // письма (Б9): команда могла выполнить условие письма — задание на серию игрока
-  if (s.letters) lettersStep(live, s, out, 0);
+  if (s.heads.letters) lettersStep(live, s, out, 0);
   return before.length > 0 ? [...before, ...out] : out;
 }
 
@@ -559,7 +559,7 @@ export function catchUp(db: ContentDb, s: PlantState, more?: More): Notice[] {
     const live = liveOf(db, s.portfolio?.docs);
     handle(live, s, due.e, notices);
     // письма (Б9): первое событие вида и условия открытых писем — после каждого события
-    if (s.letters) lettersStep(live, s, notices, k);
+    if (s.heads.letters) lettersStep(live, s, notices, k);
     if (more && !more(notices)) return notices;
   }
   s.t = target;

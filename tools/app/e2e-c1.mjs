@@ -85,6 +85,8 @@ export async function c1Part({ browser, port, out, ok, fail, errors, requests, q
           id => {
             const h = window.__game.store.get();
             if (h.letters.view?.rows.some(r => r.id === id)) return true;
+            // планёрка в 08:00 — закрыть: открытая, она кончила бы письмо о планёрке, едва оно придёт
+            if (h.morning.open) window.__game.actions.closeMorning(false);
             if (h.speed === 0) window.__game.actions.setSpeed(4);
             return false;
           },

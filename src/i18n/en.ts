@@ -1259,6 +1259,7 @@ export const en: Strings = {
     stopHint: 'Stop watching: the previous speed',
   },
   letters: {
+    quoted: (name: string) => name,
     title: 'Letters',
     button: 'Letters',
     hint: 'Letters from your mentor and partners — newest first',

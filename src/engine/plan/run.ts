@@ -159,7 +159,7 @@ export function runSeed(db: ContentDb, s: PlantState, variant: Command[], o: Run
   // стройку прогон не повторяет (Б7б): шаги отмены — без копии, перестраиваемое и сносимое — как у завода
   const build = s.build ? { build: { ...s.build, undo: [] } } : {};
   const c: PlantState = {
-    ...structuredClone({ ...s, plan: undefined, letters: undefined, journal: memos, heads: runHeads(s), kpi: { ...s.kpi, months: [] }, planning, ...build }),
+    ...structuredClone({ ...s, plan: undefined, journal: memos, heads: runHeads(s), kpi: { ...s.kpi, months: [] }, planning, ...build }),
     plan: s.plan,
   };
   for (const inv of Object.values(c.investigations)) delete inv.lead;

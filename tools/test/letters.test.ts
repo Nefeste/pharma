@@ -19,18 +19,18 @@ const fresh = () => {
   apply(db, s, { kind: 'seat', seats: ['director'] });
   return s;
 };
-const rec = (s: PlantState, id: string) => s.letters?.find(r => r.id === `let.c1.${id}`);
+const rec = (s: PlantState, id: string) => s.heads.letters?.find(r => r.id === `let.c1.${id}`);
 
 describe('письма сценария 1', () => {
   test('у сценария 1 — 14 писем наставника; у прототипа писем нет', () => {
     expect(lettersOf(db, 'scn.c1').length).toBe(14);
     expect(lettersOf(db, 'scn.c1').every(l => l.from === 'mentor')).toBe(true);
-    expect(newPlant(db, { scenario: 'scn.proto' }).letters).toBeUndefined();
+    expect(newPlant(db, { scenario: 'scn.proto' }).heads.letters).toBeUndefined();
   });
 
   test('на старте — письмо о фуре, оно показывает на заказ сценария', () => {
     const s = fresh();
-    expect(s.letters?.map(r => r.id)).toEqual(['let.c1.truck']);
+    expect(s.heads.letters?.map(r => r.id)).toEqual(['let.c1.truck']);
     const po = s.pos[rec(s, 'truck')!.thing!];
     expect(po.by).toBe('scenario');
   });
@@ -79,8 +79,8 @@ describe('письма сценария 1', () => {
   test('«Пропустить обучение» — все письма наставника кончились, отделы переданы, новых нет', () => {
     const s = fresh();
     apply(db, s, { kind: 'letter', op: 'skipAll' });
-    expect(s.letters!.length).toBe(14);
-    expect(s.letters!.every(r => r.end?.how === 'skip')).toBe(true);
+    expect(s.heads.letters!.length).toBe(14);
+    expect(s.heads.letters!.every(r => r.end?.how === 'skip')).toBe(true);
     for (const h of ['wms', 'qa', 'qc', 'supply', 'plan', 'mes', 'maint'] as const) expect(modeOf(s, h)).toBe('advise');
     const out = apply(db, s, { kind: 'advance', seconds: 30 * HOUR });
     expect(out.some(n => n.kind === 'letter')).toBe(false);
@@ -112,7 +112,7 @@ describe('письма сценария 1', () => {
     const a = fresh();
     apply(db, a, { kind: 'advance', seconds: 5 * HOUR });
     const b = fromSave(db, toSave(a));
-    expect(b.letters).toEqual(a.letters);
+    expect(b.heads.letters).toEqual(a.heads.letters);
     apply(db, a, { kind: 'advance', seconds: 20 * HOUR });
     apply(db, b, { kind: 'advance', seconds: 20 * HOUR });
     expect(toSave(b)).toBe(toSave(a));
@@ -157,7 +157,7 @@ describe('образцы сохранения', () => {
   test('схема 52 — посреди обучения: письма те же, завод живёт дальше и письма кончаются по условиям', () => {
     const json = readFileSync(join(import.meta.dir, 'fixtures/save-v52.json'), 'utf8');
     const s = fromSave(db, json);
-    expect(s.letters?.map(r => [r.id, r.end?.how])).toEqual([
+    expect(s.heads.letters?.map(r => [r.id, r.end?.how])).toEqual([
       ['let.c1.truck', 'done'],
       ['let.c1.quarantine', 'skip'],
       ['let.c1.release', undefined],
@@ -168,7 +168,7 @@ describe('образцы сохранения', () => {
   });
   test('схема 51 — без писем: загружается и живёт без них', () => {
     const s = fromSave(db, readFileSync(join(import.meta.dir, 'fixtures/save-v51.json'), 'utf8'));
-    expect(s.letters).toBeUndefined();
+    expect(s.heads.letters).toBeUndefined();
     const out = apply(db, s, { kind: 'advance', seconds: 6 * HOUR });
     expect(out.some(n => n.kind === 'letter')).toBe(false);
   });

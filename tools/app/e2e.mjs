@@ -1272,7 +1272,13 @@ async function mainPart() {
     const top = await page.evaluate(() => {
       const g = window.__game;
       const p = g.stage.plates.plates.find(x => x.k === 'top' && x.rank === 1);
-      return p ? { sp: g.stage.screen(p.x, 2.4 + p.h / 2, p.z), i: p.thing.i } : undefined;
+      if (!p) return undefined;
+      // камеру могли увести прежние шаги: табличка вне кадра — камера на неё, как у карточки вещи
+      if (!g.stage.screen(p.x, 2.4 + p.h / 2, p.z)) {
+        g.stage.cam.target.set(p.x, 0, p.z);
+        g.stage.cam.update(0);
+      }
+      return { sp: g.stage.screen(p.x, 2.4 + p.h / 2, p.z), i: p.thing.i };
     });
     if (!top?.sp) fail('табличка первого места не на экране');
     else {

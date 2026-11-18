@@ -1182,6 +1182,10 @@ export interface Cause {
   name: Text;
   driver: CauseDriver;
   effects: { attr: Attr; coef: number }[];
+  /** только у серий этих продуктов (Б7д, шаг 3); нет — у всех */
+  products?: Id[];
+  /** в счёт — только отход выше цели (`above`) или ниже (`below`), Б7д, шаг 3; нет — оба */
+  side?: 'above' | 'below';
   /** разброс МОК по ходу стадии (Б1ж): на единицу отхода выше цели — столько единиц движка свойства; ниже цели — нет */
   scatter?: { attr: Attr; coef: number }[];
   source?: string[];

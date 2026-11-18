@@ -165,3 +165,27 @@ describe('протокол: продать серии валидации', () =>
     for (const id of p.batches) expect(s.batches[id].sku).toBe(SKU);
   }, 120_000);
 });
+
+describe('серия валидации не прошла', () => {
+  test('счёт серий подряд — заново: после отменённой серии нужно ещё столько же подряд, проект доходит до отчёта', () => {
+    const s = plant(true);
+    apply(db, s, { kind: 'project', op: 'start', product: MET });
+    const p = () => s.portfolio!.projects.P1;
+    const n = db.scenarios[SC].project!.batches;
+    // первая серия валидации прошла, вторая ещё ждёт комплектации — директор её отменяет: серия не прошла
+    until(s, () => p().stage === 'validation' && p().batches.length === 1, 260);
+    for (let h = 0; h < 24 * 60 && p().batches.length < 2; h++) apply(db, s, { kind: 'advance', seconds: 3600 });
+    expect(p().passed).toBe(1);
+    const second = p().batches[1];
+    expect(['waiting', 'reserved']).toContain(s.batches[second].status);
+    expect(why(apply(db, s, { kind: 'cancel', batch: second }))).toEqual([]);
+    until(s, () => p().batches.length === 3, 5);
+    expect(p().passed).toBe(0);
+    expect(p().restarts).toBe(1);
+    expect(p().stage).toBe('validation');
+    until(s, () => p().stage === 'report', 200);
+    expect(p().batches.length).toBe(2 + n);
+    expect(p().passed).toBe(n);
+    expect(check(db, s)).toEqual([]);
+  }, 180_000);
+});

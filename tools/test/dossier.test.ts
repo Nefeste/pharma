@@ -83,10 +83,12 @@ describe('сборщик базы — порядок загрузки на ис�
     has(alone, 'на стадии первого смешивания — АФС и хотя бы один другой компонент');
   });
 
-  test('карты базы: магния стеарат — на опудривании, система покрытия — на покрытии (Б7д), остальное — в гранулятор', () => {
+  test('карты базы: магния стеарат — на опудривании, система покрытия — на покрытии (Б7д), остальное — на первом смешивании', () => {
     for (const id of Object.keys(db.recipes)) {
       const x = db.recipes[id];
-      for (const l of x.bom) expect([id, l.material, l.stage]).toEqual([id, l.material, l.material === MGST ? 'blend' : l.material === 'mat.exc.coat' ? 'coat' : 'granulate']);
+      // первое смешивание — гранулятор; у прямого прессования ибупрофена (Б7д, шаг 3) — смеситель
+      const mix = x.stages.find(st => st.mix)!.id;
+      for (const l of x.bom) expect([id, l.material, l.stage]).toEqual([id, l.material, l.material === MGST ? 'blend' : l.material === 'mat.exc.coat' ? 'coat' : mix]);
     }
   });
 });

@@ -14,6 +14,7 @@ import { placeOrder } from './mes';
 import { bookEval, livePairs, pairKey, pairValid, specPairs, STARTING } from './partners';
 import { planOf } from './plant';
 import { roomDown } from './site/down';
+import { LOT_FLOW, setLotStatus } from './stock';
 import { addTask } from './tasks';
 import type { Batch, Command, Notice, PlantState, Project, ProjectStage } from './types';
 import { calOf } from './workdays';
@@ -171,6 +172,9 @@ function order(db: ContentDb, s: PlantState, p: Project, role: 'trial' | 'valida
   return b;
 }
 
+/** Переходы статуса партии: балк серии проекта «не для продажи» из разрешённого — в отклонённое. */
+const NOT_FOR_SALE = { ...LOT_FLOW, released: [...LOT_FLOW.released, 'rejected' as const] };
+
 /**
  * Итог лаборатории по серии проекта: разрешён — `pass`, отклонён (балк или серия) — `fail`, ещё нет — `undefined`.
  * Балк «не для продажи» после разрешения — в отклонённое: его выносят, как отклонённый (Б1з).
@@ -182,7 +186,8 @@ function verdict(s: PlantState, b: Batch | undefined, keep: boolean): 'pass' | '
   if (!lot) return undefined;
   if (lot.status === 'rejected') return 'fail';
   if (lot.status !== 'released') return undefined;
-  if (!keep) lot.status = 'rejected';
+  // серия «не для продажи»: разрешённый балк — в отклонённое, ярлыки его паллет — тоже
+  if (!keep) setLotStatus(s, lot, 'rejected', NOT_FOR_SALE);
   return 'pass';
 }
 

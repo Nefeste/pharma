@@ -1,0 +1,12 @@
+# Входной контроль АФС ибупрофена (Б7д, шаг 3): пределы содержания и потери в массе при высушивании — гипотезы, сверить
+# со статьёй Ph. Eur. 0721 (ep7-ibuprofen; копия). Редакция-проект: в силу её вводит проект «Новый продукт»
+id: spec.mat.api.ibuprofen
+name: { ru: "Ибупрофен, субстанция", en: "Ibuprofen, active substance" }
+doc: { code: SP-0028, rev: 1, approved: role.qc-head }
+pairs: [{ supplier: sup.api-ibu, maker: mkr.api-ibu }]
+tests:
+  - { test: test.ir }
+  - { test: test.hplc-assay, min: 98.5, max: 101 }
+  - { test: test.lod, max: 0.5 }
+source: [ep7-ibuprofen]
+review: draft

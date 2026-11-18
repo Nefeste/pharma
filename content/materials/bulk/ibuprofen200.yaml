@@ -1,0 +1,12 @@
+# Балк ибупрофена (Б7д, шаг 3) — покрытые таблетки после производства, до упаковки. Свойства — от серии (технологическая
+# карта). Срок хранения балка до упаковки — гипотеза
+id: mat.bulk.ibuprofen200
+kind: bulk
+code: 400004
+name: { ru: Таблетки ибупрофена 200 мг в балке, en: Ibuprofen 200 mg tablets in bulk }
+unit: pcs
+container: cnt.bin.tablets
+storage: reg.ccrt
+shelf: 6
+spec: spec.bulk.ibuprofen200
+sample: 25

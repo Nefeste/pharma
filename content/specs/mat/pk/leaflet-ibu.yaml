@@ -1,0 +1,7 @@
+# Редакция-проект (Б7д, шаг 3): в силу её вводит проект «Новый продукт»
+id: spec.mat.pk.leaflet-ibu
+name: { ru: "Инструкция «Ибупрофен 200 мг»", en: "Leaflet «Ibuprofen 200 mg»" }
+doc: { code: SP-0033, rev: 1, approved: role.qc-head }
+pairs: [{ supplier: sup.pack, maker: mkr.pack }]
+tests:
+  - { test: test.visual }

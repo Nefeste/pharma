@@ -1,0 +1,19 @@
+# АФС ибупрофена (Б7д, шаг 3): плавится при 75–78 °C (ep7-ibuprofen). Хранение, срок повторных испытаний и свойства партии
+# — выбор геймдизайна, сверить с консультантом
+id: mat.api.ibuprofen
+kind: api
+code: 100004
+name: { ru: Ибупрофен, en: Ibuprofen }
+unit: kg
+container: cnt.drum.fibre50
+storage: reg.ccrt
+shelf: 60
+potency: true
+spec: spec.mat.api.ibuprofen
+# истинные свойства партии: среднее и разброс (содержание и влажность — %, размер частиц d50 — мкм); партия брака —
+# сдвиг (гипотезы)
+props: { assay: [99.6, 0.15], moisture: [0.2, 0.05], particle: [60, 12] }
+bad: { attr: assay, shift: -3 }
+sample: 20
+source: [ep7-ibuprofen]
+review: draft

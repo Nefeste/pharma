@@ -21,4 +21,6 @@ items:
   # упаковка метформина (Б7д): цены — гипотезы
   mat.pk.carton-m60: { price: 2.8, moq: 20000 }
   mat.pk.leaflet-met: { price: 0.5, moq: 50000 }
+  mat.pk.carton-i20: { price: 2.4, moq: 20000 }
+  mat.pk.leaflet-ibu: { price: 0.5, moq: 50000 }
   mat.pk.case: { price: 38, moq: 500 }

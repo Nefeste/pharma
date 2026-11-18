@@ -260,7 +260,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   line's crew (`washRoles`), then the room by a cleaner by its floor area —, a room for a batch's work — a stage or,
   with Б1е, the packing — clean for its product, otherwise into cleaning (`roomFor`), process parameters — with Б1ж
   at the setpoints a stage takes when its batch takes the room, the fact at the setpoint with the operator's spread, the
-  stage time and part wear by the turret speed —, true batch quality with causes, IPC, the bulk lot; with Б1д — the
+  stage time and part wear by the turret speed —, true batch quality with causes — with Б7д step 3 a cause of its
+  products and its side of the target only (`causeOn`, `sided` in `quality.ts`) —, IPC, the bulk lot; with Б1д — the
   components of a stage loaded by the recipe and the
   mass at a stage's input, the batch mass less what later stages load (`stageMass`, shared with the schedule run,
   «Сейчас» and the reference); the packing job and its packaging kit — a container of it already
@@ -764,7 +765,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   weight gain and coating defects —, metformin as a project product: its recipe, specs, methods and agreement without
   a day in force, a product without a demand season; with Б7д step 2 — a project SKU's demand by customer after its
   launch `launch`, metformin's SKU, its packaging and their specs and agreements without a day in force, and the
-  scenario's `project` — days of the stages, validation batches in a row, the demand ramp);
+  scenario's `project` — days of the stages, validation batches in a row, the demand ramp; with Б7д step 3 —
+  ibuprofen, the second project product: a direct-compression recipe with a coat, croscarmellose, its maker, SKU,
+  specs and agreements without a day in force, the cold season; a cause only of some products `products` and of one
+  side of the target `side` — punch sticking from a short lubrication or a fast turret, a lower dissolution from a hot
+  bed);
   `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a

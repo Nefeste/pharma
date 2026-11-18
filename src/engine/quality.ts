@@ -1,7 +1,7 @@
 // Свойства партий и результаты испытаний (docs/specs/2026-10-engine.md, 1б; геймдизайн, §4.2, §6.1). Истинные свойства
 // рождаются с партией и живут только в движке; лаборатория видит пробу и прибор: результат = истинное + погрешность
 // методики × нормальная величина. Значения — доли 1/10 000 (src/content/types.ts, `Attr`).
-import { type Attr, type ContentDb, type Id, QUALITATIVE, type SpecLine } from '../content/types';
+import { type Attr, type Cause, type ContentDb, type Id, QUALITATIVE, type SpecLine } from '../content/types';
 import { P_ONE } from './core/rng';
 import { revisions } from './docs';
 import { normal, roll, spread } from './random';
@@ -65,3 +65,9 @@ export function within(line: SpecLine, result: number): boolean {
   if (line.min === undefined && line.max === undefined) return result === P_ONE;
   return (line.min === undefined || result >= line.min) && (line.max === undefined || result <= line.max);
 }
+
+/** Причина у серии продукта (Б7д, шаг 3): у причины без списка продуктов — у всех. */
+export const causeOn = (c: Cause, product: Id): boolean => !c.products || c.products.includes(product);
+
+/** Отход режима в счёт причины (Б7д, шаг 3): у односторонней — только по своей стороне цели, иначе 0. */
+export const sided = (c: Cause, dev: number): number => (c.side === 'above' ? Math.max(0, dev) : c.side === 'below' ? Math.min(0, dev) : dev);

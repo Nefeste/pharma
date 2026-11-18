@@ -1,0 +1,13 @@
+# Спецификация балка ибупрофена (Б7д, шаг 3): содержание 95,0–105,0 % (bp2013-ibuprofen-tab), растворение за 60 мин —
+# среднее не меньше Q + 5 % при Q 80 % (usp35-ibuprofen-tab, копия — сверить; движок сравнивает с пределом среднее, как
+# у парацетамола); распадаемость покрытых таблеток — не дольше 30 мин (gf-15) — при испытании растворения её можно не
+# проводить. Редакция-проект: в силу её вводит проект «Новый продукт»
+id: spec.bulk.ibuprofen200
+name: { ru: "Таблетки ибупрофена 200 мг в балке", en: "Ibuprofen 200 mg tablets in bulk" }
+doc: { code: SP-0030, rev: 1, approved: role.qc-head }
+tests:
+  - { test: test.hplc-assay, min: 95, max: 105 }
+  - { test: test.dissolution, min: 85 }
+  - { test: test.lod, max: 3 }
+source: [bp2013-ibuprofen-tab, usp35-ibuprofen-tab, gf-15]
+review: draft

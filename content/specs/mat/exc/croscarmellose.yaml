@@ -1,0 +1,9 @@
+# Входной контроль кроскармеллозы натрия (Б7д, шаг 3). Пределы — гипотезы, как у прочих вспомогательных. Редакция-проект:
+# в силу её вводит проект «Новый продукт»
+id: spec.mat.exc.croscarmellose
+name: { ru: "Кроскармеллоза натрия", en: "Croscarmellose sodium" }
+doc: { code: SP-0029, rev: 1, approved: role.qc-head }
+pairs: [{ supplier: sup.exc, maker: mkr.exc }]
+tests:
+  - { test: test.ir }
+  - { test: test.lod, max: 10 }

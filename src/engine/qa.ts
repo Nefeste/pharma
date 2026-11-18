@@ -20,6 +20,7 @@ import { planOf } from './plant';
 import { addTask } from './tasks';
 import { containersByLot, FG_FLOW, setLotStatus, stockChanged, unitsOfLot } from './stock';
 import type { Batch, Command, Container, Deviation, Lot, Notice, PlantState, Refusal, Task, Unit } from './types';
+import { causeOn } from './quality';
 import { PRIO, WMS } from './wms';
 
 export const QA = { specialists: ['role.qa'], qps: ['role.qp'] } as const;
@@ -268,7 +269,7 @@ export function linkedTests(db: ContentDb, s: PlantState, d: Deviation): LinkedT
   if (!b || d.kind === 'oos' || d.kind === 'recon') return [];
   const r = db.recipes[b.recipe];
   let attrs: Set<Attr> | undefined;
-  if (d.kind === 'param') attrs = new Set(Object.values(db.causes).flatMap(c => ('param' in c.driver && c.driver.param === d.param ? [...c.effects, ...(c.scatter ?? [])].map(e => e.attr) : [])));
+  if (d.kind === 'param') attrs = new Set(Object.values(db.causes).flatMap(c => ('param' in c.driver && c.driver.param === d.param && causeOn(c, b.product) ? [...c.effects, ...(c.scatter ?? [])].map(e => e.attr) : [])));
   const out: LinkedTest[] = [];
   if (attrs) {
     const from = Math.max(0, r.stages.findIndex(st => st.id === d.stage));

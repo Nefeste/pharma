@@ -606,6 +606,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     for (const e of c.effects) need(!qual(e.attr), `${where}: ${e.attr} — качественное свойство`);
     for (const e of c.scatter ?? []) need(!qual(e.attr), `${where}: ${e.attr} — качественное свойство`);
     need(!c.scatter || 'param' in d, `${where}: разброс МОК — от отхода режима стадии`);
+    for (const p of c.products ?? []) need(raw.products[p], `${where}: продукта ${p} нет`);
+    need(!c.side || 'param' in d, `${where}: одна сторона отхода — только у режима стадии`);
     causes[c.id] = {
       ...c,
       effects: c.effects.map(e => ({ attr: e.attr, coef: (e.coef * scaleOf(e.attr)) / per })),

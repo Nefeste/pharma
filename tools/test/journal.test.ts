@@ -241,7 +241,8 @@ describe('решение игрока', () => {
     apply(db, s, { kind: 'order', recipe, notBefore: s.t + 3 * DAY, by: 'player' });
     expect(s.journal.at(-1)).toMatchObject({ by: 'player', seat: 'production' });
     apply(db, s, { kind: 'seat', seats: ['director'] });
-    const sup = Object.keys(db.suppliers)[0];
+    // с Б7д, шаг 3 — поставщик по имени: первым в базе стал изготовитель ибупрофена продукта-проекта
+    const sup = 'sup.api-lor';
     const [m, it] = Object.entries(db.suppliers[sup].items)[0];
     apply(db, s, { kind: 'po', supplier: sup, lines: [{ material: m, qty: it.moq, maker: it.maker }], by: 'player' });
     const r = s.journal.at(-1)!;

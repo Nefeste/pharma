@@ -1,0 +1,10 @@
+# Соглашение по качеству на кроскармеллозу натрия (Б7д, шаг 3). Редакция-проект: в силу её вводит проект «Новый продукт»
+id: qag.exc-ccs
+name: { ru: Соглашение по качеству на кроскармеллозу натрия, en: Quality agreement on croscarmellose sodium }
+doc: { code: QAG-0011, rev: 1, approved: role.qa-head }
+supplier: sup.exc
+makers: [mkr.exc]
+materials: [mat.exc.croscarmellose]
+terms: [handling, labelling, packaging, shipping, complaints, recall]
+source: [gmp-eaeu, eaeu-65]
+review: draft

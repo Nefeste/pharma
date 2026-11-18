@@ -1,0 +1,12 @@
+# Соглашение по качеству с изготовителем ибупрофена (Б7д, шаг 3; GMP ЕАЭС, ч. I, п. 5.28): поставщиков критических
+# исходных материалов квалифицируют до серий валидации (eaeu-65, п. 51). Редакция-проект: в силу её вводит проект «Новый
+# продукт»
+id: qag.api-ibu
+name: { ru: Соглашение по качеству с изготовителем ибупрофена, en: Quality agreement with the ibuprofen maker }
+doc: { code: QAG-0010, rev: 1, approved: role.qa-head }
+supplier: sup.api-ibu
+makers: [mkr.api-ibu]
+materials: [mat.api.ibuprofen]
+terms: [handling, labelling, packaging, shipping, complaints, recall]
+source: [gmp-eaeu, eaeu-65]
+review: draft

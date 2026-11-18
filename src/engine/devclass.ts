@@ -7,6 +7,7 @@
 // оценка, CAPA и показатели.
 import type { CauseClass, ContentDb, DevClass } from '../content/types';
 import { DAY } from './core/calendar';
+import { causeOn } from './quality';
 import type { Deviation, PlantState } from './types';
 
 /** Повтор — то же отклонение за столько (Б5ж, §8.6): 12 месяцев. */
@@ -86,7 +87,9 @@ export function causeClass(db: ContentDb, cause: string | undefined): CauseClass
 export function signsOf(db: ContentDb, s: PlantState, d: Deviation): string[] {
   const b = d.batch ? s.batches[d.batch] : undefined;
   if (!b) return [];
-  const causes = Object.values(db.causes).sort((x, y) => (x.id < y.id ? -1 : 1));
+  const causes = Object.values(db.causes)
+    .filter(c => causeOn(c, b.product))
+    .sort((x, y) => (x.id < y.id ? -1 : 1));
   if (d.kind === 'param') return causes.filter(c => 'param' in c.driver && c.driver.param === d.param).map(c => c.id);
   if (d.kind !== 'ipc' || !d.test) return [];
   const attr = db.tests[d.test].attr;
@@ -101,7 +104,7 @@ export function signsOf(db: ContentDb, s: PlantState, d: Deviation): string[] {
       const p = st.params.find(x => x.id === dr.param);
       const rec = p && b.records.find(x => x.stage === st.id);
       const v = rec?.params[dr.param];
-      return p !== undefined && v !== undefined && (v < p.range[0] || v > p.range[1]);
+      return p !== undefined && v !== undefined && ((v < p.range[0] && c.side !== 'above') || (v > p.range[1] && c.side !== 'below'));
     });
     if (hit) out.push(c.id);
   }

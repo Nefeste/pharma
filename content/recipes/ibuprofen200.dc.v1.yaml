@@ -1,0 +1,85 @@
+# Технологическая карта ибупрофена 200 мг в плёночной оболочке (Б7д, шаг 3). Состав ядра — по отчётам об оценке:
+# целлюлоза микрокристаллическая, кроскармеллоза натрия, лактоза, магния стеарат (mpa-brufen-2009, hpra-ibuprofen-2025);
+# кремния диоксид и натрия лаурилсульфат в учёте карты не ведутся: упрощение геймдизайна. Способ производства в
+# найденных отчётах не описан, связующего в составе нет — в игре прямое прессование: смешивание и опудривание в
+# контейнерном смесителе, таблетирование, покрытие (гипотеза, docs/10-domain.md, §7, «Не найдено»). Масса ядра 300 мг —
+# гипотеза (масса ядра в источниках не найдена); доля ибупрофена тогда две трети — налипание на пуансоны вероятно: оно в основном от 30 % ибупрофена, а магния стеарата здесь
+# 1 % — меньше 1,5 %, что его предотвращали (nakamura-sticking-2016). Покрытие — 3 % привеса системой покрытия в воде
+# (coat-params-2011); слой 42–45 °C — ниже плавления ибупрофена 75–78 °C (ep7-ibuprofen). Времена, режимы, разбросы,
+# потери и показатели — гипотезы геймдизайна, не чей-то регламент. Редакция-проект: в силу её вводит проект «Новый
+# продукт»
+id: rcp.ibuprofen200.dc.v1
+name: { ru: "Ибупрофен 200 мг, прямое прессование, плёночная оболочка", en: "Ibuprofen 200 mg, direct compression, film coat" }
+doc: { code: MF-0004, rev: 1, approved: role.production-head }
+product: prd.ibuprofen200
+# серия: 120 кг ядер — 400 тыс. таблеток, входит в барабан 122 см (coat-params-2011); с оболочкой — 123,6 кг
+batch: { kg: 123.6, units: 400000 }
+bom:
+  - { material: mat.api.ibuprofen, kg: 80, potency: true, stage: blend }
+  - { material: mat.exc.mcc, kg: 20.8, qs: true, stage: blend }
+  - { material: mat.exc.lactose, kg: 12, stage: blend }
+  - { material: mat.exc.croscarmellose, kg: 6, stage: blend }
+  - { material: mat.exc.mgst, kg: 1.2, stage: blend }
+  # система покрытия: 3 % массы ядер — на стадии покрытия (вода очищенная — режимом нанесения, в учёте не ведётся)
+  - { material: mat.exc.coat, kg: 3.6, stage: coat }
+stages:
+  - id: dispense
+    room: dispensing
+    equipment: [eq.scale]
+    staff: { role: role.operator, n: 2 }
+    time: { setup: 20, perComponent: 15, spread: 10 }
+  # смешивание и опудривание в одном смесителе: первое смешивание субстанции — дата производства в номере серии;
+  # магния стеарат — последним, время с ним — режим (li-wu-2014)
+  - id: blend
+    mix: true
+    room: blending
+    equipment: [eq.blender]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 15, perLoad: 25, loads: 1, spread: 5 }
+    params:
+      - { id: lubeTime, unit: min, target: 4, range: [3, 6], sd: 0.5, step: 0.5 }
+    loss: [0.2, 0.1]
+  - id: compress
+    room: compression
+    equipment: [eq.press, eq.deduster]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 30, unitsPerHour: 90000, spread: 5 }
+    params:
+      - { id: force, unit: kN, target: 12, range: [10, 14], sd: 0.5, step: 0.5 }
+      - { id: speed, unit: rpm, target: 50, range: [40, 60], sd: 1, step: 2 }
+    ipc:
+      - { test: test.ipc.mass, every: 30, min: 97, max: 103 }
+      - { test: test.ipc.hardness, every: 30, min: 60, max: 120 }
+      - { test: test.ipc.friability, every: 60, max: 1 }
+      - { test: test.ipc.disintegration, every: 120, max: 15 }
+    loss: [1.0, 0.3]
+  # покрытие — как у метформина: подготовка 60 мин, нанесение и охлаждение — в норме на кг (coat-params-2011)
+  - id: coat
+    room: coating
+    equipment: [eq.coater]
+    staff: { role: role.operator, n: 1 }
+    time: { setup: 60, kgPerHour: 85, spread: 10 }
+    params:
+      - { id: bedTemp, unit: C, target: 43, range: [42, 45], sd: 0.5, step: 0.5 }
+      - { id: spray, unit: gpm, target: 340, range: [260, 420], sd: 10, step: 20 }
+      - { id: pan, unit: rpm, target: 8, range: [6, 10], sd: 0.3, step: 1 }
+    ipc:
+      - { test: test.ipc.gain, every: 30, min: 2.5, max: 3.5 }
+      - { test: test.ipc.defects, every: 30, max: 1 }
+    loss: [0.3, 0.1]
+bulk: mat.bulk.ibuprofen200
+# показатели балка без причин: номинал и разброс от серии к серии; растворение — за 60 мин; привес — % массы ядра;
+# дефекты — % отобранных таблеток
+quality:
+  moisture: [1.0, 0.1]
+  mass: [100, 0.4]
+  assay: [100, 0.6]
+  hardness: [90, 6]
+  friability: [0.3, 0.05]
+  disintegration: [6, 1]
+  dissolution: [93, 1.5]
+  gain: [3, 0.15]
+  defects: [0.2, 0.1]
+yield: { expected: 97, alarm: 94 }
+source: [mpa-brufen-2009, hpra-ibuprofen-2025, nakamura-sticking-2016, ep7-ibuprofen, coat-params-2011, li-wu-2014, gmp-eaeu]
+review: draft

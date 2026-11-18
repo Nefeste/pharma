@@ -1,0 +1,11 @@
+id: mat.fg.ibuprofen200-n20
+kind: fg
+code: 500006
+name: { ru: "Ибупрофен, таблетки, покрытые плёночной оболочкой, 200 мг, №20", en: "Ibuprofen 200 mg film-coated tablets, 20" }
+unit: pcs
+container: cnt.case.fg
+storage: reg.ccrt
+# срок годности — 36 месяцев, как у прочих продуктов завода: выбор геймдизайна, сверить с инструкцией (ru-ibuprofen)
+shelf: 36
+spec: spec.fg.ibuprofen200
+sample: 6

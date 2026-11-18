@@ -1,0 +1,16 @@
+# Кроскармеллоза натрия — разрыхлитель таблеток ибупрофена (mpa-brufen-2009, hpra-ibuprofen-2025). Тара, свойства партии
+# и брак — гипотезы
+id: mat.exc.croscarmellose
+kind: excipient
+code: 200008
+name: { ru: Кроскармеллоза натрия, en: Croscarmellose sodium }
+unit: kg
+container: cnt.bag.20
+storage: reg.ccrt
+shelf: 36
+spec: spec.mat.exc.croscarmellose
+props: { moisture: [6, 0.5] }
+bad: { attr: moisture, shift: 4 }
+sample: 20
+source: [mpa-brufen-2009, hpra-ibuprofen-2025]
+review: draft

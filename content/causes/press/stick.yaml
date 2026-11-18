@@ -1,0 +1,13 @@
+# Налипание на пуансоны от недостатка смазки (Б7д, шаг 3): у ибупрофена — мало смазки, и таблетки налипают
+# (nakamura-sticking-2016; ep7-ibuprofen — плавление). Только у ибупрофена и только при опудривании короче цели. Что
+# налипание видно как брак вида таблеток — по смыслу явления, сверить; величина — гипотеза: процентов таблеток с дефектом
+# на минуту короче цели
+id: cause.press.stick
+name: { ru: Налипание на пуансоны — мало смазки, en: Punch sticking — too little lubrication }
+driver: { param: lubeTime }
+products: [prd.ibuprofen200]
+side: below
+effects:
+  - { attr: defects, coef: -0.6 }
+source: [nakamura-sticking-2016, ep7-ibuprofen]
+review: draft

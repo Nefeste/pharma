@@ -89,7 +89,7 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
                 {T.top.speed(k)}
               </button>
             ))}
-            <button className={s.ff && s.ffTo === 'morning' ? 'on' : ''} onClick={() => actions.untilMorning()} title={T.top.morningHint}>
+            <button className={s.ff && s.ffTo === 'morning' ? 'on' : ''} onClick={() => actions.untilMorning()} title={T.top.morningHint} data-test="until-morning">
               {T.top.morning}
             </button>
             <button className={s.ff && s.ffTo === 'event' ? 'on' : ''} onClick={() => actions.untilEvent()} title={T.top.eventHint} data-test="until-event">
@@ -334,7 +334,10 @@ function FirstScreen({ load, version }: { load: Hud['load']; version: string | u
   );
 }
 
-/** Меню звука (Б11, шаг 1): громкость ступенями по 10 % и «Подписи звуков»; запоминаются в окне. */
+/** Языки окна (Б12): порядок кнопок. */
+const LANGS = ['ru', 'en'] as const;
+
+/** Меню звука и языка (Б11, шаг 1; Б12, шаг 1): громкость ступенями по 10 % и «Подписи звуков»; запоминаются в окне. */
 function SoundMenu({ hud, actions }: { hud: Hud; actions: Actions }) {
   const pct = Math.round(hud.sound.volume * 100);
   return (
@@ -348,6 +351,15 @@ function SoundMenu({ hud, actions }: { hud: Hud; actions: Actions }) {
       <label title={T.sound.captionsHint}>
         <input type="checkbox" checked={hud.sound.captions} onChange={e => actions.setCaptions(e.currentTarget.checked)} data-test="captions" /> {T.sound.captions}
       </label>
+      {/* язык окна (Б12, шаг 1): на ходу, запоминается в окне */}
+      <span className="group" title={T.sound.langHint}>
+        <span className="label">{T.sound.lang}</span>
+        {LANGS.map(l => (
+          <button key={l} type="button" className={hud.lang === l ? 'on' : ''} aria-pressed={hud.lang === l} onClick={() => actions.setLang(l)} data-test="lang" data-lang={l}>
+            {T.sound.langs[l]}
+          </button>
+        ))}
+      </span>
     </div>
   );
 }

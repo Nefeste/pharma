@@ -585,6 +585,8 @@
     .top .notice.stop { color: var(--text); font-weight: 600; }
     button.notice.link.stop { color: var(--warn); }
     .pauses { position: absolute; left: 8px; top: calc(var(--top-h, 48px) + 8px); padding: var(--sp-4) var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-2); max-width: calc(100% - 16px); z-index: 4; }
+    /* меню звука и языка (Б11, Б12) — справа, под своей кнопкой: слева панель слоёв */
+    #sound { left: auto; right: 8px; }
     .pauses ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); }
     .pauses li.muted label { color: var(--muted); }
     button.notice.link:hover { text-decoration: underline; text-decoration-color: var(--accent); }

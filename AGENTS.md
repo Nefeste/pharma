@@ -666,7 +666,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   the start preset — the frame measured on medium at first run, low if slower than 33 ms, the result and the player's
   choice kept in the window (`preset.ts`); «Меньше движения» by rule 6 of the charter's ADR 0023 — the player's choice
   kept in the window, otherwise `prefers-reduced-motion`; on, the camera turns without gliding and the detail level
-  changes at once (`motion.ts`); the autopauses — which notices stop the world, whose post each is, the ones
+  changes at once (`motion.ts`); with Б12 the window language — from the address, the player's choice kept in the
+  window or the system's (`lang.ts`); the autopauses — which notices stop the world, whose post each is, the ones
   switched off kept in the window, where a click on a notice leads, with Б5б a head's proposal before the meeting
   waiting for it (`pauses.ts`); which «Сейчас» row is the work of a thing in the card (`watch.ts`); the levers of
   meeting rows — decisions, whose post, «будет в …» (`levers.ts`); the
@@ -717,8 +718,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   composition (`stage.ts`).
 - `src/ui/` — panels (React) and their store: the top bar with «До утра», «До события» and the latest notice — the one
   the world stopped on marked «❚❚», a click leads to its place, with Б11 the sound menu and the first screen — the
-  game's name and the loading by the real steps of `Game.create` (`App.tsx`; the steps — `LOAD_STEPS`,
-  `store.ts`), the autopause menu (`Pauses.tsx`), the
+  game's name and the loading by the real steps of `Game.create`, with Б12 «RU / EN» in the sound menu (`App.tsx`;
+  the steps — `LOAD_STEPS`, `store.ts`), the autopause menu (`Pauses.tsx`), the
   warehouse (`Stock.tsx`), a guard around each panel and the top bar — an error stays in its place
   (`Guard.tsx`), the card of a
   thing — what it is, state, why, what can be done, history; a person's dismissal (`Card.tsx`), the plant reference with
@@ -831,7 +832,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   it shows, the departments it hands over; with Б9 step 3 — scenario 2 `scn.c2` with its plan `plant.c2` — the
   prototype's and a coating wing —, ibuprofen launched before the start, customers `cus.chain` and `cus.oblast`, goals
   from 1 November, the distributor's and the supplier's letters);
-  `tools/content/` — its build and validator (schema, ids from paths, references, source keys from `docs/10-domain.md`;
+  `tools/content/` — its build and validator (schema — with Б12 every player's word in Russian and English —, ids from
+  paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;
   the training matrix — every role the engine gives a work is in the row of each document the work needs, revisions of a
   code share roles and works, start records younger than the shortest term; a cyclic pattern without two shifts in a row

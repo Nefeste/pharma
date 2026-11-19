@@ -327,6 +327,8 @@ export interface Actions {
   setLess(on: boolean): void;
   /** меню звука: открыть или закрыть; громкость и «Подписи звуков» — запоминаются в окне (src/app/sound.ts) */
   toggleSound(): void;
+  /** язык окна (Б12, шаг 1): RU или EN — на ходу, запоминается в окне (src/app/lang.ts) */
+  setLang(l: Lang): void;
   setVolume(v: number): void;
   setCaptions(on: boolean): void;
   /** модели: детальные из Blender или простые кодом — машины и пол пересобираются */

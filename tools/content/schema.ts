@@ -4,7 +4,8 @@
 import { z } from 'zod';
 import { HEAD_IDS, SEATS, TASK_KINDS } from '../../src/content/types';
 
-const text = z.strictObject({ ru: z.string().min(1), en: z.string().min(1).optional() });
+// слово игрока — на обоих языках окна (Б12, шаг 1): без английского запись не проходит
+const text = z.strictObject({ ru: z.string().min(1), en: z.string().min(1) });
 const review = z.enum(['draft', 'checked']);
 /** Ключи источников — из таблицы docs/10-domain.md, §9 (проверяет load.ts). */
 const sources = z.array(z.string().regex(/^[a-z0-9-]+$/, 'ключ источника — латиница, цифры и дефис')).min(1);

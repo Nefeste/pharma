@@ -115,8 +115,9 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # the truck in the first hour, the first day by the letters to the shipment, a skip
                                    # (e2e-c1.mjs, c1.png), scenario 2 — its start, the distributor's letters, the order
                                    # at risk (e2e-c2.mjs, c2.png; `--long 1` — «До утра» to the result, ~50 min), the
-                                   # chronicle — the meeting's line, a day and a week, a batch's record (e2e-chron.mjs,
-                                   # chron.png); `-- --only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits|
+                                   # chronicle — the meeting's line, a day, a week and a year, a batch's record, the
+                                   # saved text file (e2e-chron.mjs, chron.png); `-- --only main|week|memo|capa|jobs|
+                                   # launch|forecast|sop|mrp|edits|
                                    # build|equip|route|sources|portfolio|c1|c2|chronicle` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
@@ -631,7 +632,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   letters — newest first, the plant's records for their words, where «Показать» leads, what the window must open
   (`letters.ts`); with Б10, the chronicle — chapters of a day from meeting to meeting, a week from Monday and a month
   from the 1st, back so many chapters, the entries newest first with the plant's records for their words and where a
-  click leads, the chapter's sum (`chronicle.ts`); with Б1к, the andon — what is
+  click leads, the chapter's sum; with step 2 a year from 1 January with «Итоги года» — the closed months' on-time share
+  and the causes of deviations by count — and the whole chronicle for the file with its scenario and seed
+  (`chronicle.ts`); with Б1к, the andon — what is
   not working now by thing: a failed part, an asset without a record in force or with the contractor, a cleaning a batch
   waits for with the stage operators on shift and no cleaners, a task waiting for an admission, hours or the end of a
   leave, a supplier truck not unloaded for 2 hours, a batch without material at its not-before, an order at risk — with
@@ -677,7 +680,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   cursor (with Б7в a unit — its footprint, R turns it, the prepayment and the delivery in the ghost's line), the
   ghost checked by the same edit function as the command, its line, the room labels' rows and the engine's answer in
   words (`build.ts`, the panel's choices — `buildpick.ts`), the room labels over the view, a copy of Bolnitsa's
-  (`labels.ts`); the scene bench, a copy of Bolnitsa's, with `--layer load` also with the layer on
+  (`labels.ts`); with Б10 a text file to disk from the window — a link on a Blob (`savetext.ts`); the scene bench, a
+  copy of Bolnitsa's, with `--layer load` also with the layer on
   (`bench.ts`,
   `stats.ts`).
 - `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa); the plant
@@ -752,8 +756,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   (`Portfolio.tsx`), with Б9 the «Кампания» screen before «Кем вы будете» — the scenarios by their campaign number
   (`Campaign.tsx`), the goals window with the result at the end of the term (`Goals.tsx`) and a goal in words
   (`goalwords.ts`), with Б9 step 2 the letters panel — rows, the open letter in words, «Показать», «Пропустить»,
-  «Пропустить обучение» (`Letters.tsx`), with Б10 the chronicle panel — H, day, week or month, «Раньше» and «Позже»,
-  the chapter's sum, an entry in words with its click (`Chronicle.tsx`), the investigation board — steps, findings in
+  «Пропустить обучение» (`Letters.tsx`), with Б10 the chronicle panel — H, day, week, month or year, «Раньше» and
+  «Позже», the chapter's sum, «Итоги года», an entry in words with its click, «Сохранить хронику» — the whole chronicle
+  as text by months (`Chronicle.tsx`), the investigation board — steps, findings in
   words with numbers
   from the records, version bars, the decision, the debrief, with Б5е the CAPA after the conclusion (`Inv.tsx`), the
   batch record over the other windows — opened from a
@@ -878,7 +883,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   from
   the «Кампания» screen through its first day by the mentor's letters (`e2e-c1.mjs`), scenario 2 from its start to the
   risk letter, with `--long 1` to the result (`e2e-c2.mjs`; the other parts open `?scn=scn.proto`), the chronicle —
-  the meeting's line, a day, H, a week, «Раньше» and «Позже», a batch's dossier (`e2e-chron.mjs`), the
+  the meeting's line, a day, H, a week, «Раньше» and «Позже», a batch's dossier, the year, the saved file
+  (`e2e-chron.mjs`), the
   «code —
   Blender» sheet
   of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench

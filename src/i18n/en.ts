@@ -52,7 +52,7 @@ export const en: Strings = {
   },
   /** sound (B11, step 1): the top-bar menu — volume and sound captions */
   sound: {
-    button: (pct: number) => (pct === 0 ? 'Sound: off' : `Sound: ${pct}%`),
+    button: (pct: number) => (pct === 0 ? 'Muted' : 'Sound'),
     hint: 'Volume of window and event sounds, and sound captions',
     title: 'Sound',
     volume: 'Volume',

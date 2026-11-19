@@ -107,7 +107,7 @@ export async function soundPart(x) {
     await page.click('[data-test=sound-open]');
     const quiet = await page.evaluate(() => ({ btn: document.querySelector('[data-test=sound-open]')?.textContent, kept: localStorage.getItem('pharma.volume'), caps: localStorage.getItem('pharma.captions') }));
     const k1 = (await played()).click;
-    if (k1 !== k0 || quiet.btn !== 'Звук: нет' || quiet.kept !== '0' || quiet.caps !== '1') fail(`громкость 0: щелчков ${k0} → ${k1}, ${JSON.stringify(quiet)}`);
+    if (k1 !== k0 || quiet.btn !== 'Без звука' || quiet.kept !== '0' || quiet.caps !== '1') fail(`громкость 0: щелчков ${k0} → ${k1}, ${JSON.stringify(quiet)}`);
     else ok(`громкость 0 — тихо, «${quiet.btn}», в окне запомнено`);
     ok(`звуки за часть: ${JSON.stringify(await played())}`);
   } catch (e) {

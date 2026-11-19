@@ -135,7 +135,7 @@
     .sicon { vertical-align: -2px; }
     .close { margin-left: auto; }
     /* слои слева (Б1и; геймдизайн, §18): обычный вид, «Загрузка и OEE», «Потоки — люди»; окно и цвета частей словами */
-    .layers { position: absolute; left: 8px; top: calc(var(--top-h, 48px) + 8px); width: 176px; padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
+    .layers { position: absolute; left: 8px; top: calc(var(--top-h, 48px) + 8px); width: 176px; padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-1); }
     /* общие классы окна (Б11, шаг 2): подзаголовок блока — мелкий серый прописными; у панелей своих нет */
     .lhead, .mhead, .csec { color: var(--muted); font-size: var(--fs-caption); text-transform: uppercase; letter-spacing: .04em; }
     /* стройка (Б7б): панель инструментов на месте слоёв, строки призрака и ответа, подписи помещений поверх вида */
@@ -153,7 +153,8 @@
     .rlabel b { display: block; font-size: var(--fs-small); }
     .rlabel span { color: var(--muted); }
     .rlabel.bad span { color: var(--bad-text-2); }
-    .layers > button { text-align: left; }
+    /* слои — плотным списком: со шкалой отступов кнопка выросла на две точки, и список доставал до карточки снизу */
+    .layers > button { text-align: left; padding: var(--sp-1) var(--sp-4); }
     .lwin { display: inline-flex; flex-wrap: wrap; gap: var(--sp-1); margin: var(--sp-1) 0; }
     .lwin button { padding: 1px var(--sp-3); font-size: var(--fs-caption); }
     ul.legend, ul.loadrows, .floortip ul { list-style: none; margin: var(--sp-1) 0; padding: 0; }

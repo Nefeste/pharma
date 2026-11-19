@@ -124,8 +124,8 @@ describe('ибупрофен — продукт-проект', () => {
     expect(statusOf(db, 'specs', 'spec.mat.api.ibuprofen', 1_000)).toBe('draft');
     expect(why(apply(db, s, { kind: 'order', recipe: RCP }))).toEqual(['draftRecipe']);
     expect(db.products[IBU].season).toBe('sea.cold');
-    // спроса до ввода нет
-    for (const c of Object.values(db.customers)) expect(c.demand['sku.ibuprofen200.n20']).toBeUndefined();
+    // спроса до ввода нет у покупателей прототипа; у дистрибьюторов «Первой зимы» он есть: там ибупрофен введён до старта
+    for (const c of db.scenarios['scn.proto'].customers) expect(db.customers[c].demand['sku.ibuprofen200.n20']).toBeUndefined();
     expect(liveOf(db, undefined)).toBe(db);
   });
 

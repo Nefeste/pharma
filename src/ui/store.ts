@@ -38,11 +38,11 @@ import type { CashView, MorningView, TopView } from '../sim/report';
 import type { CardView, StockQuery, StockView, Thing } from '../sim/views';
 import type { Urgent } from './draft';
 
-/** Отбор списка заданий (Б6а): в плане — до комплектовки; в работе; выпущены и отменены за 7 суток. */
 /** Шаги загрузки первого экрана (Б11, шаг 2) — по порядку `Game.create`: шрифт, база, первый срез потока, модели, люди, сцена. */
 export const LOAD_STEPS = ['font', 'base', 'world', 'models', 'people', 'scene'] as const;
 export type LoadStep = (typeof LOAD_STEPS)[number];
 
+/** Отбор списка заданий (Б6а): в плане — до комплектовки; в работе; выпущены и отменены за 7 суток. */
 export type JobsFilter = 'plan' | 'work' | 'done' | 'cancelled';
 
 /** Скорости геймдизайна (§2): 0 — пауза; 1–4 — минута, 5 минут, 20 минут, 2 часа за секунду; 5 — «живое время» 1:1. */

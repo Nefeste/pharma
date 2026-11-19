@@ -12,6 +12,7 @@ import { type Actions, Store } from '../ui/store';
 import { Game } from './game';
 import { kept, medianFrame, PRESET, pickPreset, keep as remember, windowKeep } from './preset';
 import { langOf } from './lang';
+import { measure, overflows } from './overflow';
 
 declare const __VERSION__: string;
 
@@ -224,6 +225,8 @@ Game.create(document.getElementById('view')!, store, quality, q.get('art') === '
   .then(async g => {
     game = g;
     window.__game = g;
+    // переполнения окна (Б12, шаг 2) — для сценария в браузере
+    window.__overflow = () => overflows(measure());
     const args = window.shell ? await window.shell.args() : [];
     const has = (k: string) => q.get(k) === '1' || args.includes(`--${k}`);
     const val = (k: string) => q.get(k) ?? (args.includes(`--${k}`) ? args[args.indexOf(`--${k}`) + 1] : null);

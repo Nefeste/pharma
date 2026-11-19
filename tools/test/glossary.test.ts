@@ -80,3 +80,18 @@ describe('язык окна', () => {
     keepLang(broken, 'en');
   });
 });
+
+describe('переполнения окна', () => {
+  test('шире коробки и обрезано — переполнение; многоточие, прокрутка и точка округления — нет; выход за край предка — да', async () => {
+    const { overflows } = await import('../../src/app/overflow');
+    const box = (o: Partial<import('../../src/app/overflow').Box>) => ({ what: 'x', scrollW: 100, clientW: 100, scrollH: 20, clientH: 20, ox: 'visible', oy: 'visible', ellipsis: false, nowrap: false, cut: 0, ...o });
+    expect(overflows([box({ scrollW: 120, ox: 'hidden' })])).toEqual(['x: width 120 > 100']);
+    expect(overflows([box({ scrollW: 120, nowrap: true })])).toEqual(['x: width 120 > 100']);
+    expect(overflows([box({ scrollW: 120, ox: 'hidden', ellipsis: true })])).toEqual([]);
+    expect(overflows([box({ scrollW: 120, ox: 'auto' })])).toEqual([]);
+    expect(overflows([box({ scrollW: 101, ox: 'hidden' })])).toEqual([]);
+    expect(overflows([box({ scrollW: 120 })])).toEqual([]);
+    expect(overflows([box({ scrollH: 40, oy: 'hidden' })])).toEqual(['x: height 40 > 20']);
+    expect(overflows([box({ cut: 51 })])).toEqual(['x: cut 51']);
+  });
+});

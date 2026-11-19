@@ -115,7 +115,7 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
               {T.view.less}
             </button>
           </span>
-          <span className="group">
+          <span className="group nav" data-test="nav">
             <button type="button" className={`seatbtn${s.seats.open ? ' on' : ''}`} onClick={() => actions.openSeats()} title={`${T.seats.hint}${mine ? ` · ${mine}` : ''}`} data-test="seats-open">
               {mine ? `${T.seats.button}: ${mine}` : T.seats.button}
             </button>

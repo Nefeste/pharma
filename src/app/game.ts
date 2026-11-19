@@ -84,6 +84,8 @@ declare global {
   interface Window {
     shell?: ShellBridge;
     __game?: Game;
+    /** переполнения окна сейчас (Б12, шаг 2; src/app/overflow.ts) — для сценария в браузере */
+    __overflow?: () => string[];
     __ready?: boolean;
     /** итог и ошибка авто-бенча, снимки — для бенча в Chromium без окна (tools/app/bench.mjs) */
     __benchResult?: unknown;

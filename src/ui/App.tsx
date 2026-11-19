@@ -36,7 +36,7 @@ import { Ref } from './Ref';
 import { Seats } from './Seats';
 import { Stock } from './Stock';
 import { watchFor } from '../app/watch';
-import { type Actions, type Hud, LIVE, type Speed, type Store, useHud } from './store';
+import { type Actions, type Hud, LIVE, LOAD_STEPS, type Speed, type Store, useHud } from './store';
 
 const SPEEDS: Speed[] = [1, 2, 3, 4];
 const WALLS: WallMode[] = ['full', 'cut', 'down'];
@@ -62,7 +62,7 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
         {T.app.error}: {s.error}
       </div>
     );
-  if (!s.ready) return <div className="status panel">{T.app.loading}</div>;
+  if (!s.ready) return <FirstScreen load={s.load} version={s.version} />;
   const m = momentOf(s.start, s.t);
   const mine = s.top?.seats?.map(id => T.seats.names[id]).join(', ');
   return (
@@ -310,6 +310,27 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Первый экран (Б11, шаг 2): название игры, версия и загрузка по настоящим шагам `Game.create` — полоса растёт, когда шаг
+ * прошёл; затем «Кампания».
+ */
+function FirstScreen({ load, version }: { load: Hud['load']; version: string | undefined }) {
+  const pct = Math.round((100 * load.done) / LOAD_STEPS.length);
+  return (
+    <div className="boot" data-test="first">
+      <div className="boot-name">{T.app.title}</div>
+      <div className="boot-tag muted">{T.app.tagline}</div>
+      <div className="boot-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={T.app.loading}>
+        <i style={{ width: `${pct}%` }} />
+      </div>
+      <div className="boot-step muted" data-test="first-step" data-done={load.done}>
+        {T.app.steps[load.step]} · {pct} %
+      </div>
+      {version && <div className="boot-ver muted">{T.app.version(version)}</div>}
+    </div>
   );
 }
 

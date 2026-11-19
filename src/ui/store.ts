@@ -39,6 +39,10 @@ import type { CardView, StockQuery, StockView, Thing } from '../sim/views';
 import type { Urgent } from './draft';
 
 /** Отбор списка заданий (Б6а): в плане — до комплектовки; в работе; выпущены и отменены за 7 суток. */
+/** Шаги загрузки первого экрана (Б11, шаг 2) — по порядку `Game.create`: шрифт, база, первый срез потока, модели, люди, сцена. */
+export const LOAD_STEPS = ['font', 'base', 'world', 'models', 'people', 'scene'] as const;
+export type LoadStep = (typeof LOAD_STEPS)[number];
+
 export type JobsFilter = 'plan' | 'work' | 'done' | 'cancelled';
 
 /** Скорости геймдизайна (§2): 0 — пауза; 1–4 — минута, 5 минут, 20 минут, 2 часа за секунду; 5 — «живое время» 1:1. */
@@ -79,6 +83,8 @@ export interface Hud {
    * открыто ли меню; громкость и подписи запоминаются в окне
    */
   sound: { open: boolean; volume: number; captions: boolean };
+  /** первый экран (Б11, шаг 2): сколько шагов загрузки прошло и какой идёт — настоящие шаги `Game.create` */
+  load: { done: number; step: LoadStep };
   fps: number;
   cpuMs: number;
   gpuMs: number | null;
@@ -269,6 +275,7 @@ export const initial: Hud = {
   walls: 'cut',
   less: false,
   sound: { open: false, volume: 0.7, captions: false },
+  load: { done: 0, step: 'font' },
   fps: 0,
   cpuMs: 0,
   gpuMs: null,

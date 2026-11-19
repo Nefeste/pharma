@@ -34,5 +34,7 @@ copyFileSync(bundle, join(out, 'content.json'));
 cpSync(join(root, 'assets/models'), join(out, 'assets/models'), { recursive: true });
 // звуки окна и событий (Б11, шаг 1): собирает npm run sound
 cpSync(join(root, 'assets/audio'), join(out, 'assets/audio'), { recursive: true });
+// шрифт игры (Б11, шаг 2): IBM Plex Sans со своей лицензией
+cpSync(join(root, 'assets/fonts'), join(out, 'assets/fonts'), { recursive: true });
 copyFileSync(join(root, 'assets/LICENSES.md'), join(out, 'LICENSES.md'));
 console.log(`dist/ — версия ${version}`);

@@ -41,6 +41,7 @@ const TYPES = {
   '.json': 'application/json',
   '.glb': 'model/gltf-binary',
   '.wav': 'audio/wav',
+  '.ttf': 'font/ttf',
   '.png': 'image/png',
   '.md': 'text/markdown; charset=utf-8',
 };

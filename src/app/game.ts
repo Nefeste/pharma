@@ -14,7 +14,7 @@ import type { Command, DeptMode, Head, Notice } from '../engine/types';
 import type { RunSum } from '../engine/plan/run';
 import { dayText, durText, hText, money, named, qtyText, T, whenText } from '../i18n';
 import { chronicleText } from '../ui/Chronicle';
-import { saveText } from './savetext';
+import { saveBlob, saveText, shotName } from './savetext';
 import { bakeLook, lodOf, packPeople } from '../render/bake';
 import type { ArtIndex } from '../render/blender';
 import { AT, camDetail, type Detail, speedDetail, stepDetail, type Weights } from '../render/detail';
@@ -35,7 +35,7 @@ import { capaName, headText } from '../ui/capa';
 import { useDb } from '../ui/db';
 import { cancelsOf, commandsOf, draftKey, freshOf, ordersOf, prune, pruneDrop, pruneRoutes, routesOf, toggleDrop, upsert, upsertRoute } from '../ui/draft';
 import { draftCommands, draftKey as policyKey, sameValue } from '../ui/policy';
-import { type Actions, holds, type Hud, LIVE, NO_POLICY_RUN, NO_RUN, PLAN_RUN, POLICY_RUN, type Speed, type Store } from '../ui/store';
+import { type Actions, holds, type Hud, LIVE, LOAD_STEPS, NO_POLICY_RUN, NO_RUN, PLAN_RUN, POLICY_RUN, type Speed, type Store } from '../ui/store';
 import { type ArtMode, loadArt } from './art';
 import { Builder, type Cell, clsName, resultText, thingName, whyText } from './build';
 import { Labels } from './labels';
@@ -201,8 +201,14 @@ export class Game {
 
   /** База, сцена, поток — и первый кадр после первого среза; `art` — модели из Blender или кодом (#109). */
   static async create(host: HTMLElement, store: Store, quality: Quality, art: ArtMode = 'blender', scn?: string): Promise<Game> {
+    // первый экран (Б11, шаг 2): каждый шаг загрузки — в окно, прогресс растёт по ним
+    const step = (done: number) => store.set({ load: { done, step: LOAD_STEPS[Math.min(done, LOAD_STEPS.length - 1)] } });
+    step(0);
+    await document.fonts?.load('13px "IBM Plex Sans"').catch(() => undefined);
+    step(1);
     const db = (await (await fetch('./content.json')).json()) as ContentDb;
     useDb(db);
+    step(2);
     const g = new Game(db, store, host);
     // сценарий (Б9): из адреса — сразу он; нет — экран «Кампания», а за ним стоит завод прототипа
     const id = scn && db.scenarios[scn] ? scn : SCENARIO;
@@ -217,6 +223,7 @@ export class Game {
       g.client.start({ kind: 'start', scenario: id });
     });
     if (!first.world) throw new Error('slice: no plan');
+    step(3);
     g.world = first.world;
     store.set({ world: first.world.plan });
     g.layout = layoutOf(planOf(db, g.world.plan));
@@ -224,10 +231,12 @@ export class Game {
     g.models = (await (await fetch(`${MODELS}/index.json`)).json()) as ModelIndex;
     const models = art === 'blender' ? await loadArt(loader, MODELS, g.models) : undefined;
     store.set({ art });
+    step(4);
     // паллет в сцене — сколько мест в плане и ещё на фуры и в помещения
     g.stage = new Stage({ host, layout: g.layout, db, quality, capacity: g.layout.plan.slots.length + 256, art: models });
     const crowd = await loadPeople(g.models);
     g.stage.setPeople(crowd.people, crowd.names);
+    step(5);
     // стройка (Б7б): призраки — в сцене, подписи — слоем страницы; команды — от игрока, на месте директора
     g.ghosts = new Ghosts();
     g.stage.scene.add(g.ghosts.group);
@@ -267,6 +276,7 @@ export class Game {
       else store.set({ plan: { ...store.get().plan, running: false, error: message } });
     };
     await g.firstSlice;
+    step(6);
     new ResizeObserver(() => g.stage.resize()).observe(host);
     g.bindInput();
     // «меньше движения» (правило 6 ADR 0023 устава): выбор игрока или, пока не выбирал, — как просит система
@@ -703,6 +713,24 @@ export class Game {
 
   // ---------------------------------------------------------------- кадр
 
+  /** F12 нажата: снимок — после следующей отрисовки (Б11, шаг 2). */
+  private shotWanted = false;
+  /** сколько снимков сохранено (для сценария в браузере) */
+  shots = 0;
+
+  /** Снимок кадра сцены — PNG в загрузки, без панелей окна; имя — по часам завода. */
+  private takeShot() {
+    const m = momentOf(this.scenario.start.date, this.t);
+    const name = shotName(m.date.y, m.date.m, m.date.d, m.sec);
+    this.stage.renderer.domElement.toBlob(b => {
+      if (!b) return;
+      saveBlob(name, b);
+      this.shots++;
+      this.notices.unshift({ t: this.t, text: T.app.shot(name) });
+      this.hud();
+    }, 'image/png');
+  }
+
   private loop = (ts: number) => {
     requestAnimationFrame(this.loop);
     const dt = this.last ? Math.min(0.1, (ts - this.last) / 1000) : 0;
@@ -744,6 +772,11 @@ export class Game {
     if (this.store.get().layer === 'andon') this.stage.andon.set(andonMarks(this.store.get().andon.view?.items ?? [], this.thingTop));
     this.stage.setMachines(this.view.lines, this.view.equipment, this.ff ? FF_CHUNK * 60 : RATE[this.speed]);
     this.stage.frame(dt, (((this.t % 86400) + 86400) % 86400) / 3600);
+    // снимок для себя (Б11, шаг 2): кадр берётся сразу после отрисовки, пока буфер холста ещё цел
+    if (this.shotWanted) {
+      this.shotWanted = false;
+      this.takeShot();
+    }
     this.push(this.frames.draw, performance.now() - a);
     if (!this.firstFrameMs) {
       this.firstFrameMs = Math.round(performance.now());
@@ -1900,6 +1933,12 @@ export class Game {
     });
     window.addEventListener('keydown', e => {
       const k = e.code;
+      // снимок для себя (Б11, шаг 2) — с любого экрана
+      if (k === 'F12') {
+        e.preventDefault();
+        this.shotWanted = true;
+        return;
+      }
       // экран «Кем вы будете» — поверх всего: клавиши мира молчат, Esc закрывает его, если место уже выбрано
       if (this.store.get().seats.open) {
         if (k === 'Escape') this.actions.closeSeats();

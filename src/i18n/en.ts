@@ -25,6 +25,10 @@ export const en: Strings = {
   app: {
     title: 'Farmzavod',
     loading: 'Loading…',
+    tagline: 'A pharmaceutical plant: warehouse, production, quality control, packaging, people and money',
+    steps: { font: 'Font', base: 'Plant database', world: 'Plant calculation', models: 'Machine models', people: 'People', scene: 'First frame' },
+    version: (v: string) => `Version ${v}`,
+    shot: (name: string) => `Frame snapshot saved: ${name}`,
     error: 'Error',
     panelError: (panel: string, message: string) => `Error in the “${panel}” panel: ${message}`,
     stage: 'No notices yet',

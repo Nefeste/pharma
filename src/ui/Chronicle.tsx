@@ -4,7 +4,9 @@
 import { DAY } from '../engine/core/calendar';
 import type { ChronEntry } from '../engine/types';
 import { durText, named, num, T, whenText } from '../i18n';
-import type { ChronFacts, ChronRow, ChronScale } from '../sim/chronicle';
+import { momentOf, type Ymd } from '../engine/core/calendar';
+import { pctText } from '../i18n';
+import type { ChronFacts, ChronicleView, ChronRow, ChronScale } from '../sim/chronicle';
 import { causeText, clsText } from './capa';
 import { db } from './db';
 import type { Actions, Hud } from './store';
@@ -64,7 +66,46 @@ export function entryText(e: ChronEntry, f: ChronFacts): string {
   }
 }
 
-const SCALES: ChronScale[] = ['day', 'week', 'month'];
+const SCALES: ChronScale[] = ['day', 'week', 'month', 'year'];
+
+/**
+ * Вся хроника текстом (шаг 2; геймдизайн, §26.1, «Экспорт»): шапка — игра, сценарий, зерно и даты; дальше по месяцам,
+ * старые сверху, каждая запись — дата, час и её слова.
+ */
+export function chronicleText(v: ChronicleView, start: Ymd): string {
+  const C = T.chronicle;
+  const lines: string[] = [];
+  const scn = v.head ? named(db?.scenarios[v.head.scenario]?.name, v.head.scenario) : '';
+  lines.push(C.fileHead(T.app.title, scn, v.head?.seed ?? 0, whenText(start, v.from), whenText(start, v.to)), '');
+  let month = '';
+  for (const r of [...v.rows].reverse()) {
+    const d = momentOf(start, r.e.t).date;
+    const head = `${C.months[d.m - 1]} ${d.y}`;
+    if (head !== month) {
+      if (month) lines.push('');
+      lines.push(head, '-'.repeat(head.length));
+      month = head;
+    }
+    lines.push(`${whenText(start, r.e.t)}  ${entryText(r.e, r.facts)}`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+/** «Итоги года»: заказы вовремя по месяцам, причины отклонений, люди и оборудование — числами записей. */
+function YearBlock({ v }: { v: ChronicleView }) {
+  const C = T.chronicle;
+  const y = v.year!;
+  return (
+    <div className="cyear" data-test="chron-year">
+      <b>{C.otif}</b>
+      <div className="muted">{y.otif.length === 0 ? C.monthsNone : y.otif.map(o => `${C.months[o.m - 1]}: ${o.v === undefined ? C.otifNone : pctText(o.v)}`).join('; ')}</div>
+      <b>{C.causes}</b>
+      <div className="muted">{y.causes.length === 0 ? C.causesNone : y.causes.map(c => C.causeN(causeText(c.cause), c.n)).join('; ')}</div>
+      <div className="muted">{C.people(v.sum.hired ?? 0, v.sum.left ?? 0)}</div>
+      <div className="muted">{C.units(v.sum.unit ?? 0)}</div>
+    </div>
+  );
+}
 
 export function Chronicle({ hud, actions }: { hud: Hud; actions: Actions }) {
   const c = hud.chronicle;
@@ -93,6 +134,9 @@ export function Chronicle({ hud, actions }: { hud: Hud; actions: Actions }) {
             </button>
           ))}
         </span>
+        <button type="button" onClick={() => actions.exportChronicle()} disabled={c.exporting} title={C.saveHint} data-test="chron-save">
+          {c.exporting ? C.saving : C.save}
+        </button>
         <button type="button" className="close" onClick={() => actions.toggleChronicle()} title={T.card.closeHint}>
           ✕
         </button>
@@ -110,6 +154,12 @@ export function Chronicle({ hud, actions }: { hud: Hud; actions: Actions }) {
               {C.later}
             </button>
           </div>
+          {c.scale === 'year' && v.year ? (
+            <>
+              <b>{C.yearTitle(momentOf(hud.start, v.from).date.y)}</b>
+              <YearBlock v={v} />
+            </>
+          ) : null}
           <p className="muted" data-test="chron-sum">
             {C.sum(v.sum.released ?? 0, v.sum.rejected ?? 0, v.sum.missed ?? 0, v.sum.dev ?? 0)}
           </p>

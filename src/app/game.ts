@@ -13,6 +13,8 @@ import { planOf } from '../engine/plant';
 import type { Command, DeptMode, Head, Notice } from '../engine/types';
 import type { RunSum } from '../engine/plan/run';
 import { dayText, durText, hText, money, named, qtyText, T, whenText } from '../i18n';
+import { chronicleText } from '../ui/Chronicle';
+import { saveText } from './savetext';
 import { bakeLook, lodOf, packPeople } from '../render/bake';
 import type { ArtIndex } from '../render/blender';
 import { AT, camDetail, type Detail, speedDetail, stepDetail, type Weights } from '../render/detail';
@@ -408,6 +410,14 @@ export class Game {
       } else if (d.view === 'goals') {
         // цели сценария (Б9): полоса и окно целей; в конце срока — итог
         this.store.set({ goals: { ...this.store.get().goals, view: d } });
+      } else if (d.view === 'chronicle' && d.scale === 'all') {
+        // выгрузка хроники (Б10, шаг 2): вся хроника — текстом в файл; запрос — один раз
+        const c = this.store.get().chronicle;
+        if (c.exporting) {
+          this.store.set({ chronicle: { ...c, exporting: false } });
+          saveText(`${T.chronicle.file}-${this.scenario.id.replace(/^scn\./, '')}.txt`, chronicleText(d, this.scenario.start.date));
+          this.sendViews();
+        }
       } else if (d.view === 'chronicle') {
         // хроника завода (Б10): глава панели
         this.store.set({ chronicle: { ...this.store.get().chronicle, view: d } });
@@ -1170,6 +1180,10 @@ export class Game {
       this.store.set({ chronicle: { ...this.store.get().chronicle, open: true, scale, back } });
       this.sendViews();
     },
+    exportChronicle: () => {
+      this.store.set({ chronicle: { ...this.store.get().chronicle, exporting: true } });
+      this.sendViews();
+    },
     chronicleGo: go => {
       // щелчок по вещи записи (Б10): как по извещению — карточка вещи или досье серии
       if ('thing' in go) this.actions.show(go.thing);
@@ -1596,6 +1610,7 @@ export class Game {
     if (lettersOf(this.db, this.scenario.id).length > 0) list.push({ id: 'letters', view: 'letters' });
     // хроника завода (Б10) — пока панель открыта: глава её масштаба
     if (h.chronicle.open) list.push({ id: 'chronicle', view: 'chronicle', scale: h.chronicle.scale, back: h.chronicle.back });
+    if (h.chronicle.exporting) list.push({ id: 'chronicle-all', view: 'chronicle', scale: 'all', back: 0 });
     if (st.open) list.push({ id: 'stock', ...st.query });
     if (this.selected) list.push({ id: 'card', view: 'card', thing: this.selected });
     if (h.morning.open && h.morning.day !== undefined) list.push({ id: 'morning', view: 'morning', day: h.morning.day, ...(h.session ? { since: h.session.from } : {}) });

@@ -160,6 +160,7 @@ const actions: Actions = {
   chronicleAt: later('chronicleAt'),
   showChronicle: later('showChronicle'),
   chronicleGo: later('chronicleGo'),
+  exportChronicle: later('exportChronicle'),
   readLetter: later('readLetter'),
   showLetter: later('showLetter'),
   skipLetter: later('skipLetter'),

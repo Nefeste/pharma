@@ -114,9 +114,10 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # batch), scenario 1 — the «Кампания» screen, its start after the warm-up, the goals,
                                    # the truck in the first hour, the first day by the letters to the shipment, a skip
                                    # (e2e-c1.mjs, c1.png), scenario 2 — its start, the distributor's letters, the order
-                                   # at risk (e2e-c2.mjs, c2.png; `--long 1` — «До утра» to the result, ~50 min); `--
-                                   # --only main|week|memo|
-                                   # capa|jobs|launch|forecast|sop|mrp|edits|build|equip|route|sources|portfolio|c1|c2`
+                                   # at risk (e2e-c2.mjs, c2.png; `--long 1` — «До утра» to the result, ~50 min), the
+                                   # chronicle — the meeting's line, a day and a week, a batch's record (e2e-chron.mjs,
+                                   # chron.png); `-- --only main|week|memo|capa|jobs|launch|forecast|sop|mrp|edits|
+                                   # build|equip|route|sources|portfolio|c1|c2|chronicle` for one
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -138,8 +139,9 @@ first, or copy the working code of Bolnitsa on the same versions.
 
 - `src/engine/` — the engine (pure TypeScript; see «Hard rules»): `core/` (seeded branches, hashes, own `log2` — copies;
   the event agenda as a heap in plain arrays and the calendar without `Date` with the production calendar — holidays,
-  transfers, short days, the month's norm — ours), `types.ts` (state — with Б7а the building plan and its revision —,
-  commands, notices, `SCHEMA`), `engine.ts` (`newPlant`, `apply`, `catchUp`, events), `random.ts` (named branches in the
+  transfers, short days, the month's norm — ours), `types.ts` (state — with Б7а the building plan and its revision,
+  with Б10 the groups `hiring` and `story` —, commands, notices, `SCHEMA`), `engine.ts` (`newPlant`, `apply`, `catchUp`,
+  events), `random.ts` (named branches in the
   state, the integer normal draw), `save.ts` (snapshot and migrations), `nav.ts` (the plan's 1 m grid — with Б7б up to
   the hull's walls, a hull cell without a room unbuilt —: walls, doors and footprints, where people may walk and
   vehicles may drive, access cells, distance fields cached per plan, route length and the route polyline shared with
@@ -251,7 +253,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   analysts, documents in force after the training's warning days, the cleaning assessment by the QA specialist, a
   trial batch not for sale, the protocol by the QA head, validation batches until so many pass in a row, the report,
   the dossier decision by the variation's terms, then the launch documents in force; a passed batch not for sale —
-  its bulk rejected; the demand ramp of a launched SKU (`rampOf`)), `infer.ts` (the inference — a copy of Anamnez's: noisy-OR
+  its bulk rejected; the demand ramp of a launched SKU (`rampOf`)), `infer.ts` (the inference — a copy of Anamnez's:
+  noisy-OR
   findings, the posterior over candidates, entropy and the expected gain of a step), `investigation.ts` (the scenario's
   incident — root and size by the seed, its traces in parameters, the mill screen and the lab test; an out-of-spec
   dissolution opens a deviation and an investigation, the lot waits; steps as tasks of their roles or lab tests — the
@@ -461,15 +464,19 @@ first, or copy the working code of Bolnitsa on the same versions.
   department —, with Б5б a mode is the post of its head's department and an answer the post of the proposal's or the
   director —, the `seat` command, the log of places; a player's command of another's post is refused),
   `batchno.ts` (the batch number `PPNNNMMYY`: the short `PPNNN` when the batch record is issued, month and year when the
-  first mixing starts; a count per product code from 1 January and after 999 again from 001, skipping numbers still held,
+  first mixing starts; a count per product code from 1 January and after 999 again from 001, skipping numbers still
+  held,
   so a full number never repeats; one integer in the slice), `alerts.ts` (the hourly alerts — a supplier truck still not
-  unloaded 2 hours after arrival, a batch order still waiting for material at its not-before time and a packing job short
+  unloaded 2 hours after arrival, a batch order still waiting for material at its not-before time and a packing job
+  short
   of it at once, a new customer order at risk by the meeting's rule; one notice per thing in the hour its threshold
-  falls, no state of their own), `places.ts` (the places of the plan by ISA-95 — site, areas, work centers of their kinds
+  falls, no state of their own), `places.ts` (the places of the plan by ISA-95 — site, areas, work centers of their
+  kinds
   and place codes; what stands where; the storage zone of a room and its sensor; whether a zone's regime lies inside a
   material's; racks or the cold room for a material), `assets.ts` (physical assets — inventory numbers by place order,
   qualification and calibration records with the acceptance day and the last day in force, start records by a hash
-  within the interval less the warning period; why an asset takes no new work — no record in force or a contractor visit;
+  within the interval less the warning period; why an asset takes no new work — no record in force or a contractor
+  visit;
   the techservice colleague books a visit at 09:00 on a workday for the next workday; the contractor starts in his hours
   once the asset is free, the bill on the visit day, the acceptance by the QC head or the QA specialist; a pallet stored
   only in a zone whose regime fits and whose sensor is fit; what holds a stage or a line; with Б5г «Перенести визит» —
@@ -513,7 +520,14 @@ first, or copy the working code of Bolnitsa on the same versions.
   found at arrival; the end by its own condition on plant records or the window's `seen`, and only by it; a mentor's
   letter skipped, or all of them; an ended letter's departments advise unless the player chose their mode; the `letter`
   command; with step 3 an order closed or the letter read as its end, the first missed order, a day letter that does not
-  come after another — `unless`), `invariants.ts`.
+  come after another — `unless`), `chronicle.ts` (with Б10, the plant chronicle: after each event and command the
+  notices become entries — a batch released with the time from its not-before, its longest wait of 12 hours or more
+  from the time by state, how late against its due and who decided by the journal; a batch rejected; an order late or
+  short with the SKU most short, once; a deviation opened, once; an investigation's conclusion; a CAPA check; a PO late
+  and when it came; a part failure and its repair with the downtime; hired and left; a unit in service; a project's
+  stage; the scenario's goals at its end — kept the whole game in `story`, read by no rule, none in the plan run's
+  copy),
+  `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`; a `tick` carries the notice kinds of the player's
@@ -615,7 +629,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   lacks, the project's batches with their numbers and state, the dossier, and the meeting's «Проекты»
   (`portfolio.ts`); with Б9, a scenario's goals — what each sees now and the result at the end (`goals.ts`), and its
   letters — newest first, the plant's records for their words, where «Показать» leads, what the window must open
-  (`letters.ts`); with Б1к, the andon — what is
+  (`letters.ts`); with Б10, the chronicle — chapters of a day from meeting to meeting, a week from Monday and a month
+  from the 1st, back so many chapters, the entries newest first with the plant's records for their words and where a
+  click leads, the chapter's sum (`chronicle.ts`); with Б1к, the andon — what is
   not working now by thing: a failed part, an asset without a record in force or with the contractor, a cleaning a batch
   waits for with the stage operators on shift and no cleaners, a task waiting for an admission, hours or the end of a
   leave, a supplier truck not unloaded for 2 hours, a batch without material at its not-before, an order at risk — with
@@ -667,7 +683,8 @@ first, or copy the working code of Bolnitsa on the same versions.
 - `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa); the plant
   from the plan (`layout.ts` — rooms, walls, doors and spots from `planOf`), floors, zone markings, ground and yard,
   walls with the cut and openings (`world.ts`), doors, lamps and floor textures (`doors.ts`, `lamps.ts`, `textures.ts` —
-  copies of Bolnitsa, adapted), racks and pallet loads by instancing (`loads.ts`), trucks — closed body before the check and when leaving (`trucks.ts`), room
+  copies of Bolnitsa, adapted), racks and pallet loads by instancing (`loads.ts`), trucks — closed body before the check
+  and when leaving (`trucks.ts`), room
   status signs (`signs.ts`), equipment and line machines as models in code from their records' `model` parts, with
   status lamps and icons, rotors, covers, belts and buffers (`machines.ts`; the lamp of each state, belt speed and
   buffer fill — pure functions in `flow.ts`; with #109 a record type with a model from Blender takes its node in the
@@ -711,7 +728,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   process parameter
   values in words (`units.ts`), what is going on now with «Смотреть»
   (`Now.tsx`, N), the 08:00 meeting (`Morning.tsx`), the cash
-  panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), the schedule window with dragging, the draft, «Прогнать
+  panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), the schedule window with dragging, the draft,
+  «Прогнать
   план» and the run's outcome per variant, with Б6е the frozen band, its edge and the draft's price (`Gantt.tsx`), with
   Б6а its «Задания» tab — filters, rows, «Отменить» into
   the draft, «Полосы», the uncovered orders with «Срочное задание под заказ» (`Jobs.tsx`), with Б6б its «План запуска»
@@ -734,7 +752,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   (`Portfolio.tsx`), with Б9 the «Кампания» screen before «Кем вы будете» — the scenarios by their campaign number
   (`Campaign.tsx`), the goals window with the result at the end of the term (`Goals.tsx`) and a goal in words
   (`goalwords.ts`), with Б9 step 2 the letters panel — rows, the open letter in words, «Показать», «Пропустить»,
-  «Пропустить обучение» (`Letters.tsx`), the investigation board — steps, findings in words with numbers
+  «Пропустить обучение» (`Letters.tsx`), with Б10 the chronicle panel — H, day, week or month, «Раньше» and «Позже»,
+  the chapter's sum, an entry in words with its click (`Chronicle.tsx`), the investigation board — steps, findings in
+  words with numbers
   from the records, version bars, the decision, the debrief, with Б5е the CAPA after the conclusion (`Inv.tsx`), the
   batch record over the other windows — opened from a
   card, «Сейчас», the meeting and a click
@@ -816,7 +836,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   walkable floor, the first floor; models in code — parts inside the footprint, round cylinders, upright hoppers, items
   only on belts: `modelErrors` in `load.ts`;
   places — codes by format and unique, a room in one area, a thing on a work center of its kind in its room's area, one
-  verified sensor per storage zone, an IPC instrument for each stage test in the stage room, a zone for every material by
+  verified sensor per storage zone, an IPC instrument for each stage test in the stage room, a zone for every material
+  by
   its regime, contractor works within his day, the warning period shorter than the shortest interval: `placeErrors`;
   pairs — every revision of a starting or packaging material spec has a pair its supplier sells from that maker, every
   pair of the start has a quality agreement in force: `pairErrors`; with Б5е the CAPA catalog — one action per work
@@ -853,9 +874,11 @@ first, or copy the working code of Bolnitsa on the same versions.
   «Утвердить» and the journal, the horizon policy and its edge (`e2e-edits.mjs`), the sources — candidate pairs and
   «Одобрить пару» to the trial lot with its promised day, the trial PO in the «Материалы» tab, a planned order's
   «Предложения» and «Заказать», with `--long 1` on to the dossier filing (`e2e-sources.mjs`), the portfolio — a
-  metformin project from the «Портфель» window, with `--long 1` on to the trial batch (`e2e-portfolio.mjs`), scenario 1 from
+  metformin project from the «Портфель» window, with `--long 1` on to the trial batch (`e2e-portfolio.mjs`), scenario 1
+  from
   the «Кампания» screen through its first day by the mentor's letters (`e2e-c1.mjs`), scenario 2 from its start to the
-  risk letter, with `--long 1` to the result (`e2e-c2.mjs`; the other parts open `?scn=scn.proto`), the
+  risk letter, with `--long 1` to the result (`e2e-c2.mjs`; the other parts open `?scn=scn.proto`), the chronicle —
+  the meeting's line, a day, H, a week, «Раньше» and «Позже», a batch's dossier (`e2e-chron.mjs`), the
   «code —
   Blender» sheet
   of the press in the compression room and of the packaging line (`blender-sheet.mjs`), the headless scene bench

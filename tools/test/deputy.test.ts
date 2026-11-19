@@ -60,7 +60,7 @@ describe('на место ушедшего', () => {
     expect(s.people.E1.away![0].deputy).toBe('E2');
     // ушёл — его часть следующему по правилу, теперь есть кому
     apply(d, s, { kind: 'advance', seconds: at(ymd(2027, 10, 1), 1) - s.t });
-    expect(s.former.E2).toBeDefined();
+    expect(s.hiring.former.E2).toBeDefined();
     expect(s.people.E1.away![0].deputy).toBe(id);
     // в дни второй части работу кладовщика — проверку фуры, приёмку, передачу комплекта в шлюз — берёт новый водитель
     const keepers: string[] = [];

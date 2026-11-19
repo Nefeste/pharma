@@ -216,12 +216,12 @@ describe('причина — числа правила', () => {
       expect(w.skill).toBeGreaterThanOrEqual(lab.colleague.skill);
       expect(w.salary).toBeLessThanOrEqual(w.price + Math.floor((w.price * w.over) / 10000));
       // принятый — человек с этим кандидатом
-      const p = [...Object.values(s90.people), ...Object.values(s90.former)].find(x => x.cand === r.d.cand);
+      const p = [...Object.values(s90.people), ...Object.values(s90.hiring.former)].find(x => x.cand === r.d.cand);
       expect(p?.role).toBe(r.d.role);
     }
     for (const r of of(s90, 'vacancy')) {
       const w = r.d.why!;
-      const p = s90.people[w.instead] ?? s90.former[w.instead];
+      const p = s90.people[w.instead] ?? s90.hiring.former[w.instead];
       expect(p.tab).toBe(w.tab);
       expect(p.quit?.day).toBe(w.day);
     }

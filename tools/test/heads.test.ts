@@ -64,7 +64,7 @@ const life = (s: PlantState) => ({
   orders: Object.values(s.orders).map(o => [o.id, o.status]),
   pos: Object.values(s.pos).map(p => [p.id, p.supplier, p.status, p.eta, p.lines.map(l => [l.material, l.qty])]),
   people: Object.values(s.people).map(p => [p.id, p.role, p.shift]),
-  vacancies: Object.values(s.vacancies).map(v => [v.id, v.role, v.via, v.by, v.instead]),
+  vacancies: Object.values(s.hiring.vacancies).map(v => [v.id, v.role, v.via, v.by, v.instead]),
   maint: s.maintLog.map(e => [e.t, e.machine, e.part, e.what]),
   // с Б5д у взятого поста — ещё развилки «Просят решить»: записи руководителя, которые завод не меняют; без них журнал тот же —
   // мгновения, руководители и причины, по порядку (номера записей сдвинуты развилками); план S&OP (Б6г) утверждает пост —

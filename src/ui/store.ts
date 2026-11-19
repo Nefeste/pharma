@@ -18,6 +18,7 @@ import type { DossierView } from '../sim/dossier';
 import type { MrpView } from '../sim/mrp';
 import type { PortfolioView } from '../sim/portfolio';
 import type { GoalsView } from '../sim/goals';
+import type { ChronGo, ChronicleView, ChronScale } from '../sim/chronicle';
 import type { LetterGo, LettersView } from '../sim/letters';
 import type { SopView } from '../sim/sop';
 import type { AndonView } from '../sim/andon';
@@ -164,6 +165,8 @@ export interface Hud {
   goals: { open: boolean; view?: GoalsView };
   /** письма сценария (Б9): панель и вид потока; открытое письмо — его номер */
   letters: { open: boolean; view?: LettersView; at?: string };
+  /** хроника завода (Б10): масштаб главы и сколько глав назад */
+  chronicle: { open: boolean; scale: ChronScale; back: number; view?: ChronicleView };
   /**
    * слой слева (Б1и; геймдизайн, §3.6, §18): обычный вид; «Загрузка и OEE» — столбики, числа, доски «План — факт»;
    * «Узкие места» и «Проблемы» (Б1к) — таблички над местами, где серии ждут, и значки андона; «Потери» (Б1л) — столбики
@@ -284,6 +287,7 @@ export const initial: Hud = {
   campaign: { open: false },
   goals: { open: false },
   letters: { open: false },
+  chronicle: { open: false, scale: 'day', back: 0 },
   layer: 'plain',
   floor: { win: 'today', pick: 'all' },
   andon: {},
@@ -527,6 +531,11 @@ export interface Actions {
   toggleGoals(): void;
   /** письма (Б9): панель; открыть письмо — прочитано; «Показать», «Пропустить», «Пропустить обучение» */
   toggleLetters(): void;
+  toggleChronicle(): void;
+  chronicleAt(scale: ChronScale, back: number): void;
+  /** открыть хронику на главе (Б10): строка планёрки — вчерашние сутки */
+  showChronicle(scale: ChronScale, back: number): void;
+  chronicleGo(go: ChronGo): void;
   readLetter(id: string): void;
   showLetter(go: LetterGo): void;
   skipLetter(id: string): void;

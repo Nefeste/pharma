@@ -590,6 +590,11 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
         <div className="muted">{T.app.loading}</div>
       ) : (
         <>
+          {v.chron > 0 ? (
+            <button type="button" className="link" onClick={() => actions.showChronicle('day', 1)} data-test="morning-chron">
+              {T.chronicle.morning(v.chron)}
+            </button>
+          ) : null}
           {v.session && hud.session ? (
             <Section title={T.morning.session.title}>
               <SessionBlock x={v.session} real={hud.session.real} />

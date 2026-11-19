@@ -140,7 +140,7 @@ describe('окно «Показатели»', () => {
             expect(r.type).toBeDefined();
             break;
           case 'person':
-            expect(s.people[`E${r.person}`] ?? Object.values(s.former).find(p => p.tab === r.tab)).toBeDefined();
+            expect(s.people[`E${r.person}`] ?? Object.values(s.hiring.former).find(p => p.tab === r.tab)).toBeDefined();
             break;
           case 'cpk':
             expect(db.recipes[r.recipe]).toBeDefined();

@@ -5,6 +5,7 @@
 // ставит `until`, а `catchUp` проживает события по порядку, пока бюджет кадра `more()` позволяет. Недожитое
 // доживается в следующих кадрах; любая следующая команда сначала доживает всё. `more` спрашивают после каждого события, и он
 // видит извещения, уже данные этим доживанием: так поток расчёта встаёт ровно на событии автопаузы (Б2а).
+import { chronicleStep } from './chronicle';
 import { letterCommand, letterDue, lettersStep, startLetters } from './letters';
 import type { ContentDb, Id } from '../content/types';
 import { alertsHour } from './alerts';
@@ -127,10 +128,8 @@ export function newPlant(base: ContentDb, o: NewPlant): PlantState {
     maintLog: [],
     losses: [],
     shiftTasks: [],
-    vacancies: {},
-    candidates: {},
-    hires: {},
-    former: {},
+    hiring: { vacancies: {}, candidates: {}, hires: {}, former: {} },
+    story: { chronicle: [] },
     leave: {},
     journal: [],
     planning: { daily: [] },
@@ -240,6 +239,8 @@ export function apply(db: ContentDb, s: PlantState, cmd: Command, more?: More): 
   // база, по которой живёт завод (Б7д): редакции, введённые проектом, — с их днём из состояния
   const live = liveOf(db, s.portfolio?.docs);
   const out = command(live, s, cmd, more);
+  // хроника (Б10): извещения команды
+  chronicleStep(live, s, out, 0);
   // письма (Б9): команда могла выполнить условие письма — задание на серию игрока
   if (s.heads.letters) lettersStep(live, s, out, 0);
   return before.length > 0 ? [...before, ...out] : out;
@@ -575,6 +576,8 @@ export function catchUp(db: ContentDb, s: PlantState, more?: More): Notice[] {
     const k = notices.length;
     const live = liveOf(db, s.portfolio?.docs);
     handle(live, s, due.e, notices);
+    // хроника (Б10): извещения события
+    chronicleStep(live, s, notices, k);
     // письма (Б9): первое событие вида и условия открытых писем — после каждого события
     if (s.heads.letters) lettersStep(live, s, notices, k);
     if (more && !more(notices)) return notices;

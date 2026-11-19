@@ -1,6 +1,6 @@
 // Сохранение — снимок состояния со схемой и цепочкой миграций (ADR студии 0004; docs/02-architecture.md, §13). Забытая
 // миграция стирает игру человека, поэтому каждый шаг закреплён образцом в tools/test/fixtures/.
-import type { ContentDb, Plant } from '../content/types';
+import type { ContentDb, Id, Plant } from '../content/types';
 import { BOOK_HOUR as VISIT_HOUR, seedAssets } from './assets';
 import { PAID_LATER } from './bosses';
 import { newHeads } from './heads';
@@ -321,10 +321,8 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     const sc = db.scenarios[raw.scenario as string];
     if (!sc) throw new Error(`save: no scenario ${String(raw.scenario)}`);
     const s = raw as unknown as PlantState;
-    s.vacancies = {};
-    s.candidates = {};
-    s.hires = {};
-    s.former = {};
+    // поля найма — ещё верхнего уровня: в группу `hiring` их переносит шаг 52 (Б10)
+    Object.assign(raw, { vacancies: {}, candidates: {}, hires: {}, former: {} });
     const plan = planOf(db, s.plan);
     const day = momentOf(s.start, s.t).day;
     const { y, m, d } = momentOf(s.start, s.t).date;
@@ -491,7 +489,8 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
     const s = raw as unknown as PlantState;
     const now = momentOf(s.start, s.t);
     const plan = planOf(db, s.plan);
-    const have = new Set([...Object.values(s.people), ...Object.values(s.hires)].map(p => p.role));
+    const hires = (raw as unknown as { hires: Record<string, { role: Id }> }).hires;
+    const have = new Set([...Object.values(s.people), ...Object.values(hires)].map(p => p.role));
     for (const row of sc.staff) {
       if (!PAID_LATER.has(row.role) || have.has(row.role)) continue;
       for (let i = 0; i < row.n; i++) {
@@ -636,6 +635,20 @@ const STEPS: Record<number, (raw: Raw, db: ContentDb) => Raw> = {
   50: raw => raw,
   // 51 → 52 (Б9): письма сценария — у прежних сохранений их нет: сценария с письмами до Б9 не было
   51: raw => raw,
+  // 52 → 53 (Б10): найм — одной группой `hiring`; хроника пуста — до этой версии записей не было
+  52: raw => {
+    // группа — на месте прежних полей: порядок ключей тот же, что у нового завода
+    const r = raw as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(r)) {
+      if (k === 'vacancies') {
+        out.hiring = { vacancies: r.vacancies, candidates: r.candidates, hires: r.hires, former: r.former };
+        out.story = { chronicle: [] };
+      }
+      else if (k !== 'candidates' && k !== 'hires' && k !== 'former') out[k] = v;
+    }
+    return out as Raw;
+  },
 };
 
 /** Поля состояния, сгруппированные с Б7б (схема 48): куда переехало прежнее поле верхнего уровня. */

@@ -50,7 +50,7 @@ describe('вакансия аппаратчика: кандидаты, приё�
   live(d, s, at(mon, 10));
   const v1 = hiringView(d, s)!;
   const m1 = peopleMeeting(s);
-  const [k] = Object.values(s.candidates);
+  const [k] = Object.values(s.hiring.candidates);
   apply(d, s, { kind: 'hire', candidate: k.id, trial: 3 });
   const v2 = hiringView(d, s)!;
   const m2 = peopleMeeting(s);
@@ -130,7 +130,7 @@ describe('вакансия аппаратчика: кандидаты, приё�
   }, 120_000);
 
   test('принятый вышел: испытание до того же числа через три месяца, «не выдержал» — через три дня и в срок', () => {
-    const h = s.hires[k.id];
+    const h = s.hiring.hires[k.id];
     live(d, s, h.at + HOUR);
     const p = Object.values(s.people).find(x => x.hired === h.day)!;
     const c = person(d, s, p.id);

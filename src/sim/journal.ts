@@ -142,7 +142,7 @@ export interface JournalAs {
 
 /** Кто решил за руководителя в записи — человек на заводе или ушедший; нет — должность. */
 export function asOf(s: PlantState, r: Decision): JournalAs | undefined {
-  const p = r.p ? (s.people[r.p] ?? s.former[r.p]) : undefined;
+  const p = r.p ? (s.people[r.p] ?? s.hiring.former[r.p]) : undefined;
   return p ? { role: p.role, tab: p.tab, ...(r.io ? { io: true as const } : {}), ...(s.people[p.id] ? { n: num(p.id) } : {}) } : undefined;
 }
 
@@ -295,7 +295,7 @@ export function personRef(s: PlantState, p: Person | undefined): JournalRef {
 }
 
 /** Кого приняли кандидатом `cand`: человек на заводе или ушедший. */
-const hiredAs = (s: PlantState, cand: string): Person | undefined => Object.values(s.people).find(p => p.cand === cand) ?? Object.values(s.former).find(p => p.cand === cand);
+const hiredAs = (s: PlantState, cand: string): Person | undefined => Object.values(s.people).find(p => p.cand === cand) ?? Object.values(s.hiring.former).find(p => p.cand === cand);
 
 /** Уставка по ключу: `<код карты>/<стадия>/<режим>` или `<код инструкции по упаковке>/speed` — в редакциях базы. */
 function modeOf(db: ContentDb, key: string): JournalRef['mode'] {
@@ -385,14 +385,14 @@ export function refOf(db: ContentDb, s: PlantState, d: Decided, ask?: Ask): Jour
       return pt ? { machine: pt.of, part: pt.type, ...(thing ? { thing } : {}) } : {};
     }
     case 'vacancy':
-      return d.why ? personRef(s, s.people[d.why.instead] ?? s.former[d.why.instead]) : {};
+      return d.why ? personRef(s, s.people[d.why.instead] ?? s.hiring.former[d.why.instead]) : {};
     case 'hire':
       return personRef(s, hiredAs(s, d.cand));
     case 'setpoint':
       return { mode: modeOf(db, d.key) };
     case 'deputy':
       // заместитель руководителя (Б5в): кого назначили — к его карточке
-      return d.person ? personRef(s, s.people[d.person] ?? s.former[d.person]) : {};
+      return d.person ? personRef(s, s.people[d.person] ?? s.hiring.former[d.person]) : {};
     case 'policy': {
       // политика узла (Б5г): вид машины и узла, к машине на полу
       const pt = d.of ? s.parts[d.of] : undefined;
@@ -438,14 +438,14 @@ export function cmdRef(db: ContentDb, s: PlantState, c: Command): JournalRef {
     case 'dismiss':
     case 'leave':
     case 'also':
-      return personRef(s, s.people[c.person] ?? s.former[c.person]);
+      return personRef(s, s.people[c.person] ?? s.hiring.former[c.person]);
     case 'agency':
     case 'close': {
-      const v = s.vacancies[c.vacancy];
+      const v = s.hiring.vacancies[c.vacancy];
       return v ? { role: v.role } : {};
     }
     case 'hire': {
-      const k = s.candidates[c.candidate];
+      const k = s.hiring.candidates[c.candidate];
       return k ? { role: k.role } : {};
     }
     default:

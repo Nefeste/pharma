@@ -23,6 +23,7 @@ import { Policies } from './Policies';
 import { Portfolio } from './Portfolio';
 import { Campaign } from './Campaign';
 import { Goals } from './Goals';
+import { Chronicle } from './Chronicle';
 import { Letters } from './Letters';
 import { Sop } from './Sop';
 import { Build } from './Build';
@@ -145,6 +146,9 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
             <button type="button" className={s.portfolio.open ? 'on' : ''} onClick={() => actions.togglePortfolio()} title={T.project.hint} data-test="portfolio-open">
               {T.project.button}
             </button>
+            <button type="button" className={s.chronicle.open ? 'on' : ''} onClick={() => actions.toggleChronicle()} title={T.chronicle.hint} data-test="chronicle-open">
+              {T.chronicle.button}
+            </button>
             {s.letters.view ? (
               <button type="button" className={`goalbtn${s.letters.open ? ' on' : ''}${s.letters.view.unread > 0 ? ' new' : ''}`} onClick={() => actions.toggleLetters()} title={T.letters.hint} data-test="letters-open">
                 ✉ {T.letters.button}
@@ -241,6 +245,9 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
         {s.po.open && <Po hud={s} actions={actions} />}
       </Guard>
       <Guard name={T.campaign.title}>{s.campaign.open && <Campaign actions={actions} />}</Guard>
+      <Guard name={T.chronicle.button} close={s.chronicle.open ? actions.toggleChronicle : undefined}>
+        {s.chronicle.open && <Chronicle hud={s} actions={actions} />}
+      </Guard>
       <Guard name={T.letters.button} close={s.letters.open ? actions.toggleLetters : undefined}>
         {s.letters.open && <Letters hud={s} actions={actions} />}
       </Guard>

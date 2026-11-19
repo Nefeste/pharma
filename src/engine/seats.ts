@@ -76,9 +76,9 @@ export function roleOf(s: PlantState, cmd: Command): string | undefined {
       return cmd.role;
     case 'close':
     case 'agency':
-      return s.vacancies[cmd.vacancy]?.role;
+      return s.hiring.vacancies[cmd.vacancy]?.role;
     case 'hire':
-      return s.candidates[cmd.candidate]?.role;
+      return s.hiring.candidates[cmd.candidate]?.role;
     default:
       return undefined;
   }

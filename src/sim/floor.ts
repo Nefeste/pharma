@@ -363,7 +363,7 @@ export function thingRef(db: ContentDb, s: PlantState, plan: ReturnType<typeof p
     case 'c':
       return { customer: id };
     case 'p':
-      return personRef(s, s.people[id] ?? s.former[id]);
+      return personRef(s, s.people[id] ?? s.hiring.former[id]);
     case 'r': {
       const r = plan.plant.rooms.findIndex(x => x.id === id);
       return r >= 0 ? { room: id, thing: { kind: 'room', i: r } } : { room: id };

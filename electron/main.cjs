@@ -40,6 +40,7 @@ const TYPES = {
   '.js': 'text/javascript',
   '.json': 'application/json',
   '.glb': 'model/gltf-binary',
+  '.wav': 'audio/wav',
   '.png': 'image/png',
   '.md': 'text/markdown; charset=utf-8',
 };

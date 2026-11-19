@@ -47,6 +47,7 @@ import { type Movers, moversAt, taskIcons } from './movers';
 import { stopKey, type World } from '../sim/protocol';
 import { EVENT_CAP, type Go, goOf, keepOff, keptOff, stopKinds } from './pauses';
 import { keepLess, keptLess, systemLess } from './motion';
+import { type Cue, keepSound, keptCaptions, keptVolume, noticeCue, Sound, sliceCue, volumeOf } from './sound';
 import { keep, windowKeep } from './preset';
 import { type Box, machineBoxes, nearest, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
 import { carriedOf, dockFront, palletsOf, SceneState } from './scene';
@@ -63,6 +64,8 @@ export const RATE: Record<Speed, number> = { 0: 0, 1: 60, 2: 300, 3: 1200, 4: 72
 const ganttKept = (g: Hud['gantt']) => ({ days: g.days, draft: g.draft, urgent: g.urgent, drop: g.drop, ...(g.routes ? { routes: g.routes } : {}), ...(g.from !== undefined ? { from: g.from } : {}), ...(g.tab ? { tab: g.tab } : {}), ...(g.jobs ? { jobs: g.jobs } : {}) });
 
 const FF_CHUNK = 1800;
+/** Ответ на команду окна — извещение не позже стольких мс после неё (гипотеза: срез идёт каждые 50–250 мс) */
+const ANSWER_MS = 3000;
 const FF_LAG = 900;
 
 /** Мост к оболочке Electron (electron/preload.cjs); в браузере его нет. */
@@ -170,6 +173,8 @@ export class Game {
    */
   ff = false;
   ffTo: 'morning' | 'event' = 'morning';
+  /** звуки окна и событий (Б11, шаг 1; src/app/sound.ts): громкость — из хранилища окна; в «Авто-бенче» и со `shot` — нет */
+  sound = new Sound(keptVolume(windowKeep()));
   private ffLeft = 0;
   /** часы завода из последнего среза */
   t = 0;
@@ -267,7 +272,7 @@ export class Game {
     // «меньше движения» (правило 6 ADR 0023 устава): выбор игрока или, пока не выбирал, — как просит система
     const less = keptLess(windowKeep(), systemLess());
     g.applyLess(less);
-    store.set({ ready: true, start: sc.start.date, quality, walls: g.stage.wallMode, less, pauses: { open: false, off: keptOff(windowKeep()) }, firsts: keptFirsts(windowKeep()) });
+    store.set({ ready: true, start: sc.start.date, quality, walls: g.stage.wallMode, less, sound: { open: false, volume: g.sound.volume, captions: keptCaptions(windowKeep()) }, pauses: { open: false, off: keptOff(windowKeep()) }, firsts: keptFirsts(windowKeep()) });
     // игра начинается с экрана «Кем вы будете» (3е): мир стоит, пока место не выбрано; «Взять» пустит его на ×1
     g.speed = 0;
     g.resume = 1;
@@ -436,9 +441,14 @@ export class Game {
     if (s.notices.some(n => n.kind === 'site' || n.kind === 'equip')) this.buildHud();
     const stops = new Set(this.stops());
     const stop = (n: Notice) => stops.has(stopKey(n));
-    for (const n of s.notices) if (!stop(n)) this.notice(n, false);
-    for (const n of s.notices) if (stop(n) && n.kind === 'proposal') this.notice(n, true);
-    for (const n of s.notices) if (stop(n) && n.kind !== 'proposal') this.notice(n, true);
+    // звук среза (Б11, шаг 1): один, самый тяжёлый из звуков его извещений; найм, отказ и стройка — в ответ на команду окна
+    const mine = performance.now() - this.client.commandAt < ANSWER_MS;
+    const cue = sliceCue(s.notices.map(n => noticeCue(n, stop(n), mine)));
+    const sounded = cue !== undefined && this.sound.play(cue) ? s.notices.find(n => noticeCue(n, stop(n), mine) === cue) : undefined;
+    const of = (n: Notice) => (n === sounded ? cue : undefined);
+    for (const n of s.notices) if (!stop(n)) this.notice(n, false, of(n));
+    for (const n of s.notices) if (stop(n) && n.kind === 'proposal') this.notice(n, true, of(n));
+    for (const n of s.notices) if (stop(n) && n.kind !== 'proposal') this.notice(n, true, of(n));
     if (s.notices.some(n => n.kind === 'morning')) this.morning(sl.t);
     // конец срока сценария (Б9): окно целей с итогом открывается само
     if (s.notices.some(n => n.kind === 'scenarioEnd')) this.store.set({ goals: { ...this.store.get().goals, open: true } });
@@ -538,7 +548,11 @@ export class Game {
     this.client.command(memo ? { kind: 'memo', cmds: [cmd] } : ({ ...cmd, by: 'player' } as Command));
   }
 
-  private notice(n: Notice, stop: boolean) {
+  /**
+   * `cue` — звук, что сыграл в этом срезе: подпись звука (Б11, шаг 1) — у строки того извещения, чей это звук; у прочих
+   * строк среза её нет.
+   */
+  private notice(n: Notice, stop: boolean, cue?: Cue) {
     const text =
       n.kind === 'morning' ? T.notices.morning(n.day)
       : n.kind === 'ordered' ? T.notices.ordered
@@ -625,7 +639,7 @@ export class Game {
       : T.notices.refused;
     // щелчок ведёт на место: к машине, к фуре, в окно или на доску расследования
     const go = goOf(this.layout.plan.plant, n);
-    this.notices.unshift({ t: this.t, text, ...(stop ? { stop: true as const } : {}), ...(go ? { go } : {}) });
+    this.notices.unshift({ t: this.t, text, ...(stop ? { stop: true as const } : {}), ...(go ? { go } : {}), ...(cue ? { sound: cue } : {}) });
     if (this.notices.length > 30) this.notices.length = 30;
   }
 
@@ -658,6 +672,8 @@ export class Game {
     if (this.lettersShown || !v || v.unread === 0 || h.campaign.open || h.seats.open) return;
     this.lettersShown = true;
     this.store.set({ letters: { ...h.letters, open: true } });
+    // письма, пришедшие до места игрока (прогрев сценария), звучат, когда панель открылась сама (Б11, шаг 1)
+    this.sound.play('letter');
     this.actions.readLetter(v.rows[0].id);
     // автопауза письма наставника включена — мир ждёт, пока игрок прочтёт
     if (v.rows[0].from === 'mentor' && !h.pauses.off.includes('letter')) this.actions.setSpeed(0);
@@ -865,10 +881,27 @@ export class Game {
       this.store.set({ less: on });
       keepLess(windowKeep(), on);
     },
+    toggleSound: () => this.store.set({ sound: { ...this.store.get().sound, open: !this.store.get().sound.open } }),
+    setVolume: v => {
+      const volume = volumeOf(v);
+      this.sound.setVolume(volume);
+      const sound = { ...this.store.get().sound, volume };
+      this.store.set({ sound });
+      keepSound(windowKeep(), volume, sound.captions);
+    },
+    setCaptions: on => {
+      const sound = { ...this.store.get().sound, captions: on };
+      this.store.set({ sound });
+      keepSound(windowKeep(), sound.volume, on);
+    },
     toggleDebug: () => this.store.set({ debug: !this.store.get().debug }),
     bench: uncapped => {
       if (uncapped && window.shell) window.shell.relaunch(['--bench', '--uncapped']);
-      else void import('./bench').then(m => m.runBench(this, {}));
+      else {
+        // «Авто-бенч» из панели отладки — без звука (Б11, шаг 1)
+        this.sound.silence();
+        void import('./bench').then(m => m.runBench(this, {}));
+      }
     },
     toggleStock: () => {
       const st = this.store.get().stock;
@@ -1794,6 +1827,18 @@ export class Game {
 
   private bindInput() {
     const el = this.stage.renderer.domElement;
+    // звук (Б11, шаг 1): браузер даёт его после первого нажатия игрока; кнопка окна — щелчок
+    const unlock = () => this.sound.unlock();
+    window.addEventListener('pointerdown', unlock, { capture: true });
+    window.addEventListener('keydown', unlock, { capture: true });
+    document.addEventListener(
+      'click',
+      e => {
+        const b = e.target instanceof Element ? e.target.closest('button') : null;
+        if (b && !b.disabled) this.sound.play('click');
+      },
+      { capture: true },
+    );
     el.addEventListener(
       'wheel',
       e => {

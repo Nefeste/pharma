@@ -116,9 +116,12 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # (e2e-c1.mjs, c1.png), scenario 2 — its start, the distributor's letters, the order
                                    # at risk (e2e-c2.mjs, c2.png; `--long 1` — «До утра» to the result, ~50 min), the
                                    # chronicle — the meeting's line, a day, a week and a year, a batch's record, the
-                                   # saved text file (e2e-chron.mjs, chron.png); `-- --only main|week|memo|capa|jobs|
-                                   # launch|forecast|sop|mrp|edits|
-                                   # build|equip|route|sources|portfolio|c1|c2|chronicle` for one
+                                   # saved text file (e2e-chron.mjs, chron.png), the sound — silent before the first
+                                   # press, a letter, a click, captions, an autopause, the meeting, volume 0, `shot`
+                                   # silent (e2e-sound.mjs, sound.png); `-- --only main|week|memo|capa|jobs|launch|
+                                   # forecast|sop|mrp|edits|build|equip|route|sources|portfolio|c1|c2|chronicle|sound`
+npm run sound                      # the window and event sounds from formulas → assets/audio/*.wav and its LICENSES.md;
+                                   # twice — the same bytes
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
 npm run electron                   # build + the game window
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -680,10 +683,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   cursor (with Б7в a unit — its footprint, R turns it, the prepayment and the delivery in the ghost's line), the
   ghost checked by the same edit function as the command, its line, the room labels' rows and the engine's answer in
   words (`build.ts`, the panel's choices — `buildpick.ts`), the room labels over the view, a copy of Bolnitsa's
-  (`labels.ts`); with Б10 a text file to disk from the window — a link on a Blob (`savetext.ts`); the scene bench, a
-  copy of Bolnitsa's, with `--layer load` also with the layer on
-  (`bench.ts`,
-  `stats.ts`).
+  (`labels.ts`); with Б10 a text file to disk from the window — a link on a Blob (`savetext.ts`); with Б11 the
+  window and event sounds, a copy of Bolnitsa's — the cues, the cue of a build result and of a notice by its weight,
+  one per slice, the volume and captions kept in the window (`sound.ts`); the scene bench, a copy of Bolnitsa's, with
+  `--layer load` also with the layer on (`bench.ts`, `stats.ts`).
 - `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa); the plant
   from the plan (`layout.ts` — rooms, walls, doors and spots from `planOf`), floors, zone markings, ground and yard,
   walls with the cut and openings (`world.ts`), doors, lamps and floor textures (`doors.ts`, `lamps.ts`, `textures.ts` —
@@ -863,8 +866,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   finishes of `machines.ts` and the lamp's place, the passport's hashes and the check of .glb nodes against the record's
   parts (`scene.ts`), `npm run models` (`run.ts`).
 - `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
+- `tools/sound/` — with Б11, the sound generator, a copy of Bolnitsa's (`gen.ts`): FM bells, knocks, noise, a room.
 - `assets/` — CC0 people models (copies of Bolnitsa's, byte for byte), with #109 and #112 the machines from Blender in
-  one file (`models/machines.glb`), and `LICENSES.md` (sources, licenses, SHA-256); never add a model without its line
+  one file (`models/machines.glb`), with Б11 the sounds (`audio/*.wav` with their `audio/LICENSES.md`), and
+  `LICENSES.md` (sources, licenses, SHA-256); never add a model without its line
   there and in `assets/models/sources.json`.
 - `tools/app/` — page build (the page, the calculation thread and the plan run's thread), local server, browser scenario
   with the contact sheet and the first week of a newcomer in a clean window (`e2e-week.mjs`), memos and questions in two

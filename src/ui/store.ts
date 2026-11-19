@@ -6,6 +6,7 @@ import { type BuildHud, type BuildPick, NO_BUILD } from '../app/buildpick';
 import type { EquipOp } from '../engine/equip';
 import type { Layer } from '../app/floor';
 import type { Go, Pause } from '../app/pauses';
+import type { Cue } from '../app/sound';
 import type { Dept, HeadId, Id, OvertimeMode, Plant, SeatId } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
 import type { Command, DeptMode, ForkOpt, Head, PolicyValue, Via } from '../engine/types';
@@ -64,7 +65,7 @@ export interface Hud {
   /**
    * извещения; `stop` — на нём мир встал (автопауза, Б2а); `go` — куда ведёт щелчок: вещь, окно или доска расследования
    */
-  notices: { t: number; text: string; stop?: true; go?: Go }[];
+  notices: { t: number; text: string; stop?: true; go?: Go; sound?: Cue }[];
   debug: boolean;
   quality: Quality;
   /** модели машин и пол: детальные из Blender или простые кодом (#109) */
@@ -73,6 +74,11 @@ export interface Hud {
   walls: WallMode;
   /** «меньше движения» (правило 6 ADR 0023 устава; src/app/motion.ts) */
   less: boolean;
+  /**
+   * звук (Б11, шаг 1; src/app/sound.ts): громкость 0–1 ступенями, «Подписи звуков» — звук извещения ещё и словом в полосе;
+   * открыто ли меню; громкость и подписи запоминаются в окне
+   */
+  sound: { open: boolean; volume: number; captions: boolean };
   fps: number;
   cpuMs: number;
   gpuMs: number | null;
@@ -262,6 +268,7 @@ export const initial: Hud = {
   art: 'code',
   walls: 'cut',
   less: false,
+  sound: { open: false, volume: 0.7, captions: false },
   fps: 0,
   cpuMs: 0,
   gpuMs: null,
@@ -311,6 +318,10 @@ export interface Actions {
   setWalls(m: WallMode): void;
   /** «меньше движения»: включить или выключить — запоминается в окне (src/app/motion.ts) */
   setLess(on: boolean): void;
+  /** меню звука: открыть или закрыть; громкость и «Подписи звуков» — запоминаются в окне (src/app/sound.ts) */
+  toggleSound(): void;
+  setVolume(v: number): void;
+  setCaptions(on: boolean): void;
   /** модели: детальные из Blender или простые кодом — машины и пол пересобираются */
   setArt(a: 'blender' | 'code'): void;
   toggleDebug(): void;

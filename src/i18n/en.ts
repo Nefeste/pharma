@@ -50,6 +50,29 @@ export const en: Strings = {
     liveHint: 'Live time: a second per second, everything moves as in life',
     lag: (min: number) => `calculation is ${min} min behind`,
   },
+  /** sound (B11, step 1): the top-bar menu — volume and sound captions */
+  sound: {
+    button: (pct: number) => (pct === 0 ? 'Sound: off' : `Sound: ${pct}%`),
+    hint: 'Volume of window and event sounds, and sound captions',
+    title: 'Sound',
+    volume: 'Volume',
+    value: (pct: number) => (pct === 0 ? 'off' : `${pct}%`),
+    captions: 'Sound captions',
+    captionsHint: 'A notice sound also in words in the notice bar',
+    names: {
+      click: 'click',
+      build: 'build knock',
+      demolish: 'demolish knock',
+      hire: 'hiring chime',
+      refuse: 'refusal',
+      stop: 'stop signal',
+      notice: 'attention signal',
+      letter: 'letter',
+      meeting: 'meeting chime',
+      goal: 'result chime',
+    },
+    caption: (what: string) => `[sound: ${what}]`,
+  },
   /** autopauses (B2a; game design, §2): the menu — what stops the world */
   pauses: {
     button: 'Autopauses',

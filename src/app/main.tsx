@@ -39,6 +39,9 @@ const actions: Actions = {
   pickQuality: later('pickQuality'),
   setWalls: later('setWalls'),
   setLess: later('setLess'),
+  toggleSound: later('toggleSound'),
+  setVolume: later('setVolume'),
+  setCaptions: later('setCaptions'),
   setArt: later('setArt'),
   toggleDebug: later('toggleDebug'),
   bench: later('bench'),
@@ -222,6 +225,8 @@ Game.create(document.getElementById('view')!, store, quality, q.get('art') === '
     const has = (k: string) => q.get(k) === '1' || args.includes(`--${k}`);
     const val = (k: string) => q.get(k) ?? (args.includes(`--${k}`) ? args[args.indexOf(`--${k}`) + 1] : null);
     if (val('art') === 'code' && g.store.get().art !== 'code') g.actions.setArt('code');
+    // звука нет в «Авто-бенче» и в снимках сценария браузера (Б11, шаг 1)
+    if (has('bench') || has('shot')) g.sound.silence();
     if (has('bench')) {
       // бенч сцены — директором: экран «Кем вы будете» не заслоняет снимки
       g.actions.pickSeat('director');

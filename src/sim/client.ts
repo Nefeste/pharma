@@ -69,7 +69,11 @@ export class SimClient {
     this.post(msg);
   }
 
+  /** когда окно последний раз отправило команду (`performance.now()`, мс) — звук найма и отказа звучит только в ответ */
+  commandAt = Number.NEGATIVE_INFINITY;
+
   command(cmd: Command) {
+    this.commandAt = typeof performance === 'undefined' ? 0 : performance.now();
     this.post({ kind: 'command', cmd });
   }
 

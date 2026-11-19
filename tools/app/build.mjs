@@ -32,5 +32,7 @@ await build({ ...common, entryPoints: [join(root, 'src/sim/planWorker.ts')], out
 copyFileSync(join(root, 'app/index.html'), join(out, 'index.html'));
 copyFileSync(bundle, join(out, 'content.json'));
 cpSync(join(root, 'assets/models'), join(out, 'assets/models'), { recursive: true });
+// звуки окна и событий (Б11, шаг 1): собирает npm run sound
+cpSync(join(root, 'assets/audio'), join(out, 'assets/audio'), { recursive: true });
 copyFileSync(join(root, 'assets/LICENSES.md'), join(out, 'LICENSES.md'));
 console.log(`dist/ — версия ${version}`);

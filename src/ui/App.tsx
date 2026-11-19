@@ -108,6 +108,9 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
             ))}
           </span>
           <span className="group">
+            <button type="button" className={s.sound.open ? 'on' : ''} onClick={() => actions.toggleSound()} title={T.sound.hint} data-test="sound-open">
+              {T.sound.button(Math.round(s.sound.volume * 100))}
+            </button>
             <button type="button" className={s.less ? 'on' : ''} aria-pressed={s.less} onClick={() => actions.setLess(!s.less)} title={T.view.lessHint} data-test="less-motion">
               {T.view.less}
             </button>
@@ -188,7 +191,7 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
               </button>
             </span>
           ) : null}
-          <NoticeLine n={s.notices[0]} actions={actions} />
+          <NoticeLine n={s.notices[0]} captions={s.sound.captions} actions={actions} />
         </div>
       </Guard>
       {/* слои слева (Б1и; геймдизайн, §18) и подсказка у столбика под курсором; пока выбирают место, слоёв нет — из-под
@@ -198,6 +201,9 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
         {plant ? <FloorTip hud={s} plant={plant} /> : null}
       </Guard>
       {/* ограда — и вокруг закрытой панели: ошибку уборки при снятии панели React отдаёт той, что осталась на экране */}
+      <Guard name={T.sound.title} close={s.sound.open ? actions.toggleSound : undefined}>
+        {s.sound.open && <SoundMenu hud={s} actions={actions} />}
+      </Guard>
       <Guard name={T.pauses.button} close={s.pauses.open ? actions.togglePauses : undefined}>
         {s.pauses.open && <Pauses hud={s} actions={actions} />}
       </Guard>
@@ -307,13 +313,33 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
   );
 }
 
+/** Меню звука (Б11, шаг 1): громкость ступенями по 10 % и «Подписи звуков»; запоминаются в окне. */
+function SoundMenu({ hud, actions }: { hud: Hud; actions: Actions }) {
+  const pct = Math.round(hud.sound.volume * 100);
+  return (
+    <div className="pauses panel" id="sound" data-test="sound">
+      <b>{T.sound.title}</b>
+      <label>
+        {T.sound.volume}{' '}
+        <input type="range" min={0} max={100} step={10} value={pct} onChange={e => actions.setVolume(Number(e.currentTarget.value) / 100)} data-test="volume" />{' '}
+        <span data-test="volume-value">{T.sound.value(pct)}</span>
+      </label>
+      <label title={T.sound.captionsHint}>
+        <input type="checkbox" checked={hud.sound.captions} onChange={e => actions.setCaptions(e.currentTarget.checked)} data-test="captions" /> {T.sound.captions}
+      </label>
+    </div>
+  );
+}
+
 /**
  * Последнее извещение: на котором мир встал (автопауза, Б2а), — со знаком паузы, не только цветом (13-art.md, §14); щелчок
  * ведёт на место. Извещение о расследовании ведёт к его доске.
  */
-function NoticeLine({ n, actions }: { n: Hud['notices'][number] | undefined; actions: Actions }) {
+function NoticeLine({ n, captions, actions }: { n: Hud['notices'][number] | undefined; captions: boolean; actions: Actions }) {
   if (!n) return <span className="notice">{T.app.stage}</span>;
-  const text = n.stop ? `❚❚ ${n.text}` : n.text;
+  // подпись звука (Б11, шаг 1; 13-art.md, §14): ни одного сигнала только звуком
+  const said = captions && n.sound ? `${T.sound.caption(T.sound.names[n.sound] ?? n.sound)} ` : '';
+  const text = `${said}${n.stop ? `❚❚ ${n.text}` : n.text}`;
   const cls = `notice${n.stop ? ' stop' : ''}`;
   if (!n.go) return <span className={cls} data-test="notice">{text}</span>;
   const go = n.go;

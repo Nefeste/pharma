@@ -239,8 +239,8 @@ export function apply(db: ContentDb, s: PlantState, cmd: Command, more?: More): 
   // база, по которой живёт завод (Б7д): редакции, введённые проектом, — с их днём из состояния
   const live = liveOf(db, s.portfolio?.docs);
   const out = command(live, s, cmd, more);
-  // хроника (Б10): извещения команды
-  chronicleStep(live, s, out, 0);
+  // хроника (Б10): извещения команды; у «прожить» они — извещения событий, их хроника уже записала в `catchUp`
+  if (cmd.kind !== 'advance') chronicleStep(live, s, out, 0);
   // письма (Б9): команда могла выполнить условие письма — задание на серию игрока
   if (s.heads.letters) lettersStep(live, s, out, 0);
   return before.length > 0 ? [...before, ...out] : out;

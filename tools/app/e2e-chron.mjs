@@ -1,7 +1,8 @@
 // Сценарий в браузере, часть «Хроника» (Б10, шаг 1; docs/specs/2026-10-vertical-slice.md, «Б10», «Проверки Б10»): чистое
 // окно прототипа, место качества — совещание S&OP идёт само; «До утра» неделю — на планёрке строка «Вчера в хронике», щелчок — хроника на вчерашних
 // сутках; H закрывает и открывает; «Неделя» — записи о выпущенных сериях с числом суток, итог главы; «Раньше» и «Позже»;
-// щелчок по записи о серии — её досье. Снимки — tools/app/out/chron-*.png, лист — tools/app/out/chron.png.
+// щелчок по записи о серии — её досье; «Год» — итоги года; «Сохранить хронику» — текстовый файл: шапка, месяцы, записи
+// (шаг 2). Снимки — tools/app/out/chron-*.png, лист — tools/app/out/chron.png.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openGame, steps } from './e2e-build.mjs';
@@ -94,7 +95,25 @@ export async function chronPart(x) {
       await s.shot('Досье серии из хроники');
       if (!/[A-Z]{2}\d{7}/.test(d)) fail(`досье: «${d.slice(0, 200)}»`);
       else ok('запись о серии открыла её досье');
+      await page.evaluate(() => window.__game.actions.closeDossier());
     }
+
+    // «Год» — «Итоги 2027 года»: заказы вовремя по месяцам, причины, люди и оборудование
+    await s.measure('«Год»', () => page.click('[data-test=chron-scale][data-scale=year]'), 'chron', 'year', 'input');
+    const yr = await text('[data-test=chronicle]');
+    await s.shot('Хроника: итоги года');
+    if (!/Итоги 2027 года/.test(yr) || !/Заказы вовремя по месяцам/.test(yr) || !/Принято: \d+; уволилось: \d+/.test(yr)) fail(`год: «${yr.slice(0, 400)}»`);
+    else ok(`год: «${(await text('[data-test=chron-year]')).slice(0, 200)}»`);
+
+    // «Сохранить хронику» — текстовый файл: шапка, месяцы, записи
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), page.click('[data-test=chron-save]')]);
+    const file = join(out, `chron-${dl.suggestedFilename()}`);
+    await dl.saveAs(file);
+    const body = readFileSync(file, 'utf8');
+    const lines = body.trim().split('\n');
+    const entries = lines.filter(l => /^\d\d\.\d\d \d\d:\d\d  /.test(l)).length;
+    if (!/^pharma-chronicle-proto\.txt$/.test(dl.suggestedFilename()) || !/^Хроника завода — «Фармзавод»\. Сценарий: Прототип; зерно \d+/.test(lines[0]) || !lines.includes('Сентябрь 2027') || entries === 0) fail(`файл ${dl.suggestedFilename()}: «${body.slice(0, 300)}»`);
+    else ok(`файл ${dl.suggestedFilename()}: ${entries} записей, «${lines[0]}»`);
   } catch (e) {
     fail(`хроника: ${e instanceof Error ? e.message : String(e)}`);
   }

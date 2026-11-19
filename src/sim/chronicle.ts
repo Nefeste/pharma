@@ -8,7 +8,8 @@ import { DAY, daysFromCivil, HOUR, momentOf } from '../engine/core/calendar';
 import type { ChronEntry, PlantState } from '../engine/types';
 import type { Thing } from './views';
 
-export type ChronScale = 'day' | 'week' | 'month';
+/** Масштаб главы; `all` — вся хроника разом, для выгрузки в файл (шаг 2). */
+export type ChronScale = 'day' | 'week' | 'month' | 'year' | 'all';
 
 export interface ChronicleQuery {
   view: 'chronicle';
@@ -56,6 +57,17 @@ export interface ChronicleView {
   sum: Partial<Record<ChronEntry['k'], number>>;
   /** глав назад, в которых что-то есть: «раньше» возможно */
   older: boolean;
+  /** «Итоги года» (шаг 2): доля заказов вовремя по закрытым месяцам года, причины отклонений по числу */
+  year?: ChronYear;
+  /** шапка выгрузки (шаг 2): сценарий, зерно, с какого мгновения записи */
+  head?: { scenario: Id; seed: number };
+}
+
+export interface ChronYear {
+  /** месяц и доля заказов вовремя, 1/10 000; закрытых заказов не было — нет числа */
+  otif: { m: number; v?: number }[];
+  /** причина отклонения — вероятная или вывод расследования — и сколько раз за год, чаще — выше */
+  causes: { cause: string; n: number }[];
 }
 
 const MORNING = 8 * HOUR;
@@ -73,6 +85,13 @@ export function chapterOf(s: Pick<PlantState, 'start'>, scale: ChronScale, t: nu
   } else if (scale === 'week') {
     from = at(m.day - m.weekday - 7 * back);
     to = from + 7 * DAY;
+  } else if (scale === 'year') {
+    const y = m.date.y - back;
+    from = at(daysFromCivil({ y, m: 1, d: 1 }));
+    to = at(daysFromCivil({ y: y + 1, m: 1, d: 1 }));
+  } else if (scale === 'all') {
+    from = Number.MIN_SAFE_INTEGER;
+    to = Number.MAX_SAFE_INTEGER;
   } else {
     let { y, m: mo } = m.date;
     mo -= back;
@@ -177,5 +196,28 @@ export function chronicleView(db: ContentDb, s: PlantState, q: ChronicleQuery): 
     rows.push(rowOf(s, e));
     sum[e.k] = (sum[e.k] ?? 0) + 1;
   }
-  return { view: 'chronicle', scale: q.scale, back: q.back, from, to, rows, sum, older: list.length > 0 && list[0].t < from };
+  const out: ChronicleView = { view: 'chronicle', scale: q.scale, back: q.back, from, to, rows, sum, older: list.length > 0 && list[0].t < from };
+  if (q.scale === 'year') out.year = yearOf(s, from, to, rows);
+  if (q.scale === 'all') {
+    out.head = { scenario: s.scenario, seed: s.seed };
+    if (rows.length > 0) {
+      out.from = rows[rows.length - 1].e.t;
+      out.to = rows[0].e.t;
+    }
+  }
+  return out;
+}
+
+/** «Итоги года»: доля заказов вовремя закрытых месяцев года — итоги месяца (Б5ж); причины отклонений года. */
+function yearOf(s: PlantState, from: number, to: number, rows: readonly ChronRow[]): ChronYear {
+  const y = momentOf(s.start, from).date.y;
+  const otif = s.kpi.months.filter(k => k.y === y && !k.part && k.from >= from - DAY && k.to <= to + DAY).map(k => ({ m: k.m, ...(k.v.otifOrders !== undefined ? { v: k.v.otifOrders } : {}) }));
+  const n = new Map<string, number>();
+  for (const r of rows) {
+    // вывод расследования — его причина; отклонение — вероятная причина, если её записали
+    const cause = r.e.k === 'concluded' ? r.e.cause : r.e.k === 'dev' ? s.deviations[r.e.d]?.cause : undefined;
+    if (cause && cause !== 'none') n.set(cause, (n.get(cause) ?? 0) + 1);
+  }
+  const causes = [...n].map(([cause, k]) => ({ cause, n: k })).sort((a, b) => b.n - a.n || (a.cause < b.cause ? -1 : 1));
+  return { otif, causes };
 }

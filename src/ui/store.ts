@@ -166,7 +166,7 @@ export interface Hud {
   /** письма сценария (Б9): панель и вид потока; открытое письмо — его номер */
   letters: { open: boolean; view?: LettersView; at?: string };
   /** хроника завода (Б10): масштаб главы и сколько глав назад */
-  chronicle: { open: boolean; scale: ChronScale; back: number; view?: ChronicleView };
+  chronicle: { open: boolean; scale: ChronScale; back: number; view?: ChronicleView; exporting?: boolean };
   /**
    * слой слева (Б1и; геймдизайн, §3.6, §18): обычный вид; «Загрузка и OEE» — столбики, числа, доски «План — факт»;
    * «Узкие места» и «Проблемы» (Б1к) — таблички над местами, где серии ждут, и значки андона; «Потери» (Б1л) — столбики
@@ -536,6 +536,8 @@ export interface Actions {
   /** открыть хронику на главе (Б10): строка планёрки — вчерашние сутки */
   showChronicle(scale: ChronScale, back: number): void;
   chronicleGo(go: ChronGo): void;
+  /** «Сохранить хронику» (шаг 2): вся хроника текстовым файлом */
+  exportChronicle(): void;
   readLetter(id: string): void;
   showLetter(go: LetterGo): void;
   skipLetter(id: string): void;

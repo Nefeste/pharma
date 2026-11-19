@@ -11,6 +11,7 @@ import { fromSave, toSave } from '../../src/engine/save';
 import type { PlantState } from '../../src/engine/types';
 import { ru } from '../../src/i18n/ru';
 import { chapterOf, chronicleView } from '../../src/sim/chronicle';
+import { chronicleText } from '../../src/ui/Chronicle';
 
 const run = (days: number) => {
   const s = newPlant(db, { scenario: 'scn.proto' });
@@ -89,6 +90,30 @@ describe('хроника: главы для окна', () => {
     expect(rel.facts.batch).toMatch(/^[A-Z]{2}\d{7}$/);
     expect(rel.go).toEqual({ dossier: Number((rel.e as { b: string }).b.slice(1)) });
     expect(chronicleView(db, s60, { view: 'chronicle', scale: 'month', back: 0 }).older).toBe(true);
+  });
+
+  test('год — с 1 января: итоги месяцев — доля заказов вовремя закрытых месяцев года; причины — по числу', () => {
+    const v = chronicleView(db, s60, { view: 'chronicle', scale: 'year', back: 0 });
+    expect(chapterOf(s60, 'year', s60.t, 0).from).toBe(v.from);
+    expect(v.to - v.from).toBe(365 * DAY);
+    const closed = s60.kpi.months.filter(k => !k.part && k.y === 2027);
+    expect(v.year!.otif.map(o => o.m)).toEqual(closed.map(k => k.m));
+    for (let i = 1; i < v.year!.causes.length; i++) expect(v.year!.causes[i].n).toBeLessThanOrEqual(v.year!.causes[i - 1].n);
+    expect(v.rows.length).toBe(s60.story.chronicle.length);
+  });
+
+  test('вся хроника — для выгрузки: все записи, шапка — сценарий и зерно, даты — первой и последней записи; текст по месяцам', () => {
+    const v = chronicleView(db, s60, { view: 'chronicle', scale: 'all', back: 0 });
+    expect(v.rows.length).toBe(s60.story.chronicle.length);
+    expect(v.head).toEqual({ scenario: 'scn.proto', seed: s60.seed });
+    expect(v.from).toBe(s60.story.chronicle[0].t);
+    expect(v.to).toBe(s60.story.chronicle.at(-1)!.t);
+    const text = chronicleText(v, s60.start);
+    const lines = text.trim().split('\n');
+    expect(lines[0]).toContain('Хроника завода');
+    expect(lines).toContain('Сентябрь 2027');
+    expect(lines).toContain('Октябрь 2027');
+    expect(lines.filter(l => /^\d\d\.\d\d \d\d:\d\d  /.test(l)).length).toBe(v.rows.length);
   });
 
   test('без истины: два завода с разными истинными полями — одна глава', () => {

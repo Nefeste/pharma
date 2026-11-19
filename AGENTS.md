@@ -118,8 +118,10 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # chronicle — the meeting's line, a day, a week and a year, a batch's record, the
                                    # saved text file (e2e-chron.mjs, chron.png), the sound — silent before the first
                                    # press, a letter, a click, captions, an autopause, the meeting, volume 0, `shot`
-                                   # silent (e2e-sound.mjs, sound.png); `-- --only main|week|memo|capa|jobs|launch|
-                                   # forecast|sop|mrp|edits|build|equip|route|sources|portfolio|c1|c2|chronicle|sound`
+                                   # silent (e2e-sound.mjs, sound.png), the brand — the first screen's steps, the font,
+                                   # F12 (e2e-brand.mjs); `-- --only main|week|memo|capa|jobs|launch|forecast|sop|mrp|
+                                   # edits|build|equip|route|sources|portfolio|c1|c2|chronicle|sound|brand`
+node tools/app/before-after.mjs --before <dir>  # after e2e: the panels before and after → out/before-after.png
 npm run sound                      # the window and event sounds from formulas → assets/audio/*.wav and its LICENSES.md;
                                    # twice — the same bytes
 npm run bench:headless             # after build: the scene bench in headless Chromium (software WebGL: not a GPU number)
@@ -683,7 +685,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   cursor (with Б7в a unit — its footprint, R turns it, the prepayment and the delivery in the ghost's line), the
   ghost checked by the same edit function as the command, its line, the room labels' rows and the engine's answer in
   words (`build.ts`, the panel's choices — `buildpick.ts`), the room labels over the view, a copy of Bolnitsa's
-  (`labels.ts`); with Б10 a text file to disk from the window — a link on a Blob (`savetext.ts`); with Б11 the
+  (`labels.ts`); with Б10 a text file to disk from the window — a link on a Blob, with Б11 also the F12 frame
+  snapshot named by the plant's time (`savetext.ts`); with Б11 the
   window and event sounds, a copy of Bolnitsa's — the cues, the cue of a build result and of a notice by its weight,
   one per slice, the volume and captions kept in the window (`sound.ts`); the scene bench, a copy of Bolnitsa's, with
   `--layer load` also with the layer on (`bench.ts`, `stats.ts`).
@@ -713,7 +716,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   — Bolnitsa's crowd on the GPU (`bake.ts`, `people.ts`, copies) with looks and clothes by role (`cast.ts`), the
   composition (`stage.ts`).
 - `src/ui/` — panels (React) and their store: the top bar with «До утра», «До события» and the latest notice — the one
-  the world stopped on marked «❚❚», a click leads to its place (`App.tsx`), the autopause menu (`Pauses.tsx`), the
+  the world stopped on marked «❚❚», a click leads to its place, with Б11 the sound menu and the first screen — the
+  game's name and the loading by the real steps of `Game.create` (`App.tsx`; the steps — `LOAD_STEPS`,
+  `store.ts`), the autopause menu (`Pauses.tsx`), the
   warehouse (`Stock.tsx`), a guard around each panel and the top bar — an error stays in its place
   (`Guard.tsx`), the card of a
   thing — what it is, state, why, what can be done, history; a person's dismissal (`Card.tsx`), the plant reference with
@@ -865,12 +870,14 @@ first, or copy the working code of Bolnitsa on the same versions.
   pinned version, how to run, repeatability); `tools/blender/` — the scene for them from the game's own content, the
   finishes of `machines.ts` and the lamp's place, the passport's hashes and the check of .glb nodes against the record's
   parts (`scene.ts`), `npm run models` (`run.ts`).
-- `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
+- `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page, with Б11 its
+  tokens — colours, font sizes, spacing, radii and shadows in `:root`, a copy of Bolnitsa's, no rule with its own
+  (`tools/test/style.test.ts`) — and the shared classes of buttons, fields and headings.
 - `tools/sound/` — with Б11, the sound generator, a copy of Bolnitsa's (`gen.ts`): FM bells, knocks, noise, a room.
 - `assets/` — CC0 people models (copies of Bolnitsa's, byte for byte), with #109 and #112 the machines from Blender in
-  one file (`models/machines.glb`), with Б11 the sounds (`audio/*.wav` with their `audio/LICENSES.md`), and
-  `LICENSES.md` (sources, licenses, SHA-256); never add a model without its line
-  there and in `assets/models/sources.json`.
+  one file (`models/machines.glb`), with Б11 the sounds (`audio/*.wav` with their `audio/LICENSES.md`) and the font
+  IBM Plex Sans with its OFL (`fonts/`), and `LICENSES.md` (sources, licenses, SHA-256); never add a model without its
+  line there and in `assets/models/sources.json`.
 - `tools/app/` — page build (the page, the calculation thread and the plan run's thread), local server, browser scenario
   with the contact sheet and the first week of a newcomer in a clean window (`e2e-week.mjs`), memos and questions in two
   clean windows (`e2e-memo.mjs`), a CAPA from the quality post to its effectiveness check (`e2e-capa.mjs`), batch orders

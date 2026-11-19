@@ -42,6 +42,12 @@ export const ru = {
   app: {
     title: 'Фармзавод',
     loading: 'Загрузка…',
+    /** первый экран (Б11, шаг 2) */
+    tagline: 'Фармацевтический завод: склад, производство, контроль качества, упаковка, люди и деньги',
+    steps: { font: 'Шрифт', base: 'База завода', world: 'Расчёт завода', models: 'Модели машин', people: 'Люди', scene: 'Первый кадр' } as Record<string, string>,
+    version: (v: string) => `Версия ${v}`,
+    /** снимок для себя (Б11, шаг 2) */
+    shot: (name: string) => `Снимок кадра сохранён: ${name}`,
     error: 'Ошибка',
     /** ограда панели (src/ui/Guard.tsx): панель упала, остальное окно живо */
     panelError: (panel: string, message: string) => `Ошибка в панели «${panel}»: ${message}`,

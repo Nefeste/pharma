@@ -1293,6 +1293,11 @@ export const en: Strings = {
       'c1.deviation': 'The first deviation',
       'c1.oos': 'An out-of-specification result',
       'c1.risk': 'An order at risk',
+      'c2.season': 'The season ahead',
+      'c2.risk': 'Will the order leave?',
+      'c2.miss': 'An order missed',
+      'c2.winter': 'A winter without misses',
+      'c2.late': 'The delivery is late',
     } as Record<string, string>,
     body: {
       'c1.truck': (f: LetterWords) =>
@@ -1319,6 +1324,15 @@ export const en: Strings = {
         `The lab has an out-of-specification result — deviation ${f.dev}. It is investigated: a lab error or the truth about the lot. Open the lab queue.`,
       'c1.risk': (f: LetterWords) =>
         `The order of ${f.customer} due ${f.due} may not leave on time: there are not enough finished goods. The morning meeting shows what is missing. The letter ends when the plant ships something.`,
+      'c2.season': () =>
+        'Good afternoon. From autumn the pharmacies order more: colds and flu. How much and when shows in the forecast, and the stock for November is yours to build: from 1 November we count how many orders left on time. We order, as always, on schedule.',
+      'c2.risk': (f: LetterWords) =>
+        `Colleagues, our order due ${f.due} is not picked yet: you are short of finished goods. Will it leave on time and in full? No answer needed — we will see it in the shipment.`,
+      'c2.miss': (f: LetterWords) =>
+        `The order due ${f.due} left late or not in full. The pharmacies were waiting. The next orders keep their dates; the stock for the season is in the forecast and the S&OP plan.`,
+      'c2.winter': () => 'The winter is over, and not one of our orders was missed. Thank you — let us keep working this way.',
+      'c2.late': (f: LetterWords) =>
+        `Hello. The delivery of ${f.qty} of ${f.material} is late: the truck will come later than promised. We apologise. You can expedite it or order from another approved supplier on the «Materials» tab.`,
     } as Record<string, (f: LetterWords) => string>,
   },
   campaign: {
@@ -1338,6 +1352,8 @@ export const en: Strings = {
       otif: (pct: string) => `orders on time — at least ${pct}`,
       cash: (sum: string) => `cash on the last day — at least ${sum}`,
       lateDevs: (v: number) => (v === 0 ? 'no deviation past its term' : `deviations past their term — at most ${v}`),
+      missDays: (v: number) => (v === 0 ? 'not a single day of missed orders' : `days of missed orders — at most ${v}`),
+      since: (date: string, what: string) => `from ${date}: ${what}`,
     },
     now: (v: string) => `now ${v}`,
     end: (v: string) => `result ${v}`,

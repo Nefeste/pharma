@@ -31,12 +31,12 @@ export function Campaign({ actions }: { actions: Actions }) {
               <span>{sc.days !== undefined ? T.campaign.span(Math.round(sc.days / DAY)) : T.campaign.open}</span>
               {main.length > 0 ? (
                 <span>
-                  <span className="tkey">{T.campaign.goals}:</span> {main.map(goalText).join('; ')}
+                  <span className="tkey">{T.campaign.goals}:</span> {main.map(g => goalText(g, sc.start.date)).join('; ')}
                 </span>
               ) : null}
               {top.length > 0 ? (
                 <span>
-                  <span className="tkey">{T.campaign.top}:</span> {top.map(goalText).join('; ')}
+                  <span className="tkey">{T.campaign.top}:</span> {top.map(g => goalText(g, sc.start.date)).join('; ')}
                 </span>
               ) : null}
               <button type="button" className="take" onClick={() => actions.pickScenario(sc.id)} data-test="campaign-start">

@@ -59,6 +59,8 @@ function arrive(db: ContentDb, s: PlantState, l: Letter, notices: Notice[], ev?:
 /** Письмо дня в свой час (событие `letter`). */
 export function letterDue(db: ContentDb, s: PlantState, id: Id, notices: Notice[]) {
   const l = db.letters[id];
+  // «если не было»: письмо дня не приходит, если пришло то письмо (зима без срывов — если срыва не было)
+  if (l && 'day' in l.when && l.when.unless && recOf(s, l.when.unless)) return;
   if (l) arrive(db, s, l, notices);
 }
 
@@ -132,6 +134,12 @@ function met(s: PlantState, l: Letter, r: LetterRec): boolean {
       return Object.values(s.shipments).some(x => x.t >= r.at);
     case 'order':
       return Object.values(s.batches).some(b => b.by === 'player' && b.ordered >= r.at);
+    case 'delivered': {
+      const o = id ? s.orders[id] : undefined;
+      return !!o && o.status !== 'open';
+    }
+    case 'read':
+      return r.read !== undefined;
     case 'assessed': {
       const d = id ? s.deviations[id] : undefined;
       return !!d && d.status !== 'open';
@@ -163,6 +171,7 @@ function firstOf(n: Notice): [Letter['when'] & { first: string }, string] | unde
   if (n.kind === 'deviation') return [{ first: n.what === 'oos' ? 'oos' : 'deviation' }, n.id];
   if (n.kind === 'orderRisk') return [{ first: 'risk' }, n.order];
   if (n.kind === 'poLate') return [{ first: 'late' }, n.po];
+  if (n.kind === 'lateOrder') return [{ first: 'miss' }, n.order];
   return undefined;
 }
 

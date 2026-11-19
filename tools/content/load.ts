@@ -1094,11 +1094,30 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     for (const g of s.goals) need(g.kind !== 'otif' || (g.v >= 0 && g.v <= 100), `${where}: цель otif — от 0 до 100 %`);
     need(s.goals.length === 0 || s.days !== undefined, `${where}: у целей нет срока days`);
     for (const o of s.orders) if (o.at) need(s.warm > 0 || Number(o.at.slice(0, 2)) >= s.start.hour, `${where}: фура сценария в ${o.at} — раньше старта`);
+    // цель с даты (Б9, шаг 3): дата — в сроке сценария; секунды — от начала партии, как часы завода
+    const t0 = daysFromCivil({ y, m, d });
+    const player = daysFromCivil({ y: sy, m: sm, d: sd });
+    const fromOf = (g: { from?: string }) => {
+      if (!g.from) return undefined;
+      const [gy, gm, gd] = g.from.split('-').map(Number);
+      const day = daysFromCivil({ y: gy, m: gm, d: gd });
+      need(day >= player && (s.days === undefined || day < player + s.days), `${where}: цель с ${g.from} — вне срока сценария`);
+      return (day - t0) * 86_400;
+    };
+    // продукт, введённый до старта (Б9, шаг 3): продукт-проект (Б7д) — его карта ещё не в силе ни одной редакцией
+    for (const p of s.launched) {
+      need(raw.products[p], `${where}: launched — нет продукта ${p}`);
+      const r = Object.values(raw.recipes).find(x => x.product === p);
+      need(r && r.doc.from === undefined, `${where}: launched — ${p} не продукт-проект: его карта уже в силе`);
+    }
     scenarios[s.id] = {
       ...s,
       warm: s.warm * 86_400,
       ...(s.days !== undefined ? { days: s.days * 86_400 } : {}),
-      goals: s.goals.map(g => ({ kind: g.kind, v: g.kind === 'otif' ? share(g.v) : g.kind === 'cash' ? kop(g.v) : g.v, ...(g.top ? { top: true as const } : {}) })),
+      goals: s.goals.map(g => {
+        const from = fromOf(g);
+        return { kind: g.kind, v: g.kind === 'otif' ? share(g.v) : g.kind === 'cash' ? kop(g.v) : g.v, ...(g.top ? { top: true as const } : {}), ...(from !== undefined ? { from } : {}) };
+      }),
       deviations: { ...s.deviations, wear: share(s.deviations.wear) },
       start: { date: { y, m, d }, hour: s.start.hour },
       cash: kop(s.cash),
@@ -1195,7 +1214,8 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
   // сценария и без круга, вещь — та, о которой условие; день письма — в сроке сценария; час — в секунды
   const letters: Record<string, Letter> = {};
   const THING: Record<string, readonly string[]> = {
-    unloaded: ['scenarioPo'],
+    unloaded: ['scenarioPo', 'event'],
+    delivered: ['nextOrder', 'event'],
     sampled: ['poLot'],
     lotDecided: ['poLot'],
     released: ['qaBatch', 'playerBatch'],
@@ -1216,10 +1236,16 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     const ok = THING[l.done.kind];
     if (ok) need(l.shows && ok.includes(l.shows), `${where}: условие ${l.done.kind} — о вещи ${ok.join(' или ')}, письмо показывает ${l.shows ?? 'ничего'}`);
     if (l.shows === 'event') need('first' in l.when, `${where}: вещь события — только у письма первого события`);
+    if (l.done.kind === 'unloaded' && l.shows === 'event') need('first' in l.when && l.when.first === 'late', `${where}: разгрузка вещи события — только у письма первой поздней поставки`);
+    if (l.done.kind === 'delivered' && l.shows === 'event') need('first' in l.when && (l.when.first === 'risk' || l.when.first === 'miss'), `${where}: заказ события — только у письма первого заказа под угрозой или срыва`);
+    if ('day' in l.when && l.when.unless) {
+      const u = raw.letters[l.when.unless];
+      need(u && u.scenario === l.scenario && u.id !== l.id, `${where}: unless — нет письма ${l.when.unless} того же сценария`);
+    }
     if (l.done.kind === 'assessed') need('first' in l.when && (l.when.first === 'deviation' || l.when.first === 'oos'), `${where}: оценка — только у письма первого отклонения`);
     if (l.shows === 'scenarioPo' && sc) need(sc.orders?.some(o => o.at !== undefined), `${where}: у сценария нет фуры с часом`);
     if (l.from !== 'mentor') need(l.gives === undefined, `${where}: отделы передаёт только наставник`);
-    letters[l.id] = { ...l, when: 'day' in l.when ? { day: l.when.day, at: Number(l.when.at.slice(0, 2)) * 3600 + Number(l.when.at.slice(3)) * 60 } : l.when } as Letter;
+    letters[l.id] = { ...l, when: 'day' in l.when ? { day: l.when.day, at: Number(l.when.at.slice(0, 2)) * 3600 + Number(l.when.at.slice(3)) * 60, ...(l.when.unless ? { unless: l.when.unless } : {}) } : l.when } as Letter;
   }
   for (const l of Object.values(letters)) {
     const twin = Object.values(letters).find(o => o.id !== l.id && o.scenario === l.scenario && o.n === l.n);
@@ -1310,9 +1336,11 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     // материал продукта-проекта (Б7д): у его спецификации только редакции-проекты — в силу их вводит проект
     const project = (kind: DocKind, id: string) => headOf(docDb, kind, inForce(docDb, kind, id, day))!.from === DRAFT_DAY;
     for (const m of Object.values(materials)) if (specs[m.spec] && !project('specs', m.spec)) need(active('specs', m.spec), `${where}: у материала ${m.id} на ${date} нет действующей спецификации`);
-    for (const r of [...sc.batches.map(b => b.recipe), ...(sc.plan?.items.map(it => it.recipe) ?? [])]) if (recipes[r]) need(active('recipes', r), `${where}: у карты ${r} на ${date} нет действующей редакции`);
+    // продукт, введённый до старта (Б9, шаг 3): его редакции-проекты вводит в силу движок с началом прогрева
+    const launched = new Set(sc.launched);
+    for (const r of [...sc.batches.map(b => b.recipe), ...(sc.plan?.items.map(it => it.recipe) ?? [])]) if (recipes[r] && !launched.has(recipes[r].product)) need(active('recipes', r), `${where}: у карты ${r} на ${date} нет действующей редакции`);
     const used = [...sc.batches.flatMap(b => (b.sku ? [b.sku] : [])), ...(sc.plan?.items.map(it => it.sku) ?? []), ...sc.customers.flatMap(c => Object.keys(customers[c]?.demand ?? {}))];
-    for (const k of new Set(used)) if (skus[k]) need(active('skus', k), `${where}: инструкция по упаковке позиции ${k} на ${date} ещё не действует`);
+    for (const k of new Set(used)) if (skus[k] && !launched.has(skus[k].product)) need(active('skus', k), `${where}: инструкция по упаковке позиции ${k} на ${date} ещё не действует`);
     // соглашения по качеству (Б3г): у каждой пары спецификации, действующей на начало, — соглашение, действующее на
     // начало
     for (const m of Object.values(materials)) {

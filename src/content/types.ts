@@ -268,9 +268,11 @@ export type OvertimeMode = 'need' | 'finish';
 
 /** Цель сценария (Б9; src/engine/goals.ts): выпущено серий, доля заказов вовремя, касса в последний день, отклонений с прошедшим сроком. */
 export interface Goal {
-  kind: 'released' | 'otif' | 'cash' | 'lateDevs';
+  kind: 'released' | 'otif' | 'cash' | 'lateDevs' | 'missDays';
   v: number;
   top?: true;
+  /** считать с этого мгновения партии, с; нет — со старта игрока */
+  from?: number;
 }
 
 export interface Scenario {
@@ -315,6 +317,8 @@ export interface Scenario {
   teaches?: Text;
   /** прогрев (Б9): с — столько до старта игрока завод живёт сам; `start` — начало прогрева */
   warm: number;
+  /** продукты-проекты (Б7д), введённые до старта: их редакции-проекты — в силе с начала прогрева */
+  launched: Id[];
   /** срок сценария от старта игрока, с; нет — без конца */
   days?: number;
   /** цели сценария (Б9): вид и порог в единицах движка — штуки, доли 1/10 000, копейки; `top` — цель «на отлично» */
@@ -1415,11 +1419,11 @@ export interface CapaAction {
 }
 
 /** Когда приходит письмо (Б9): на старте; после другого письма, когда то кончилось; в час первого события вида; в день сценария к часу (секунды от полуночи). */
-export type LetterWhen = { start: true } | { after: Id } | { first: 'deviation' | 'oos' | 'risk' | 'late' } | { day: number; at: number };
+export type LetterWhen = { start: true } | { after: Id } | { first: 'deviation' | 'oos' | 'risk' | 'late' | 'miss' } | { day: number; at: number; unless?: Id };
 
 /** Чем кончается письмо: условие над записями завода; `seen` — окно открыло то, на что письмо показывает. */
 export type LetterDone =
-  | { kind: 'unloaded' | 'sampled' | 'lotDecided' | 'released' | 'shipped' | 'order' | 'stageDone' | 'packed' | 'assessed' }
+  | { kind: 'unloaded' | 'sampled' | 'lotDecided' | 'released' | 'shipped' | 'order' | 'stageDone' | 'packed' | 'assessed' | 'delivered' | 'read' }
   | { kind: 'seen'; what: LetterSeen };
 
 export type LetterSeen = 'lab' | 'dossier' | 'morning' | 'goals' | 'cash' | 'card';

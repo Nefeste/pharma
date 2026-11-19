@@ -1,0 +1,9 @@
+# Письмо дистрибьютора в конце срока: зима без срывов — приходит, только если письма о срыве не было. Кончается, когда
+# его прочли
+id: let.c2.winter
+scenario: scn.c2
+from: distributor
+n: 4
+when: { day: 235, at: '10:00', unless: let.c2.miss }
+done: { kind: read }
+review: draft

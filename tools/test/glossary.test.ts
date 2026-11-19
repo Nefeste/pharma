@@ -8,7 +8,11 @@ import { join } from 'node:path';
 const ROOT = join(import.meta.dir, '../..');
 const product = readFileSync(join(ROOT, 'docs/01-product.md'), 'utf8');
 const ru = readFileSync(join(ROOT, 'src/i18n/ru.ts'), 'utf8').toLowerCase();
-const en = readFileSync(join(ROOT, 'src/i18n/en.ts'), 'utf8');
+/** Английские строки без комментариев: в комментариях — русские названия блоков. */
+const en = readFileSync(join(ROOT, 'src/i18n/en.ts'), 'utf8')
+  .split('\n')
+  .filter(l => !/^\s*(\/\/|\/\*|\*)/.test(l))
+  .join('\n');
 const enLow = en.toLowerCase();
 
 /** Строки словаря: слово, код, английское слово окна. */
@@ -35,6 +39,11 @@ const FORBIDDEN: [RegExp, string][] = [
   [/\bclass [A-D]\b/i, 'класс чистоты — grade (EU GMP, прил. 1)'],
   [/\bitem stock\b|(?:sku|stockHead): 'Item'/, 'товарная позиция — SKU'],
   [/\bleading version\b|'Versions'/, 'версия расследования — hypothesis'],
+  [/\bqualified person\b/, 'уполномоченное лицо — Qualified Person, с прописных'],
+  [/\b[Bb]reakdown\b/, 'отказ — failure'],
+  [/\bminor stops\b/, 'микроостановка — micro-stop'],
+  [/«|»/, 'кавычки по-английски — “ ”'],
+  [/\b(January|February|March|April|May|June|July|August|September|October|November|December) \$\{d\}, /, 'дата — «1 September 2027»'],
 ];
 
 describe('словарь по-английски', () => {

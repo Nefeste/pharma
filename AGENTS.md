@@ -119,8 +119,10 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # saved text file (e2e-chron.mjs, chron.png), the sound — silent before the first
                                    # press, a letter, a click, captions, an autopause, the meeting, volume 0, `shot`
                                    # silent (e2e-sound.mjs, sound.png), the brand — the first screen's steps, the font,
-                                   # F12 (e2e-brand.mjs); `-- --only main|week|memo|capa|jobs|launch|forecast|sop|mrp|
-                                   # edits|build|equip|route|sources|portfolio|c1|c2|chronicle|sound|brand`
+                                   # F12, RU / EN (e2e-brand.mjs), the languages — every window and tab on both at two
+                                   # sizes, no overflow (e2e-lang.mjs, lang.png); `-- --only main|week|memo|capa|jobs|
+                                   # launch|forecast|sop|mrp|edits|build|equip|route|sources|portfolio|c1|c2|chronicle|
+                                   # sound|brand|lang`
 node tools/app/before-after.mjs --before <dir>  # after e2e: the panels before and after → out/before-after.png
 npm run sound                      # the window and event sounds from formulas → assets/audio/*.wav and its LICENSES.md;
                                    # twice — the same bytes
@@ -667,7 +669,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   choice kept in the window (`preset.ts`); «Меньше движения» by rule 6 of the charter's ADR 0023 — the player's choice
   kept in the window, otherwise `prefers-reduced-motion`; on, the camera turns without gliding and the detail level
   changes at once (`motion.ts`); with Б12 the window language — from the address, the player's choice kept in the
-  window or the system's (`lang.ts`); the autopauses — which notices stop the world, whose post each is, the ones
+  window or the system's (`lang.ts`); the overflow check — text wider than its box and cut, not by an ellipsis, or a
+  box cut by a clipping parent or the window's edge, a pure rule over measurements (`overflow.ts`);
+  the autopauses — which notices stop the world, whose post each is, the ones
   switched off kept in the window, where a click on a notice leads, with Б5б a head's proposal before the meeting
   waiting for it (`pauses.ts`); which «Сейчас» row is the work of a thing in the card (`watch.ts`); the levers of
   meeting rows — decisions, whose post, «будет в …» (`levers.ts`); the

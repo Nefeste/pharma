@@ -68,15 +68,15 @@ function drawSkill(weights: readonly number[], u: number): number {
 
 /** Новый кандидат вакансии: навык, ожидание, срок поиска. */
 function candidate(db: ContentDb, s: PlantState, lab: Labor, vacId: string, via: Via, skill: number, z: number) {
-  const v = s.vacancies[vacId];
+  const v = s.hiring.vacancies[vacId];
   const id = `K${(s.next.K = (s.next.K ?? 0) + 1)}`;
   const day = today(s);
-  s.candidates[id] = { id, vacancy: vacId, via, role: v.role, skill, salary: expectation(db, lab, v.role, skill, z), from: day, until: day + lab.wait };
+  s.hiring.candidates[id] = { id, vacancy: vacId, via, role: v.role, skill, salary: expectation(db, lab, v.role, skill, z), from: day, until: day + lab.wait };
 }
 
 /** Понедельник, 09:00: по каждой вакансии с объявлением — отклики недели по записи рынка и плата за неделю объявления. */
 function adWeek(db: ContentDb, s: PlantState, lab: Labor, notices: Notice[]) {
-  for (const v of Object.values(s.vacancies)) {
+  for (const v of Object.values(s.hiring.vacancies)) {
     if (v.via !== 'ad') continue;
     hiringPay(s, -lab.ad, `ad-${v.id}`);
     const row = lab.roles[v.role];
@@ -105,7 +105,7 @@ function remoteNext(s: PlantState, days: readonly [number, number], via: Via, va
 
 /** Агентство и переезд: кандидат с навыком от и до записи канала — в своё мгновение; следующего — через новый срок. */
 function remoteStep(db: ContentDb, s: PlantState, lab: Labor, notices: Notice[]) {
-  for (const v of Object.values(s.vacancies)) {
+  for (const v of Object.values(s.hiring.vacancies)) {
     const src = remoteOf(lab, v.via);
     if (!src || v.next === undefined || v.next > s.t) continue;
     const [lo, hi] = src.skill;
@@ -125,9 +125,9 @@ export const movable = (lab: Labor | undefined, role: Id): boolean => !!lab?.mov
  */
 function open(db: ContentDb, s: PlantState, lab: Labor, role: Id, shift: Id, via: Via, notices: Notice[], by?: { instead: string }, cmd?: Command): string {
   const id = `J${(s.next.J = (s.next.J ?? 0) + 1)}`;
-  s.vacancies[id] = { id, role, shift, via, from: today(s), ...(by ? { by: 'colleague' as const, instead: by.instead } : {}) };
+  s.hiring.vacancies[id] = { id, role, shift, via, from: today(s), ...(by ? { by: 'colleague' as const, instead: by.instead } : {}) };
   const src = remoteOf(lab, via);
-  if (src) s.vacancies[id].next = remoteNext(s, src.days, via, id);
+  if (src) s.hiring.vacancies[id].next = remoteNext(s, src.days, via, id);
   notices.push({ kind: 'vacancy', id, role, shift, via, ...(by ? { by: 'colleague' as const } : {}) });
   const d = { kind: 'vacancy' as const, vacancy: id, role, via };
   const p = by ? s.people[by.instead] : undefined;
@@ -138,8 +138,8 @@ function open(db: ContentDb, s: PlantState, lab: Labor, role: Id, shift: Id, via
 
 /** Закрыть вакансию: её кандидаты уходят с рынка. */
 function closeVacancy(s: PlantState, id: string) {
-  delete s.vacancies[id];
-  for (const c of Object.values(s.candidates)) if (c.vacancy === id) delete s.candidates[c.id];
+  delete s.hiring.vacancies[id];
+  for (const c of Object.values(s.hiring.candidates)) if (c.vacancy === id) delete s.hiring.candidates[c.id];
 }
 
 /**
@@ -190,15 +190,15 @@ export function dismissTerms(db: ContentDb, s: PlantState, p: Person): { agree?:
  * возмещение переезда и обустройства сразу, по соглашению сторон (ст. 169).
  */
 function hireCandidate(db: ContentDb, s: PlantState, lab: Labor, id: string, trial: number, notices: Notice[], cmd?: Command, why?: HireWhy): boolean {
-  const c = s.candidates[id];
-  const v = s.vacancies[c.vacancy];
+  const c = s.hiring.candidates[id];
+  const v = s.hiring.vacancies[c.vacancy];
   const { exam, arrive, first } = hireDays(db, s, v.shift, c.via);
   if (!first) return false;
   const d = { kind: 'hire' as const, cand: c.id, vacancy: v.id, role: c.role };
   if (cmd) noteCmd(s, cmd, d, deptOf(db, c.role));
   else note(s, DEPT_HEAD[deptOf(db, c.role)], { ...d, ...(why ? { why } : {}) });
   const h: Hire = { id: c.id, vacancy: v.id, via: c.via, role: c.role, skill: c.skill, salary: c.salary, shift: v.shift, trial, exam, day: first.day, at: first.at, vac: v.from, ...(arrive !== undefined ? { arrive } : {}) };
-  s.hires[h.id] = h;
+  s.hiring.hires[h.id] = h;
   hiringPay(s, -lab.medical.price, `med-${h.id}`);
   if (c.via === 'agency') hiringPay(s, -agencyFee(lab, c.salary), `agency-${h.id}`);
   if (c.via === 'move' && lab.move) hiringPay(s, -lab.move.pay, `move-${h.id}`);
@@ -236,11 +236,11 @@ function start(db: ContentDb, s: PlantState, h: Hire, notices: Notice[]) {
     ...(h.trial > 0 ? { trial: addMonths(h.day, h.trial) - 1 } : {}),
   };
   // место ушедшего — вакансия его роли на его заявление; вакансия другой роли вместо него — не его место
-  const was = Object.values(s.people).find(q => q.quit?.vacancy === h.vacancy) ?? Object.values(s.former).find(q => q.quit?.vacancy === h.vacancy);
+  const was = Object.values(s.people).find(q => q.quit?.vacancy === h.vacancy) ?? Object.values(s.hiring.former).find(q => q.quit?.vacancy === h.vacancy);
   const also = was?.role === p.role ? (was.also ?? []).filter(r => r !== p.role && !db.roles[r]?.same) : [];
   if (also.length > 0) p.also = also;
   s.people[p.id] = p;
-  delete s.hires[h.id];
+  delete s.hiring.hires[h.id];
   trainNow(db, s, p);
   if (also.length > 0) deputyCame(db, s, also, h.day + 1);
   notices.push({ kind: 'hired', person: p.id, role: p.role, tab: p.tab });
@@ -259,7 +259,7 @@ function noticeEnd(db: ContentDb, s: PlantState, p: Person, day: number, days: n
 
 /** Полночь: текучесть — заявления по собственному желанию; кончились испытания; кандидаты, нашедшие другую работу. */
 function laborDay(db: ContentDb, s: PlantState, lab: Labor, z: number, notices: Notice[]) {
-  for (const c of Object.values(s.candidates)) if (c.until < z) delete s.candidates[c.id];
+  for (const c of Object.values(s.hiring.candidates)) if (c.until < z) delete s.hiring.candidates[c.id];
   const law = lawOf(db, s);
   for (const p of Object.values(s.people)) {
     // срок испытания истёк, а человек работает, — выдержал (ст. 71, ч. 3)
@@ -293,7 +293,7 @@ function leaveStep(db: ContentDb, s: PlantState, notices: Notice[]) {
     for (const t of Object.values(s.tasks)) if (t.trainee === p.id && t.state !== 'busy') dropTask(db, s, t);
     delete p.walk;
     delete s.people[p.id];
-    s.former[p.id] = p;
+    s.hiring.former[p.id] = p;
     deputyGone(db, s, p.id, z + 1);
     notices.push({ kind: 'left', person: p.id, role: p.role, tab: p.tab, why: q.why });
   }
@@ -337,7 +337,7 @@ function colleagueStep(db: ContentDb, s: PlantState, lab: Labor, notices: Notice
     if (mode === 'auto') q.vacancy = asWho(head, who, () => open(db, s, lab, p.role, p.shift, via, notices, { instead: p.id }));
     else if (mode === 'advise') r.propose(head, `quit/${p.id}`, { kind: 'vacancy', role: p.role, shift: p.shift, via, instead: p.id }, { kind: 'vacancy', role: p.role, via, why: vacWhy(p, via === 'agency' ? 'city' : 'ad', z) }, notices, who);
   }
-  for (const v of Object.values(s.vacancies)) {
+  for (const v of Object.values(s.hiring.vacancies)) {
     if (v.by !== 'colleague') continue;
     const head = DEPT_HEAD[deptOf(db, v.role)];
     const mode = modeOf(s, head);
@@ -353,7 +353,7 @@ function colleagueStep(db: ContentDb, s: PlantState, lab: Labor, notices: Notice
     };
     // навык при найме (геймдизайн, §8.5): слабый руководитель берёт кандидата слабее
     const min = hireMinBy(skillOf(s, who), lab.colleague.skill);
-    const fit = Object.values(s.candidates).find(c => c.vacancy === v.id && c.skill >= min && c.salary <= price(c.skill));
+    const fit = Object.values(s.hiring.candidates).find(c => c.vacancy === v.id && c.skill >= min && c.salary <= price(c.skill));
     if (fit) {
       const why = { skill: fit.skill, min, salary: fit.salary, price: marketPay(db, lab, v.role, fit.skill), over: lab.colleague.over };
       if (mode === 'auto') asWho(head, who, () => hireCandidate(db, s, lab, fit.id, lab.probation, notices, undefined, why));
@@ -362,7 +362,7 @@ function colleagueStep(db: ContentDb, s: PlantState, lab: Labor, notices: Notice
     }
     if (v.via === 'ad' && z - v.from >= lab.colleague.ad) {
       // по объявлению подходящий не нашёлся — агентство; журнал решений (Б5а) — с тем, вместо кого вакансия
-      const p = v.instead ? (s.people[v.instead] ?? s.former[v.instead]) : undefined;
+      const p = v.instead ? (s.people[v.instead] ?? s.hiring.former[v.instead]) : undefined;
       const d: Decided = { kind: 'vacancy', vacancy: v.id, role: v.role, via: 'agency', ...(p ? { why: vacWhy(p, 'late', v.from, z - v.from) } : {}) };
       if (mode === 'advise') {
         r.propose(head, `vac/${v.id}`, { kind: 'agency', vacancy: v.id }, d, notices, who);
@@ -394,7 +394,7 @@ export function hireHour(db: ContentDb, s: PlantState, notices: Notice[]) {
     remoteStep(db, s, lab, notices);
     if (now.sec >= LABOR_HOUR && isWorkday(calOf(db, s), now.day)) colleagueStep(db, s, lab, notices);
   }
-  for (const h of Object.values(s.hires)) if (h.at <= s.t) start(db, s, h, notices);
+  for (const h of Object.values(s.hiring.hires)) if (h.at <= s.t) start(db, s, h, notices);
   leaveStep(db, s, notices);
 }
 
@@ -417,7 +417,7 @@ export function hireCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
       return;
     }
     case 'agency': {
-      const v = s.vacancies[cmd.vacancy];
+      const v = s.hiring.vacancies[cmd.vacancy];
       if (!lab) return refuse('noLabor');
       if (!v) return refuse('noVacancy');
       if (v.via === 'agency') return refuse('same', cmd.vacancy);
@@ -426,13 +426,13 @@ export function hireCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
       return;
     }
     case 'close': {
-      if (!s.vacancies[cmd.vacancy]) return refuse('noVacancy');
+      if (!s.hiring.vacancies[cmd.vacancy]) return refuse('noVacancy');
       closeVacancy(s, cmd.vacancy);
       return;
     }
     case 'hire': {
       if (!lab) return refuse('noLabor');
-      if (!s.candidates[cmd.candidate]) return refuse('noCandidate');
+      if (!s.hiring.candidates[cmd.candidate]) return refuse('noCandidate');
       if (!Number.isInteger(cmd.trial) || cmd.trial < 0 || cmd.trial > law.probation) return refuse('trialLong');
       if (!hireCandidate(db, s, lab, cmd.candidate, cmd.trial, notices, cmd)) refuse('noShift');
       return;

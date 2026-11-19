@@ -304,6 +304,12 @@
     .letters .lrow.new > span:first-child { font-weight: 600; }
     .letters .letter p { margin: 4px 0; line-height: 1.4; }
     .letters .lacts { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chronicle { position: absolute; left: 8px; top: calc(var(--top-h, 48px) + 8px); width: min(620px, calc(100% - 16px)); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 6px; z-index: 6; background: rgba(22, 30, 34, 0.97); box-shadow: 0 6px 30px rgba(0,0,0,.5); }
+    .chronicle .tabs { display: flex; gap: 4px; }
+    .chronicle .lacts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .chronicle .crows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    .chronicle .crows li { line-height: 1.4; }
+    .chronicle button.link, .morning button.link { background: none; border: 0; padding: 0; color: inherit; text-align: left; text-decoration: underline dotted; cursor: pointer; }
     .goalbtn.new { font-weight: 600; }
     .seatbtn { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* доска расследования (часть 4б) — большое окно во всю ширину под полосой, как расписание: три столбца и решение снизу */

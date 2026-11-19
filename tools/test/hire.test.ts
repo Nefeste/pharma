@@ -74,7 +74,7 @@ describe('рынок труда', () => {
     const got: Notice[] = [];
     live(d, s, at(mon, 10), x => got.push(...x));
     expect(got.filter(x => x.kind === 'candidates')).toEqual([{ kind: 'candidates', vacancy: 'J1', role: 'role.operator', n: 3 }]);
-    const ks = Object.values(s.candidates);
+    const ks = Object.values(s.hiring.candidates);
     expect(ks.map(c => c.id)).toEqual(['K1', 'K2', 'K3']);
     for (const c of ks) {
       expect(c).toMatchObject({ vacancy: 'J1', via: 'ad', role: 'role.operator', from: mon, until: mon + lab.wait });
@@ -85,8 +85,8 @@ describe('рынок труда', () => {
     expect(hiring(s, 'ad-J1')).toEqual([{ t: at(mon, 9), sum: -lab.ad, item: 'hiring', ref: 'ad-J1' }]);
     // через срок поиска первые трое нашли другую работу; каждую неделю — новые отклики и плата
     live(d, s, at(mon + lab.wait + 1, 1));
-    expect(Object.keys(s.candidates).some(k => ['K1', 'K2', 'K3'].includes(k))).toBe(false);
-    expect(Object.values(s.candidates).every(c => c.from > mon)).toBe(true);
+    expect(Object.keys(s.hiring.candidates).some(k => ['K1', 'K2', 'K3'].includes(k))).toBe(false);
+    expect(Object.values(s.hiring.candidates).every(c => c.from > mon)).toBe(true);
     expect(hiring(s, 'ad-J1').map(e => e.t)).toEqual([at(mon, 9), at(mon + 7, 9), at(mon + 14, 9)]);
   }, 120_000);
 
@@ -96,7 +96,7 @@ describe('рынок труда', () => {
     apply(d, s, { kind: 'vacancy', role: 'role.packer', shift: 'shift.a', via: 'ad' });
     live(d, s, at(today(s) + 6 * 7, 10));
     const level = d.roles['role.packer'].salary;
-    const all = Object.values(s.candidates);
+    const all = Object.values(s.hiring.candidates);
     expect(all.length).toBeGreaterThanOrEqual(6);
     const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
     for (const c of all) {
@@ -115,13 +115,13 @@ describe('рынок труда', () => {
     expect(d.scenarios[SC].labor!.roles['role.qp'].ad).toEqual([P, 0, 0, 0]);
     const z0 = today(s);
     apply(d, s, { kind: 'vacancy', role: 'role.qp', shift: 'shift.day', via: 'agency' });
-    const next = s.vacancies.J1.next!;
+    const next = s.hiring.vacancies.J1.next!;
     expect(next % DAY).toBe(9 * HOUR);
     const wait = Math.floor(next / DAY) - (z0 - start);
     expect(wait).toBeGreaterThanOrEqual(lab.agency.days[0]);
     expect(wait).toBeLessThanOrEqual(lab.agency.days[1]);
     live(d, s, next + HOUR);
-    const [c] = Object.values(s.candidates);
+    const [c] = Object.values(s.hiring.candidates);
     expect(c).toMatchObject({ via: 'agency', role: 'role.qp', vacancy: 'J1' });
     expect(c.skill).toBeGreaterThanOrEqual(lab.agency.skill[0]);
     expect(c.skill).toBeLessThanOrEqual(lab.agency.skill[1]);
@@ -138,10 +138,10 @@ describe('приём', () => {
     const s = newPlant(d, { scenario: SC });
     apply(d, s, { kind: 'vacancy', role: 'role.operator', shift: 'shift.a', via: 'ad' });
     live(d, s, at(monday(s), 10));
-    const k = Object.values(s.candidates)[0];
+    const k = Object.values(s.hiring.candidates)[0];
     const z0 = today(s);
     const n = apply(d, s, { kind: 'hire', candidate: k.id, trial: 1 });
-    const h = s.hires[k.id];
+    const h = s.hiring.hires[k.id];
     expect(h.exam).toBe(addWorkdays(calOf(d, s), z0, lab.medical.days));
     let first = h.exam + 1;
     while (!spanOn(d, s, { shift: 'shift.a' }, first)) first++;
@@ -149,8 +149,8 @@ describe('приём', () => {
     expect(h.at).toBe(at(first, 7));
     expect(n).toEqual([{ kind: 'accepted', candidate: k.id, role: 'role.operator', day: first }]);
     // вакансия закрыта приёмом, её кандидаты ушли
-    expect(s.vacancies).toEqual({});
-    expect(s.candidates).toEqual({});
+    expect(s.hiring.vacancies).toEqual({});
+    expect(s.hiring.candidates).toEqual({});
     const got: Notice[] = [];
     live(d, s, h.at + HOUR, x => got.push(...x));
     const people = db.scenarios[SC].staff.reduce((a, r) => a + r.n, 0);
@@ -178,12 +178,12 @@ describe('приём', () => {
     const s = newPlant(d, { scenario: SC });
     apply(d, s, { kind: 'vacancy', role: 'role.operator', shift: 'shift.a', via: 'ad' });
     live(d, s, at(monday(s), 10));
-    const k = Object.values(s.candidates)[0];
+    const k = Object.values(s.hiring.candidates)[0];
     const law = d.profiles[d.scenarios[SC].profile].labor.probation;
     expect(apply(d, s, { kind: 'hire', candidate: k.id, trial: law + 1 })).toEqual([{ kind: 'refused', cmd: 'hire', why: 'trialLong' }]);
     expect(apply(d, s, { kind: 'hire', candidate: 'K99', trial: 1 })).toEqual([{ kind: 'refused', cmd: 'hire', why: 'noCandidate' }]);
     expect(apply(d, s, { kind: 'close', vacancy: 'J1' })).toEqual([]);
-    expect(s.candidates).toEqual({});
+    expect(s.hiring.candidates).toEqual({});
     expect(apply(d, s, { kind: 'close', vacancy: 'J1' })).toEqual([{ kind: 'refused', cmd: 'close', why: 'noVacancy' }]);
   }, 120_000);
 });
@@ -208,18 +208,18 @@ describe('увольнение', () => {
     live(d, s, at(z, 16), x => got.push(...x));
     expect(got.filter(x => x.kind === 'left')).toEqual([{ kind: 'left', person: 'E16', role: 'role.packer', tab: p.tab, why: 'agree' }]);
     expect(s.people.E16).toBeUndefined();
-    expect(s.former.E16.quit!.why).toBe('agree');
+    expect(s.hiring.former.E16.quit!.why).toBe('agree');
     // расчёт по ст. 140 на примере: оклад 1–20 сентября — 14 смен по 8 ч из нормы 176 ч; первая половина, начисленная
     // 16-го, — из общей выплаты 30-го в расчёт; выплата по соглашению — два оклада, без взносов до трёх окладов;
     // компенсация за отпуск (Б4г) — 20 дней с начала завода — месяц (не меньше половины), 28 / 12 = 2,33 дня по среднему
     // дневному: до начала завода — оклад на 29,3
     const half = Math.floor(salary / 2);
     const worked = Math.floor((salary * 14 * 8) / 176);
-    const a = extras(d, s, s.former.E16, 2027, 9, 1, 15);
-    const b = extras(d, s, s.former.E16, 2027, 9, 16, 20);
+    const a = extras(d, s, s.hiring.former.E16, 2027, 9, 1, 15);
+    const b = extras(d, s, s.hiring.former.E16, 2027, 9, 16, 20);
     const parts = s.cash.wages['leave-E16'];
-    expect(compDays(d, s, s.former.E16, z)).toBe(233);
-    expect(avgDaily(d, s, s.former.E16, 2027, 9)).toBe(Math.floor((salary * 1000) / 29300));
+    expect(compDays(d, s, s.hiring.former.E16, z)).toBe(233);
+    expect(avgDaily(d, s, s.hiring.former.E16, 2027, 9)).toBe(Math.floor((salary * 1000) / 29300));
     const comp = Math.floor((233 * Math.floor((salary * 1000) / 29300)) / 100);
     expect(parts).toEqual({ salary: worked, night: a.night + b.night, over: a.over + b.over, off: a.off + b.off, leave: 2 * salary, comp });
     const firstHalf = half + a.night + a.over + a.off;
@@ -231,7 +231,7 @@ describe('увольнение', () => {
     live(d, s, at(z + 10, 12), () => {
       expect(Object.values(s.tasks).some(t => t.people.includes('E16'))).toBe(false);
     });
-    expect(spanOn(d, s, s.former.E16, z + 1)).toBeUndefined();
+    expect(spanOn(d, s, s.hiring.former.E16, z + 1)).toBeUndefined();
   }, 120_000);
 
   test('сменный по циклу: в расчёт — итог учётного периода по последний день', () => {
@@ -279,9 +279,9 @@ describe('увольнение', () => {
     expect(apply(d, s, { kind: 'dismiss', person: 'E16', why: 'trial' })).toEqual([{ kind: 'refused', cmd: 'dismiss', why: 'notTrial' }]);
     apply(d, s, { kind: 'vacancy', role: 'role.packer', shift: 'shift.a', via: 'ad' });
     live(d, s, at(monday(s), 10));
-    const k = Object.values(s.candidates)[0];
+    const k = Object.values(s.hiring.candidates)[0];
     apply(d, s, { kind: 'hire', candidate: k.id, trial: 1 });
-    const h = s.hires[k.id];
+    const h = s.hiring.hires[k.id];
     live(d, s, h.at + HOUR);
     const p = Object.values(s.people).find(x => x.hired === h.day)!;
     const z = today(s);
@@ -289,7 +289,7 @@ describe('увольнение', () => {
     expect(apply(d, s, { kind: 'dismiss', person: p.id, why: 'trial' })).toEqual([{ kind: 'dismissed', person: p.id, role: 'role.packer', tab: p.tab, why: 'trial', last: z + law }]);
     expect(apply(d, s, { kind: 'dismiss', person: p.id, why: 'agree' })).toEqual([{ kind: 'refused', cmd: 'dismiss', why: 'leaving' }]);
     live(d, s, at(z + law + 1, 12));
-    expect(s.former[p.id]?.quit?.why).toBe('trial');
+    expect(s.hiring.former[p.id]?.quit?.why).toBe('trial');
   }, 120_000);
 
   test('не выдержал испытание: до конца испытания меньше трёх дней — отказ', () => {
@@ -297,9 +297,9 @@ describe('увольнение', () => {
     const s = newPlant(d, { scenario: SC });
     apply(d, s, { kind: 'vacancy', role: 'role.packer', shift: 'shift.a', via: 'ad' });
     live(d, s, at(monday(s), 10));
-    const k = Object.values(s.candidates)[0];
+    const k = Object.values(s.hiring.candidates)[0];
     apply(d, s, { kind: 'hire', candidate: k.id, trial: 1 });
-    const h = s.hires[k.id];
+    const h = s.hiring.hires[k.id];
     live(d, s, h.at + HOUR);
     const p = Object.values(s.people).find(x => x.hired === h.day)!;
     live(d, s, at(p.trial! - 1, 10));
@@ -329,7 +329,7 @@ describe('увольнение', () => {
     expect(apply(d, s, { kind: 'dismiss', person: 'E16', why: 'early' })).toEqual([{ kind: 'dismissed', person: 'E16', role: 'role.packer', tab: s.people.E16.tab, why: 'own', last: sat + 2 }]);
     expect(apply(d, s, { kind: 'dismiss', person: 'E15', why: 'early' })).toEqual([{ kind: 'refused', cmd: 'dismiss', why: 'noNotice' }]);
     live(d, s, at(sat + 3, 1));
-    expect(s.former.E16.quit).toMatchObject({ why: 'own', last: sat + 2 });
+    expect(s.hiring.former.E16.quit).toMatchObject({ why: 'own', last: sat + 2 });
     expect(s.people.E17.quit!.last).toBe(mon);
   }, 120_000);
 });
@@ -355,14 +355,14 @@ describe('коллеги и посты', () => {
       { kind: 'vacancy', id: 'J2', role: 'role.packer', shift: 'shift.a', via: 'ad', by: 'colleague' },
       { kind: 'vacancy', id: 'J3', role: 'role.packer', shift: 'shift.a', via: 'ad', by: 'colleague' },
     ]);
-    expect(s.vacancies.J1).toMatchObject({ by: 'colleague', instead: 'E16' });
+    expect(s.hiring.vacancies.J1).toMatchObject({ by: 'colleague', instead: 'E16' });
     expect(s.people.E16.quit!.vacancy).toBe('J1');
     live(d, s, at(monday(s), 10), x => got.push(...x));
     const acc = got.filter(x => x.kind === 'accepted');
     expect(acc.length).toBe(3);
-    expect(s.vacancies).toEqual({});
+    expect(s.hiring.vacancies).toEqual({});
     const level = d.roles['role.packer'].salary;
-    for (const h of Object.values(s.hires)) {
+    for (const h of Object.values(s.hiring.hires)) {
       expect(h.skill).toBeGreaterThanOrEqual(lab.colleague.skill);
       expect(h.salary).toBeLessThanOrEqual(level + Math.floor((level * lab.colleague.over) / P));
       expect(h.trial).toBe(lab.probation);
@@ -372,7 +372,7 @@ describe('коллеги и посты', () => {
   test('пост у игрока: коллега молчит; команды чужого поста — отказ', () => {
     const { d, s } = resign(['production']);
     live(d, s, at(start + 8, 10));
-    expect(s.vacancies).toEqual({});
+    expect(s.hiring.vacancies).toEqual({});
     expect(s.people.E16.quit!.vacancy).toBeUndefined();
     const q = newPlant(d, { scenario: SC });
     apply(d, q, { kind: 'seat', seats: ['quality'] });
@@ -439,7 +439,7 @@ describe('сохранения', () => {
     // новые
     expect(Object.values(s.people).filter(p => p.paid === undefined).map(p => p.role).sort()).toEqual(['role.chief-mechanic', 'role.cleaner', 'role.cleaner', 'role.operator', 'role.packer', 'role.plan-head', 'role.production-head', 'role.qa-head', 'role.qp', 'role.supply-head', 'role.warehouse-head']);
     for (const p of Object.values(s.people).filter(x => x.paid !== undefined)) expect(p.half !== undefined).toBe(d >= 16);
-    expect(s.vacancies).toEqual({});
+    expect(s.hiring.vacancies).toEqual({});
     live(db, s, s.t + 2 * DAY);
   }, 120_000);
 
@@ -447,12 +447,12 @@ describe('сохранения', () => {
     const json = await Bun.file(new URL('./fixtures/save-v24.json', import.meta.url)).text();
     const s = fromSave(db, json);
     const leaving = Object.values(s.people).find(p => p.quit)!;
-    const [h] = Object.values(s.hires);
+    const [h] = Object.values(s.hiring.hires);
     expect(leaving.quit!.why).toBe('agree');
-    expect(Object.keys(s.candidates).length).toBeGreaterThan(0);
+    expect(Object.keys(s.hiring.candidates).length).toBeGreaterThan(0);
     const got: Notice[] = [];
     live(db, s, h.at + HOUR, x => got.push(...x));
-    expect(s.former[leaving.id]).toBeDefined();
+    expect(s.hiring.former[leaving.id]).toBeDefined();
     expect(s.cash.wages[`leave-${leaving.id}`].leave).toBe(leaving.quit!.pay);
     expect(got.filter(x => x.kind === 'hired').map(x => (x as { role: string }).role)).toEqual([h.role]);
     expect(Object.values(s.people).some(p => p.hired === h.day && p.salary === h.salary)).toBe(true);

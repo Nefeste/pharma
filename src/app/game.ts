@@ -315,7 +315,7 @@ export class Game {
     // другой сценарий (Б9): после «Начать» на экране «Кампания» и после загрузки — даты, места и цели по нему
     if (s.world && s.world.scenario !== this.scenario.id && this.db.scenarios[s.world.scenario]) {
       this.scenario = this.db.scenarios[s.world.scenario];
-      this.store.set({ scenario: this.scenario.id, start: this.scenario.start.date, goals: { open: false }, letters: { open: false } });
+      this.store.set({ scenario: this.scenario.id, start: this.scenario.start.date, goals: { open: false }, letters: { open: false }, chronicle: { open: false, scale: 'day', back: 0 } });
       this.lettersShown = false;
       this.seenSent.clear();
       this.sendViews();
@@ -408,6 +408,9 @@ export class Game {
       } else if (d.view === 'goals') {
         // цели сценария (Б9): полоса и окно целей; в конце срока — итог
         this.store.set({ goals: { ...this.store.get().goals, view: d } });
+      } else if (d.view === 'chronicle') {
+        // хроника завода (Б10): глава панели
+        this.store.set({ chronicle: { ...this.store.get().chronicle, view: d } });
       } else if (d.view === 'letters') {
         // письма сценария (Б9): значок и панель; письмо, которое ждёт открытое окно, кончается
         this.store.set({ letters: { ...this.store.get().letters, view: d } });
@@ -1151,6 +1154,27 @@ export class Game {
       } else this.actions.go({ panel: go.panel });
     },
     skipLetter: id => this.client.command({ kind: 'letter', op: 'skip', id }),
+    toggleChronicle: () => {
+      const c = this.store.get().chronicle;
+      this.store.set({ chronicle: { ...c, open: !c.open, back: 0 } });
+      this.sendViews();
+    },
+    chronicleAt: (scale, back) => {
+      const c = this.store.get().chronicle;
+      this.store.set({ chronicle: { ...c, scale, back: Math.max(0, back) } });
+      this.sendViews();
+    },
+    showChronicle: (scale, back) => {
+      // глава с планёрки — сутки до неё: планёрка закрывается, хроника — поверх
+      if (this.store.get().morning.open) this.actions.closeMorning(false);
+      this.store.set({ chronicle: { ...this.store.get().chronicle, open: true, scale, back } });
+      this.sendViews();
+    },
+    chronicleGo: go => {
+      // щелчок по вещи записи (Б10): как по извещению — карточка вещи или досье серии
+      if ('thing' in go) this.actions.show(go.thing);
+      else this.actions.openDossier(go.dossier);
+    },
     skipTutorial: () => this.client.command({ kind: 'letter', op: 'skipAll' }),
     openSeats: () => {
       // сменить место — на паузе; «Взять» пустит мир с прежней скоростью
@@ -1570,6 +1594,8 @@ export class Game {
     if (this.scenario.goals.length > 0) list.push({ id: 'goals', view: 'goals' });
     // письма сценария (Б9) — всегда, если они у сценария есть: значок писем вверху
     if (lettersOf(this.db, this.scenario.id).length > 0) list.push({ id: 'letters', view: 'letters' });
+    // хроника завода (Б10) — пока панель открыта: глава её масштаба
+    if (h.chronicle.open) list.push({ id: 'chronicle', view: 'chronicle', scale: h.chronicle.scale, back: h.chronicle.back });
     if (st.open) list.push({ id: 'stock', ...st.query });
     if (this.selected) list.push({ id: 'card', view: 'card', thing: this.selected });
     if (h.morning.open && h.morning.day !== undefined) list.push({ id: 'morning', view: 'morning', day: h.morning.day, ...(h.session ? { since: h.session.from } : {}) });
@@ -1840,6 +1866,7 @@ export class Game {
       else if (k === 'KeyI') this.actions.toggleInv();
       else if (k === 'KeyN') this.actions.toggleNow();
       else if (k === 'KeyJ') this.actions.toggleJournal();
+      else if (k === 'KeyH') this.actions.toggleChronicle();
       else if (k === 'KeyK') this.actions.toggleKpi();
       else if (k === 'KeyP') this.actions.togglePolicies();
       else if (k === 'KeyO') this.actions.toggleSop();
@@ -1881,6 +1908,7 @@ export class Game {
         else if (h.lab.open) this.actions.toggleLab();
         else if (h.now.open) this.actions.toggleNow();
         else if (h.journal.open) this.actions.toggleJournal();
+        else if (h.chronicle.open) this.actions.toggleChronicle();
         else if (h.stock.open) this.actions.toggleStock();
       } else this.mouse.keys.add(k);
     });

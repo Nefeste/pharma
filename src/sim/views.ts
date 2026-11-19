@@ -34,6 +34,7 @@ import { type JournalQuery, type JournalView, journalView, whoAsset, whoBatch, w
 import { type PoliciesQuery, type PoliciesView, policiesView } from './policies';
 import { type PortfolioQuery, type PortfolioView, portfolioView } from './portfolio';
 import { type GoalsQuery, type GoalsView, goalsView } from './goals';
+import { type ChronicleQuery, type ChronicleView, chronicleView } from './chronicle';
 import { type LettersQuery, type LettersView, lettersView } from './letters';
 import { type MrpQuery, type MrpView, mrpView } from './mrp';
 import { type SopQuery, type SopView, sopView } from './sop';
@@ -84,7 +85,7 @@ export interface CardQuery {
   thing: Thing;
 }
 
-export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery | PoQuery | PoliciesQuery | SopQuery | MrpQuery | BuildQuery | PortfolioQuery | GoalsQuery | LettersQuery);
+export type ViewQuery = { id: string } & (StockQuery | CardQuery | MorningQuery | CashQuery | TopQuery | LabQuery | ChartQuery | GanttQuery | GhostQuery | InvQuery | RefQuery | NowQuery | DossierQuery | JournalQuery | FloorQuery | AndonQuery | KpiQuery | PoQuery | PoliciesQuery | SopQuery | MrpQuery | BuildQuery | PortfolioQuery | GoalsQuery | LettersQuery | ChronicleQuery);
 
 /** Место паллеты: место плана (номер по порядку), помещение (номер по порядку), фура. */
 export type PlaceRef = { k: 'slot'; i: number } | { k: 'room'; i: number } | { k: 'truck'; n: number; customer: boolean; waste?: true };
@@ -325,7 +326,7 @@ export interface CardView {
   card: CardData;
 }
 
-export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView | PoView | PoliciesView | SopView | MrpView | BuildView | PortfolioView | GoalsView | LettersView;
+export type ViewData = StockView | CardView | MorningView | CashView | TopView | LabView | ChartView | GanttView | GhostView | InvView | RefView | NowView | DossierView | JournalView | FloorView | AndonView | KpiView | PoView | PoliciesView | SopView | MrpView | BuildView | PortfolioView | GoalsView | LettersView | ChronicleView;
 
 const num = (id: string) => Number(id.slice(1));
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
@@ -704,7 +705,7 @@ function cardData(db: ContentDb, s: PlantState, thing: Thing): CardData {
     case 'person': {
       // уволенный (Б4в) — карточка остаётся: табель, обучение, основание и последний день
       const gone = !s.people[`E${thing.n}`];
-      const p = s.people[`E${thing.n}`] ?? s.former[`E${thing.n}`];
+      const p = s.people[`E${thing.n}`] ?? s.hiring.former[`E${thing.n}`];
       if (!p) return { kind: 'gone' };
       const t = p.task ? s.tasks[p.task] : undefined;
       const item = t ? kitItem(s, t) : undefined;
@@ -837,6 +838,9 @@ export function viewOf(db: ContentDb, s: PlantState, q: ViewQuery): ViewData {
     // письма сценария (Б9): пришедшие, что в них подставить и куда ведёт «Показать»
     case 'letters':
       return lettersView(db, s);
+    // хроника завода (Б10): глава — записи новыми сверху, что подставить и куда ведёт щелчок
+    case 'chronicle':
+      return chronicleView(db, s, q);
   }
 }
 

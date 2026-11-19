@@ -384,7 +384,7 @@ export function kpiSnapshot(db: ContentDb, s: PlantState): Omit<KpiSnap, 'n' | '
  */
 export function otIn(s: PlantState, from: number, to: number): number {
   let sec = 0;
-  for (const p of [...Object.values(s.people), ...Object.values(s.former)]) for (const [a, b] of p.ot) if (b >= from && b < to) sec += b - a;
+  for (const p of [...Object.values(s.people), ...Object.values(s.hiring.former)]) for (const [a, b] of p.ot) if (b >= from && b < to) sec += b - a;
   return sec;
 }
 
@@ -677,9 +677,9 @@ const CALC: Record<string, Calc> = {
     return rev > 0 ? Math.round((c.p.snap.recv * c.len * 100) / (c.p.snap.n * rev * 1000)) : undefined;
   },
   turnover: c => {
-    const people = [...Object.values(c.s.people), ...Object.values(c.s.former)];
+    const people = [...Object.values(c.s.people), ...Object.values(c.s.hiring.former)];
     const at = (d: number) => people.filter(p => (p.hired ?? 0) <= d && d <= (p.quit?.last ?? Number.MAX_SAFE_INTEGER)).length;
-    const gone = people.filter(p => p.quit !== undefined && p.quit.last >= c.y0 && p.quit.last < c.d1 && c.s.former[p.id] !== undefined).length;
+    const gone = people.filter(p => p.quit !== undefined && p.quit.last >= c.y0 && p.quit.last < c.d1 && c.s.hiring.former[p.id] !== undefined).length;
     const avg = (at(c.y0) + at(c.d1 - 1)) / 2;
     return avg > 0 ? Math.round((gone * P_ONE) / avg) : undefined;
   },
@@ -728,7 +728,7 @@ export function dockTimes(c: Ctx): { lot: string; sec: number }[] {
 
 /** Принятые, у которых первый день — в окне 12 месяцев: от открытия вакансии до первого дня, сутки × 100. */
 export function vacancyDays(c: Ctx): { person: string; days: number }[] {
-  return [...Object.values(c.s.people), ...Object.values(c.s.former)].flatMap(p =>
+  return [...Object.values(c.s.people), ...Object.values(c.s.hiring.former)].flatMap(p =>
     p.vac !== undefined && p.hired !== undefined && p.hired >= c.y0 && p.hired < c.d1 ? [{ person: p.id, days: (p.hired - p.vac) * 100 }] : [],
   );
 }

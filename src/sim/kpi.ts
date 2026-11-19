@@ -199,7 +199,7 @@ const batchRow = (s: PlantState, id: string, sec?: number): KpiWhyRow => {
 };
 
 function personRow(s: PlantState, id: string, extra: { day?: number; days?: number }): KpiWhyRow {
-  const p = s.people[id] ?? s.former[id];
+  const p = s.people[id] ?? s.hiring.former[id];
   return { k: 'person', role: p.role, tab: p.tab, ...(s.people[id] ? { person: num(id) } : {}), ...extra };
 }
 
@@ -280,14 +280,14 @@ export function whyRows(db: ContentDb, s: PlantState, c: KpiCtx, id: string): Kp
         .sort((a, b) => a.cpk - b.cpk)
         .map(x => ({ k: 'cpk' as const, recipe: x.recipe, test: x.test, cpk: x.cpk, n: x.n }));
     case 'turnover':
-      return Object.values(s.former)
+      return Object.values(s.hiring.former)
         .filter(x => x.quit !== undefined && x.quit.last >= c.y0 && x.quit.last < c.d1)
         .sort((a, b) => b.quit!.last - a.quit!.last)
         .map(x => personRow(s, x.id, { day: x.quit!.last }));
     case 'vacancy':
       return vacancyDays(c)
         .sort((a, b) => b.days - a.days)
-        .map(x => personRow(s, x.person, { day: (s.people[x.person] ?? s.former[x.person]).hired, days: x.days }));
+        .map(x => personRow(s, x.person, { day: (s.people[x.person] ?? s.hiring.former[x.person]).hired, days: x.days }));
   }
   return [];
 }

@@ -73,6 +73,7 @@ import { equipPart } from './e2e-equip.mjs';
 import { portfolioPart } from './e2e-portfolio.mjs';
 import { c1Part } from './e2e-c1.mjs';
 import { c2Part } from './e2e-c2.mjs';
+import { chronPart } from './e2e-chron.mjs';
 import { routePart } from './e2e-route.mjs';
 import { editsPart } from './e2e-edits.mjs';
 import { sourcesPart } from './e2e-sources.mjs';
@@ -318,6 +319,7 @@ try {
   if (only === '' || only === 'portfolio') await portfolioPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
   if (only === '' || only === 'c1') await c1Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (only === '' || only === 'c2') await c2Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
+  if (only === '' || only === 'chronicle') await chronPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

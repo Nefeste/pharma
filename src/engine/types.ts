@@ -9,7 +9,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 52;
+export const SCHEMA = 53;
 
 // ---------------------------------------------------------------- склад
 
@@ -2170,6 +2170,41 @@ export interface LetterRec {
   end?: { t: number; how: 'done' | 'skip' };
 }
 
+/**
+ * Запись хроники завода (Б10; src/engine/chronicle.ts): мгновение, вид, вещи — номера записей завода, числа — секунды
+ * и штуки. Истины нет: причина — та, что записал вывод расследования, решение — кто решил по журналу.
+ */
+export type ChronEntry = { t: number } & (
+  | { k: 'released'; b: string; sec: number; ph?: BatchPhase; phSec?: number; late?: number; by?: Head | 'player' }
+  | { k: 'rejected'; b: string; by?: Head | 'player' }
+  | { k: 'missed'; o: string; sku?: Id; cases: number }
+  | { k: 'dev'; d: string; cls: DevClass }
+  | { k: 'concluded'; inv: string; cause: string; fate: 'reject' | 'release' }
+  | { k: 'capa'; c: string; d: string; ok: boolean }
+  | { k: 'poLate'; po: string }
+  | { k: 'poCame'; po: string; late: number }
+  | { k: 'failure'; m: string; part: string }
+  | { k: 'repaired'; m: string; part: string; sec: number }
+  | { k: 'hired'; p: string }
+  | { k: 'left'; p: string; why: Quit['why'] }
+  | { k: 'unit'; a: string }
+  | { k: 'project'; pr: string; product: Id; stage: ProjectStage }
+  | { k: 'goals'; met: boolean[] }
+);
+
+/** Хроника завода (Б10): записи по порядку времени — вся игра. */
+export interface StoryState {
+  chronicle: ChronEntry[];
+}
+
+/** Найм (Б4в) одной группой (Б10): вакансии, кандидаты, принятые до первого дня, бывшие. */
+export interface HiringState {
+  vacancies: Record<string, Vacancy>;
+  candidates: Record<string, Candidate>;
+  hires: Record<string, Hire>;
+  former: Record<string, Person>;
+}
+
 export interface PlantState {
   schema: number;
   /** отпечаток базы, с которой начата партия */
@@ -2255,10 +2290,10 @@ export interface PlantState {
   /** журнал мест игрока (3е): какое место, с какого мгновения и по какое; места ещё не выбраны — нет */
   seats?: Tenure[];
   /** найм (Б4в): вакансии, кандидаты рынка, принятые до первого дня, уволенные — с их записями */
-  vacancies: Record<string, Vacancy>;
-  candidates: Record<string, Candidate>;
-  hires: Record<string, Hire>;
-  former: Record<string, Person>;
+  /** найм (Б4в; с Б10 — группой): вакансии, кандидаты, принятые до первого дня, бывшие */
+  hiring: HiringState;
+  /** хроника завода (Б10) */
+  story: StoryState;
   /** графики отпусков по годам (Б4г): черновик или утверждён; части — у людей */
   leave: Record<number, LeaveYear>;
   /** журнал решений (Б5а; src/engine/journal.ts): по порядку, за срок геймдизайна (§8.5), и открытые предложения */

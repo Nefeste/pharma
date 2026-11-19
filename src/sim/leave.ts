@@ -103,7 +103,7 @@ export function problemsOf(db: ContentDb, s: PlantState, p: Person, a: Away): Le
 
 function partRow(db: ContentDb, s: PlantState, p: Person, a: Away, today: number): PartRow {
   const d = deputyOn(a, Math.max(a.from, Math.min(today, a.to)));
-  const dp = d ? (s.people[d] ?? s.former[d]) : undefined;
+  const dp = d ? (s.people[d] ?? s.hiring.former[d]) : undefined;
   const can = a.to < today || db.roles[p.role].same ? [] : deputiesOf(s, p).filter(q => q.id !== a.deputy && deputyFree(s, q.id, Math.max(a.from, today), a.to, a.id));
   return {
     id: a.id,

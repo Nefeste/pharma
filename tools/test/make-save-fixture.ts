@@ -100,6 +100,18 @@ if ((SCHEMA as number) === 52) {
   console.log(`fixtures/save-v${SCHEMA}.json: писем ${c.heads.letters!.length}`);
   process.exit(0);
 }
+// с схемы 53 (Б10) — хроника посреди игры: прототип за 45 суток — серии выпущены, заказы ушли не все, найм — группой;
+// в найме есть вакансия и бывший сотрудник
+if ((SCHEMA as number) === 53) {
+  const c = newPlant(db, { scenario: 'scn.proto', seed: 1 });
+  const want = () => c.story.chronicle.some(e => e.k === 'released') && c.story.chronicle.some(e => e.k === 'missed');
+  for (let d = 0; d < 120 && (d < 45 || !want()); d++) apply(db, c, { kind: 'advance', seconds: DAY });
+  writeFileSync(new URL(`./fixtures/save-v${SCHEMA}.json`, import.meta.url), `${toSave(c)}\n`);
+  const by: Record<string, number> = {};
+  for (const e of c.story.chronicle) by[e.k] = (by[e.k] ?? 0) + 1;
+  console.log(`fixtures/save-v${SCHEMA}.json: записей хроники ${c.story.chronicle.length}`, by);
+  process.exit(0);
+}
 const s = newPlant(db, { scenario: 'scn.proto', seed: 1 });
 // отпуска (Б4г) — с января 2028 года: до 9 января — по часу
 const end = s.t + ((SCHEMA as number) === 25 ? 160 : 120) * DAY;
@@ -137,7 +149,7 @@ const assessing = () => Object.values(s.deviations).some(d => d.assess?.task !==
 const afterShift = () => Object.values(s.people).some(p => (p.sa?.segs.length ?? 0) > 0);
 const rostered = () => afterShift() && Object.values(s.people).some(p => pendingOf(s, p));
 // найм идёт (Б4в): принятый ждёт первого дня, есть кандидаты, кто-то уволен, кто-то уходит
-const hiring = () => Object.keys(s.hires).length > 0 && Object.keys(s.candidates).length > 0 && Object.keys(s.former).length > 0 && Object.values(s.people).some(p => p.quit);
+const hiring = () => Object.keys(s.hiring.hires).length > 0 && Object.keys(s.hiring.candidates).length > 0 && Object.keys(s.hiring.former).length > 0 && Object.values(s.people).some(p => p.quit);
 // посреди отпуска (Б4г): график утверждён, часть идёт с заместителем и отпускными, о другой уже известили
 const vacation = () => {
   const z = momentOf(s.start, s.t).day;
@@ -306,8 +318,8 @@ while (s.t < end && !busy()) {
       }
   // с схемы 24 — первые кандидаты аппаратчика: принять первого; упаковщика первой смены и аппаратчика второй — уволить по
   // соглашению
-  if (SCHEMA >= 24 && Object.keys(s.hires).length === 0 && Object.keys(s.former).length === 0) {
-    const k = Object.values(s.candidates).find(c => c.role === 'role.operator');
+  if (SCHEMA >= 24 && Object.keys(s.hiring.hires).length === 0 && Object.keys(s.hiring.former).length === 0) {
+    const k = Object.values(s.hiring.candidates).find(c => c.role === 'role.operator');
     if (k) {
       apply(db, s, { kind: 'hire', candidate: k.id, trial: 3, by: 'player' });
       for (const [role, shift] of [['role.packer', 'shift.a'], ['role.operator', 'shift.b']]) {

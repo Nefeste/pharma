@@ -258,7 +258,7 @@ export function coverPay(db: ContentDb, s: PlantState, p: Person, a: number, b: 
   const { y, m } = civilFromDays(a);
   const md = lastOfMonth(y, m) - daysFromCivil({ y, m, d: 1 }) + 1;
   let sum = 0;
-  for (const q of [...Object.values(s.people), ...Object.values(s.former)]) {
+  for (const q of [...Object.values(s.people), ...Object.values(s.hiring.former)]) {
     for (const x of q.away ?? []) {
       if (x.to < a || x.from > b) continue;
       let n = 0;

@@ -199,7 +199,7 @@ const num = (id: string) => Number(id.slice(1));
 const codeOf = (c: { y: number; m: number; n: number }): [number, number, number] => [c.y, c.m, c.n];
 
 function whoOf(s: PlantState, id: string): Who | undefined {
-  const p = s.people[id] ?? s.former[id];
+  const p = s.people[id] ?? s.hiring.former[id];
   return p ? { n: num(id), role: p.role, tab: p.tab } : undefined;
 }
 const whos = (s: PlantState, ids: readonly string[]): Who[] => ids.flatMap(id => whoOf(s, id) ?? []);

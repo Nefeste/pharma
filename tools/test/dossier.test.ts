@@ -204,8 +204,8 @@ describe('масса по стадиям и запись упаковки — п
     for (const b of [packed, next]) {
       const c = b.pack!.clear!;
       expect(c.by.length).toBe(2);
-      for (const id of c.by) expect(s.people[id]?.role ?? s.former[id]?.role).toBe('role.packer');
-      expect(s.people[c.check!]?.role ?? s.former[c.check!]?.role).toBe('role.master');
+      for (const id of c.by) expect(s.people[id]?.role ?? s.hiring.former[id]?.role).toBe('role.packer');
+      expect(s.people[c.check!]?.role ?? s.hiring.former[c.check!]?.role).toBe('role.master');
       expect(c.from).toBeLessThan(c.to);
       expect(c.at!).toBeGreaterThanOrEqual(c.to);
       expect(c.at!).toBeLessThanOrEqual(b.pack!.start!);

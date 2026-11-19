@@ -286,6 +286,8 @@ export interface MorningView {
   capa?: CapaMeeting;
   /** итог игры (обёртка): что завод сделал с мгновения `since` запроса; меньше суток игры — нет */
   session?: SessionSum;
+  /** хроника (Б10): записей за сутки до этой планёрки */
+  chron: number;
   /** отклонённое (Б1з): места зоны, ждущие места, вывоз, вывозы с прошлой планёрки; у сценария без подрядчика — нет */
   rejects?: RejectSum;
   /** итоги месяца (Б5ж): на первой планёрке месяца — что сдвинулось сильнее всего против месяца до него */
@@ -568,6 +570,7 @@ export function morningView(db: ContentDb, s: PlantState, q: MorningQuery): Morn
     memos: memoDays(db, s, from, at),
     ...capaOf(db, s, from, at),
     ...(q.since !== undefined && at - q.since >= DAY ? { session: sessionSum(s, q.since, at) } : {}),
+    chron: s.story.chronicle.filter(e => e.t >= at - DAY && e.t < at).length,
     ...(rejects ? { rejects } : {}),
     ...(month ? { month } : {}),
     ...(fc ? { forecast: fc } : {}),
@@ -871,11 +874,11 @@ function whyOf(s: PlantState, item: CashItem, ref: string | undefined): CashWhy 
   const h = /^(ad|med|agency|move)-/.exec(ref);
   if (item === 'hiring' && h) return { k: 'hiring', what: h[1] as 'ad' | 'med' | 'agency' | 'move' };
   const gone = /^leave-(E\d+)$/.exec(ref);
-  const who = gone ? (s.former[gone[1]] ?? s.people[gone[1]]) : undefined;
+  const who = gone ? (s.hiring.former[gone[1]] ?? s.people[gone[1]]) : undefined;
   if (item === 'settle' && who) return { k: 'leave', role: who.role, tab: who.tab };
   const vac = /^vac-(A\d+)$/.exec(ref);
   if (item === 'vacation' && vac) {
-    for (const p of [...Object.values(s.people), ...Object.values(s.former)]) {
+    for (const p of [...Object.values(s.people), ...Object.values(s.hiring.former)]) {
       const a = p.away?.find(x => x.id === vac[1]);
       if (a) return { k: 'vacation', role: p.role, tab: p.tab, from: a.from, to: a.to };
     }

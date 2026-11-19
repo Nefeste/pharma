@@ -118,7 +118,7 @@ export function rejectSum(db: ContentDb, s: PlantState, from: number, at: number
 
 /** Запись журнала отходов словами окна: партии — номера, материалы и серии; подписавший — роль и табельный номер. */
 export function wasteRow(s: PlantState, e: WasteEntry): WasteRow {
-  const p = s.people[e.signed] ?? s.former[e.signed];
+  const p = s.people[e.signed] ?? s.hiring.former[e.signed];
   return {
     t: e.t,
     by: byOf(e.by),

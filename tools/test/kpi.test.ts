@@ -181,7 +181,7 @@ describe('новые записи', () => {
   });
 
   test('у принятого — день открытия вакансии, не позже первого дня', () => {
-    const hired = [...Object.values(s.people), ...Object.values(s.former)].filter(p => p.cand !== undefined);
+    const hired = [...Object.values(s.people), ...Object.values(s.hiring.former)].filter(p => p.cand !== undefined);
     expect(hired.length).toBeGreaterThan(0);
     for (const p of hired) {
       expect(p.vac).toBeDefined();

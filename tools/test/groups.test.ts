@@ -12,7 +12,7 @@ import { runHeads, runSeed } from '../../src/engine/plan/run';
 import { fromSave } from '../../src/engine/save';
 import { type PlantState, SCHEMA } from '../../src/engine/types';
 
-const MOVED: [string, 'heads' | 'planning'][] = [
+const MOVED: [string, 'heads' | 'planning' | 'hiring'][] = [
   ['deputies', 'heads'],
   ['noOne', 'heads'],
   ['ruled', 'heads'],
@@ -20,6 +20,11 @@ const MOVED: [string, 'heads' | 'planning'][] = [
   ['forecast', 'planning'],
   ['sop', 'planning'],
   ['commerce', 'planning'],
+  // Б10: найм — одной группой
+  ['vacancies', 'hiring'],
+  ['candidates', 'hiring'],
+  ['hires', 'hiring'],
+  ['former', 'hiring'],
 ];
 const fixture = (v: number) => readFileSync(new URL(`./fixtures/save-v${v}.json`, import.meta.url), 'utf8');
 const versions = readdirSync(new URL('./fixtures/', import.meta.url))
@@ -28,7 +33,7 @@ const versions = readdirSync(new URL('./fixtures/', import.meta.url))
   .map(Number)
   .sort((a, b) => a - b);
 type Box = Record<string, unknown>;
-const box = (s: PlantState, k: 'heads' | 'planning') => s[k] as unknown as Box;
+const box = (s: PlantState, k: 'heads' | 'planning' | 'hiring') => s[k] as unknown as Box;
 
 describe('поля состояния — группами', () => {
   test('в типе состояния — не больше 63 полей верхнего уровня, с необязательными', () => {
@@ -46,7 +51,7 @@ describe('поля состояния — группами', () => {
     const raw = JSON.parse(fixture(47)) as Box;
     const s = fromSave(db, fixture(47));
     expect(s.schema).toBe(SCHEMA);
-    expect(SCHEMA).toBe(52);
+    expect(SCHEMA).toBe(53);
     for (const [k, to] of MOVED) {
       expect(k in s).toBe(false);
       if (raw[k] === undefined) expect(k in box(s, to)).toBe(false);
@@ -66,6 +71,8 @@ describe('поля состояния — группами', () => {
       return v;
     };
     for (const k of Object.keys(raw)) if (!moved.has(k) && k !== 'schema' && k !== 'heads' && k !== 'plan') expect(b7g(k, out[k])).toEqual(b7g(k, raw[k]));
+    // хроника (Б10) — пустая: до схемы 53 записей не было
+    expect(s.story).toEqual({ chronicle: [] });
     // план — тот же, только здание стало участком и корпусом: внутренность без стен здания, участок «Завод»
     const { building, ...rest } = raw.plan as Box & { building: [number, number, number, number] };
     // и у вещей плана — поставщик (Б7в, шаг 48 → 49): без него — тот же
@@ -74,7 +81,8 @@ describe('поля состояния — группами', () => {
     expect(plan).toEqual(rest as typeof plan);
     expect(hull).toEqual([[building[0] + 100, building[1] + 100, building[2] - 200, building[3] - 200]]);
     expect(lot).toEqual({ kind: 'plant', size: [12000, 8000] });
-    expect(Object.keys(s).length).toBe(Object.keys(raw).length - 5 + 1);
+    // семь полей — в группы `heads` и новую `planning`, четыре — в новую `hiring`; новая `story`
+    expect(Object.keys(s).length).toBe(Object.keys(raw).length - 5 + 1 - 4 + 1 + 1);
   });
 
   test('образцы всех схем: полей групп верхнего уровня нет, полей — не больше 63; шаги до 48 пишут на новые места', () => {

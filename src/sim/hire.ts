@@ -110,11 +110,11 @@ export function hiringView(db: ContentDb, s: PlantState): HiringView | undefined
     r.now++;
     if (p.quit) r.leaving++;
   }
-  for (const h of Object.values(s.hires)) row(h.role, h.shift).coming++;
+  for (const h of Object.values(s.hiring.hires)) row(h.role, h.shift).coming++;
   const day0 = daysFromCivil(s.start);
-  const vacancies = Object.values(s.vacancies).map(v => {
+  const vacancies = Object.values(s.hiring.vacancies).map(v => {
     const { exam, arrive, first } = hireDays(db, s, v.shift, v.via);
-    const instead = v.instead ? (s.people[v.instead] ?? s.former[v.instead]) : undefined;
+    const instead = v.instead ? (s.people[v.instead] ?? s.hiring.former[v.instead]) : undefined;
     return {
       id: v.id,
       role: v.role,
@@ -127,13 +127,13 @@ export function hiringView(db: ContentDb, s: PlantState): HiringView | undefined
       ...(arrive !== undefined ? { arrive } : {}),
       exam,
       ...(first ? { first: first.day } : {}),
-      candidates: Object.values(s.candidates)
+      candidates: Object.values(s.hiring.candidates)
         .filter(c => c.vacancy === v.id)
         .map(c => ({ id: c.id, via: c.via, skill: c.skill, salary: c.salary, until: c.until, ...(c.via === 'agency' ? { fee: agencyFee(lab, c.salary) } : {}), ...(c.via === 'move' && lab.move ? { move: lab.move.pay } : {}) })),
     };
   });
-  const hires = Object.values(s.hires).map(h => ({ id: h.id, role: h.role, shift: h.shift, skill: h.skill, salary: h.salary, ...(h.arrive !== undefined ? { arrive: h.arrive } : {}), exam: h.exam, day: h.day, trial: h.trial }));
-  const former = Object.values(s.former).map(p => ({ person: num(p.id), tab: p.tab, role: p.role, shift: p.shift, ...(p.hired !== undefined ? { hired: p.hired } : {}), why: p.quit!.why, last: p.quit!.last }));
+  const hires = Object.values(s.hiring.hires).map(h => ({ id: h.id, role: h.role, shift: h.shift, skill: h.skill, salary: h.salary, ...(h.arrive !== undefined ? { arrive: h.arrive } : {}), exam: h.exam, day: h.day, trial: h.trial }));
+  const former = Object.values(s.hiring.former).map(p => ({ person: num(p.id), tab: p.tab, role: p.role, shift: p.shift, ...(p.hired !== undefined ? { hired: p.hired } : {}), why: p.quit!.why, last: p.quit!.last }));
   const levels = Object.keys(lab.roles).map(role => ({ role, salary: db.roles[role].salary }));
   const law = db.profiles[sc.profile].labor.probation;
   const move = lab.move ? { days: [...lab.move.days] as [number, number], notice: lab.move.notice, road: lab.move.road, pay: lab.move.pay } : undefined;
@@ -168,7 +168,7 @@ export function peopleMeeting(s: PlantState): PeopleMeeting {
   const today = momentOf(s.start, s.t).day;
   const week = today + 7;
   const people = Object.values(s.people);
-  const coming = Object.values(s.hires)
+  const coming = Object.values(s.hiring.hires)
     .filter(h => h.day <= week)
     .map(h => ({ id: h.id, role: h.role, shift: h.shift, day: h.day }));
   const leaving = people.filter(p => p.quit && p.quit.last <= week).map(p => ({ person: num(p.id), tab: p.tab, role: p.role, why: p.quit!.why, last: p.quit!.last }));
@@ -177,7 +177,7 @@ export function peopleMeeting(s: PlantState): PeopleMeeting {
     .map(p => ({ person: num(p.id), tab: p.tab, role: p.role, shift: p.shift, last: p.quit!.last, ...(p.quit!.vacancy ? { vacancy: p.quit!.vacancy } : {}) }));
   const trials = people.filter(p => p.trial !== undefined && p.trial <= week).map(p => ({ person: num(p.id), tab: p.tab, role: p.role, last: p.trial! }));
   const by = new Map<string, number>();
-  for (const c of Object.values(s.candidates)) if (c.from >= today - 1) by.set(c.vacancy, (by.get(c.vacancy) ?? 0) + 1);
-  const candidates = [...by].map(([vacancy, n]) => ({ vacancy, role: s.vacancies[vacancy].role, n }));
+  for (const c of Object.values(s.hiring.candidates)) if (c.from >= today - 1) by.set(c.vacancy, (by.get(c.vacancy) ?? 0) + 1);
+  const candidates = [...by].map(([vacancy, n]) => ({ vacancy, role: s.hiring.vacancies[vacancy].role, n }));
   return { coming, leaving, resigned, trials, candidates };
 }

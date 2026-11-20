@@ -3310,6 +3310,7 @@ export const en: Strings = {
     },
     site: {
       lot: 'the building is past the lot edge',
+      lotRoom: (n: number, s: number, w: number, e: number) => `the hull is past the lot edge; from the hull to the edge: ${n} m north, ${s} m south, ${w} m west, ${e} m east`,
       hullJoin: 'the building is not in one piece',
       roomType: 'no such room type',
       outsideHull: 'not in the building',
@@ -3323,6 +3324,7 @@ export const en: Strings = {
       oneAirlock: 'materials and finished goods pass one airlock',
       doorWall: 'the door is not on a wall',
       doorSides: 'the door is not between two rooms',
+      doorUnbuilt: 'behind the wall is hull without a room: build a room there first, a corridor for example',
       doorMixed: 'the door cells lead into different rooms',
       dockInner: 'the dock is not in an outer wall',
       airlock: 'grade D is entered without an airlock',

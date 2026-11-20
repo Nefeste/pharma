@@ -96,6 +96,9 @@
     #view { position: absolute; inset: 0; touch-action: none; }
     #ui { position: absolute; inset: 0; pointer-events: none; }
     #ui > * { pointer-events: auto; }
+    /* окна (по игре владельца 20.11.2026): заголовок — за него тащат; подсказки — над любым поднятым окном */
+    #ui .panel > .phead, #ui .panel > .cardhead { cursor: grab; }
+    body.dragging, body.dragging * { cursor: grabbing !important; user-select: none; }
     .panel { background: var(--glass); border: 1px solid var(--line); border-radius: var(--r-l); box-shadow: var(--shadow); }
     button { font: inherit; color: var(--text); background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-m); padding: var(--sp-2) var(--sp-5); cursor: pointer; }
     /* отклик кнопок (как у «Больницы»): наведение — светлее и рамка акцента, нажатие — на точку вниз, фокус виден */
@@ -164,7 +167,7 @@
     ul.legend li, ul.loadrows li, .floortip li { display: flex; align-items: center; gap: var(--sp-3); margin: 1px 0; }
     ul.legend { font-size: var(--fs-small); }
     .sw { flex: none; width: 10px; height: 10px; border-radius: var(--r-s); border: 1px solid var(--line-bright); }
-    .floortip { position: fixed; z-index: 6; pointer-events: none; max-width: 340px; padding: var(--sp-3) var(--sp-5); font-size: var(--fs-small); }
+    .floortip { position: fixed; z-index: 100000; pointer-events: none; max-width: 340px; padding: var(--sp-3) var(--sp-5); font-size: var(--fs-small); }
     #ui > .floortip { pointer-events: none; }
     /* карточка вещи (3б) — снизу слева: справа — панель склада */
     /* карточка — правее столбца слоёв (Б12, шаг 2): полоса окон может перенестись, и слои дорастали до карточки снизу */
@@ -356,7 +359,7 @@
     .glegend { display: inline-flex; flex-wrap: wrap; gap: var(--sp-3); }
     .glegend .gbar { position: static; display: inline-block; padding: 0 var(--sp-3); line-height: 18px; cursor: default; }
     .goff-key { display: inline-block; padding: 0 var(--sp-3); line-height: 18px; background: var(--ring); border-radius: var(--r-s); color: var(--muted); }
-    .gtip { position: fixed; z-index: 10; max-width: 380px; padding: var(--sp-3) var(--sp-5); font-size: var(--fs-small); pointer-events: none; }
+    .gtip { position: fixed; z-index: 100000; max-width: 380px; padding: var(--sp-3) var(--sp-5); font-size: var(--fs-small); pointer-events: none; }
     /* черновик и прогон плана (часть 5): полосы черновика — в белой рамке, прежние — бледнее; итог — таблица по вариантам */
     .gbar.draft { border: 1px solid var(--strong); background: color-mix(in srgb, var(--c) 55%, transparent); }
     .gbar.focus { outline: 2px solid var(--accent); outline-offset: 1px; z-index: 1; }

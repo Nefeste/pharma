@@ -1,13 +1,15 @@
 // Сценарий в браузере, часть «Языки» (Б12, шаг 2; docs/specs/2026-10-vertical-slice.md, «Б12», «Проверки Б12»): чистое окно
-// прототипа на русском и английском, при 1280 × 720 и 1920 × 1080 — планёрка и каждое окно и вкладка по очереди; в
+// прототипа на русском и английском, при 1920 × 1080, 2560 × 1440 и 3840 × 2160 (наименьший экран — Full HD, решение
+// владельца 20.11.2026) — планёрка и каждое окно и вкладка по очереди; в
 // каждом — переполнения окна (src/app/overflow.ts): текст шире коробки и обрезан не многоточием. Ноль — условие прохода.
 // Снимки — tools/app/out/lang-<язык>-<ширина>.png, лист — tools/app/out/lang.png (английский).
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SIZES = [
-  [1280, 720],
   [1920, 1080],
+  [2560, 1440],
+  [3840, 2160],
 ];
 const LANGS = ['ru', 'en'];
 /** Окна по очереди: открыть, подождать вид, измерить, закрыть. */
@@ -82,11 +84,11 @@ export async function langPart(x) {
       else fail(`${label}: переполнений ${found.size} — ${[...found].slice(0, 30).map(([o, where]) => `${where}: ${o}`).join(' | ')}`);
       await ctx.close();
     }
-  // сценарий 1 при 1280: в полосе — «Письма» и «Цели», их окна
+  // сценарий 1 при 1920: в полосе — «Письма» и «Цели», их окна
   for (const lang of LANGS) {
-    const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
     const page = await ctx.newPage();
-    const label = `${lang} 1280×720, сценарий 1`;
+    const label = `${lang} 1920×1080, сценарий 1`;
     const found = new Map();
     const take = async where => {
       await page.waitForTimeout(700);
@@ -113,8 +115,8 @@ export async function langPart(x) {
   }
   ok(`Языки: часть — ${((Date.now() - started) / 60000).toFixed(1)} мин`);
   const cells = shots.map(c => `<figure><img src="data:image/png;base64,${readFileSync(c.file).toString('base64')}"><figcaption>${c.label}</figcaption></figure>`).join('');
-  const lister = await browser.newPage({ viewport: { width: 1290, height: 800 } });
-  await lister.setContent(`<style>body{margin:6px;background:#1d2226;font:12px sans-serif;color:#d8dde0}main{display:grid;grid-template-columns:repeat(2,640px);gap:6px}figure{margin:0}img{width:640px;display:block}figcaption{padding:2px 0 4px}</style><main>${cells}</main>`);
+  const lister = await browser.newPage({ viewport: { width: 1940, height: 800 } });
+  await lister.setContent(`<style>body{margin:6px;background:#1d2226;font:12px sans-serif;color:#d8dde0}main{display:grid;grid-template-columns:repeat(3,640px);gap:6px}figure{margin:0}img{width:640px;display:block}figcaption{padding:2px 0 4px}</style><main>${cells}</main>`);
   await lister.screenshot({ path: join(out, 'lang.png'), fullPage: true });
   await lister.close();
   ok(`Языки: ${shots.length} снимков → ${join(out, 'lang.png')}`);

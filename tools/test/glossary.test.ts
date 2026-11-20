@@ -107,3 +107,17 @@ describe('переполнения окна', () => {
     expect(overflows([box({ scrollW: 760, clientW: 760, ox: 'auto', panel: true })])).toEqual([]);
   });
 });
+
+describe('окна', () => {
+  test('сдвиг окна — в пределах экрана: верх не выше полосы, за заголовок можно взяться; вид окна — ключ сдвига', async () => {
+    const { clampShift, GRIP, keyOf } = await import('../../src/app/windows');
+    const view = { left: 0, top: 0, right: 1920, bottom: 1080 };
+    const base = { left: 1152, top: 60, right: 1912, bottom: 700 };
+    expect(clampShift(base, { x: -300, y: 100 }, view, 52)).toEqual({ x: -300, y: 100 });
+    expect(clampShift(base, { x: 0, y: -200 }, view, 52)).toEqual({ x: 0, y: -8 });
+    expect(clampShift(base, { x: 5000, y: 0 }, view, 52)).toEqual({ x: 1920 - GRIP - 1152, y: 0 });
+    expect(clampShift(base, { x: -5000, y: 0 }, view, 52)).toEqual({ x: GRIP - 760 - 1152, y: 0 });
+    expect(clampShift(base, { x: 0, y: 5000 }, view, 52)).toEqual({ x: 0, y: 1080 - GRIP - 60 });
+    expect([keyOf('stock panel cashp'), keyOf('letters panel'), keyOf('card panel beside over'), keyOf('morning panel')]).toEqual(['stock cashp', 'letters', 'card', 'morning']);
+  });
+});

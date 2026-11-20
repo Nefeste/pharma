@@ -737,6 +737,12 @@ export class Game {
     }, 'image/png');
   }
 
+  /**
+   * Рисовать ли кадр во время промотки: в сценарии браузера (`?fastff=1`) — нет, программная отрисовка WebGL съедает
+   * время промотки; снимки — после неё. В игре — всегда да.
+   */
+  drawFF = true;
+
   private loop = (ts: number) => {
     requestAnimationFrame(this.loop);
     const dt = this.last ? Math.min(0.1, (ts - this.last) / 1000) : 0;
@@ -774,6 +780,13 @@ export class Game {
     this.detail = stepDetail(this.detail, this.detailTarget, dt, this.stage.cam.less);
     this.stage.setDetail(this.detail);
     const a = performance.now();
+    if (this.ff && !this.drawFF) {
+      if (ts - this.hudAt > 100) {
+        this.hudAt = ts;
+        this.hud();
+      }
+      return;
+    }
     this.showMovers(ts);
     if (this.store.get().layer === 'andon') this.stage.andon.set(andonMarks(this.store.get().andon.view?.items ?? [], this.thingTop));
     this.stage.setMachines(this.view.lines, this.view.equipment, this.ff ? FF_CHUNK * 60 : RATE[this.speed]);

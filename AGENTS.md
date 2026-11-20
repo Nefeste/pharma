@@ -121,11 +121,13 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # silent (e2e-sound.mjs, sound.png), the brand — the first screen's steps, the font,
                                    # F12, RU / EN (e2e-brand.mjs), the languages — every window and tab on both at three
                                    # sizes, Full HD to 4K, no overflow (e2e-lang.mjs, lang.png), the saves — a
-                                   # morning's, one's own, a new page and the load (e2e-saves.mjs, saves.png);
+                                   # morning's, one's own, a new page and the load (e2e-saves.mjs, saves.png), the
+                                   # campaign — scenario 1 to its result, «Следующий сценарий», the gap, scenario 2's
+                                   # start (e2e-carry.mjs, carry-*.png);
                                    # frames are not drawn during fast-forward (`fastff`);
                                    # `-- --only main|week|memo|capa|jobs|
                                    # launch|forecast|sop|mrp|edits|build|equip|route|sources|portfolio|c1|c2|chronicle|
-                                   # sound|brand|lang|saves`
+                                   # sound|brand|lang|saves|carry`
 node tools/app/before-after.mjs --before <dir>  # after e2e: the panels before and after → out/before-after.png
 npm run sound                      # the window and event sounds from formulas → assets/audio/*.wav and its LICENSES.md;
                                    # twice — the same bytes
@@ -526,7 +528,12 @@ first, or copy the working code of Bolnitsa on the same versions.
   end of the term by the ledger, deviations past their term, with step 3 the days of missed orders (`missDays`) — from
   the player's start after the warm-up or the goal's own date, `goalsNow`; the end of the term is the `scenarioEnd`
   event; with step 3 a scenario's launched products — their project revisions in force from the warm-up's start in
-  `newPlant`), `letters.ts` (with Б9 step 2, a scenario's letters: at the start,
+  `newPlant`), `carry.ts` (with Б9 step 4, the campaign transition: the `next` command of the director's seat after
+  `scenarioEnd` — the same plant into the next scenario by campaign number; the next plan's missing wing built where it
+  fits, otherwise its price granted; launched products' revisions in force with their pairs approved and contracts;
+  new customers, people up to the staff by role, the cash up to the start's — the founder's contribution —, missing
+  stock; the seats released; the next scenario's day zero — `scnZero` — for its goals and letters, its start —
+  `scenarioStart` — and end events), `letters.ts` (with Б9 step 2, a scenario's letters: at the start,
   after another letter ended, in the hour of the first event of a kind or on a scenario day at its hour; the thing
   found at arrival; the end by its own condition on plant records or the window's `seen`, and only by it; a mentor's
   letter skipped, or all of them; an ended letter's departments advise unless the player chose their mode; the `letter`

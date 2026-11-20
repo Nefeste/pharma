@@ -178,6 +178,8 @@ function rowOf(s: PlantState, e: ChronEntry): ChronRow {
       f.product = e.product;
       break;
     case 'goals':
+    case 'carried':
+    case 'started':
       break;
   }
   return { e, facts: f, ...(go ? { go } : {}) };

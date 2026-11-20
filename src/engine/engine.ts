@@ -6,6 +6,7 @@
 // доживается в следующих кадрах; любая следующая команда сначала доживает всё. `more` спрашивают после каждого события, и он
 // видит извещения, уже данные этим доживанием: так поток расчёта встаёт ровно на событии автопаузы (Б2а).
 import { chronicleStep } from './chronicle';
+import { carry, scnZero } from './carry';
 import { letterCommand, letterDue, lettersStep, startLetters } from './letters';
 import type { ContentDb, Id } from '../content/types';
 import { alertsHour } from './alerts';
@@ -345,6 +346,12 @@ function command(db: ContentDb, s: PlantState, cmd: Command, more?: More): Notic
       letterCommand(db, s, cmd, notices);
       return notices;
     }
+    case 'next': {
+      // переход кампании (Б9, шаг 4): завод — в следующий сценарий; межсезонье живёт сам до старта игрока
+      const notices: Notice[] = [];
+      carry(db, s, notices);
+      return notices;
+    }
     case 'seat': {
       const notices: Notice[] = [];
       seatCommand(db, s, cmd, notices);
@@ -595,6 +602,12 @@ function handle(db: ContentDb, s: PlantState, ev: PlantEvent, notices: Notice[])
     case 'scenarioEnd':
       notices.push({ kind: 'scenarioEnd' });
       return;
+    case 'scenarioStart': {
+      // старт игрока в следующем сценарии кампании (Б9, шаг 4): его письма — от его даты
+      startLetters(db, s, scnZero(db, s), db.scenarios[s.scenario].warm);
+      notices.push({ kind: 'scenarioStart', scenario: s.scenario });
+      return;
+    }
     case 'morning':
       s.day++;
       // сменно-суточное задание (Б6б): итог вчерашнего и строки на сутки — до планёрки, которую это событие открывает

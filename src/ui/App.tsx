@@ -204,6 +204,7 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
         {plant ? <FloorTip hud={s} plant={plant} /> : null}
       </Guard>
       {/* ограда — и вокруг закрытой панели: ошибку уборки при снятии панели React отдаёт той, что осталась на экране */}
+      {s.gap ? <GapScreen hud={s} /> : null}
       <Guard name={T.saves.menu} close={s.menu.open ? actions.toggleMenu : undefined}>
         {s.menu.open && <GameMenu hud={s} actions={actions} />}
       </Guard>
@@ -426,6 +427,22 @@ function GameMenu({ hud, actions }: { hud: Hud; actions: Actions }) {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** Межсезонье (Б9, шаг 4): завод живёт сам до старта следующего сценария — докуда дошло и сколько осталось. */
+function GapScreen({ hud }: { hud: Hud }) {
+  const g = hud.gap!;
+  const share = Math.min(1, Math.max(0, (g.t - g.from) / Math.max(1, g.to - g.from)));
+  return (
+    <div className="gapscreen panel" role="dialog" aria-live="polite" data-test="gap" data-share={share.toFixed(3)}>
+      <b>{T.campaign.gap(dateText(momentOf(hud.start, g.to)))}</b>
+      <div className="muted small">{T.campaign.gapHint}</div>
+      <div className="boot-bar">
+        <i style={{ width: `${Math.round(share * 100)}%` }} />
+      </div>
+      <div className="muted small">{dateText(momentOf(hud.start, g.t))}</div>
     </div>
   );
 }

@@ -4,6 +4,7 @@
 // structured clone; массив среза передаётся без копии.
 // Сохранение ходит строкой: состояние с истинными свойствами партий окно не разбирает (§9) — его пишет и читает поток
 // расчёта, со своими миграциями (src/engine/save.ts).
+import type { Ymd } from '../engine/core/calendar';
 import type { Id, Plant } from '../content/types';
 import { DAY } from '../engine/core/calendar';
 import { MORNING } from '../engine/engine';
@@ -39,6 +40,8 @@ export interface World {
   rev: number;
   /** сценарий завода (Б9): окно берёт его отсюда — после старта и загрузки */
   scenario: string;
+  /** первая дата завода: от её полуночи — время `t`; у завода из прежнего сценария кампании (Б9, шаг 4) — его дата */
+  start: Ymd;
 }
 
 export type FromSim =

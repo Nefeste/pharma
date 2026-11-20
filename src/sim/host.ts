@@ -34,11 +34,14 @@ export function createSim(db: ContentDb): SimHost {
   const desk = new ViewDesk(db);
   /** план, который окно уже знает (Б7а): другой объект — план едет со срезом */
   let sent: PlantState['plan'] | undefined;
+  let sentScn: string | undefined;
   const slice = (notices: Notice[], tick = false, stopped = false, fresh = false): FromSim => {
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const views = desk.out(s!, performance.now());
-    const world = s!.plan !== sent ? { plan: s!.plan, rev: planRev(s!.plan), scenario: s!.scenario } : undefined;
+    // план — когда сменился; сценарий — тоже (переход кампании, Б9, шаг 4, может не тронуть план)
+    const world = s!.plan !== sent || s!.scenario !== sentScn ? { plan: s!.plan, rev: planRev(s!.plan), scenario: s!.scenario, start: s!.start } : undefined;
     sent = s!.plan;
+    sentScn = s!.scenario;
     return {
       kind: 'slice',
       buf: packer.pack(s!, lag),
@@ -66,6 +69,7 @@ export function createSim(db: ContentDb): SimHost {
             s = newPlant(db, { scenario: msg.scenario, seed: msg.seed });
             owed = 0;
             sent = undefined;
+            sentScn = undefined;
             packer.reset();
             desk.reset();
             return slice([], false, false, true);
@@ -73,6 +77,7 @@ export function createSim(db: ContentDb): SimHost {
             s = fromSave(db, msg.json);
             owed = 0;
             sent = undefined;
+            sentScn = undefined;
             packer.reset();
             desk.reset();
             return slice([], false, false, true);

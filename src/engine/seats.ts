@@ -11,6 +11,7 @@ import type { Command, Notice, PlantState } from './types';
 
 /** Чья команда — пост, к которому она относится; ход времени и выбор места — ничьи; политика отдела — пост отдела. */
 export const OWNER: Partial<Record<Command['kind'], SeatId>> = {
+  next: 'director',
   order: 'production',
   shift: 'production',
   cancel: 'production',

@@ -221,6 +221,27 @@ export function seedContracts(db: ContentDb, sc: Scenario, s: PlantState, day: n
   }
 }
 
+/**
+ * Пары материалов продуктов, введённых переходом кампании (Б9, шаг 4; `db` — база с их редакциями в силе): пара
+ * спецификации в силе без одобрения в сроке — одобрена с сегодня, как у старта; поставщик без договора в силе — рамочный
+ * договор, как у старта. У поставщика с договором новые материалы — по прайсу до его нового договора.
+ */
+export function carryPairs(db: ContentDb, s: PlantState, day: number, materials: Iterable<Id>) {
+  const sc = db.scenarios[s.scenario];
+  const sup = new Set<Id>();
+  for (const m of materials) {
+    if (!db.materials[m]) continue;
+    for (const x of specPairs(db, m, day)) {
+      const key = pairKey(x.supplier, x.maker);
+      const p = (s.pairs[key] ??= { id: key, supplier: x.supplier, maker: x.maker, recs: [] });
+      if (!pairValid(p, day)) p.recs.push({ day, until: addMonths(day, everyOf(db, sc, x.supplier, x.maker)) - 1, how: howOf(db, x.supplier, x.maker) });
+      sup.add(x.supplier);
+    }
+  }
+  const use = useFor(db, s, day);
+  for (const id of [...sup].sort()) if (!contractOf(s, id, day)) frameContract(db, s, id, day, use);
+}
+
 /** Действующий договор стороны в день `day`. */
 export function contractOf(s: PlantState, party: Id, day: number): Contract | undefined {
   for (const c of Object.values(s.contracts)) if (c.party === party && !c.closed && c.from <= day && day <= c.to) return c;

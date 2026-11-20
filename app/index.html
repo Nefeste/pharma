@@ -115,6 +115,9 @@
     .top .clock { font-size: var(--fs-title); font-weight: 600; min-width: 52px; }
     .top .date { color: var(--muted); min-width: 150px; }
     .top .group, .debug .group { display: inline-flex; gap: var(--sp-2); align-items: center; }
+    /* кнопки окон (Б12, шаг 2): плотнее — по-русски при 1280 точках «Справочник» уходил за край; не влезли — вторая строка */
+    .top .group.nav { flex-wrap: wrap; }
+    .top .group.nav > button { padding: var(--sp-1) var(--sp-3); }
     .top .stat b { color: var(--strong); }
     .top .warn { color: var(--warn); }
     .top .notice { flex: 1 1 0; min-width: 90px; text-align: right; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -164,9 +167,10 @@
     .floortip { position: fixed; z-index: 6; pointer-events: none; max-width: 340px; padding: var(--sp-3) var(--sp-5); font-size: var(--fs-small); }
     #ui > .floortip { pointer-events: none; }
     /* карточка вещи (3б) — снизу слева: справа — панель склада */
-    .card { position: absolute; left: 8px; bottom: 10px; min-width: 380px; max-width: min(600px, calc(100% - 16px)); max-height: 46%; overflow: auto; padding: var(--sp-4) var(--sp-6); }
+    /* карточка — правее столбца слоёв (Б12, шаг 2): полоса окон может перенестись, и слои дорастали до карточки снизу */
+    .card { position: absolute; left: 210px; bottom: 10px; min-width: 380px; max-width: min(600px, calc(100% - 218px)); max-height: 46%; overflow: auto; padding: var(--sp-4) var(--sp-6); }
     /* склад открыт: карточка — слева от него, под панель не заходит */
-    .card.beside { min-width: 0; max-width: min(600px, max(300px, calc(100% - min(760px, calc(100% - 16px)) - 24px))); }
+    .card.beside { min-width: 0; max-width: min(600px, max(300px, calc(100% - min(760px, calc(100% - 16px)) - 226px))); }
     /* поверх большого окна (Б5ж) — непрозрачна, как досье: строки окна под ней не просвечивают */
     .card.over { z-index: 2; background: var(--window); box-shadow: var(--shadow-over); }
     .cardhead { display: flex; align-items: center; gap: var(--sp-4); margin-bottom: var(--sp-2); font-size: var(--fs-title); }

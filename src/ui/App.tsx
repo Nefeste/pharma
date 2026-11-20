@@ -6,7 +6,7 @@
 // действия игры. Полоса и каждая панель — в своей ограде (Guard.tsx): ошибка одной панели остаётся на её месте.
 import { useLayoutEffect, useRef } from 'react';
 import { momentOf } from '../engine/core/calendar';
-import { clock, dateText, money, T } from '../i18n';
+import { clock, dateText, money, named, T, whenText } from '../i18n';
 import { QUALITIES } from '../render/view';
 import type { WallMode } from '../render/world';
 import { Card } from './Card';
@@ -108,6 +108,9 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
             ))}
           </span>
           <span className="group">
+            <button type="button" className={s.menu.open ? 'on' : ''} onClick={() => actions.toggleMenu()} title={T.saves.menuHint} data-test="menu-open">
+              {T.saves.menu}
+            </button>
             <button type="button" className={s.sound.open ? 'on' : ''} onClick={() => actions.toggleSound()} title={T.sound.hint} data-test="sound-open">
               {T.sound.button(Math.round(s.sound.volume * 100))}
             </button>
@@ -201,6 +204,9 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
         {plant ? <FloorTip hud={s} plant={plant} /> : null}
       </Guard>
       {/* ограда — и вокруг закрытой панели: ошибку уборки при снятии панели React отдаёт той, что осталась на экране */}
+      <Guard name={T.saves.menu} close={s.menu.open ? actions.toggleMenu : undefined}>
+        {s.menu.open && <GameMenu hud={s} actions={actions} />}
+      </Guard>
       <Guard name={T.sound.title} close={s.sound.open ? actions.toggleSound : undefined}>
         {s.sound.open && <SoundMenu hud={s} actions={actions} />}
       </Guard>
@@ -380,5 +386,46 @@ function NoticeLine({ n, captions, actions }: { n: Hud['notices'][number] | unde
     <button type="button" className={`${cls} link`} onClick={() => actions.go(go)} title={'inv' in go ? T.inv.hint : text} data-test={'inv' in go ? 'notice-inv' : 'notice-go'}>
       {text}
     </button>
+  );
+}
+
+/**
+ * Меню «Игра» (из bolnitsa: src/ui/App.tsx @ 15a7ad6, `GameMenu` и `SaveList`; docs/specs/2026-10-vertical-slice.md,
+ * «Сохранения»): «Сохранить», сохранения — новые сверху, «Загрузить», «Удалить».
+ */
+function GameMenu({ hud, actions }: { hud: Hud; actions: Actions }) {
+  const rows = hud.menu.rows;
+  return (
+    <div className="gamemenu panel" role="dialog" aria-labelledby="game-menu-title" data-test="game-menu">
+      <div className="phead">
+        <b id="game-menu-title">{T.saves.menu}</b>
+        <button type="button" className="close" onClick={() => actions.toggleMenu()} title={T.card.closeHint}>
+          ✕
+        </button>
+      </div>
+      <button type="button" className="take" disabled={hud.menu.busy || hud.campaign.open || hud.seats.open} onClick={() => actions.saveGame()} title={T.saves.saveHint} data-test="save-new">
+        {T.saves.save}
+      </button>
+      {rows.length === 0 ? (
+        <p className="muted small">{T.saves.none}</p>
+      ) : (
+        <ul className="saves" data-test="save-list">
+          {rows.map(r => (
+            <li key={r.slot} data-test="save-row" data-slot={r.slot}>
+              <div className="grow">
+                <b>{r.meta ? `${named(db?.scenarios[r.meta.scenario]?.name, r.meta.scenario)} · ${whenText(r.meta.start, r.meta.t)}` : r.slot}</b>
+                <div className="muted small">{r.meta ? `${T.saves.kind[r.meta.kind] ?? r.meta.kind} · ${T.saves.savedAt(r.meta.savedAt.slice(0, 16).replace('T', ' '))}` : T.saves.noMeta}</div>
+              </div>
+              <button type="button" className="small" disabled={hud.menu.busy} onClick={() => actions.loadGame(r.slot)} data-test="save-load">
+                {T.saves.load}
+              </button>
+              <button type="button" className="small" disabled={hud.menu.busy} onClick={() => actions.deleteGame(r.slot)} data-test="save-remove">
+                {T.saves.remove}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

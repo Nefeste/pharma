@@ -1,6 +1,7 @@
 // Игра в окне (docs/02-architecture.md, §10): база, поток расчёта, 3D-вид, часы и скорости, ввод, панели. Устройство —
 // как у «Больницы» (её src/app/game.ts): окно не считает завод, оно шлёт ход часов и команды и рисует срез. Всё, что знает
 // игра, — здесь; панели только читают хранилище и просят.
+import { type Disk, gzip, listSlots, nextManual, pageDisk, readSlot, removeSlot, type SaveMeta, type ShellSaves, writeAuto, writeSlot } from './saves';
 import { lettersOf } from '../engine/letters';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.js';
@@ -78,6 +79,11 @@ export interface ShellBridge {
   firstFrame(ms: number): void;
   relaunch(args: string[]): void;
   args(): Promise<string[]>;
+  /** сохранения в папке игры (docs/specs/2026-10-vertical-slice.md, «Сохранения») */
+  saves?: ShellSaves;
+  /** окно закрывают: страница сохраняется и зовёт `closeNow` */
+  onClosing?(cb: () => void): void;
+  closeNow?(): void;
 }
 
 declare global {
@@ -189,6 +195,9 @@ export class Game {
   private last = 0;
   private hudAt = 0;
   private notices: { t: number; text: string; inv?: string }[] = [];
+  /** сохранения: папка игры в Electron, хранилище страницы в браузере; записи — строго по очереди */
+  disk: Disk = pageDisk();
+  private saving: Promise<unknown> = Promise.resolve();
   private mouse = { x: 0, y: 0, inside: false, drag: null as null | { x: number; y: number; moved: number; button: number }, keys: new Set<string>() };
   private gotSlice!: () => void;
   private firstSlice = new Promise<void>(r => (this.gotSlice = r));
@@ -291,6 +300,10 @@ export class Game {
     g.resume = 1;
     store.set({ scenario: id, ...(scn && db.scenarios[scn] ? { seats: { open: true, pick: [] } } : { campaign: { open: true } }) });
     g.sendViews();
+    // сохранения (docs/specs/2026-10-vertical-slice.md, «Сохранения»): папка игры в Electron; закрывают окно — сохранение
+    // «при выходе», затем окно закрывается
+    if (window.shell?.saves) g.disk = window.shell.saves;
+    window.shell?.onClosing?.(() => void g.save('exit').finally(() => window.shell?.closeNow?.()));
     requestAnimationFrame(g.loop);
     return g;
   }
@@ -466,6 +479,8 @@ export class Game {
     for (const n of s.notices) if (stop(n) && n.kind === 'proposal') this.notice(n, true, of(n));
     for (const n of s.notices) if (stop(n) && n.kind !== 'proposal') this.notice(n, true, of(n));
     if (s.notices.some(n => n.kind === 'morning')) this.morning(sl.t);
+    // утро — сохранение само: три последних утра
+    if (s.notices.some(n => n.kind === 'morning')) void this.save('auto');
     // конец срока сценария (Б9): окно целей с итогом открывается само
     if (s.notices.some(n => n.kind === 'scenarioEnd')) this.store.set({ goals: { ...this.store.get().goals, open: true } });
     // письмо наставника, на котором встал мир (Б9): панель писем открывается сама — на этом письме
@@ -725,6 +740,82 @@ export class Game {
   shots = 0;
 
   /** Снимок кадра сцены — PNG в загрузки, без панелей окна; имя — по часам завода. */
+  // ---------------------------------------------------------------- сохранения (из bolnitsa: src/app/game.ts @ 15a7ad6)
+
+  /** Вид окна в сохранение: камера. */
+  private viewOf(): { camera: { x: number; z: number; half: number; yaw: number } } {
+    const c = this.stage.cam;
+    return { camera: { x: c.target.x, z: c.target.z, half: c.half, yaw: c.yaw } };
+  }
+
+  /** Вид из сохранения; чего нет или не то — остаётся как есть. */
+  private applyView(v: unknown) {
+    const c = (v as { camera?: { x: number; z: number; half: number; yaw: number } } | undefined)?.camera;
+    if (c && [c.x, c.z, c.half, c.yaw].every(Number.isFinite)) {
+      this.stage.cam.target.set(c.x, 0, c.z);
+      this.stage.cam.half = c.half;
+      this.stage.cam.setYawNow(c.yaw);
+    }
+  }
+
+  /**
+   * Сохранить: поток отдаёт снимок строкой (окно его не разбирает), окно сжимает его и кладёт в ячейку — утреннюю
+   * (сдвигом), «при выходе» или новую свою — с шапкой по тому, что видит само. Записи — по очереди; не вышло — строка в
+   * извещениях, игра идёт дальше. До выбора сценария и места сохранять нечего.
+   */
+  save(kind: SaveMeta['kind']): Promise<SaveMeta | null> {
+    const h = this.store.get();
+    if (h.campaign.open || h.seats.open) return Promise.resolve(null);
+    const run = async () => {
+      const json = await this.client.save();
+      const meta: SaveMeta = { kind, savedAt: new Date().toISOString(), version: this.store.get().version ?? '', scenario: this.scenario.id, start: this.scenario.start.date, t: this.t, view: this.viewOf() };
+      const bytes = await gzip(json);
+      if (kind === 'auto') await writeAuto(this.disk, bytes, meta);
+      else await writeSlot(this.disk, kind === 'exit' ? 'exit' : await nextManual(this.disk), bytes, meta);
+      await this.refreshSaves();
+      if (kind !== 'exit') this.notices.unshift({ t: this.t, text: kind === 'auto' ? T.saves.autoSaved(whenText(this.scenario.start.date, this.t)) : T.saves.saved(whenText(this.scenario.start.date, this.t)) });
+      this.hud();
+      return meta;
+    };
+    const p = this.saving.then(run, run).catch(e => {
+      this.notices.unshift({ t: this.t, text: T.saves.failed(e instanceof Error ? e.message : String(e)) });
+      this.hud();
+      return null;
+    });
+    this.saving = p;
+    return p;
+  }
+
+  /** Открыть сохранение: поток разбирает снимок; завод, сценарий и вид — из него, часы — на паузе. */
+  async loadSlot(slot: string): Promise<void> {
+    const row = this.store.get().menu.rows.find(r => r.slot === slot);
+    this.store.set({ menu: { ...this.store.get().menu, busy: true } });
+    try {
+      await this.saving;
+      const json = await readSlot(this.disk, slot);
+      const error = await this.client.load(json);
+      if (error) {
+        this.notices.unshift({ t: this.t, text: T.saves.problem(error) });
+      } else {
+        this.speed = 0;
+        this.ff = false;
+        this.store.set({ campaign: { open: false }, seats: { open: false, pick: [] }, menu: { ...this.store.get().menu, open: false } });
+        if (row?.meta?.view) this.applyView(row.meta.view);
+        this.notices.unshift({ t: this.t, text: T.saves.loaded(row?.meta ? whenText(row.meta.start, row.meta.t) : slot) });
+      }
+    } catch (e) {
+      this.notices.unshift({ t: this.t, text: T.saves.problem(e instanceof Error ? e.message : String(e)) });
+    }
+    this.store.set({ menu: { ...this.store.get().menu, busy: false } });
+    this.hud();
+  }
+
+  /** Список сохранений — для меню игры. */
+  private async refreshSaves() {
+    const rows = await listSlots(this.disk).catch(() => []);
+    this.store.set({ menu: { ...this.store.get().menu, rows } });
+  }
+
   private takeShot() {
     const m = momentOf(this.scenario.start.date, this.t);
     const name = shotName(m.date.y, m.date.m, m.date.d, m.sec);
@@ -1235,6 +1326,14 @@ export class Game {
       this.client.start({ kind: 'start', scenario: id });
       this.store.set({ campaign: { open: false }, seats: { open: true, pick: [] } });
     },
+    toggleMenu: () => {
+      const m = this.store.get().menu;
+      this.store.set({ menu: { ...m, open: !m.open } });
+      if (!m.open) void this.refreshSaves();
+    },
+    saveGame: () => void this.save('manual'),
+    loadGame: slot => void this.loadSlot(slot),
+    deleteGame: slot => void removeSlot(this.disk, slot).then(() => this.refreshSaves()),
     toggleGoals: () => {
       const g = this.store.get().goals;
       this.store.set({ goals: { ...g, open: !g.open } });
@@ -2028,6 +2127,7 @@ export class Game {
         else if (h.dossier.open) this.actions.closeDossier();
         else if (h.po.open) this.actions.togglePo();
         else if (h.pauses.open) this.actions.togglePauses();
+        else if (h.menu.open) this.actions.toggleMenu();
         else if (this.selected) this.actions.select(undefined);
         else if (h.gantt.open) this.actions.toggleGantt();
         else if (h.inv.open) this.actions.toggleInv();

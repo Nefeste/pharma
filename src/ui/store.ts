@@ -1,6 +1,7 @@
 // из bolnitsa: src/ui/store.ts @ e0a3491 — изменено: поля завода вместо больницы.
 // Хранилище панелей: игра пишет сюда не чаще 10 раз в секунду, панели читают через `useSyncExternalStore`. Снимок
 // неизменяемый: каждое `set` — новый объект.
+import type { SaveRow } from '../app/saves';
 import { useSyncExternalStore } from 'react';
 import { type BuildHud, type BuildPick, NO_BUILD } from '../app/buildpick';
 import type { EquipOp } from '../engine/equip';
@@ -175,6 +176,8 @@ export interface Hud {
   scenario?: string;
   campaign: { open: boolean };
   goals: { open: boolean; view?: GoalsView };
+  /** меню «Игра» (сохранения): открыто ли, ячейки — новые сверху, запись или загрузка идёт */
+  menu: { open: boolean; rows: SaveRow[]; busy?: boolean };
   /** письма сценария (Б9): панель и вид потока; открытое письмо — его номер */
   letters: { open: boolean; view?: LettersView; at?: string };
   /** хроника завода (Б10): масштаб главы и сколько глав назад */
@@ -300,6 +303,7 @@ export const initial: Hud = {
   portfolio: { open: false },
   campaign: { open: false },
   goals: { open: false },
+  menu: { open: false, rows: [] },
   letters: { open: false },
   chronicle: { open: false, scale: 'day', back: 0 },
   layer: 'plain',
@@ -549,6 +553,11 @@ export interface Actions {
   /** экран «Кампания» (Б9): начать сценарий; окно целей сценария — открыть или закрыть */
   pickScenario(id: string): void;
   toggleGoals(): void;
+  /** меню «Игра»: сохранить, загрузить, удалить (docs/specs/2026-10-vertical-slice.md, «Сохранения») */
+  toggleMenu(): void;
+  saveGame(): void;
+  loadGame(slot: string): void;
+  deleteGame(slot: string): void;
   /** письма (Б9): панель; открыть письмо — прочитано; «Показать», «Пропустить», «Пропустить обучение» */
   toggleLetters(): void;
   toggleChronicle(): void;

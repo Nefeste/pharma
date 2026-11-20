@@ -55,6 +55,23 @@ export const en: Strings = {
     lag: (min: number) => `calculation is ${min} min behind`,
   },
   /** sound (B11, step 1): the top-bar menu — volume and sound captions */
+  saves: {
+    menu: 'Game',
+    menuHint: 'Save and load the game',
+    save: 'Save',
+    saveHint: 'Save now — into a new slot',
+    load: 'Load',
+    remove: 'Delete',
+    none: 'No saves yet',
+    kind: { auto: 'morning', exit: 'on exit', manual: 'own' } as Record<string, string>,
+    savedAt: (when: string) => `written ${when}`,
+    noMeta: 'no header — it may still open',
+    saved: (when: string) => `Saved: ${when}`,
+    autoSaved: (when: string) => `Morning saved: ${when}`,
+    loaded: (when: string) => `Loaded: ${when}. The clock is paused`,
+    failed: (why: string) => `Not saved: ${why}`,
+    problem: (why: string) => `Cannot open the save: ${why}`,
+  },
   sound: {
     button: (pct: number) => (pct === 0 ? 'Muted' : 'Sound'),
     hint: 'Sound volume, sound captions and window language',

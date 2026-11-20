@@ -57,6 +57,29 @@ export async function c1Part({ browser, port, out, ok, fail, errors, requests, q
     const early = await page.evaluate(() => !!document.querySelector('[data-test=letter-show]'));
     if (early || !/будет у ворот к 07:20/.test(l1) || /Нажмите «Показать»/.test(l1)) fail(`письмо о фуре до её прихода: «Показать» — ${early}, «${l1}»`);
     else ok('письмо о фуре до её прихода: час прихода, «запустите время», «Показать» нет');
+    // окна (по игре владельца 20.11.2026): цели поверх писем; щелчок по письмам — они наверху; за заголовок — тащатся;
+    // закрыли и открыли — на том же месте
+    await page.evaluate(() => window.__game.actions.toggleGoals());
+    await page.waitForSelector('[data-test=goals]', { timeout: 10_000 });
+    const head = await (await page.$('[data-test=letters] > .phead'))?.boundingBox();
+    if (!head) fail('окна: у писем нет заголовка');
+    else {
+      await page.mouse.click(head.x + 30, head.y + head.height / 2);
+      const z = await page.evaluate(() => Number(getComputedStyle(document.querySelector('[data-test=letters]')).zIndex) > Number(getComputedStyle(document.querySelector('[data-test=goals]')).zIndex));
+      await page.mouse.move(head.x + 30, head.y + head.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(head.x + 230, head.y + head.height / 2 + 120, { steps: 6 });
+      await page.mouse.up();
+      const moved = await page.evaluate(() => document.querySelector('[data-test=letters]').getBoundingClientRect().left);
+      await page.evaluate(() => window.__game.actions.toggleLetters());
+      await page.evaluate(() => window.__game.actions.toggleLetters());
+      await page.waitForSelector('[data-test=letters]', { timeout: 10_000 });
+      const again = await page.evaluate(() => document.querySelector('[data-test=letters]').getBoundingClientRect().left);
+      if (!z || Math.abs(moved - head.x - 200) > 12 || Math.abs(again - moved) > 1) fail(`окна: наверху — ${z}, сдвиг — ${Math.round(moved - head.x)}, после закрытия — ${Math.round(again - moved)}`);
+      else ok('окна: письма по щелчку — над целями, за заголовок — на 200 точек, закрыли и открыли — там же');
+      await page.dblclick('[data-test=letters] > .phead', { position: { x: 30, y: 8 } });
+    }
+    await page.evaluate(() => window.__game.actions.toggleGoals());
     await page.click('[data-test=letters] .close');
 
     // полоса и окно целей

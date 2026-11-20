@@ -120,10 +120,12 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # press, a letter, a click, captions, an autopause, the meeting, volume 0, `shot`
                                    # silent (e2e-sound.mjs, sound.png), the brand — the first screen's steps, the font,
                                    # F12, RU / EN (e2e-brand.mjs), the languages — every window and tab on both at three
-                                   # sizes, Full HD to 4K, no overflow (e2e-lang.mjs, lang.png); frames are not drawn
-                                   # during fast-forward (`fastff`); `-- --only main|week|memo|capa|jobs|
+                                   # sizes, Full HD to 4K, no overflow (e2e-lang.mjs, lang.png), the saves — a
+                                   # morning's, one's own, a new page and the load (e2e-saves.mjs, saves.png);
+                                   # frames are not drawn during fast-forward (`fastff`);
+                                   # `-- --only main|week|memo|capa|jobs|
                                    # launch|forecast|sop|mrp|edits|build|equip|route|sources|portfolio|c1|c2|chronicle|
-                                   # sound|brand|lang`
+                                   # sound|brand|lang|saves`
 node tools/app/before-after.mjs --before <dir>  # after e2e: the panels before and after → out/before-after.png
 npm run sound                      # the window and event sounds from formulas → assets/audio/*.wav and its LICENSES.md;
                                    # twice — the same bytes
@@ -673,7 +675,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   window or the system's (`lang.ts`); the overflow check — text wider than its box and cut, not by an ellipsis, or a
   box cut by a clipping parent or the window's edge, a panel scrolling sideways, a pure rule over measurements
   (`overflow.ts`); the windows — a panel to the front on a click and dragged by its header, its shift kept by its kind
-  while the game is open, within the screen (`windows.ts`);
+  while the game is open, within the screen (`windows.ts`); the saves — slots on a disk (the game folder in Electron,
+  the page's storage in the browser), three mornings by shift, on exit and own, the snapshot gzipped as a string the
+  window never parses, a copy of Bolnitsa's (`saves.ts`, `electron/saves.cjs`);
   the autopauses — which notices stop the world, whose post each is, the ones
   switched off kept in the window, where a click on a notice leads, with Б5б a head's proposal before the meeting
   waiting for it (`pauses.ts`); which «Сейчас» row is the work of a thing in the card (`watch.ts`); the levers of

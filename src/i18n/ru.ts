@@ -80,6 +80,23 @@ export const ru = {
     lag: (min: number) => `расчёт отстаёт на ${min} ${pluralRu(min, 'минуту', 'минуты', 'минут')}`,
   },
   /** звук (Б11, шаг 1): меню в верхней полосе — громкость и «Подписи звуков» */
+  /** сохранения (docs/specs/2026-10-vertical-slice.md, «Сохранения»; слова — из bolnitsa: src/i18n/ru.ts @ 15a7ad6) */
+  saves: {
+    menu: 'Игра',
+    menuHint: 'Сохранить и загрузить игру',
+    save: 'Сохранить',
+    saveHint: 'Сохранить сейчас — в новую ячейку',
+    load: 'Загрузить',
+    remove: 'Удалить',
+    none: 'Сохранений пока нет',
+    kind: { auto: 'утро', exit: 'при выходе', manual: 'своё' } as Record<string, string>,
+    savedAt: (when: string) => `записано ${when}`,
+    noMeta: 'без заголовка — может, всё же откроется',
+    saved: (when: string) => `Сохранено: ${when}`,
+    loaded: (when: string) => `Загружено: ${when}. Часы — на паузе`,
+    failed: (why: string) => `Не сохранилось: ${why}`,
+    problem: (why: string) => `Не открыть сохранение: ${why}`,
+  },
   sound: {
     button: (pct: number): string => (pct === 0 ? 'Без звука' : 'Звук'),
     hint: 'Громкость звуков, подписи звуков и язык окна',

@@ -32,6 +32,8 @@ export class SimClient {
   /** секунды `tick` в пути */
   private sent = 0;
   private saves: ((json: string) => void)[] = [];
+  /** загрузка в пути (сохранения): ответ — первый срез нового завода или ошибка потока */
+  private loading?: (error: string | undefined) => void;
   /** время на поток: от отправки `tick` до ответа, мс — для бенча; последние 1000–2000 */
   readonly roundTrips: number[] = [];
   /** сколько времён пришло всего: отметка начала прогона бенча (`since` в src/app/stats.ts) */
@@ -51,7 +53,15 @@ export class SimClient {
   }
 
   private receive(msg: FromSim) {
-    if (msg.kind === 'error') return this.onError(msg.message);
+    if (msg.kind === 'error') {
+      // сохранение не открылось: завод прежний, ошибка — строкой в извещениях, а не экраном сбоя
+      if (this.loading) {
+        const done = this.loading;
+        this.loading = undefined;
+        return done(msg.message);
+      }
+      return this.onError(msg.message);
+    }
     if (msg.kind === 'saved') {
       this.saves.shift()?.(msg.json);
       return;
@@ -63,7 +73,24 @@ export class SimClient {
       this.roundTripsTaken++;
       if (this.roundTrips.length > 2000) this.roundTrips.splice(0, 1000);
     }
+    if (msg.fresh && this.loading) {
+      const done = this.loading;
+      this.loading = undefined;
+      done(undefined);
+    }
     this.onSlice({ buf: msg.buf, notices: msg.notices, lag: msg.lag, ...(msg.views ? { views: msg.views } : {}), ...(msg.stopped ? { stopped: true as const } : {}), ...(msg.fresh ? { fresh: true as const } : {}), ...(msg.world ? { world: msg.world } : {}) });
+  }
+
+  /**
+   * Открыть сохранение (снимок строкой — окно его не разбирает): поток разбирает его и проводит через миграции. Ответ —
+   * `undefined`, когда пришёл первый срез нового завода, или слова ошибки — завод тогда прежний.
+   */
+  load(json: string): Promise<string | undefined> {
+    this.owed = 0;
+    return new Promise(resolve => {
+      this.loading = resolve;
+      this.post({ kind: 'load', json });
+    });
   }
 
   start(msg: Extract<ToSim, { kind: 'start' }>) {

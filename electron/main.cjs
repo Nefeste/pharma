@@ -10,6 +10,7 @@
 //   --stay                              — не закрываться после бенча
 //   --swiftshader                       — программный WebGL (контейнер без видеокарты), без сторожа видеопроцесса
 //   --q low|medium|high                 — пресет качества
+const { savesIn } = require('./saves.cjs');
 const { app, BrowserWindow, ipcMain, protocol, session } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -168,6 +169,15 @@ app.whenReady().then(async () => {
     app.exit(0);
   });
 
+  // сохранения (из bolnitsa: electron/main.cjs @ 15a7ad6; docs/specs/2026-10-vertical-slice.md, «Сохранения»): страница
+  // называет ячейку, файлы — в папке игры пользователя
+  const saves = savesIn(path.join(app.getPath('userData'), 'saves'));
+  ipcMain.handle('saves:read', (_e, name) => saves.read(name));
+  ipcMain.handle('saves:write', (_e, name, bytes) => saves.write(name, bytes));
+  ipcMain.handle('saves:move', (_e, from, to) => saves.move(from, to));
+  ipcMain.handle('saves:remove', (_e, name) => saves.remove(name));
+  ipcMain.handle('saves:list', () => saves.list());
+
   const win = new BrowserWindow({
     width: 1600,
     height: 900,
@@ -185,6 +195,17 @@ app.whenReady().then(async () => {
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', e => e.preventDefault());
+  // выход (из bolnitsa: electron/main.cjs @ 15a7ad6): окно сначала просит страницу сохраниться и закрывается, когда она
+  // ответит; не ответила за 10 секунд — закрывается всё равно. Бенч закрывается сам, без сохранения
+  let closing = false;
+  win.on('close', e => {
+    if (closing || has('bench')) return;
+    closing = true;
+    e.preventDefault();
+    win.webContents.send('shell:closing');
+    setTimeout(() => win.isDestroyed() || win.destroy(), 10000);
+  });
+  ipcMain.on('shell:close-now', () => win.isDestroyed() || win.destroy());
   win.once('ready-to-show', () => {
     timings.readyToShowMs = Date.now() - t0;
     // бенч — во весь экран с первого прогона: окно 1600 × 900, развёрнутое посреди бенча, сбивало первый прогон

@@ -389,6 +389,11 @@
     /* экран «Кампания» и окно целей сценария (Б9): карточки сценариев — как плитки мест; цели — справа под полосой */
     div.tile { background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-m); }
     div.tile .take { margin-top: auto; align-self: flex-start; }
+    /* меню «Игра» (сохранения): справа под полосой, как цели */
+    .gamemenu { position: absolute; right: 8px; top: calc(var(--top-h, 48px) + 8px); width: min(560px, calc(100% - 16px)); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: var(--sp-4) var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3); z-index: 5; }
+    .gamemenu > .take { align-self: flex-start; }
+    .saves { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+    .saves li { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) 0; border-bottom: 1px solid var(--wash); }
     .goals { position: absolute; right: 8px; top: calc(var(--top-h, 48px) + 8px); width: min(440px, calc(100% - 16px)); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: var(--sp-4) var(--sp-6) var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3); z-index: 5; background: var(--window); box-shadow: var(--shadow-over); }
     .goals ul { margin: 0; padding-left: var(--sp-7); }
     .goalbtn { white-space: nowrap; }

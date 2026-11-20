@@ -52,6 +52,25 @@ export async function brandPart(x) {
     const line = await page.evaluate(() => window.__game.store.get().notices[0]?.text ?? '');
     if (!/^pharma-\d{4}-\d\d-\d\d-\d{4}\.png$/.test(dl.suggestedFilename()) || head !== '89504e470d0a1a0a' || size < 20_000 || !line.startsWith('Снимок кадра сохранён')) fail(`F12: ${dl.suggestedFilename()}, ${head}, ${size} Б, «${line}»`);
     else ok(`F12 — ${dl.suggestedFilename()}, PNG ${Math.round(size / 1024)} КБ; «${line}»`);
+
+    // язык окна (Б12, шаг 1): EN в меню звука — полоса по-английски и в одну строку, выбор помнится; RU — обратно
+    await page.click('[data-test=sound-open]');
+    await page.click('[data-test=lang][data-lang=en]');
+    await page.waitForFunction(() => document.documentElement.lang === 'en' && document.querySelector('[data-test=lang][data-lang=en]')?.classList.contains('on'), null, { timeout: 10_000 });
+    const enBar = await page.evaluate(() => ({
+      morning: document.querySelector('[data-test=until-morning]')?.textContent ?? '',
+      rows: new Set([...document.querySelectorAll('.top button')].slice(0, 12).map(b => Math.round(b.getBoundingClientRect().top))).size,
+      kept: localStorage.getItem('pharma.lang'),
+    }));
+    await page.mouse.move(640, 500);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: join(out, 'brand-en.png') });
+    if (enBar.morning !== 'Until morning' || enBar.kept !== 'en' || enBar.rows > 1) fail(`язык EN: ${JSON.stringify(enBar)}`);
+    else ok(`язык EN: «${enBar.morning}», полоса в одну строку, выбор в окне`);
+    await page.click('[data-test=lang][data-lang=ru]');
+    const back = await page.evaluate(() => ({ lang: document.documentElement.lang, morning: document.querySelector('[data-test=until-morning]')?.textContent ?? '' }));
+    if (back.lang !== 'ru' || back.morning !== 'До утра') fail(`язык RU: ${JSON.stringify(back)}`);
+    else ok('язык RU — обратно на ходу');
   } catch (e) {
     fail(`марка: ${e instanceof Error ? e.message : String(e)}`);
   }

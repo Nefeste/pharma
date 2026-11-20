@@ -12,7 +12,7 @@ import { MORNING } from '../engine/engine';
 import { planOf } from '../engine/plant';
 import type { Command, DeptMode, Head, Notice } from '../engine/types';
 import type { RunSum } from '../engine/plan/run';
-import { dayText, durText, hText, money, named, qtyText, T, whenText } from '../i18n';
+import { dayText, durText, hText, type Lang, money, named, qtyText, setLang, T, whenText } from '../i18n';
 import { chronicleText } from '../ui/Chronicle';
 import { saveBlob, saveText, shotName } from './savetext';
 import { bakeLook, lodOf, packPeople } from '../render/bake';
@@ -47,6 +47,7 @@ import { type Movers, moversAt, taskIcons } from './movers';
 import { stopKey, type World } from '../sim/protocol';
 import { EVENT_CAP, type Go, goOf, keepOff, keptOff, stopKinds } from './pauses';
 import { keepLess, keptLess, systemLess } from './motion';
+import { keepLang } from './lang';
 import { type Cue, keepSound, keptCaptions, keptVolume, noticeCue, Sound, sliceCue, volumeOf } from './sound';
 import { keep, windowKeep } from './preset';
 import { type Box, machineBoxes, nearest, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
@@ -913,6 +914,18 @@ export class Game {
       this.applyLess(on);
       this.store.set({ less: on });
       keepLess(windowKeep(), on);
+    },
+    setLang: (l: Lang) => {
+      // язык на ходу (Б12, шаг 1): строки окна читаются при отрисовке; надписи сцены — таблички, зоны, столбики —
+      // нарисованы словами, сцена собирается заново тем же планом
+      setLang(l);
+      document.documentElement.lang = l;
+      document.title = T.app.title;
+      keepLang(windowKeep(), l);
+      this.store.set({ lang: l, stock: { ...this.store.get().stock, query: { ...this.store.get().stock.query, lang: l } } });
+      this.relayout(this.world);
+      this.sendViews();
+      this.hud();
     },
     toggleSound: () => this.store.set({ sound: { ...this.store.get().sound, open: !this.store.get().sound.open } }),
     setVolume: v => {

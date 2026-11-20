@@ -11,11 +11,13 @@ import { App } from '../ui/App';
 import { type Actions, Store } from '../ui/store';
 import { Game } from './game';
 import { kept, medianFrame, PRESET, pickPreset, keep as remember, windowKeep } from './preset';
+import { langOf } from './lang';
 
 declare const __VERSION__: string;
 
 const q = new URLSearchParams(location.search);
-const lang: Lang = q.get('lang') === 'en' || q.get('lang') === 'ru' ? (q.get('lang') as Lang) : systemLang();
+// язык (Б12, шаг 1): из адреса, иначе выбор игрока в окне, иначе — системы
+const lang: Lang = langOf(q.get('lang'), windowKeep(), systemLang());
 setLang(lang);
 document.documentElement.lang = lang;
 document.title = T.app.title;
@@ -40,6 +42,7 @@ const actions: Actions = {
   setWalls: later('setWalls'),
   setLess: later('setLess'),
   toggleSound: later('toggleSound'),
+  setLang: later('setLang'),
   setVolume: later('setVolume'),
   setCaptions: later('setCaptions'),
   setArt: later('setArt'),

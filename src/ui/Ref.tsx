@@ -35,6 +35,8 @@ export interface Col<X> {
   text: (x: X) => string;
   show?: (x: X) => ReactNode;
   num?: (x: X) => number;
+  /** заголовок — снизу вверх: столбцов много, как у матрицы обучения, — таблица входит в окно без прокрутки вбок */
+  vert?: true;
 }
 
 /** Порядок таблицы: столбец и направление; нет — как в виде. */
@@ -65,7 +67,7 @@ function Table<X>({ cols, items, keyOf, q, test }: { cols: Col<X>[]; items: read
       <thead>
         <tr>
           {cols.map((c, k) => (
-            <th key={`${k}-${c.name}`} aria-sort={by?.col === k ? (by.dir === 1 ? 'ascending' : 'descending') : 'none'}>
+            <th key={`${k}-${c.name}`} className={c.vert ? 'vert' : undefined} aria-sort={by?.col === k ? (by.dir === 1 ? 'ascending' : 'descending') : 'none'}>
               <button type="button" className={`sortbtn${by?.col === k ? ' on' : ''}`} onClick={() => click(k)} title={T.ref.sortHint} data-test="ref-sort">
                 {c.name}
                 {by?.col === k ? (by.dir === 1 ? ' ▲' : ' ▼') : ''}
@@ -831,6 +833,7 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
     { name: mc.name, text: x => docName(x.d.kind, x.d.id) },
     ...v.matrix.roles.map((r, j) => ({
       name: named(db?.roles[r]?.name, r),
+      vert: true as const,
       text: (x: Doc) => {
         const c = cell(x, j);
         return c ? T.ref.cell(c.ok, c.all) + (c.also > 0 ? T.ref.cellAlso(c.also) : '') : '—';
@@ -838,9 +841,9 @@ function People({ v, q, hud, actions }: { v: RefView; q: string; hud: Hud; actio
       show: (x: Doc) => {
         const c = cell(x, j);
         return c ? (
-          <span>
-            <span className={c.ok < c.all ? 'bad' : ''}>{T.ref.cell(c.ok, c.all)}</span>
-            {c.also > 0 ? <span className="muted">{T.ref.cellAlso(c.also)}</span> : null}
+          <span className="nowrap" title={T.ref.cell(c.ok, c.all) + (c.also > 0 ? T.ref.cellAlso(c.also) : '')}>
+            <span className={c.ok < c.all ? 'bad' : ''}>{T.ref.cellShort(c.ok, c.all)}</span>
+            {c.also > 0 ? <span className="muted">{T.ref.alsoShort(c.also)}</span> : null}
           </span>
         ) : (
           <span className="muted">—</span>

@@ -1162,7 +1162,9 @@ export const en: Strings = {
     matrixCols: { doc: 'Document', name: 'Title' },
     cell: (ok: number, all: number) => `${ok} of ${all}`,
     cellAlso: (n: number) => ` + ${n} second`,
-    matrixNote: 'Training matrix: who is trained in what and how many people of a role are qualified now. Without a training record for the revision in force, or with an expired one, a person takes no work — it waits “nobody qualified”. A new revision is taught before its day; repeat training follows the document period.',
+    cellShort: (ok: number, all: number) => `${ok}/${all}`,
+    alsoShort: (n: number) => ` +${n}`,
+    matrixNote: 'Training matrix: who is trained in what and how many people of a role are qualified now; “2/2 +1” means 2 of 2 qualified, and 1 more by a second profession. Without a training record for the revision in force, or with an expired one, a person takes no work — it waits “nobody qualified”. A new revision is taught before its day; repeat training follows the document period.',
     hours: (from: number, to: number): string => `${String(from).padStart(2, '0')}:00–${String(to).padStart(2, '0')}:00`,
     supCols: { name: 'Supplier', items: 'Materials: price · minimum order', lead: 'Lead time', prepay: 'Prepayment', pay: 'Balance due after', maker: 'Who made it' },
     perKg: (price: string): string => `${price}/kg`,
@@ -1382,7 +1384,7 @@ export const en: Strings = {
     } as Record<string, string>,
     body: {
       'c1.truck': (f: LetterWords) =>
-        `Hello. I was the chief technologist of this plant; I am retired now, and I will write to you for the first weeks. Let us start at the gate: a truck of ${f.supplier} brings ${f.material}, ${f.qty}. The storekeeper checks it at the dock first and only then unloads it. Press “Show” — the truck's card tells how it goes. The letter ends when the truck is unloaded.`,
+        `Hello. I was the chief technologist of this plant; I am retired now, and I will write to you for the first weeks. Let us start at the gate: a truck of ${f.supplier} brings ${f.material}, ${f.qty}. The storekeeper checks it at the dock first and only then unloads it. ${f.here ? 'Press “Show” — the truck’s card tells how it goes.' : `The truck will be at the gate by ${f.eta}: start the clock — when it arrives, “Show” appears here, and the truck’s card tells how it goes.`} The letter ends when the truck is unloaded.`,
       'c1.quarantine': (f: LetterWords) =>
         `Unloaded: ${f.material}, lot ${f.lot}, now in quarantine. Until the lab samples and tests it, it does not go into production. QC takes the sample. From this letter the warehouse is yours: its head will advise, you decide.`,
       'c1.release': (f: LetterWords) =>

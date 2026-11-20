@@ -2,7 +2,7 @@
 // «Пропустить» и «Пропустить обучение». Текст — шаблон `src/i18n/` по идентификатору письма; что подставить — записи
 // завода из потока (src/sim/letters.ts), словами здесь.
 import { momentOf } from '../engine/core/calendar';
-import { dateText, named, qtyText, T, whenText } from '../i18n';
+import { clock, dateText, named, qtyText, T, whenText } from '../i18n';
 import type { LetterWords } from '../i18n/ru';
 import type { LetterFacts, LetterRow } from '../sim/letters';
 import { db } from './db';
@@ -26,6 +26,8 @@ function words(hud: Hud, f: LetterFacts): LetterWords {
     customer: f.customer ? T.letters.quoted(named(db?.customers[f.customer]?.name, f.customer)) : '',
     due: f.due !== undefined ? dateText(momentOf(hud.start, f.due)) : '',
     dev: f.dev ?? '',
+    eta: f.eta !== undefined ? clock(momentOf(hud.start, f.eta).sec) : '',
+    here: f.here === true,
   };
 }
 

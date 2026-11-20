@@ -20,6 +20,8 @@ export interface Box {
   nowrap: boolean;
   /** на сколько точек коробка выходит за край предка, что её обрезает, или за край окна; 0 — не выходит */
   cut: number;
+  /** панель окна: прокрутка вбок у неё — переполнение, панель должна быть шире (по игре владельца 20.11.2026) */
+  panel?: boolean;
 }
 
 /** Допуск — точка: ширины браузер округляет. */
@@ -30,11 +32,15 @@ const clips = (o: string) => o === 'hidden' || o === 'clip';
 
 /**
  * Переполнения среди коробок: текст шире коробки, которая его обрезает или не даёт перенести, и не многоточием; по
- * высоте — обрезанное снизу. Прокрутка — не переполнение.
+ * высоте — обрезанное снизу. Прокрутка — не переполнение, кроме прокрутки панели вбок: тогда панель должна быть шире.
  */
 export function overflows(boxes: readonly Box[]): string[] {
   const out: string[] = [];
   for (const b of boxes) {
+    if (b.panel) {
+      if (b.scrollW > b.clientW + SLACK) out.push(`${b.what}: scroll ${b.scrollW} > ${b.clientW}`);
+      continue;
+    }
     if (b.ellipsis) continue;
     const wide = b.scrollW > b.clientW + SLACK && (clips(b.ox) || (b.nowrap && b.ox === 'visible'));
     const tall = b.scrollH > b.clientH + SLACK && clips(b.oy);
@@ -87,6 +93,13 @@ export function measure(root: ParentNode = document): Box[] {
       nowrap: st.whiteSpace === 'nowrap' || st.whiteSpace === 'pre',
       cut: cutOf(el),
     });
+  }
+  // панели — прокрутка вбок; полосы, которые листают вбок по замыслу (сетки по дням и месяцам), — внутри панелей, не они
+  for (const el of root.querySelectorAll<HTMLElement>('#ui .panel')) {
+    if (!el.offsetParent && getComputedStyle(el).position !== 'fixed') continue;
+    if (el.clientWidth === 0) continue;
+    const cls = String(el.className).split(' ').join('.');
+    boxes.push({ what: `div.${cls}`, scrollW: el.scrollWidth, clientW: el.clientWidth, scrollH: 0, clientH: 0, ox: getComputedStyle(el).overflowX, oy: 'visible', ellipsis: false, nowrap: false, cut: 0, panel: true });
   }
   return boxes;
 }

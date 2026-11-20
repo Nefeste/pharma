@@ -456,6 +456,9 @@ export class Builder {
     if (!this.on) this.toggle();
     if (patch.tool !== undefined && patch.tool !== this.pick.tool) this.drag = undefined;
     const next = { ...this.pick, ...patch };
+    // перенос единицы (из карточки, «Перенести») кончается, когда в панели выбрали класс или другой инструмент: иначе
+    // «купить» новую оставалось «перенести» прежнюю (по игре владельца 20.11.2026)
+    if (!('moving' in patch) && (patch.cls !== undefined || patch.tool !== undefined)) delete next.moving;
     // класс — из тех, что типу можно: первый по каталогу
     if (patch.type !== undefined) {
       const t = this.g.db.rooms[patch.type];
@@ -470,6 +473,7 @@ export class Builder {
   cancel(): boolean {
     if (!this.on) return false;
     if (this.drag) this.drag = undefined;
+    else if (this.pick.moving) this.pick = { ...this.pick, moving: undefined };
     else if (this.pick.tool) this.pick = { ...this.pick, tool: undefined };
     else this.toggle();
     this.update();

@@ -1382,7 +1382,7 @@ export const en: Strings = {
     } as Record<string, string>,
     body: {
       'c1.truck': (f: LetterWords) =>
-        `Hello. I was the chief technologist of this plant; I am retired now, and I will write to you for the first weeks. Let us start at the gate: a truck of ${f.supplier} brings ${f.material}, ${f.qty}. The storekeeper checks it at the dock first and only then unloads it. Press “Show” — the truck's card tells how it goes. The letter ends when the truck is unloaded.`,
+        `Hello. I was the chief technologist of this plant; I am retired now, and I will write to you for the first weeks. Let us start at the gate: a truck of ${f.supplier} brings ${f.material}, ${f.qty}. The storekeeper checks it at the dock first and only then unloads it. ${f.here ? 'Press “Show” — the truck’s card tells how it goes.' : `The truck will be at the gate by ${f.eta}: start the clock — when it arrives, “Show” appears here, and the truck’s card tells how it goes.`} The letter ends when the truck is unloaded.`,
       'c1.quarantine': (f: LetterWords) =>
         `Unloaded: ${f.material}, lot ${f.lot}, now in quarantine. Until the lab samples and tests it, it does not go into production. QC takes the sample. From this letter the warehouse is yours: its head will advise, you decide.`,
       'c1.release': (f: LetterWords) =>

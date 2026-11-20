@@ -53,6 +53,10 @@ export async function c1Part({ browser, port, out, ok, fail, errors, requests, q
     await s.shot('Письмо о фуре');
     if (!/Фура у ворот/.test(l1) || !/главным технологом/.test(l1) || !/крахмал/i.test(l1) || !(await page.evaluate(() => !!document.querySelector('[data-test=letter-skip-all]')))) fail(`письмо о фуре: «${l1}»`);
     else ok(`письмо о фуре: «${l1.slice(0, 160)}…»`);
+    // фура ещё в пути: письмо называет час и не зовёт «Показать», которой пока нет
+    const early = await page.evaluate(() => !!document.querySelector('[data-test=letter-show]'));
+    if (early || !/будет у ворот к 07:20/.test(l1) || /Нажмите «Показать»/.test(l1)) fail(`письмо о фуре до её прихода: «Показать» — ${early}, «${l1}»`);
+    else ok('письмо о фуре до её прихода: час прихода, «запустите время», «Показать» нет');
     await page.click('[data-test=letters] .close');
 
     // полоса и окно целей
@@ -77,6 +81,15 @@ export async function c1Part({ browser, port, out, ok, fail, errors, requests, q
     if (!/0[78]:\d\d/.test(at)) fail(`фура у рампы в ${at}`);
     else ok(`фура у рампы — ${at}`);
     await s.shot('Фура у рампы');
+    // фура приехала: у письма — «Показать», текст зовёт её нажать
+    await page.evaluate(() => window.__game.store.get().letters.open || window.__game.actions.toggleLetters());
+    await page.evaluate(() => window.__game.actions.readLetter('let.c1.truck'));
+    await page.waitForSelector('[data-test=letter][data-letter="let.c1.truck"] [data-test=letter-show]', { timeout: 10_000 }).catch(() => undefined);
+    const l2 = await text('[data-test=letter]');
+    const show = await page.evaluate(() => !!document.querySelector('[data-test=letter-show]'));
+    if (!show || !/Нажмите «Показать»/.test(l2)) fail(`письмо о фуре у рампы: «Показать» — ${show}, «${l2}»`);
+    else ok('письмо о фуре у рампы: «Показать» есть, текст зовёт нажать');
+    await page.evaluate(() => window.__game.store.get().letters.open && window.__game.actions.toggleLetters());
 
     // первый день по письмам: каждое письмо наставника останавливает мир; дальше — с той же скоростью
     const letter = async (id, timeout = 180_000) => {

@@ -15,6 +15,9 @@ export interface LettersQuery {
 /** Что подставить в шаблон письма — записи завода о его вещи. */
 export interface LetterFacts {
   po?: string;
+  /** обещанный приход заказа поставщику — мгновение завода; фура у ворот — `here` */
+  eta?: number;
+  here?: boolean;
   supplier?: Id;
   material?: Id;
   qty?: number;
@@ -57,7 +60,7 @@ function facts(s: PlantState, r: LetterRec): LetterFacts {
   const id = r.thing;
   if (!id) return {};
   const po = s.pos[id];
-  if (po) return { po: po.id, supplier: po.supplier, ...(po.lines[0] ? { material: po.lines[0].material, qty: po.lines.reduce((a, l) => (l.material === po.lines[0].material ? a + l.qty : a), 0) } : {}) };
+  if (po) return { po: po.id, eta: po.eta, here: po.status === 'arrived' || Object.values(s.trucks).some(t => t.po === po.id), supplier: po.supplier, ...(po.lines[0] ? { material: po.lines[0].material, qty: po.lines.reduce((a, l) => (l.material === po.lines[0].material ? a + l.qty : a), 0) } : {}) };
   const lot = s.lots[id];
   if (lot) return { lot: [lot.code.y, lot.code.m, lot.code.n], material: lot.material, qty: lot.qty, supplier: lot.supplier };
   const b = s.batches[id];

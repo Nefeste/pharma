@@ -192,7 +192,7 @@
     .sheet .sd.over { border-color: var(--warn); }
     .sheet .sd.rest { color: var(--muted); }
     /* панель склада (3б) — справа под полосой */
-    .stock { position: absolute; right: 8px; top: calc(var(--top-h, 48px) + 8px); width: fit-content; min-width: min(760px, calc(100% - 16px)); max-width: calc(100% - 16px); max-height: calc(100% - var(--top-h, 48px) - 72px); overflow: auto; padding: var(--sp-4) var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3); }
+    .stock { position: absolute; right: 8px; top: calc(var(--top-h, 48px) + 8px); width: fit-content; min-width: min(760px, calc(100% - 16px)); max-width: min(calc(100% - 16px), max(760px, calc(100% - 440px))); max-height: calc(100% - var(--top-h, 48px) - 72px); overflow: auto; padding: var(--sp-4) var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3); }
     .phead { display: flex; align-items: baseline; gap: var(--sp-5); font-size: var(--fs-title); }
     .phead .muted { font-size: var(--fs-small); }
     .filters { display: flex; flex-wrap: wrap; gap: var(--sp-2); }

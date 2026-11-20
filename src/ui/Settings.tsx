@@ -4,6 +4,7 @@
 import { T } from '../i18n';
 import { QUALITIES } from '../render/view';
 import { fitScales, SCALES } from '../app/scale';
+import { LAYERS } from '../app/sound';
 import type { Actions, Hud } from './store';
 
 const LANGS = ['ru', 'en'] as const;
@@ -40,6 +41,9 @@ export function Settings({ hud, actions }: { hud: Hud; actions: Actions }) {
       <label title={T.view.lessHint}>
         <input type="checkbox" checked={hud.less} onChange={e => actions.setLess(e.currentTarget.checked)} data-test="less-motion" /> {T.view.less}
       </label>
+      <label title={T.settings.contrastHint}>
+        <input type="checkbox" checked={hud.settings.contrast} onChange={e => actions.setContrast(e.currentTarget.checked)} data-test="contrast" /> {T.settings.contrast}
+      </label>
       <div className="msec">{T.sound.title}</div>
       <div className="col" data-test="sound">
         <label>
@@ -47,10 +51,24 @@ export function Settings({ hud, actions }: { hud: Hud; actions: Actions }) {
           <input type="range" min={0} max={100} step={10} value={pct} onChange={e => actions.setVolume(Number(e.currentTarget.value) / 100)} data-test="volume" />{' '}
           <span data-test="volume-value">{T.sound.value(pct)}</span>
         </label>
+        {LAYERS.map(l => {
+          const v = Math.round(hud.sound.layers[l] * 100);
+          return (
+            <label key={l} title={T.settings.layersHint}>
+              {T.settings.layers[l]}{' '}
+              <input type="range" min={0} max={100} step={10} value={v} onChange={e => actions.setSoundLayer(l, Number(e.currentTarget.value) / 100)} data-test="layer-volume" data-layer={l} />{' '}
+              <span>{T.sound.value(v)}</span>
+            </label>
+          );
+        })}
         <label title={T.sound.captionsHint}>
           <input type="checkbox" checked={hud.sound.captions} onChange={e => actions.setCaptions(e.currentTarget.checked)} data-test="captions" /> {T.sound.captions}
         </label>
       </div>
+      <div className="msec">{T.settings.control}</div>
+      <label title={T.settings.leftHint}>
+        <input type="checkbox" checked={hud.settings.left} onChange={e => actions.setLeft(e.currentTarget.checked)} data-test="left-hand" /> {T.settings.left}
+      </label>
       {/* язык окна (Б12, шаг 1): на ходу, запоминается в окне */}
       <div className="msec">{T.sound.lang}</div>
       <span className="group" title={T.sound.langHint}>

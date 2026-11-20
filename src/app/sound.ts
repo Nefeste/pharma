@@ -15,6 +15,46 @@ import type { Keep } from './preset';
 export const CUES = ['click', 'build', 'demolish', 'hire', 'refuse', 'stop', 'notice', 'letter', 'meeting', 'goal'] as const;
 export type Cue = (typeof CUES)[number];
 
+/**
+ * Слои громкости (Б13, шаг 2; геймдизайн, §19.5): те, у которых звуки уже есть, — интерфейс (отклик на нажатие и стройку)
+ * и извещения (события завода, письма, планёрка, итог). Фон, машины, склад, лаборатория, люди и музыка придут со своими
+ * звуками. Громкость слоя — доля общей, теми же ступенями.
+ */
+export const LAYERS = ['ui', 'notices'] as const;
+export type Layer = (typeof LAYERS)[number];
+export const LAYER_OF: Record<Cue, Layer> = {
+  click: 'ui',
+  build: 'ui',
+  demolish: 'ui',
+  refuse: 'ui',
+  hire: 'notices',
+  stop: 'notices',
+  notice: 'notices',
+  letter: 'notices',
+  meeting: 'notices',
+  goal: 'notices',
+};
+export const layerKey = (l: Layer) => `pharma.volume.${l}`;
+
+/** Громкость слоя из хранилища окна; нет или не прочитать — полная. */
+export function keptLayer(keep: Keep | undefined, l: Layer): number {
+  try {
+    const v = keep?.getItem(layerKey(l));
+    return v === null || v === undefined ? 1 : volumeOf(Number(v));
+  } catch {
+    return 1;
+  }
+}
+
+/** Запомнить громкость слоя. */
+export function keepLayer(keep: Keep | undefined, l: Layer, v: number) {
+  try {
+    keep?.setItem(layerKey(l), String(v));
+  } catch {
+    // хранилище окна недоступно
+  }
+}
+
 /** Один и тот же звук — не чаще, мс: строка кнопок и пачка извещений не трещат. */
 export const GAP_MS = 80;
 
@@ -111,6 +151,9 @@ export class Sound {
   ready = false;
   private ctx?: AudioContext;
   private out?: GainNode;
+  /** слои (Б13): у каждого свой узел громкости перед общим */
+  private gains = new Map<Layer, GainNode>();
+  readonly layers: Record<Layer, number> = { ui: 1, notices: 1 };
   private buffers = new Map<Cue, AudioBuffer>();
   private last = new Map<Cue, number>();
 
@@ -137,6 +180,12 @@ export class Sound {
     this.out = ctx.createGain();
     this.out.gain.value = this.volume;
     this.out.connect(ctx.destination);
+    for (const l of LAYERS) {
+      const g = ctx.createGain();
+      g.gain.value = this.layers[l];
+      g.connect(this.out);
+      this.gains.set(l, g);
+    }
     void ctx.resume().catch(() => {});
     void Promise.all(
       CUES.map(async c => {
@@ -154,15 +203,21 @@ export class Sound {
     if (this.out) this.out.gain.value = this.volume;
   }
 
-  /** Сыграть звук: есть звук, громкость не ноль, окно видно, файл загружен и звук не звучал только что. */
+  setLayer(l: Layer, v: number) {
+    this.layers[l] = volumeOf(v);
+    const g = this.gains.get(l);
+    if (g) g.gain.value = this.layers[l];
+  }
+
+  /** Сыграть звук: есть звук, громкость и слой не ноль, окно видно, файл загружен и звук не звучал только что. */
   play(cue: Cue, now = performance.now()): boolean {
-    if (!this.on || this.volume <= 0 || !this.ctx || !this.out || (typeof document !== 'undefined' && document.hidden)) return false;
+    if (!this.on || this.volume <= 0 || this.layers[LAYER_OF[cue]] <= 0 || !this.ctx || !this.out || (typeof document !== 'undefined' && document.hidden)) return false;
     const buf = this.buffers.get(cue);
     if (!buf || !due(this.last.get(cue), now)) return false;
     this.last.set(cue, now);
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
-    src.connect(this.out);
+    src.connect(this.gains.get(LAYER_OF[cue]) ?? this.out);
     src.start();
     this.played[cue]++;
     return true;

@@ -13,8 +13,13 @@ const css = html.slice(html.indexOf('<style>') + '<style>'.length, html.indexOf(
 const rootAt = css.indexOf(':root {');
 const rootEnd = css.indexOf('}', rootAt) + 1;
 const root = css.slice(rootAt, rootEnd);
-const rules = css.slice(0, rootAt) + css.slice(rootEnd);
+// повышенный контраст (Б13, шаг 2): тоже токены — те же имена с другими значениями
+const hiAt = css.indexOf(':root.contrast {');
+const hiEnd = css.indexOf('}', hiAt) + 1;
+const hiBlock = css.slice(hiAt, hiEnd);
+const rules = [[0, rootAt], [rootEnd, hiAt], [hiEnd, css.length]].map(([a, b]) => css.slice(a, b)).join('');
 const tokens = new Map([...root.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map(m => [m[1], m[2].trim()]));
+const hiTokens = new Map([...hiBlock.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map(m => [m[1], m[2].trim()]));
 /** Переменные, которые ставит окно или правило само: высота верхней полосы, цвет полосы расписания. */
 const OWN = new Set(['--top-h', '--c', '--ui-k']);
 
@@ -32,8 +37,8 @@ function colour(v: string): Rgba {
   const [r, g, b, a = 1] = f[1].split(',').map(Number);
   return [r, g, b, a];
 }
-const tok = (name: string): Rgba => {
-  const v = tokens.get(name);
+const tok = (name: string, hi = false): Rgba => {
+  const v = (hi ? hiTokens.get(name) : undefined) ?? tokens.get(name);
   if (!v) throw new Error(`нет токена ${name}`);
   return colour(v);
 };
@@ -140,5 +145,27 @@ describe('читаемость над светлым полом', () => {
 
   test('на кнопке акцента — тёмный текст', () => {
     expect(contrast(tok('--on-accent'), tok('--accent'))).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe('повышенный контраст (Б13, шаг 2)', () => {
+  const PANELS = ['--glass', '--glass-tag', '--window', '--window-2', '--raised'];
+  const TEXT = ['--text', '--muted', '--strong', '--accent', '--ok-text', '--bad-text', '--bad-text-2', '--info-text', '--warn'];
+
+  test('переопределяет только токены, что есть; окна и стекло — непрозрачные', () => {
+    expect(hiAt).toBeGreaterThan(0);
+    expect(hiTokens.size).toBeGreaterThan(10);
+    for (const k of hiTokens.keys()) expect(tokens.has(k) ? k : `нет такого токена: ${k}`).toBe(k);
+    for (const p of PANELS) expect(tok(p, true)[3]).toBe(1);
+  });
+
+  test('любой текст на любом окне и кнопке — не ниже 7:1 (WCAG 2.1, п. 1.4.6)', () => {
+    const worst: string[] = [];
+    for (const p of PANELS) for (const t of TEXT) if (contrast(tok(t, true), tok(p, true)) < 7) worst.push(`${t} на ${p}: ${contrast(tok(t, true), tok(p, true)).toFixed(2)}`);
+    // подложки строк над окном
+    const win = tok('--window', true);
+    for (const w of ['--wash', '--wash-2', '--accent-wash-2', '--bad-wash-2', '--info-wash'])
+      for (const t of ['--text', '--muted']) if (contrast(tok(t, true), over(tok(w, true), win)) < 7) worst.push(`${t} на ${w}: ${contrast(tok(t, true), over(tok(w, true), win)).toFixed(2)}`);
+    expect(worst).toEqual([]);
   });
 });

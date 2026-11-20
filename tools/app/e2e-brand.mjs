@@ -71,6 +71,22 @@ export async function brandPart(x) {
     const back = await page.evaluate(() => ({ lang: document.documentElement.lang, morning: document.querySelector('[data-test=until-morning]')?.textContent ?? '' }));
     if (back.lang !== 'ru' || back.morning !== 'До утра') fail(`язык RU: ${JSON.stringify(back)}`);
     else ok('язык RU — обратно на ходу');
+
+    // повышенный контраст (Б13, шаг 2): окна непрозрачные, текст белый, выбор помнится; снимок — с открытыми настройками
+    await page.click('[data-test=contrast]');
+    const hi = await page.evaluate(() => {
+      const panel = document.querySelector('#settings');
+      const bg = panel ? getComputedStyle(panel).backgroundColor : '';
+      return { cls: document.documentElement.classList.contains('contrast'), bg, text: getComputedStyle(document.body).color, kept: localStorage.getItem('pharma.contrast') };
+    });
+    await page.screenshot({ path: join(out, 'brand-contrast.png') });
+    const opaque = /^rgb\(/.test(hi.bg) || /, 1\)$/.test(hi.bg);
+    if (!hi.cls || !opaque || hi.text !== 'rgb(255, 255, 255)' || hi.kept !== '1') fail(`контраст: ${JSON.stringify(hi)}`);
+    else ok(`повышенный контраст — окно ${hi.bg}, текст ${hi.text}, выбор в окне`);
+    await page.click('[data-test=contrast]');
+    const lo = await page.evaluate(() => ({ cls: document.documentElement.classList.contains('contrast'), kept: localStorage.getItem('pharma.contrast') }));
+    if (lo.cls || lo.kept !== '0') fail(`контраст выкл.: ${JSON.stringify(lo)}`);
+    else ok('повышенный контраст — выключен, как было');
   } catch (e) {
     fail(`марка: ${e instanceof Error ? e.message : String(e)}`);
   }

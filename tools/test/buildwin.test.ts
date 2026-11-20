@@ -220,3 +220,18 @@ describe('перенос единицы из карточки', () => {
     expect([b.pick.moving, b.pick.tool]).toEqual([undefined, 'unit']);
   });
 });
+
+describe('корпус за краем участка — сколько участка осталось', () => {
+  test('от корпуса прототипа до края: север 0, юг 40, запад 0, восток 60 м; прямоугольник, что вышел за край, не в счёт', async () => {
+    const { siteText } = await import('../../src/app/build');
+    const { db } = await import('../../src/content');
+    const { setLang } = await import('../../src/i18n');
+    setLang('ru');
+    const plant = db.plants['plant.proto'];
+    // прямоугольник за краем — второй; считается от первого
+    const plan = { ...plant, hull: [...plant.hull, [-500, 100, 1000, 1000] as [number, number, number, number]] };
+    expect(siteText(db, plan, { code: 'lot', hull: 1 })).toBe('корпус — за краем участка; от корпуса до края: на север 0 м, на юг 40 м, на запад 0 м, на восток 60 м');
+    // только он сам — без чисел
+    expect(siteText(db, { ...plant, hull: [plant.hull[0]] }, { code: 'lot', hull: 0 })).toBe('корпус — за краем участка');
+  });
+});

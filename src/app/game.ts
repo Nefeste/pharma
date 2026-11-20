@@ -49,7 +49,8 @@ import { stopKey, type World } from '../sim/protocol';
 import { EVENT_CAP, type Go, goOf, keepOff, keptOff, stopKinds } from './pauses';
 import { keepLess, keptLess, systemLess } from './motion';
 import { keepLang } from './lang';
-import { type Cue, keepSound, keptCaptions, keptVolume, noticeCue, Sound, sliceCue, volumeOf } from './sound';
+import { type Cue, keepLayer, keepSound, keptCaptions, keptLayer, keptVolume, LAYERS, noticeCue, Sound, sliceCue, volumeOf } from './sound';
+import { ACCESS, applyContrast, keepFlag, sceneButton } from './access';
 import { keep, windowKeep } from './preset';
 import { applyScale, keepScale } from './scale';
 import { type Box, machineBoxes, nearest, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
@@ -184,7 +185,11 @@ export class Game {
   ff = false;
   ffTo: 'morning' | 'event' = 'morning';
   /** звуки окна и событий (Б11, шаг 1; src/app/sound.ts): громкость — из хранилища окна; в «Авто-бенче» и со `shot` — нет */
-  sound = new Sound(keptVolume(windowKeep()));
+  sound = (() => {
+    const s = new Sound(keptVolume(windowKeep()));
+    for (const l of LAYERS) s.setLayer(l, keptLayer(windowKeep(), l));
+    return s;
+  })();
   private ffLeft = 0;
   /** часы завода из последнего среза */
   t = 0;
@@ -299,7 +304,7 @@ export class Game {
     // «меньше движения» (правило 6 ADR 0023 устава): выбор игрока или, пока не выбирал, — как просит система
     const less = keptLess(windowKeep(), systemLess());
     g.applyLess(less);
-    store.set({ ready: true, start: sc.start.date, quality, walls: g.stage.wallMode, less, sound: { volume: g.sound.volume, captions: keptCaptions(windowKeep()) }, pauses: { open: false, off: keptOff(windowKeep()) }, firsts: keptFirsts(windowKeep()) });
+    store.set({ ready: true, start: sc.start.date, quality, walls: g.stage.wallMode, less, sound: { volume: g.sound.volume, captions: keptCaptions(windowKeep()), layers: { ...g.sound.layers } }, pauses: { open: false, off: keptOff(windowKeep()) }, firsts: keptFirsts(windowKeep()) });
     // игра начинается с экрана «Кем вы будете» (3е): мир стоит, пока место не выбрано; «Взять» пустит его на ×1
     g.speed = 0;
     g.resume = 1;
@@ -1083,6 +1088,20 @@ export class Game {
       const sound = { ...this.store.get().sound, volume };
       this.store.set({ sound });
       keepSound(windowKeep(), volume, sound.captions);
+    },
+    setSoundLayer: (l, v) => {
+      this.sound.setLayer(l, v);
+      keepLayer(windowKeep(), l, this.sound.layers[l]);
+      this.store.set({ sound: { ...this.store.get().sound, layers: { ...this.sound.layers } } });
+    },
+    setContrast: on => {
+      applyContrast(on);
+      keepFlag(windowKeep(), ACCESS.contrast, on);
+      this.store.set({ settings: { ...this.store.get().settings, contrast: on } });
+    },
+    setLeft: on => {
+      keepFlag(windowKeep(), ACCESS.left, on);
+      this.store.set({ settings: { ...this.store.get().settings, left: on } });
     },
     setCaptions: on => {
       const sound = { ...this.store.get().sound, captions: on };
@@ -2062,10 +2081,12 @@ export class Game {
       { passive: false },
     );
     el.addEventListener('pointerdown', e => {
-      if (e.button === 2 || e.button === 1) {
-        this.mouse.drag = { x: e.clientX, y: e.clientY, moved: 0, button: e.button };
+      // мышь «для левой руки» (Б13, шаг 2): в сцене левая и правая меняются местами
+      const button = sceneButton(e.button, this.store.get().settings.left);
+      if (button === 2 || button === 1) {
+        this.mouse.drag = { x: e.clientX, y: e.clientY, moved: 0, button: button };
         el.setPointerCapture(e.pointerId);
-      } else if (e.button === 0) {
+      } else if (button === 0) {
         // стройка (Б7б): поставить, протянуть, снести
         if (this.builder.on) {
           el.setPointerCapture(e.pointerId);
@@ -2092,16 +2113,17 @@ export class Game {
       this.mouse.drag = { x: e.clientX, y: e.clientY, moved: this.mouse.drag.moved + Math.abs(dx) + Math.abs(dy), button: this.mouse.drag.button };
     });
     el.addEventListener('pointerup', e => {
-      if (e.button === 0 && this.builder.on) {
+      const button = sceneButton(e.button, this.store.get().settings.left);
+      if (button === 0 && this.builder.on) {
         this.builder.up(this.cellAt(e.clientX, e.clientY));
         this.buildHud();
       }
       // ПКМ без протяжки — в стройке снять призрак, инструмент, стройку; иначе — снять выбор
-      if (e.button === 2 && this.mouse.drag && this.mouse.drag.moved < 4) {
+      if (button === 2 && this.mouse.drag && this.mouse.drag.moved < 4) {
         if (this.builder.cancel()) this.buildHud();
         else this.actions.select(undefined);
       }
-      if (this.mouse.drag?.button === e.button) this.mouse.drag = null;
+      if (this.mouse.drag?.button === button) this.mouse.drag = null;
     });
     el.addEventListener('pointerleave', () => {
       this.mouse.inside = false;

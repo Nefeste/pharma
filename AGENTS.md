@@ -680,7 +680,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   kept in the window, otherwise `prefers-reduced-motion`; on, the camera turns without gliding and the detail level
   changes at once (`motion.ts`); with Б13 the interface scale — 75–200 % by 25, `--ui-k` on the root and `zoom` on
   `#ui`, the first run by the window's height, only the steps that leave the panels 1280 × 720 points, the player's
-  choice kept in the window, `uiK` for what the window places in screen points (`scale.ts`); with Б12 the window language — from the address, the player's choice kept in the
+  choice kept in the window, `uiK` for what the window places in screen points (`scale.ts`); with Б13 step 2 the high
+  contrast — the `contrast` class over the tokens, the system's `prefers-contrast` by default — and the left-handed
+  mouse — the scene's left and right buttons swapped (`access.ts`); with Б12 the window language — from the address, the player's choice kept in the
   window or the system's (`lang.ts`); the overflow check — text wider than its box and cut, not by an ellipsis, or a
   box cut by a clipping parent or the window's edge, a panel scrolling sideways, a pure rule over measurements
   (`overflow.ts`); the windows — a panel to the front on a click and dragged by its header, its shift kept by its kind
@@ -709,7 +711,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   (`labels.ts`); with Б10 a text file to disk from the window — a link on a Blob, with Б11 also the F12 frame
   snapshot named by the plant's time (`savetext.ts`); with Б11 the
   window and event sounds, a copy of Bolnitsa's — the cues, the cue of a build result and of a notice by its weight,
-  one per slice, the volume and captions kept in the window (`sound.ts`); the scene bench, a copy of Bolnitsa's, with
+  one per slice, the volume and captions kept in the window, with Б13 the volume layers — interface and notices, a
+  share of the main (`sound.ts`); the scene bench, a copy of Bolnitsa's, with
   `--layer load` also with the layer on (`bench.ts`, `stats.ts`).
 - `src/render/` — the 3D view: renderer, light, camera, post-processing and GPU timer (copies of Bolnitsa); the plant
   from the plan (`layout.ts` — rooms, walls, doors and spots from `planOf`), floors, zone markings, ground and yard,

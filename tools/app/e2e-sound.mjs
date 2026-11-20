@@ -95,6 +95,27 @@ export async function soundPart(x) {
     if (m1 <= m0) fail('планёрка открылась без звука');
     else ok(`планёрка ${await s.clock()} — колокольчики планёрки`);
 
+    // слой «Интерфейс» на нуле (Б13, шаг 2) — щелчок кнопки молчит, слой помнится; обратно — 100 %
+    {
+      const setLayer = v => page.$eval('[data-test=layer-volume][data-layer=ui]', (el, x) => {
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        set.call(el, String(x));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }, v);
+      await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
+      await page.click('[data-test=settings-open]');
+      await setLayer(0);
+      const u0 = (await played()).click;
+      await page.click('[data-test=stock]');
+      await page.click('[data-test=stock]');
+      const u1 = (await played()).click;
+      const keptUi = await page.evaluate(() => localStorage.getItem('pharma.volume.ui'));
+      await setLayer(100);
+      await page.click('[data-test=settings-open]');
+      if (u1 !== u0 || keptUi !== '0') fail(`слой «Интерфейс» 0: щелчков ${u0} → ${u1}, в окне ${keptUi}`);
+      else ok('слой «Интерфейс» на нуле — кнопки молчат, выбор в окне');
+    }
+
     // громкость 0 — тишина, кнопка «Настройки · без звука», выбор в хранилище окна
     await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
     await page.click('[data-test=settings-open]');

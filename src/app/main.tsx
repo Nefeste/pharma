@@ -14,6 +14,7 @@ import { Game } from './game';
 import { kept, medianFrame, PRESET, pickPreset, keep as remember, windowKeep } from './preset';
 import { langOf } from './lang';
 import { applyScale, keptScale, SCALES } from './scale';
+import { ACCESS, applyContrast, keptFlag, systemContrast } from './access';
 import { measure, overflows } from './overflow';
 
 declare const __VERSION__: string;
@@ -31,7 +32,11 @@ const scale = (SCALES as readonly number[]).includes(want) ? want : keptScale(wi
 applyScale(scale);
 
 const store = new Store();
-store.set({ lang, version: __VERSION__, settings: { open: false, scale } });
+// повышенный контраст (Б13, шаг 2): выбор игрока, иначе — как просит система; мышь «для левой руки» — выбор игрока
+const contrast = keptFlag(windowKeep(), ACCESS.contrast, systemContrast());
+applyContrast(contrast);
+const left = keptFlag(windowKeep(), ACCESS.left, false);
+store.set({ lang, version: __VERSION__, settings: { open: false, scale, contrast, left } });
 let game: Game | undefined;
 const later = <K extends keyof Actions>(k: K) => ((...a: unknown[]) => (game?.actions[k] as (...x: unknown[]) => void)?.(...a)) as Actions[K];
 const actions: Actions = {
@@ -51,6 +56,9 @@ const actions: Actions = {
   setLess: later('setLess'),
   toggleSettings: later('toggleSettings'),
   setScale: later('setScale'),
+  setContrast: later('setContrast'),
+  setLeft: later('setLeft'),
+  setSoundLayer: later('setSoundLayer'),
   setLang: later('setLang'),
   setVolume: later('setVolume'),
   setCaptions: later('setCaptions'),

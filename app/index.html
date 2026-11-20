@@ -92,6 +92,28 @@
       --r-m: 4px;
       --r-l: 6px;
     }
+    /* повышенный контраст (Б13, шаг 2; геймдизайн, §23): те же токены — непрозрачные окна, светлее текст и рамки; класс
+       ставит окно (src/app/contrast.ts); цвета ламп, статусов и полос — прежние: их ΔE проверены отдельно */
+    :root.contrast {
+      --glass: rgb(12, 17, 20);
+      --glass-tag: rgb(12, 17, 20);
+      --window: rgb(12, 17, 20);
+      --window-2: rgb(18, 25, 29);
+      --raised: rgb(30, 40, 46);
+      --raised-hover: rgb(46, 60, 68);
+      --line: rgba(255, 255, 255, 0.45);
+      --line-strong: rgba(255, 255, 255, 0.6);
+      --line-bright: rgba(255, 255, 255, 0.8);
+      --text: #ffffff;
+      --muted: #d2dde1;
+      --accent: #5ed4e6;
+      --accent-hover: #86e1ef;
+      --ok-text: #aef2ca;
+      --bad-text: #ffb8a8;
+      --bad-text-2: #ffd6cc;
+      --info-text: #bde5ff;
+      --warn: #ffd23f;
+    }
     html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: var(--fs-body)/1.35 "IBM Plex Sans", system-ui, "Segoe UI", Roboto, sans-serif; font-variant-numeric: tabular-nums; overflow: hidden; }
     #view { position: absolute; inset: 0; touch-action: none; }
     /* масштаб интерфейса (Б13, шаг 1; копия «Больницы»): --ui-k — 0,75…2, его ставит окно (src/app/scale.ts); панели —

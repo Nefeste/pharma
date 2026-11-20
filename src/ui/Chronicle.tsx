@@ -63,6 +63,10 @@ export function entryText(e: ChronEntry, f: ChronFacts): string {
       return C.project(product, T.project.stages[e.stage] ?? e.stage);
     case 'goals':
       return C.goals(e.met.filter(Boolean).length, e.met.length);
+    case 'carried':
+      return C.carried(nm(db?.scenarios[e.to], e.to), e.built, e.hired);
+    case 'started':
+      return C.started(nm(db?.scenarios[e.scn], e.scn));
   }
 }
 

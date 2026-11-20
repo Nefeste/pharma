@@ -39,6 +39,7 @@ export function Campaign({ actions }: { actions: Actions }) {
                   <span className="tkey">{T.campaign.top}:</span> {top.map(g => goalText(g, sc.start.date)).join('; ')}
                 </span>
               ) : null}
+              {sc.campaign !== undefined && sc.campaign > 1 ? <span className="muted">{T.campaign.clean}</span> : null}
               <button type="button" className="take" onClick={() => actions.pickScenario(sc.id)} data-test="campaign-start">
                 {T.campaign.start}
               </button>

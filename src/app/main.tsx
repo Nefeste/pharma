@@ -164,6 +164,7 @@ const actions: Actions = {
   pickScenario: later('pickScenario'),
   toggleGoals: later('toggleGoals'),
   toggleMenu: later('toggleMenu'),
+  nextScenario: later('nextScenario'),
   saveGame: later('saveGame'),
   loadGame: later('loadGame'),
   deleteGame: later('deleteGame'),

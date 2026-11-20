@@ -112,6 +112,10 @@ function entryOf(db: ContentDb, s: PlantState, n: Notice): ChronEntry | undefine
       return { t, k: 'project', pr: n.project, product: n.product, stage: n.stage };
     case 'scenarioEnd':
       return { t, k: 'goals', met: goalsNow(db, s).goals.map(g => g.met) };
+    case 'carried':
+      return { t, k: 'carried', to: n.to, built: n.built, hired: n.hired };
+    case 'scenarioStart':
+      return { t, k: 'started', scn: n.scenario };
     default:
       return undefined;
   }

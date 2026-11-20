@@ -1069,6 +1069,8 @@ export type PlantEvent =
   | { kind: 'morning' }
   /** конец срока сценария (Б9): цели — итог, завод живёт дальше */
   | { kind: 'scenarioEnd' }
+  /** старт игрока в следующем сценарии кампании (Б9, шаг 4): после межсезонья — его письма */
+  | { kind: 'scenarioStart' }
   /** письмо сценария в свой день и час (Б9) */
   | { kind: 'letter'; id: Id }
   /** каждый час: начало и конец смен, задачи «не раньше» */
@@ -1187,7 +1189,7 @@ export interface Shipment {
   vat: number;
 }
 
-export type CashItem = 'start' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle' | 'vacation' | 'waste' | 'poFast' | 'poCancel' | 'build' | 'equip';
+export type CashItem = 'start' | 'grant' | 'sale' | 'prepay' | 'supplier' | 'wages' | 'contrib' | 'energy' | 'vat' | 'interest' | 'codes' | 'calqual' | 'audit' | 'contract' | 'hiring' | 'settle' | 'vacation' | 'waste' | 'poFast' | 'poCancel' | 'build' | 'equip';
 
 // ---------------------------------------------------------------- техслужба
 
@@ -2190,11 +2192,17 @@ export type ChronEntry = { t: number } & (
   | { k: 'unit'; a: string }
   | { k: 'project'; pr: string; product: Id; stage: ProjectStage }
   | { k: 'goals'; met: boolean[] }
+  /** переход кампании (Б9, шаг 4): в какой сценарий, достроено ли крыло, сколько людей принято */
+  | { k: 'carried'; to: Id; built: boolean; hired: number }
+  /** старт игрока в сценарии после межсезонья */
+  | { k: 'started'; scn: Id }
 );
 
 /** Хроника завода (Б10): записи по порядку времени — вся игра. */
 export interface StoryState {
   chronicle: ChronEntry[];
+  /** переход кампании (Б9, шаг 4): из каких сценариев завод пришёл, по порядку, и мгновение последнего перехода */
+  campaign?: { from: Id[]; at: number };
 }
 
 /** Найм (Б4в) одной группой (Б10): вакансии, кандидаты, принятые до первого дня, бывшие. */
@@ -2491,6 +2499,8 @@ export type Command =
   | { kind: 'letter'; op: 'seen'; what: LetterSeen }
   | { kind: 'letter'; op: 'read' | 'skip'; id: Id }
   | { kind: 'letter'; op: 'skipAll' }
+  /** переход кампании (Б9, шаг 4): завод — в следующий сценарий; место директора, после конца срока */
+  | { kind: 'next'; by?: 'player' }
   /** шаг расследования (часть 4) */
   | { kind: 'investigate'; inv: string; step: string; by?: string }
   /** решение расследования: причина — версия модели; судьба серии */
@@ -2594,6 +2604,10 @@ export type SiteRefusal =
 
 /** Почему команда не выполнена — для окна. */
 export type Refusal =
+  /** переход кампании (Б9, шаг 4): следующего сценария нет; срок ещё идёт; следующий уже начался */
+  | 'noNext'
+  | 'notEnded'
+  | 'tooLate'
   /** письма (Б9): такого письма нет или оно не пришло; оно уже кончилось; не пропускается — не письмо наставника */
   | 'noLetter'
   | 'letterDone'
@@ -2860,6 +2874,13 @@ export type Notice =
   /** пришло письмо сценария (Б9) */
   | { kind: 'letter'; id: Id; from: 'mentor' | 'distributor' | 'supplier' }
   | { kind: 'scenarioEnd' }
+  /**
+   * переход кампании (Б9, шаг 4): из какого сценария в какой, достроено ли крыло следующего или выданы деньги на него,
+   * сколько людей принято, сколько выдано в кассу, когда старт игрока
+   */
+  | { kind: 'carried'; from: Id; to: Id; built: boolean; paid: number; hired: number; grant: number; start: number }
+  /** старт игрока в следующем сценарии кампании (Б9, шаг 4) */
+  | { kind: 'scenarioStart'; scenario: Id }
   /** отказ узла машины; узел починили или заменили по плану */
   | { kind: 'failure'; machine: string; part: string }
   /**

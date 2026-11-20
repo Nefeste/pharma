@@ -843,6 +843,7 @@ export const en: Strings = {
       poCancel: 'Order cancelled',
       build: 'Construction',
       equip: 'Equipment',
+      grant: 'Founder contribution',
     },
     why: {
       po: (supplier: string, po: string) => `${supplier}, order ${po}`,
@@ -1355,6 +1356,8 @@ export const en: Strings = {
     unit: (what: string) => `In service after qualification: ${what}`,
     project: (product: string, stage: string) => `Project “${product}”: ${stage}`,
     goals: (met: number, all: number) => `The scenario term is over: ${met} of ${all} goals met`,
+    carried: (scn: string, built: boolean, hired: number) => `Between scenarios: the plant moves on to “${scn}”${built ? ', the coating wing is built' : ''}${hired > 0 ? `, people hired — ${hired}` : ''}; the plant runs on its own until the start`,
+    started: (scn: string) => `Scenario “${scn}” begins`,
     batchNone: 'no number',
   },
   letters: {
@@ -1446,6 +1449,7 @@ export const en: Strings = {
     open: 'No term and no goals',
     no: (n: number) => `Scenario ${n}`,
     outside: 'Outside the campaign',
+    clean: 'A clean start: the scenario\'s own plant. To go on with your plant, use the previous scenario\'s result',
     goal: {
       released: (v: number) => `release ${v} ${v === 1 ? 'batch' : 'batches'}`,
       otif: (pct: string) => `orders on time — at least ${pct}`,
@@ -1467,6 +1471,10 @@ export const en: Strings = {
     result: 'Scenario result',
     play: 'Play on',
     playHint: 'The plant lives on; the goals stay as the result of the term',
+    next: (scn: string) => `Next scenario: “${scn}”`,
+    nextHint: 'The plant, people and chronicle go on; what is missing, the scenario builds and gives. Until its start the plant runs on its own',
+    gap: (to: string) => `Between seasons: the plant runs on its own until ${to}`,
+    gapHint: 'Colleagues lead the departments; no notices. From the start of the scenario you choose your posts again',
     count: (met: number, all: number) => `${met} of ${all}`,
   },
   seats: {

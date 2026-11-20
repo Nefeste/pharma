@@ -178,6 +178,8 @@ export interface Hud {
   goals: { open: boolean; view?: GoalsView };
   /** меню «Игра» (сохранения): открыто ли, ячейки — новые сверху, запись или загрузка идёт */
   menu: { open: boolean; rows: SaveRow[]; busy?: boolean };
+  /** межсезонье (Б9, шаг 4): завод живёт сам от `from` до старта игрока `to`; `t` — где он сейчас */
+  gap?: { from: number; to: number; t: number };
   /** письма сценария (Б9): панель и вид потока; открытое письмо — его номер */
   letters: { open: boolean; view?: LettersView; at?: string };
   /** хроника завода (Б10): масштаб главы и сколько глав назад */
@@ -555,6 +557,8 @@ export interface Actions {
   toggleGoals(): void;
   /** меню «Игра»: сохранить, загрузить, удалить (docs/specs/2026-10-vertical-slice.md, «Сохранения») */
   toggleMenu(): void;
+  /** переход кампании (Б9, шаг 4): завод — в следующий сценарий, межсезонье — до его старта */
+  nextScenario(): void;
   saveGame(): void;
   loadGame(slot: string): void;
   deleteGame(slot: string): void;

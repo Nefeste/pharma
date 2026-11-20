@@ -198,6 +198,8 @@ export class Game {
   /** сохранения: папка игры в Electron, хранилище страницы в браузере; записи — строго по очереди */
   disk: Disk = pageDisk();
   private saving: Promise<unknown> = Promise.resolve();
+  /** межсезонье (Б9, шаг 4): кусок времени отправлен, ответа ещё нет */
+  private gapSent = false;
   /** сохранение, которое ждёт конца промотки и ответа потока */
   private saveDue?: SaveMeta['kind'];
   private mouse = { x: 0, y: 0, inside: false, drag: null as null | { x: number; y: number; moved: number; button: number }, keys: new Set<string>() };
@@ -348,9 +350,10 @@ export class Game {
     const relaid = !!s.world && (s.world.rev !== this.world.rev || stableJson(s.world.plan) !== stableJson(this.world.plan));
     if (s.world && relaid) this.relayout(s.world);
     // другой сценарий (Б9): после «Начать» на экране «Кампания» и после загрузки — даты, места и цели по нему
+    if (s.world) this.store.set({ start: s.world.start });
     if (s.world && s.world.scenario !== this.scenario.id && this.db.scenarios[s.world.scenario]) {
       this.scenario = this.db.scenarios[s.world.scenario];
-      this.store.set({ scenario: this.scenario.id, start: this.scenario.start.date, goals: { open: false }, letters: { open: false }, chronicle: { open: false, scale: 'day', back: 0 } });
+      this.store.set({ scenario: this.scenario.id, start: s.world.start, goals: { open: false }, letters: { open: false }, chronicle: { open: false, scale: 'day', back: 0 } });
       this.lettersShown = false;
       this.seenSent.clear();
       this.sendViews();
@@ -451,7 +454,7 @@ export class Game {
         const c = this.store.get().chronicle;
         if (c.exporting) {
           this.store.set({ chronicle: { ...c, exporting: false } });
-          saveText(`${T.chronicle.file}-${this.scenario.id.replace(/^scn\./, '')}.txt`, chronicleText(d, this.scenario.start.date));
+          saveText(`${T.chronicle.file}-${this.scenario.id.replace(/^scn\./, '')}.txt`, chronicleText(d, this.store.get().start));
           this.sendViews();
         }
       } else if (d.view === 'chronicle') {
@@ -470,6 +473,22 @@ export class Game {
     for (const n of s.notices) if (n.kind === 'site') this.builder.onResult(n);
     for (const n of s.notices) if (n.kind === 'equip') this.builder.onEquip(n);
     if (s.notices.some(n => n.kind === 'site' || n.kind === 'equip')) this.buildHud();
+    // переход кампании (Б9, шаг 4): межсезонье — завод живёт сам до старта игрока, извещения не идут; на старте — экран мест
+    const carried = s.notices.find(n => n.kind === 'carried');
+    if (carried?.kind === 'carried') {
+      const h = this.store.get();
+      this.store.set({ gap: { from: sl.t, to: carried.start, t: sl.t }, goals: { ...h.goals, open: false }, letters: { ...h.letters, open: false }, menu: { ...h.menu, open: false } });
+    }
+    const gap = this.store.get().gap;
+    if (gap) {
+      this.gapSent = false;
+      if (sl.t >= gap.to) {
+        this.store.set({ gap: undefined, seats: { open: true, pick: [] } });
+        this.speed = 0;
+      } else this.store.set({ gap: { ...gap, t: sl.t } });
+      this.hud();
+      return;
+    }
     const stops = new Set(this.stops());
     const stop = (n: Notice) => stops.has(stopKey(n));
     // звук среза (Б11, шаг 1): один, самый тяжёлый из звуков его извещений; найм, отказ и стройка — в ответ на команду окна
@@ -511,7 +530,7 @@ export class Game {
       this.speed = 0;
       this.ff = false;
     }
-    this.store.set({ morning: { open: true, day: momentOf(this.scenario.start.date, at).day } });
+    this.store.set({ morning: { open: true, day: momentOf(this.store.get().start, at).day } });
     this.sendViews();
     this.hud();
   }
@@ -619,7 +638,7 @@ export class Game {
       : n.kind === 'repaired' ? T.notices.repaired
       : n.kind === 'truckWait' ? T.notices.truckWait(named(this.db.suppliers[n.supplier]?.name, n.supplier))
       : n.kind === 'orderRisk'
-        ? T.notices.orderRisk(named(this.db.customers[n.customer]?.name, n.customer), dayText(momentOf(this.scenario.start.date, n.due).day), n.missing)
+        ? T.notices.orderRisk(named(this.db.customers[n.customer]?.name, n.customer), dayText(momentOf(this.store.get().start, n.due).day), n.missing)
       : n.kind === 'materialLate' ? this.lateText(n)
       : n.kind === 'investigation' ? T.notices.investigation(named(this.db.tests[n.method]?.name, n.method), n.code)
       : n.kind === 'invStep' ? T.notices.invStep
@@ -771,13 +790,13 @@ export class Game {
     if (h.campaign.open || h.seats.open) return Promise.resolve(null);
     const run = async () => {
       const json = await this.client.save();
-      const meta: SaveMeta = { kind, savedAt: new Date().toISOString(), version: this.store.get().version ?? '', scenario: this.scenario.id, start: this.scenario.start.date, t: this.t, view: this.viewOf() };
+      const meta: SaveMeta = { kind, savedAt: new Date().toISOString(), version: this.store.get().version ?? '', scenario: this.scenario.id, start: this.store.get().start, t: this.t, view: this.viewOf() };
       const bytes = await gzip(json);
       if (kind === 'auto') await writeAuto(this.disk, bytes, meta);
       else await writeSlot(this.disk, kind === 'exit' ? 'exit' : await nextManual(this.disk), bytes, meta);
       await this.refreshSaves();
       // утреннее — молча: строка извещений — о заводе, а ячейка видна в меню «Игра»
-      if (kind === 'manual') this.notices.unshift({ t: this.t, text: T.saves.saved(whenText(this.scenario.start.date, this.t)) });
+      if (kind === 'manual') this.notices.unshift({ t: this.t, text: T.saves.saved(whenText(this.store.get().start, this.t)) });
       this.hud();
       return meta;
     };
@@ -821,7 +840,7 @@ export class Game {
   }
 
   private takeShot() {
-    const m = momentOf(this.scenario.start.date, this.t);
+    const m = momentOf(this.store.get().start, this.t);
     const name = shotName(m.date.y, m.date.m, m.date.d, m.sec);
     this.stage.renderer.domElement.toBlob(b => {
       if (!b) return;
@@ -853,7 +872,13 @@ export class Game {
         this.ffLeft -= game;
       } else if (this.ffTo === 'event' && this.ffLeft <= 0 && !this.client.busy && this.lag === 0) this.noEvent();
     }
-    if (this.saveDue && !this.ff && !this.client.busy) {
+    // межсезонье (Б9, шаг 4): завод живёт сам кусками по две недели — окно показывает, докуда дошло
+    const gap = this.store.get().gap;
+    if (gap && !this.gapSent && !this.client.busy) {
+      this.gapSent = true;
+      this.client.command({ kind: 'advance', seconds: Math.max(1, Math.min(14 * DAY, gap.to - this.t)) });
+    }
+    if (this.saveDue && !this.ff && !this.client.busy && !gap) {
       const kind = this.saveDue;
       this.saveDue = undefined;
       void this.save(kind);
@@ -936,7 +961,7 @@ export class Game {
 
   /** Что показывают часы завода сейчас — для панелей и сценария в браузере. */
   moment() {
-    return momentOf(this.scenario.start.date, this.t);
+    return momentOf(this.store.get().start, this.t);
   }
 
   // ---------------------------------------------------------------- действия панелей
@@ -1335,6 +1360,11 @@ export class Game {
       this.client.start({ kind: 'start', scenario: id });
       this.store.set({ campaign: { open: false }, seats: { open: true, pick: [] } });
     },
+    nextScenario: () => {
+      this.speed = 0;
+      this.ff = false;
+      this.client.command({ kind: 'next', by: 'player' });
+    },
     toggleMenu: () => {
       const m = this.store.get().menu;
       this.store.set({ menu: { ...m, open: !m.open } });
@@ -1447,7 +1477,7 @@ export class Game {
     openMorning: () => {
       // последняя планёрка, которую окно видело; до первой — нечего открыть
       if (this.morningSeen === Number.NEGATIVE_INFINITY) return;
-      this.store.set({ morning: { open: true, day: momentOf(this.scenario.start.date, this.morningSeen).day } });
+      this.store.set({ morning: { open: true, day: momentOf(this.store.get().start, this.morningSeen).day } });
       this.sendViews();
     },
     closeMorning: resume => {

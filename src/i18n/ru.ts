@@ -915,6 +915,7 @@ export const ru = {
       poCancel: 'Отмена заказа',
       build: 'Стройка',
       equip: 'Оборудование',
+      grant: 'Вклад учредителя',
     },
     why: {
       po: (supplier: string, po: string) => `${supplier}, заказ ${po}`,
@@ -1457,6 +1458,8 @@ export const ru = {
     unit: (what: string) => `Введено в работу после квалификации: ${what}`,
     project: (product: string, stage: string) => `Проект «${product}»: ${stage}`,
     goals: (met: number, all: number) => `Срок сценария прошёл: целей выполнено ${met} из ${all}`,
+    carried: (scn: string, built: boolean, hired: number) => `Между сценариями: завод переходит в «${scn}»${built ? ', крыло покрытия достроено' : ''}${hired > 0 ? `, принято людей — ${hired}` : ''}; дальше завод живёт сам до старта`,
+    started: (scn: string) => `Начало сценария «${scn}»`,
     batchNone: 'без номера',
   },
   letters: {
@@ -1548,6 +1551,7 @@ export const ru = {
     open: 'Без срока и целей',
     no: (n: number) => `Сценарий ${n}`,
     outside: 'Вне кампании',
+    clean: 'С чистого листа: завод сценария. Переход с прежним заводом — из итога предыдущего сценария',
     goal: {
       released: (v: number) => `выпустить ${groupRu(v)} ${pluralRu(v, 'серию', 'серии', 'серий')}`,
       otif: (pct: string) => `заказы вовремя — не меньше ${pct}`,
@@ -1569,6 +1573,10 @@ export const ru = {
     result: 'Итог сценария',
     play: 'Играть дальше',
     playHint: 'Завод живёт дальше; цели остаются итогом срока',
+    next: (scn: string) => `Следующий сценарий: «${scn}»`,
+    nextHint: 'Завод, люди и хроника — дальше; чего не хватает, сценарий достроит и выдаст. До его старта завод живёт сам',
+    gap: (to: string) => `Межсезонье: завод живёт сам до ${to}`,
+    gapHint: 'Отделы ведут коллеги; извещения не идут. Со старта сценария вы снова выберете места',
     count: (met: number, all: number) => `${groupRu(met)} из ${groupRu(all)}`,
   },
   seats: {

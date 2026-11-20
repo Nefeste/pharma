@@ -389,6 +389,9 @@
     /* экран «Кампания» и окно целей сценария (Б9): карточки сценариев — как плитки мест; цели — справа под полосой */
     div.tile { background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-m); }
     div.tile .take { margin-top: auto; align-self: flex-start; }
+    /* межсезонье (Б9, шаг 4): посреди экрана, поверх всего — завод живёт сам до старта следующего сценария */
+    .gapscreen { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); width: min(560px, calc(100% - 32px)); padding: var(--sp-6) var(--sp-7); display: flex; flex-direction: column; gap: var(--sp-3); z-index: 100001; }
+    .gapscreen .boot-bar { width: 100%; margin-top: var(--sp-2); }
     /* меню «Игра» (сохранения): справа под полосой, как цели */
     .gamemenu { position: absolute; right: 8px; top: calc(var(--top-h, 48px) + 8px); width: min(560px, calc(100% - 16px)); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: var(--sp-4) var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3); z-index: 5; }
     .gamemenu > .take { align-self: flex-start; }

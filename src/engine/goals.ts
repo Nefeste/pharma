@@ -5,12 +5,14 @@
 import type { ContentDb, Goal } from '../content/types';
 import { DAY, HOUR } from './core/calendar';
 import { decidedAt, kpiPick, sincePeriod } from './kpi';
+import { scnZero } from './carry';
 import type { PlantState } from './types';
 
 /** Мгновение старта игрока и конца сценария; конца нет — сценарий без срока. */
-export function goalSpan(db: ContentDb, s: Pick<PlantState, 'scenario'>): { from: number; to?: number } {
+export function goalSpan(db: ContentDb, s: Pick<PlantState, 'scenario' | 'start'>): { from: number; to?: number } {
   const sc = db.scenarios[s.scenario];
-  const from = sc.start.hour * HOUR + sc.warm;
+  // сутки сценария — от его даты (Б9, шаг 4): у завода из прежнего сценария кампании она позже первой даты завода
+  const from = scnZero(db, s) + sc.start.hour * HOUR + sc.warm;
   return sc.days !== undefined ? { from, to: from + sc.days } : { from };
 }
 
@@ -18,7 +20,7 @@ export function goalSpan(db: ContentDb, s: Pick<PlantState, 'scenario'>): { from
 export function goalValue(db: ContentDb, s: PlantState, g: Goal): number | undefined {
   const span = goalSpan(db, s);
   const to = span.to;
-  const from = Math.max(span.from, g.from ?? 0);
+  const from = Math.max(span.from, g.from === undefined ? 0 : scnZero(db, s) + g.from);
   const until = to === undefined ? s.t : Math.min(s.t, to);
   switch (g.kind) {
     case 'released':

@@ -102,5 +102,8 @@ describe('переполнения окна', () => {
     expect(overflows([box({ scrollW: 120 })])).toEqual([]);
     expect(overflows([box({ scrollH: 40, oy: 'hidden' })])).toEqual(['x: height 40 > 20']);
     expect(overflows([box({ cut: 51 })])).toEqual(['x: cut 51']);
+    // панель с прокруткой вбок — переполнение: её делают шире (по игре владельца 20.11.2026)
+    expect(overflows([box({ scrollW: 900, clientW: 760, ox: 'auto', panel: true })])).toEqual(['x: scroll 900 > 760']);
+    expect(overflows([box({ scrollW: 760, clientW: 760, ox: 'auto', panel: true })])).toEqual([]);
   });
 });

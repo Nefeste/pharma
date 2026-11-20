@@ -34,7 +34,7 @@ export function createSim(db: ContentDb): SimHost {
   const desk = new ViewDesk(db);
   /** план, который окно уже знает (Б7а): другой объект — план едет со срезом */
   let sent: PlantState['plan'] | undefined;
-  const slice = (notices: Notice[], tick = false, stopped = false): FromSim => {
+  const slice = (notices: Notice[], tick = false, stopped = false, fresh = false): FromSim => {
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const views = desk.out(s!, performance.now());
     const world = s!.plan !== sent ? { plan: s!.plan, rev: planRev(s!.plan), scenario: s!.scenario } : undefined;
@@ -48,6 +48,7 @@ export function createSim(db: ContentDb): SimHost {
       ...(views ? { views } : {}),
       ...(tick ? { tick: true as const } : {}),
       ...(stopped ? { stopped: true as const } : {}),
+      ...(fresh ? { fresh: true as const } : {}),
     };
   };
   /** Дожить время, которое часы игры уже прошли: команда видит завод таким, как игрок. */
@@ -67,14 +68,14 @@ export function createSim(db: ContentDb): SimHost {
             sent = undefined;
             packer.reset();
             desk.reset();
-            return slice([]);
+            return slice([], false, false, true);
           case 'load':
             s = fromSave(db, msg.json);
             owed = 0;
             sent = undefined;
             packer.reset();
             desk.reset();
-            return slice([]);
+            return slice([], false, false, true);
           case 'command':
             if (!s) return { kind: 'error', message: 'no plant' };
             desk.touch();

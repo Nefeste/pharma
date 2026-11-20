@@ -18,6 +18,8 @@ export interface Slice {
   views?: ViewOut[];
   /** поток встал на извещении автопаузы (Б2а): часы завода — на его событии */
   stopped?: true;
+  /** первый срез нового завода — после старта и загрузки: паллеты прежнего окно забывает */
+  fresh?: true;
   /** план здания (Б7а) — когда сменился: после старта и загрузки */
   world?: World;
 }
@@ -61,7 +63,7 @@ export class SimClient {
       this.roundTripsTaken++;
       if (this.roundTrips.length > 2000) this.roundTrips.splice(0, 1000);
     }
-    this.onSlice({ buf: msg.buf, notices: msg.notices, lag: msg.lag, ...(msg.views ? { views: msg.views } : {}), ...(msg.stopped ? { stopped: true as const } : {}), ...(msg.world ? { world: msg.world } : {}) });
+    this.onSlice({ buf: msg.buf, notices: msg.notices, lag: msg.lag, ...(msg.views ? { views: msg.views } : {}), ...(msg.stopped ? { stopped: true as const } : {}), ...(msg.fresh ? { fresh: true as const } : {}), ...(msg.world ? { world: msg.world } : {}) });
   }
 
   start(msg: Extract<ToSim, { kind: 'start' }>) {

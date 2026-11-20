@@ -343,10 +343,13 @@ export class Game {
     const sl = unpack(s.buf);
     // срез другой правки плана окно не разбирает
     if (sl.rev !== this.world.rev) return;
+    // новый завод (после «Начать» и загрузки): паллеты прежнего окно забывает — иначе паллета, которой у нового завода нет,
+    // оставалась бы на полу, и её карточка — «Этого больше нет на заводе»
+    if (s.fresh) this.view.reset();
     // перевозки — по прежним местам паллет окна, до того как срез их перепишет; места нового плана — другие: срез стройки
     // перевозок не даёт
-    this.flows.step(sl.t, relaid ? [] : movesOf(this.layout.plan, this.view.units, this.view.trucks, sl));
-    this.peopleFlows.step(sl.t, relaid ? [] : peopleMoves(this.layout, this.peopleAt, sl.people));
+    this.flows.step(sl.t, relaid || s.fresh ? [] : movesOf(this.layout.plan, this.view.units, this.view.trucks, sl));
+    this.peopleFlows.step(sl.t, relaid || s.fresh ? [] : peopleMoves(this.layout, this.peopleAt, sl.people));
     this.t = sl.t;
     this.day = sl.day;
     this.lag = s.lag;

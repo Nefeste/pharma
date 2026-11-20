@@ -189,7 +189,7 @@
     .sheet .sd.over { border-color: var(--warn); }
     .sheet .sd.rest { color: var(--muted); }
     /* панель склада (3б) — справа под полосой */
-    .stock { position: absolute; right: 8px; top: calc(var(--top-h, 48px) + 8px); width: min(760px, calc(100% - 16px)); max-height: calc(100% - var(--top-h, 48px) - 72px); overflow: auto; padding: var(--sp-4) var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3); }
+    .stock { position: absolute; right: 8px; top: calc(var(--top-h, 48px) + 8px); width: fit-content; min-width: min(760px, calc(100% - 16px)); max-width: calc(100% - 16px); max-height: calc(100% - var(--top-h, 48px) - 72px); overflow: auto; padding: var(--sp-4) var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3); }
     .phead { display: flex; align-items: baseline; gap: var(--sp-5); font-size: var(--fs-title); }
     .phead .muted { font-size: var(--fs-small); }
     .filters { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
@@ -217,6 +217,8 @@
     .morning .hint { margin-top: var(--sp-2); }
     .mfoot { display: flex; align-items: center; gap: var(--sp-4); margin: var(--sp-4) calc(-1 * var(--sp-7)) calc(-1 * var(--sp-5)); padding: var(--sp-3) var(--sp-7) var(--sp-5); border-top: 1px solid var(--line); position: sticky; bottom: -10px; background: var(--window); }
     .stock .csec { margin: var(--sp-3) 0 0; }
+    /* шире своих 760 точек панель делает только таблица — шире, а не прокруткой вбок; текст переносится по ширине панели */
+    .stock > :not(table) { contain: inline-size; }
     .cashp table.grid tbody tr { cursor: default; }
     .cashsum { display: flex; gap: var(--sp-8); margin: 0; }
     .cashsum dt { color: var(--muted); font-size: var(--fs-caption); }
@@ -575,6 +577,9 @@
     button.link { background: none; border: none; padding: 0; color: inherit; text-decoration: underline dotted; cursor: pointer; font: inherit; text-align: left; }
     table.rtable { border-collapse: collapse; width: 100%; font-size: var(--fs-small); margin: var(--sp-1) 0 var(--sp-2); }
     table.rtable th { text-align: left; color: var(--muted); font-weight: 500; padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); vertical-align: bottom; }
+    /* заголовок снизу вверх — у матрицы обучения: двадцать ролей входят в окно без прокрутки вбок */
+    table.rtable th.vert { padding: var(--sp-2) var(--sp-1); }
+    table.rtable th.vert .sortbtn { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; text-align: left; }
     table.rtable td { padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--wash); vertical-align: top; }
     .nw { white-space: nowrap; }
     /* порядок и поиск в таблицах справочника (Б1в) */

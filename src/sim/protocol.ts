@@ -45,9 +45,10 @@ export type FromSim =
   /**
    * после каждого `tick`, `command` и `views`: срез, извещения, на сколько часы завода отстают от часов игры (игровые
    * секунды); виды панелей, которые изменились; `tick` — это ответ на `tick` (клиент держит в пути не больше одного);
-   * `stopped` — `tick` встал на извещении автопаузы: часы завода — на его событии, отставания нет
+   * `stopped` — `tick` встал на извещении автопаузы: часы завода — на его событии, отставания нет; `fresh` — первый срез
+   * нового завода (после `start` и `load`): в нём все паллеты, прежние окно забывает
    */
-  | { kind: 'slice'; buf: Int32Array; notices: Notice[]; lag: number; views?: ViewOut[]; tick?: true; stopped?: true; world?: World }
+  | { kind: 'slice'; buf: Int32Array; notices: Notice[]; lag: number; views?: ViewOut[]; tick?: true; stopped?: true; fresh?: true; world?: World }
   /** ответ на `save`: снимок состояния строкой */
   | { kind: 'saved'; json: string }
   | { kind: 'error'; message: string };

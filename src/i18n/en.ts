@@ -67,7 +67,6 @@ export const en: Strings = {
     savedAt: (when: string) => `written ${when}`,
     noMeta: 'no header — it may still open',
     saved: (when: string) => `Saved: ${when}`,
-    autoSaved: (when: string) => `Morning saved: ${when}`,
     loaded: (when: string) => `Loaded: ${when}. The clock is paused`,
     failed: (why: string) => `Not saved: ${why}`,
     problem: (why: string) => `Cannot open the save: ${why}`,

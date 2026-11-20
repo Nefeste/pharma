@@ -93,7 +93,6 @@ export const ru = {
     savedAt: (when: string) => `записано ${when}`,
     noMeta: 'без заголовка — может, всё же откроется',
     saved: (when: string) => `Сохранено: ${when}`,
-    autoSaved: (when: string) => `Сохранено утро: ${when}`,
     loaded: (when: string) => `Загружено: ${when}. Часы — на паузе`,
     failed: (why: string) => `Не сохранилось: ${why}`,
     problem: (why: string) => `Не открыть сохранение: ${why}`,

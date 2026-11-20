@@ -198,6 +198,8 @@ export class Game {
   /** сохранения: папка игры в Electron, хранилище страницы в браузере; записи — строго по очереди */
   disk: Disk = pageDisk();
   private saving: Promise<unknown> = Promise.resolve();
+  /** сохранение, которое ждёт конца промотки и ответа потока */
+  private saveDue?: SaveMeta['kind'];
   private mouse = { x: 0, y: 0, inside: false, drag: null as null | { x: number; y: number; moved: number; button: number }, keys: new Set<string>() };
   private gotSlice!: () => void;
   private firstSlice = new Promise<void>(r => (this.gotSlice = r));
@@ -479,8 +481,9 @@ export class Game {
     for (const n of s.notices) if (stop(n) && n.kind === 'proposal') this.notice(n, true, of(n));
     for (const n of s.notices) if (stop(n) && n.kind !== 'proposal') this.notice(n, true, of(n));
     if (s.notices.some(n => n.kind === 'morning')) this.morning(sl.t);
-    // утро — сохранение само: три последних утра
-    if (s.notices.some(n => n.kind === 'morning')) void this.save('auto');
+    // утро — сохранение само: три последних утра; во время промотки — когда она кончится (запись снимка доживает время
+    // завода до часов игры, и «До события» прошло бы мимо своего события)
+    if (s.notices.some(n => n.kind === 'morning')) this.saveDue = 'auto';
     // конец срока сценария (Б9): окно целей с итогом открывается само
     if (s.notices.some(n => n.kind === 'scenarioEnd')) this.store.set({ goals: { ...this.store.get().goals, open: true } });
     // письмо наставника, на котором встал мир (Б9): панель писем открывается сама — на этом письме
@@ -773,7 +776,8 @@ export class Game {
       if (kind === 'auto') await writeAuto(this.disk, bytes, meta);
       else await writeSlot(this.disk, kind === 'exit' ? 'exit' : await nextManual(this.disk), bytes, meta);
       await this.refreshSaves();
-      if (kind !== 'exit') this.notices.unshift({ t: this.t, text: kind === 'auto' ? T.saves.autoSaved(whenText(this.scenario.start.date, this.t)) : T.saves.saved(whenText(this.scenario.start.date, this.t)) });
+      // утреннее — молча: строка извещений — о заводе, а ячейка видна в меню «Игра»
+      if (kind === 'manual') this.notices.unshift({ t: this.t, text: T.saves.saved(whenText(this.scenario.start.date, this.t)) });
       this.hud();
       return meta;
     };
@@ -848,6 +852,11 @@ export class Game {
         game = Math.min(FF_CHUNK, this.ffLeft);
         this.ffLeft -= game;
       } else if (this.ffTo === 'event' && this.ffLeft <= 0 && !this.client.busy && this.lag === 0) this.noEvent();
+    }
+    if (this.saveDue && !this.ff && !this.client.busy) {
+      const kind = this.saveDue;
+      this.saveDue = undefined;
+      void this.save(kind);
     }
     // автопаузы игрока — с каждым кадром: поток встанет ровно на событии (Б2а)
     if (!this.manual) this.client.frame(game, this.ff ? 14 : 8, this.stops());
@@ -1331,7 +1340,10 @@ export class Game {
       this.store.set({ menu: { ...m, open: !m.open } });
       if (!m.open) void this.refreshSaves();
     },
-    saveGame: () => void this.save('manual'),
+    saveGame: () => {
+      if (this.ff || this.client.busy) this.saveDue = 'manual';
+      else void this.save('manual');
+    },
     loadGame: slot => void this.loadSlot(slot),
     deleteGame: slot => void removeSlot(this.disk, slot).then(() => this.refreshSaves()),
     toggleGoals: () => {

@@ -66,6 +66,7 @@ export async function c1Part({ browser, port, out, ok, fail, errors, requests, q
     else {
       await page.mouse.click(head.x + 30, head.y + head.height / 2);
       const z = await page.evaluate(() => Number(getComputedStyle(document.querySelector('[data-test=letters]')).zIndex) > Number(getComputedStyle(document.querySelector('[data-test=goals]')).zIndex));
+      const before = await page.evaluate(() => document.querySelector('[data-test=letters]').getBoundingClientRect().left);
       await page.mouse.move(head.x + 30, head.y + head.height / 2);
       await page.mouse.down();
       await page.mouse.move(head.x + 230, head.y + head.height / 2 + 120, { steps: 6 });
@@ -75,7 +76,7 @@ export async function c1Part({ browser, port, out, ok, fail, errors, requests, q
       await page.evaluate(() => window.__game.actions.toggleLetters());
       await page.waitForSelector('[data-test=letters]', { timeout: 10_000 });
       const again = await page.evaluate(() => document.querySelector('[data-test=letters]').getBoundingClientRect().left);
-      if (!z || Math.abs(moved - head.x - 200) > 12 || Math.abs(again - moved) > 1) fail(`окна: наверху — ${z}, сдвиг — ${Math.round(moved - head.x)}, после закрытия — ${Math.round(again - moved)}`);
+      if (!z || Math.abs(moved - before - 200) > 2 || Math.abs(again - moved) > 1) fail(`окна: наверху — ${z}, сдвиг — ${Math.round(moved - before)}, после закрытия — ${Math.round(again - moved)}`);
       else ok('окна: письма по щелчку — над целями, за заголовок — на 200 точек, закрыли и открыли — там же');
       await page.dblclick('[data-test=letters] > .phead', { position: { x: 30, y: 8 } });
     }

@@ -2,6 +2,7 @@
 // прототипа на русском и английском, при 1920 × 1080, 2560 × 1440 и 3840 × 2160 (наименьший экран — Full HD, решение
 // владельца 20.11.2026) — планёрка и каждое окно и вкладка по очереди; в
 // каждом — переполнения окна (src/app/overflow.ts): текст шире коробки и обрезан не многоточием. Ноль — условие прохода.
+// С Б13 — при трёх масштабах интерфейса каждого экрана (`SCALES`).
 // Снимки — tools/app/out/lang-<язык>-<ширина>.png, лист — tools/app/out/lang.png (английский).
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,6 +12,11 @@ const SIZES = [
   [2560, 1440],
   [3840, 2160],
 ];
+/**
+ * Масштабы интерфейса каждого экрана (Б13, шаг 1): наименьший, первого запуска и наибольший, что помещает панели
+ * (src/app/scale.ts, `MIN_VIEW`); первый — тот, с которым окно открылось.
+ */
+const SCALES = { 1920: [1, 0.75, 1.5], 2560: [1.25, 0.75, 2], 3840: [1.5, 0.75, 2] };
 const LANGS = ['ru', 'en'];
 /** Окна по очереди: открыть, подождать вид, измерить, закрыть. */
 const WINDOWS = [
@@ -25,7 +31,7 @@ const WINDOWS = [
   ['портфель', g => g.actions.togglePortfolio()],
   ['хроника', g => g.actions.toggleChronicle()],
   ['автопаузы', g => g.actions.togglePauses()],
-  ['звук', g => g.actions.toggleSound()],
+  ['настройки', g => g.actions.toggleSettings()],
 ];
 const GANTT_TABS = [undefined, 'jobs', 'launch', 'forecast', 'mrp'];
 const REF_TABS = ['products', 'materials', 'recipes', 'equipment', 'places', 'lab', 'people', 'partners', 'docs'];
@@ -60,23 +66,44 @@ export async function langPart(x) {
         await page.screenshot({ path: join(out, `lang-${lang}-${w}.png`) });
         shots.push({ file: join(out, `lang-${lang}-${w}.png`), label });
         await page.evaluate(() => window.__game.actions.closeMorning(false));
-        for (const [name, open] of WINDOWS) {
-          await page.evaluate(`(${open.toString()})(window.__game)`);
-          await take(name);
-          await page.evaluate(`(${open.toString()})(window.__game)`);
+        const first = await page.evaluate(() => window.__game.store.get().settings.scale);
+        if (first !== SCALES[w][0]) found.set(`масштаб первого запуска ${first}, а не ${SCALES[w][0]}`, 'настройки');
+        for (const k of SCALES[w]) {
+          const at = `${Math.round(k * 100)} %`;
+          await page.evaluate(v => window.__game.actions.setScale(v), k);
+          if (k !== SCALES[w][0]) {
+            await page.evaluate(() => window.__game.actions.openMorning());
+            await page.waitForFunction(() => !!window.__game.store.get().morning.view, null, { timeout: 30_000 });
+            await take(`${at} · полоса и планёрка`);
+            await page.evaluate(() => window.__game.actions.closeMorning(false));
+          }
+          for (const [name, open] of WINDOWS) {
+            await page.evaluate(`(${open.toString()})(window.__game)`);
+            await take(`${at} · ${name}`);
+            await page.evaluate(`(${open.toString()})(window.__game)`);
+          }
+          await page.evaluate(() => window.__game.actions.toggleGantt());
+          for (const t of GANTT_TABS) {
+            await page.evaluate(tab => window.__game.actions.ganttTab(tab), t);
+            await take(`${at} · расписание${t ? ` · ${t}` : ''}`);
+          }
+          await page.evaluate(() => window.__game.actions.toggleGantt());
+          await page.evaluate(() => window.__game.actions.toggleRef());
+          for (const t of REF_TABS) {
+            await page.evaluate(tab => window.__game.actions.setRefTab(tab), t);
+            await take(`${at} · справочник · ${t}`);
+          }
+          await page.evaluate(() => window.__game.actions.toggleRef());
+          // наибольший масштаб — снимок с планёркой
+          if (k === Math.max(...SCALES[w])) {
+            await page.evaluate(() => window.__game.actions.openMorning());
+            await page.waitForFunction(() => !!window.__game.store.get().morning.view, null, { timeout: 30_000 });
+            await page.waitForTimeout(500);
+            await page.screenshot({ path: join(out, `lang-${lang}-${w}-${Math.round(k * 100)}.png`) });
+            shots.push({ file: join(out, `lang-${lang}-${w}-${Math.round(k * 100)}.png`), label: `${label}, ${at}` });
+            await page.evaluate(() => window.__game.actions.closeMorning(false));
+          }
         }
-        await page.evaluate(() => window.__game.actions.toggleGantt());
-        for (const t of GANTT_TABS) {
-          await page.evaluate(tab => window.__game.actions.ganttTab(tab), t);
-          await take(`расписание${t ? ` · ${t}` : ''}`);
-        }
-        await page.evaluate(() => window.__game.actions.toggleGantt());
-        await page.evaluate(() => window.__game.actions.toggleRef());
-        for (const t of REF_TABS) {
-          await page.evaluate(tab => window.__game.actions.setRefTab(tab), t);
-          await take(`справочник · ${t}`);
-        }
-        await page.evaluate(() => window.__game.actions.toggleRef());
       } catch (e) {
         fail(`${label}: ${e instanceof Error ? e.message : String(e)}`);
       }

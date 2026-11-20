@@ -83,7 +83,9 @@ export interface Hud {
    * звук (Б11, шаг 1; src/app/sound.ts): громкость 0–1 ступенями, «Подписи звуков» — звук извещения ещё и словом в полосе;
    * открыто ли меню; громкость и подписи запоминаются в окне
    */
-  sound: { open: boolean; volume: number; captions: boolean };
+  sound: { volume: number; captions: boolean };
+  /** окно «Настройки» (Б13, шаг 1): открыто ли; масштаб интерфейса — 0,75…2 (src/app/scale.ts) */
+  settings: { open: boolean; scale: number };
   /** первый экран (Б11, шаг 2): сколько шагов загрузки прошло и какой идёт — настоящие шаги `Game.create` */
   load: { done: number; step: LoadStep };
   fps: number;
@@ -279,7 +281,8 @@ export const initial: Hud = {
   art: 'code',
   walls: 'cut',
   less: false,
-  sound: { open: false, volume: 0.7, captions: false },
+  sound: { volume: 0.7, captions: false },
+  settings: { open: false, scale: 1 },
   load: { done: 0, step: 'font' },
   fps: 0,
   cpuMs: 0,
@@ -332,7 +335,9 @@ export interface Actions {
   /** «меньше движения»: включить или выключить — запоминается в окне (src/app/motion.ts) */
   setLess(on: boolean): void;
   /** меню звука: открыть или закрыть; громкость и «Подписи звуков» — запоминаются в окне (src/app/sound.ts) */
-  toggleSound(): void;
+  toggleSettings(): void;
+  /** масштаб интерфейса (Б13, шаг 1): ступень 0,75…2 — на ходу, запоминается в окне (src/app/scale.ts) */
+  setScale(k: number): void;
   /** язык окна (Б12, шаг 1): RU или EN — на ходу, запоминается в окне (src/app/lang.ts) */
   setLang(l: Lang): void;
   setVolume(v: number): void;

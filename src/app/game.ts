@@ -51,6 +51,7 @@ import { keepLess, keptLess, systemLess } from './motion';
 import { keepLang } from './lang';
 import { type Cue, keepSound, keptCaptions, keptVolume, noticeCue, Sound, sliceCue, volumeOf } from './sound';
 import { keep, windowKeep } from './preset';
+import { applyScale, keepScale } from './scale';
 import { type Box, machineBoxes, nearest, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
 import { carriedOf, dockFront, palletsOf, SceneState } from './scene';
 import { type TruckPose, Yard } from './yard';
@@ -298,7 +299,7 @@ export class Game {
     // «меньше движения» (правило 6 ADR 0023 устава): выбор игрока или, пока не выбирал, — как просит система
     const less = keptLess(windowKeep(), systemLess());
     g.applyLess(less);
-    store.set({ ready: true, start: sc.start.date, quality, walls: g.stage.wallMode, less, sound: { open: false, volume: g.sound.volume, captions: keptCaptions(windowKeep()) }, pauses: { open: false, off: keptOff(windowKeep()) }, firsts: keptFirsts(windowKeep()) });
+    store.set({ ready: true, start: sc.start.date, quality, walls: g.stage.wallMode, less, sound: { volume: g.sound.volume, captions: keptCaptions(windowKeep()) }, pauses: { open: false, off: keptOff(windowKeep()) }, firsts: keptFirsts(windowKeep()) });
     // игра начинается с экрана «Кем вы будете» (3е): мир стоит, пока место не выбрано; «Взять» пустит его на ×1
     g.speed = 0;
     g.resume = 1;
@@ -1070,7 +1071,12 @@ export class Game {
       this.sendViews();
       this.hud();
     },
-    toggleSound: () => this.store.set({ sound: { ...this.store.get().sound, open: !this.store.get().sound.open } }),
+    toggleSettings: () => this.store.set({ settings: { ...this.store.get().settings, open: !this.store.get().settings.open } }),
+    setScale: (k: number) => {
+      applyScale(k);
+      keepScale(windowKeep(), k);
+      this.store.set({ settings: { ...this.store.get().settings, scale: k } });
+    },
     setVolume: v => {
       const volume = volumeOf(v);
       this.sound.setVolume(volume);
@@ -2170,6 +2176,7 @@ export class Game {
         else if (h.po.open) this.actions.togglePo();
         else if (h.pauses.open) this.actions.togglePauses();
         else if (h.menu.open) this.actions.toggleMenu();
+        else if (h.settings.open) this.actions.toggleSettings();
         else if (this.selected) this.actions.select(undefined);
         else if (h.gantt.open) this.actions.toggleGantt();
         else if (h.inv.open) this.actions.toggleInv();
@@ -2185,6 +2192,10 @@ export class Game {
         else if (h.journal.open) this.actions.toggleJournal();
         else if (h.chronicle.open) this.actions.toggleChronicle();
         else if (h.stock.open) this.actions.toggleStock();
+        else if (h.letters.open) this.actions.toggleLetters();
+        else if (h.goals.open) this.actions.toggleGoals();
+        // закрывать больше нечего — окно «Настройки» (Б13), как меню паузы в играх
+        else this.actions.toggleSettings();
       } else this.mouse.keys.add(k);
     });
     window.addEventListener('keyup', e => this.mouse.keys.delete(e.code));

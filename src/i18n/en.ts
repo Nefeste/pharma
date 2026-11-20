@@ -96,6 +96,18 @@ export const en: Strings = {
     langHint: 'Window language: changes at once, the choice is kept',
     langs: { ru: 'RU', en: 'EN' },
   },
+  settings: {
+    button: (pct: number) => (pct === 0 ? 'Settings · muted' : 'Settings'),
+    hint: 'Interface scale, graphics, motion, sound and language; kept on this computer',
+    title: 'Settings',
+    screen: 'Screen',
+    scale: 'Interface scale',
+    scaleHint: 'Panels, text and map labels larger or smaller; changes at once, the choice is kept',
+    scaleBig: 'Too large for this screen: the panels would not fit',
+    pct: (pct: number) => `${pct}%`,
+    quality: 'Graphics',
+    qualityHint: 'Graphics preset: shadows, light and draw distance; changes at once',
+  },
   /** autopauses (B2a; game design, §2): the menu — what stops the world */
   pauses: {
     button: 'Autopauses',

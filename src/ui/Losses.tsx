@@ -2,6 +2,7 @@
 // частей словами; подсказка у столбика — часы частей места за окно; блок «Потери» в карточке помещения и машины линии —
 // места карточки с часами, у раскрытого — часы по видам и причинам ожидания и вещи каждой части, щелчок по вещи — её
 // карточка или досье. Вид — «Пол» из потока расчёта (src/sim/floor.ts), слова — из src/i18n/.
+import { uiK } from '../app/scale';
 import { ALL_KINDS, FAMILY_OF, lossColor, type LossPart, LOSS_PICKS, lossSpotsOf, partsOfLoss, secOfLoss, spotName, spotsOfThing, WAIT_FAMILIES } from '../app/losses';
 import type { Plant } from '../content/types';
 import type { LossKind, WaitCause } from '../engine/types';
@@ -72,7 +73,7 @@ export function LossTip({ hud, plant }: { hud: Hud; plant: Plant }) {
   if (!x) return null;
   const pick = hud.floor.pick;
   return (
-    <div className="floortip panel" style={{ left: h.x + 14, top: h.y + 14 }} data-test="loss-tip">
+    <div className="floortip panel" style={{ left: (h.x + 14) / uiK(), top: (h.y + 14) / uiK() }} data-test="loss-tip">
       <b>{spotName(l, x.spot)}</b>
       <ul>
         {pick === 'wait'

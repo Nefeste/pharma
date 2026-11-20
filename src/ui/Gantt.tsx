@@ -6,6 +6,7 @@
 // суток вперёд на пяти зёрнах во втором потоке: «как сейчас» и черновик на одних и тех же зёрнах; итог — под расписанием.
 // Щелчок по полосе — камера к помещению или линии. Виды собирает поток расчёта (src/sim/plan.ts), итог прогона — поток
 // прогона (src/sim/planHost.ts); здесь — слова, рисунок и мышь.
+import { uiK } from '../app/scale';
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import type { Id, Plant } from '../content/types';
 import { HOUR, momentOf, type Ymd } from '../engine/core/calendar';
@@ -556,7 +557,7 @@ export function Gantt({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
       )}
       {p.running || p.error || p.sums.some(Boolean) ? <PlanSum p={p} start={start} stale={p.key !== draftKey(g.draft, g.urgent, g.drop, g.routes ?? [])} rowName={rowName} lineNo={lineNo} /> : null}
       {g.drag && tip ? (
-        <div className="gtip panel" style={{ left: Math.min(tip.x + 14, window.innerWidth - 380), top: tip.y + 14 }} data-test="gtip">
+        <div className="gtip panel" style={{ left: Math.min(tip.x + 14, window.innerWidth - 380 * uiK()) / uiK(), top: (tip.y + 14) / uiK() }} data-test="gtip">
           <div>
             <b>{who(labels, g.drag.batch)}</b> · {T.gantt.notBefore(timeText(g.drag.notBefore))}
           </div>

@@ -3,6 +3,7 @@
 // помещения и машины — те же часы, у линии — OEE с множителями, «Почему?» — минуты остановок по машинам и видам. С Б1к —
 // подсказка у таблички «Узких мест» и у значка андона, блок «Узкие места» в карточке помещения, «держит линию» в блоке
 // «Загрузка» машины. Виды — «Пол» и «Андон» из потока расчёта (src/sim/floor.ts, src/sim/andon.ts), слова — из src/i18n/.
+import { uiK } from '../app/scale';
 import type { Plant } from '../content/types';
 import type { Ymd } from '../engine/core/calendar';
 import { useState } from 'react';
@@ -129,7 +130,7 @@ export function FloorTip({ hud, plant }: { hud: Hud; plant: Plant }) {
   const x = rowsOf(v, h.thing, plant);
   if (!x) return null;
   return (
-    <div className="floortip panel" style={{ left: h.x + 14, top: h.y + 14 }} data-test="floor-tip">
+    <div className="floortip panel" style={{ left: (h.x + 14) / uiK(), top: (h.y + 14) / uiK() }} data-test="floor-tip">
       <b>{x.title}</b>
       <ul>
         {x.rows.filter(r => r.sec > 0).map(r => (
@@ -261,7 +262,7 @@ function BottleTip({ hud, plant }: { hud: Hud; plant: Plant }) {
   const t = h.thing;
   const rank = t.kind === 'room' ? v.waits.filter(x => x.total > 0).findIndex(x => x.i === t.i) : -1;
   return (
-    <div className="floortip panel" style={{ left: h.x + 14, top: h.y + 14 }} data-test="bottle-tip">
+    <div className="floortip panel" style={{ left: (h.x + 14) / uiK(), top: (h.y + 14) / uiK() }} data-test="bottle-tip">
       <b>{thingName(t, plant)}</b>
       {t.kind === 'room' ? <WaitList v={v} i={t.i} rank={rank >= 0 && rank < 3 ? rank + 1 : undefined} /> : null}
       {t.kind === 'machine' ? <HoldsRows v={v} line={t.line} k={t.k} plant={plant} /> : null}
@@ -386,7 +387,7 @@ function AndonTip({ hud, plant }: { hud: Hud; plant: Plant }) {
   const item = v.items.find(x => JSON.stringify(x.thing) === JSON.stringify(h.thing));
   if (!item) return null;
   return (
-    <div className="floortip panel" style={{ left: h.x + 14, top: h.y + 14 }} data-test="andon-tip">
+    <div className="floortip panel" style={{ left: (h.x + 14) / uiK(), top: (h.y + 14) / uiK() }} data-test="andon-tip">
       <b>{thingName(item.thing, plant)}</b>
       <AndonRows item={item} plant={plant} start={hud.start} />
     </div>

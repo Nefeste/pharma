@@ -7,7 +7,6 @@
 import { useLayoutEffect, useRef } from 'react';
 import { momentOf } from '../engine/core/calendar';
 import { clock, dateText, money, named, T, whenText } from '../i18n';
-import { QUALITIES } from '../render/view';
 import type { WallMode } from '../render/world';
 import { Card } from './Card';
 import { Cash } from './Cash';
@@ -34,6 +33,8 @@ import { Now, rowTitle } from './Now';
 import { Pauses } from './Pauses';
 import { Ref } from './Ref';
 import { Seats } from './Seats';
+import { Settings } from './Settings';
+import { uiK } from '../app/scale';
 import { Stock } from './Stock';
 import { watchFor } from '../app/watch';
 import { type Actions, type Hud, LIVE, LOAD_STEPS, type Speed, type Store, useHud } from './store';
@@ -52,10 +53,13 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
   useLayoutEffect(() => {
     const el = top.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => document.documentElement.style.setProperty('--top-h', `${Math.ceil(el.getBoundingClientRect().bottom)}px`));
+    // низ — в точках экрана, а панели под ним — в точках `#ui`: под масштабом интерфейса (Б13) точка `#ui` — `k` точек экрана
+    const put = () => document.documentElement.style.setProperty('--top-h', `${Math.ceil(el.getBoundingClientRect().bottom / uiK())}px`);
+    put();
+    const ro = new ResizeObserver(put);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [s.ready]);
+  }, [s.ready, s.settings.scale]);
   if (s.error)
     return (
       <div className="status panel">
@@ -111,11 +115,8 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
             <button type="button" className={s.menu.open ? 'on' : ''} onClick={() => actions.toggleMenu()} title={T.saves.menuHint} data-test="menu-open">
               {T.saves.menu}
             </button>
-            <button type="button" className={s.sound.open ? 'on' : ''} onClick={() => actions.toggleSound()} title={T.sound.hint} data-test="sound-open">
-              {T.sound.button(Math.round(s.sound.volume * 100))}
-            </button>
-            <button type="button" className={s.less ? 'on' : ''} aria-pressed={s.less} onClick={() => actions.setLess(!s.less)} title={T.view.lessHint} data-test="less-motion">
-              {T.view.less}
+            <button type="button" className={s.settings.open ? 'on' : ''} onClick={() => actions.toggleSettings()} title={T.settings.hint} data-test="settings-open">
+              {T.settings.button(Math.round(s.sound.volume * 100))}
             </button>
           </span>
           <span className="group nav" data-test="nav">
@@ -208,8 +209,8 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
       <Guard name={T.saves.menu} close={s.menu.open ? actions.toggleMenu : undefined}>
         {s.menu.open && <GameMenu hud={s} actions={actions} />}
       </Guard>
-      <Guard name={T.sound.title} close={s.sound.open ? actions.toggleSound : undefined}>
-        {s.sound.open && <SoundMenu hud={s} actions={actions} />}
+      <Guard name={T.settings.title} close={s.settings.open ? actions.toggleSettings : undefined}>
+        {s.settings.open && <Settings hud={s} actions={actions} />}
       </Guard>
       <Guard name={T.pauses.button} close={s.pauses.open ? actions.togglePauses : undefined}>
         {s.pauses.open && <Pauses hud={s} actions={actions} />}
@@ -287,14 +288,6 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
             {s.gpuMs !== null && <> · {T.debug.gpu(s.gpuMs.toFixed(1))}</>}
           </span>
           <span className="group">
-            <span className="label">{T.debug.quality}</span>
-            {QUALITIES.map(q => (
-              <button key={q} className={s.quality === q ? 'on' : ''} onClick={() => actions.pickQuality(q)}>
-                {T.debug.qualities[q]}
-              </button>
-            ))}
-          </span>
-          <span className="group">
             <span className="label">{T.debug.art}</span>
             {(['blender', 'code'] as const).map(a => (
               <button key={a} className={s.art === a ? 'on' : ''} onClick={() => actions.setArt(a)} data-test={`art-${a}`}>
@@ -342,35 +335,8 @@ function FirstScreen({ load, version }: { load: Hud['load']; version: string | u
 }
 
 /** Языки окна (Б12): порядок кнопок. */
-const LANGS = ['ru', 'en'] as const;
 
 /** Меню звука и языка (Б11, шаг 1; Б12, шаг 1): громкость ступенями по 10 % и «Подписи звуков»; запоминаются в окне. */
-function SoundMenu({ hud, actions }: { hud: Hud; actions: Actions }) {
-  const pct = Math.round(hud.sound.volume * 100);
-  return (
-    <div className="pauses panel" id="sound" data-test="sound">
-      <b>{T.sound.title}</b>
-      <label>
-        {T.sound.volume}{' '}
-        <input type="range" min={0} max={100} step={10} value={pct} onChange={e => actions.setVolume(Number(e.currentTarget.value) / 100)} data-test="volume" />{' '}
-        <span data-test="volume-value">{T.sound.value(pct)}</span>
-      </label>
-      <label title={T.sound.captionsHint}>
-        <input type="checkbox" checked={hud.sound.captions} onChange={e => actions.setCaptions(e.currentTarget.checked)} data-test="captions" /> {T.sound.captions}
-      </label>
-      {/* язык окна (Б12, шаг 1): на ходу, запоминается в окне */}
-      <span className="group" title={T.sound.langHint}>
-        <span className="label">{T.sound.lang}</span>
-        {LANGS.map(l => (
-          <button key={l} type="button" className={hud.lang === l ? 'on' : ''} aria-pressed={hud.lang === l} onClick={() => actions.setLang(l)} data-test="lang" data-lang={l}>
-            {T.sound.langs[l]}
-          </button>
-        ))}
-      </span>
-    </div>
-  );
-}
-
 /**
  * Последнее извещение: на котором мир встал (автопауза, Б2а), — со знаком паузы, не только цветом (13-art.md, §14); щелчок
  * ведёт на место. Извещение о расследовании ведёт к его доске.

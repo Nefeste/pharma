@@ -678,7 +678,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   the start preset — the frame measured on medium at first run, low if slower than 33 ms, the result and the player's
   choice kept in the window (`preset.ts`); «Меньше движения» by rule 6 of the charter's ADR 0023 — the player's choice
   kept in the window, otherwise `prefers-reduced-motion`; on, the camera turns without gliding and the detail level
-  changes at once (`motion.ts`); with Б12 the window language — from the address, the player's choice kept in the
+  changes at once (`motion.ts`); with Б13 the interface scale — 75–200 % by 25, `--ui-k` on the root and `zoom` on
+  `#ui`, the first run by the window's height, only the steps that leave the panels 1280 × 720 points, the player's
+  choice kept in the window, `uiK` for what the window places in screen points (`scale.ts`); with Б12 the window language — from the address, the player's choice kept in the
   window or the system's (`lang.ts`); the overflow check — text wider than its box and cut, not by an ellipsis, or a
   box cut by a clipping parent or the window's edge, a panel scrolling sideways, a pure rule over measurements
   (`overflow.ts`); the windows — a panel to the front on a click and dragged by its header, its shift kept by its kind
@@ -783,7 +785,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   (`Portfolio.tsx`), with Б9 the «Кампания» screen before «Кем вы будете» — the scenarios by their campaign number
   (`Campaign.tsx`), the goals window with the result at the end of the term (`Goals.tsx`) and a goal in words
   (`goalwords.ts`), with Б9 step 2 the letters panel — rows, the open letter in words, «Показать», «Пропустить»,
-  «Пропустить обучение» (`Letters.tsx`), with Б10 the chronicle panel — H, day, week, month or year, «Раньше» and
+  «Пропустить обучение» (`Letters.tsx`), with Б13 the «Настройки» window — the screen (scale, graphics, «Меньше
+  движения»), the sound and the language (`Settings.tsx`), with Б10 the chronicle panel — H, day, week, month or year, «Раньше» and
   «Позже», the chapter's sum, «Итоги года», an entry in words with its click, «Сохранить хронику» — the whole chronicle
   as text by months (`Chronicle.tsx`), the investigation board — steps, findings in
   words with numbers

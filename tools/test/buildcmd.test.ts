@@ -432,3 +432,24 @@ describe('прогон плана', () => {
     expect(s.build!.undo.length).toBe(1);
   });
 });
+
+describe('пристройка по игре владельца 20.11.2026', () => {
+  test('дверь из старого коридора в пристройку без помещения — «за стеной корпус без помещения»; с коридором — можно', async () => {
+    const { editPlan } = await import('../../src/engine/site/edit');
+    const { siteErrors } = await import('../../src/engine/site/checks');
+    const s = newPlant(db, { scenario: SC });
+    const grown = editPlan(db, B, s.plan, { op: 'hull', rect: [59, 20, 20, 20] }, {});
+    expect(grown.ok).toBe(true);
+    if (!grown.ok) return;
+    // стена коридора «hall» на востоке — клетки x = 59; за ней — корпус пристройки без помещения
+    const door = { op: 'door' as const, cell: [59, 22] as [number, number], len: 1, along: 'z' as const, kind: 'door' as const };
+    const bare = editPlan(db, B, grown.plan, door, {});
+    expect(bare.ok ? [] : bare.error).toMatchObject({ code: 'site', error: { code: 'doorUnbuilt' } });
+    const corridor = editPlan(db, B, grown.plan, { op: 'room', type: 'corridor', grade: 'cnc', rect: [59, 20, 20, 5] }, {});
+    expect(corridor.ok ? 'ok' : corridor.error).toBe('ok');
+    if (!corridor.ok) return;
+    const through = editPlan(db, B, corridor.plan, door, {});
+    expect(through.ok).toBe(true);
+    if (through.ok) expect(siteErrors(db, through.plan).filter(e => e.code === 'doorUnbuilt' || e.code === 'doorSides')).toEqual([]);
+  });
+});

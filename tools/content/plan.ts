@@ -37,6 +37,8 @@ export function siteErrorText(e: SiteError): string {
       return `дверь ${e.door + 1} (${e.x}, ${e.z}) — не на стене`;
     case 'doorSides':
       return `дверь ${e.door + 1} (${e.x}, ${e.z}) — не между двумя помещениями`;
+    case 'doorUnbuilt':
+      return `дверь ${e.door + 1} (${e.x}, ${e.z}) ведёт в корпус без помещения`;
     case 'doorMixed':
       return `дверь ${e.door + 1} — клетки ведут в разные помещения`;
     case 'dockInner':

@@ -263,9 +263,23 @@ export function buildGround(l: Layout, anisotropy: number): THREE.Mesh[] {
   strip(0, -2, w + 2, 2, paving, -0.006, 'paving n');
   strip(0, h, w + 2, 2, paving, -0.006, 'paving s');
   strip(w, 0, 2, h, paving, -0.006, 'paving e');
+  // участок (Б7б): газон до его края и бордюр по краю — видно, куда корпус может расти (по игре владельца 20.11.2026);
+  // запад — рампа и двор
+  const [lw, lh] = l.plan.plant.lot.size.map(v => v / 100);
   strip(0, -8, w + 8, 6, grass, -0.012, 'grass n');
-  strip(0, h + 2, w + 8, 6, grass, -0.012, 'grass s');
-  strip(w + 2, -2, 6, h + 4, grass, -0.012, 'grass e');
+  strip(0, 0, Math.max(lw, w + 8), Math.max(lh, h + 8), grass, -0.012, 'grass lot');
+  const curb = new THREE.MeshStandardMaterial({ color: 0xb9bdbf, roughness: 0.9 });
+  for (const [x, z, sw, sd] of [
+    [0, -0.15, lw, 0.15],
+    [0, lh, lw, 0.15],
+    [lw, -0.15, 0.15, lh + 0.3],
+  ] as const) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(sw, 0.12, sd), curb);
+    m.position.set(x + sw / 2, 0.05, z + sd / 2);
+    m.receiveShadow = true;
+    m.name = 'lot edge';
+    out.push(m);
+  }
   const far = new THREE.PlaneGeometry(w + 400, h + 400).rotateX(-Math.PI / 2);
   far.translate(w / 2, YARD_Y - 0.03, h / 2);
   const fm = new THREE.Mesh(far, new THREE.MeshStandardMaterial({ color: 0x23282b, roughness: 1 }));

@@ -306,26 +306,26 @@ try {
     await mainPart();
     await page.close();
   } else await page.close();
-  if (only === '' || only === 'week') await weekPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'memo') await memoPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'capa') await capaPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'jobs') await jobsPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'launch') await launchPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'forecast') await forecastPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'sop') await sopPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'mrp') await mrpPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'edits') await editsPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'build') await buildPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'equip') await equipPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
-  if (only === '' || only === 'route') await routePart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'sources') await sourcesPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
-  if (only === '' || only === 'portfolio') await portfolioPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
-  if (only === '' || only === 'c1') await c1Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'c2') await c2Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low'), long: arg('long', '') === '1' });
-  if (only === '' || only === 'chronicle') await chronPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'sound') await soundPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'brand') await brandPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
-  if (only === '' || only === 'lang') await langPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low') });
+  if (only === '' || only === 'week') await weekPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'memo') await memoPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'capa') await capaPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'jobs') await jobsPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'launch') await launchPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'forecast') await forecastPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'sop') await sopPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'mrp') await mrpPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'edits') await editsPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'build') await buildPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'equip') await equipPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1'), long: arg('long', '') === '1' });
+  if (only === '' || only === 'route') await routePart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'sources') await sourcesPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1'), long: arg('long', '') === '1' });
+  if (only === '' || only === 'portfolio') await portfolioPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1'), long: arg('long', '') === '1' });
+  if (only === '' || only === 'c1') await c1Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'c2') await c2Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1'), long: arg('long', '') === '1' });
+  if (only === '' || only === 'chronicle') await chronPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'sound') await soundPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'brand') await brandPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'lang') await langPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
@@ -338,7 +338,7 @@ try {
 }
 
 async function mainPart() {
-  await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru&scn=scn.proto`);
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low&fastff=1')}&lang=ru&scn=scn.proto`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 60_000 });
   ok('страница загружена, первый кадр нарисован');
 

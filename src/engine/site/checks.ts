@@ -31,6 +31,8 @@ export type SiteError =
   | { code: 'twice'; type: string }
   | { code: 'doorWall'; door: number; x: number; z: number }
   | { code: 'doorSides'; door: number; x: number; z: number }
+  /** по ту сторону стены — корпус без помещения: сначала помещение там, например коридор (по игре владельца 20.11.2026) */
+  | { code: 'doorUnbuilt'; door: number; x: number; z: number }
   | { code: 'doorMixed'; door: number }
   | { code: 'dockInner'; door: number }
   | { code: 'airlock'; door: number; from?: string; to?: string }
@@ -96,6 +98,9 @@ export const FLOOR = 1;
 export const roleOf = (db: ContentDb, type: string): RoomRole | undefined => db.rooms[type]?.role;
 const isAirlock = (role: RoomRole | undefined) => role === 'airlockPeople' || role === 'airlockMaterial';
 
+/** Сторона двери — корпус без помещения. */
+const UNBUILT = -2;
+
 /** Ошибки планировки плана здания — по порядку правил; нет ошибок — пустой список. */
 export function siteErrors(db: ContentDb, plant: Plant): SiteError[] {
   const out: SiteError[] = [];
@@ -136,7 +141,7 @@ export function siteErrors(db: ContentDb, plant: Plant): SiteError[] {
     const c = bare.cells[i];
     if (c === CELL.outside) return -1;
     if (c === CELL.floor || c === CELL.corridor) return bare.room[i];
-    return undefined;
+    return c === CELL.unbuilt ? UNBUILT : undefined;
   };
   // проёмы помещений: сколько дверей ведёт в помещение (у мойки — свой вход грязного и выход чистого, Б7б)
   const doorsOf = new Map<number, number>();
@@ -150,6 +155,10 @@ export function siteErrors(db: ContentDb, plant: Plant): SiteError[] {
       }
       const a = d.along === 'x' ? side(x, z - 1) : side(x - 1, z);
       const b = d.along === 'x' ? side(x, z + 1) : side(x + 1, z);
+      if (a === UNBUILT || b === UNBUILT) {
+        out.push({ code: 'doorUnbuilt', door: k, x, z });
+        return;
+      }
       if (a === undefined || b === undefined || a === b) {
         out.push({ code: 'doorSides', door: k, x, z });
         return;

@@ -60,6 +60,19 @@ function reachText(db: ContentDb, plan: Plant, w: SiteThing): string {
 export function siteText(db: ContentDb, plan: Plant, e: SiteError): string {
   const t = T.build.site;
   switch (e.code) {
+    case 'lot': {
+      // сколько участка осталось от корпуса (без того прямоугольника, что вышел за край) до каждого края, м: север — к
+      // меньшему z, восток — к большему x (по игре владельца 20.11.2026)
+      const rest = plan.hull.filter((_, i) => i !== e.hull);
+      if (rest.length === 0) return t.lot;
+      const m = (v: number) => Math.max(0, Math.floor(v / CELL_CM) - 1);
+      const [lw, lh] = plan.lot.size;
+      const x0 = Math.min(...rest.map(r => r[0])) - CELL_CM;
+      const z0 = Math.min(...rest.map(r => r[1])) - CELL_CM;
+      const x1 = Math.max(...rest.map(r => r[0] + r[2])) + CELL_CM;
+      const z1 = Math.max(...rest.map(r => r[1] + r[3])) + CELL_CM;
+      return t.lotRoom(m(z0 + CELL_CM), m(lh - z1 + CELL_CM), m(x0 + CELL_CM), m(lw - x1 + CELL_CM));
+    }
     case 'small':
       return t.small(e.min[0], e.min[1]);
     case 'walk':

@@ -4,6 +4,7 @@
 //   «Узкие места» и «Проблемы» (Б1к), losses — «Потери» (Б1л); ?art=code — машины кодом, без моделей из Blender (#109). В
 //   Electron — те же ключи:
 //   --q low, --bench, --secs 15, --layer load, --art code.
+import { windows } from './windows';
 import { createRoot } from 'react-dom/client';
 import { setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
@@ -178,6 +179,8 @@ const actions: Actions = {
   closeSeats: later('closeSeats'),
 };
 createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} />);
+// окна: наверх по щелчку, тащить за заголовок (по игре владельца 20.11.2026)
+windows(document.getElementById('ui')!);
 
 const asked = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q'));
 // пресет: из адреса (проверки) — как есть; иначе запомненный; первый запуск — средний, замер решит (preset.ts)
@@ -233,6 +236,8 @@ Game.create(document.getElementById('view')!, store, quality, q.get('art') === '
     if (val('art') === 'code' && g.store.get().art !== 'code') g.actions.setArt('code');
     // звука нет в «Авто-бенче» и в снимках сценария браузера (Б11, шаг 1)
     if (has('bench') || has('shot')) g.sound.silence();
+    // сценарий браузера: промотка без отрисовки кадров (снимки — после неё)
+    if (has('fastff')) g.drawFF = false;
     if (has('bench')) {
       // бенч сцены — директором: экран «Кем вы будете» не заслоняет снимки
       g.actions.pickSeat('director');

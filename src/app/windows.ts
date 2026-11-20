@@ -32,6 +32,8 @@ export const keyOf = (cls: string): string => {
   return c.slice(0, c[0] === 'stock' || c[0] === 'kpi' ? 2 : 1).join(' ');
 };
 
+import { uiK } from './scale';
+
 const HANDLE = '.phead, .cardhead';
 const NOT_HANDLE = 'button, input, select, textarea, a, label, [contenteditable]';
 /** Окна, которые не двигают и не поднимают: верхняя полоса. */
@@ -61,13 +63,16 @@ export function windows(root: HTMLElement): void {
       const handle = t?.closest<HTMLElement>(HANDLE);
       if (!handle || handle.closest('.panel') !== panel || t?.closest(NOT_HANDLE) || e.button !== 0) return;
       const from = { x: e.clientX, y: e.clientY };
+      // сдвиг — в точках `#ui`, мышь и прямоугольники — в точках экрана: под масштабом интерфейса (Б13) их `k` в точке
+      const k = uiK();
       const start = shiftOf(panel);
       const r = panel.getBoundingClientRect();
-      const base: Rect = { left: r.left - start.x, top: r.top - start.y, right: r.right - start.x, bottom: r.bottom - start.y };
+      const base: Rect = { left: r.left - start.x * k, top: r.top - start.y * k, right: r.right - start.x * k, bottom: r.bottom - start.y * k };
       const key = keyOf(String(panel.className));
       const edge = topEdge();
       const move = (m: PointerEvent) => {
-        const s = clampShift(base, { x: start.x + m.clientX - from.x, y: start.y + m.clientY - from.y }, view(), edge);
+        const px = clampShift(base, { x: start.x * k + m.clientX - from.x, y: start.y * k + m.clientY - from.y }, view(), edge);
+        const s = { x: Math.round(px.x / k), y: Math.round(px.y / k) };
         put(panel, s);
         shifts.set(key, s);
       };

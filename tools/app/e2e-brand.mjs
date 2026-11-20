@@ -54,7 +54,7 @@ export async function brandPart(x) {
     else ok(`F12 — ${dl.suggestedFilename()}, PNG ${Math.round(size / 1024)} КБ; «${line}»`);
 
     // язык окна (Б12, шаг 1): EN в меню звука — полоса по-английски и в одну строку, выбор помнится; RU — обратно
-    await page.click('[data-test=sound-open]');
+    await page.click('[data-test=settings-open]');
     await page.click('[data-test=lang][data-lang=en]');
     await page.waitForFunction(() => document.documentElement.lang === 'en' && document.querySelector('[data-test=lang][data-lang=en]')?.classList.contains('on'), null, { timeout: 10_000 });
     const enBar = await page.evaluate(() => ({

@@ -16,7 +16,7 @@ const root = css.slice(rootAt, rootEnd);
 const rules = css.slice(0, rootAt) + css.slice(rootEnd);
 const tokens = new Map([...root.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map(m => [m[1], m[2].trim()]));
 /** Переменные, которые ставит окно или правило само: высота верхней полосы, цвет полосы расписания. */
-const OWN = new Set(['--top-h', '--c']);
+const OWN = new Set(['--top-h', '--c', '--ui-k']);
 
 type Rgba = [number, number, number, number];
 const COLOUR = /#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)/g;
@@ -65,10 +65,13 @@ describe('токены', () => {
     expect(readFileSync(join(ROOT, 'assets/LICENSES.md'), 'utf8')).toContain('IBM Plex Sans');
     expect(rules).toContain('font: var(--fs-body)/1.35 "IBM Plex Sans"');
     const scale = [...tokens.keys()].filter(k => k.startsWith('--fs-'));
-    expect(scale.map(k => tokens.get(k))).toEqual(['10px', '11px', '12px', '13px', '16px', '18px', '22px', '28px']);
+    // Б13: наименьший текст при 100 % — 12 точек, основной — 14 (геймдизайн, §23); крупнее — масштабом интерфейса
+    expect(scale.map(k => tokens.get(k))).toEqual(['12px', '12px', '13px', '14px', '16px', '18px', '22px', '28px']);
+    for (const k of scale) expect(Number.parseInt(tokens.get(k)!, 10)).toBeGreaterThanOrEqual(12);
     const sizes = [...rules.matchAll(/font-size:\s*([^;}]+)/g)].map(m => m[1].trim());
     expect(sizes.length).toBeGreaterThan(60);
-    for (const s of sizes) expect(s).toMatch(/^var\(--fs-[a-z]+\)$/);
+    // подписи на карте — вне #ui, их шрифт × масштаб интерфейса
+    for (const s of sizes) expect(s).toMatch(/^var\(--fs-[a-z]+\)$|^calc\(var\(--fs-[a-z]+\) \* var\(--ui-k, 1\)\)$/);
   });
 
   test('отступы — ступени шкалы; ноль и точка — сами по себе; скругления — токены', () => {

@@ -18,8 +18,11 @@ import type { Actions, Hud } from './store';
 /** Подпись задания: номер серии, если досье выдано, иначе номер задания. */
 const label = (labels: Record<string, BatchLabel>, j: LaunchJob) => labels[j.batch]?.code ?? T.jobs.order(Number(j.batch.slice(1)));
 
-/** Подпись в узкой клетке: короткий номер серии — продукт и номер, без месяца и года, — или номер задания. */
-const short = (labels: Record<string, BatchLabel>, j: LaunchJob) => labels[j.batch]?.code?.slice(0, 5) ?? T.launch.jobShort(Number(j.batch.slice(1)));
+/**
+ * Подпись в узкой клетке: номер серии по порядку — без кода продукта, он — в строке позиции, без месяца и года (с Б13 шрифт
+ * не мельче 12 точек, «PA007» в клетку дня не входит), — или номер задания; полный номер — в подсказке.
+ */
+const short = (labels: Record<string, BatchLabel>, j: LaunchJob) => labels[j.batch]?.code?.slice(2, 5) ?? T.launch.jobShort(Number(j.batch.slice(1)));
 
 export function Launch({ hud, actions, v, labels, assets, mine, title, edge }: { hud: Hud; actions: Actions; v: LaunchView; labels: Record<string, BatchLabel>; assets: Record<string, AssetInfo>; mine: boolean; title?: string; edge?: number }) {
   const [sel, setSel] = useState<{ sku?: Id; day: number } | null>(null);

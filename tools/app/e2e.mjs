@@ -837,7 +837,10 @@ async function mainPart() {
   // «меньше движения» (правило 6 ADR 0023 устава): включили — поворот камеры за один кадр, выбор запомнен; выключили — как было
   {
     const less = async () => {
+      // «Меньше движения» — в окне «Настройки» (Б13, шаг 1)
+      await page.click('[data-test=settings-open]');
       await page.click('[data-test=less-motion]');
+      await page.click('[data-test=settings-open]');
       return page.evaluate(() => ({ cam: window.__game.stage.cam.less, page: document.documentElement.dataset.motion, kept: localStorage.getItem('pharma.lessMotion') }));
     };
     const on = await less();

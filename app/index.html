@@ -70,10 +70,10 @@
       --bar-pack: #6fc28a;
       --bar-visit: #d8f8c0;
       /* шрифт: плотные сетки, подпись, мелкий, текст, заголовок панели, заголовок окна, число итога, имя игры */
-      --fs-tiny: 10px;
-      --fs-caption: 11px;
-      --fs-small: 12px;
-      --fs-body: 13px;
+      --fs-tiny: 12px;
+      --fs-caption: 12px;
+      --fs-small: 13px;
+      --fs-body: 14px;
       --fs-title: 16px;
       --fs-window: 18px;
       --fs-figure: 22px;
@@ -94,7 +94,9 @@
     }
     html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: var(--fs-body)/1.35 "IBM Plex Sans", system-ui, "Segoe UI", Roboto, sans-serif; font-variant-numeric: tabular-nums; overflow: hidden; }
     #view { position: absolute; inset: 0; touch-action: none; }
-    #ui { position: absolute; inset: 0; pointer-events: none; }
+    /* масштаб интерфейса (Б13, шаг 1; копия «Больницы»): --ui-k — 0,75…2, его ставит окно (src/app/scale.ts); панели —
+       zoom целиком, подписи на карте вне #ui — их шрифт × --ui-k */
+    #ui { position: absolute; inset: 0; pointer-events: none; zoom: var(--ui-k, 1); }
     #ui > * { pointer-events: auto; }
     /* окна (по игре владельца 20.11.2026): заголовок — за него тащат; подсказки — над любым поднятым окном */
     #ui .panel > .phead, #ui .panel > .cardhead { cursor: grab; }
@@ -154,9 +156,9 @@
     .layers.build .ghost.bad { border-left-color: var(--bad); }
     .layers.build .keys { color: var(--muted); font-size: var(--fs-caption); }
     .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-    .rlabel { position: absolute; left: 0; top: 0; padding: var(--sp-1) var(--sp-4); border-radius: var(--r-m); background: var(--glass-tag); border-left: 3px solid var(--ok); font-size: var(--fs-caption); line-height: 1.25; white-space: nowrap; color: var(--text); }
+    .rlabel { position: absolute; left: 0; top: 0; padding: var(--sp-1) var(--sp-4); border-radius: var(--r-m); background: var(--glass-tag); border-left: 3px solid var(--ok); font-size: calc(var(--fs-caption) * var(--ui-k, 1)); line-height: 1.25; white-space: nowrap; color: var(--text); }
     .rlabel.bad { border-left-color: var(--bad); }
-    .rlabel b { display: block; font-size: var(--fs-small); }
+    .rlabel b { display: block; font-size: calc(var(--fs-small) * var(--ui-k, 1)); }
     .rlabel span { color: var(--muted); }
     .rlabel.bad span { color: var(--bad-text-2); }
     /* слои — плотным списком: со шкалой отступов кнопка выросла на две точки, и список доставал до карточки снизу */
@@ -403,7 +405,7 @@
     .goals li.ok { color: var(--ok); }
     .goals .take { align-self: flex-start; }
     .letters { position: absolute; left: 8px; top: calc(var(--top-h, 48px) + 8px); width: min(520px, calc(100% - 16px)); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow: auto; padding: var(--sp-4) var(--sp-6) var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3); z-index: 6; background: var(--window); box-shadow: var(--shadow-over); }
-    .letters .lrows { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow: auto; }
+    .letters .lrows { list-style: none; margin: 0; padding: 0; max-height: calc(30vh / var(--ui-k, 1)); overflow: auto; }
     .letters .lrow { display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; background: none; border: 0; border-left: 3px solid transparent; padding: var(--sp-2) var(--sp-3); color: inherit; }
     .letters .lrow.on { background: var(--raised); border-left-color: var(--accent); }
     .letters .lrow.new > span:first-child { font-weight: 600; }
@@ -605,8 +607,11 @@
     .top .notice.stop { color: var(--text); font-weight: 600; }
     button.notice.link.stop { color: var(--warn); }
     .pauses { position: absolute; left: 8px; top: calc(var(--top-h, 48px) + 8px); padding: var(--sp-4) var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-2); max-width: calc(100% - 16px); z-index: 4; }
-    /* меню звука и языка (Б11, Б12) — справа, под своей кнопкой: слева панель слоёв */
-    #sound { left: auto; right: 8px; }
+    /* окно «Настройки» (Б13; было меню звука и языка, Б11, Б12) — справа, под своей кнопкой: слева панель слоёв */
+    #settings { left: auto; right: 8px; min-width: 360px; max-height: calc(100% - var(--top-h, 48px) - 24px); overflow-y: auto; }
+    #settings .msec { margin: var(--sp-3) 0 0; }
+    #settings .col { display: flex; flex-direction: column; gap: var(--sp-2); }
+    #settings .group { flex-wrap: wrap; }
     .pauses ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); }
     .pauses li.muted label { color: var(--muted); }
     button.notice.link:hover { text-decoration: underline; text-decoration-color: var(--accent); }

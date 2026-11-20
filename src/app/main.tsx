@@ -3,7 +3,7 @@
 //   авто-бенч сцены (docs/specs/2026-10-view.md, 2г), &layer=load — со слоем «Загрузка и OEE» (Б1и), bottle и andon —
 //   «Узкие места» и «Проблемы» (Б1к), losses — «Потери» (Б1л); ?art=code — машины кодом, без моделей из Blender (#109). В
 //   Electron — те же ключи:
-//   --q low, --bench, --secs 15, --layer load, --art code.
+//   --q low, --bench, --secs 15, --layer load, --art code. ?scale=1.5 — масштаб интерфейса (Б13), без записи в окно.
 import { windows } from './windows';
 import { createRoot } from 'react-dom/client';
 import { setLang, systemLang, T, type Lang } from '../i18n';
@@ -13,6 +13,7 @@ import { type Actions, Store } from '../ui/store';
 import { Game } from './game';
 import { kept, medianFrame, PRESET, pickPreset, keep as remember, windowKeep } from './preset';
 import { langOf } from './lang';
+import { applyScale, keptScale, SCALES } from './scale';
 import { measure, overflows } from './overflow';
 
 declare const __VERSION__: string;
@@ -24,8 +25,13 @@ setLang(lang);
 document.documentElement.lang = lang;
 document.title = T.app.title;
 
+// масштаб интерфейса (Б13, шаг 1): из адреса (проверки), иначе выбор игрока в окне, иначе — по высоте окна
+const want = Number(q.get('scale'));
+const scale = (SCALES as readonly number[]).includes(want) ? want : keptScale(windowKeep(), window.innerWidth, window.innerHeight);
+applyScale(scale);
+
 const store = new Store();
-store.set({ lang, version: __VERSION__ });
+store.set({ lang, version: __VERSION__, settings: { open: false, scale } });
 let game: Game | undefined;
 const later = <K extends keyof Actions>(k: K) => ((...a: unknown[]) => (game?.actions[k] as (...x: unknown[]) => void)?.(...a)) as Actions[K];
 const actions: Actions = {
@@ -43,7 +49,8 @@ const actions: Actions = {
   pickQuality: later('pickQuality'),
   setWalls: later('setWalls'),
   setLess: later('setLess'),
-  toggleSound: later('toggleSound'),
+  toggleSettings: later('toggleSettings'),
+  setScale: later('setScale'),
   setLang: later('setLang'),
   setVolume: later('setVolume'),
   setCaptions: later('setCaptions'),

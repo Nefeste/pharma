@@ -45,7 +45,7 @@ export async function soundPart(x) {
 
     // щелчок кнопки окна
     const c0 = (await played()).click;
-    await page.click('[data-test=sound-open]');
+    await page.click('[data-test=settings-open]');
     const c1 = (await played()).click;
     if (c1 <= c0) fail(`щелчок кнопки: ${c0} → ${c1}`);
     else ok(`кнопка окна — щелчок (${c1})`);
@@ -56,7 +56,7 @@ export async function soundPart(x) {
     else ok(`меню звука: «${menu}»`);
     await page.click('[data-test=captions]');
     await s.shot('Меню звука');
-    await page.click('[data-test=sound-open]');
+    await page.click('[data-test=settings-open]');
 
     // «До события» — мир встаёт на автопаузе: звук стопа и подпись у строки извещения
     let stop = 0;
@@ -95,19 +95,19 @@ export async function soundPart(x) {
     if (m1 <= m0) fail('планёрка открылась без звука');
     else ok(`планёрка ${await s.clock()} — колокольчики планёрки`);
 
-    // громкость 0 — тишина, кнопка «Звук: нет», выбор в хранилище окна
+    // громкость 0 — тишина, кнопка «Настройки · без звука», выбор в хранилище окна
     await page.evaluate(() => window.__game.store.get().morning.open && window.__game.actions.closeMorning(false));
-    await page.click('[data-test=sound-open]');
+    await page.click('[data-test=settings-open]');
     await page.$eval('[data-test=volume]', el => {
       const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       set.call(el, '0');
       el.dispatchEvent(new Event('input', { bubbles: true }));
     });
     const k0 = (await played()).click;
-    await page.click('[data-test=sound-open]');
-    const quiet = await page.evaluate(() => ({ btn: document.querySelector('[data-test=sound-open]')?.textContent, kept: localStorage.getItem('pharma.volume'), caps: localStorage.getItem('pharma.captions') }));
+    await page.click('[data-test=settings-open]');
+    const quiet = await page.evaluate(() => ({ btn: document.querySelector('[data-test=settings-open]')?.textContent, kept: localStorage.getItem('pharma.volume'), caps: localStorage.getItem('pharma.captions') }));
     const k1 = (await played()).click;
-    if (k1 !== k0 || quiet.btn !== 'Без звука' || quiet.kept !== '0' || quiet.caps !== '1') fail(`громкость 0: щелчков ${k0} → ${k1}, ${JSON.stringify(quiet)}`);
+    if (k1 !== k0 || quiet.btn !== 'Настройки · без звука' || quiet.kept !== '0' || quiet.caps !== '1') fail(`громкость 0: щелчков ${k0} → ${k1}, ${JSON.stringify(quiet)}`);
     else ok(`громкость 0 — тихо, «${quiet.btn}», в окне запомнено`);
     ok(`звуки за часть: ${JSON.stringify(await played())}`);
   } catch (e) {
@@ -122,7 +122,7 @@ export async function soundPart(x) {
     await p2.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&scn=scn.proto&shot=1`);
     await p2.waitForFunction(() => window.__ready === true, null, { timeout: 60_000 });
     await p2.click('[data-test=seats-take]').catch(() => undefined);
-    await p2.click('[data-test=sound-open]');
+    await p2.click('[data-test=settings-open]');
     await p2.waitForTimeout(1500);
     const r = await p2.evaluate(() => ({ ready: window.__game.sound.ready, sum: Object.values(window.__game.sound.played).reduce((a, b) => a + b, 0) }));
     if (r.ready || r.sum !== 0) fail(`окно со shot: файлы ${r.ready}, звуков ${r.sum}`);

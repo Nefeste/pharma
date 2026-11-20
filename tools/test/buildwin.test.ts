@@ -200,3 +200,23 @@ describe('новый план в окне', () => {
     expect(wallHeight(l, 59, 22)).toBe(WALL_LOW_ROOM);
   });
 });
+
+describe('перенос единицы из карточки', () => {
+  test('выбор класса, другой инструмент или Esc кончают перенос: в панели — покупка новой, а не перенос прежней', async () => {
+    const { Builder } = await import('../../src/app/build');
+    const { db } = await import('../../src/content');
+    const noop: any = new Proxy(() => noop, { get: () => noop });
+    const host = { db, plan: () => db.plants['plant.proto'], prices: () => undefined, vat: () => 20, ghosts: () => noop, walls: () => 'cut' as const, send: () => {}, equip: () => {} };
+    const b = new Builder(host as never);
+    b.set({ tool: 'unit', moving: 'fbd-1' });
+    expect(b.pick.moving).toBe('fbd-1');
+    b.set({ cls: 'eq.coater' });
+    expect(b.pick.moving).toBeUndefined();
+    b.set({ tool: 'unit', moving: 'fbd-1' });
+    b.set({ tool: 'door' });
+    expect(b.pick.moving).toBeUndefined();
+    b.set({ tool: 'unit', moving: 'fbd-1' });
+    b.cancel();
+    expect([b.pick.moving, b.pick.tool]).toEqual([undefined, 'unit']);
+  });
+});

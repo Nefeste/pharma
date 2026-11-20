@@ -4,6 +4,7 @@
 // противовес; наведение — формула, направление и источник; «Почему?» — записи числа со ссылкой на карточку; с Б5г —
 // пунктир дня смены политики руководителя на столбиках и смены месяца окна у руководителя. Вид собирает
 // поток расчёта (src/sim/kpi.ts) без слов и без истины; слова — отсюда.
+import { press } from './press';
 import type { Ymd } from '../engine/core/calendar';
 import type { KpiHead, KpiUnit } from '../engine/kpi';
 import { dayText, hText, money, named, num, pctText, T, whenText } from '../i18n';
@@ -122,7 +123,7 @@ function Spark({ c, months, marks, start, actions }: { c: KpiCell; months: reado
         const h = Math.max(1, Math.round((Math.abs(v) / span) * H));
         const mo = months[i - off];
         return (
-          <rect key={i} className={i === vals.length - 1 ? 'klast' : undefined} x={i * (BAR + GAP)} y={v >= 0 ? y0 - h : y0} width={BAR} height={h} rx={2} onClick={mo ? () => actions.setKpiMonth(mo.from) : undefined} data-test="kpi-bar" data-from={mo?.from}>
+          <rect key={i} className={i === vals.length - 1 ? 'klast' : undefined} x={i * (BAR + GAP)} y={v >= 0 ? y0 - h : y0} width={BAR} height={h} rx={2} {...press(mo ? () => actions.setKpiMonth(mo.from) : undefined)} data-test="kpi-bar" data-from={mo?.from}>
             <title>{`${T.kpi.bar(mo ? `${monthText(mo)}${mo.part ? ` (${T.kpi.part})` : ''}` : '', kpiText(c.id, c.unit, v))} · ${T.kpi.barHint}`}</title>
           </rect>
         );

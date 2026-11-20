@@ -51,6 +51,7 @@ import { keepLess, keptLess, systemLess } from './motion';
 import { keepLang } from './lang';
 import { type Cue, keepLayer, keepSound, keptCaptions, keptLayer, keptVolume, LAYERS, noticeCue, Sound, sliceCue, volumeOf } from './sound';
 import { ACCESS, applyContrast, keepFlag, sceneButton } from './access';
+import { actionOf, bind, DEFAULT_KEYS, keepKeys, type Action } from './keys';
 import { keep, windowKeep } from './preset';
 import { applyScale, keepScale } from './scale';
 import { type Box, machineBoxes, nearest, palletBoxes, pick, same, type Spot, truckBoxes, type V3 } from './pick';
@@ -1098,6 +1099,21 @@ export class Game {
       applyContrast(on);
       keepFlag(windowKeep(), ACCESS.contrast, on);
       this.store.set({ settings: { ...this.store.get().settings, contrast: on } });
+    },
+    bindKey: (a: Action, code: string) => {
+      const st = this.store.get().settings;
+      const r = bind(st.keys, a, code);
+      if (!r.map) return this.store.set({ settings: { ...st, keyNote: { action: a, code, ...(r.fixed ? { fixed: true as const } : {}), ...(r.taken ? { taken: r.taken } : {}) } } });
+      keepKeys(windowKeep(), r.map);
+      const { keyNote: _, ...rest } = st;
+      this.store.set({ settings: { ...rest, keys: r.map } });
+    },
+    // окна — на место: делает слой панелей (main.tsx, windows.ts), у игры — ничего
+    windowsHome: () => undefined,
+    resetKeys: () => {
+      keepKeys(windowKeep(), DEFAULT_KEYS);
+      const { keyNote: _, ...rest } = this.store.get().settings;
+      this.store.set({ settings: { ...rest, keys: { ...DEFAULT_KEYS } } });
     },
     setLeft: on => {
       keepFlag(windowKeep(), ACCESS.left, on);
@@ -2151,41 +2167,45 @@ export class Game {
       if (k !== 'Escape' && (e.target as HTMLElement | null)?.closest?.('input, textarea, select')) return;
       // в окне расписания стрелки двигают задание, а не камеру (Gantt.tsx)
       if ((e.target as HTMLElement | null)?.closest?.('.gantt') && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(k)) return;
-      if (k === 'Space') {
+      // Enter и пробел на кнопке или строке в фокусе (Б13, шаг 3) — нажимают её, а не командуют миром
+      if ((k === 'Space' || k === 'Enter' || k === 'NumpadEnter') && (e.target as HTMLElement | null)?.closest?.('button, a, [role=button], [role=link], [tabindex]')) return;
+      // клавиши — по карте действий (Б13, шаг 3; src/app/keys.ts): игрок мог их переназначить
+      const act = e.ctrlKey || e.metaKey || e.altKey ? undefined : actionOf(this.store.get().settings.keys, k);
+      if (act === 'pause') {
         e.preventDefault();
         this.actions.setSpeed(this.speed === 0 && !this.ff ? 1 : 0);
-      } else if (k === 'Digit0') this.actions.setSpeed(LIVE);
-      else if (k === 'Digit1') this.actions.setSpeed(1);
-      else if (k === 'Digit2') this.actions.setSpeed(2);
-      else if (k === 'Digit3') this.actions.setSpeed(3);
-      else if (k === 'Digit4') this.actions.setSpeed(4);
-      else if (k === 'Digit5') this.actions.untilMorning();
-      else if (k === 'Digit6') this.actions.untilEvent();
-      else if (k === 'KeyQ') this.stage.cam.rotate(-1);
-      else if (k === 'KeyE') this.stage.cam.rotate(1);
-      else if (k === 'Backquote') this.actions.toggleDebug();
-      else if (k === 'KeyG') this.actions.toggleGantt();
-      else if (k === 'KeyI') this.actions.toggleInv();
-      else if (k === 'KeyN') this.actions.toggleNow();
-      else if (k === 'KeyJ') this.actions.toggleJournal();
-      else if (k === 'KeyH') this.actions.toggleChronicle();
-      else if (k === 'KeyK') this.actions.toggleKpi();
-      else if (k === 'KeyP') this.actions.togglePolicies();
-      else if (k === 'KeyO') this.actions.toggleSop();
-      else if (k === 'KeyF') this.actions.togglePortfolio();
-      else if (k === 'KeyL') this.actions.nextLayer();
+      } else if (act === 'live') this.actions.setSpeed(LIVE);
+      else if (act === 'speed1') this.actions.setSpeed(1);
+      else if (act === 'speed2') this.actions.setSpeed(2);
+      else if (act === 'speed3') this.actions.setSpeed(3);
+      else if (act === 'speed4') this.actions.setSpeed(4);
+      else if (act === 'morning') this.actions.untilMorning();
+      else if (act === 'event') this.actions.untilEvent();
+      else if (act === 'turnLeft') this.stage.cam.rotate(-1);
+      else if (act === 'turnRight') this.stage.cam.rotate(1);
+      else if (act === 'debug') this.actions.toggleDebug();
+      else if (act === 'gantt') this.actions.toggleGantt();
+      else if (act === 'inv') this.actions.toggleInv();
+      else if (act === 'now') this.actions.toggleNow();
+      else if (act === 'journal') this.actions.toggleJournal();
+      else if (act === 'chronicle') this.actions.toggleChronicle();
+      else if (act === 'kpi') this.actions.toggleKpi();
+      else if (act === 'policies') this.actions.togglePolicies();
+      else if (act === 'sop') this.actions.toggleSop();
+      else if (act === 'portfolio') this.actions.togglePortfolio();
+      else if (act === 'layer') this.actions.nextLayer();
       // стройка (Б7б; геймдизайн, §12): B — стройка, R — повернуть, Ctrl+Z — отменить шаг
-      else if (k === 'KeyB') this.actions.toggleBuild();
-      else if (k === 'KeyR' && this.builder.on) {
+      else if (act === 'build') this.actions.toggleBuild();
+      else if (act === 'rotate' && this.builder.on) {
         this.builder.rotate();
         this.buildHud();
       } else if (k === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         if (this.builder.on) this.actions.buildUndo();
-      } else if (k === 'F1') {
+      } else if (act === 'ref') {
         e.preventDefault();
         this.actions.toggleRef();
-      } else if (k === 'F2') {
+      } else if (act === 'stock') {
         e.preventDefault();
         this.actions.toggleStock();
       } else if (k === 'Escape') {
@@ -2233,10 +2253,12 @@ export class Game {
     let dx = 0;
     let dy = 0;
     const keys = this.mouse.keys;
-    if (keys.has('KeyA') || keys.has('ArrowLeft')) dx += v;
-    if (keys.has('KeyD') || keys.has('ArrowRight')) dx -= v;
-    if (keys.has('KeyW') || keys.has('ArrowUp')) dy += v;
-    if (keys.has('KeyS') || keys.has('ArrowDown')) dy -= v;
+    // камера — клавишами карты (Б13, шаг 3) и стрелками
+    const km = this.store.get().settings.keys;
+    if (keys.has(km.left) || keys.has('ArrowLeft')) dx += v;
+    if (keys.has(km.right) || keys.has('ArrowRight')) dx -= v;
+    if (keys.has(km.up) || keys.has('ArrowUp')) dy += v;
+    if (keys.has(km.down) || keys.has('ArrowDown')) dy -= v;
     if (this.mouse.inside && !dx && !dy) {
       const m = 10;
       if (this.mouse.x < m) dx = v;

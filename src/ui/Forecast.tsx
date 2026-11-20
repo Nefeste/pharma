@@ -6,6 +6,7 @@
 // прогнозы с запаздыванием в месяц — линиями, вперёд — пунктиром; одна ось — ящики; рядом — ошибка у планирования,
 // отдела продаж и каждого способа; «Таблицей» — те же числа строками. Вид собран в потоке расчёта (src/sim/forecast.ts) —
 // истины в нём нет.
+import { press } from './press';
 import { useState } from 'react';
 import type { FcMethod, Id } from '../content/types';
 import { named, num, pctText, T } from '../i18n';
@@ -91,7 +92,7 @@ export function Forecast({ hud, actions, v }: { hud: Hud; actions: Actions; v: F
                   const on = sel?.sku === r.sku && sel.i === i;
                   const tip = [T.fc.cellHint(T.fc.cases(c.plan), T.fc.cases(c.sales)), c.edit ? T.fc.edited(methodName(v.method), T.fc.cases(c.was)) : ''].filter(Boolean).join('\n');
                   return (
-                    <td key={i} className={`${c.edit ? 'edit' : ''}${on ? ' sel' : ''}`.trim() || undefined} title={tip} onClick={() => pick(r.sku, i)} data-test="fc-cell" data-month={v.at + i} data-edit={c.edit ? '1' : undefined}>
+                    <td key={i} className={`${c.edit ? 'edit' : ''}${on ? ' sel' : ''}`.trim() || undefined} title={tip} {...press(() => pick(r.sku, i))} data-test="fc-cell" data-month={v.at + i} data-edit={c.edit ? '1' : undefined}>
                       <b>{num(c.plan)}</b>
                       {c.edit ? <span className="fc-mark">✎</span> : null}
                       <br />

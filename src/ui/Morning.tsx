@@ -1,6 +1,7 @@
 // Планёрка в 08:00 (docs/specs/2026-10-panels.md, 3в; docs/13-art.md, §11): страница, которую читают минуту, — ваше место
 // за время на нём (3е), вчера в цифрах, одна главная потеря, одна подсказка; что было с прошлой планёрки; что ждёт сейчас. Большое окно поверх карты с
 // вопросом в заголовке. Вид собирает поток расчёта (src/sim/report.ts) без слов и без истины; слова — отсюда.
+import { press } from './press';
 import type { ReactNode } from 'react';
 import { devLevers, heldLevers, mainLevers, resignLevers, riskLevers, uncoveredLevers, wasteLevers } from '../app/levers';
 import { spotName } from '../app/losses';
@@ -174,12 +175,12 @@ function PeopleBlock({ v, hud, actions, close, go }: { v: MorningView; hud: Hud;
           </li>
         ))}
         {p.leaving.map(x => (
-          <li key={`l${x.person}`} className="go" onClick={go({ kind: 'person', n: x.person })} data-test="morning-leaving">
+          <li key={`l${x.person}`} className="go" {...press(go({ kind: 'person', n: x.person }))} data-test="morning-leaving">
             {T.morning.people.leaving(dayText(x.last), who(x), T.hire.why[x.why] ?? x.why)}
           </li>
         ))}
         {p.trials.map(x => (
-          <li key={`t${x.person}`} className="go" onClick={go({ kind: 'person', n: x.person })} data-test="morning-trial">
+          <li key={`t${x.person}`} className="go" {...press(go({ kind: 'person', n: x.person }))} data-test="morning-trial">
             {T.morning.people.trial(dayText(x.last), who(x))}
           </li>
         ))}
@@ -196,17 +197,17 @@ function PeopleBlock({ v, hud, actions, close, go }: { v: MorningView; hud: Hud;
           </li>
         ) : null}
         {l?.away.map(x => (
-          <li key={`a${x.n}`} className="go" onClick={go({ kind: 'person', n: x.n })} data-test="morning-away">
+          <li key={`a${x.n}`} className="go" {...press(go({ kind: 'person', n: x.n }))} data-test="morning-away">
             {T.morning.people.away(who(x), dayText(x.to), x.deputy && who(x.deputy))}
           </li>
         ))}
         {l?.going.map(x => (
-          <li key={`g${x.n}-${x.from}`} className="go" onClick={go({ kind: 'person', n: x.n })} data-test="morning-going">
+          <li key={`g${x.n}-${x.from}`} className="go" {...press(go({ kind: 'person', n: x.n }))} data-test="morning-going">
             {T.morning.people.going(dayText(x.from), who(x), dayText(x.to), x.deputy && who(x.deputy))}
           </li>
         ))}
         {l?.back.map(x => (
-          <li key={`b${x.n}-${x.day}`} className="go" onClick={go({ kind: 'person', n: x.n })} data-test="morning-back">
+          <li key={`b${x.n}-${x.day}`} className="go" {...press(go({ kind: 'person', n: x.n }))} data-test="morning-back">
             {T.morning.people.back(dayText(x.day), who(x))}
           </li>
         ))}
@@ -534,7 +535,7 @@ function CapaMeet({ c, start, go }: { c: CapaMeeting; start: Ymd; go: (t: Thing 
         <div className="muted">{title}</div>
         <ul className="mlist">
           {list.map(x => (
-            <li key={`${test}${x.n}`} className={`go ${cls(x)}`} onClick={go({ kind: 'dev', n: x.dev })} data-test={test} data-capa={x.n}>
+            <li key={`${test}${x.n}`} className={`go ${cls(x)}`} {...press(go({ kind: 'dev', n: x.dev }))} data-test={test} data-capa={x.n}>
               {line(x)}
               {tail(x) ? <span className="muted"> · {tail(x)}</span> : null}
             </li>
@@ -695,7 +696,7 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                       if (!l.oee || l.key === undefined) return <li key={l.line}>{T.morning.noJob(name)}</li>;
                       const key = lineMachine(plant, l.line, l.key);
                       return (
-                        <li key={l.line} className="go" onClick={go(key.thing)}>
+                        <li key={l.line} className="go" {...press(go(key.thing))}>
                           {T.morning.oeeRow(name, pctText(Math.min(l.oee.oee, 10000)), pctText(l.oee.a), part(l.oee.p), part(l.oee.q))}
                           {l.loss ? <div className="muted">{lineLossText(plant, l)}</div> : null}
                         </li>
@@ -721,7 +722,7 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                     <>
                       <div
                         className={v.main.k === 'line' || (v.main.k === 'wait' && v.main.spot) ? 'go' : ''}
-                        onClick={v.main.k === 'line' ? go(lineMachine(plant, v.main.line, v.main.key).thing) : v.main.k === 'wait' && v.main.spot ? goSpot(v.main.spot) : undefined}
+                        {...press(v.main.k === 'line' ? go(lineMachine(plant, v.main.line, v.main.key).thing) : v.main.k === 'wait' && v.main.spot ? goSpot(v.main.spot) : undefined)}
                         data-test="morning-main-go"
                       >
                         <b>{mainText(plant, v.main)}</b>
@@ -747,7 +748,7 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
             <Rows
               title={T.morning.devTitle}
               rows={v.deviations.map((x, i) => (
-                <li key={i} className="go" onClick={x.inv ? undefined : go({ kind: 'dev', n: x.dev })} data-test="morning-dev">
+                <li key={i} className="go" {...press(x.inv ? undefined : go({ kind: 'dev', n: x.dev }))} data-test="morning-dev">
                   <span className="mono muted">{when(x.t)}</span> {T.morning.devKinds[x.kind]} <span className="mono">{T.dev.no(x.dev)}</span>
                   <span className={x.cls === 'minor' ? 'muted' : 'warn'} data-test="morning-dev-cls">
                     {' · '}
@@ -780,7 +781,7 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
               rows={v.maint.map((x, i) => {
                 const m = machineOf(x.thing, x.type);
                 return (
-                  <li key={i} className={x.thing ? 'go' : ''} onClick={go(x.thing)}>
+                  <li key={i} className={x.thing ? 'go' : ''} {...press(go(x.thing))}>
                     <span className="mono muted">{when(x.t)}</span> {m.name}: {T.hist.maint[x.what]} · {partName(m.parts, x.part)} · {T.hist.wear(pctText(x.wear))}
                   </li>
                 );
@@ -831,7 +832,7 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
               rows={v.broken.map((x, i) => {
                 const m = machineOf(x.thing, x.type);
                 return (
-                  <li key={i} className={x.thing ? 'go bad' : 'bad'} onClick={go(x.thing)}>
+                  <li key={i} className={x.thing ? 'go bad' : 'bad'} {...press(go(x.thing))}>
                     {T.morning.broken(m.name, partName(m.parts, x.part), when(x.since))}
                     <span className="muted">, {T.morning.repair[x.repair]}</span>
                   </li>
@@ -900,12 +901,12 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
               title={T.morning.trainTitle}
               rows={[
                 ...v.training.no.map(x => (
-                  <li key={`no${x.person}`} className="go bad" onClick={go({ kind: 'person', n: x.person })} data-test="morning-train">
+                  <li key={`no${x.person}`} className="go bad" {...press(go({ kind: 'person', n: x.person }))} data-test="morning-train">
                     {T.morning.trainNo(T.card.person(named(db?.roles[x.role]?.name, x.role), x.tab), T.ref.doc(x.doc.code, x.doc.rev))}
                   </li>
                 )),
                 ...v.training.soon.map(x => (
-                  <li key={`soon${x.person}`} className="go" onClick={go({ kind: 'person', n: x.person })} data-test="morning-train">
+                  <li key={`soon${x.person}`} className="go" {...press(go({ kind: 'person', n: x.person }))} data-test="morning-train">
                     {T.morning.trainSoon(T.card.person(named(db?.roles[x.role]?.name, x.role), x.tab), T.ref.doc(x.doc.code, x.doc.rev), dayText(x.last))}
                   </li>
                 )),
@@ -929,7 +930,7 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
                 </div>
               ))}
               {v.hours.moves.map(x => (
-                <div key={`m${x.person}`} className="go" onClick={go({ kind: 'person', n: x.person })} data-test="morning-move">
+                <div key={`m${x.person}`} className="go" {...press(go({ kind: 'person', n: x.person }))} data-test="morning-move">
                   {T.morning.hours.move(T.card.person(named(db?.roles[x.role]?.name, x.role), x.tab), named(db?.shifts[x.shift]?.name, x.shift), dayText(x.from))}
                 </div>
               ))}
@@ -945,17 +946,17 @@ export function Morning({ v, day, start, plant, pause, actions, hud, scenario }:
               title={T.assets.morningTitle}
               rows={[
                 ...v.assets.expired.map(x => (
-                  <li key={`x${x.asset.id}${x.work}`} className={x.asset.thing ? 'go bad' : 'bad'} onClick={go(x.asset.thing)} data-test="morning-asset">
+                  <li key={`x${x.asset.id}${x.work}`} className={x.asset.thing ? 'go bad' : 'bad'} {...press(go(x.asset.thing))} data-test="morning-asset">
                     {T.assets.lapsed(workName(x.asset, x.work), assetName(x.asset))}
                   </li>
                 )),
                 ...v.assets.today.map(a => (
-                  <li key={`t${a.id}`} className={a.thing ? 'go' : ''} onClick={go(a.thing)} data-test="morning-asset">
+                  <li key={`t${a.id}`} className={a.thing ? 'go' : ''} {...press(go(a.thing))} data-test="morning-asset">
                     {T.assets.today(workName(a, a.visit!.work), assetName(a), a.working && a.visit?.to !== undefined ? T.assets.until(whenText(start, a.visit.to)) : whenText(start, a.visit!.from ?? a.visit!.at))}
                   </li>
                 )),
                 ...v.assets.soon.map(x => (
-                  <li key={`s${x.asset.id}${x.work}`} className={x.asset.thing ? 'go' : ''} onClick={go(x.asset.thing)} data-test="morning-asset">
+                  <li key={`s${x.asset.id}${x.work}`} className={x.asset.thing ? 'go' : ''} {...press(go(x.asset.thing))} data-test="morning-asset">
                     {T.assets.soon(workName(x.asset, x.work), assetName(x.asset), dayText(x.until))}
                   </li>
                 )),

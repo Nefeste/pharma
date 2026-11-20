@@ -2,6 +2,7 @@
 // человека и под графиком справочника; график отпусков по неделям — справочник, «Люди»; смежные профессии — в карточке.
 // Вид собирает поток расчёта (src/sim/leave.ts) из записей завода; части и смежные профессии правит пост отдела человека
 // или директор — чужой пост видит кнопки погашенными.
+import { press } from './press';
 import { type ReactNode, useState } from 'react';
 import type { Id } from '../content/types';
 import { civilFromDays, daysFromCivil, lastOfMonth, weekday } from '../engine/core/calendar';
@@ -308,7 +309,7 @@ export function LeavePlan({ v, hud, actions }: { v: LeaveView; hud: Hud; actions
           {v.people.map(p => {
             const left = p.left.find(([y]) => y === year.y)?.[1];
             return (
-              <tr key={p.person} className={p.person === pick ? 'on' : ''} onClick={() => setPick(p.person === pick ? undefined : p.person)} data-test="leave-row" data-tab={p.tab}>
+              <tr key={p.person} className={p.person === pick ? 'on' : ''} {...press(() => setPick(p.person === pick ? undefined : p.person))} data-test="leave-row" data-tab={p.tab}>
                 <td className="mono">
                   <button
                     type="button"

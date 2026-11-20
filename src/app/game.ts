@@ -1584,8 +1584,11 @@ export class Game {
         // вещь — посреди части экрана, не закрытой панелью справа, и выше карточки (она снизу слева)
         const box = el.getBoundingClientRect();
         const panel = (document.getElementById('stock') ?? document.getElementById('cash') ?? document.getElementById('lab') ?? document.getElementById('now'))?.getBoundingClientRect();
-        const free = panel ? Math.max(0, panel.left - box.left) : box.width;
-        cam.pan(free / 2 - box.width / 2, -0.2 * box.height, el.clientHeight);
+        // слева — столбец слоёв: вещь — посреди просвета между ним и панелью
+        const layers = document.querySelector('.layers')?.getBoundingClientRect();
+        const left = layers && layers.right < (panel?.left ?? box.right) - 200 ? layers.right - box.left : 0;
+        const right = panel ? Math.max(left, panel.left - box.left) : box.width;
+        cam.pan((left + right) / 2 - box.width / 2, -0.2 * box.height, el.clientHeight);
         // матрицы камеры — сейчас, а не в следующем кадре: точка вещи на экране и луч щелчка сразу новые
         cam.update(0);
       }

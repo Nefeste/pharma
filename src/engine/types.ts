@@ -2267,9 +2267,10 @@ export interface PlantState {
   incident?: Incident;
   /**
    * хронический корень сценария (Д1; src/engine/chronic.ts): вид, номер дня смещения партий, сдвиг свойства в единицах
-   * движка, человек привычки и шагов уставки сверх неё, когда привычка прошла. Скрыто: окно не видит, двойник забывает
+   * движка, человек привычки и шагов уставки сверх неё, когда привычка прошла и когда изготовитель вернул процесс.
+   * Скрыто: окно не видит, двойник забывает
    */
-  chronic?: { root: 'api' | 'lube' | 'both'; day: number; shift: number; steps: number; person?: string; until?: number };
+  chronic?: { root: 'api' | 'lube' | 'both'; day: number; shift: number; steps: number; person?: string; until?: number; fixed?: number };
   /** помещения и оборудование по именам из плана */
   rooms: Record<string, Room>;
   equipment: Record<string, Equipment>;
@@ -2879,7 +2880,7 @@ export type Notice =
   | { kind: 'cashLow'; balance: number }
   /** срок сценария прошёл (Б9): итог целей — src/engine/goals.ts */
   /** пришло письмо сценария (Б9) */
-  | { kind: 'letter'; id: Id; from: 'mentor' | 'distributor' | 'supplier' }
+  | { kind: 'letter'; id: Id; from: 'mentor' | 'distributor' | 'supplier' | 'qa' }
   | { kind: 'scenarioEnd' }
   /**
    * переход кампании (Б9, шаг 4): из какого сценария в какой, достроено ли крыло следующего или выданы деньги на него,

@@ -1,0 +1,10 @@
+# Письмо начальника ООК: первое OOS сценария — расследование идёт, у его вывода есть версии. Кончается, когда открыли
+# очередь лаборатории
+id: let.c3.oos
+scenario: scn.c3
+from: qa
+n: 2
+when: { first: oos }
+done: { kind: seen, what: lab }
+shows: event
+review: draft

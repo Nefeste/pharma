@@ -8,6 +8,7 @@
  * старта следующего сценария игрок снова выбирает места. Время завода — по-прежнему от первой даты кампании; сутки
  * следующего сценария — от его даты (`scnZero`).
  */
+import { newChronic } from './chronic';
 import type { ContentDb, Plant, Scenario } from '../content/types';
 import { seedAssets } from './assets';
 import { post } from './cash';
@@ -222,6 +223,8 @@ export function carry(db: ContentDb, s: PlantState, notices: Notice[]) {
   // старт игрока следующего сценария — его письма, цели и конец срока
   const start = playerStart(db, s);
   schedule(s.agenda, start, { kind: 'scenarioStart' });
+  // хронический корень следующего сценария (Д1): по жребию зерна, от его суток
+  newChronic(db, s, scnZero(db, s));
   if (next.days !== undefined) schedule(s.agenda, start + next.days, { kind: 'scenarioEnd' });
   notices.push({ kind: 'carried', from, to: next.id, built, paid, hired, grant, start });
 }

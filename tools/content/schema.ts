@@ -1399,7 +1399,7 @@ export const letter = z
   .strictObject({
     id: z.string(),
     scenario: z.string(),
-    from: z.enum(['mentor', 'distributor', 'supplier']),
+    from: z.enum(['mentor', 'distributor', 'supplier', 'qa']),
     n: z.number().int().min(1).max(99),
     when: z.union([
       z.strictObject({ start: z.literal(true) }),

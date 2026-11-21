@@ -1460,7 +1460,7 @@ export type LetterShows = 'scenarioPo' | 'poLot' | 'qaBatch' | 'playerBatch' | '
 export interface Letter {
   id: Id;
   scenario: Id;
-  from: 'mentor' | 'distributor' | 'supplier';
+  from: 'mentor' | 'distributor' | 'supplier' | 'qa';
   n: number;
   when: LetterWhen;
   done: LetterDone;

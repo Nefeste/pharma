@@ -31,7 +31,7 @@ export function newChronic(db: ContentDb, s: PlantState, zero = 0) {
 export function driftLot(db: ContentDb, s: PlantState, lot: Lot) {
   const c = s.chronic;
   const def = db.scenarios[s.scenario].chronic;
-  if (!c || !def || c.root === 'lube') return;
+  if (!c || !def || c.root === 'lube' || c.fixed !== undefined) return;
   const d = def.drift;
   if (lot.material !== d.material || lot.maker !== d.maker || momentOf(s.start, s.t).day < c.day) return;
   // паспорт показывает правду: изготовитель измерил свою партию (спецификация завода размер частиц не проверяет)
@@ -56,4 +56,16 @@ export function habitParams(db: ContentDb, s: PlantState, st: RecipeStage, rec: 
 export function habitCured(s: PlantState, people: readonly string[] | undefined) {
   const c = s.chronic;
   if (c?.person && c.until === undefined && people?.includes(c.person)) c.until = s.t;
+}
+
+/**
+ * Оценка пары кончилась (Д1): у изготовителя смещения, после его дня, — изготовитель по замечанию вернул процесс, и
+ * новые партии — как прежде (гипотеза: аудит или запрос документов называет изменение процесса у изготовителя).
+ */
+export function driftFixed(db: ContentDb, s: PlantState, maker: string) {
+  const c = s.chronic;
+  const def = db.scenarios[s.scenario].chronic;
+  if (!c || !def || c.root === 'lube' || c.fixed !== undefined || def.drift.maker !== maker) return;
+  if (momentOf(s.start, s.t).day < c.day) return;
+  c.fixed = s.t;
 }

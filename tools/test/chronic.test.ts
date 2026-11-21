@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { db } from '../../src/content';
 import { DRAFT_DAY } from '../../src/content/types';
 import { capaOptions } from '../../src/engine/capa';
-import { driftLot, habitCured, habitParams } from '../../src/engine/chronic';
+import { driftFixed, driftLot, habitCured, habitParams } from '../../src/engine/chronic';
 import { DAY, daysFromCivil, momentOf } from '../../src/engine/core/calendar';
 import { inForce, liveOf, revisions } from '../../src/engine/docs';
 import { apply, newPlant } from '../../src/engine/engine';
@@ -211,5 +211,35 @@ describe('движок Д1', () => {
     expect(noRepeat(s, 0, 100 * DAY)).toBe(98);
     s.deviations.D2 = { ...dev, id: 'D2', opened: 60 * DAY };
     expect(noRepeat(s, 0, 100 * DAY)).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------- Д1, шаг 3: сценарий
+
+describe('сценарий 3', () => {
+  test('старт: корень по зерну, анализатор в лаборатории, начальник ООК с навыком 3, цель «повтора нет»; письмо на старте', () => {
+    const s = newPlant(db, { scenario: 'scn.c3' });
+    expect(['api', 'lube', 'both']).toContain(s.chronic!.root);
+    expect(s.plan.instruments.some(i => i.type === 'inst.laser')).toBe(true);
+    expect(Object.values(s.people).find(p => p.role === 'role.qa-head')!.skill).toBe(3);
+    expect(db.scenarios['scn.c3'].goals!.find(g => g.top)!.kind).toBe('noRepeat');
+    expect(db.scenarios['scn.c3'].campaign).toBe(3);
+  });
+
+  test('оценка пары после дня смещения — изготовитель вернул процесс: новые партии — как прежде; до дня и у другого — нет', () => {
+    const s = newPlant(db, { scenario: 'scn.c3' });
+    s.chronic = { root: 'api', day: s.chronic!.day, shift: 50, steps: 2 };
+    const at = (day: number) => (s.t = (day - momentOf(s.start, 0).day) * DAY);
+    at(s.chronic.day - 1);
+    driftFixed(db, s, 'mkr.api-ibu');
+    expect(s.chronic.fixed).toBeUndefined();
+    at(s.chronic.day + 5);
+    driftFixed(db, s, 'mkr.api-par');
+    expect(s.chronic.fixed).toBeUndefined();
+    driftFixed(db, s, 'mkr.api-ibu');
+    expect(s.chronic.fixed).toBe(s.t);
+    const lot = { material: 'mat.api.ibuprofen', maker: 'mkr.api-ibu', truth: { particle: 60 }, coa: { particle: 60 } } as unknown as Lot;
+    driftLot(db, s, lot);
+    expect(lot.truth.particle).toBe(60);
   });
 });

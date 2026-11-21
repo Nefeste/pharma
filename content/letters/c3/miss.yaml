@@ -1,0 +1,9 @@
+# Письмо дистрибьютора: первый сорванный заказ — серий ибупрофена нет в срок. Кончается, когда его прочли
+id: let.c3.miss
+scenario: scn.c3
+from: distributor
+n: 3
+when: { first: miss }
+done: { kind: read }
+shows: event
+review: draft

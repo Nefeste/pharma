@@ -73,6 +73,7 @@ import { equipPart } from './e2e-equip.mjs';
 import { portfolioPart } from './e2e-portfolio.mjs';
 import { c1Part } from './e2e-c1.mjs';
 import { c2Part } from './e2e-c2.mjs';
+import { c3Part } from './e2e-c3.mjs';
 import { chronPart } from './e2e-chron.mjs';
 import { soundPart } from './e2e-sound.mjs';
 import { brandPart } from './e2e-brand.mjs';
@@ -325,6 +326,7 @@ try {
   if (only === '' || only === 'portfolio') await portfolioPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1'), long: arg('long', '') === '1' });
   if (only === '' || only === 'c1') await c1Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
   if (only === '' || only === 'c2') await c2Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1'), long: arg('long', '') === '1' });
+  if (only === '' || only === 'c3') await c3Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
   if (only === '' || only === 'chronicle') await chronPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
   if (only === '' || only === 'sound') await soundPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
   if (only === '' || only === 'brand') await brandPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });

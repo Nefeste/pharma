@@ -1,0 +1,65 @@
+# Сценарий 3 кампании «Три серии подряд» (Д1; геймдизайн, §15.1, §26.5, §29.5; docs/specs/2026-11-fill.md, «Д1»):
+# повторяющееся OOS по растворению. Причина живёт в заводе — хронический корень по жребию зерна: партии субстанции
+# ибупрофена у изготовителя с 20-х суток крупнее, привычка одного аппаратчика опудривать дольше или обе у края. Завод,
+# покупатели, продукты и запас — сценария 2 (`base`); свой — дата, план с анализатором размера частиц, места, начальник
+# ООК с навыком 3, корень и цели. Числа — гипотезы до замера «виртуальным директором»
+id: scn.c3
+base: scn.c2
+name: { ru: Три серии подряд, en: Three Batches in a Row }
+campaign: 3
+teaches: { ru: 'расследование, CAPA, ППР, входной контроль', en: 'investigation, CAPA, planned maintenance, incoming control' }
+plant: plant.c3
+# старт игрока — понедельник 16 апреля 2029 г., 07:00, после «Первой зимы» (конец — 1 апреля 2029 г.) и межсезонья;
+# прогрев — неделя; срок — 200 суток: найти причину и три месяца без повтора
+start: { date: 2029-04-16, hour: 7 }
+warm: 7
+days: 200
+seed: 20290416
+seats: [quality, director]
+# штат — прототипа; начальник ООК — с навыком 3: порог уверенности вывода ниже (Б5в, §8.5), и первое расследование он
+# может закрыть «ошибкой лаборатории» по повтору у предела
+staff:
+  - { role: role.storekeeper, shift: shift.day, skill: 3, n: 1, also: [role.driver] }
+  - { role: role.driver, shift: shift.day, skill: 3, n: 1, also: [role.storekeeper] }
+  - { role: role.sampler, shift: shift.day, skill: 3, n: 1, also: [role.analyst] }
+  - { role: role.analyst, shift: shift.day, skill: 3, n: 1, also: [role.sampler] }
+  - { role: role.analyst, shift: shift.day, skill: 3, n: 1 }
+  - { role: role.qc-head, shift: shift.day, skill: 4, n: 1, also: [role.qa] }
+  - { role: role.qa, shift: shift.day, skill: 3, n: 1, also: [role.qc-head] }
+  - { role: role.qp, shift: shift.day, skill: 4, n: 1 }
+  - { role: role.operator, shift: shift.a, skill: 3, n: 2 }
+  - { role: role.operator, shift: shift.b, skill: 3, n: 1 }
+  - { role: role.master, shift: shift.a, skill: 4, n: 1 }
+  - { role: role.master, shift: shift.b, skill: 3, n: 1 }
+  - { role: role.line-operator, shift: shift.a, skill: 3, n: 2 }
+  - { role: role.packer, shift: shift.a, skill: 3, n: 2 }
+  - { role: role.mechanic, shift: shift.a, skill: 3, n: 1, also: [role.setter] }
+  - { role: role.mechanic, shift: shift.b, skill: 3, n: 1 }
+  - { role: role.setter, shift: shift.day, skill: 3, n: 1, also: [role.line-operator] }
+  - { role: role.cleaner, shift: shift.a, skill: 3, n: 1 }
+  - { role: role.cleaner, shift: shift.b, skill: 3, n: 1 }
+  - { role: role.operator, shift: shift.a, skill: 3, n: 1 }
+  - { role: role.packer, shift: shift.a, skill: 3, n: 1 }
+  - { role: role.qp, shift: shift.day, skill: 4, n: 1 }
+  - { role: role.production-head, shift: shift.a, skill: 4, n: 1 }
+  - { role: role.plan-head, shift: shift.a, skill: 4, n: 1 }
+  - { role: role.chief-mechanic, shift: shift.day, skill: 4, n: 1 }
+  - { role: role.qa-head, shift: shift.day, skill: 3, n: 1 }
+  - { role: role.supply-head, shift: shift.day, skill: 4, n: 1 }
+  - { role: role.warehouse-head, shift: shift.day, skill: 4, n: 1 }
+# хронический корень (Д1): веса корней — гипотезы; смещение — у изготовителя ибупрофена с 20-х суток от старта игрока,
+# d50 больше на 40–60 мкм (паспорт обычно 60 ± 12); привычка — опудривание дольше цели на 2–4 шага уставки (0,5 мин); у
+# корня «обе» — каждая у края
+chronic:
+  roots: { api: 40, lube: 30, both: 30 }
+  drift: { material: mat.api.ibuprofen, maker: mkr.api-ibu, day: 20, attr: particle, shift: [40, 60] }
+  habit: { role: role.operator, param: lubeTime, steps: [2, 4] }
+  both: { shift: [20, 30], steps: [1, 2] }
+# цели (§15.1, §29.5): серий выпущено не меньше 60, OTIF не ниже 90 %, ни одного отклонения с прошедшим сроком; «на
+# отлично» — причина найдена: 90 суток без повтора после CAPA, проверенной «эффективна». Числа — по «виртуальному
+# директору» (коллеги без игрока выпускают 61–80 серий, OTIF 91–100 %; docs/specs/2026-11-fill.md, «Итог шага 3»)
+goals:
+  - { kind: released, v: 60 }
+  - { kind: otif, v: 90 }
+  - { kind: lateDevs, v: 0 }
+  - { kind: noRepeat, v: 90, top: true }

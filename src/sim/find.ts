@@ -34,7 +34,7 @@ export interface FindView {
 /** Сколько строк показать: дальше — уточнить. */
 export const FIND_MAX = 20;
 
-const norm = (x: string) => x.toLowerCase().replace(/ё/g, 'е').trim();
+const norm = (x: string) => x.toLowerCase().replace(/\u0451/g, '\u0435').trim();
 const hit = (q: string, ...xs: (string | Text | undefined)[]) =>
   xs.some(x => (typeof x === 'string' ? norm(x).includes(q) : !!x && (norm(x.ru).includes(q) || (!!x.en && norm(x.en).includes(q)))));
 

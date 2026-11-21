@@ -335,7 +335,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   unchecked; the executor — the head of the action's department in the first hour someone may decide, a held post's
   department — a proposal, a refusal kept with the engine's reason; «заменять раньше» lowers the part's replacement
   threshold to the procedure's sign threshold, at or below it by a step; the effectiveness check the procedure's days
-  after it was done — «эффективна» or the first repeat after it; the late deviation's notice once),
+  after it was done — «эффективна» or the first repeat after it; the late deviation's notice once; with Д1 «a test at
+  incoming control» — a draft revision of the lot material's spec with a test the one in force lacks and its draft
+  methods in force from the day after the training warning days, when the plan's lab has the test's instrument),
   `market.ts` (customers and their orders, FG into circulation after the regulator publishes the batch, FEFO allocation
   with the residual shelf life, the FG stock at the start — `seedFg`, whole pallets and case picking, the customer's
   truck at 15:00, shipments with codes; with
@@ -528,7 +530,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   2 a fit, free vacuum transfer from the room into the next — `transferVia` — moves it without a cart: the operator
   starts it, then the batch mass at its rate, unattended, the `transfer` event — `transferTime`),
   `goals.ts` (with Б9, a scenario's goals as pure functions of plant records — released batches, OTIF, the cash at the
-  end of the term by the ledger, deviations past their term, with step 3 the days of missed orders (`missDays`) — from
+  end of the term by the ledger, deviations past their term, with step 3 the days of missed orders (`missDays`), with Д1
+  the days without a repeat after a CAPA checked effective (`noRepeat`) — from
   the player's start after the warm-up or the goal's own date, `goalsNow`; the end of the term is the `scenarioEnd`
   event; with step 3 a scenario's launched products — their project revisions in force from the warm-up's start in
   `newPlant`), `carry.ts` (with Б9 step 4, the campaign transition: the `next` command of the director's seat after
@@ -547,7 +550,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   short with the SKU most short, once; a deviation opened, once; an investigation's conclusion; a CAPA check; a PO late
   and when it came; a part failure and its repair with the downtime; hired and left; a unit in service; a project's
   stage; the scenario's goals at its end — kept the whole game in `story`, read by no rule, none in the plan run's
-  copy),
+  copy), `chronic.ts` (with Д1, a scenario's chronic root by the seed — a maker's lot drift from a day, in truth and
+  certificate, a person's habit added to a stage parameter fact, or both; the habit gone after a «train» CAPA with
+  them; hidden, the twin forgets it),
   `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.

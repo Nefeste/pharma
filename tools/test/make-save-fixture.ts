@@ -287,7 +287,9 @@ while (s.t < end && !busy()) {
     // с схемы 28 — на посту качества: скорость ротора обеих карт на шаг выше цели, блистерной у всех позиций — тоже
     if (SCHEMA >= 28) {
       for (const r of Object.values(db.recipes)) {
-        const p = r.stages.find(x => x.id === 'compress')!.params.find(x => x.id === 'speed')!;
+        // карта без прессования (капсулы, Б8) — без ротора
+        const p = r.stages.find(x => x.id === 'compress')?.params.find(x => x.id === 'speed');
+        if (!p?.step) continue;
         apply(db, s, { kind: 'setpoint', recipe: r.id, stage: 'compress', param: 'speed', value: p.target + p.step, by: 'player' });
       }
       for (const k of Object.values(db.skus)) apply(db, s, { kind: 'setpoint', sku: k.id, value: k.speed.target + k.speed.step, by: 'player' });

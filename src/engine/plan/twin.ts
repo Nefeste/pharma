@@ -192,6 +192,8 @@ export function blind(db: ContentDb, s: PlantState, k: number) {
   }
   // происшествие сценария и корни открытых расследований (часть 4)
   forgetIncident(db, s);
+  // хронический корень (Д1) завод не знает: смещение партий и привычку — тоже; после корня ничего не рисуется заново
+  delete s.chronic;
   // узлы: запас до отказа исправных — заново, без памяти; отказы в очереди идущей стадии и линии — по новому запасу
   const redraw = (pt: Part) => roll(s, `maint/${pt.id}`, r => expo(r, ONE_FAILURE));
   stageRedraw(db, s, redraw);

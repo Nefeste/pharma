@@ -8,7 +8,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { db } from '../../src/content';
 import { DRAFT_DAY } from '../../src/content/types';
+import { capaOptions } from '../../src/engine/capa';
+import { driftLot, habitCured, habitParams } from '../../src/engine/chronic';
+import { DAY, daysFromCivil, momentOf } from '../../src/engine/core/calendar';
 import { inForce, liveOf, revisions } from '../../src/engine/docs';
+import { apply, newPlant } from '../../src/engine/engine';
+import { noRepeat } from '../../src/engine/goals';
+import type { Lot, PlantState, StageRecord } from '../../src/engine/types';
 import { buildDb } from '../content/load';
 
 const dirs: string[] = [];
@@ -95,5 +101,115 @@ describe('база Д1', () => {
   test('редакции-проекты одного кода: без дня — можно, номер повторяется — нельзя', () => {
     const r2 = readFileSync(join(import.meta.dir, '../../content/specs/mat/api/ibuprofen-r2.yaml'), 'utf8');
     has(broken({ 'specs/mat/api/ibuprofen-r2.yaml': r2.replace('rev: 2,', 'rev: 1,') }), 'документ SP-0028: у редакций');
+  });
+});
+
+// ---------------------------------------------------------------- Д1, шаг 2: движок
+
+describe('движок Д1', () => {
+  /** База с хроническим корнем у сценария 2 и анализатором в лаборатории его плана; корень — по весам. */
+  function chronicDb(roots: string, laser = true) {
+    const dir = mkdtempSync(join(tmpdir(), 'pharma-content-'));
+    dirs.push(dir);
+    cpSync(join(import.meta.dir, '../../content'), dir, { recursive: true });
+    writeFileSync(join(dir, 'scenarios/c2.yaml'), c2 + CHRONIC.replace('roots: { api: 40, lube: 30, both: 30 }', roots));
+    const plan = join(dir, 'plants/c2.yaml');
+    const text = readFileSync(plan, 'utf8');
+    const row = '  - { id: diss-1, type: inst.dissolution, room: lab, place: QC-01.04, vendor: ven.ru }\n';
+    expect(text.includes(row)).toBe(true);
+    if (laser) writeFileSync(plan, text.replace(row, row + '  - { id: laser-1, type: inst.laser, room: lab, place: QC-01.05, vendor: ven.ru }\n'));
+    const { db: d, errors } = buildDb(dir);
+    expect(errors).toEqual([]);
+    return d;
+  }
+
+  test('корень на старте: вид по весам, день сдвига — 20-е сутки от старта игрока, человек привычки — оператор', () => {
+    const d = chronicDb('roots: { api: 100 }');
+    const s = newPlant(d, { scenario: 'scn.c2' });
+    expect(s.chronic!.root).toBe('api');
+    const sc = d.scenarios['scn.c2'];
+    expect(s.chronic!.day).toBe(daysFromCivil(sc.start.date) + sc.warm / DAY + 20);
+    expect(s.chronic!.shift).toBeGreaterThanOrEqual(40);
+    expect(s.chronic!.shift).toBeLessThanOrEqual(60);
+    expect(s.people[s.chronic!.person!].role).toBe('role.operator');
+    // у прототипа корня нет
+    expect(newPlant(db, { scenario: 'scn.proto' }).chronic).toBeUndefined();
+  });
+
+  test('сдвиг партий: у изготовителя корня с его дня — частицы крупнее, и в паспорте; раньше и у другого — нет', () => {
+    const d = chronicDb('roots: { api: 100 }');
+    const s = newPlant(d, { scenario: 'scn.c2' });
+    const c = s.chronic!;
+    const lot = (maker: string) => ({ material: 'mat.api.ibuprofen', maker, truth: { particle: 60 }, coa: { particle: 60 } }) as unknown as Lot;
+    const at = (day: number) => (s.t = (day - momentOf(s.start, 0).day) * DAY);
+    at(c.day - 1);
+    const early = lot('mkr.api-ibu');
+    driftLot(d, s, early);
+    expect(early.truth.particle).toBe(60);
+    at(c.day);
+    const late = lot('mkr.api-ibu');
+    driftLot(d, s, late);
+    expect(late.truth.particle).toBe(60 + c.shift);
+    expect(late.coa.particle).toBe(60 + c.shift);
+    const other = lot('mkr.api-par');
+    driftLot(d, s, other);
+    expect(other.truth.particle).toBe(60);
+  });
+
+  test('привычка: у стадии человека корня опудривание дольше на шаги уставки; у другого — нет; после обучения — нет', () => {
+    const d = chronicDb('roots: { lube: 100 }');
+    const s = newPlant(d, { scenario: 'scn.c2' });
+    const c = s.chronic!;
+    const st = d.recipes['rcp.ibuprofen200.dc.v1'].stages.find(x => x.params.some(p => p.id === 'lubeTime'))!;
+    const p = st.params.find(x => x.id === 'lubeTime')!;
+    const rec = (who: string) => {
+      const r = { params: { lubeTime: p.target } } as unknown as StageRecord;
+      habitParams(d, s, st, r, [who]);
+      return r.params.lubeTime;
+    };
+    expect(rec(c.person!)).toBe(p.target + c.steps * p.step!);
+    expect(rec('P0')).toBe(p.target);
+    habitCured(s, [c.person!]);
+    expect(rec(c.person!)).toBe(p.target);
+  });
+
+  test('CAPA «Испытание во входном контроле»: у отклонения по партии АФС — редакция 2 и методика; выполнена — в силе со дня после срока обучения', () => {
+    const d = chronicDb('roots: { api: 100 }');
+    const s = newPlant(d, { scenario: 'scn.c2' });
+    const live = () => liveOf(d, s.portfolio?.docs);
+    const lot = Object.values(s.lots).find(l => l.material === 'mat.api.ibuprofen')!;
+    s.deviations.D99 = { id: 'D99', opened: s.t, kind: 'oos', lot: lot.id, cause: 'lot', status: 'open', cls: 'major' } as unknown as PlantState['deviations'][string];
+    const opts = capaOptions(live(), s, s.deviations.D99);
+    expect(opts[0].action).toBe('capa.spec');
+    expect(opts[0].spec).toEqual(['spec.mat.api.ibuprofen-r2', 'test.particle']);
+    expect(opts[0].learners).toBeGreaterThan(0);
+    // без анализатора в лаборатории — нечем выполнить
+    const bd = chronicDb('roots: { api: 100 }', false);
+    const bare = newPlant(bd, { scenario: 'scn.c2' });
+    const blot = Object.values(bare.lots).find(l => l.material === 'mat.api.ibuprofen')!;
+    bare.deviations.D99 = { ...s.deviations.D99, lot: blot.id };
+    expect(capaOptions(bd, bare, bare.deviations.D99).some(o => o.action === 'capa.spec')).toBe(false);
+    apply(live(), s, { kind: 'seat', seats: ['quality'] });
+    apply(live(), s, { kind: 'capa', deviation: 'D99', action: 'capa.spec' });
+    const capa = Object.values(s.capas).find(x => x.action === 'capa.spec')!;
+    expect(capa.spec).toEqual(['spec.mat.api.ibuprofen-r2', 'test.particle']);
+    apply(live(), s, { kind: 'capaRun', capa: capa.id });
+    expect(s.capas[capa.id].done).toBe(s.t);
+    const today = momentOf(s.start, s.t).day;
+    const day = today + d.scenarios['scn.c2'].training.ahead + 1;
+    expect(inForce(live(), 'specs', 'spec.mat.api.ibuprofen', day - 1)).toBe('spec.mat.api.ibuprofen');
+    expect(inForce(live(), 'specs', 'spec.mat.api.ibuprofen', day)).toBe('spec.mat.api.ibuprofen-r2');
+    expect(live().tests['test.particle'].doc.from).toBe(day);
+  });
+
+  test('цель «повтора нет»: суток от выполнения CAPA, проверенной «эффективна»; повтор после неё — 0; нет такой CAPA — нечего считать', () => {
+    const s = newPlant(db, { scenario: 'scn.proto' });
+    expect(noRepeat(s, 0, 100 * DAY)).toBeUndefined();
+    const dev = { id: 'D1', opened: DAY, kind: 'oos', test: 'test.dissolution', stage: 'press', status: 'closed', cls: 'major' } as unknown as PlantState['deviations'][string];
+    s.deviations.D1 = dev;
+    s.capas.G1 = { id: 'G1', dev: 'D1', action: 'capa.train', head: 'mes', t: DAY, by: 'qa', due: 30 * DAY, done: 2 * DAY, check: { t: 50 * DAY, ok: true } };
+    expect(noRepeat(s, 0, 100 * DAY)).toBe(98);
+    s.deviations.D2 = { ...dev, id: 'D2', opened: 60 * DAY };
+    expect(noRepeat(s, 0, 100 * DAY)).toBe(0);
   });
 });

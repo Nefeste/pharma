@@ -6,7 +6,7 @@ vehicles: false
 area: QC
 min: [6, 6]
 build: true
-things: [inst.hplc, inst.ir, inst.lod, inst.dissolution]
+things: [inst.hplc, inst.ir, inst.lod, inst.dissolution, inst.laser]
 once: true
 source: [gmp-eaeu]
 review: draft

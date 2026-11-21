@@ -117,6 +117,8 @@ export interface CapaRow {
   docs?: string[];
   asset?: string;
   pair?: string;
+  /** испытание во входном контроле (Д1): редакция-проект спецификации и методики-проекты */
+  spec?: string[];
   t: number;
   by: 'player' | 'qa';
   due: number;
@@ -142,6 +144,7 @@ export function capaRow(db: ContentDb, s: PlantState, c: Capa): CapaRow {
     ...(c.docs ? { docs: c.docs } : {}),
     ...(c.asset ? { asset: c.asset } : {}),
     ...(c.pair ? { pair: c.pair } : {}),
+    ...(c.spec ? { spec: c.spec } : {}),
     t: c.t,
     by: c.by,
     due: c.due,

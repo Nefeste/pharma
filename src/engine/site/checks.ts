@@ -8,7 +8,7 @@
 // Сборщик базы зовёт их для плана сценария (tools/content/plan.ts — слова ошибок), стройка (Б7б) — для призрака и
 // команды. Ошибка — код и вещь, без слов: слова — у того, кто показывает. Ступень ошибки (`levelOf`): «нельзя» — план
 // такой не строят; «красная» — построено, но помещение не работает; «жёлтая» — замечание (геймдизайн, §3.4).
-import type { ContentDb, Plant, RoomRole } from '../../content/types';
+import { type ContentDb, DRAFT_DAY, type Plant, type RoomRole } from '../../content/types';
 import { accessOf, buildNav, CELL, CELL_CM, cellOf, fieldTo, footprints, type Nav, RACK } from '../nav';
 import { placesOf } from '../places';
 import { planOf } from '../plant';
@@ -279,7 +279,11 @@ export function needs(db: ContentDb, plant: Plant): SiteError[] {
           if (inst) want.push(inst);
         }
       }
-    } else if (t.role === 'lab') want.push(...(t.things ?? []));
+    } else if (t.role === 'lab') {
+      // прибор лаборатории нужен, когда его методика в силе или ещё будет; методика-проект (Д1) — пока не нужен
+      const live = new Set(Object.values(db.tests).flatMap(m => (m.inst && m.doc.from !== DRAFT_DAY ? [m.inst] : [])));
+      want.push(...(t.things ?? []).filter(x => !db.instruments[x] || live.has(x)));
+    }
     else if (t.role === 'storage') {
       const code = P.storeOf[r.id];
       if (code && !P.sensorOf[code]) want.push(...(t.things ?? []));

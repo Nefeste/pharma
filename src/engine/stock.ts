@@ -1,5 +1,6 @@
 // Склад: партии, тара, паллеты, места, статусы (docs/specs/2026-10-engine.md, 1а; геймдизайн, §4.2). Чистые функции
 // над состоянием; номера выдаёт счётчик в состоянии.
+import { driftLot } from './chronic';
 import type { ContentDb, Id } from '../content/types';
 import { momentOf } from './core/calendar';
 import { P_ONE } from './core/rng';
@@ -129,6 +130,8 @@ export function createLot(db: ContentDb, s: PlantState, o: NewLot): { lot: Lot; 
     coa,
   };
   s.lots[lot.id] = lot;
+  // хронический корень (Д1): у партии изготовителя корня с его дня — свойство сдвинуто
+  if (!o.truth) driftLot(db, s, lot);
   const units: Unit[] = [];
   for (let i = 0; i * ct.perPallet < n; i++) {
     const where = o.where(i);

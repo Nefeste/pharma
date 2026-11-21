@@ -6,6 +6,7 @@ import type { ContentDb, Goal } from '../content/types';
 import { DAY, HOUR } from './core/calendar';
 import { decidedAt, kpiPick, sincePeriod } from './kpi';
 import { scnZero } from './carry';
+import { sameDev } from './devclass';
 import type { PlantState } from './types';
 
 /** Мгновение старта игрока и конца сценария; конца нет — сценарий без срока. */
@@ -34,7 +35,27 @@ export function goalValue(db: ContentDb, s: PlantState, g: Goal): number | undef
       return Object.values(s.deviations).filter(d => d.opened >= from && d.opened <= until && d.late).length;
     case 'missDays':
       return missDays(s, from, until);
+    case 'noRepeat':
+      return noRepeat(s, from, until);
   }
+}
+
+/**
+ * Суток без повтора (Д1): у CAPA, сделанной в срок цели и проверенной «эффективна», — от её выполнения до конца, пока
+ * такого же отклонения после выполнения нет; лучшая из них. Нет такой CAPA — нечего считать. Только записи CAPA и
+ * отклонений.
+ */
+export function noRepeat(s: PlantState, from: number, until: number): number | undefined {
+  let best: number | undefined;
+  for (const c of Object.values(s.capas)) {
+    if (c.done === undefined || c.done < from || c.done > until || !c.check?.ok || c.check.t > until) continue;
+    const d = s.deviations[c.dev];
+    if (!d) continue;
+    const again = Object.values(s.deviations).some(x => x.id !== d.id && x.opened > c.done! && x.opened <= until && sameDev(x, d));
+    const v = again ? 0 : Math.floor((until - c.done) / DAY);
+    best = best === undefined ? v : Math.max(best, v);
+  }
+  return best;
 }
 
 /**

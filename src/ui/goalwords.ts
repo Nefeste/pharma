@@ -7,7 +7,7 @@ import { money, pctText, T } from '../i18n';
 export function goalText(g: Goal, start: Ymd): string {
   const w = T.campaign.goal;
   const what =
-    g.kind === 'released' ? w.released(g.v) : g.kind === 'otif' ? w.otif(pctText(g.v)) : g.kind === 'cash' ? w.cash(money(g.v)) : g.kind === 'missDays' ? w.missDays(g.v) : w.lateDevs(g.v);
+    g.kind === 'released' ? w.released(g.v) : g.kind === 'otif' ? w.otif(pctText(g.v)) : g.kind === 'cash' ? w.cash(money(g.v)) : g.kind === 'missDays' ? w.missDays(g.v) : g.kind === 'noRepeat' ? w.noRepeat(g.v) : w.lateDevs(g.v);
   if (g.from === undefined) return what;
   const m = momentOf(start, g.from).date;
   return w.since(T.date.full(m.d, T.date.months[m.m - 1], m.y), what);

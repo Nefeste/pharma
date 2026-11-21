@@ -61,6 +61,8 @@ const actions: Actions = {
   setLeft: later('setLeft'),
   bindKey: later('bindKey'),
   resetKeys: later('resetKeys'),
+  toggleFind: later('toggleFind'),
+  findText: later('findText'),
   // окна — на место: у слоя панелей, не у игры (src/app/windows.ts); ставится, когда слой подключён
   windowsHome: () => undefined,
   setSoundLayer: later('setSoundLayer'),

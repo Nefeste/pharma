@@ -1,6 +1,7 @@
 // из bolnitsa: src/ui/store.ts @ e0a3491 — изменено: поля завода вместо больницы.
 // Хранилище панелей: игра пишет сюда не чаще 10 раз в секунду, панели читают через `useSyncExternalStore`. Снимок
 // неизменяемый: каждое `set` — новый объект.
+import type { FindView } from '../sim/find';
 import { type Action, DEFAULT_KEYS, type KeyMap } from '../app/keys';
 import type { SaveRow } from '../app/saves';
 import { useSyncExternalStore } from 'react';
@@ -86,6 +87,8 @@ export interface Hud {
    */
   sound: { volume: number; captions: boolean; layers: Record<SoundLayer, number> };
   /** окно «Настройки» (Б13, шаг 1): открыто ли; масштаб интерфейса — 0,75…2 (src/app/scale.ts) */
+  /** «Найти» (Б13, шаг 4): открыто ли, текст поля и ответ потока на него */
+  find: { open: boolean; text: string; view?: FindView };
   settings: { open: boolean; scale: number; contrast: boolean; left: boolean; keys: KeyMap; keyNote?: { action: Action; code: string; fixed?: true; taken?: Action } };
   /** первый экран (Б11, шаг 2): сколько шагов загрузки прошло и какой идёт — настоящие шаги `Game.create` */
   load: { done: number; step: LoadStep };
@@ -283,6 +286,7 @@ export const initial: Hud = {
   walls: 'cut',
   less: false,
   sound: { volume: 0.7, captions: false, layers: { ui: 1, notices: 1 } },
+  find: { open: false, text: '' },
   settings: { open: false, scale: 1, contrast: false, left: false, keys: { ...DEFAULT_KEYS } },
   load: { done: 0, step: 'font' },
   fps: 0,
@@ -347,6 +351,9 @@ export interface Actions {
   resetKeys(): void;
   /** все окна — на место (Б13, шаг 3): второй путь у двойного щелчка по заголовку */
   windowsHome(): void;
+  /** «Найти» (Б13, шаг 4): открыть или закрыть (Ctrl+F); текст поля */
+  toggleFind(): void;
+  findText(text: string): void;
   /** громкость слоя звука (Б13, шаг 2) — доля общей */
   setSoundLayer(l: SoundLayer, v: number): void;
   /** язык окна (Б12, шаг 1): RU или EN — на ходу, запоминается в окне (src/app/lang.ts) */

@@ -34,6 +34,7 @@ import { Pauses } from './Pauses';
 import { Ref } from './Ref';
 import { Seats } from './Seats';
 import { Settings } from './Settings';
+import { Find } from './Find';
 import { uiK } from '../app/scale';
 import { Stock } from './Stock';
 import { watchFor } from '../app/watch';
@@ -208,6 +209,9 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
       {s.gap ? <GapScreen hud={s} /> : null}
       <Guard name={T.saves.menu} close={s.menu.open ? actions.toggleMenu : undefined}>
         {s.menu.open && <GameMenu hud={s} actions={actions} />}
+      </Guard>
+      <Guard name={T.find.title} close={s.find.open ? actions.toggleFind : undefined}>
+        {s.find.open && <Find hud={s} actions={actions} />}
       </Guard>
       <Guard name={T.settings.title} close={s.settings.open ? actions.toggleSettings : undefined}>
         {s.settings.open && <Settings hud={s} actions={actions} />}

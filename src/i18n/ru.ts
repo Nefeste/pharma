@@ -124,6 +124,17 @@ export const ru = {
     langHint: 'Язык окна: меняется сразу, выбор запоминается',
     langs: { ru: 'RU', en: 'EN' } as Record<string, string>,
   },
+  /** «Найти» (Б13, шаг 4): вещь завода по названию или коду */
+  find: {
+    title: 'Найти',
+    hint: 'Название или код: помещение, оборудование, табельный номер, паллета, партия, серия',
+    none: 'Ничего не нашлось',
+    more: 'Показаны первые 20 — уточните',
+    kinds: { room: 'помещение', equipment: 'оборудование', machine: 'машина', person: 'человек', unit: 'паллета', batch: 'серия' } as Record<string, string>,
+    person: (role: string, tab: number) => `${role}, таб. № ${tab}`,
+    unit: (code: string, material: string, lot: string) => `${code} · ${material} · ${lot}`,
+    batch: (code: string, product: string) => `${code} · ${product}`,
+  },
   /** окно «Настройки» (Б13, шаг 1; геймдизайн, §23): экран, звук, язык; хранятся в окне, а не в сохранении */
   settings: {
     button: (pct: number): string => (pct === 0 ? 'Настройки · без звука' : 'Настройки'),

@@ -123,11 +123,13 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # sizes, Full HD to 4K, no overflow (e2e-lang.mjs, lang.png), the saves — a
                                    # morning's, one's own, a new page and the load (e2e-saves.mjs, saves.png), the
                                    # campaign — scenario 1 to its result, «Следующий сценарий», the gap, scenario 2's
-                                   # start (e2e-carry.mjs, carry-*.png);
+                                   # start (e2e-carry.mjs, carry-*.png), the keyboard — scenario 1 without the mouse:
+                                   # Tab and Enter, space, Ctrl+F, «До утра», the build's arrows, Esc (e2e-keys.mjs,
+                                   # keys.png);
                                    # frames are not drawn during fast-forward (`fastff`);
                                    # `-- --only main|week|memo|capa|jobs|
                                    # launch|forecast|sop|mrp|edits|build|equip|route|sources|portfolio|c1|c2|chronicle|
-                                   # sound|brand|lang|saves|carry`
+                                   # sound|brand|lang|saves|carry|keys`
 node tools/app/before-after.mjs --before <dir>  # after e2e: the panels before and after → out/before-after.png
 npm run sound                      # the window and event sounds from formulas → assets/audio/*.wav and its LICENSES.md;
                                    # twice — the same bytes
@@ -647,7 +649,9 @@ first, or copy the working code of Bolnitsa on the same versions.
   lacks, the project's batches with their numbers and state, the dossier, and the meeting's «Проекты»
   (`portfolio.ts`); with Б9, a scenario's goals — what each sees now and the result at the end (`goals.ts`), and its
   letters — newest first, the plant's records for their words, where «Показать» leads, what the window must open
-  (`letters.ts`); with Б10, the chronicle — chapters of a day from meeting to meeting, a week from Monday and a month
+  (`letters.ts`); with Б13 step 4, «Найти» — a thing of the plant by name or code in both languages: rooms by the
+  window's names of their types, equipment, line machines, people by role and personnel number, pallets by code and lot
+  number, batches by number; the first 20 (`find.ts`); with Б10, the chronicle — chapters of a day from meeting to meeting, a week from Monday and a month
   from the 1st, back so many chapters, the entries newest first with the plant's records for their words and where a
   click leads, the chapter's sum; with step 2 a year from 1 January with «Итоги года» — the closed months' on-time share
   and the causes of deviations by count — and the whole chronicle for the file with its scenario and seed
@@ -684,7 +688,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   contrast — the `contrast` class over the tokens, the system's `prefers-contrast` by default — and the left-handed
   mouse — the scene's left and right buttons swapped (`access.ts`); with Б13 step 3 the keys — the map of actions by
   section with their default codes, a rebind refused for a taken or fixed key (Esc, F12, Tab, arrows), only the
-  player's changes kept in the window (`keys.ts`); with Б12 the window language — from the address, the player's choice kept in the
+  player's changes kept in the window (`keys.ts`); with Б13 step 4 the build cursor led by the arrows and Enter in
+  `game.ts`, until the mouse moves; with Б12 the window language — from the address, the player's choice kept in the
   window or the system's (`lang.ts`); the overflow check — text wider than its box and cut, not by an ellipsis, or a
   box cut by a clipping parent or the window's edge, a panel scrolling sideways, a pure rule over measurements
   (`overflow.ts`); the windows — a panel to the front on a click and dragged by its header, its shift kept by its kind
@@ -792,7 +797,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   (`goalwords.ts`), with Б9 step 2 the letters panel — rows, the open letter in words, «Показать», «Пропустить»,
   «Пропустить обучение» (`Letters.tsx`), with Б13 the «Настройки» window — the screen (scale, graphics, «Меньше
   движения»), the sound and the language, with step 3 the keys and «Окна — на место» (`Settings.tsx`), with Б13 step 3
-  `press` — a clicked row or cell taking Tab focus and Enter or space like a button (`press.ts`), with Б10 the chronicle panel — H, day, week, month or year, «Раньше» and
+  `press` — a clicked row or cell taking Tab focus and Enter or space like a button (`press.ts`), with step 4 the
+  «Найти» window — Ctrl+F, the field and the rows, Enter opens (`Find.tsx`), with Б10 the chronicle panel — H, day, week, month or year, «Раньше» and
   «Позже», the chapter's sum, «Итоги года», an entry in words with its click, «Сохранить хронику» — the whole chronicle
   as text by months (`Chronicle.tsx`), the investigation board — steps, findings in
   words with numbers

@@ -171,7 +171,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   a type not built twice, racks on their room's floor, the role of a room from the catalog, and each error's level —
   no, red (the room does not work) or yellow (a remark), `levelOf`), `site/edit.ts` (with Б7б, a building edit as a pure
   function of the plan — a room of a catalog type and class, a hull rectangle, a door, a zone, a rack, vehicles, a
-  demolition: a new plan with its revision one higher, the price without VAT, the room it closes for rebuilding — or why
+  demolition, a wall between two rooms of one type, grade and vehicles (`join` — one room, the doors in it gone): a new
+  plan with its revision one higher, the price without VAT, the room it closes for rebuilding — or why
   not; the same function for the window's ghost; with Б7в the units —
   buy, move, drop, swap in place), `site/units.ts` (with Б7в, the units of the plan as pure functions: the family by
   class and room, the price by vendor, the footprint on the floor of its room — not on another's, a rack, a zone or a

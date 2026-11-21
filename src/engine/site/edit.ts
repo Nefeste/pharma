@@ -41,7 +41,12 @@ export type BuildOp =
   | { op: 'unit'; type: Id; room: string; at?: [number, number]; turn?: number; vendor: Id }
   | { op: 'unitMove'; id: string; room: string; at?: [number, number]; turn?: number }
   | { op: 'unitDrop'; id: string }
-  | { op: 'unitSwap'; id: string; newId: string; type: Id; vendor: Id };
+  | { op: 'unitSwap'; id: string; newId: string; type: Id; vendor: Id }
+  /**
+   * снос стены (по игре владельца 20.11.2026): два помещения одного типа, класса и проезда через общую стену во всю её
+   * длину — в одно, имя — первого; вместе они — прямоугольник; во втором вещей нет
+   */
+  | { op: 'join'; a: string; b: string };
 
 /**
  * Почему нельзя: ошибка планировки «нельзя» в плане после правки; «отрежет» — не дойти или не доехать до того, до чего
@@ -79,6 +84,9 @@ export type BuildError =
   /** вакуумная перегрузка (Б7г): не у стены с помещением следующей стадии */
   | { code: 'transferWall' }
   | { code: 'lineUnit' }
+  /** снос стены: помещения разного типа, класса или проезда; вместе не прямоугольник или стена не во всю длину */
+  | { code: 'joinType' }
+  | { code: 'joinShape' }
   | { code: 'noPlace' };
 
 /** Счётчики имён новых вещей: тип помещения, `zone`, `rack` — номер буквы ряда. Отмена их не возвращает. */
@@ -380,6 +388,27 @@ export function editPlan(db: ContentDb, b: BuildPrices, plan: SitePlan, op: Buil
     }
     case 'demolish':
       return demolish(db, b, plan, op, done);
+    case 'join': {
+      const ia = plan.rooms.findIndex(r => r.id === op.a);
+      const ib = plan.rooms.findIndex(r => r.id === op.b);
+      if (ia < 0 || ib < 0 || ia === ib) return fail({ code: 'noThing' });
+      const ra = plan.rooms[ia];
+      const rb = plan.rooms[ib];
+      if (ra.type !== rb.type || ra.grade !== rb.grade || ra.vehicles !== rb.vehicles) return fail({ code: 'joinType' });
+      const rect = joinRect(ra.rect, rb.rect);
+      if (!rect) return fail({ code: 'joinShape' });
+      const thing = thingIn(db, plan, rb.id);
+      if (thing) return fail({ code: 'hasThings', thing });
+      // двери между ними — со стеной; остальные двери второго — теперь в первое: стороны дверей план считает по месту
+      const between = new Set(plan.doors.filter(d => {
+        const s = doorSides(db, plan, d);
+        return !!s && s.includes(ia) && s.includes(ib);
+      }));
+      const centers = (a: Plant['areas'][number]) => a.centers.filter(c => !(c.kind === 'storage' && c.rooms?.length === 1 && c.rooms[0] === rb.id));
+      const areas = plan.areas.map(a => (a.rooms.includes(rb.id) ? { ...a, rooms: a.rooms.filter(x => x !== rb.id), centers: centers(a) } : a));
+      const rooms = plan.rooms.filter((_, k) => k !== ib).map(r => (r.id === ra.id ? { ...r, rect } : r));
+      return done({ ...plan, rooms, doors: plan.doors.filter(d => !between.has(d)), areas }, 0, ra.id, { room: ra.id });
+    }
     case 'unit': {
       const cls = classRec(db, op.type);
       if (!cls) return fail({ code: 'unitType', type: op.type });
@@ -508,6 +537,18 @@ function demolish(
       return done(next(), 0, r.id, { refund: half(rackPrice(b, r)), ...(room >= 0 ? { room: plan.rooms[room].id } : {}) });
     }
   }
+}
+
+/**
+ * Два помещения через общую стену — одним прямоугольником: та же высота и стык по x или та же ширина и стык по z; стена
+ * общая — у соседей одна клетка края на двоих. Иначе — `undefined`.
+ */
+export function joinRect(a: readonly [number, number, number, number], b: readonly [number, number, number, number]): [number, number, number, number] | undefined {
+  const [l, r] = a[0] <= b[0] ? [a, b] : [b, a];
+  if (l[1] === r[1] && l[3] === r[3] && r[0] === l[0] + l[2] - CELL_CM) return [l[0], l[1], l[2] + r[2] - CELL_CM, l[3]];
+  const [t, d] = a[1] <= b[1] ? [a, b] : [b, a];
+  if (t[0] === d[0] && t[2] === d[2] && d[1] === t[1] + t[3] - CELL_CM) return [t[0], t[1], t[2], t[3] + d[3] - CELL_CM];
+  return undefined;
 }
 
 /** Дверь ведёт в класс D: одна из её сторон — помещение класса D. */

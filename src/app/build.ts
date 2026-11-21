@@ -149,7 +149,7 @@ function roomAtCell(db: ContentDb, plan: Plant, cell: Cell): string | undefined 
 }
 
 /** Что снести под клеткой: дверь, ряд стеллажа, зона, помещение — по порядку; ничего — `undefined`. */
-export function targetAt(db: ContentDb, plan: Plant, cell: Cell): Extract<BuildOp, { op: 'demolish' } | { op: 'unitDrop' }> | undefined {
+export function targetAt(db: ContentDb, plan: Plant, cell: Cell): Extract<BuildOp, { op: 'demolish' } | { op: 'unitDrop' } | { op: 'join' }> | undefined {
   const nav = planOf(db, plan).nav;
   const [x, z] = cell;
   if (x < 0 || z < 0 || x >= nav.w || z >= nav.h) return undefined;
@@ -164,8 +164,16 @@ export function targetAt(db: ContentDb, plan: Plant, cell: Cell): Extract<BuildO
   if (rack) return { op: 'demolish', what: 'rack', id: rack.id };
   const zone = plan.zones.find(q => cx >= q.rect[0] && cx < q.rect[0] + q.rect[2] && cz >= q.rect[1] && cz < q.rect[1] + q.rect[3]);
   if (zone) return { op: 'demolish', what: 'zone', id: zone.id };
+  // стена между двумя помещениями (по игре владельца 20.11.2026) — снести её: два помещения в одно
+  const at = (cx: number, cz: number) => (cx < 0 || cz < 0 || cx >= nav.w || cz >= nav.h ? -1 : isOpen(nav.cells[cz * nav.w + cx]) ? nav.room[cz * nav.w + cx] : -1);
+  for (const [a, b] of [
+    [at(x - 1, z), at(x + 1, z)],
+    [at(x, z - 1), at(x, z + 1)],
+  ])
+    if (!isOpen(nav.cells[i]) && a >= 0 && b >= 0 && a !== b) return { op: 'join', a: plan.rooms[a].id, b: plan.rooms[b].id };
   const room = nav.room[i];
-  return room >= 0 ? { op: 'demolish', what: 'room', id: plan.rooms[room].id } : undefined;
+  if (room >= 0) return { op: 'demolish', what: 'room', id: plan.rooms[room].id };
+  return undefined;
 }
 
 /**
@@ -254,6 +262,11 @@ export function shapeOf(db: ContentDb, plan: Plant, op: BuildOp): { rect?: Ghost
       const r = plan.rooms.find(x => x.id === op.room);
       return { cells: r ? cellsOfCm(r.rect) : [] };
     }
+    case 'join': {
+      // снос стены: оба помещения на полу призраком
+      const rs = plan.rooms.filter(x => x.id === op.a || x.id === op.b);
+      return { cells: rs.flatMap(r => cellsOfCm(r.rect)) };
+    }
     case 'unit':
     case 'unitMove':
     case 'unitDrop':
@@ -305,6 +318,8 @@ function whatOf(db: ContentDb, plan: Plant, op: BuildOp): string {
       return g.rackSize(op.bays, op.levels);
     case 'vehicles':
       return g.vehicles(roomName(plan, op.room), op.on);
+    case 'join':
+      return g.join(roomName(plan, op.a), roomName(plan, op.b));
     case 'demolish':
       return op.what === 'door' ? T.build.doors[(plan.doors.find(d => doorId(d) === op.id)?.kind ?? 'door') as BuildDoor] ?? op.id : thingName(plan, op.id);
     case 'unit':
@@ -353,7 +368,7 @@ export function ghostOf(db: ContentDb, b: BuildPrices, vat: number, plan: SitePl
   const cost = r.cost + part(r.cost, vat) - r.refund - part(r.refund, vat);
   if (view && cost > 0 && view.cash - cost < view.floor) return { ok: false, warn: false, text: g.no(what, T.build.why.money(money(cost - (view.cash - view.floor)))), cost };
   if (op.op === 'demolish' && op.what !== 'door' && view?.busy.includes(op.id)) return { ok: true, warn: true, text: g.later(what), cost: 0 };
-  const priced = op.op === 'demolish' || op.op === 'unitDrop' ? g.demolish(what, money(-cost)) : op.op === 'unitMove' ? what : op.op === 'zone' ? g.zone(what, r.plan.zones.at(-1)!.grid[0] * r.plan.zones.at(-1)!.grid[1]) : op.op === 'vehicles' ? what : g.priced(what, money(cost));
+  const priced = op.op === 'demolish' || op.op === 'unitDrop' ? g.demolish(what, money(-cost)) : op.op === 'unitMove' || op.op === 'join' ? what : op.op === 'zone' ? g.zone(what, r.plan.zones.at(-1)!.grid[0] * r.plan.zones.at(-1)!.grid[1]) : op.op === 'vehicles' ? what : g.priced(what, money(cost));
   const had = new Set(errorsOf(db, plan).map(e => JSON.stringify(e)));
   const fresh = errorsOf(db, r.plan).filter(e => !had.has(JSON.stringify(e)));
   const red = fresh.find(e => levelOf(e) === 'red');

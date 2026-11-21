@@ -224,6 +224,32 @@ async function director(x) {
     else if (after !== before) fail(`дверь: программы отрисовщика собраны заново — было ${before}, стало ${after}`);
     else ok(`дверь: «${doorGhost}» · коридор «${doorLabel}» · программ отрисовщика те же ${before.split(',').length}`);
 
+    // снос стены (по игре владельца 20.11.2026): второй коридор у южной стены первого, стена между ними — одно помещение;
+    // две отмены — снова как было
+    await page.click('[data-test=tool-room]');
+    await page.selectOption('[data-test=room-type]', 'corridor');
+    rev = await s.rev();
+    await s.drag([59, 24], [70, 28]);
+    await page.waitForFunction(r => window.__game.world.rev === r, rev + 1, { timeout: 20_000 }).catch(() => {});
+    await page.click('[data-test=tool-demolish]');
+    const wallGhost = await s.hover(64, 24);
+    rev = await s.rev();
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForFunction(r => window.__game.world.rev === r, rev + 1, { timeout: 20_000 }).catch(() => {});
+    await s.frames(3);
+    await s.shot('Снос стены: два коридора — один');
+    const joined = await page.evaluate(() => window.__seen.plan().rooms.filter(r => r.id.startsWith('corridor-')).map(r => [r.id, r.rect.join(',')]));
+    if (!/^Снести стену: Общий коридор 1 и Общий коридор 2 — одно помещение/.test(wallGhost) || joined.length !== 1 || joined[0][1] !== '5900,2000,1200,900') fail(`снос стены: призрак «${wallGhost}», коридоры ${JSON.stringify(joined)}`);
+    else ok(`снос стены: «${wallGhost}» · ${joined[0][0]} ${joined[0][1]}`);
+    for (let k = 0; k < 2; k++) {
+      rev = await s.rev();
+      await page.keyboard.press('Control+KeyZ');
+      await page.waitForFunction(r => window.__game.world.rev === r, rev + 1, { timeout: 20_000 }).catch(() => {});
+    }
+    const back = await page.evaluate(() => window.__seen.plan().rooms.filter(r => r.id.startsWith('corridor-')).map(r => r.id));
+    if (back.join() !== 'corridor-1') fail(`снос стены, отмена: коридоры ${back.join(', ')}`);
+
     // шлюз для людей класса D из нового коридора
     await page.click('[data-test=tool-room]');
     await page.selectOption('[data-test=room-type]', 'airlock.people');

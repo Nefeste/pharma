@@ -638,6 +638,11 @@
     #settings > .phead { position: sticky; top: calc(0px - var(--sp-4)); z-index: 1; background: var(--window); padding-top: var(--sp-2); }
     #settings .col { display: flex; flex-direction: column; gap: var(--sp-2); }
     #settings .group { flex-wrap: wrap; }
+    /* «Найти» (Б13, шаг 4) — посередине сверху, поле и строки найденного */
+    .find { position: absolute; left: 50%; top: calc(var(--top-h, 48px) + 8px); transform: translateX(-50%); width: min(560px, calc(100% - 16px)); max-height: calc(100% - var(--top-h, 48px) - 24px); overflow-y: auto; padding: var(--sp-4) var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-3); z-index: 9; }
+    .find .frows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+    .find .frows li { padding: var(--sp-1) var(--sp-2); border-radius: var(--r-s); }
+    .find .frows li:hover { background: var(--wash); }
     /* клавиши (Б13, шаг 3): разделы в два столбца, строка — действие и его клавиша */
     #settings .keys { display: flex; flex-direction: column; gap: var(--sp-2); }
     #settings .kgroup { display: grid; grid-template-columns: 1fr 1fr; column-gap: var(--sp-6); row-gap: var(--sp-1); }

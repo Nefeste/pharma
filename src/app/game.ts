@@ -344,6 +344,19 @@ export class Game {
   }
 
   /** Клетка пола под точкой экрана: луч камеры — до пола (y = 0); за краем сетки — тоже клетка: корпус растёт туда. */
+  /** Клетку стройки ведут стрелки (Б13, шаг 4), пока мышь не двинулась. */
+  private keyCursor = false;
+
+  /** Стрелка в стройке: клетка курсора — на шаг по осям плана; не было — середина экрана. */
+  private keyCell(k: string) {
+    const h = this.builder.hover ?? this.cellAt(window.innerWidth / 2, window.innerHeight / 2);
+    if (!h) return;
+    const [dx, dz] = k === 'ArrowLeft' ? [-1, 0] : k === 'ArrowRight' ? [1, 0] : k === 'ArrowUp' ? [0, -1] : [0, 1];
+    this.keyCursor = true;
+    this.builder.move([h[0] + dx, h[1] + dz]);
+    this.buildHud();
+  }
+
   private cellAt(clientX: number, clientY: number): Cell | undefined {
     const r = this.stage.ray(clientX, clientY);
     if (r.d[1] >= 0) return undefined;
@@ -472,6 +485,10 @@ export class Game {
         this.store.set({ letters: { ...this.store.get().letters, view: d } });
         this.firstLetter();
         this.seenLetters();
+      } else if (d.view === 'find') {
+        // «Найти» (Б13, шаг 4): ответ на текст, что сейчас в поле
+        const f = this.store.get().find;
+        if (f.open && f.text === d.text) this.store.set({ find: { ...f, view: d } });
       } else this.store.set({ top: d });
     }
     // извещения автопауз игрока — вес «стоп» (13-art.md, §11): на таком поток встал; в полосе — оно, а не то, что пришло с
@@ -895,7 +912,7 @@ export class Game {
     this.onFrame?.(ts);
     this.edgePan(dt);
     // стройка: клетка под курсором — и когда камера едет, а мышь стоит; подписи помещений — над ними
-    if (this.builder.on && this.mouse.inside) {
+    if (this.builder.on && this.mouse.inside && !this.keyCursor) {
       const cell = this.cellAt(this.mouse.x, this.mouse.y);
       const h = this.builder.hover;
       if (cell?.[0] !== h?.[0] || cell?.[1] !== h?.[1]) {
@@ -1107,6 +1124,15 @@ export class Game {
       keepKeys(windowKeep(), r.map);
       const { keyNote: _, ...rest } = st;
       this.store.set({ settings: { ...rest, keys: r.map } });
+    },
+    toggleFind: () => {
+      const f = this.store.get().find;
+      this.store.set({ find: f.open ? { open: false, text: '' } : { open: true, text: f.text } });
+      this.sendViews();
+    },
+    findText: (text: string) => {
+      this.store.set({ find: { ...this.store.get().find, text } });
+      this.sendViews();
     },
     // окна — на место: делает слой панелей (main.tsx, windows.ts), у игры — ничего
     windowsHome: () => undefined,
@@ -1913,6 +1939,8 @@ export class Game {
     if (h.journal.open) list.push({ id: 'journal', view: 'journal', page: h.journal.page, ...(h.journal.seat ? { seat: h.journal.seat } : {}), ...(h.journal.who ? { who: h.journal.who } : {}), ...(h.journal.focus !== undefined ? { focus: h.journal.focus } : {}) });
     if (h.dossier.open && h.dossier.batch !== undefined) list.push({ id: 'dossier', view: 'dossier', batch: h.dossier.batch });
     if (h.ref.open) list.push({ id: 'ref', view: 'ref' });
+    // «Найти» (Б13, шаг 4): пока окно открыто и в поле есть текст; названия типов помещений — на языке окна
+    if (h.find.open && h.find.text.trim()) list.push({ id: 'find', view: 'find', text: h.find.text, rooms: T.roomTypes as Record<string, string> });
     if (h.po.open) list.push({ id: 'po', view: 'po', ...(h.po.supplier ? { supplier: h.po.supplier } : {}), lines: h.po.lines.map(l => ({ material: l.material, qty: l.qty })) });
     if (h.kpi.open) list.push({ id: 'kpi', view: 'kpi', tab: h.kpi.tab, ...(h.kpi.why ? { why: h.kpi.why } : {}), ...(h.kpi.month !== undefined ? { month: h.kpi.month } : {}) });
     if (h.policies.open) list.push({ id: 'policies', view: 'policies' });
@@ -2118,6 +2146,8 @@ export class Game {
       }
     });
     el.addEventListener('pointermove', e => {
+      // мышь двинулась — клетку стройки снова ведёт она, а не стрелки (Б13, шаг 4)
+      this.keyCursor = false;
       this.mouse.x = e.clientX;
       this.mouse.y = e.clientY;
       this.mouse.inside = true;
@@ -2163,12 +2193,34 @@ export class Game {
         if (k === 'Escape') this.actions.closeSeats();
         return;
       }
+      // «Найти» (Б13, шаг 4): Ctrl+F — с любого места, и из поля тоже
+      if (k === 'KeyF' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        this.actions.toggleFind();
+        return;
+      }
       // в поле ввода — поиск справочника — клавиши пишут текст, а не командуют миром; Esc закрывает окно, как всегда
       if (k !== 'Escape' && (e.target as HTMLElement | null)?.closest?.('input, textarea, select')) return;
       // в окне расписания стрелки двигают задание, а не камеру (Gantt.tsx)
       if ((e.target as HTMLElement | null)?.closest?.('.gantt') && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(k)) return;
       // Enter и пробел на кнопке или строке в фокусе (Б13, шаг 3) — нажимают её, а не командуют миром
       if ((k === 'Space' || k === 'Enter' || k === 'NumpadEnter') && (e.target as HTMLElement | null)?.closest?.('button, a, [role=button], [role=link], [tabindex]')) return;
+      // стройка с клавиатуры (Б13, шаг 4): стрелки — клетка курсора, Enter — поставить или начать и кончить протяжку
+      if (this.builder.on && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(k)) {
+        e.preventDefault();
+        this.keyCell(k);
+        return;
+      }
+      if (this.builder.on && (k === 'Enter' || k === 'NumpadEnter')) {
+        e.preventDefault();
+        const cell = this.builder.hover;
+        if (cell) {
+          if (this.builder.drag) this.builder.up(cell);
+          else this.builder.down(cell);
+          this.buildHud();
+        }
+        return;
+      }
       // клавиши — по карте действий (Б13, шаг 3; src/app/keys.ts): игрок мог их переназначить
       const act = e.ctrlKey || e.metaKey || e.altKey ? undefined : actionOf(this.store.get().settings.keys, k);
       if (act === 'pause') {
@@ -2218,6 +2270,7 @@ export class Game {
         else if (h.po.open) this.actions.togglePo();
         else if (h.pauses.open) this.actions.togglePauses();
         else if (h.menu.open) this.actions.toggleMenu();
+        else if (h.find.open) this.actions.toggleFind();
         else if (h.settings.open) this.actions.toggleSettings();
         else if (this.selected) this.actions.select(undefined);
         else if (h.gantt.open) this.actions.toggleGantt();

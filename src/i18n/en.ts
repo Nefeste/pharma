@@ -96,6 +96,16 @@ export const en: Strings = {
     langHint: 'Window language: changes at once, the choice is kept',
     langs: { ru: 'RU', en: 'EN' },
   },
+  find: {
+    title: 'Find',
+    hint: 'Name or code: room, equipment, personnel number, pallet, lot, batch',
+    none: 'Nothing found',
+    more: 'The first 20 are shown — narrow it down',
+    kinds: { room: 'room', equipment: 'equipment', machine: 'machine', person: 'person', unit: 'pallet', batch: 'batch' },
+    person: (role: string, tab: number) => `${role}, personnel no. ${tab}`,
+    unit: (code: string, material: string, lot: string) => `${code} · ${material} · ${lot}`,
+    batch: (code: string, product: string) => `${code} · ${product}`,
+  },
   settings: {
     button: (pct: number) => (pct === 0 ? 'Settings · muted' : 'Settings'),
     hint: 'Interface scale, graphics, motion, sound and language; kept on this computer',

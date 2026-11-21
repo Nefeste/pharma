@@ -32,6 +32,7 @@ const WINDOWS = [
   ['хроника', g => g.actions.toggleChronicle()],
   ['автопаузы', g => g.actions.togglePauses()],
   ['настройки', g => g.actions.toggleSettings()],
+  ['найти', g => g.actions.toggleFind()],
 ];
 const GANTT_TABS = [undefined, 'jobs', 'launch', 'forecast', 'mrp'];
 const REF_TABS = ['products', 'materials', 'recipes', 'equipment', 'places', 'lab', 'people', 'partners', 'docs'];

@@ -79,6 +79,7 @@ import { brandPart } from './e2e-brand.mjs';
 import { langPart } from './e2e-lang.mjs';
 import { savesPart } from './e2e-saves.mjs';
 import { carryPart } from './e2e-carry.mjs';
+import { keysPart } from './e2e-keys.mjs';
 import { routePart } from './e2e-route.mjs';
 import { editsPart } from './e2e-edits.mjs';
 import { sourcesPart } from './e2e-sources.mjs';
@@ -330,6 +331,7 @@ try {
   if (only === '' || only === 'lang') await langPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
   if (only === '' || only === 'saves') await savesPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
   if (only === '' || only === 'carry') await carryPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'keys') await keysPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
   if (errors.length) fail(`ошибки в консоли: ${errors.join(' | ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

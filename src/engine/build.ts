@@ -140,6 +140,11 @@ export function siteCommand(db: ContentDb, s: PlantState, cmd: Extract<Command, 
   if (op.op === 'undo') return undo(db, s, notices);
   const leaving = leavingOf(db, s, op);
   if (leaving) return void notices.push(no(op.op, { code: 'leaving', thing: leaving }));
+  // снос стены: второе помещение занято — нельзя, его учёт уйдёт с ним (серия, паллета, задача)
+  if (op.op === 'join') {
+    const busy = busyWith(db, s, 'room', op.b);
+    if (busy) return void notices.push(no(op.op, { code: 'inUse', thing: busy }));
+  }
   const r = editPlan(db, b, s.plan, op, s.build?.next ?? {});
   if (!r.ok) return void notices.push(no(op.op, r.error));
   // снос занятого — когда освободится: шаг без денег, возврат — со сносом

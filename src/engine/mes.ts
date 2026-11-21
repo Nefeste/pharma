@@ -1192,7 +1192,7 @@ function truthOf(db: ContentDb, s: PlantState, b: Batch, attrs: Attr[], stage: s
     for (const c of Object.values(db.causes)) {
       if (!causeOn(c, b.product)) continue;
       for (const e of c.effects) {
-        if (e.attr !== a) continue;
+        if (e.attr !== a || (e.products && !e.products.includes(b.product))) continue;
         const d = sided(c, driver(db, s, b, c.driver));
         const delta = d ? Math.round(e.coef * d) : 0;
         if (delta === 0) continue;

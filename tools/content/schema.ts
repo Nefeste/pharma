@@ -451,6 +451,19 @@ export const scenario = z.strictObject({
       }),
     })
     .optional(),
+  /**
+   * хронический корень (Д1; docs/specs/2026-11-fill.md): веса корней, %; смещение партий материала от изготовителя — с
+   * дня сценария, свойство и сдвиг среднего от и до в единицах свойства; привычка человека роли — режим и шагов уставки
+   * сверх неё от и до; у корня `both` — свои величины
+   */
+  chronic: z
+    .strictObject({
+      roots: z.partialRecord(z.enum(['api', 'lube', 'both']), percent),
+      drift: z.strictObject({ material: id, maker: id, day: z.number().int().min(0), attr, shift: z.tuple([z.number().positive(), z.number().positive()]) }),
+      habit: z.strictObject({ role: id, param: z.string(), steps: z.tuple([z.number().int().positive(), z.number().int().positive()]) }),
+      both: z.strictObject({ shift: z.tuple([z.number().positive(), z.number().positive()]), steps: z.tuple([z.number().int().positive(), z.number().int().positive()]) }),
+    })
+    .optional(),
 });
 
 /**
@@ -1125,7 +1138,7 @@ export const cause = z
       z.strictObject({ screen: z.literal(true) }),
     ]),
     /** вклад: показатель серии и коэффициент — единиц показателя на единицу отхода */
-    effects: z.array(z.strictObject({ attr, coef: z.number() })).min(1),
+    effects: z.array(z.strictObject({ attr, coef: z.number(), products: z.array(z.string()).min(1).optional() })).min(1),
     /** только у серий этих продуктов (Б7д, шаг 3): свойство продукта — например, ибупрофен налипает на пуансоны */
     products: z.array(z.string()).min(1).optional(),
     /** в счёт — только отход выше цели или ниже (Б7д, шаг 3): порог причины — цель режима */

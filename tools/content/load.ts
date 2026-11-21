@@ -36,6 +36,7 @@ import {
   type HeadId,
   type Id,
   type IncidentDef,
+  type ChronicDef,
   type Install,
   type Labor,
   type LeaveRule,
@@ -640,11 +641,11 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     for (const e of c.effects) need(!qual(e.attr), `${where}: ${e.attr} — качественное свойство`);
     for (const e of c.scatter ?? []) need(!qual(e.attr), `${where}: ${e.attr} — качественное свойство`);
     need(!c.scatter || 'param' in d, `${where}: разброс МОК — от отхода режима стадии`);
-    for (const p of c.products ?? []) need(raw.products[p], `${where}: продукта ${p} нет`);
+    for (const p of [...(c.products ?? []), ...c.effects.flatMap(e => e.products ?? [])]) need(raw.products[p], `${where}: продукта ${p} нет`);
     need(!c.side || 'param' in d, `${where}: одна сторона отхода — только у режима стадии`);
     causes[c.id] = {
       ...c,
-      effects: c.effects.map(e => ({ attr: e.attr, coef: (e.coef * scaleOf(e.attr)) / per })),
+      effects: c.effects.map(e => ({ attr: e.attr, coef: (e.coef * scaleOf(e.attr)) / per, ...(e.products ? { products: e.products } : {}) })),
       ...(c.scatter ? { scatter: c.scatter.map(e => ({ attr: e.attr, coef: (e.coef * scaleOf(e.attr)) / per })) } : {}),
     };
   }
@@ -959,6 +960,23 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
       sizes: { lab: range(x.sizes.lab, 100), lube: range(x.sizes.lube, PARAM_SCALE.min), force: range(x.sizes.force, PARAM_SCALE.kN), screen: range(x.sizes.screen, 1000) },
     };
   };
+  // хронический корень (Д1): материал у изготовителя, свойство из `props`; роль — в штате, режим — у стадии с шагом уставки
+  const chronicOf = (x: NonNullable<RawScenario['chronic']>, sc: RawScenario, where: string): ChronicDef => {
+    const d = x.drift;
+    need(materials[d.material], `${where}: хронический корень — нет материала ${d.material}`);
+    need(makers[d.maker]?.makes.includes(d.material), `${where}: хронический корень — ${d.maker} не выпускает ${d.material}`);
+    need(!!materials[d.material]?.props[d.attr], `${where}: хронический корень — у ${d.material} нет свойства ${d.attr}`);
+    need(sc.staff.some(r => r.role === x.habit.role), `${where}: хронический корень — роли ${x.habit.role} нет в штате`);
+    need(Object.values(raw.recipes).some(r => r.stages.some(st => st.params.some(p => p.id === x.habit.param && p.step !== undefined))), `${where}: хронический корень — режима ${x.habit.param} с шагом уставки нет ни в одной карте`);
+    for (const [k, [a, b]] of [['drift', d.shift], ['habit', x.habit.steps], ['both.shift', x.both.shift], ['both.steps', x.both.steps]] as const) need(a <= b, `${where}: хронический корень — ${k}: «от» больше «до»`);
+    const sh = ([a, b]: [number, number]): [number, number] => [attrVal(d.attr, a), attrVal(d.attr, b)];
+    return {
+      roots: Object.fromEntries(Object.entries(x.roots).map(([k, v]) => [k, share(v)])),
+      drift: { material: d.material, maker: d.maker, day: d.day, attr: d.attr, shift: sh(d.shift) },
+      habit: { role: x.habit.role, param: x.habit.param, steps: x.habit.steps },
+      both: { shift: sh(x.both.shift), steps: x.both.steps },
+    };
+  };
   const scenarios: Record<string, Scenario> = {};
   for (const s of Object.values(raw.scenarios)) {
     const where = `сценарий ${s.id}`;
@@ -1158,6 +1176,7 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
         ...(s.partners.variation ? { variation: { ...s.partners.variation, ask: share(s.partners.variation.ask), answer: [s.partners.variation.answer[0], s.partners.variation.answer[1]] as [number, number] } } : {}),
       },
       ...(s.incident ? { incident: incidentOf(s.incident, s.batches.length, where) } : {}),
+      ...(s.chronic ? { chronic: chronicOf(s.chronic, s, where) } : {}),
       ...(s.labor ? { labor: laborOf(s.labor, s, where) } : {}),
       ...(s.heads ? { heads: headsOf(s.heads, s, where) } : {}),
       ...(s.leave ? { leave: leaveRuleOf(s.leave, s, where) } : {}),
@@ -1308,8 +1327,10 @@ function convert(raw: Raw, errors: string[]): Omit<ContentDb, 'hash'> {
     const byCode = new Map<string, string[]>();
     for (const [id, r] of Object.entries(docDb[kind] as Record<string, { doc: DocHead }>)) byCode.set(r.doc.code, [...(byCode.get(r.doc.code) ?? []), id]);
     for (const [code, ids] of byCode) {
-      const heads = ids.map(id => ({ id, h: headOf(docDb, kind, id)! })).sort((a, b) => a.h.from - b.h.from);
-      need(new Set(heads.map(x => x.h.from)).size === heads.length, `документ ${code}: у редакций ${ids.join(', ')} один день введения`);
+      const heads = ids.map(id => ({ id, h: headOf(docDb, kind, id)! })).sort((a, b) => a.h.from - b.h.from || a.h.rev - b.h.rev);
+      // редакции-проекты (Б7д, Д1) — без дня: их вводит в силу движок, порядок у них — по номеру
+      const dated = heads.filter(x => x.h.from !== DRAFT_DAY);
+      need(new Set(dated.map(x => x.h.from)).size === dated.length, `документ ${code}: у редакций ${ids.join(', ')} один день введения`);
       need(new Set(heads.map(x => x.h.rev)).size === heads.length, `документ ${code}: у редакций ${ids.join(', ')} номер повторяется`);
       heads.forEach((x, i) => {
         if (i > 0 && x.h.rev !== heads[i - 1].h.rev) need(x.h.rev > heads[i - 1].h.rev, `документ ${code}: редакция ${x.h.rev} (${x.id}) введена позже редакции ${heads[i - 1].h.rev}`);

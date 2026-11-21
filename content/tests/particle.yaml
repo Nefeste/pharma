@@ -1,0 +1,19 @@
+# Размер частиц субстанции лазерной дифракцией (Д1): x50 — медиана объёмного распределения, мкм (eaeu-ph-ld). Испытание
+# во входном контроле — когда размер частиц влияет на растворение (ich-q6a, п. 3.3.1 b). Редакция-проект: в силу её вводит
+# CAPA «Испытание во входном контроле» (docs/specs/2026-11-fill.md, «Д1»). Погрешность — по ориентиру повторяемости
+# srel ≤ 10 % для x50 при обычных 60 мкм ибупрофена; времена — гипотезы
+id: test.particle
+name: { ru: Размер частиц (лазерная дифракция), en: Particle size (laser diffraction) }
+doc: { code: TM-0016, rev: 1, approved: role.qc-head }
+attr: particle
+inst: inst.laser
+prep: 20
+run: 15
+unattended: false
+sd: 3
+# обучение по методике (Б3б): аналитики и проверяющие; часы и срок — гипотезы
+roles: [role.analyst, role.qc-head]
+hours: 2
+every: 12
+source: [eaeu-ph-ld, ich-q6a]
+review: draft

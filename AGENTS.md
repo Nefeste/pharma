@@ -865,7 +865,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   `cus.district`; with Б9 step 2 — `letters/`: a scenario's letters — from whom, when, the condition that ends it, what
   it shows, the departments it hands over; with Б9 step 3 — scenario 2 `scn.c2` with its plan `plant.c2` — the
   prototype's and a coating wing —, ibuprofen launched before the start, customers `cus.chain` and `cus.oblast`, goals
-  from 1 November, the distributor's and the supplier's letters);
+  from 1 November, the distributor's and the supplier's letters; with Д1 step 1 — the particle size method by laser
+  diffraction and its analyser, the ibuprofen API spec's second revision with a particle size limit, both drafts, a
+  cause effect of some products only (`products` of an effect) and a scenario's chronic root `chronic` — a maker's lot
+  drift, a crew's habit or both);
   `tools/content/` — its build and validator (schema — with Б12 every player's word in Russian and English —, ids from
   paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;

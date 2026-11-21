@@ -35,7 +35,7 @@ export function revisions(db: Pick<ContentDb, DocKind>, kind: DocKind, id: Id): 
   if (!list) {
     list = Object.entries(db[kind] as Docs)
       .filter(([, r]) => r.doc.code === head.code)
-      .sort(([a, x], [b, y]) => x.doc.from - y.doc.from || (a < b ? -1 : 1))
+      .sort(([a, x], [b, y]) => x.doc.from - y.doc.from || x.doc.rev - y.doc.rev || (a < b ? -1 : 1))
       .map(([k]) => k);
     byCode.set(head.code, list);
   }

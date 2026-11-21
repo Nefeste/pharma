@@ -1,0 +1,12 @@
+# Лазерный анализатор размера частиц (Д1): лазерная дифракция — объёмное распределение частиц по размеру, x10, x50 и
+# x90 (eaeu-ph-ld). Калибровка — проверка по сертифицированному стандартному образцу (там же); интервал, часы и цены —
+# гипотезы
+id: inst.laser
+name: { ru: Лазерный анализатор размера частиц, en: Laser diffraction particle size analyser }
+cal: { every: 12, hours: 2, price: 30000, name: { ru: Проверка анализатора по стандартному образцу, en: Analyser check with a reference material } }
+critical: true
+# покупка (Б7в): цена европейского поставщика, ₽ без НДС; дни монтажа — гипотезы
+price: 4500000
+install: { days: 2 }
+source: [eaeu-ph-ld, gmp-eaeu]
+review: draft

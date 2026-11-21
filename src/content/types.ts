@@ -382,6 +382,11 @@ export interface Scenario {
   waste?: ScenarioWaste;
   /** происшествие прототипа (часть 4): у задания на серию — неисправность по жребию зерна */
   incident?: IncidentDef;
+  /**
+   * хронический корень сценария (Д1; docs/specs/2026-11-fill.md): причина, которая живёт в заводе и повторяется, пока
+   * её не убрали, — по жребию зерна; нет — нет
+   */
+  chronic?: ChronicDef;
 }
 
 /**
@@ -517,6 +522,21 @@ export interface IncidentDef {
   inv: Id;
   roots: Partial<Record<IncidentRoot, number>>;
   sizes: Record<IncidentRoot, [number, number]>;
+}
+
+/** Вид хронического корня (Д1): смещение партий у изготовителя, привычка смены или обе у края. */
+export type ChronicRoot = 'api' | 'lube' | 'both';
+
+/**
+ * Хронический корень сценария (Д1): веса корней, 1/10 000; смещение — с дня сценария (от старта) у партий материала от
+ * изготовителя среднее свойства больше на величину от и до, в единицах движка; привычка — у одного человека роли факт
+ * режима больше уставки на столько шагов от и до; у корня `both` — свои величины, обе у края.
+ */
+export interface ChronicDef {
+  roots: Partial<Record<ChronicRoot, number>>;
+  drift: { material: Id; maker: Id; day: number; attr: Attr; shift: [number, number] };
+  habit: { role: Id; param: string; steps: [number, number] };
+  both: { shift: [number, number]; steps: [number, number] };
 }
 
 /** Грузовая единица: паллета или транспортный короб (docs/04-data-model.md, §3). */
@@ -1205,7 +1225,8 @@ export interface Cause {
   id: Id;
   name: Text;
   driver: CauseDriver;
-  effects: { attr: Attr; coef: number }[];
+  /** вклады; у вклада с `products` — только у серий этих продуктов (Д1): у плохо растворимого вещества сильнее */
+  effects: { attr: Attr; coef: number; products?: Id[] }[];
   /** только у серий этих продуктов (Б7д, шаг 3); нет — у всех */
   products?: Id[];
   /** в счёт — только отход выше цели (`above`) или ниже (`below`), Б7д, шаг 3; нет — оба */

@@ -41,7 +41,9 @@ describe('коды и шапки в базе', () => {
     for (const [records, kind, who] of cases)
       for (const r of Object.values(records)) {
         expect(r.doc.code).toMatch(new RegExp(`^${kind}-\\d{4}$`));
-        expect(r.doc.rev).toBe(1);
+        // вторая редакция в базе — только проект (Д1: спецификация АФС ибупрофена с размером частиц)
+        if (r.doc.rev !== 1) expect(r.doc.from).toBe(DRAFT_DAY);
+        else expect(r.doc.rev).toBe(1);
         // редакция-проект (Б7д) — без дня «в силе»
         if (r.doc.from !== DRAFT_DAY) expect(r.doc.from).toBeLessThanOrEqual(start);
         expect(r.doc.approved).toBe(who);

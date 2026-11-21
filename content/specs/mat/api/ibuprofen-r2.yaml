@@ -1,0 +1,14 @@
+# Входной контроль АФС ибупрофена, редакция 2 (Д1): к испытаниям редакции 1 — размер частиц, x50 не больше 90 мкм
+# (ich-q6a, п. 3.3.1 b: размер частиц влияет на растворение — критерий приемлемости). Предел — гипотеза: обычные 60 ± 12
+# мкм проходят, партия на 40–60 мкм крупнее — нет. Редакция-проект: в силу её вводит CAPA «Испытание во входном контроле»
+id: spec.mat.api.ibuprofen-r2
+name: { ru: "Ибупрофен, субстанция", en: "Ibuprofen, active substance" }
+doc: { code: SP-0028, rev: 2, approved: role.qc-head }
+pairs: [{ supplier: sup.api-ibu, maker: mkr.api-ibu }]
+tests:
+  - { test: test.ir }
+  - { test: test.hplc-assay, min: 98.5, max: 101 }
+  - { test: test.lod, max: 0.5 }
+  - { test: test.particle, max: 90 }
+source: [ep7-ibuprofen, ich-q6a]
+review: draft

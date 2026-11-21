@@ -1,6 +1,7 @@
 // Панель склада (docs/specs/2026-10-panels.md, 3б): «что лежит на складе и в каком статусе». Строки — партии с тарой на
 // заводе; фильтр по статусу и виду материала, сортировка по столбцу, страницы. Вид собирает поток расчёта (src/sim/views.ts),
 // панель только показывает и просит: щелчок по строке — камера к паллете партии (мимо панели) и её карточка.
+import { press } from './press';
 import { Fragment } from 'react';
 import type { MaterialKind, Plant } from '../content/types';
 import type { LotStatus } from '../engine/types';
@@ -81,7 +82,7 @@ export function Stock({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
         <thead>
           <tr>
             {COLS.map(c => (
-              <th key={c} className={q.sort === c ? 'sorted' : ''} onClick={() => sortBy(c)} title={T.stock.sortHint}>
+              <th key={c} className={q.sort === c ? 'sorted' : ''} {...press(() => sortBy(c))} title={T.stock.sortHint}>
                 {T.stock.cols[c]}
                 {q.sort === c ? (q.desc ? ' ▾' : ' ▴') : ''}
               </th>
@@ -93,7 +94,7 @@ export function Stock({ hud, actions, plant }: { hud: Hud; actions: Actions; pla
           {view?.rows.map(r => {
             const mat = db?.materials[r.material];
             return (
-              <tr key={r.lot} onClick={() => actions.showUnit(r.unit)} data-test="stock-row" data-unit={r.unit}>
+              <tr key={r.lot} {...press(() => actions.showUnit(r.unit))} data-test="stock-row" data-unit={r.unit}>
                 <td className="mono nowrap">{T.lotCode(...r.code)}</td>
                 <td>{named(mat?.name, r.material)}</td>
                 <td>{supplierText(r.supplier)}</td>

@@ -5,6 +5,8 @@ import { T } from '../i18n';
 import { QUALITIES } from '../render/view';
 import { fitScales, SCALES } from '../app/scale';
 import { LAYERS } from '../app/sound';
+import { ACTIONS, keyName, SECTIONS, type Action } from '../app/keys';
+import { useState } from 'react';
 import type { Actions, Hud } from './store';
 
 const LANGS = ['ru', 'en'] as const;
@@ -69,6 +71,10 @@ export function Settings({ hud, actions }: { hud: Hud; actions: Actions }) {
       <label title={T.settings.leftHint}>
         <input type="checkbox" checked={hud.settings.left} onChange={e => actions.setLeft(e.currentTarget.checked)} data-test="left-hand" /> {T.settings.left}
       </label>
+      <button type="button" className="small" onClick={() => actions.windowsHome()} title={T.settings.homeHint} data-test="windows-home">
+        {T.settings.home}
+      </button>
+      <Keys hud={hud} actions={actions} />
       {/* язык окна (Б12, шаг 1): на ходу, запоминается в окне */}
       <div className="msec">{T.sound.lang}</div>
       <span className="group" title={T.sound.langHint}>
@@ -78,6 +84,60 @@ export function Settings({ hud, actions }: { hud: Hud; actions: Actions }) {
           </button>
         ))}
       </span>
+    </div>
+  );
+}
+
+/**
+ * Клавиши (Б13, шаг 3): по разделам — действие и его клавиша; щелчок по клавише — «нажмите…», следующая нажатая — новая
+ * (Esc — отмена); занятая или не переназначаемая — отказ словами. Клавишу ловит сама кнопка: до мира нажатие не доходит.
+ */
+function Keys({ hud, actions }: { hud: Hud; actions: Actions }) {
+  const [wait, setWait] = useState<Action | null>(null);
+  const keys = hud.settings.keys;
+  const note = hud.settings.keyNote;
+  const name = (code: string) => keyName(code, T.settings.keyNames);
+  return (
+    <div className="keys" title={T.settings.keysHint} data-test="keys">
+      <div className="msec">{T.settings.keys}</div>
+      {SECTIONS.map(sec => (
+        <div key={sec} className="kgroup">
+          <div className="muted small">{T.settings.sections[sec]}</div>
+          {ACTIONS.filter(x => x[2] === sec).map(([a]) => (
+            <div key={a} className="krow">
+              <span className="grow">{T.settings.actions[a] ?? a}</span>
+              <button
+                type="button"
+                className={`small${wait === a ? ' on' : ''}`}
+                onClick={() => setWait(wait === a ? null : a)}
+                onKeyDown={e => {
+                  if (wait !== a) return;
+                  // нажатие — новой клавише, а не миру и не кнопке
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (e.code === 'Escape') return setWait(null);
+                  if (e.code === 'Tab') return;
+                  actions.bindKey(a, e.code);
+                  setWait(null);
+                }}
+                onBlur={() => wait === a && setWait(null)}
+                data-test="key"
+                data-action={a}
+              >
+                {wait === a ? T.settings.press : name(keys[a])}
+              </button>
+            </div>
+          ))}
+        </div>
+      ))}
+      {note ? (
+        <p className="bad small" data-test="key-note">
+          {note.taken ? T.settings.keyTaken(name(keys[note.taken]), T.settings.actions[note.taken] ?? note.taken) : T.settings.keyFixed(name(note.code))}
+        </p>
+      ) : null}
+      <button type="button" className="small" onClick={() => actions.resetKeys()} data-test="keys-reset">
+        {T.settings.keysReset}
+      </button>
     </div>
   );
 }

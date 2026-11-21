@@ -15,6 +15,7 @@ import { kept, medianFrame, PRESET, pickPreset, keep as remember, windowKeep } f
 import { langOf } from './lang';
 import { applyScale, keptScale, SCALES } from './scale';
 import { ACCESS, applyContrast, keptFlag, systemContrast } from './access';
+import { keptKeys } from './keys';
 import { measure, overflows } from './overflow';
 
 declare const __VERSION__: string;
@@ -36,7 +37,7 @@ const store = new Store();
 const contrast = keptFlag(windowKeep(), ACCESS.contrast, systemContrast());
 applyContrast(contrast);
 const left = keptFlag(windowKeep(), ACCESS.left, false);
-store.set({ lang, version: __VERSION__, settings: { open: false, scale, contrast, left } });
+store.set({ lang, version: __VERSION__, settings: { open: false, scale, contrast, left, keys: keptKeys(windowKeep()) } });
 let game: Game | undefined;
 const later = <K extends keyof Actions>(k: K) => ((...a: unknown[]) => (game?.actions[k] as (...x: unknown[]) => void)?.(...a)) as Actions[K];
 const actions: Actions = {
@@ -58,6 +59,10 @@ const actions: Actions = {
   setScale: later('setScale'),
   setContrast: later('setContrast'),
   setLeft: later('setLeft'),
+  bindKey: later('bindKey'),
+  resetKeys: later('resetKeys'),
+  // окна — на место: у слоя панелей, не у игры (src/app/windows.ts); ставится, когда слой подключён
+  windowsHome: () => undefined,
   setSoundLayer: later('setSoundLayer'),
   setLang: later('setLang'),
   setVolume: later('setVolume'),
@@ -200,7 +205,8 @@ const actions: Actions = {
 };
 createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} />);
 // окна: наверх по щелчку, тащить за заголовок (по игре владельца 20.11.2026)
-windows(document.getElementById('ui')!);
+const homeAll = windows(document.getElementById('ui')!);
+actions.windowsHome = homeAll;
 
 const asked = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q'));
 // пресет: из адреса (проверки) — как есть; иначе запомненный; первый запуск — средний, замер решит (preset.ts)

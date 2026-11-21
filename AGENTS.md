@@ -682,11 +682,13 @@ first, or copy the working code of Bolnitsa on the same versions.
   `#ui`, the first run by the window's height, only the steps that leave the panels 1280 × 720 points, the player's
   choice kept in the window, `uiK` for what the window places in screen points (`scale.ts`); with Б13 step 2 the high
   contrast — the `contrast` class over the tokens, the system's `prefers-contrast` by default — and the left-handed
-  mouse — the scene's left and right buttons swapped (`access.ts`); with Б12 the window language — from the address, the player's choice kept in the
+  mouse — the scene's left and right buttons swapped (`access.ts`); with Б13 step 3 the keys — the map of actions by
+  section with their default codes, a rebind refused for a taken or fixed key (Esc, F12, Tab, arrows), only the
+  player's changes kept in the window (`keys.ts`); with Б12 the window language — from the address, the player's choice kept in the
   window or the system's (`lang.ts`); the overflow check — text wider than its box and cut, not by an ellipsis, or a
   box cut by a clipping parent or the window's edge, a panel scrolling sideways, a pure rule over measurements
   (`overflow.ts`); the windows — a panel to the front on a click and dragged by its header, its shift kept by its kind
-  while the game is open, within the screen (`windows.ts`); the saves — slots on a disk (the game folder in Electron,
+  while the game is open, within the screen, with Б13 all of them back to their places (`windows.ts`); the saves — slots on a disk (the game folder in Electron,
   the page's storage in the browser), three mornings by shift, on exit and own, the snapshot gzipped as a string the
   window never parses, a copy of Bolnitsa's (`saves.ts`, `electron/saves.cjs`);
   the autopauses — which notices stop the world, whose post each is, the ones
@@ -789,7 +791,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   (`Campaign.tsx`), the goals window with the result at the end of the term (`Goals.tsx`) and a goal in words
   (`goalwords.ts`), with Б9 step 2 the letters panel — rows, the open letter in words, «Показать», «Пропустить»,
   «Пропустить обучение» (`Letters.tsx`), with Б13 the «Настройки» window — the screen (scale, graphics, «Меньше
-  движения»), the sound and the language (`Settings.tsx`), with Б10 the chronicle panel — H, day, week, month or year, «Раньше» and
+  движения»), the sound and the language, with step 3 the keys and «Окна — на место» (`Settings.tsx`), with Б13 step 3
+  `press` — a clicked row or cell taking Tab focus and Enter or space like a button (`press.ts`), with Б10 the chronicle panel — H, day, week, month or year, «Раньше» and
   «Позже», the chapter's sum, «Итоги года», an entry in words with its click, «Сохранить хронику» — the whole chronicle
   as text by months (`Chronicle.tsx`), the investigation board — steps, findings in
   words with numbers

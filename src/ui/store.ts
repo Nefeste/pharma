@@ -1,6 +1,7 @@
 // из bolnitsa: src/ui/store.ts @ e0a3491 — изменено: поля завода вместо больницы.
 // Хранилище панелей: игра пишет сюда не чаще 10 раз в секунду, панели читают через `useSyncExternalStore`. Снимок
 // неизменяемый: каждое `set` — новый объект.
+import { type Action, DEFAULT_KEYS, type KeyMap } from '../app/keys';
 import type { SaveRow } from '../app/saves';
 import { useSyncExternalStore } from 'react';
 import { type BuildHud, type BuildPick, NO_BUILD } from '../app/buildpick';
@@ -85,7 +86,7 @@ export interface Hud {
    */
   sound: { volume: number; captions: boolean; layers: Record<SoundLayer, number> };
   /** окно «Настройки» (Б13, шаг 1): открыто ли; масштаб интерфейса — 0,75…2 (src/app/scale.ts) */
-  settings: { open: boolean; scale: number; contrast: boolean; left: boolean };
+  settings: { open: boolean; scale: number; contrast: boolean; left: boolean; keys: KeyMap; keyNote?: { action: Action; code: string; fixed?: true; taken?: Action } };
   /** первый экран (Б11, шаг 2): сколько шагов загрузки прошло и какой идёт — настоящие шаги `Game.create` */
   load: { done: number; step: LoadStep };
   fps: number;
@@ -282,7 +283,7 @@ export const initial: Hud = {
   walls: 'cut',
   less: false,
   sound: { volume: 0.7, captions: false, layers: { ui: 1, notices: 1 } },
-  settings: { open: false, scale: 1, contrast: false, left: false },
+  settings: { open: false, scale: 1, contrast: false, left: false, keys: { ...DEFAULT_KEYS } },
   load: { done: 0, step: 'font' },
   fps: 0,
   cpuMs: 0,
@@ -341,6 +342,11 @@ export interface Actions {
   /** повышенный контраст и мышь «для левой руки» (Б13, шаг 2) — запоминаются в окне (src/app/access.ts) */
   setContrast(on: boolean): void;
   setLeft(on: boolean): void;
+  /** клавиши (Б13, шаг 3): дать действию клавишу — или отказ в `keyNote`; все по умолчанию */
+  bindKey(a: Action, code: string): void;
+  resetKeys(): void;
+  /** все окна — на место (Б13, шаг 3): второй путь у двойного щелчка по заголовку */
+  windowsHome(): void;
   /** громкость слоя звука (Б13, шаг 2) — доля общей */
   setSoundLayer(l: SoundLayer, v: number): void;
   /** язык окна (Б12, шаг 1): RU или EN — на ходу, запоминается в окне (src/app/lang.ts) */

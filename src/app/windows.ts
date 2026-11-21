@@ -39,8 +39,11 @@ const NOT_HANDLE = 'button, input, select, textarea, a, label, [contenteditable]
 /** Окна, которые не двигают и не поднимают: верхняя полоса. */
 const FIXED = 'top';
 
-/** Подключить окна к слою панелей: поднять по щелчку, тащить за заголовок, помнить сдвиг. */
-export function windows(root: HTMLElement): void {
+/**
+ * Подключить окна к слою панелей: поднять по щелчку, тащить за заголовок, помнить сдвиг. Возвращает «все окна — на
+ * место» (Б13, шаг 3): второй путь у двойного щелчка по заголовку — кнопка в «Настройках».
+ */
+export function windows(root: HTMLElement): () => void {
   const shifts = new Map<string, { x: number; y: number }>();
   let z = 20;
   const shiftOf = (el: HTMLElement) => {
@@ -109,4 +112,8 @@ export function windows(root: HTMLElement): void {
         }
       }
   }).observe(root, { childList: true, subtree: true });
+  return () => {
+    shifts.clear();
+    for (const el of root.querySelectorAll<HTMLElement>('.panel')) put(el, { x: 0, y: 0 });
+  };
 }

@@ -87,6 +87,41 @@ export async function brandPart(x) {
     const lo = await page.evaluate(() => ({ cls: document.documentElement.classList.contains('contrast'), kept: localStorage.getItem('pharma.contrast') }));
     if (lo.cls || lo.kept !== '0') fail(`контраст выкл.: ${JSON.stringify(lo)}`);
     else ok('повышенный контраст — выключен, как было');
+
+    // клавиши (Б13, шаг 3): «Расписание» — на Y; Y открывает его, G — нет; G на «Сейчас» уже занята — отказ словами;
+    // по умолчанию — обратно
+    await page.click('[data-test=key][data-action=gantt]');
+    await page.keyboard.press('KeyY');
+    const bound = await page.evaluate(() => ({ key: document.querySelector('[data-test=key][data-action=gantt]')?.textContent, kept: localStorage.getItem('pharma.keys') }));
+    await page.click('[data-test=settings-open]');
+    await page.keyboard.press('KeyG');
+    const byG = await page.evaluate(() => window.__game.store.get().gantt.open);
+    await page.keyboard.press('KeyY');
+    const byY = await page.evaluate(() => window.__game.store.get().gantt.open);
+    await page.evaluate(() => window.__game.store.get().gantt.open && window.__game.actions.toggleGantt());
+    await page.click('[data-test=settings-open]');
+    await page.click('[data-test=key][data-action=now]');
+    await page.keyboard.press('KeyY');
+    const note = await page.evaluate(() => document.querySelector('[data-test=key-note]')?.textContent ?? '');
+    if (bound.key !== 'Y' || !/"gantt":"KeyY"/.test(bound.kept ?? '') || byG || !byY || !/Расписание/.test(note)) fail(`клавиши: ${JSON.stringify({ bound, byG, byY, note })}`);
+    else ok(`клавиши: «Расписание» на Y — открывает, G — нет; занятая — «${note}»`);
+    await page.click('[data-test=keys-reset]');
+    const back2 = await page.evaluate(() => document.querySelector('[data-test=key][data-action=gantt]')?.textContent);
+    if (back2 !== 'G') fail(`клавиши по умолчанию: «${back2}»`);
+    else ok('клавиши по умолчанию — G снова у расписания');
+
+    // окна — на место (второй путь у двойного щелчка): сдвинутые настройки встают туда, где открываются
+    const shead = await page.$('#settings .phead');
+    const hb = await shead.boundingBox();
+    await page.mouse.move(hb.x + 40, hb.y + hb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(hb.x - 160, hb.y + 120, { steps: 6 });
+    await page.mouse.up();
+    const moved = await page.evaluate(() => document.querySelector('#settings')?.style.translate ?? '');
+    await page.click('[data-test=windows-home]');
+    const home = await page.evaluate(() => document.querySelector('#settings')?.style.translate ?? '');
+    if (!moved || home) fail(`окна на место: сдвиг «${moved}» → «${home}»`);
+    else ok(`«Окна — на место»: сдвиг «${moved}» снят`);
   } catch (e) {
     fail(`марка: ${e instanceof Error ? e.message : String(e)}`);
   }

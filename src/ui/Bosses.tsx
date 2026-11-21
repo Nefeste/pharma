@@ -1,6 +1,7 @@
 // Руководители — люди в окне (Б5в; docs/specs/2026-10-vertical-slice.md, «Б5в»): блок карточки руководителя и его
 // заместителя, строки планёрки «Руководители». Слабое место — словами: что навык ограничивает в правиле отдела (§8.5).
 // Заместителя назначает и снимает пост отдела руководителя или директор — команда `deputy`; чужой пост — кнопки погашены.
+import { press } from './press';
 import type { HeadId } from '../content/types';
 import { dayText, named, pctText, T } from '../i18n';
 import type { BossLimit, BossPerson, BossRow } from '../sim/bosses';
@@ -130,7 +131,7 @@ export function BossMeeting({ rows, go }: { rows: readonly BossRow[]; go: (t: Th
           const to = r.now === 'io' && r.deputy ? r.deputy : r.person;
           const limit = r.now === 'io' ? limitWords(r.deputy?.limit).join(' · ') : '';
           return (
-            <li key={r.head} className={r.now === 'noOne' ? 'bad go' : 'warn go'} onClick={go(to ? { kind: 'person', n: to.n } : undefined)} data-test="morning-boss" data-head={r.head}>
+            <li key={r.head} className={r.now === 'noOne' ? 'bad go' : 'warn go'} {...press(go(to ? { kind: 'person', n: to.n } : undefined))} data-test="morning-boss" data-head={r.head}>
               {r.now === 'io' && r.deputy ? T.boss.meetIo(T.journal.names[r.head] ?? r.head, why, who(r.deputy), limit) : T.boss.meetNoOne(T.journal.namesOf[r.head] ?? r.head, why)}
             </li>
           );

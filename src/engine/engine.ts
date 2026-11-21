@@ -5,6 +5,7 @@
 // ставит `until`, а `catchUp` проживает события по порядку, пока бюджет кадра `more()` позволяет. Недожитое
 // доживается в следующих кадрах; любая следующая команда сначала доживает всё. `more` спрашивают после каждого события, и он
 // видит извещения, уже данные этим доживанием: так поток расчёта встаёт ровно на событии автопаузы (Б2а).
+import { newChronic } from './chronic';
 import { chronicleStep } from './chronicle';
 import { carry, scnZero } from './carry';
 import { letterCommand, letterDue, lettersStep, startLetters } from './letters';
@@ -204,6 +205,8 @@ export function newPlant(base: ContentDb, o: NewPlant): PlantState {
   for (const b of sc.batches) placeOrder(db, s, { kind: 'order', recipe: b.recipe, notBefore: today + b.day * DAY + BATCH_HOUR, by: 'scenario', ...(b.sku ? { sku: b.sku } : {}) }, out);
   // происшествие сценария (часть 4): корень по жребию зерна — скрытое
   newIncident(db, s);
+  // хронический корень сценария (Д1): по жребию зерна — скрытый
+  newChronic(db, s);
   // кому пора учиться уже на старте (Б3б)
   trainDay(db, s, out);
   settle(db, s);

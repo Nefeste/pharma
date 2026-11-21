@@ -268,7 +268,8 @@ export type OvertimeMode = 'need' | 'finish';
 
 /** Цель сценария (Б9; src/engine/goals.ts): выпущено серий, доля заказов вовремя, касса в последний день, отклонений с прошедшим сроком. */
 export interface Goal {
-  kind: 'released' | 'otif' | 'cash' | 'lateDevs' | 'missDays';
+  /** `noRepeat` (Д1): суток без повтора после CAPA, проверенной «эффективна», — не меньше `v` */
+  kind: 'released' | 'otif' | 'cash' | 'lateDevs' | 'missDays' | 'noRepeat';
   v: number;
   top?: true;
   /** считать с этого мгновения партии, с; нет — со старта игрока */
@@ -1416,7 +1417,7 @@ export type DevClass = 'critical' | 'major' | 'minor';
 export type CauseClass = 'wear' | 'param' | 'lots' | 'lab' | 'none';
 
 /** Что делает действие CAPA (Б5е): заменить узел, заменять раньше, обучить, калибровка прибора МОК, оценка пары. */
-export type CapaDoes = 'replace' | 'earlier' | 'train' | 'calib' | 'pair';
+export type CapaDoes = 'replace' | 'earlier' | 'train' | 'calib' | 'pair' | 'spec';
 
 /** Кто исполняет CAPA (Б5е): руководитель отдела действия — главный механик, начальник ООК, производства, ОКК. */
 export type CapaHead = 'maint' | 'qa' | 'mes' | 'qc';

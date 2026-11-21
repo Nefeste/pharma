@@ -38,10 +38,14 @@ function partWords(u: CapaUnit): string {
 const meterWords = (m: CapaMeter) => T.assets.named(assetClass(m), T.assets.inv(m.inv));
 
 /** Вещь действия словами: узел, сколько документов, прибор, пара. */
-export function thingText(x: Pick<CapaRow, 'part' | 'docs' | 'asset' | 'pair' | 'unit' | 'meter'>): string {
+export function thingText(x: Pick<CapaRow, 'part' | 'docs' | 'asset' | 'pair' | 'unit' | 'meter' | 'spec'>): string {
   if (x.unit) return partWords(x.unit);
   if (x.part) return x.part;
   if (x.docs) return T.dev.capaDocs(x.docs.length);
+  if (x.spec?.length) {
+    const r = db?.specs[x.spec[0]];
+    return r ? T.dev.capaSpec(named(r.name, r.id), r.doc.code, r.doc.rev) : x.spec[0];
+  }
   if (x.meter) return meterWords(x.meter);
   if (x.asset) return x.asset;
   if (x.pair) {

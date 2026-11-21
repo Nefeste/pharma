@@ -261,7 +261,7 @@ export const scenario = z.strictObject({
   launched: z.array(id).default([]),
   days: z.number().int().min(1).max(730).optional(),
   goals: z
-    .array(z.strictObject({ kind: z.enum(['released', 'otif', 'cash', 'lateDevs', 'missDays']), v: z.number(), top: z.boolean().optional(), from: date.optional() }))
+    .array(z.strictObject({ kind: z.enum(['released', 'otif', 'cash', 'lateDevs', 'missDays', 'noRepeat']), v: z.number(), top: z.boolean().optional(), from: date.optional() }))
     .default([]),
   /**
    * обучение (Б3б): за сколько суток до введения новой редакции или конца срока записи — задача обучения; проверка
@@ -1376,7 +1376,7 @@ export const capa = z
   .strictObject({
     id: z.string(),
     name: text,
-    does: z.enum(['replace', 'earlier', 'train', 'calib', 'pair']),
+    does: z.enum(['replace', 'earlier', 'train', 'calib', 'pair', 'spec']),
     head: z.enum(['maint', 'qa', 'mes', 'qc']).optional(),
     causes: z.array(z.enum(['wear', 'param', 'lots', 'lab', 'none'])).min(1).optional(),
     kinds: z.array(z.enum(['oos', 'ipc', 'param', 'yield', 'recon'])).min(1).optional(),

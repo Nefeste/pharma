@@ -5,7 +5,7 @@
 // одно правило для класса, CAPA и показателя «повторяющиеся» (Б5ж): то же отклонение за 12 месяцев — та же подпись, а
 // когда причина записана у обоих — та же причина. Истины здесь нет: причины серии (`b.causes`) правило не читает — только
 // досье стадий, журнал оборудования и вывод расследования.
-import type { CapaAction, ContentDb, Id } from '../content/types';
+import { type CapaAction, type ContentDb, DRAFT_DAY, type Id } from '../content/types';
 import { visitAt } from './assets';
 import { batchNo } from './batchno';
 import { decider } from './bosses';
@@ -18,7 +18,8 @@ import { bookEval, howOf, pairKey } from './partners';
 import { classOf, placesOf } from './places';
 import { planOf } from './plant';
 import { numOf, OFF, POL, policyOf, setPolicy } from './policies';
-import { inForce } from './docs';
+import { inForce, revisions } from './docs';
+import { habitCured } from './chronic';
 import { equipmentDocs, learnable, learnRec, rowsOf } from './quals';
 import { nextId } from './stock';
 import { retrain } from './train';
@@ -37,6 +38,8 @@ export interface Target {
   people?: string[];
   asset?: string;
   pair?: string;
+  /** испытание во входном контроле (Д1): редакция-проект спецификации и методики-проекты */
+  spec?: string[];
 }
 
 /** Подходит ли действие к отклонению: по роду записанной причины или по виду отклонения. */
@@ -116,10 +119,39 @@ function meterOf(db: ContentDb, s: PlantState, d: Deviation): string | undefined
 }
 
 /** Пара партии поставщика: у партии вне спецификации — её пара; у причины партии АФС — пара отвешенной партии АФС. */
-function pairOf(db: ContentDb, s: PlantState, d: Deviation): string | undefined {
+/** Партия причины «партия»: у отклонения по партии — она, у серии — отвешенная партия АФС. */
+function lotOf(db: ContentDb, s: PlantState, d: Deviation) {
   const b = d.batch ? s.batches[d.batch] : undefined;
   const lotId = d.cause === 'lot' ? d.lot : b?.dispensed.find(k => db.materials[k.material]?.kind === 'api')?.lot;
-  const lot = lotId ? s.lots[lotId] : undefined;
+  return lotId ? s.lots[lotId] : undefined;
+}
+
+/**
+ * Испытание во входном контроле (Д1): у материала партии причины — редакция-проект его спецификации с номером больше
+ * действующей, в которой есть испытание, которого в действующей нет, и прибор этого испытания — в лаборатории плана.
+ * Вещь — эта редакция и методики-проекты её новых испытаний; нет — нечем выполнить.
+ */
+function specOf(db: ContentDb, s: PlantState, d: Deviation): string[] | undefined {
+  const lot = lotOf(db, s, d);
+  const m = lot ? db.materials[lot.material] : undefined;
+  if (!m?.spec || !db.specs[m.spec]) return undefined;
+  const day = momentOf(s.start, s.t).day;
+  const now = db.specs[inForce(db, 'specs', m.spec, day)];
+  const have = new Set(now.tests.map(t => t.test));
+  const plant = planOf(db, s.plan).plant;
+  for (const id of revisions(db, 'specs', m.spec)) {
+    const r = db.specs[id];
+    if (r.doc.from !== DRAFT_DAY || r.doc.rev <= now.doc.rev) continue;
+    const fresh = r.tests.map(t => t.test).filter(t => !have.has(t));
+    if (fresh.length === 0) continue;
+    if (!fresh.every(t => !db.tests[t].inst || plant.instruments.some(i => i.type === db.tests[t].inst))) continue;
+    return [id, ...fresh.filter(t => db.tests[t].doc.from === DRAFT_DAY)];
+  }
+  return undefined;
+}
+
+function pairOf(db: ContentDb, s: PlantState, d: Deviation): string | undefined {
+  const lot = lotOf(db, s, d);
   if (!lot?.maker) return undefined;
   const key = pairKey(lot.supplier, lot.maker);
   return s.pairs[key] ? key : undefined;
@@ -150,6 +182,10 @@ export function targetOf(db: ContentDb, s: PlantState, d: Deviation, a: CapaActi
     case 'pair': {
       const pair = pairOf(db, s, d);
       return pair ? { head: a.head!, pair } : undefined;
+    }
+    case 'spec': {
+      const spec = specOf(db, s, d);
+      return spec ? { head: a.head!, spec } : undefined;
     }
   }
 }
@@ -206,6 +242,21 @@ export function priceOf(db: ContentDb, s: PlantState, a: CapaAction, t: Target):
       const audit = howOf(db, p.supplier, p.maker) === 'audit';
       return audit ? { cost: sc.partners.audit.price, work: sc.partners.audit.review } : { cost: 0, work: sc.partners.docs.review };
     }
+    case 'spec': {
+      // учатся новым методикам те, чья роль в их строке матрицы: часы изучения и проверка знаний у каждого
+      let work = 0;
+      const who = new Set<string>();
+      for (const id of (t.spec ?? []).slice(1)) {
+        const m = db.tests[id];
+        if (!m) continue;
+        for (const p of Object.values(s.people)) {
+          if (!m.roles.includes(p.role)) continue;
+          who.add(p.id);
+          work += m.study + sc.training.check;
+        }
+      }
+      return { cost: 0, work, learners: who.size };
+    }
   }
 }
 
@@ -253,7 +304,7 @@ const openIn = (s: PlantState, d: Deviation, action?: Id) => chainOf(s, d).some(
 
 /** Назначить: запись CAPA со сроком по классу отклонения; извещение исполнителю. */
 function assign(db: ContentDb, s: PlantState, d: Deviation, a: CapaAction, t: Target, by: 'player' | 'qa', notices: Notice[]): Capa {
-  const c: Capa = { id: nextId(s, 'G'), dev: d.id, action: a.id, ...(t.part ? { part: t.part } : {}), ...(t.docs ? { docs: t.docs } : {}), ...(t.people ? { people: t.people } : {}), ...(t.asset ? { asset: t.asset } : {}), ...(t.pair ? { pair: t.pair } : {}), head: t.head, t: s.t, by, due: s.t + db.scenarios[s.scenario].deviations.term[d.cls] * DAY };
+  const c: Capa = { id: nextId(s, 'G'), dev: d.id, action: a.id, ...(t.part ? { part: t.part } : {}), ...(t.docs ? { docs: t.docs } : {}), ...(t.people ? { people: t.people } : {}), ...(t.asset ? { asset: t.asset } : {}), ...(t.pair ? { pair: t.pair } : {}), ...(t.spec ? { spec: t.spec } : {}), head: t.head, t: s.t, by, due: s.t + db.scenarios[s.scenario].deviations.term[d.cls] * DAY };
   s.capas[c.id] = c;
   delete d.capaDue;
   notices.push({ kind: 'capa', id: c.id, dev: d.id, action: a.id, head: c.head });
@@ -325,6 +376,8 @@ export function capaRunCommand(db: ContentDb, s: PlantState, cmd: Extract<Comman
     }
     case 'train':
       if (retrain(db, s, c.docs ?? [], c.people) === 0) return refuse('busy');
+      // хронический корень (Д1): привычка человека проходит, когда его учили заново
+      habitCured(s, c.people);
       break;
     case 'calib': {
       const x = s.assets[c.asset!];
@@ -336,6 +389,15 @@ export function capaRunCommand(db: ContentDb, s: PlantState, cmd: Extract<Comman
       const p = s.pairs[c.pair!];
       if (!p || p.eval) return refuse('busy');
       bookEval(db, s, p, today);
+      break;
+    }
+    case 'spec': {
+      // редакция и методики — в силе со дня после срока предупреждения обучения: за эти сутки аналитики их изучат (Б3б)
+      const spec = c.spec ?? [];
+      if (spec.length === 0 || spec.some(id => (db.specs[id] ?? db.tests[id])?.doc.from !== DRAFT_DAY)) return refuse('busy');
+      // дни — новым объектом, как у проекта «Новый продукт» (Б7д): по нему кэш действующей базы
+      const day = today + db.scenarios[s.scenario].training.ahead + 1;
+      s.portfolio = { projects: s.portfolio?.projects ?? {}, docs: { ...(s.portfolio?.docs ?? {}), ...Object.fromEntries(spec.map(id => [id, day])) } };
       break;
     }
   }

@@ -4,6 +4,7 @@
 // line.ts). Стадия с узлами под износом (1е) останавливается на отказе узла и продолжается после ремонта (maint.ts). Стадия
 // начинается только на пригодном оборудовании и с пригодными приборами своих МОК (Б3в, assets.ts).
 // Задачи раздаёт раздатчик (tasks.ts); здесь — когда их заводить и что они делают, когда кончаются.
+import { habitParams } from './chronic';
 import { ATTRS, type Attr, type CauseDriver, type ContentDb, type Id, type PartType, type Plant, type RecipeStage } from '../content/types';
 import { stageUnfit, unfit } from './assets';
 import { batchNo, issueNo } from './batchno';
@@ -1013,6 +1014,8 @@ function stageDone(db: ContentDb, s: PlantState, plan: PlantPlan, t: Task, notic
     roll(s, `mes/${roomId}`, rng => {
       for (const p of st.params) rec.params[p.id] = sp[p.id] + spread(Math.floor((p.sd * (6 - skill)) / 3), normal(rng));
     });
+    // хронический корень (Д1): привычка человека — факт режима сверх уставки
+    habitParams(db, s, st, rec, t.people);
     // происшествие сценария (часть 4): режим серии — неисправность или фон
     incidentParams(db, s, b, st, rec);
     for (const p of st.params) {

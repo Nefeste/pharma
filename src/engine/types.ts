@@ -9,7 +9,7 @@ import type { Ymd } from './core/calendar';
 import type { RngState } from './core/rng';
 
 /** Версия схемы сохранения. Изменился формат — шаг миграции (src/engine/save.ts) и образец в тестах. */
-export const SCHEMA = 53;
+export const SCHEMA = 54;
 
 // ---------------------------------------------------------------- склад
 
@@ -254,6 +254,8 @@ export interface Capa {
   people?: string[];
   asset?: string;
   pair?: string;
+  /** испытание во входном контроле (Д1): редакция-проект спецификации и методики-проекты, что CAPA введёт в силу */
+  spec?: string[];
   head: Head;
   t: number;
   by: 'player' | 'qa';
@@ -2263,6 +2265,11 @@ export interface PlantState {
   /** счёт номеров серий по коду продукта: год последнего досье и последний номер по порядку (src/engine/batchno.ts) */
   batchNos: Record<string, { year: number; n: number }>;
   incident?: Incident;
+  /**
+   * хронический корень сценария (Д1; src/engine/chronic.ts): вид, номер дня смещения партий, сдвиг свойства в единицах
+   * движка, человек привычки и шагов уставки сверх неё, когда привычка прошла. Скрыто: окно не видит, двойник забывает
+   */
+  chronic?: { root: 'api' | 'lube' | 'both'; day: number; shift: number; steps: number; person?: string; until?: number };
   /** помещения и оборудование по именам из плана */
   rooms: Record<string, Room>;
   equipment: Record<string, Equipment>;

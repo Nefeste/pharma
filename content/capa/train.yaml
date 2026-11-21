@@ -6,6 +6,6 @@ id: capa.train
 name: { ru: Обучить людей заново, en: Retrain the people }
 does: train
 causes: [wear, param, lots, lab, none]
-rule: 2
+rule: 3
 source: [gmp-eaeu, ich-q10]
 review: draft

@@ -114,7 +114,8 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # batch), scenario 1 — the «Кампания» screen, its start after the warm-up, the goals,
                                    # the truck in the first hour, the first day by the letters to the shipment, a skip
                                    # (e2e-c1.mjs, c1.png), scenario 2 — its start, the distributor's letters, the order
-                                   # at risk (e2e-c2.mjs, c2.png; `--long 1` — «До утра» to the result, ~50 min), the
+                                   # at risk (e2e-c2.mjs, c2.png; `--long 1` — «До утра» to the result, ~50 min),
+                                   # scenario 3 — its start, the QA head's letter, the first OOS (e2e-c3.mjs, c3.png), the
                                    # chronicle — the meeting's line, a day, a week and a year, a batch's record, the
                                    # saved text file (e2e-chron.mjs, chron.png), the sound — silent before the first
                                    # press, a letter, a click, captions, an autopause, the meeting, volume 0, `shot`
@@ -128,7 +129,7 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # keys.png);
                                    # frames are not drawn during fast-forward (`fastff`);
                                    # `-- --only main|week|memo|capa|jobs|
-                                   # launch|forecast|sop|mrp|edits|build|equip|route|sources|portfolio|c1|c2|chronicle|
+                                   # launch|forecast|sop|mrp|edits|build|equip|route|sources|portfolio|c1|c2|c3|chronicle|
                                    # sound|brand|lang|saves|carry|keys`
 node tools/app/before-after.mjs --before <dir>  # after e2e: the panels before and after → out/before-after.png
 npm run sound                      # the window and event sounds from formulas → assets/audio/*.wav and its LICENSES.md;
@@ -552,7 +553,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   stage; the scenario's goals at its end — kept the whole game in `story`, read by no rule, none in the plan run's
   copy), `chronic.ts` (with Д1, a scenario's chronic root by the seed — a maker's lot drift from a day, in truth and
   certificate, a person's habit added to a stage parameter fact, or both; the habit gone after a «train» CAPA with
-  them; hidden, the twin forgets it),
+  them, the drift ended by a pair evaluation after its day (`driftFixed`); set anew at a campaign transition; hidden, the
+  twin forgets it),
   `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
   intended, record the new fingerprint and say in the commit what changed in the plant's life.
@@ -873,7 +875,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   from 1 November, the distributor's and the supplier's letters; with Д1 step 1 — the particle size method by laser
   diffraction and its analyser, the ibuprofen API spec's second revision with a particle size limit, both drafts, a
   cause effect of some products only (`products` of an effect) and a scenario's chronic root `chronic` — a maker's lot
-  drift, a crew's habit or both);
+  drift, a crew's habit or both; with Д1 step 3 — scenario 3 `scn.c3` on scenario 2 with its plan `plant.c3` — the
+  analyser in the lab —, the QA head of skill 3, the chronic root and the «no repeat» goal, the QA head's letters);
   `tools/content/` — its build and validator (schema — with Б12 every player's word in Russian and English —, ids from
   paths, references, source keys from `docs/10-domain.md`;
   material codes by kind and document headers — unique, revisions of a code on different days, in force at the start;

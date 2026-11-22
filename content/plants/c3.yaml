@@ -1,0 +1,215 @@
+# План завода сценария 3 «Три серии подряд» (Д1, docs/specs/2026-11-fill.md): план сценария 2 и анализатор размера
+# частиц в лаборатории. Ниже — как у плана сценария 2 «Первая зима» (Б9, шаг 3; docs/specs/2026-10-vertical-slice.md,
+# «Б9»): план прототипа
+# (`plant.proto`) и крыло покрытия к востоку от корпуса — чистый коридор и помещение покрытия с коатером и весами МОК, как
+# после проекта «Новый продукт» ибупрофена (Б7д; та же постройка, что в сценарии браузера `portfolio`). Остальное — как у
+# прототипа, кроме площадки. Правила планировки — docs/10-domain.md, §4; где источник молчит — практика
+id: plant.c3
+# площадка и участки (Б3в; ролевая иерархия оборудования ISA-95, `gost-62264-1`): площадка → участки → рабочие места →
+# рабочие блоки. Помещение — часть здания, а не ступень иерархии: у участка — помещения, которым он служит; коридоры,
+# шлюз для людей, комната мастера и ООК, комната отдыха и гардероб — общие помещения площадки. Рабочие места:
+# технологическая ячейка (`cell`), производственная линия (`line`), зона хранения (`storage`) — с режимом, который она
+# держит (content/regimes/), — и лаборатория (`lab`). Рабочий блок — оборудование, машина или прибор с кодом места
+# `TB-01.03`; места хранения зон — их места паллет (`quar-03`, `A-03-2-1`). Коды латиницей; формат — гипотеза
+site: { code: S02, name: { ru: Площадка «Первой зимы», en: First Winter site } }
+areas:
+  - code: WH
+    name: { ru: Склад, en: Warehouse }
+    rooms: [warehouse, sampling, samp-al, coldroom, rejroom]
+    centers:
+      - { code: WH-01, kind: storage, name: { ru: Склад, en: Warehouse }, rooms: [warehouse], regime: reg.ccrt }
+      - { code: WH-02, kind: storage, name: { ru: Холодная камера, en: Cold room }, rooms: [coldroom], regime: reg.fridge }
+      - { code: WH-03, kind: storage, name: { ru: Отклонённое, en: Rejected }, rooms: [rejroom], regime: reg.ccrt }
+  - code: TB
+    name: { ru: Производство таблеток, en: Tablet production }
+    rooms: [mal, dispensing, granulation, blending, compression, washing, bulk, coating]
+    centers:
+      - { code: TB-01, kind: cell, name: { ru: Технологическая ячейка таблеток, en: Tablet process cell } }
+      - { code: TB-02, kind: storage, name: { ru: Промежуточный склад, en: Bulk store }, rooms: [bulk], regime: reg.ccrt }
+  - code: PK
+    name: { ru: Упаковка, en: Packaging }
+    rooms: [packaging]
+    centers:
+      - { code: PK-01, kind: line, name: { ru: Упаковочная линия, en: Packaging line } }
+  - code: QC
+    name: { ru: Лаборатория ОКК, en: QC laboratory }
+    rooms: [lab]
+    centers:
+      - { code: QC-01, kind: lab, name: { ru: Лаборатория ОКК, en: QC laboratory } }
+  - code: MT
+    name: { ru: Техслужба, en: Maintenance }
+    rooms: [workshop]
+# участок и корпус (Б7б): внутренность корпуса — прямоугольник клеток, стены корпуса — вокруг него
+lot: { kind: plant, size: [120, 80] }
+hull: [[1, 1, 58, 38], [59, 1, 12, 12]]
+docks:
+  - { id: in, kind: in, x: 0, z: 5 }
+  - { id: out, kind: out, x: 0, z: 34 }
+rooms:
+  # склад — один зал; пробоотборная со шлюзом, холод и отклонённое — помещения внутри него. Пробы берут в тех же условиях,
+  # что и следующую стадию, — в классе D под укрытием с потоком воздуха; паллету техника ставит в шлюз пробоотборной, дальше
+  # шлюза она не въезжает
+  - { id: warehouse, type: warehouse, rect: [0, 0, 28, 40], grade: cnc, vehicles: true }
+  - { id: sampling, type: sampling, rect: [19, 0, 9, 5], grade: D }
+  - { id: samp-al, type: airlock.sampling, rect: [19, 4, 9, 5], grade: D, vehicles: true }
+  - { id: coldroom, type: cold, rect: [19, 24, 9, 8], grade: cnc, vehicles: true }
+  - { id: rejroom, type: rejected, rect: [19, 31, 9, 9], grade: cnc, vehicles: true }
+  # производство: шлюз для материалов, чистый коридор и помещения по ходу процесса с запада на восток
+  - { id: mal, type: airlock.material, rect: [27, 9, 4, 4], grade: D }
+  - { id: clean, type: corridor.clean, rect: [30, 9, 30, 4], grade: D }
+  - { id: dispensing, type: dispensing, rect: [27, 0, 8, 10], grade: D }
+  - { id: granulation, type: granulation, rect: [34, 0, 9, 10], grade: D }
+  - { id: blending, type: blending, rect: [42, 0, 7, 10], grade: D }
+  - { id: compression, type: compression, rect: [48, 0, 8, 10], grade: D }
+  - { id: washing, type: washing, rect: [55, 0, 5, 10], grade: D }
+  - { id: packaging, type: packaging, rect: [27, 12, 24, 10], grade: D }
+  - { id: gowning, type: airlock.people, rect: [50, 12, 4, 10], grade: D }
+  - { id: bulk, type: bulk, rect: [53, 12, 7, 10], grade: D }
+  # крыло покрытия (Б7д): чистый коридор от конца прежнего и помещение покрытия над ним
+  - { id: clean-e, type: corridor.clean, rect: [59, 9, 12, 4], grade: D }
+  - { id: coating, type: coating, rect: [59, 1, 8, 9], grade: D }
+  # вне классов: общий коридор и помещения к югу от него
+  - { id: hall, type: corridor, rect: [27, 21, 33, 4], grade: cnc }
+  - { id: lab, type: lab, rect: [27, 24, 11, 16], grade: cnc }
+  - { id: office, type: office, rect: [37, 24, 5, 16], grade: cnc }
+  # мастерская техслужбы со складом ЗИП — отдельно от производственных зон (GMP ЕАЭС, ч. I, п. 3.32)
+  - { id: workshop, type: workshop, rect: [41, 24, 7, 16], grade: cnc }
+  - { id: amenities, type: amenities, rect: [47, 24, 5, 16], grade: cnc }
+  - { id: changing, type: changing, rect: [51, 24, 9, 16], grade: cnc }
+doors:
+  # рампы — в западной стене; ворота пробоотборной, холода и отклонённого — для техники
+  - { at: [0, 4], len: 3, along: z, kind: dock }
+  - { at: [0, 33], len: 3, along: z, kind: dock }
+  - { at: [20, 8], len: 2, along: x, kind: gate }
+  - { at: [23, 4], len: 1, along: x, kind: door }
+  - { at: [19, 27], len: 2, along: z, kind: gate }
+  - { at: [19, 34], len: 2, along: z, kind: gate }
+  # шлюз для материалов: со склада — двойная дверь, в чистый коридор — только для материалов
+  - { at: [27, 10], len: 2, along: z, kind: double }
+  - { at: [30, 10], len: 2, along: z, kind: double, materials: true }
+  # помещения производства — из чистого коридора; у мойки — вход грязного и выход чистого
+  - { at: [31, 9], len: 2, along: x, kind: double }
+  - { at: [37, 9], len: 2, along: x, kind: double }
+  - { at: [44, 9], len: 2, along: x, kind: double }
+  - { at: [51, 9], len: 2, along: x, kind: double }
+  - { at: [56, 9], len: 1, along: x, kind: door }
+  - { at: [58, 9], len: 1, along: x, kind: door }
+  - { at: [45, 12], len: 2, along: x, kind: double }
+  - { at: [55, 12], len: 2, along: x, kind: double }
+  # крыло покрытия: из чистого коридора — в коридор крыла, из него — в покрытие
+  - { at: [59, 10], len: 2, along: z, kind: double }
+  - { at: [62, 9], len: 2, along: x, kind: double }
+  # шлюз для людей: из общего коридора — в чистый
+  - { at: [51, 12], len: 1, along: x, kind: door }
+  - { at: [52, 21], len: 1, along: x, kind: door }
+  # проём для ленты ящиков из упаковки к месту паллетирования на складе
+  - { at: [27, 16], len: 1, along: z, kind: hatch }
+  # общий коридор: со склада, в лабораторию, комнату мастера, мастерскую, комнату отдыха, гардероб; вход в здание — через гардероб
+  - { at: [27, 22], len: 2, along: z, kind: double }
+  - { at: [31, 24], len: 1, along: x, kind: door }
+  - { at: [39, 24], len: 1, along: x, kind: door }
+  - { at: [43, 24], len: 2, along: x, kind: double }
+  - { at: [49, 24], len: 1, along: x, kind: door }
+  - { at: [54, 24], len: 1, along: x, kind: door }
+  - { at: [55, 39], len: 2, along: x, kind: double }
+zones:
+  - { id: recv, kind: receiving, rect: [1, 2, 5, 8], grid: [2, 3] }
+  - { id: quar, kind: quarantine, rect: [7, 1, 11, 8], grid: [5, 3] }
+  - { id: samp, kind: sampling, rect: [21, 5, 5, 3], grid: [2, 1] }
+  - { id: stage, kind: staging, rect: [23, 9, 4, 4], grid: [2, 2] }
+  # конец упаковочной линии: два места для паллет у проёма ленты ящиков
+  - { id: pal, kind: palletizing, rect: [23, 15, 4, 3], grid: [2, 1] }
+  - { id: cold, kind: cold, rect: [21, 26, 5, 4], grid: [2, 2] }
+  - { id: rej, kind: rejected, rect: [21, 33, 5, 5], grid: [3, 2] }
+  - { id: fgq, kind: fgQuarantine, rect: [7, 26, 10, 6], grid: [3, 3] }
+  - { id: ship, kind: shipping, rect: [1, 31, 5, 7], grid: [2, 3] }
+# четыре ряда по шесть секций и четыре яруса — 288 мест; пары рядов спиной друг к другу, проходы — 3–4 м. Адреса мест
+# прежнего плана сохранены: сохранения ссылаются на них
+racks:
+  - { id: A, x: 4, z: 13, bays: 6, levels: 4, face: n }
+  - { id: B, x: 4, z: 14.1, bays: 6, levels: 4, face: s }
+  - { id: C, x: 4, z: 19, bays: 6, levels: 4, face: n }
+  - { id: D, x: 4, z: 20.1, bays: 6, levels: 4, face: s }
+# приборы лаборатории ОКК; код места — рабочее место QC-01 (Б3в). У каждой вещи плана — её поставщик (Б7в): вещи
+# прототипа — отечественные (гипотеза); по нему — половина цены при сносе и замене
+instruments:
+  - { id: hplc-1, type: inst.hplc, room: lab, place: QC-01.01, vendor: ven.ru }
+  - { id: ir-1, type: inst.ir, room: lab, place: QC-01.02, vendor: ven.ru }
+  - { id: lod-1, type: inst.lod, room: lab, place: QC-01.03, vendor: ven.ru }
+  - { id: diss-1, type: inst.dissolution, room: lab, place: QC-01.04, vendor: ven.ru }
+  # анализатор размера частиц (Д1): его методика — проект, в силу её вводит CAPA «Испытание во входном контроле»
+  - { id: laser-1, type: inst.laser, room: lab, place: QC-01.05, vendor: ven.ru }
+# оборудование производства по помещениям: середина следа на полу, метры; код места — технологическая ячейка TB-01 (Б3в)
+equipment:
+  - { id: scale-1, type: eq.scale, room: dispensing, at: [30, 4], place: TB-01.01, vendor: ven.ru }
+  - { id: hsm-1, type: eq.hsm, room: granulation, at: [37, 4], place: TB-01.02, vendor: ven.ru }
+  - { id: fbd-1, type: eq.fbd, room: granulation, at: [40, 4], place: TB-01.03, vendor: ven.ru }
+  - { id: mill-1, type: eq.mill, room: blending, at: [44, 3], place: TB-01.05, vendor: ven.ru }
+  - { id: blender-1, type: eq.blender, room: blending, at: [46, 5], place: TB-01.06, vendor: ven.ru }
+  - { id: press-1, type: eq.press, room: compression, at: [51, 4], place: TB-01.07, vendor: ven.ru }
+  - { id: deduster-1, type: eq.deduster, room: compression, at: [53, 4], place: TB-01.08, vendor: ven.ru }
+  - { id: coater-1, type: eq.coater, room: coating, at: [61.5, 3.5], place: TB-01.13, vendor: ven.ru }
+# приборы МОК (Б3в) — экземпляры в помещениях стадий: влагомер — у сушки, весы, тестеры прочности и распадаемости и
+# фриабилятор — в таблетировании. Стадия с МОК требует откалиброванный прибор каждого своего испытания в своём помещении.
+# Размещение — гипотеза; на полу их не рисуют
+ipc:
+  - { id: lod-2, type: inst.lod, room: granulation, place: TB-01.04, vendor: ven.ru }
+  - { id: bal-1, type: inst.balance, room: compression, place: TB-01.09, vendor: ven.ru }
+  - { id: hard-1, type: inst.hardness, room: compression, place: TB-01.10, vendor: ven.ru }
+  - { id: fri-1, type: inst.friabilator, room: compression, place: TB-01.11, vendor: ven.ru }
+  - { id: dis-1, type: inst.disintegration, room: compression, place: TB-01.12, vendor: ven.ru }
+  - { id: bal-2, type: inst.balance, room: coating, place: TB-01.14, vendor: ven.ru }
+# датчики системы мониторинга условий хранения (Б3в) — по одному в каждом помещении хранения: контроль круглые сутки
+# автоматизированной системой (приказ № 260н, п. 18). Поверка датчика вышла — зона новых паллет не принимает
+sensors:
+  - { id: th-1, type: inst.thermohygrometer, room: warehouse, place: WH-01.01, vendor: ven.ru }
+  - { id: th-2, type: inst.thermohygrometer, room: coldroom, place: WH-02.01, vendor: ven.ru }
+  - { id: th-3, type: inst.thermohygrometer, room: rejroom, place: WH-03.01, vendor: ven.ru }
+  - { id: th-4, type: inst.thermohygrometer, room: bulk, place: TB-02.01, vendor: ven.ru }
+# упаковочная линия: машины по порядку с востока на запад, после каждой — накопитель на столько её штук (блистеров,
+# пачек); ящики уходят через проём к паллетам в зоне pal; код места — производственная линия PK-01 (Б3в)
+lines:
+  - id: line-1
+    room: packaging
+    out: pal
+    machines:
+      - { id: blister-1, type: mach.blister, buffer: 600, at: [44, 16.5], place: PK-01.01, vendor: ven.ru }
+      - { id: cartoner-1, type: mach.cartoner, buffer: 400, at: [36.5, 16.5], place: PK-01.02, vendor: ven.ru }
+      - { id: casepack-1, type: mach.casepack, at: [30, 16.5], place: PK-01.03, vendor: ven.ru }
+points:
+  park: [2, 18]
+  entrance: [55, 38]
+# посты ожидания по ролям (развилка #36, вариант 2; docs/specs/2026-10-panels.md, 3а): здесь человек ждёт задачи — после
+# прихода на смену и после каждой задачи. Склад — стол у зоны приёмки и стоянка техники; ОКК — лаборатория; ООК и мастер
+# смены — их комната; аппаратчики и уборщики (Б4в) — чистый коридор, уборщики — у моечной; линия — упаковка у линии;
+# техслужба — мастерская. Отраслевая практика — сверить с владельцем
+posts:
+  role.storekeeper: [6.5, 10.5]
+  role.driver: [2.5, 16.5]
+  role.sampler: [30.5, 27.5]
+  role.analyst: [32.5, 29.5]
+  role.qc-head: [34.5, 27.5]
+  role.qa: [39.5, 27.5]
+  role.qp: [39.5, 29.5]
+  role.master: [39.5, 31.5]
+  role.operator: [44.5, 10.5]
+  role.line-operator: [40.5, 19.5]
+  role.packer: [33.5, 19.5]
+  role.mechanic: [44.5, 27.5]
+  role.setter: [44.5, 29.5]
+  role.cleaner: [56.5, 10.5]
+  role.production-head: [38.5, 33.5]
+  role.plan-head: [40.5, 33.5]
+  role.qa-head: [38.5, 35.5]
+  role.supply-head: [40.5, 35.5]
+  role.warehouse-head: [38.5, 37.5]
+  role.chief-mechanic: [46.5, 27.5]
+# энергия: вентиляция круглые сутки — Вт на м² помещения класса D и вне классов (кроме склада); база — свет, офис, склад
+# с холодом, кВт. Гипотезы: на вентиляцию — бо́льшая часть энергии фармацевтического завода (docs/10-domain.md, §4)
+energy:
+  hvac: { D: 150, cnc: 40 }
+  base: 25
+# уборка помещения после серии (Б4в): уборщик — после мойки оборудования, секунды на м² пола по классу чистоты, малая и
+# генеральная уборка; помещение 80 м² класса D — 16 и 64 минуты. Гипотезы: норм нет (docs/10-domain.md, §8)
+cleaning:
+  D: { minor: 12, major: 48 }

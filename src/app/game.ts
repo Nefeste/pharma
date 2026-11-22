@@ -1540,6 +1540,7 @@ export class Game {
       this.selected = t;
       this.store.set({ selected: t, card: undefined });
       this.sendViews();
+      this.seenLetters();
     },
     openMorning: () => {
       // последняя планёрка, которую окно видело; до первой — нечего открыть
@@ -1556,11 +1557,14 @@ export class Game {
       const c = this.store.get().cash;
       this.store.set({ cash: { ...c, open: !c.open }, ...this.rightClosed('cash') });
       this.sendViews();
+      // письмо, которое ждёт кассу (Б9), кончается сразу, а не со следующим срезом: на паузе его нет
+      this.seenLetters();
     },
     toggleLab: () => {
       const l = this.store.get().lab;
       this.store.set({ lab: { ...l, open: !l.open }, ...this.rightClosed('lab') });
       this.sendViews();
+      this.seenLetters();
     },
     toggleNow: () => {
       const n = this.store.get().now;

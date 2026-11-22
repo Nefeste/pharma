@@ -11,6 +11,7 @@
 // партия, аудит и изменение досье типа II (reg-eaeu, прил. 19, Б.I.а.1): с положительным решением пара в спецификации
 // (п. 4.2.1). Рамочный договор — только по парам спецификации из базы: второй источник — по прайсу. Кому заказывать при
 // двух поставщиках — политика начальника отдела снабжения; предложения — цена, срок, доля поставок вовремя и предоплата.
+import { driftFixed } from './chronic';
 import { type ContentDb, DRAFT_DAY, type Id, type MaterialKind, type Scenario, type SpecPair } from '../content/types';
 import { dueRule, type Who } from './bosses';
 import { part, post, vatRate } from './cash';
@@ -385,6 +386,8 @@ export function partnersDone(db: ContentDb, s: PlantState, t: Task, notices: Not
   const day = momentOf(s.start, s.t).day;
   p.recs.push({ day, until: addMonths(day, everyOf(db, db.scenarios[s.scenario], p.supplier, p.maker)) - 1, how: e.how, by: t.people[0] });
   delete p.eval;
+  // хронический корень (Д1): оценка пары после смещения — изготовитель вернул процесс
+  driftFixed(db, s, p.maker);
   // одобрение пары-кандидата (Б6ж): отчёт аудитора рассмотрен — изменение досье подано
   if (p.app?.step === 'audit') fileDossier(db, s, p, day, notices);
   return true;

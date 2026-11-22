@@ -24,7 +24,8 @@ const ended = (): PlantState => {
 describe('переход кампании', () => {
   test('следующий — сценарий 2; до конца срока — отказ; у свежего завода сутки сценария — от его даты', () => {
     expect(nextScenario(db, 'scn.c1')?.id).toBe('scn.c2');
-    expect(nextScenario(db, 'scn.c2')).toBeUndefined();
+    expect(nextScenario(db, 'scn.c2')?.id).toBe('scn.c3');
+    expect(nextScenario(db, 'scn.c3')).toBeUndefined();
     const s = newPlant(db, { scenario: 'scn.c1' });
     expect(scnZero(db, s)).toBe(0);
     expect(carryBlock(db, s)).toBe('notEnded');
@@ -64,10 +65,10 @@ describe('переход кампании', () => {
     const zero = (daysFromCivil(db.scenarios['scn.c2'].start.date) - daysFromCivil(s.start)) * DAY;
     expect(scnZero(db, s)).toBe(zero);
     expect(goalSpan(db, s).from).toBe(c!.start);
-    // места свободны — игрок снова выбирает их; у сценария 2 следующего нет
+    // места свободны — игрок снова выбирает их; срок сценария 2 ещё не прошёл (Д1: следующий — сценарий 3)
     expect(apply(db, s, { kind: 'next' }).some(n => n.kind === 'refused' && n.why === 'notYours')).toBe(true);
     apply(db, s, { kind: 'seat', seats: ['director'] });
-    expect(apply(db, s, { kind: 'next' }).some(n => n.kind === 'refused' && n.why === 'noNext')).toBe(true);
+    expect(apply(db, s, { kind: 'next' }).some(n => n.kind === 'refused' && n.why === 'notEnded')).toBe(true);
   });
 
   test('межсезонье: завод живёт сам до старта игрока — письма сценария 2 приходят, сохранение то же', () => {

@@ -166,9 +166,17 @@ function give(s: PlantState, l: Letter) {
   if (changed) staleAsks(s);
 }
 
-/** Вид первого события по извещению и его вещь. */
-function firstOf(n: Notice): [Letter['when'] & { first: string }, string] | undefined {
+/**
+ * Вид первого события по извещению и его вещь. Результат вне спецификации открывает отклонение вместе с расследованием
+ * (часть 4): его извещение — `investigation`, вещь — отклонение расследования (Д1: без этого письма «при первом OOS» не
+ * приходили).
+ */
+function firstOf(s: PlantState, n: Notice): [Letter['when'] & { first: string }, string] | undefined {
   if (n.kind === 'deviation') return [{ first: n.what === 'oos' ? 'oos' : 'deviation' }, n.id];
+  if (n.kind === 'investigation') {
+    const d = Object.values(s.deviations).find(x => x.inv === n.id);
+    return d ? [{ first: 'oos' }, d.id] : undefined;
+  }
   if (n.kind === 'orderRisk') return [{ first: 'risk' }, n.order];
   if (n.kind === 'poLate') return [{ first: 'late' }, n.po];
   if (n.kind === 'lateOrder') return [{ first: 'miss' }, n.order];
@@ -185,7 +193,7 @@ export function lettersStep(db: ContentDb, s: PlantState, notices: Notice[], fro
   const all = lettersOf(db, s.scenario);
   const open = recs.filter(r => !r.end);
   for (let i = from; i < notices.length; i++) {
-    const f = firstOf(notices[i]);
+    const f = firstOf(s, notices[i]);
     if (!f) continue;
     const l = all.find(x => 'first' in x.when && x.when.first === f[0].first);
     if (l && !recOf(s, l.id)) arrive(db, s, l, notices, f[1]);

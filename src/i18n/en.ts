@@ -1436,7 +1436,7 @@ export const en: Strings = {
     button: 'Letters',
     hint: 'Letters from your mentor and partners — newest first',
     count: (n: number) => (n > 0 ? ` · ${groupEn(n)}` : ''),
-    from: { mentor: 'Mentor', distributor: 'Distributor', supplier: 'Supplier' } as Record<string, string>,
+    from: { mentor: 'Mentor', distributor: 'Distributor', supplier: 'Supplier', qa: 'QA head' } as Record<string, string>,
     notice: (from: string, subject: string) => `Letter — ${from}: “${subject}”`,
     show: 'Show',
     showHint: 'Camera and card — to what the letter is about',
@@ -1470,6 +1470,9 @@ export const en: Strings = {
       'c2.miss': 'An order missed',
       'c2.winter': 'A winter without misses',
       'c2.late': 'The delivery is late',
+      'c3.start': 'Dissolution under watch',
+      'c3.oos': 'Dissolution again',
+      'c3.miss': 'No ibuprofen on time',
     } as Record<string, string>,
     body: {
       'c1.truck': (f: LetterWords) =>
@@ -1505,6 +1508,12 @@ export const en: Strings = {
       'c2.winter': () => 'The winter is over, and not one of our orders was missed. Thank you — let us keep working this way.',
       'c2.late': (f: LetterWords) =>
         `Hello. The delivery of ${f.qty} of ${f.material} is late: the truck will come later than promised. We apologise. You can expedite it or order from another approved supplier on the “Materials” tab.`,
+      'c3.start': () =>
+        'Hello. The winter is behind us, but ibuprofen dissolution sometimes sits at the limit. If a batch fails, the investigation will show its versions; look for the cause beyond the lab too. We close deviations within their term — the procedure demands it.',
+      'c3.oos': (f: LetterWords) =>
+        `Dissolution out of specification — deviation ${f.dev}. The investigation is under way; look at what the batches share: the API lot, the shift, a parameter. The lab queue and the chart are in the lab window.`,
+      'c3.miss': (f: LetterWords) =>
+        `Colleagues, the order due ${f.due} left late or short: ibuprofen batches are lacking. Pharmacies are waiting; the next orders follow the schedule.`,
     } as Record<string, (f: LetterWords) => string>,
   },
   campaign: {

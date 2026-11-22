@@ -2,7 +2,7 @@
 // экран «Кампания»: «Три серии подряд» третьим, чему учит, старт, срок и цели — «на отлично» «повтора нет». «Начать» —
 // места сценария: качество и технология или директор. «Взять» качество — понедельник 16 апреля 2029 г., 07:00 после
 // прогрева; письмо начальника ООК на старте — прочли, кончилось. «До утра» — пока не придёт письмо о первом OOS:
-// «Показать» — его вещь; окно лаборатории — письмо кончилось.
+// «Показать» — окно лаборатории, письмо кончилось.
 // Снимки — tools/app/out/c3-*.png, лист — tools/app/out/c3.png.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -86,26 +86,20 @@ export async function c3Part({ browser, port, out, ok, fail, errors, requests, q
       const t = await text('[data-test=letter]');
       const clock = await s.clock();
       await s.shot('Письмо о первом OOS');
-      // «Показать» — действием окна: кнопку может закрыть окно, открытое автопаузой (доска расследования)
-      await page.evaluate(() => {
-        const g = window.__game;
-        const go = g.store.get().letters.view?.rows.find(r => r.id === 'let.c3.oos')?.go;
-        if (go) g.actions.showLetter(go);
-      });
-      const shown = await page.evaluate(() => window.__game.selected?.kind ?? '');
-      await s.shot('Вещь письма');
-      if (shown !== 'dev') fail(`«Показать» — вещь письма: «${shown}»`);
-      await page.evaluate(() => window.__game.actions.select(undefined));
-      await page.evaluate(() => window.__game.actions.toggleLab());
+      // «Показать» — действием окна (кнопку может закрыть окно, открытое автопаузой): вещь письма — очередь лаборатории;
+      // окно лаборатории открыто — письмо кончилось
+      const go = await page.evaluate(() => window.__game.store.get().letters.view?.rows.find(r => r.id === 'let.c3.oos')?.go);
+      await page.evaluate(go => go && window.__game.actions.showLetter(go), go);
       const done = await page
-        .waitForFunction(() => window.__game.store.get().letters.view?.rows.find(r => r.id === 'let.c3.oos')?.end?.how === 'done', null, { timeout: 20_000 })
+        .waitForFunction(() => window.__game.store.get().lab.open && window.__game.store.get().letters.view?.rows.find(r => r.id === 'let.c3.oos')?.end?.how === 'done', null, { timeout: 20_000 })
         .then(
           () => true,
           () => false,
         );
+      if (go?.panel !== 'lab') fail(`«Показать» — вещь письма: ${JSON.stringify(go)}`);
       await s.shot('Лаборатория');
       if (!/Опять растворение/.test(t) || !/Растворение вне спецификации/.test(t) || !done) fail(`первое OOS: ${clock} — «${t}», кончилось — ${done}`);
-      else ok(`${clock} — письмо о первом OOS, «Показать» открыло его вещь, окно лаборатории — письмо кончилось`);
+      else ok(`${clock} — письмо о первом OOS, «Показать» открыло лабораторию — письмо кончилось`);
     }
   } catch (e) {
     fail(`сценарий 3: ${e instanceof Error ? e.message : String(e)}`);

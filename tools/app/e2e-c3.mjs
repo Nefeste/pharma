@@ -86,8 +86,15 @@ export async function c3Part({ browser, port, out, ok, fail, errors, requests, q
       const t = await text('[data-test=letter]');
       const clock = await s.clock();
       await s.shot('Письмо о первом OOS');
-      await s.measure('«Показать» — вещь письма', () => page.click('[data-test=letter-show]'), 'card', undefined, 'input');
+      // «Показать» — действием окна: кнопку может закрыть окно, открытое автопаузой (доска расследования)
+      await page.evaluate(() => {
+        const g = window.__game;
+        const go = g.store.get().letters.view?.rows.find(r => r.id === 'let.c3.oos')?.go;
+        if (go) g.actions.showLetter(go);
+      });
+      const shown = await page.evaluate(() => window.__game.selected?.kind ?? '');
       await s.shot('Вещь письма');
+      if (shown !== 'dev') fail(`«Показать» — вещь письма: «${shown}»`);
       await page.evaluate(() => window.__game.actions.select(undefined));
       await page.evaluate(() => window.__game.actions.toggleLab());
       const done = await page

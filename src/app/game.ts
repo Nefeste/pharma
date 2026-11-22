@@ -135,6 +135,8 @@ export class Game {
   /** идущий прогон политик: снимок и считают ли с ним «как сейчас» */
   private policyRun?: { json: string; withBase: boolean };
   scenario!: Scenario;
+  /** зерно завода из адреса (`?seed=`) — для сценария в браузере; нет — зерно сценария */
+  seed?: number;
   /** план здания от потока расчёта (Б7а), по которому построена сцена, и номер его правки */
   private world!: World;
   layout!: Layout;
@@ -223,7 +225,7 @@ export class Game {
   private models!: ModelIndex;
 
   /** База, сцена, поток — и первый кадр после первого среза; `art` — модели из Blender или кодом (#109). */
-  static async create(host: HTMLElement, store: Store, quality: Quality, art: ArtMode = 'blender', scn?: string): Promise<Game> {
+  static async create(host: HTMLElement, store: Store, quality: Quality, art: ArtMode = 'blender', scn?: string, seed?: number): Promise<Game> {
     // первый экран (Б11, шаг 2): каждый шаг загрузки — в окно, прогресс растёт по ним
     const step = (done: number) => store.set({ load: { done, step: LOAD_STEPS[Math.min(done, LOAD_STEPS.length - 1)] } });
     step(0);
@@ -238,12 +240,13 @@ export class Game {
     const sc = db.scenarios[id];
     if (!sc) throw new Error(`no scenario ${id}`);
     g.scenario = sc;
+    if (seed !== undefined) g.seed = seed;
     // план здания — от потока расчёта (Б7а): поток запускается первым, сцена строится по плану первого среза
     g.client = new SimClient('./sim.js');
     g.client.onError = m => store.set({ error: m });
     const first = await new Promise<Slice>(done => {
       g.client.onSlice = done;
-      g.client.start({ kind: 'start', scenario: id });
+      g.client.start({ kind: 'start', scenario: id, ...(seed !== undefined ? { seed } : {}) });
     });
     if (!first.world) throw new Error('slice: no plan');
     step(3);
@@ -1424,7 +1427,7 @@ export class Game {
     pickScenario: id => {
       // экран «Кампания» (Б9): новый завод сценария; мир стоит до «Взять» на экране мест
       if (!this.db.scenarios[id] || !this.store.get().campaign.open) return;
-      this.client.start({ kind: 'start', scenario: id });
+      this.client.start({ kind: 'start', scenario: id, ...(this.seed !== undefined ? { seed: this.seed } : {}) });
       this.store.set({ campaign: { open: false }, seats: { open: true, pick: [] } });
     },
     nextScenario: () => {
@@ -1609,6 +1612,11 @@ export class Game {
     },
     setLabTab: tab => {
       this.store.set({ lab: { ...this.store.get().lab, tab } });
+      this.sendViews();
+    },
+    setLabChart: (test, product) => {
+      // прежняя карта — до новой: тот же вид поток второй раз не шлёт
+      this.store.set({ lab: { ...this.store.get().lab, of: { test, ...(product ? { product } : {}) } } });
       this.sendViews();
     },
     rush: lot => this.client.command({ kind: 'rush', lot, by: 'player' }),
@@ -1927,7 +1935,7 @@ export class Game {
     if (this.selected) list.push({ id: 'card', view: 'card', thing: this.selected });
     if (h.morning.open && h.morning.day !== undefined) list.push({ id: 'morning', view: 'morning', day: h.morning.day, ...(h.session ? { since: h.session.from } : {}) });
     if (h.cash.open) list.push({ id: 'cash', view: 'cash', page: h.cash.page });
-    if (h.lab.open) list.push(h.lab.tab === 'queue' ? { id: 'lab', view: 'lab' } : { id: 'chart', view: 'chart', test: 'test.ipc.mass' });
+    if (h.lab.open) list.push(h.lab.tab === 'queue' ? { id: 'lab', view: 'lab' } : { id: 'chart', view: 'chart', test: h.lab.of?.test ?? 'test.ipc.mass', ...(h.lab.of?.product ? { product: h.lab.of.product } : {}) });
     // черновик: новые сроки заданий и новые срочные задания (0.0.39) — их полосы расписание показывает до «Утвердить»
     const draft = {
       ...(h.gantt.draft.length > 0 ? { draft: [...h.gantt.draft] } : {}),

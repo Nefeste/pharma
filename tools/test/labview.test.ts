@@ -65,6 +65,33 @@ describe('контрольная карта', () => {
     expect(v.limits!.ucl).toBeLessThan(st.max!);
     expect(v.limits!.lcl).toBeGreaterThan(st.min!);
   });
+
+  test('карта растворения (Д1): точка — первое проверенное испытание балка серии продукта, шаги расследования — нет', () => {
+    const DISS = 'test.dissolution';
+    const firsts = new Map<string, { t: number; v: number; product: string }>();
+    for (const q of Object.values(s.tests)) {
+      if (q.method !== DISS || q.inv || q.state !== 'done' || q.result === undefined || q.done === undefined) continue;
+      const lot = s.lots[s.samples[q.sample].lot];
+      const b = lot.batch ? s.batches[lot.batch] : undefined;
+      if (!b || b.bulk !== lot.id) continue;
+      const was = firsts.get(lot.id);
+      if (!was || q.done < was.t) firsts.set(lot.id, { t: q.done, v: q.result, product: b.product });
+    }
+    const all = [...firsts.values()];
+    expect(all.length).toBeGreaterThan(2);
+    const products = [...new Set(all.map(p => p.product))].sort();
+    const v = chartView(db, s, { view: 'chart', test: DISS });
+    expect(v.products).toEqual(products);
+    expect(v.product).toBe(products[0]);
+    for (const product of products) {
+      const want = all.filter(p => p.product === product).sort((a, b) => a.t - b.t).map(p => p.v);
+      const w = chartView(db, s, { view: 'chart', test: DISS, product });
+      expect(w.points.map(p => p.v)).toEqual(want);
+      expect(w.limits).toEqual(limitsOf(want));
+      const r = Object.values(db.recipes).find(x => x.product === product)!;
+      expect(w.spec?.min).toBe(db.specs[db.materials[r.bulk].spec].tests.find(t => t.test === DISS)!.min);
+    }
+  });
 });
 
 describe('очередь', () => {

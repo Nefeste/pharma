@@ -386,8 +386,9 @@ export function partnersDone(db: ContentDb, s: PlantState, t: Task, notices: Not
   const day = momentOf(s.start, s.t).day;
   p.recs.push({ day, until: addMonths(day, everyOf(db, db.scenarios[s.scenario], p.supplier, p.maker)) - 1, how: e.how, by: t.people[0] });
   delete p.eval;
-  // хронический корень (Д1): оценка пары после смещения — изготовитель вернул процесс
-  driftFixed(db, s, p.maker);
+  // хронический корень (Д1): внеочередная оценка пары по CAPA после смещения — изготовитель вернул процесс; плановая,
+  // которую коллега ставит перед концом одобрения, — нет: корень не уходит без хода игрока или ООК
+  if (e.capa) driftFixed(db, s, p.maker);
   // одобрение пары-кандидата (Б6ж): отчёт аудитора рассмотрен — изменение досье подано
   if (p.app?.step === 'audit') fileDossier(db, s, p, day, notices);
   return true;

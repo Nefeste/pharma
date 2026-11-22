@@ -98,6 +98,9 @@ function LotRows({ r, start, actions, act }: { r: LabLotRow; start: Ymd; actions
   );
 }
 
+/** карта массы таблеток по МОК и карта растворения по сериям продукта (Д1, §26.5) */
+const MASS = 'test.ipc.mass';
+const DISS = 'test.dissolution';
 const W = 720;
 const HX = 210;
 const HM = 90;
@@ -106,7 +109,7 @@ const PAD = { l: 64, r: 12, t: 10, b: 18 };
 /** Карта X–Rm: значения сверху, скользящие размахи снизу; линии — центральная, границы, допуск. */
 function Chart({ v, start }: { v: ChartView; start: Ymd }) {
   const pts = v.points;
-  if (pts.length === 0) return <div className="muted empty">{T.lab.noPoints}</div>;
+  if (pts.length === 0) return <div className="muted empty">{v.test === MASS ? T.lab.noPoints : T.lab.noBulk}</div>;
   const l: Limits | undefined = v.limits;
   const ys = [...pts.map(p => p.v), ...(l ? [l.ucl, l.lcl] : []), ...(v.spec?.min !== undefined ? [v.spec.min] : []), ...(v.spec?.max !== undefined ? [v.spec.max] : [])];
   const lo = Math.min(...ys);
@@ -165,7 +168,7 @@ function Chart({ v, start }: { v: ChartView; start: Ymd }) {
           ),
         )}
         <text className="axis" x={PAD.l} y={HX - 2}>
-          {T.lab.xAxis}
+          {v.test === MASS ? T.lab.xAxis : T.lab.xAxisDiss}
         </text>
         <text className="axis" x={PAD.l} y={HX + HM - 2}>
           {T.lab.mrAxis}
@@ -220,7 +223,24 @@ export function Lab({ hud, actions }: { hud: Hud; actions: Actions }) {
           <div className="muted">{T.app.loading}</div>
         )
       ) : chart ? (
-        <Chart v={chart} start={hud.start} />
+        <>
+          <div className="filters" data-test="lab-chart-of">
+            <button type="button" className={chart.test === MASS ? 'on' : ''} onClick={() => actions.setLabChart(MASS)} data-test="lab-chart-mass">
+              {T.lab.chartMass}
+            </button>
+            <button type="button" className={chart.test === DISS ? 'on' : ''} onClick={() => actions.setLabChart(DISS)} data-test="lab-chart-diss">
+              {T.lab.chartDiss}
+            </button>
+            {chart.test === DISS
+              ? (chart.products ?? []).map(p => (
+                  <button type="button" key={p} className={chart.product === p ? 'on' : ''} onClick={() => actions.setLabChart(DISS, p)} data-test={`lab-chart-${p}`}>
+                    {named(db?.products[p]?.name, p)}
+                  </button>
+                ))
+              : null}
+          </div>
+          <Chart v={chart} start={hud.start} />
+        </>
       ) : (
         <div className="muted">{T.app.loading}</div>
       )}

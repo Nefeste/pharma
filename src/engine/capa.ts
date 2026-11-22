@@ -389,6 +389,8 @@ export function capaRunCommand(db: ContentDb, s: PlantState, cmd: Extract<Comman
       const p = s.pairs[c.pair!];
       if (!p || p.eval) return refuse('busy');
       bookEval(db, s, p, today);
+      // внеочередная (Д1): по её итогу изготовитель корня возвращает процесс, по плановой — нет
+      p.eval!.capa = true;
       break;
     }
     case 'spec': {

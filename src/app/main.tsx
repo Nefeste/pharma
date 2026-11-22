@@ -115,6 +115,7 @@ const actions: Actions = {
   watch: later('watch'),
   unwatch: later('unwatch'),
   setLabTab: later('setLabTab'),
+  setLabChart: later('setLabChart'),
   rush: later('rush'),
   overtime: later('overtime'),
   waste: later('waste'),
@@ -252,7 +253,7 @@ async function firstPreset(g: Game) {
 }
 
 // модели: из Blender (#109) или кодом — `?art=code`; у Electron — `--art code` (после запуска, тем же переключателем)
-Game.create(document.getElementById('view')!, store, quality, q.get('art') === 'code' ? 'code' : 'blender', q.get('scn') ?? undefined)
+Game.create(document.getElementById('view')!, store, quality, q.get('art') === 'code' ? 'code' : 'blender', q.get('scn') ?? undefined, /^\d+$/.test(q.get('seed') ?? '') ? Number(q.get('seed')) : undefined)
   .then(async g => {
     game = g;
     window.__game = g;

@@ -326,7 +326,7 @@ try {
   if (only === '' || only === 'portfolio') await portfolioPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1'), long: arg('long', '') === '1' });
   if (only === '' || only === 'c1') await c1Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
   if (only === '' || only === 'c2') await c2Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1'), long: arg('long', '') === '1' });
-  if (only === '' || only === 'c3') await c3Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
+  if (only === '' || only === 'c3') await c3Part({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1'), long: arg('long', '') === '1' });
   if (only === '' || only === 'chronicle') await chronPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
   if (only === '' || only === 'sound') await soundPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });
   if (only === '' || only === 'brand') await brandPart({ browser, port, out, ok, fail, errors, requests, q: arg('q', 'low&fastff=1') });

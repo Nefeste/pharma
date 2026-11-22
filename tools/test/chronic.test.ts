@@ -14,7 +14,8 @@ import { DAY, daysFromCivil, momentOf } from '../../src/engine/core/calendar';
 import { inForce, liveOf, revisions } from '../../src/engine/docs';
 import { apply, newPlant } from '../../src/engine/engine';
 import { noRepeat } from '../../src/engine/goals';
-import type { Lot, PlantState, StageRecord } from '../../src/engine/types';
+import { partnersDone } from '../../src/engine/partners';
+import type { Lot, PlantState, StageRecord, Task } from '../../src/engine/types';
 import { buildDb } from '../content/load';
 
 const dirs: string[] = [];
@@ -224,6 +225,20 @@ describe('сценарий 3', () => {
     expect(Object.values(s.people).find(p => p.role === 'role.qa-head')!.skill).toBe(3);
     expect(db.scenarios['scn.c3'].goals!.find(g => g.top)!.kind).toBe('noRepeat');
     expect(db.scenarios['scn.c3'].campaign).toBe(3);
+  });
+
+  test('плановая оценка пары процесс не возвращает — только внеочередная, по CAPA (ревью #214)', () => {
+    const s = newPlant(db, { scenario: 'scn.c3' });
+    s.chronic = { root: 'api', day: s.chronic!.day, shift: 50, steps: 2 };
+    s.t = (s.chronic.day + 5 - momentOf(s.start, 0).day) * DAY;
+    const p = Object.values(s.pairs).find(x => x.maker === 'mkr.api-ibu')!;
+    const task = { kind: 'vendorReview', pair: p.id, people: [Object.keys(s.people)[0]] } as unknown as Task;
+    p.eval = { how: 'docs', booked: s.t, v: 0 };
+    partnersDone(db, s, task);
+    expect(s.chronic.fixed).toBeUndefined();
+    p.eval = { how: 'docs', booked: s.t, v: 0, capa: true };
+    partnersDone(db, s, task);
+    expect(s.chronic.fixed).toBe(s.t);
   });
 
   test('оценка пары после дня смещения — изготовитель вернул процесс: новые партии — как прежде; до дня и у другого — нет', () => {

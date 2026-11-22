@@ -14,8 +14,10 @@ export interface LabQuery {
 
 export interface ChartQuery {
   view: 'chart';
-  /** методика МОК: `test.ipc.mass` */
+  /** методика МОК (`test.ipc.mass`) или испытания балка в лаборатории (`test.dissolution`, Д1) */
   test: Id;
+  /** у испытания балка — продукт: точки — его серии */
+  product?: Id;
 }
 
 type Code = [number, number, number];
@@ -210,8 +212,11 @@ export interface ChartView {
   limits?: Limits;
   /** точек меньше 25 — границы предварительные */
   preliminary: boolean;
-  /** допуск спецификации МОК: не граница карты */
+  /** допуск спецификации МОК или балка: не граница карты */
   spec?: { min?: number; max?: number };
+  /** испытание балка (Д1): продукт карты и продукты, у которых есть результаты этой методики, — для выбора в окне */
+  product?: Id;
+  products?: Id[];
 }
 
 /** Точек, после которых границы карты уже не предварительные. */
@@ -219,6 +224,7 @@ export const SETTLED = 25;
 
 /** Контрольная карта методики МОК: все замеры стадий всех серий по времени; точки серии появляются с концом её стадии. */
 export function chartView(db: ContentDb, s: PlantState, q: ChartQuery): ChartView {
+  if (!Object.values(db.recipes).some(r => r.stages.some(st => st.ipc.some(c => c.test === q.test)))) return bulkChart(db, s, q);
   const raw: { t: number; v: number; batch: string }[] = [];
   let spec: ChartView['spec'];
   for (const b of Object.values(s.batches)) {
@@ -239,5 +245,44 @@ export function chartView(db: ContentDb, s: PlantState, q: ChartQuery): ChartVie
     ...(limits ? { limits } : {}),
     preliminary: values.length < SETTLED,
     ...(spec ? { spec } : {}),
+  };
+}
+
+/**
+ * Карта испытания балка (Д1; §26.5: «тренд на контрольной карте раньше обоих OOS»): первый проверенный результат
+ * методики у пробы балка каждой серии продукта — по времени готовности; повтор и испытания шагов расследования — не
+ * точки карты. Нет продукта — первый, у которого есть результаты. Только записи лаборатории: истины здесь нет.
+ */
+function bulkChart(db: ContentDb, s: PlantState, q: ChartQuery): ChartView {
+  const byProduct = new Map<Id, { t: number; v: number; batch: string }[]>();
+  const seen = new Set<string>();
+  const tests = Object.values(s.tests).sort((a, b) => (a.done ?? 0) - (b.done ?? 0));
+  for (const x of tests) {
+    if (x.method !== q.test || x.inv || x.state !== 'done' || x.result === undefined || x.done === undefined) continue;
+    const lot = s.lots[s.samples[x.sample]?.lot];
+    const b = lot?.batch ? s.batches[lot.batch] : undefined;
+    if (!b || b.bulk !== lot.id || seen.has(lot.id)) continue;
+    seen.add(lot.id);
+    const list = byProduct.get(b.product) ?? [];
+    list.push({ t: x.done, v: x.result, batch: batchNo(b.code) });
+    byProduct.set(b.product, list);
+  }
+  const products = [...byProduct.keys()].sort();
+  const product = q.product && byProduct.has(q.product) ? q.product : products[0];
+  const raw = product ? byProduct.get(product)! : [];
+  const values = raw.map(p => p.v);
+  const limits = limitsOf(values);
+  const sig = limits ? signalsOf(values, limits) : values.map(() => []);
+  const r = product ? Object.values(db.recipes).find(x => x.product === product) : undefined;
+  const line = r ? db.specs[db.materials[r.bulk]?.spec]?.tests.find(t => t.test === q.test) : undefined;
+  return {
+    view: 'chart',
+    test: q.test,
+    points: raw.map((p, i) => ({ ...p, signals: sig[i] })),
+    ...(limits ? { limits } : {}),
+    preliminary: values.length < SETTLED,
+    ...(line && (line.min !== undefined || line.max !== undefined) ? { spec: { ...(line.min !== undefined ? { min: line.min } : {}), ...(line.max !== undefined ? { max: line.max } : {}) } } : {}),
+    ...(product ? { product } : {}),
+    products,
   };
 }

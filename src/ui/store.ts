@@ -113,7 +113,7 @@ export interface Hud {
   /** касса верхней полосы */
   top?: TopView;
   /** панель лаборатории (3г): открыта ли, вкладка; очередь и контрольная карта средней массы */
-  lab: { open: boolean; tab: 'queue' | 'chart'; view?: LabView; chart?: ChartView };
+  lab: { open: boolean; tab: 'queue' | 'chart'; view?: LabView; chart?: ChartView; of?: { test: Id; product?: Id } };
   /** «Сейчас» (Б1б): открыта ли панель; вид — и при закрытой, пока открыта карточка или игрок смотрит работу */
   now: { open: boolean; view?: NowView };
   /**
@@ -402,6 +402,8 @@ export interface Actions {
   watch(key: string): void;
   unwatch(): void;
   setLabTab(tab: 'queue' | 'chart'): void;
+  /** карта лаборатории: методика и у испытания балка — продукт (Д1) */
+  setLabChart(test: Id, product?: Id): void;
   rush(lot: string): void;
   /** политика отдела «Сверхурочные» (Б4а) — команда `overtime` */
   overtime(dept: Dept, mode: OvertimeMode): void;

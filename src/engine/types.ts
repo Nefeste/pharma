@@ -1356,6 +1356,8 @@ export interface PairEval {
   to?: number;
   task?: string;
   v: number;
+  /** внеочередная — по CAPA (Б5е); у хронического корня Д1 изготовитель возвращает процесс только по ней */
+  capa?: true;
 }
 
 /**

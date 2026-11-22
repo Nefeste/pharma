@@ -115,8 +115,10 @@ npm run e2e                        # after build: the game in headless Chromium;
                                    # the truck in the first hour, the first day by the letters to the shipment, a skip
                                    # (e2e-c1.mjs, c1.png), scenario 2 — its start, the distributor's letters, the order
                                    # at risk (e2e-c2.mjs, c2.png; `--long 1` — «До утра» to the result, ~50 min),
-                                   # scenario 3 — its start, the QA head's letter, the first OOS (e2e-c3.mjs, c3.png), the
-                                   # chronicle — the meeting's line, a day, a week and a year, a batch's record, the
+                                   # scenario 3 — its start, the QA head's letter, the first OOS, the dissolution chart
+                                   # (e2e-c3.mjs, c3.png; `--long 1` — seed 7 as director to a lot rejected
+                                   # by particle size, ~5 min), the chronicle — the meeting's line, a day, a week
+                                   # and a year, a batch's record, the
                                    # saved text file (e2e-chron.mjs, chron.png), the sound — silent before the first
                                    # press, a letter, a click, captions, an autopause, the meeting, volume 0, `shot`
                                    # silent (e2e-sound.mjs, sound.png), the brand — the first screen's steps, the font,
@@ -553,7 +555,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   stage; the scenario's goals at its end — kept the whole game in `story`, read by no rule, none in the plan run's
   copy), `chronic.ts` (with Д1, a scenario's chronic root by the seed — a maker's lot drift from a day, in truth and
   certificate, a person's habit added to a stage parameter fact, or both; the habit gone after a «train» CAPA with
-  them, the drift ended by a pair evaluation after its day (`driftFixed`); set anew at a campaign transition; hidden, the
+  them, the drift ended by a pair evaluation a CAPA booked, after its day (`driftFixed`); set anew at a campaign
+  transition; hidden, the
   twin forgets it),
   `invariants.ts`.
 - **Golden fingerprint** (`tools/test/golden.test.ts`): any change of engine behaviour changes it. If the change is
@@ -598,8 +601,10 @@ first, or copy the working code of Bolnitsa on the same versions.
   evaluation, agreements and contracts in force for the «Контрагенты» tab, the meeting's suppliers, a lot's maker and
   contract, with Б6ж candidate pairs with their approval step and the days come, a pair's on-time share (`partners.ts`);
   the lab queue and the X–Rm control chart of the in-process
-  average tablet mass with its limits and special-cause signs, a lot under investigation and its steps' tests
-  (`lab.ts`); the investigation board — what happened, participants, steps, findings, versions from the findings only,
+  average tablet mass with its limits and special-cause signs, with Д1 the dissolution chart of a product's batches —
+  the first checked bulk test of each, no retests or investigation steps —, a lot under investigation and its steps'
+  tests (`lab.ts`); the investigation board — what happened, participants, steps, findings, versions from the findings
+  only,
   whether release is proven, the debrief only once concluded, with Б5е the CAPA of its deviation (`inv.ts`); working
   time — the month's time sheet of a person's card with its totals and the year, «ОТ» on vacation days, the accounting
   period of a person on a cyclic
@@ -683,7 +688,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   the thread boundary as a string: the window never parses the state with the true lot properties — the plan run gets
   the same string.
 - `src/app/` — the game in the window: content, stage, clock and speeds with live time 1:1, input, panels — with Б7а
-  the stage from the plan the calculation thread sends, the slices of another plan not parsed (`game.ts`, `main.tsx`);
+  the stage from the plan the calculation thread sends, the slices of another plan not parsed, with Д1 the plant's seed
+  from the address `?seed=` for the browser scenario (`game.ts`, `main.tsx`);
   what the slice puts on the floor — pallets, trucks, rooms, pallets on forks (`scene.ts`); where people
   and vehicles are now — a pure function of the tasks in the slice and the clock, on the plan's routes and with the
   engine's travel times, free people on their way to a post too, and the work icon of each busy person (`movers.ts`);
@@ -779,7 +785,8 @@ first, or copy the working code of Bolnitsa on the same versions.
   process parameter
   values in words (`units.ts`), what is going on now with «Смотреть»
   (`Now.tsx`, N), the 08:00 meeting (`Morning.tsx`), the cash
-  panel (`Cash.tsx`), the lab queue and control chart (`Lab.tsx`), the schedule window with dragging, the draft,
+  panel (`Cash.tsx`), the lab queue and control charts — mass by IPC, dissolution by product (`Lab.tsx`), the
+  schedule window with dragging, the draft,
   «Прогнать
   план» and the run's outcome per variant, with Б6е the frozen band, its edge and the draft's price (`Gantt.tsx`), with
   Б6а its «Задания» tab — filters, rows, «Отменить» into
